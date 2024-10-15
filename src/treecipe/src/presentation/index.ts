@@ -6,7 +6,7 @@ import * as fs from 'fs';
 
 export function main() {
 
-  const objectsDirectory = 'force-app/main/default/objects';
+  const objectsDirectory = './main/default/objects';
   let objectsInfoWrapper = new ObjectInfoWrapper();
   objectsInfoWrapper = processDirectory(objectsDirectory, objectsInfoWrapper);
 

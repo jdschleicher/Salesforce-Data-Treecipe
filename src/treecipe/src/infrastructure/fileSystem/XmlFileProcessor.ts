@@ -6,7 +6,7 @@ import { IPicklistValue } from "../../domain/entities/FieldInfo";
 
 export class XmlFileProcessor {
 
-  static processXmlFieldContent(xmlContent: string): XMLFieldDetail {
+  static async processXmlFieldContent(xmlContent: string): Promise<XMLFieldDetail> {
 
     let xmlFieldDetail = new XMLFieldDetail();
   
@@ -16,7 +16,7 @@ export class XmlFileProcessor {
       let parseString = xml2js.parseString;
       parseString(xmlContent, function (err, result) {
           console.dir(result);
-          fieldXML = result
+          fieldXML = result;
       });
 
       console.log();
@@ -59,19 +59,19 @@ export class XmlFileProcessor {
     // NOTE: THE INDEX OF ZERO "[0]" USED IN SEVERAL LOCATIONS IS REQUIRED DUE TO HOW THE XML ARE PARSED AS THERE COULD BE 1 OR MANY OF THE SAME ELEMENT NODE
     let picklistFieldDetails:IPicklistValue[] = [];
   
-    let picklistValues = picklistValueSetMarkup.valueSetDefinition[0].value
+    let picklistValues = picklistValueSetMarkup.valueSetDefinition[0].value;
     picklistValues.forEach(element => {
             
       const picklistApiFullName:string = element.fullName[0];
       const picklistLabel:string = element.label[0];
       const picklistDefault:any = element.default ? element.default[0] : null;
-      const isPickListDefault:boolean = Boolean(picklistDefault === 'true' || picklistDefault === true)
+      const isPickListDefault:boolean = Boolean(picklistDefault === 'true' || picklistDefault === true);
 
       let picklistDetail: IPicklistValue = {
         fullName: picklistApiFullName,
         label: picklistLabel,
         default: isPickListDefault
-      }
+      };
 
       if ( picklistValueSetMarkup.controllingField ) {
         // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST AND CONTROLLING FIELD VALUE SETTINGS

@@ -1,30 +1,34 @@
 import { XmlFileProcessor } from './XmlFileProcessor';
 import { RecipeService } from '../../application/services/RecipeService';
 
-import * as fs from 'fs';
+// import * as fs from 'fs';
+import * as vscode from 'vscode';
+
 import * as path from 'path';
 import { FieldInfo } from '../../domain/entities/FieldInfo';
 import { XMLFieldDetail } from '../../domain/entities/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../../domain/entities/ObjectInfoWrapper';
 
 
-export function processDirectory(directoryPath: string, objectInfoWrapper: ObjectInfoWrapper): ObjectInfoWrapper {
+export async function processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
   
-    const entries = fs.readdirSync(directoryPath, { withFileTypes: true, recursive: false });
+    // const entries = fs.readdirSync(directoryPathUri, { withFileTypes: true, recursive: false });
+    const entries = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
+    // for (const entry of entries) {
+    for (const [entryName, entryType] of entries) {
 
-    for (const entry of entries) {
-        
-      const fullPath = path.join(directoryPath, entry.name);
+      const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
 
-      if (entry.isDirectory()) {
-          if (entry.name === 'fields'){
+      if (entryType === vscode.FileType.Directory) {
 
-            let parentObjectDirectoryPath = entry.path
-            let objectName = getLastSegmentFromPath(parentObjectDirectoryPath);
+          if (entryName === 'fields'){
+
+            let parentObjectdirectoryPathUri = directoryPathUri.fsPath;
+            let objectName = getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
 
-            let fieldsInfo:FieldInfo[] = processFieldsDirectory(fullPath, objectName);
+            let fieldsInfo:FieldInfo[] = await processFieldsDirectory(fullPath, objectName);
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
 
             if ( !(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe) ) {
@@ -45,7 +49,7 @@ export function processDirectory(directoryPath: string, objectInfoWrapper: Objec
             objectInfoWrapper.combinedRecipes += "\n";
 
           } else {
-              processDirectory(fullPath, objectInfoWrapper);
+              await processDirectory(fullPath, objectInfoWrapper);
           }
       }
 
@@ -55,21 +59,30 @@ export function processDirectory(directoryPath: string, objectInfoWrapper: Objec
 
 }
 
-export function processFieldsDirectory (
-                                        directoryPath: string, 
+export async function processFieldsDirectory (
+                                        directoryPathUri: vscode.Uri, 
                                         associatedObjectName: string
-                                        ) : FieldInfo[] {
+                                        ) : Promise<FieldInfo[]> {
   
-  const files = fs.readdirSync(directoryPath);
+  // const files = fs.readdirSync(directoryPathUri);
+
+  const files = await vscode.workspace.fs.readDirectory(directoryPathUri);
+
   let fieldInfoDetails:FieldInfo[] = [];
-  for (const file of files) {
+  for (const [fileName, fileType] of files) {
 
-    if (path.extname(file).toLowerCase() === '.xml') {
+    // if (path.extname(file).toLowerCase() === '.xml') {
+    if (fileType === vscode.FileType.File && path.extname(fileName).toLowerCase() === '.xml') {
 
-      const fieldPath = path.join(directoryPath, file);
-      const xmlContent = fs.readFileSync(fieldPath, 'utf-8');
 
-      let fieldXMLDetail:XMLFieldDetail = XmlFileProcessor.processXmlFieldContent(xmlContent);
+      // const fieldPath = path.join(directoryPathUri, file);
+      // const xmlContent = fs.readFileSync(fieldPath, 'utf-8');
+
+      const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
+      const xmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
+      const xmlContent = Buffer.from(xmlContentUriData).toString('utf8');
+
+      let fieldXMLDetail:XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
       let recipeValue = RecipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail);
       
       let fieldInfo = FieldInfo.create(

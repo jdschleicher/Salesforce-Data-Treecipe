@@ -15,11 +15,11 @@
     "commands": [
       {
         "command": "hrg.helloWorld",
-        "title": "Hello World"
+        "title": "hrg: Hello World"
       },
       {
         "command": "hrg.generateTreecipe",
-        "title": "Generate Treecipe"
+        "title": "hrg: Generate Treecipe"
       }
     ]
   },
@@ -33,22 +33,21 @@
     "jest-test": "jest --coverage"
   },
   "devDependencies": {
-    "@types/vscode": "^1.94.0",
+    "@types/jest": "^29.5.13",
     "@types/mocha": "^10.0.8",
+    "@types/node": "^22.4.1",
+    "@types/vscode": "^1.94.0",
     "@typescript-eslint/eslint-plugin": "^8.7.0",
     "@typescript-eslint/parser": "^8.7.0",
-    "eslint": "^9.11.1",
-    "typescript": "^5.6.2",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
-    "@types/jest": "^29.5.13",
-    "@types/node": "^22.4.1",
+    "eslint": "^9.11.1",
     "jest": "^29.7.0",
-    "ts-jest": "^29.2.5"
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.3"
   },
   "dependencies": {
     "ts-node": "^10.9.2",
     "xml2js": "^0.6.2"
   }
 }
- 
