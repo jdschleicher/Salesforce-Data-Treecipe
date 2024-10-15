@@ -4,17 +4,33 @@ import { processDirectory } from '../infrastructure/fileSystem/DirectoryProcesso
 
 import * as fs from 'fs';
 
-export function main() {
+import * as vscode from 'vscode';
 
-  const objectsDirectory = './main/default/objects';
+
+function getWorkspaceUri(): vscode.Uri | undefined {
+  
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders) {
+      vscode.window.showErrorMessage('No workspace folder is open');
+      return undefined;
+  }
+  return workspaceFolders[0].uri;
+
+}
+
+export async function main() {
+
+  // let objectsDirectory = vscode.Uri.file('/main/default/objects');
+
+  const workspaceUri = getWorkspaceUri();
   let objectsInfoWrapper = new ObjectInfoWrapper();
-  objectsInfoWrapper = processDirectory(objectsDirectory, objectsInfoWrapper);
 
-// Now you can stringify it
-//   const jsonString = JSON.stringify(objectsInfoWrapper.recipes, null, 2);
-//   console.log(jsonString);
-
-  // const jsonData = JSON.stringify(objectFieldTracker, null, 2);
+  if (workspaceUri) {
+    // Use a known existing directory relative to the workspace root
+    const targetUri = vscode.Uri.joinPath(workspaceUri, '/main/default/objects');
+    objectsInfoWrapper = await processDirectory(targetUri, objectsInfoWrapper);
+    vscode.window.showInformationMessage('Directory processing completed');
+  }
 
   fs.writeFile('output.yaml', objectsInfoWrapper.combinedRecipes, (err) => {
       if (err) {

@@ -12,10 +12,8 @@ import { ObjectInfoWrapper } from '../../domain/entities/ObjectInfoWrapper';
 
 export async function processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
   
-    // const entries = fs.readdirSync(directoryPathUri, { withFileTypes: true, recursive: false });
     const entries = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
-    // for (const entry of entries) {
     for (const [entryName, entryType] of entries) {
 
       const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
