@@ -1,4 +1,3 @@
-// import { IPicklistValue } from "../../../domain/entities/FieldInfo";
 import { XMLFieldDetail } from "../../../domain/entities/XMLFieldDetail";
 import { XmlFileProcessor } from "../XmlFileProcessor";
 import { XMLMarkupMockService } from "./mocks/XMLMarkupMockService";

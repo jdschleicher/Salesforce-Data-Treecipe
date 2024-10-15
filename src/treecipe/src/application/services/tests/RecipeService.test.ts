@@ -224,7 +224,7 @@ describe('initiateRecipeByObjectName', () => {
         const actualRecipeInitiation = RecipeService.initiateRecipeByObjectName(objectApiName);
         expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
 
-    })
+    });
 
 });
 

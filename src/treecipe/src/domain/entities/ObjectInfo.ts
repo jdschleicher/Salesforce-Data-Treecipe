@@ -1,5 +1,5 @@
-import { FieldInfo } from "./FieldInfo"
-import { RelationshipDetail } from "./RelationshipDetail"
+import { FieldInfo } from "./FieldInfo";
+import { RelationshipDetail } from "./RelationshipDetail";
 
 export class ObjectInfo {
 
@@ -9,7 +9,7 @@ export class ObjectInfo {
   fullRecipe: string;
   
   constructor(objectApiName:string)  {
-    this.apiName = objectApiName
+    this.apiName = objectApiName;
   };
 
 }
