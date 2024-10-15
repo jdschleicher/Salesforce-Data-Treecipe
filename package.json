@@ -20,6 +20,10 @@
       {
         "command": "hrg.generateTreecipe",
         "title": "hrg: Generate Treecipe"
+      },
+      {
+        "command": "hrg.initiateConfiguration",
+        "title": "hrg: Initiate Configuration"
       }
     ]
   },

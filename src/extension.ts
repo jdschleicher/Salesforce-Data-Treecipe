@@ -20,6 +20,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage('Hello World from helloRecipeGenerator!');
 	});
 
+	const initiateConfiguration = vscode.commands.registerCommand('hrg.initiateConfiguration', () => {
+		
+	});
+
 	const generateTreecipe = vscode.commands.registerCommand('hrg.generateTreecipe', () => {
 		
 		main();
@@ -28,7 +32,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		disposable, 
-		generateTreecipe
+		generateTreecipe,
+		initiateConfiguration
 	);
 }
 

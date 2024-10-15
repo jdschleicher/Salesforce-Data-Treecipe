@@ -18,9 +18,18 @@ function getWorkspaceUri(): vscode.Uri | undefined {
 
 }
 
-export async function main() {
+function getTimestamp(): string {
+  const now = new Date();
+  const formattedDate = now
+    .toISOString()
+    .replace(/T/, '_') // Replace 'T' with an underscore
+    .replace(/:/g, '-') // Replace ':' with hyphens
+    .split('.')[0]; // Remove milliseconds
+  return formattedDate;
+}
 
-  // let objectsDirectory = vscode.Uri.file('/main/default/objects');
+
+export async function main() {
 
   const workspaceUri = getWorkspaceUri();
   let objectsInfoWrapper = new ObjectInfoWrapper();
@@ -32,6 +41,9 @@ export async function main() {
     vscode.window.showInformationMessage('Directory processing completed');
   }
 
+  // const folderName = getTimestamp();
+
+
   fs.writeFile('output.yaml', objectsInfoWrapper.combinedRecipes, (err) => {
       if (err) {
           console.error('Error writing file', err);
@@ -41,6 +53,3 @@ export async function main() {
   });
 
 }
-
-
-main();
