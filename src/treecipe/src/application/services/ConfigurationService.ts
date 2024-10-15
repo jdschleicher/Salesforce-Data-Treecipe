@@ -5,13 +5,19 @@ export class ConfigurationService {
 
     static createConfigurationFile(expectedFieldPath: string) {
 
-        const fileName = ".treecipe.config.json";
+        const configurationFileName = ".treecipe.config.json";
         const configurationDetail = {
             salesforceObjectsPath: ""
         };
-    
-        const configurationJsonData = JSON.stringify(configurationDetail, null, 2);
-        fs.writeFileSync(fileName, configurationJsonData);
+
+        const treeCipeBaseDirectory = ".treecipe";
+        if (!fs.existsSync(treeCipeBaseDirectory)) {
+            fs.mkdirSync(treeCipeBaseDirectory);
+        }
+
+        const configurationJsonData = JSON.stringify(configurationDetail, null, 4);
+        const pathToCreateConfigurationFile = `${treeCipeBaseDirectory}/${configurationFileName}`;
+        fs.writeFileSync(pathToCreateConfigurationFile, configurationJsonData);
         
     }
 

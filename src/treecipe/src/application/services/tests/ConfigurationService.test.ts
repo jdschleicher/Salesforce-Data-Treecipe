@@ -7,11 +7,8 @@ describe('createConfigurationFile', () => {
 
   test('given a vscode workspace root directory, a dedicated extension directory is created with base config file', () => {
   
-    
-    const fakeWorkspaceRootDirectory = "./";
-    const expectedNewDirectory = "treecipeConfig";
-    const expectedFileName = "data.json";
-
+    const expectedNewDirectory = ".treecipe";
+    const expectedFileName = ".treecipe.config.json";
 
     const expectedConfigJson = 
 `{
