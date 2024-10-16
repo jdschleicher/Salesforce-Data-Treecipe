@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { main } from './treecipe/src/presentation';
+import { ConfigurationService } from './treecipe/src/application/services/ConfigurationService';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -21,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	const initiateConfiguration = vscode.commands.registerCommand('hrg.initiateConfiguration', () => {
-		
+		ConfigurationService.createConfigurationFile();
 	});
 
 	const generateTreecipe = vscode.commands.registerCommand('hrg.generateTreecipe', () => {

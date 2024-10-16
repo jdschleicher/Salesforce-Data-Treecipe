@@ -17,7 +17,7 @@ describe('createConfigurationFile', () => {
 
     const expectedFieldPath = `${expectedNewDirectory}/${expectedFileName}`;
 
-    ConfigurationService.createConfigurationFile(expectedFieldPath);
+    ConfigurationService.createConfigurationFile();
     const createdFileContent = fs.readFileSync(expectedFieldPath, 'utf-8');
 
     expect(createdFileContent).toBe(expectedConfigJson);
