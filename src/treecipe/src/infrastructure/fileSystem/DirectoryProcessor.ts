@@ -1,7 +1,6 @@
 import { XmlFileProcessor } from './XmlFileProcessor';
 import { RecipeService } from '../../application/services/RecipeService';
 
-// import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import * as path from 'path';
