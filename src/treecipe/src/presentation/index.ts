@@ -1,4 +1,5 @@
 
+import { ConfigurationService } from '../application/services/ConfigurationService';
 import { ObjectInfoWrapper } from '../domain/entities/ObjectInfoWrapper';
 import { processDirectory } from '../infrastructure/fileSystem/DirectoryProcessor';
 
@@ -7,16 +8,6 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 
-function getWorkspaceUri(): vscode.Uri | undefined {
-  
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders) {
-      vscode.window.showErrorMessage('No workspace folder is open');
-      return undefined;
-  }
-  return workspaceFolders[0].uri;
-
-}
 
 function getTimestamp(): string {
   const now = new Date();
@@ -31,20 +22,22 @@ function getTimestamp(): string {
 
 export async function main() {
 
-  const workspaceUri = getWorkspaceUri();
+  const workspaceRoot = await ConfigurationService.getWorkspaceRoot();
   let objectsInfoWrapper = new ObjectInfoWrapper();
 
-  if (workspaceUri) {
-    // Use a known existing directory relative to the workspace root
-    const targetUri = vscode.Uri.joinPath(workspaceUri, '/main/default/objects');
-    objectsInfoWrapper = await processDirectory(targetUri, objectsInfoWrapper);
+  if (workspaceRoot) {
+    const relativePathToObjectsDirectory = await ConfigurationService.getObjectsPathFromConfiguration();
+    const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
+    const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+    const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+    objectsInfoWrapper = await processDirectory(objectsTargetUri, objectsInfoWrapper);
     vscode.window.showInformationMessage('Directory processing completed');
   }
 
-  // const folderName = getTimestamp();
 
 
-  fs.writeFile('output.yaml', objectsInfoWrapper.combinedRecipes, (err) => {
+  const outputFilePath = `${workspaceRoot}/ouptut.yaml`;
+  fs.writeFile(outputFilePath, objectsInfoWrapper.combinedRecipes, (err) => {
       if (err) {
           console.error('Error writing file', err);
       } else {

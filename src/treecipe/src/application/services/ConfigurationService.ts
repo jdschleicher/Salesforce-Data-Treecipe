@@ -5,6 +5,32 @@ import * as vscode from 'vscode';
 
 
 export class ConfigurationService {
+    
+    static async getObjectsPathFromConfiguration() {
+
+        const configurationDetail = await this.getConfigurationDetail();
+        return configurationDetail.salesforceObjectsPath;
+
+    }
+
+    static async getConfigurationDetail() {
+        const configurationFileName = this.getConfigurationFileName();
+        const configurationDirectory = this.getDefaultTreecipeConfigurationFolder();
+        const workspaceRoot = await this.getWorkspaceRoot();
+
+        const fullConfigurationDirectoryPath = `${workspaceRoot}/${configurationDirectory}`;
+        const configurationPath = path.join(fullConfigurationDirectoryPath, configurationFileName);
+        
+        let configurationJSON = null;
+        try {
+            configurationJSON = fs.readFileSync(configurationPath, 'utf-8');
+        } catch(error) {
+            console.log("A CONFIGURATION FILE WAS NOT PARSED. THE CONFIG MAY NOT YET EXIST. RUN THE COMMAND INITIATE CONFIGURATION")
+        }
+
+        const configurationDetail = JSON.parse(configurationJSON);
+        return configurationDetail;
+    }
 
 
     static async createConfigurationFile() {
@@ -14,8 +40,8 @@ export class ConfigurationService {
         const expectedObjectsPath = await this.promptForObjectsPath(workspaceRoot);
         if (!expectedObjectsPath) {
             return;
-        }
-        const configurationFileName = ".treecipe.config.json";
+        };
+        const configurationFileName = this.getConfigurationFileName();
         const configurationDetail = {
             salesforceObjectsPath: `${expectedObjectsPath}`
         };
@@ -115,8 +141,13 @@ export class ConfigurationService {
         const defaultTreecipeConfigurationFolder = ".treecipe";
         return defaultTreecipeConfigurationFolder;
     }
+
+    static getConfigurationFileName() {
+        const configurationFileName = ".treecipe.config.json";
+        return configurationFileName;
+    }
     
-    private static async getWorkspaceRoot() {
+    static async getWorkspaceRoot() {
         const workspaceRoot:string = vscode.workspace.workspaceFolders
                                     ? vscode.workspace.workspaceFolders[0].uri.fsPath
                                     : undefined;
