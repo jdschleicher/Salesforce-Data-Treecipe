@@ -1,12 +1,20 @@
-import { RecipeService } from "../RecipeService";
-import { XMLMarkupMockService } from "../../../infrastructure/fileSystem/tests/mocks/XMLMarkupMockService";
-import { XMLFieldDetail } from "../../../domain/entities/XMLFieldDetail";
+import { RecipeService } from "../../RecipeService/RecipeService";
+import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
+import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 
 import { RecipeMockService } from "./mocks/RecipeMockService";
 
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
-import * as fs from 'fs';
+// import * as fs from 'fs';
 
+jest.mock('vscode', () => ({
+    workspace: {
+        workspaceFolders: undefined
+    },
+    Uri: {
+        file: (path: string) => ({ fsPath: path })
+    }
+  }), { virtual: true });
 
 describe('getRecipeFakeValueByXMLFieldDetail', () => {
 
@@ -278,5 +286,3 @@ ${RecipeService.generateTabs(1)}${secondFakeFieldRecipeValue}`;
     });
 
 });
-
-// describe(expecgte full value)

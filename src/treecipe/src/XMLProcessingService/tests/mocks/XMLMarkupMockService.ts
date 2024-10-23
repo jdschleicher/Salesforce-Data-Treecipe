@@ -1,5 +1,5 @@
 import { IPicklistValue } from "../../../ObjectInfoWrapper/FieldInfo";
-import { XMLFieldDetail } from "../../../../domain/entities/XMLFieldDetail";
+import { XMLFieldDetail } from "../../../XMLProcessingService/XMLFieldDetail";
 
 export class XMLMarkupMockService {
 
@@ -269,7 +269,7 @@ export class XMLMarkupMockService {
     <type>Number</type>
     <unique>false</unique>
 </CustomField>
-`
+`;
         return formulaFieldMarkup;
 
     }

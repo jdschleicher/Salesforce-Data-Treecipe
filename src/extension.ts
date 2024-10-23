@@ -1,8 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { main } from './treecipe/src/presentation';
 import { ConfigurationService } from './treecipe/src/ConfigurationService/ConfigurationService';
+import { RecipeService } from './treecipe/src/RecipeService/RecipeService';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -27,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const generateTreecipe = vscode.commands.registerCommand('hrg.generateTreecipe', () => {
 		
-		main();
+		RecipeService.generateRecipeFromConfigurationDetail();
 		
 	});
 

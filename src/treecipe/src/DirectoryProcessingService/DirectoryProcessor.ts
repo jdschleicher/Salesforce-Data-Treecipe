@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 
 import * as path from 'path';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
-import { XMLFieldDetail } from '../../domain/entities/XMLFieldDetail';
+import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 
 

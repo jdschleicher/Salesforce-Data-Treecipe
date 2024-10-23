@@ -1,4 +1,4 @@
-import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo"
+import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
 export class XMLFieldDetail {
     public fieldType: string;

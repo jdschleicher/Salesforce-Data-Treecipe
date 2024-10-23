@@ -1,4 +1,4 @@
-import { XMLFieldDetail } from "../domain/entities/XMLFieldDetail";
+import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import * as xml2js from 'xml2js';
 import * as fs from 'fs';
 

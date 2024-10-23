@@ -1,10 +1,10 @@
-import { XMLFieldDetail } from "../../../domain/entities/XMLFieldDetail";
+import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { XmlFileProcessor } from "../XmlFileProcessor";
 import { XMLMarkupMockService } from "./mocks/XMLMarkupMockService";
 import * as xml2js from 'xml2js';
 
 
-describe('extractPickListDetailsFromXMLValueTag', async () => {
+describe('extractPickListDetailsFromXMLValueTag',() => {
     
     test('given expected picklist xml markup, returns expected IPickList array', async () => {
 
@@ -29,7 +29,7 @@ describe('extractPickListDetailsFromXMLValueTag', async () => {
 
 });
 
-describe('processXmlFieldContent', async () => {
+describe('processXmlFieldContent', () => {
     
     test('given expected Picklist xml markup, returns expected picklist XMLFieldDetail', async () => {
 
