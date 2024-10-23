@@ -1,12 +1,44 @@
 
 import * as fs from 'fs';
 import { ConfigurationService } from '../ConfigurationService';
+import * as vscode from 'vscode';
 
+jest.mock('vscode', () => ({
+  workspace: {
+      workspaceFolders: undefined
+  },
+  Uri: {
+      file: (path: string) => ({ fsPath: path })
+  }
+}), { virtual: true });
 describe('createConfigurationFile', () => {
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   test('given a vscode workspace root directory, a dedicated extension directory is created with base config file', () => {
   
+
+    const mockFsPath = '/mock/workspace/path';
+    const mockWorkspaceFolders = [{
+      uri: { 
+        fsPath: mockFsPath,
+        scheme: "test",
+        authority: "",
+        path: "",
+        query: "",
+        fragment: "",
+        toJSON: null,
+        with: null
+       },
+      name: 'mockWorkspace',
+      index: 0
+    }];
+  
+    jest.spyOn(vscode.workspace, 'workspaceFolders', 'get')
+      .mockReturnValue(mockWorkspaceFolders);
+
     const expectedNewDirectory = ".treecipe";
     const expectedFileName = ".treecipe.config.json";
 

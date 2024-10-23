@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import path = require('path');
 import * as vscode from 'vscode';
-import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 
 export class ConfigurationService {
@@ -26,7 +26,7 @@ export class ConfigurationService {
         try {
             configurationJSON = fs.readFileSync(configurationPath, 'utf-8');
         } catch(error) {
-            console.log("A CONFIGURATION FILE WAS NOT PARSED. THE CONFIG MAY NOT YET EXIST. RUN THE COMMAND INITIATE CONFIGURATION")
+            console.log("A CONFIGURATION FILE WAS NOT PARSED. THE CONFIG MAY NOT YET EXIST. RUN THE COMMAND INITIATE CONFIGURATION");
         }
 
         const configurationDetail = JSON.parse(configurationJSON);

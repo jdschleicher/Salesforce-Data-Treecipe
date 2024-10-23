@@ -1,11 +1,12 @@
 
-import { ConfigurationService } from '../application/services/ConfigurationService';
+import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { ObjectInfoWrapper } from '../domain/entities/ObjectInfoWrapper';
 import { processDirectory } from '../infrastructure/fileSystem/DirectoryProcessor';
 
 import * as fs from 'fs';
 
 import * as vscode from 'vscode';
+import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 
 
@@ -22,7 +23,7 @@ function getTimestamp(): string {
 
 export async function main() {
 
-  const workspaceRoot = await ConfigurationService.getWorkspaceRoot();
+  const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
   let objectsInfoWrapper = new ObjectInfoWrapper();
 
   if (workspaceRoot) {
