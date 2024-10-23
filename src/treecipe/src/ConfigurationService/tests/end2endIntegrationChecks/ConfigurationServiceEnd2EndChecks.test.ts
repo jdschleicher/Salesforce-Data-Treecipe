@@ -1,31 +1,6 @@
 import { ConfigurationService } from "../../ConfigurationService";
 import * as fs from 'fs';
-
-
-// describe('createConfigurationFile', () => {
-
-    
-
-//     test('given a vscode workspace root directory, a dedicated extension directory is created with base config file', () => {
-  
-//     const expectedNewDirectory = ".treecipe";
-//     const expectedFileName = ".treecipe.config.json";
-
-//     const expectedConfigJson = 
-// `{
-//     "salesforceObjectsPath": ""
-// }`;
-
-//     const expectedFieldPath = `${expectedNewDirectory}/${expectedFileName}`;
-
-//     ConfigurationService.createConfigurationFile();
-//     const createdFileContent = fs.readFileSync(expectedFieldPath, 'utf-8');
-
-//     expect(createdFileContent).toBe(expectedConfigJson);
-
-//     });
-
-// });
+import * as vscode from 'vscode';
 
 // create configuration .treecipe directory 
 // create .treecipe.config.json file inside treecipe directory 
@@ -34,20 +9,63 @@ import * as fs from 'fs';
 
 // 
 
-// describe('getConfigurationFileName', () => {
+jest.mock('vscode', () => ({
+    workspace: {
+        workspaceFolders: undefined
+    },
+    Uri: {
+        file: (path: string) => ({ fsPath: path })
+    }
+  }), { virtual: true });
 
-//     test('given getConfigurationFileName called, expected file name returned', () => {
-//         const expectedFileName = ".treecipe.config.json";
-//         const actualConfigurationFileName = ConfigurationService.getConfigurationFileName();
-
-//         expect(actualConfigurationFileName).toBe(expectedFileName);
-//     });
-
-// });
-
-// describe('getDefaultTreecipeConfigurationFolderName', () => {
-//     const expectedFolderName = ".treecipe";
-//     const actualConfigurationFolderName = ConfigurationService.getDefaultTreecipeConfigurationFolderName();
-
-//     expect(actualConfigurationFolderName).toBe(expectedFolderName);
-// });
+describe('createConfigurationFile', () => {
+  
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+  
+    test('given a vscode workspace root directory, a dedicated extension directory is created with base config file', () => {
+    
+  
+      const mockFsPath = '/mock/workspace/path';
+      const mockWorkspaceFolders = [{
+        uri: { 
+          fsPath: mockFsPath,
+          scheme: "test",
+          authority: "",
+          path: "",
+          query: "",
+          fragment: "",
+          toJSON: null,
+          with: null
+         },
+        name: 'mockWorkspace',
+        index: 0
+      }];
+    
+      // jest.spyOn(vscode.workspace, 'workspaceFolders', 'get')
+      //   .mockReturnValue(mockWorkspaceFolders);
+  
+      // Mocking workspaceFolders as a getter
+      Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+        get: jest.fn(() => mockWorkspaceFolders),
+      });
+  
+      const expectedNewDirectory = ".treecipe";
+      const expectedFileName = ".treecipe.config.json";
+  
+      const expectedConfigJson = 
+  `{
+      "salesforceObjectsPath": ""
+  }`;
+  
+      const expectedFieldPath = `${expectedNewDirectory}/${expectedFileName}`;
+  
+      ConfigurationService.createConfigurationFile();
+      const createdFileContent = fs.readFileSync(expectedFieldPath, 'utf-8');
+  
+      expect(createdFileContent).toBe(expectedConfigJson);
+  
+    });
+  
+  });

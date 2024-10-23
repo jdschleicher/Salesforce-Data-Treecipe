@@ -1,60 +1,21 @@
 
-import * as fs from 'fs';
 import { ConfigurationService } from '../ConfigurationService';
-import * as vscode from 'vscode';
 
-jest.mock('vscode', () => ({
-  workspace: {
-      workspaceFolders: undefined
-  },
-  Uri: {
-      file: (path: string) => ({ fsPath: path })
-  }
-}), { virtual: true });
-describe('createConfigurationFile', () => {
+describe('getConfigurationFileName', () => {
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+    test('given getConfigurationFileName called, expected file name returned', () => {
+        const expectedFileName = ".treecipe.config.json";
+        const actualConfigurationFileName = ConfigurationService.getConfigurationFileName();
 
-  test('given a vscode workspace root directory, a dedicated extension directory is created with base config file', () => {
-  
+        expect(actualConfigurationFileName).toBe(expectedFileName);
+    });
 
-    const mockFsPath = '/mock/workspace/path';
-    const mockWorkspaceFolders = [{
-      uri: { 
-        fsPath: mockFsPath,
-        scheme: "test",
-        authority: "",
-        path: "",
-        query: "",
-        fragment: "",
-        toJSON: null,
-        with: null
-       },
-      name: 'mockWorkspace',
-      index: 0
-    }];
-  
-    jest.spyOn(vscode.workspace, 'workspaceFolders', 'get')
-      .mockReturnValue(mockWorkspaceFolders);
+});
 
-    const expectedNewDirectory = ".treecipe";
-    const expectedFileName = ".treecipe.config.json";
+describe('getDefaultTreecipeConfigurationFolderName', () => {
+    const expectedFolderName = ".treecipe";
+    const actualConfigurationFolderName = ConfigurationService.getDefaultTreecipeConfigurationFolderName();
 
-    const expectedConfigJson = 
-`{
-    "salesforceObjectsPath": ""
-}`;
-
-    const expectedFieldPath = `${expectedNewDirectory}/${expectedFileName}`;
-
-    ConfigurationService.createConfigurationFile();
-    const createdFileContent = fs.readFileSync(expectedFieldPath, 'utf-8');
-
-    expect(createdFileContent).toBe(expectedConfigJson);
-
-  });
-
+    expect(actualConfigurationFolderName).toBe(expectedFolderName);
 });
 
