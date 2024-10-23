@@ -1,12 +1,12 @@
-import { XmlFileProcessor } from './XmlFileProcessor';
-import { RecipeService } from '../../application/services/RecipeService';
+import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
+import { RecipeService } from '../RecipeService/RecipeService';
 
 import * as vscode from 'vscode';
 
 import * as path from 'path';
-import { FieldInfo } from '../../domain/entities/FieldInfo';
+import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../../domain/entities/XMLFieldDetail';
-import { ObjectInfoWrapper } from '../../domain/entities/ObjectInfoWrapper';
+import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 
 
 export async function processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {

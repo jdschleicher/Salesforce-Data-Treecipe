@@ -1,4 +1,4 @@
-import { FieldInfo } from "./FieldInfo";
+import { FieldInfo } from "../ObjectInfoWrapper/FieldInfo";
 
 export class RelationshipTree {
 

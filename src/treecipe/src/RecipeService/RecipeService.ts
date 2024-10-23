@@ -1,4 +1,4 @@
-import { XMLFieldDetail } from "../../domain/entities/XMLFieldDetail";
+import { XMLFieldDetail } from "../domain/entities/XMLFieldDetail";
 
 export class RecipeService {
 

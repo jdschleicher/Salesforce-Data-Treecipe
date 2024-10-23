@@ -1,5 +1,5 @@
-import { FieldInfo } from "../../domain/entities/FieldInfo";
-import { ObjectInfo } from "../../domain/entities/ObjectInfo";
+import { FieldInfo } from "../ObjectInfoWrapper/FieldInfo";
+import { ObjectInfo } from "../ObjectInfoWrapper/ObjectInfo";
 // import { RelationshipDetail, RelationshipBreakdown } from "../../domain/entities/RelationshipDetail";
 // import { ObjectRelationshipWrapper } from "../../domain/entities/ObjectInfoWrapper";
 

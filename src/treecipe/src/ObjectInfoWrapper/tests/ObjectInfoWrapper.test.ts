@@ -1,4 +1,4 @@
-import { ObjectInfoWrapper } from "../../../domain/entities/ObjectInfoWrapper";
+import { ObjectInfoWrapper } from "../ObjectInfoWrapper";
 
 describe('addObjectInfoKey', () => {
 

@@ -1,5 +1,4 @@
 
-import { RelationshipDetail } from './RelationshipDetail';
 
 export class FieldInfo {
   

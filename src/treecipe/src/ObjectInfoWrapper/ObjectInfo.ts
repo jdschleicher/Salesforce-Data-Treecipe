@@ -1,5 +1,5 @@
 import { FieldInfo } from "./FieldInfo";
-import { RelationshipDetail } from "./RelationshipDetail";
+import { RelationshipDetail } from "../RelationshipService/RelationshipDetail";
 
 export class ObjectInfo {
 

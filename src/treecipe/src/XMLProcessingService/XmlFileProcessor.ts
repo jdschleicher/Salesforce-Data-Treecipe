@@ -1,8 +1,8 @@
-import { XMLFieldDetail } from "../../domain/entities/XMLFieldDetail";
+import { XMLFieldDetail } from "../domain/entities/XMLFieldDetail";
 import * as xml2js from 'xml2js';
 import * as fs from 'fs';
 
-import { IPicklistValue } from "../../domain/entities/FieldInfo";
+import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
 export class XmlFileProcessor {
 

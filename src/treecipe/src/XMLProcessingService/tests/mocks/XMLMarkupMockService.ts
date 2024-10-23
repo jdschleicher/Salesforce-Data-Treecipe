@@ -1,4 +1,4 @@
-import { IPicklistValue } from "../../../../domain/entities/FieldInfo";
+import { IPicklistValue } from "../../../ObjectInfoWrapper/FieldInfo";
 import { XMLFieldDetail } from "../../../../domain/entities/XMLFieldDetail";
 
 export class XMLMarkupMockService {
