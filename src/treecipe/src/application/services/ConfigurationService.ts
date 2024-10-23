@@ -2,6 +2,7 @@
 import * as fs from 'fs';
 import path = require('path');
 import * as vscode from 'vscode';
+import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 
 export class ConfigurationService {
@@ -15,8 +16,8 @@ export class ConfigurationService {
 
     static async getConfigurationDetail() {
         const configurationFileName = this.getConfigurationFileName();
-        const configurationDirectory = this.getDefaultTreecipeConfigurationFolder();
-        const workspaceRoot = await this.getWorkspaceRoot();
+        const configurationDirectory = this.getDefaultTreecipeConfigurationFolderName();
+        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
 
         const fullConfigurationDirectoryPath = `${workspaceRoot}/${configurationDirectory}`;
         const configurationPath = path.join(fullConfigurationDirectoryPath, configurationFileName);
@@ -35,7 +36,7 @@ export class ConfigurationService {
 
     static async createConfigurationFile() {
 
-        const workspaceRoot = await this.getWorkspaceRoot();
+        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
 
         const expectedObjectsPath = await this.promptForObjectsPath(workspaceRoot);
         if (!expectedObjectsPath) {
@@ -46,7 +47,7 @@ export class ConfigurationService {
             salesforceObjectsPath: `${expectedObjectsPath}`
         };
 
-        const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolder();
+        const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
         const expectedTreecipeDirectoryPath = path.join(workspaceRoot, treecipeBaseDirectory);
 
         if (!fs.existsSync(expectedTreecipeDirectoryPath)) {
@@ -104,7 +105,7 @@ export class ConfigurationService {
 
     private static async readdirRecursive(dirPath:string, items) {
 
-        const workspaceRoot = await this.getWorkspaceRoot();
+        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
 
         const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
         for (const entry of entries) {
@@ -137,7 +138,7 @@ export class ConfigurationService {
 
     }
 
-    static getDefaultTreecipeConfigurationFolder() {
+    static getDefaultTreecipeConfigurationFolderName() {
         const defaultTreecipeConfigurationFolder = ".treecipe";
         return defaultTreecipeConfigurationFolder;
     }
@@ -147,12 +148,6 @@ export class ConfigurationService {
         return configurationFileName;
     }
     
-    static async getWorkspaceRoot() {
-        const workspaceRoot:string = vscode.workspace.workspaceFolders
-                                    ? vscode.workspace.workspaceFolders[0].uri.fsPath
-                                    : undefined;
 
-        return workspaceRoot;
-    }
 
 }

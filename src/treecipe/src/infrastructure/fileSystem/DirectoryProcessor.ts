@@ -61,19 +61,12 @@ export async function processFieldsDirectory (
                                         associatedObjectName: string
                                         ) : Promise<FieldInfo[]> {
   
-  // const files = fs.readdirSync(directoryPathUri);
-
   const files = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
   let fieldInfoDetails:FieldInfo[] = [];
   for (const [fileName, fileType] of files) {
 
-    // if (path.extname(file).toLowerCase() === '.xml') {
     if (fileType === vscode.FileType.File && path.extname(fileName).toLowerCase() === '.xml') {
-
-
-      // const fieldPath = path.join(directoryPathUri, file);
-      // const xmlContent = fs.readFileSync(fieldPath, 'utf-8');
 
       const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
       const xmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
