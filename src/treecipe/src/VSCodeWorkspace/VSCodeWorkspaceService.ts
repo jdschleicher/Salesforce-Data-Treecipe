@@ -27,7 +27,7 @@ export class VSCodeWorkspaceService {
         
         while (true) {
             
-            const items = await this.getDirectoryItems(currentPath);
+            const items = await this.getVSCodeQuickPickDirectoryItems(currentPath);
             
             const selection = await vscode.window.showQuickPick(
                 items,
@@ -47,7 +47,7 @@ export class VSCodeWorkspaceService {
         }
     }
 
-    private static async getDirectoryItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
+    static async getVSCodeQuickPickDirectoryItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
         
 
         let items: vscode.QuickPickItem[] = [];
