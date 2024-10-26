@@ -12,6 +12,8 @@ export class MockVSCodeWorkspaceService {
 
         // get string of vscode directory
         // convert to vscodequickpickitems
+
+        const mockedDirectoryStructure = MockObjectsS
         let vsCodeQuickPickMockItems:vscode.QuickPickItem[] = [
             { 
                 label: 'folder1', 
@@ -29,5 +31,6 @@ export class MockVSCodeWorkspaceService {
         return vsCodeQuickPickMockItems;
     }
 
+   
 
 }
