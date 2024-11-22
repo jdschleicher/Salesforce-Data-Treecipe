@@ -76,6 +76,7 @@ my-project/
 │               ├── Contact.object-meta.xml
 │               └── ...
 
+```
 
 ---
 
