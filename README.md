@@ -1,23 +1,23 @@
 # Salesforce-Data-Recipe
 
-**Salesforce-Data-Recipe** is a Visual Studio Code extension designed to streamline the process of working with Salesforce objects and data recipes. With easy-to-use commands, this extension helps you configure your Salesforce object directories and generate custom data trees for your Salesforce development workflow.
+**Salesforce-Data-Recipe** is a Visual Studio Code extension designed to streamline the process of generating production-like data during development in order to support building Quality in. This extension auto-generates a data-recipe yaml file based on what is already in the source object metadata xml of your project.
 
 ---
 
 ## Commands
 
-### 1. **Initiate Configuration File**
+### 1. **Salesforce Treecipe: Initiate Configuration File**
 This command initiates the creation of a configuration file that is required before using other features of the extension.
 
 #### How It Works:
-- Select **"Initiate Configuration File"** from the command palette.
-- You will be prompted to choose the **source directory** in your codebase where Salesforce objects are stored in source format.
+- Select **"Salesforce Treecipe: Initiate Configuration File"** from the command palette.
+- You will be prompted to type the **source directory** in your codebase where Salesforce objects are stored in source format. Begin typing the folder and the directories will auto-filter to match directories based on the entered text.
 
 Once the configuration file is generated, you can begin using the **Generate Treecipe** command.
 
 ---
 
-### 2. **Generate Treecipe**
+### 2. **Salesforce Treecipe: Generate Treecipe**
 This command generates a **Treecipe**, a structured representation of your Salesforce data, based on your configuration.
 
 #### Prerequisite:
@@ -32,7 +32,6 @@ Once your configuration file and objects directory are set up, running this comm
 
 - **Easy Configuration Setup**: Define your Salesforce object directory in just a few steps.
 - **Dynamic Tree Generation**: Once configured, quickly generate Treecipe data trees tailored to your project.
-- **Salesforce Data Management**: Simplify your Salesforce development workflow with structured data visualization.
 
 ---
 
@@ -79,9 +78,7 @@ my-project/
 
 ## Contributing
 
-If you'd like to contribute to **Salesforce-Data-Recipe**, feel free to submit issues or pull requests. We welcome your feedback and contributions!
-
-To report a bug, suggest a feature, or submit a pull request, please visit our [GitHub repository](https://github.com/yourusername/Salesforce-Data-Recipe).
+This project and codebase will be open-sourced shortly :)
 
 ---
 
