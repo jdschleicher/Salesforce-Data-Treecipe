@@ -1,71 +1,90 @@
-# hrg README
+# Salesforce-Data-Recipe
 
-This is the README for your extension "hrg". After writing up a brief description, we recommend including the following sections.
-
-## Features
-
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+**Salesforce-Data-Recipe** is a Visual Studio Code extension designed to streamline the process of working with Salesforce objects and data recipes. With easy-to-use commands, this extension helps you configure your Salesforce object directories and generate custom data trees for your Salesforce development workflow.
 
 ---
 
-## Following extension guidelines
+## Commands
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+### 1. **Initiate Configuration File**
+This command initiates the creation of a configuration file that is required before using other features of the extension.
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+#### How It Works:
+- Select **"Initiate Configuration File"** from the command palette.
+- You will be prompted to choose the **source directory** in your codebase where Salesforce objects are stored in source format.
 
-## Working with Markdown
+Once the configuration file is generated, you can begin using the **Generate Treecipe** command.
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+---
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+### 2. **Generate Treecipe**
+This command generates a **Treecipe**, a structured representation of your Salesforce data, based on your configuration.
 
-## For more information
+#### Prerequisite:
+- **Generate Treecipe** will **not** work until you have completed the configuration step and selected a **Salesforce objects directory**.
+- If the configuration file is missing or incomplete, you will be prompted to initiate the configuration first.
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+Once your configuration file and objects directory are set up, running this command will generate a custom tree structure to assist in your Salesforce development and data handling.
 
-**Enjoy!**
+---
+
+## Features
+
+- **Easy Configuration Setup**: Define your Salesforce object directory in just a few steps.
+- **Dynamic Tree Generation**: Once configured, quickly generate Treecipe data trees tailored to your project.
+- **Salesforce Data Management**: Simplify your Salesforce development workflow with structured data visualization.
+
+---
+
+## Getting Started
+
+### Installation
+1. Open **Visual Studio Code**.
+2. Go to the **Extensions** panel and search for **Salesforce-Data-Recipe**.
+3. Click **Install**.
+
+### Usage
+1. After installation, press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palette.
+2. Choose one of the following commands:
+   - **Initiate Configuration File**: Set up your Salesforce object directory.
+   - **Generate Treecipe**: Generate a tree based on the configuration.
+
+---
+
+## Configuration
+
+After running **Initiate Configuration File**, you will be prompted to choose the **source directory** in your codebase where Salesforce objects are stored. This directory must be in **source format**.
+
+### Example Directory Structure:
+```plaintext
+my-project/
+├── force-app/
+│   └── main/
+│       └── default/
+│           └── objects/
+│               ├── Account.object-meta.xml
+│               ├── Contact.object-meta.xml
+│               └── ...
+
+
+---
+
+## Troubleshooting
+
+- **"Generate Treecipe" not working**: Ensure that you’ve successfully run **Initiate Configuration File** and selected a valid Salesforce objects directory. The **Generate Treecipe** command depends on the configuration file being present and properly set up.
+  
+- **Missing Configuration File**: If the configuration file is missing, the **Generate Treecipe** command will prompt you to initiate the configuration first.
+
+---
+
+## Contributing
+
+If you'd like to contribute to **Salesforce-Data-Recipe**, feel free to submit issues or pull requests. We welcome your feedback and contributions!
+
+To report a bug, suggest a feature, or submit a pull request, please visit our [GitHub repository](https://github.com/yourusername/Salesforce-Data-Recipe).
+
+---
+
+## License
+
+This extension is licensed under the [MIT License](LICENSE).
