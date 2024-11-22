@@ -15,13 +15,13 @@
     "commands": [
       {
         "command": "treecipe.generateTreecipe",
-        "title": "treecipe: Generate Treecipe",
-        "category": "Salesforce"
+        "title": "Generate Treecipe",
+        "category": "Salesforce Treecipe"
       },
       {
         "command": "treecipe.initiateConfiguration",
-        "title": "treecipe: Initiate Configuration File",
-        "category": "Salesforce"
+        "title": "Initiate Configuration File",
+        "category": "Salesforce Treecipe"
       }
     ]
   },
