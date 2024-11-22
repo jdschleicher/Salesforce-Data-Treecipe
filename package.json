@@ -1,29 +1,27 @@
 {
-  "name": "hrg",
-  "displayName": "helloRecipeGenerator",
-  "description": "fidelity driven development",
+  "name": "salesforce-data-treecipe",
+  "displayName": "Salesforce Data Treecipe",
+  "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.94.0"
   },
   "categories": [
-    "Other"
+    "Testing", "Visualization", "Programming Languages"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "hrg.helloWorld",
-        "title": "hrg: Hello World"
+        "command": "treecipe.generateTreecipe",
+        "title": "treecipe: Generate Treecipe",
+        "category": "Salesforce"
       },
       {
-        "command": "hrg.generateTreecipe",
-        "title": "hrg: Generate Treecipe"
-      },
-      {
-        "command": "hrg.initiateConfiguration",
-        "title": "hrg: Initiate Configuration"
+        "command": "treecipe.initiateConfiguration",
+        "title": "treecipe: Initiate Configuration File",
+        "category": "Salesforce"
       }
     ]
   },
