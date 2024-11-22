@@ -6,6 +6,7 @@
   "engines": {
     "vscode": "^1.94.0"
   },
+  "publisher": "Salesforce-Data-Treecipe",
   "categories": [
     "Testing", "Visualization", "Programming Languages"
   ],
