@@ -60,12 +60,12 @@ export class ConfigurationService {
     }
 
     static getDefaultTreecipeConfigurationFolderName() {
-        const defaultTreecipeConfigurationFolder = ".treecipe";
+        const defaultTreecipeConfigurationFolder = "treecipe";
         return defaultTreecipeConfigurationFolder;
     }
 
     static getConfigurationFileName() {
-        const configurationFileName = ".treecipe.config.json";
+        const configurationFileName = "treecipe.config.json";
         return configurationFileName;
     }
     
