@@ -10,6 +10,7 @@
 This command initiates the creation of a configuration file that is required before using other features of the extension.
 
 #### How It Works:
+
 - Select **"Salesforce Treecipe: Initiate Configuration File"** from the command palette.
 - You will be prompted to type the **source directory** in your codebase where Salesforce objects are stored in source format. Begin typing the folder and the directories will auto-filter to match directories based on the entered text.
 
@@ -25,6 +26,16 @@ This command generates a **Treecipe**, a structured representation of your Sales
 - If the configuration file is missing or incomplete, you will be prompted to initiate the configuration first.
 
 Once your configuration file and objects directory are set up, running this command will generate a custom tree structure to assist in your Salesforce development and data handling.
+
+---
+
+#### VIDEO WALKTHROUGH 
+
+
+
+https://github.com/user-attachments/assets/4b904d36-3c3c-401c-a047-8387800e504e
+
+
 
 ---
 
