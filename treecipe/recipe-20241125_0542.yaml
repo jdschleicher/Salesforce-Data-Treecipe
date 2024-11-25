@@ -1,0 +1,142 @@
+
+- object: Case
+  nickname: Case_NickName
+  count: 1
+  fields:
+    Case_Category__c: ${{ random_choice('Mechanical','Electrical','Electronic','Structural','Other') }}
+    Product__c: "TODO -- REFERENCE ID REQUIRED"
+
+- object: Example_Everything__c
+  nickname: Example_Everything__c_NickName
+  count: 1
+  fields:
+    Checkbox__c: ${{fake.boolean()}}
+    Currency__c: ${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}
+    DateTime__c: ${{fake.date_time_between(start_date="-1y", end_date="now")}}
+    Date__c: ${{date(fake.date_between(start_date="-1y", end_date="today"))}}
+    DependentPicklist__c: 
+      if:
+        - choice:
+            when: ${{ Picklist__c == 'cle' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    - rocks
+        - choice:
+            when: ${{ Picklist__c == 'eastlake' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: ${{ Picklist__c == 'madison' }}
+            pick:
+                random_choice:
+                    - tree
+                    - plant
+                    - weed
+        - choice:
+            when: ${{ Picklist__c == 'willoughby' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: ${{ Picklist__c == 'mentor' }}
+            pick:
+                random_choice:
+                    - plant
+                    - weed
+        - choice:
+            when: ${{ Picklist__c == 'wickliffe' }}
+            pick:
+                random_choice:
+                    - weed
+                    - rocks
+    Email__c: ${{fake.email()}}
+    Example_Everything_Lookup__c: "TODO -- REFERENCE ID REQUIRED"
+    Formula__c: ${{fake.random_int(min=0, max=999999)}}
+    Geolocation__c: "SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445"
+    MultiPicklist__c: ${{ (';').join((fake.random_sample(elements=('chicken','chorizo','egg','fish','pork','steak','tofu')))) }}
+    Number__c: ${{fake.random_int(min=0, max=999999)}}
+    Percent__c: ${{fake.pydecimal(left_digits=2, right_digits=2, positive=True)}}
+    Phone__c: ${{fake.phone_number()}}
+    Picklist__c: ${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}
+    TextAreaRich__c: ${{fake.text(max_nb_chars=1000)}}
+    Text_Area_Long__c: ${{fake.text(max_nb_chars=1000)}}
+    Text__c: ${{fake.text(max_nb_chars=50)}}
+    Time__c: ${{fake.time()}}
+    Url__c: ${{fake.url()}}
+
+- object: Manufacturing_Event__e
+  nickname: Manufacturing_Event__e_NickName
+  count: 1
+  fields:
+    Order_Id__c: ${{fake.text(max_nb_chars=50)}}
+    Status__c: ${{fake.text(max_nb_chars=50)}}
+
+- object: MasterDetailMadness__c
+  nickname: MasterDetailMadness__c_NickName
+  count: 1
+  fields:
+    LU_Contact__c: "TODO -- REFERENCE ID REQUIRED"
+    MD_MegaMapMadness__c: "TODO -- REFERENCE ID REQUIRED"
+
+- object: MegaMapMadness__c
+  nickname: MegaMapMadness__c_NickName
+  count: 1
+  fields:
+    CheckMadness__c: ${{fake.boolean()}}
+    LUOne_User__c: "TODO -- REFERENCE ID REQUIRED"
+    LUTwo_User__c: "TODO -- REFERENCE ID REQUIRED"
+
+- object: Order_Item__c
+  nickname: Order_Item__c_NickName
+  count: 1
+  fields:
+    Order__c: "TODO -- REFERENCE ID REQUIRED"
+    Price__c: ${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}
+    Product__c: "TODO -- REFERENCE ID REQUIRED"
+    Qty_L__c: ${{fake.random_int(min=0, max=999999)}}
+    Qty_M__c: ${{fake.random_int(min=0, max=999999)}}
+    Qty_S__c: ${{fake.random_int(min=0, max=999999)}}
+
+- object: Order__c
+  nickname: Order__c_NickName
+  count: 1
+  fields:
+    Account__c: "TODO -- REFERENCE ID REQUIRED"
+    Status__c: ${{ random_choice('Draft','Submitted to Manufacturing','Approved by Manufacturing','In Production') }}
+
+- object: Product_Family__c
+  nickname: Product_Family__c_NickName
+  count: 1
+  fields:
+    Category__c: ${{ random_choice('Commuter','Hybrid','Mountain') }}
+    Description__c: ${{fake.paragraph()}}
+
+- object: Product__c
+  nickname: Product__c_NickName
+  count: 1
+  fields:
+    Battery__c: ${{fake.text(max_nb_chars=50)}}
+    Category__c: ${{ random_choice('Mountain','Commuter') }}
+    Charger__c: ${{fake.text(max_nb_chars=50)}}
+    Description__c: ${{fake.text(max_nb_chars=1000)}}
+    Fork__c: ${{fake.text(max_nb_chars=50)}}
+    Frame_Color__c: ${{ random_choice('white','red','blue','green') }}
+    Front_Brakes__c: ${{fake.text(max_nb_chars=50)}}
+    Handlebar_Color__c: ${{ random_choice('white','red','blue','green') }}
+    Level__c: ${{ random_choice('Beginner','Enthusiast','Racer') }}
+    MSRP__c: ${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}
+    Material__c: ${{ random_choice('Aluminum','Carbon') }}
+    Motor__c: ${{fake.text(max_nb_chars=50)}}
+    Picture_URL__c: ${{fake.url()}}
+    Product_Family__c: "TODO -- REFERENCE ID REQUIRED"
+    Rear_Brakes__c: ${{fake.text(max_nb_chars=50)}}
+    Seat_Color__c: ${{ random_choice('white','red','blue','green') }}
+    Waterbottle_Color__c: ${{ random_choice('white','red','blue','green') }}
