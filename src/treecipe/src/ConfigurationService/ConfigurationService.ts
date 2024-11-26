@@ -2,7 +2,6 @@
 import * as fs from 'fs';
 import path = require('path');
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
-import { faker } from '@faker-js/faker/.';
 import { IFakerService } from '../FakerService/IFakerService';
 import { NPMFakerService } from '../FakerService/NPMFakerService';
 
@@ -20,6 +19,10 @@ export class ConfigurationService {
         const configurationFileName = this.getConfigurationFileName();
         const configurationDirectory = this.getDefaultTreecipeConfigurationFolderName();
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+
+
+        if ( )
+
 
         const fullConfigurationDirectoryPath = `${workspaceRoot}/${configurationDirectory}`;
         const configurationPath = path.join(fullConfigurationDirectoryPath, configurationFileName);
@@ -77,7 +80,7 @@ export class ConfigurationService {
         return configurationFileName;
     }
 
-    static getFakerImplementationByConfigurationSelelction(fakerConfigurationSelection: string): IFakerService {
+    static getFakerImplementationByConfigurationSelection(fakerConfigurationSelection: string): IFakerService {
 
         switch (fakerConfigurationSelection) {
             case 'Snowfakery':
@@ -89,11 +92,5 @@ export class ConfigurationService {
           }
     
     }
-
-    // static getFakerServiceImplementation() {
-    //     const configurationDetail = await this.getConfigurationDetail();
-
-    // }
-    
 
 }

@@ -17,7 +17,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const generateTreecipe = vscode.commands.registerCommand('treecipe.generateTreecipe', () => {
 		
 		const configurationDetail = ConfigurationService.getConfigurationDetail();
-		let fakerServiceImplementation:IFakerService = ConfigurationService.getFakerImplementationByConfigurationSelelction(configurationDetail.dataFakerService);
+		let fakerServiceImplementation:IFakerService = ConfigurationService.getFakerImplementationByConfigurationSelection(configurationDetail.dataFakerService);
 		let recipeService = new RecipeService(fakerServiceImplementation);
 		recipeService.generateRecipeFromConfigurationDetail();
 		
