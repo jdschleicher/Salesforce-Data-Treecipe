@@ -1,4 +1,3 @@
-import { IFakerService } from "../IFakerService";
 import { NPMFakerService } from "../NPMFakerService";
 
 

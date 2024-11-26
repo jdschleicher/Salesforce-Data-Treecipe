@@ -1,6 +1,18 @@
 import { IFakerService } from "./IFakerService";
+import { faker } from '@faker-js/faker';
+
 
 export class NPMFakerService implements IFakerService {
+
+    getFakeMultiSelectPicklistRecipeValueByXMLFieldDetail(picklistChoices: string[]): string {
+        if ( !(picklistChoices) ) {
+            return '';
+        }
+        const randomePicklistChoices = faker.helpers.arrayElements(picklistChoices);
+        const fakeRecipeValue = randomePicklistChoices.join(',');
+        return fakeRecipeValue;
+
+    }
 
     getMapSalesforceFieldToFakerValue():Record<string, string> {
 
