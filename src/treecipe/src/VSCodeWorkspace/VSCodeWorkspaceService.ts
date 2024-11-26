@@ -6,7 +6,7 @@ import * as fs from 'fs';
 
 export class VSCodeWorkspaceService {
 
-    static async getWorkspaceRoot() {
+    static getWorkspaceRoot() {
         const workspaceRoot:string = vscode.workspace.workspaceFolders
                                     ? vscode.workspace.workspaceFolders[0].uri.fsPath
                                     : undefined;

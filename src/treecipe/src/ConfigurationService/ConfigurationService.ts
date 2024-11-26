@@ -2,21 +2,24 @@
 import * as fs from 'fs';
 import path = require('path');
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { faker } from '@faker-js/faker/.';
+import { IFakerService } from '../FakerService/IFakerService';
+import { NPMFakerService } from '../FakerService/NPMFakerService';
 
 
 export class ConfigurationService {
     
-    static async getObjectsPathFromConfiguration() {
+    static getObjectsPathFromConfiguration() {
 
-        const configurationDetail = await this.getConfigurationDetail();
+        const configurationDetail = this.getConfigurationDetail();
         return configurationDetail.salesforceObjectsPath;
 
     }
 
-    static async getConfigurationDetail() {
+    static getConfigurationDetail() {
         const configurationFileName = this.getConfigurationFileName();
         const configurationDirectory = this.getDefaultTreecipeConfigurationFolderName();
-        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
         const fullConfigurationDirectoryPath = `${workspaceRoot}/${configurationDirectory}`;
         const configurationPath = path.join(fullConfigurationDirectoryPath, configurationFileName);
@@ -72,6 +75,19 @@ export class ConfigurationService {
     static getConfigurationFileName() {
         const configurationFileName = "treecipe.config.json";
         return configurationFileName;
+    }
+
+    static getFakerImplementationByConfigurationSelelction(fakerConfigurationSelection: string): IFakerService {
+
+        switch (fakerConfigurationSelection) {
+            case 'Snowfakery':
+              return new NPMFakerService();
+            case 'faker-js':
+              return new NPMFakerService();
+            default:
+              throw new Error(`Unknown Faker Service selection: ${fakerConfigurationSelection}`);
+          }
+    
     }
 
     // static getFakerServiceImplementation() {

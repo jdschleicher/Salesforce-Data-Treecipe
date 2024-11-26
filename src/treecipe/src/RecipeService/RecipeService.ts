@@ -1,5 +1,6 @@
 import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
 import { processDirectory } from "../DirectoryProcessingService/DirectoryProcessor";
+import { IFakerService } from "../FakerService/IFakerService";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
@@ -7,12 +8,20 @@ import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 
+
 export class RecipeService {
 
-    static openingRecipeSyntax:string = "${{";
-    static closingRecipeSyntax:string = "}}";
+
+    private fakerService: IFakerService;
+
+    constructor(private fakerServiceImplementation) {
+        this.fakerService = fakerServiceImplementation;
+    }
+
+    openingRecipeSyntax:string = "${{";
+    closingRecipeSyntax:string = "}}";
     
-    static generateTabs(tabCount: number):string {
+    generateTabs(tabCount: number):string {
         const spacesPerTab = 4;
         return ' '.repeat(spacesPerTab * tabCount);
     }
@@ -40,7 +49,7 @@ export class RecipeService {
         'location': '"SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445"'
     };
 
-    static getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
+    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
         
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
@@ -73,7 +82,7 @@ export class RecipeService {
             //     return 'test';
                 
             default: 
-                const fieldToRecipeValueMap = this.salesforceFieldToSnowfakeryMap;
+                const fieldToRecipeValueMap = this.fakerService.getMapSalesforceFieldToFakerValue;
                 // CHECK IF VALID FIELD TYPE OR EXISTS IN PROGRAMS SALESFORCE FIELD MAP
                 if ( fieldType in fieldToRecipeValueMap ) {
                     fakeRecipeValue = fieldToRecipeValueMap[fieldType];
@@ -89,19 +98,21 @@ export class RecipeService {
 
     }
 
-    static buildMultiSelectPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
+    buildMultiSelectPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
 
         if ( !(xmlFieldDetail.picklistValues) ) {
             return '';
         }
         const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
-        const commaJoinedPicklistChoices = availablePicklistChoices.join("','");
-        const fakeRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
+
+        // const commaJoinedPicklistChoices = availablePicklistChoices.join("','");
+        // const fakeRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
+        const fakeRecipeValue = this.fakerService.getFakeMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices);
         return fakeRecipeValue;
 
     }
 
-    static buildDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail): string {
+    buildDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail): string {
     
         const controllingField = xmlFieldDetail.controllingField;
         let fakeRecipeValue:string;
@@ -170,7 +181,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    static buildPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
+    buildPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
     
         if ( !(xmlFieldDetail.picklistValues) ) {
             return '';
@@ -203,13 +214,13 @@ ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;
         return updatedObjectRecipe;
     }
 
-    static async generateRecipeFromConfigurationDetail() {
+    async generateRecipeFromConfigurationDetail() {
 
         const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
         let objectsInfoWrapper = new ObjectInfoWrapper();
       
         if (workspaceRoot) {
-          const relativePathToObjectsDirectory = await ConfigurationService.getObjectsPathFromConfiguration();
+          const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromConfiguration();
           const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
           const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
           const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
