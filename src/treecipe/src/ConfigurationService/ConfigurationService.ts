@@ -32,7 +32,6 @@ export class ConfigurationService {
         return configurationDetail;
     }
 
-
     static async createConfigurationFile() {
 
         const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
@@ -41,9 +40,15 @@ export class ConfigurationService {
         if (!expectedObjectsPath) {
             return;
         };
+
+        const selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+        if (!expectedObjectsPath) {
+            return;
+        };
         const configurationFileName = this.getConfigurationFileName();
         const configurationDetail = {
-            salesforceObjectsPath: `${expectedObjectsPath}`
+            salesforceObjectsPath: `${expectedObjectsPath}`,
+            dataFakerService: selectedDataFakerService
         };
 
         const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
@@ -68,6 +73,11 @@ export class ConfigurationService {
         const configurationFileName = "treecipe.config.json";
         return configurationFileName;
     }
+
+    // static getFakerServiceImplementation() {
+    //     const configurationDetail = await this.getConfigurationDetail();
+
+    // }
     
 
 }

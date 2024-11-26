@@ -92,4 +92,38 @@ export class VSCodeWorkspaceService {
 
     }
 
+    static async promptForFakerServiceImplementation(): Promise<string | undefined> {
+
+        
+        let items: vscode.QuickPickItem[] = [
+            {
+                label: 'Snowfakery',
+                description: 'CumulusCI and Python port of Faker - https://snowfakery.readthedocs.io/en/latest/',
+                iconPath: new vscode.ThemeIcon('database')
+            },
+            {
+                label: 'faker-js',
+                description: 'Javascript port of Faker - https://fakerjs.dev/',
+                iconPath: new vscode.ThemeIcon('database')
+            }
+        ];
+            
+        const selection = await vscode.window.showQuickPick(
+            items,
+            {
+                placeHolder: 'Select Data Faker Service',
+                ignoreFocusOut: true
+            }
+        );
+
+        if (!selection) {
+            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
+            return undefined; 
+        } else {
+            return selection.label;
+        }
+
+    }
+
+
 }
