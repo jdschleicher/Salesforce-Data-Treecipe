@@ -2,7 +2,7 @@ import { RecipeService } from "../../RecipeService";
 
 export class RecipeMockService {
 
-    static getExpectedEvertyingExampleFullObjectRecipeMarkup():string {
+    static getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup():string {
 
         const fakeObjectMarkupForEverythingExample = 
 `\n- object: Example_Everything__c
