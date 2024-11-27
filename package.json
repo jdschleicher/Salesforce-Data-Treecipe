@@ -30,6 +30,21 @@
         "title": "Initiate Configuration File",
         "category": "Salesforce Treecipe"
       }
+    ],
+    "configuration":[
+      {
+        "title": "TREECIPE_EXTENSION_CONFIGURATION",
+        "properties": {
+          "salesforce-data-treecipe.selectedFakerService" : {
+            "type": "string",
+            "description": "faker implementation chosen as part of treecipe config setup and selections"
+          },
+          "salesforce-data-treecipe.treecipeConfigurationPath" : {
+            "type": "string",
+            "description": "workspace path location of treecipe.config.json file"
+          }
+        }
+      }
     ]
   },
   "scripts": {
