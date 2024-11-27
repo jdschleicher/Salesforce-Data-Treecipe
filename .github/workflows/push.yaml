@@ -20,7 +20,5 @@ jobs:
     - name: Install dependencies
       run: npm install
 
-    # - run: xvfb-run -a npm test
-
     - name: Run Jest tests
-      run: npm test
+      run: npm jest-test
