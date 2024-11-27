@@ -1,7 +1,9 @@
+import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 
 export interface IFakerService {
 
     getMapSalesforceFieldToFakerValue(): Record<string, string>;
-    getFakeMultiSelectPicklistRecipeValueByXMLFieldDetail(picklistChoices:string[]) : string;
-    // getFakePicklistRecipeValueByXMLFieldDetail()
+    buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string;
+    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, controllingField: string): string;
+    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string;
 }

@@ -2,6 +2,7 @@
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerService } from '../FakerService/IFakerService';
 import { NPMFakerService } from '../FakerService/NPMFakerService';
+import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService';
 
 import * as fs from 'fs';
 import path = require('path');
@@ -143,7 +144,7 @@ export class ConfigurationService {
         const fakerConfigurationSelection = this.getConfigValue(selectedFakerServiceKey);
         switch (fakerConfigurationSelection) {
             case 'Snowfakery':
-              return new NPMFakerService();
+              return new SnowfakeryFakerService();
             case 'faker-js':
               return new NPMFakerService();
             default:

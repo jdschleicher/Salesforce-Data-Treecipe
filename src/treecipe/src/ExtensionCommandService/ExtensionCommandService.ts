@@ -18,7 +18,8 @@ export class ExtensionCommandService {
           const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
           const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
           const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-          objectsInfoWrapper = await DirectoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
+          const directoryProcessor = new DirectoryProcessor();
+          objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
           vscode.window.showInformationMessage('Directory processing completed');
         }
       

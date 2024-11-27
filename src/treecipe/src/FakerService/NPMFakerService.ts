@@ -4,13 +4,11 @@ import { faker } from '@faker-js/faker';
 
 export class NPMFakerService implements IFakerService {
 
-    getFakeMultiSelectPicklistRecipeValueByXMLFieldDetail(picklistChoices: string[]): string {
-        if ( !(picklistChoices) ) {
-            return '';
-        }
-        const randomePicklistChoices = faker.helpers.arrayElements(picklistChoices);
-        const fakeRecipeValue = randomePicklistChoices.join(',');
-        return fakeRecipeValue;
+    buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
+   
+        const joinedChoices = availablePicklistChoices.join(',');
+        const fakeMultiSelectRecipeValue = `faker.helpers.arrayElements(${joinedChoices})`;
+        return fakeMultiSelectRecipeValue;
 
     }
 
@@ -41,4 +39,6 @@ export class NPMFakerService implements IFakerService {
 
         return salesforceFieldToNPMFakerMap;
     }
+
+    
 }
