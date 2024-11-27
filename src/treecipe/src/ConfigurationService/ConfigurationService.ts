@@ -91,8 +91,8 @@ export class ConfigurationService {
 
         }
 
-
         return configurationPath;
+        
     }
 
     static async createConfigurationFile() {

@@ -60,7 +60,7 @@ export class VSCodeWorkspaceService {
 
     private static async readdirRecursive(dirPath:string, items) {
 
-        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
         const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
         for (const entry of entries) {
@@ -99,7 +99,7 @@ export class VSCodeWorkspaceService {
         let items: vscode.QuickPickItem[] = [
             {
                 label: 'Snowfakery',
-                description: 'CumulusCI and Python port of Faker - https://snowfakery.readthedocs.io/en/latest/',
+                description: 'CumulusCI Python port of Faker - https://snowfakery.readthedocs.io/en/latest/',
                 iconPath: new vscode.ThemeIcon('database')
             },
             {

@@ -2,7 +2,6 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { ConfigurationService } from './treecipe/src/ConfigurationService/ConfigurationService';
-import { IFakerService } from './treecipe/src/FakerService/IFakerService';
 import { ExtensionCommandService } from './treecipe/src/ExtensionCommandService/ExtensionCommandService';
 
 // This method is called when your extension is activated
