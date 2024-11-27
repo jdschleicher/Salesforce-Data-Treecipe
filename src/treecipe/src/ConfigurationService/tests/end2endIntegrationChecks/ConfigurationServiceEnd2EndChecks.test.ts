@@ -1,6 +1,6 @@
 import { ConfigurationService } from "../../ConfigurationService";
 import * as fs from 'fs';
-import * as vscode from 'vscode';
+// import * as vscode from 'vscode';
 
 // create configuration .treecipe directory 
 // create .treecipe.config.json file inside treecipe directory 
