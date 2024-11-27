@@ -1,8 +1,8 @@
 
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerService } from '../FakerService/IFakerService';
-import { NPMFakerService } from '../FakerService/NPMFakerService';
-import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService';
+import { NPMFakerService } from '../FakerService/NPMFakerService/NPMFakerService';
+import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
 
 import * as fs from 'fs';
 import path = require('path');

@@ -1,7 +1,7 @@
 
 
-import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
-import { IFakerService } from "./IFakerService";
+import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
+import { IFakerService } from "../IFakerService";
 
 export class SnowfakeryFakerService implements IFakerService {
 

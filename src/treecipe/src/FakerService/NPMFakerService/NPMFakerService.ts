@@ -1,8 +1,13 @@
-import { IFakerService } from "./IFakerService";
-import { faker } from '@faker-js/faker';
-
+import { IFakerService } from "../IFakerService";
 
 export class NPMFakerService implements IFakerService {
+
+    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, controllingField: string): string {
+        throw new Error("Method not implemented.");
+    }
+    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
+        throw new Error("Method not implemented.");
+    }
 
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
    
@@ -40,5 +45,5 @@ export class NPMFakerService implements IFakerService {
         return salesforceFieldToNPMFakerMap;
     }
 
-    
+
 }
