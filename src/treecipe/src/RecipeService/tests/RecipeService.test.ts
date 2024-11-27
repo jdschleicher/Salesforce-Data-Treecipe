@@ -4,6 +4,7 @@ import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 
 import { RecipeMockService } from "./mocks/RecipeMockService";
 import { NPMFakerService } from "../../FakerService/NPMFakerService/NPMFakerService";
+import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
 
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
 // import * as fs from 'fs';
@@ -18,170 +19,118 @@ jest.mock('vscode', () => ({
   }), { virtual: true });
 
 
+  describe('RecipeService Shared Intstance Tests', () => {
 
-describe('getRecipeFakeValueByXMLFieldDetail', () => {
+     const npmFakerService = new NPMFakerService();
+    let recipeServiceWithNPM= new RecipeService(npmFakerService);  
 
-    const iFakerService = NPMFakerService;
-    let recipeService = new RecipeService(iFakerService);   
-    
+    const snowFakerService = new SnowfakeryFakerService();
+    let recipeServiceWithSnow = new RecipeService(snowFakerService);  
 
-    test('given invalid or not yet handled field type, logs message and returns "FieldType Not Handled Value', () => {
+    describe('getRecipeFakeValueByXMLFieldDetail', () => {
 
-        const fakeFieldTypeValue = "heyooo";
-        let fakeXMLFieldDetail: XMLFieldDetail = {
-            fieldType: fakeFieldTypeValue,
-            apiName: "Fake__c",
-            fieldLabel: "Fake"
-        };
-        const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
-        const actualRecipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail);
-        expect(expectedRecipeValue).toBe(actualRecipeValue);
-    });
+        test('given invalid or not yet handled field type, logs message and returns "FieldType Not Handled Value', () => {
 
-    test('given expected Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+            const fakeFieldTypeValue = "heyooo";
+            let fakeXMLFieldDetail: XMLFieldDetail = {
+                fieldType: fakeFieldTypeValue,
+                apiName: "Fake__c",
+                fieldLabel: "Fake"
+            };
+            const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
+            const actualRecipeValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail);
+            expect(expectedRecipeValue).toBe(actualRecipeValue);
+        });
 
-        const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-        const expectedPicklistSnowfakeryValue = "${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}";
-        const actualPicklistSnowfakeryValue = recipeService.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail);
+        test('given expected Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
-        expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
+            const expectedPicklistSnowfakeryValue = "${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}";
+            const actualPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail);
 
-    });
+            expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
 
-    test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        });
 
-        const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
-        const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken','chorizo','egg','fish','pork','steak','tofu')))) }}";
-        const actualMultiSelectPicklistSnowfakeryValue = recipeService.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail);
+        test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
-        expect(actualMultiSelectPicklistSnowfakeryValue).toBe(expectedMultiSelectPicklistSnowfakeryValue);
+            const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
+            const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken','chorizo','egg','fish','pork','steak','tofu')))) }}";
+            const actualMultiSelectPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail);
 
-    });
+            expect(actualMultiSelectPicklistSnowfakeryValue).toBe(expectedMultiSelectPicklistSnowfakeryValue);
 
-    test('given expected Dependent Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
-
-        const expectedDependentPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDependentPicklistXMLFieldDetail();
-        const expectedDependentPicklistSnowfakeryValue = 
-`\n${recipeService.generateTabs(1.5)}if:
-        - choice:
-            when: ${recipeService.openingRecipeSyntax} Picklist__c == 'cle' }}
-            pick:
-                random_choice:
-                    - tree
-                    - weed
-                    - mulch
-                    - rocks
-        - choice:
-            when: ${recipeService.openingRecipeSyntax} Picklist__c == 'eastlake' }}
-            pick:
-                random_choice:
-                    - tree
-                    - weed
-                    - mulch
-        - choice:
-            when: ${recipeService.openingRecipeSyntax} Picklist__c == 'madison' }}
-            pick:
-                random_choice:
-                    - tree
-                    - plant
-                    - weed
-        - choice:
-            when: ${recipeService.openingRecipeSyntax} Picklist__c == 'willoughby' }}
-            pick:
-                random_choice:
-                    - tree
-                    - weed
-                    - mulch
-        - choice:
-            when: ${recipeService.openingRecipeSyntax} Picklist__c == 'mentor' }}
-            pick:
-                random_choice:
-                    - plant
-                    - weed
-        - choice:
-            when: ${recipeService.openingRecipeSyntax} Picklist__c == 'wickliffe' }}
-            pick:
-                random_choice:
-                    - weed
-                    - rocks`;
-        const actualDependentPicklistSnowfakeryValue = recipeService.getRecipeFakeValueByXMLFieldDetail(expectedDependentPicklistXMLFieldDetail);
-
-        // THE BELOW FILE CREATION LINES HELP FOR VISUAL FULL FILE COMPARISON AND WHERE ADJUSTMENTS NEED MADE
-        // UNCOMMENT FOR TROUBLESHOOTING OR MAKING NEW CHANGES THAT NEED TO BE VERIFIED
-        // fs.writeFileSync("test.yaml", actualDependentPicklistSnowfakeryValue, { encoding: 'utf8' });
-        // fs.writeFileSync("test2.yaml", expectedDependentPicklistSnowfakeryValue, { encoding: 'utf8' });
-
-        expect(actualDependentPicklistSnowfakeryValue).toBe(expectedDependentPicklistSnowfakeryValue);
+        });
 
     });
 
-});
+    describe('initiateRecipeByObjectName', () => {
 
-describe('initiateRecipeByObjectName', () => {
+        test('given object api name, the expected initiation recipe properties are returned in a string', () => {
 
-    test('given object api name, the expected initiation recipe properties are returned in a string', () => {
-
-        const objectApiName = "Account";
-        const expectedRecipeInitiation = 
-`\n- object: ${objectApiName}
+            const objectApiName = "Account";
+            const expectedRecipeInitiation = 
+    `\n- object: ${objectApiName}
   nickname: ${objectApiName}_NickName
   count: 1
   fields:`;
 
-        const actualRecipeInitiation = recipeService.initiateRecipeByObjectName(objectApiName);
-        expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName);
+            expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+
+        });
 
     });
 
-});
+    describe('appendFieldRecipeToObjectRecipe', () => {
 
-describe('appendFieldRecipeToObjectRecipe', () => {
+        test('given existing object recipe string and new recipe value, the resulting updated recipe is returned', () => {
 
-    test('given existing object recipe string and new recipe value, the resulting updated recipe is returned', () => {
+            const initialMarkup = RecipeMockService.getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup();
+            const fakeRecipevalue = "${{fake.superduperfakeFirstName}}";
+            const fakeFieldApiName = "FirstName__c";
+            const fakeFieldRecipeValue = `${fakeFieldApiName}: ${fakeRecipevalue}`;
+            const expectedUpdateRecipe = 
+    `${initialMarkup}
+    ${fakeFieldRecipeValue}`;
 
-        const initialMarkup = RecipeMockService.getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup();
-        const fakeRecipevalue = "${{fake.superduperfakeFirstName}}";
-        const fakeFieldApiName = "FirstName__c";
-        const fakeFieldRecipeValue = `${fakeFieldApiName}: ${fakeRecipevalue}`;
-        const expectedUpdateRecipe = 
-`${initialMarkup}
-${recipeService.generateTabs(1)}${fakeFieldRecipeValue}`;
+            const actualUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(initialMarkup, fakeRecipevalue, fakeFieldApiName );
 
-        const actualUpdatedRecipe = recipeService.appendFieldRecipeToObjectRecipe(initialMarkup, fakeRecipevalue, fakeFieldApiName );
+            // THE BELOW FILE CREATION LINES HELP FOR VISUAL FULL FILE COMPARISON AND WHERE ADJUSTMENTS NEED MADE
+            // UNCOMMENT FOR TROUBLESHOOTING OR MAKING NEW CHANGES THAT NEED TO BE VERIFIED
+            // fs.writeFileSync("appendFieldActual.yaml", actualUpdatedRecipe, { encoding: 'utf8' }); 
+            // fs.writeFileSync("appendFieldExpected.yaml", expectedUpdateRecipe, { encoding: 'utf8' });
 
-        // THE BELOW FILE CREATION LINES HELP FOR VISUAL FULL FILE COMPARISON AND WHERE ADJUSTMENTS NEED MADE
-        // UNCOMMENT FOR TROUBLESHOOTING OR MAKING NEW CHANGES THAT NEED TO BE VERIFIED
-        // fs.writeFileSync("appendFieldActual.yaml", actualUpdatedRecipe, { encoding: 'utf8' }); 
-        // fs.writeFileSync("appendFieldExpected.yaml", expectedUpdateRecipe, { encoding: 'utf8' });
+            expect(actualUpdatedRecipe).toBe(expectedUpdateRecipe);
+        });
 
-        expect(actualUpdatedRecipe).toBe(expectedUpdateRecipe);
-    });
+        test('given existing object recipe with existing fields already appended, a new field property and recipe is added correctly', () => {
 
-    test('given existing object recipe with existing fields already appended, a new field property and recipe is added correctly', () => {
+            const initialMarkup = RecipeMockService.getFakeInitialObjectRecipeMarkup();
+            const firstFakeRecipevalue = "${{fake.superduperfakeFirstName}}";
+            const firstFakeFieldApiName = "FirstName__c";
+            const firstFakeFieldRecipeValue = `${firstFakeFieldApiName}: ${firstFakeRecipevalue}`;
+            const secondFakeRecipeValue = "${{fake.asthefirstbutbetter}}";
+            const secondFakeFieldApiName = "SecondLastName__c";
+            const secondFakeFieldRecipeValue = `${secondFakeFieldApiName}: ${secondFakeRecipeValue}`;
 
-        const initialMarkup = RecipeMockService.getFakeInitialObjectRecipeMarkup();
-        const firstFakeRecipevalue = "${{fake.superduperfakeFirstName}}";
-        const firstFakeFieldApiName = "FirstName__c";
-        const firstFakeFieldRecipeValue = `${firstFakeFieldApiName}: ${firstFakeRecipevalue}`;
-        const secondFakeRecipeValue = "${{fake.asthefirstbutbetter}}";
-        const secondFakeFieldApiName = "SecondLastName__c";
-        const secondFakeFieldRecipeValue = `${secondFakeFieldApiName}: ${secondFakeRecipeValue}`;
+            
+            const expectedUpdateRecipe = 
+    `${initialMarkup}
+    ${firstFakeFieldRecipeValue}
+    ${secondFakeFieldRecipeValue}`;
 
-        
-        const expectedUpdateRecipe = 
-`${initialMarkup}
-${recipeService.generateTabs(1)}${firstFakeFieldRecipeValue}
-${recipeService.generateTabs(1)}${secondFakeFieldRecipeValue}`;
+            const firstUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(initialMarkup, firstFakeRecipevalue, firstFakeFieldApiName );
+            const secondUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(firstUpdatedRecipe, secondFakeRecipeValue, secondFakeFieldApiName );
 
-        const firstUpdatedRecipe = recipeService.appendFieldRecipeToObjectRecipe(initialMarkup, firstFakeRecipevalue, firstFakeFieldApiName );
-        const secondUpdatedRecipe = recipeService.appendFieldRecipeToObjectRecipe(firstUpdatedRecipe, secondFakeRecipeValue, secondFakeFieldApiName );
+            // THE BELOW FILE CREATION LINES HELP FOR VISUAL FULL FILE COMPARISON AND WHERE ADJUSTMENTS NEED MADE
+            // UNCOMMENT FOR TROUBLESHOOTING OR MAKING NEW CHANGES THAT NEED TO BE VERIFIED
+            // fs.writeFileSync("appendFieldActual.yaml", secondUpdatedRecipe, { encoding: 'utf8' }); 
+            // fs.writeFileSync("appendFieldExpected.yaml", expectedUpdateRecipe, { encoding: 'utf8' });
 
-        // THE BELOW FILE CREATION LINES HELP FOR VISUAL FULL FILE COMPARISON AND WHERE ADJUSTMENTS NEED MADE
-        // UNCOMMENT FOR TROUBLESHOOTING OR MAKING NEW CHANGES THAT NEED TO BE VERIFIED
-        // fs.writeFileSync("appendFieldActual.yaml", secondUpdatedRecipe, { encoding: 'utf8' }); 
-        // fs.writeFileSync("appendFieldExpected.yaml", expectedUpdateRecipe, { encoding: 'utf8' });
+            expect(secondUpdatedRecipe).toBe(expectedUpdateRecipe);
+        });
 
-        expect(secondUpdatedRecipe).toBe(expectedUpdateRecipe);
     });
 
 });

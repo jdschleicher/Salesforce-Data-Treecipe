@@ -2,17 +2,71 @@ import { IFakerService } from "../IFakerService";
 
 export class NPMFakerService implements IFakerService {
 
-    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, controllingField: string): string {
-        throw new Error("Method not implemented.");
+
+    generateTabs(tabCount: number):string {
+        const spacesPerTab = 4;
+        return ' '.repeat(spacesPerTab * tabCount);
     }
+
+    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, controllingField: string): string {
+    
+        let fakeDependentPicklistRecipeValue = "";
+        let allMultiSelectChoiceRecipe:string;
+        for ( const controllingValueKey in controllingValueToPicklistOptions ) {
+            
+            let picklistValuesAvailableForChoice = controllingValueToPicklistOptions[controllingValueKey];
+            
+            let randomChoicesBreakdown:string;
+
+            picklistValuesAvailableForChoice.forEach( value => {
+                if (randomChoicesBreakdown) {
+                    randomChoicesBreakdown += `\n${this.generateTabs(5)}- ${value}`;
+                } else {
+                    randomChoicesBreakdown = `- ${value}`;
+                }
+            });
+
+
+            let multiSelectChoiceRecipe = 
+`${this.generateTabs(2)}- choice:
+${this.generateTabs(3)}when: "${controllingField} == '${controllingValueKey}'"
+${this.generateTabs(3)}pick:
+${this.generateTabs(4)}random_choice:
+${this.generateTabs(5)}${randomChoicesBreakdown}`;
+
+
+            if (!(allMultiSelectChoiceRecipe)) {
+                allMultiSelectChoiceRecipe = multiSelectChoiceRecipe;
+            } else {
+                const lineBreakMultiSelectChoiceRecipe = `\n${multiSelectChoiceRecipe}`;
+                allMultiSelectChoiceRecipe += lineBreakMultiSelectChoiceRecipe;
+            }
+        }
+
+        if (fakeDependentPicklistRecipeValue) {
+            fakeDependentPicklistRecipeValue += `\n${this.generateTabs(2)}${allMultiSelectChoiceRecipe}`;
+        } else {
+            fakeDependentPicklistRecipeValue = `\n${this.generateTabs(1.5)}if:`;
+            fakeDependentPicklistRecipeValue += `\n${allMultiSelectChoiceRecipe}`;
+        }
+
+        return fakeDependentPicklistRecipeValue;
+
+    }
+
+
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
-        throw new Error("Method not implemented.");
+         
+        const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
+        const fakeMultiSelectRecipeValue = `faker.helpers.arrayElement([${joinedChoices}])`;
+        return fakeMultiSelectRecipeValue;
+
     }
 
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
    
-        const joinedChoices = availablePicklistChoices.join(',');
-        const fakeMultiSelectRecipeValue = `faker.helpers.arrayElements(${joinedChoices})`;
+        const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
+        const fakeMultiSelectRecipeValue = `faker.helpers.arrayElements([${joinedChoices}])`;
         return fakeMultiSelectRecipeValue;
 
     }
