@@ -1,6 +1,5 @@
 
 
-import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { IFakerService } from "../IFakerService";
 
 export class SnowfakeryFakerService implements IFakerService {
@@ -103,10 +102,5 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return fakeRecipeValue;
 
     }
-
-
-
-
-
 
 }
