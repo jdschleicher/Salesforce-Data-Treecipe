@@ -1,20 +1,21 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { RecipeService } from '../RecipeService/RecipeService';
-
-import * as vscode from 'vscode';
-
-import * as path from 'path';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
+import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 
+import * as vscode from 'vscode';
+import * as path from 'path';
 
 export class DirectoryProcessor {
 
-  async processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
+  static async processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
 
     const entries = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
+    const selectedDataFakerService = ConfigurationService.getFakerImplementationByConfigurationSelection();
+    let recipeService = new RecipeService(selectedDataFakerService);
     for (const [entryName, entryType] of entries) {
 
       const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
@@ -31,12 +32,12 @@ export class DirectoryProcessor {
           objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
 
           if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
-            objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = RecipeService.initiateRecipeByObjectName(objectName);
+            objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = recipeService.initiateRecipeByObjectName(objectName);
           }
 
           fieldsInfo.forEach((fieldDetail) => {
 
-            objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = RecipeService.appendFieldRecipeToObjectRecipe(
+            objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = recipeService.appendFieldRecipeToObjectRecipe(
               objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe,
               fieldDetail.recipeValue,
               fieldDetail.fieldName
@@ -58,7 +59,7 @@ export class DirectoryProcessor {
 
   }
 
-  async processFieldsDirectory(directoryPathUri: vscode.Uri, associatedObjectName: string): Promise<FieldInfo[]> {
+  static async processFieldsDirectory(directoryPathUri: vscode.Uri, associatedObjectName: string): Promise<FieldInfo[]> {
 
     const files = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
@@ -72,7 +73,9 @@ export class DirectoryProcessor {
         const xmlContent = Buffer.from(xmlContentUriData).toString('utf8');
 
         let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
-        let recipeValue = RecipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail);
+        let recipeService = new RecipeService(new NPMFakerService());
+        let recipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail);
+        // let recipeValue = "";
 
         let fieldInfo = FieldInfo.create(
           associatedObjectName,
@@ -95,7 +98,7 @@ export class DirectoryProcessor {
 
   }
 
-  getLastSegmentFromPath(path: string): string {
+  static getLastSegmentFromPath(path: string): string {
     const segments = path.split('/');
     return segments[segments.length - 1];
   }

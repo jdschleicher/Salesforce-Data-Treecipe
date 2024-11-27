@@ -189,7 +189,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    static initiateRecipeByObjectName(objectName: string): string {
+    initiateRecipeByObjectName(objectName: string): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
         const objectRecipeMarkup = 
@@ -201,7 +201,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return objectRecipeMarkup;
     }
 
-    static appendFieldRecipeToObjectRecipe(objectRecipe:string, fieldRecipe: string, fieldApiName: string): string {
+    appendFieldRecipeToObjectRecipe(objectRecipe:string, fieldRecipe: string, fieldApiName: string): string {
         const fieldPropertAndRecipeValue = `${fieldApiName}: ${fieldRecipe}`;
         const updatedObjectRecipe =
 `${objectRecipe}

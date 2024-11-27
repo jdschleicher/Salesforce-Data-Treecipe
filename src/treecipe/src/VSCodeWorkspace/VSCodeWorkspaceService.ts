@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import path = require('path');
 import * as fs from 'fs';
+import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 
 
 
@@ -108,7 +109,7 @@ export class VSCodeWorkspaceService {
             }
         ];
             
-        const selection = await vscode.window.showQuickPick(
+        const fakerServiceSelection = await vscode.window.showQuickPick(
             items,
             {
                 placeHolder: 'Select Data Faker Service',
@@ -116,11 +117,13 @@ export class VSCodeWorkspaceService {
             }
         );
 
-        if (!selection) {
+        if (!fakerServiceSelection) {
             // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
             return undefined; 
         } else {
-            return selection.label;
+
+            ConfigurationService.setConfigValue('selectedFakerService', fakerServiceSelection.label);
+            return fakerServiceSelection.label;
         }
 
     }
