@@ -7,7 +7,6 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IFakerService } from '../FakerService/IFakerService';
 
 export class DirectoryProcessor {
 
@@ -80,7 +79,6 @@ export class DirectoryProcessor {
 
         let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
         let recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail);
-        // let recipeValue = "";
 
         let fieldInfo = FieldInfo.create(
           associatedObjectName,
