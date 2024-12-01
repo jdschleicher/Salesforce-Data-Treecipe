@@ -10,7 +10,7 @@ export class ExtensionCommandService {
 
     async generateRecipeFromConfigurationDetail() {
 
-        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
         let objectsInfoWrapper = new ObjectInfoWrapper();
       
         if (workspaceRoot) {

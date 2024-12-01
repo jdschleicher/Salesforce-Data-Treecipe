@@ -94,7 +94,6 @@ export class VSCodeWorkspaceService {
     }
 
     static async promptForFakerServiceImplementation(): Promise<string | undefined> {
-
         
         let items: vscode.QuickPickItem[] = [
             {
