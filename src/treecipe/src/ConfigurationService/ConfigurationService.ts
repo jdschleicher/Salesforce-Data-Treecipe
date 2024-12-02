@@ -8,7 +8,6 @@ import * as fs from 'fs';
 import path = require('path');
 import * as vscode from 'vscode';
 
-
 export interface ExtensionConfig {
     selectedFakerService?: string;
     treecipeConfigurationPath?: string;
@@ -19,14 +18,17 @@ export class ConfigurationService {
     
     private static configSection = 'salesforce-data-treecipe';
 
-    static getExtensionConfigValue<K extends keyof ExtensionConfig>(key: K): ExtensionConfig[K] {
-        return vscode.workspace.getConfiguration(this.configSection).get(key as string);
+    static getExtensionConfigValue<extensionKey extends keyof ExtensionConfig>(key: extensionKey): ExtensionConfig[extensionKey] {
+        
+        const vsCodeWorkspaceConfig = vscode.workspace.getConfiguration(this.configSection);
+        return vsCodeWorkspaceConfig.get(key as string);
+    
     }
 
     static setExtensionConfigValue<K extends keyof ExtensionConfig>( key: K, value: ExtensionConfig[K]) {
 
-        const vsCodeExtensionConfig = vscode.workspace.getConfiguration(this.configSection);
-        vsCodeExtensionConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+        const vsCodeWorkspaceConfig = vscode.workspace.getConfiguration(this.configSection);
+        vsCodeWorkspaceConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
 
     }
 
