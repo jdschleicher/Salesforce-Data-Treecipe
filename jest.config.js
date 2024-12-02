@@ -8,5 +8,5 @@ module.exports = {
         "force-app/main/default/*",
         "force-app/test/*"
 
-    ],
+    ]
 };

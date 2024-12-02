@@ -1,0 +1,25 @@
+name: Run JESTS on PUSH
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 18
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run Jest tests
+      run: xvfb-run -a npm run jest-test
+
