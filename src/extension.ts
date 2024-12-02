@@ -10,10 +10,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// below set config value of "useSnowfakeryAsDefault" will be used until an implementation is 
 	// built fully for faker-js
-	ConfigurationService.setConfigValue('useSnowfakeryAsDefault', true);
+	ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', true);
 
 	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', () => {
-		ConfigurationService.createConfigurationFile();
+		ConfigurationService.createTreecipeJSONConfigurationFile();
 	});
 
 	const generateTreecipe = vscode.commands.registerCommand('treecipe.generateTreecipe', () => {

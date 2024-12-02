@@ -1,11 +1,11 @@
 
 import { ConfigurationService } from '../ConfigurationService';
 
-describe('getConfigurationFileName', () => {
+describe('getTreecipeConfigurationFileName', () => {
 
-    test('given getConfigurationFileName called, expected file name returned', () => {
+    test('given getTreecipeConfigurationFileName called, expected file name returned', () => {
         const expectedFileName = "treecipe.config.json";
-        const actualConfigurationFileName = ConfigurationService.getConfigurationFileName();
+        const actualConfigurationFileName = ConfigurationService.getTreecipeConfigurationFileName();
 
         expect(actualConfigurationFileName).toBe(expectedFileName);
     });

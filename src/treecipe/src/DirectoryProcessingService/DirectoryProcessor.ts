@@ -12,7 +12,7 @@ export class DirectoryProcessor {
 
   private recipeService: RecipeService;
   constructor() {
-    const selectedDataFakerService = ConfigurationService.getFakerImplementationByConfigurationSelection();
+    const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
     this.recipeService = new RecipeService(selectedDataFakerService);
   }
 

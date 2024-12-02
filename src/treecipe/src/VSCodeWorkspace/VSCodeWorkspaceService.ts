@@ -4,7 +4,6 @@ import * as fs from 'fs';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 
 
-
 export class VSCodeWorkspaceService {
 
     static getWorkspaceRoot() {
@@ -121,7 +120,7 @@ export class VSCodeWorkspaceService {
             return undefined; 
         } else {
 
-            ConfigurationService.setConfigValue('selectedFakerService', fakerServiceSelection.label);
+            ConfigurationService.setExtensionConfigValue('selectedFakerService', fakerServiceSelection.label);
             return fakerServiceSelection.label;
         }
 
