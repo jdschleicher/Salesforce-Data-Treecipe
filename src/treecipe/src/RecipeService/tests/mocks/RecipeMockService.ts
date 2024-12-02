@@ -86,6 +86,49 @@ export class RecipeMockService {
         return initialRecipeMarkup;
     }
 
+    static getMockSnowfakeryDependentPicklistRecipeValue():string {
+        const controllingField = "Town__c";
+            
+        const expectedDependentPicklistRecipeValue =`
+      if:
+        - choice:
+            when: \${{ ${controllingField} == 'cle' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+        - choice:
+            when: \${{ ${controllingField} == 'eastlake' }}
+            pick:
+                random_choice:
+                    - tree
+        - choice:
+            when: \${{ ${controllingField} == 'madison' }}
+            pick:
+                random_choice:
+                    - tree
+                    - plant
+        - choice:
+            when: \${{ ${controllingField} == 'mentor' }}
+            pick:
+                random_choice:
+                    - plant
+                    - weed
+        - choice:
+            when: \${{ ${controllingField} == 'wickliffe' }}
+            pick:
+                random_choice:
+                    - weed
+        - choice:
+            when: \${{ ${controllingField} == 'willoughby' }}
+            pick:
+                random_choice:
+                    - weed`;
+
+        return expectedDependentPicklistRecipeValue;
+
+    }
+
 
 
 }

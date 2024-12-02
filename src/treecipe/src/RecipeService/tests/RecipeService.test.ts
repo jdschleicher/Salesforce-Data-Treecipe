@@ -3,8 +3,8 @@ import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XML
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 
 import { RecipeMockService } from "./mocks/RecipeMockService";
-import { NPMFakerService } from "../../FakerService/NPMFakerService/NPMFakerService";
 import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
+import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
 // import * as fs from 'fs';
@@ -20,9 +20,6 @@ jest.mock('vscode', () => ({
 
 
   describe('RecipeService Shared Intstance Tests', () => {
-
-     const npmFakerService = new NPMFakerService();
-    let recipeServiceWithNPM= new RecipeService(npmFakerService);  
 
     const snowFakerService = new SnowfakeryFakerService();
     let recipeServiceWithSnow = new RecipeService(snowFakerService);  
@@ -131,6 +128,51 @@ jest.mock('vscode', () => ({
             expect(secondUpdatedRecipe).toBe(expectedUpdateRecipe);
         });
 
+    });
+
+    describe('getDependentPicklistRecipeFakerValue', () => {
+
+        test('given expected XMLDetail expected controllingvalue to options are built and correct snowfakery fake value is returned', () => {
+        
+            const expectedPicklistFieldDetails:IPicklistValue[] = [
+                {
+                    fullName: 'tree',
+                    label: 'tree',
+                    default: false,
+                    availableForControllingValues: ['cle', 'eastlake', 'madison']
+                },
+                {
+                    fullName: 'plant',
+                    label: 'plant',
+                    default: false,
+                    availableForControllingValues: ['madison', 'mentor']
+                },
+                {
+                    fullName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    availableForControllingValues: ['cle', 'mentor', 'wickliffe', 'willoughby']
+                }
+           
+            ];
+         
+            const expectedXMLFieldDetail:XMLFieldDetail = {
+                fieldType : "picklist",
+                apiName : "Landscape__c",
+                picklistValues : expectedPicklistFieldDetails,
+                referenceTo : "",
+                fieldLabel : "Landscape Towns",
+                controllingField : "Town__c"
+            };
+ 
+           
+
+            const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValue();
+            const actualRecipeValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(expectedXMLFieldDetail);
+
+            expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
+
+        });
     });
 
 });

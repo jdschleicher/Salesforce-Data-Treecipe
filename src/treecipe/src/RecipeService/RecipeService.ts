@@ -3,8 +3,6 @@ import { IFakerService } from "../FakerService/IFakerService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 
 
-
-
 export class RecipeService {
 
 
@@ -13,7 +11,6 @@ export class RecipeService {
         this.fakerService = fakerServiceImplementation;
     }
 
-    
     generateTabs(tabCount: number):string {
         const spacesPerTab = 4;
         return ' '.repeat(spacesPerTab * tabCount);
