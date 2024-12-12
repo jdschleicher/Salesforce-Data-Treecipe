@@ -6,7 +6,7 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 
 export class VSCodeWorkspaceService {
 
-    static getWorkspaceRoot() {
+    static getWorkspaceRoot():string {
         const workspaceRoot:string = vscode.workspace.workspaceFolders
                                     ? vscode.workspace.workspaceFolders[0].uri.fsPath
                                     : undefined;

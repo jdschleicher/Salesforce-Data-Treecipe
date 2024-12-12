@@ -18,7 +18,7 @@ jest.mock('vscode', () => ({
         (name) => ({ id: name })
     )
 
-  }), { virtual: true });
+}), { virtual: true });
 
 
 describe('promptForObjectsPath', () => {

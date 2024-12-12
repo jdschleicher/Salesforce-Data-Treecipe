@@ -32,14 +32,14 @@ export class ConfigurationService {
 
     }
 
-    static getObjectsPathFromTreecipeJSONConfiguration() {
+    static getObjectsPathFromTreecipeJSONConfiguration():string {
 
         const configurationDetail = this.getTreecipeConfigurationDetail();
         return configurationDetail.salesforceObjectsPath;
 
     }
 
-    static getTreecipeConfigurationDetail() {
+    static getTreecipeConfigurationDetail():any {
         
         const configurationPath = this.getTreecipeConfigurationFilePath();
         
@@ -74,7 +74,7 @@ export class ConfigurationService {
 
     static async createTreecipeJSONConfigurationFile() {
 
-        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
         const expectedObjectsPath = await VSCodeWorkspaceService.promptForObjectsPath(workspaceRoot);
         if (!expectedObjectsPath) {
