@@ -49,12 +49,11 @@ export class VSCodeWorkspaceService {
 
     static async getVSCodeQuickPickDirectoryItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
         
-
         let items: vscode.QuickPickItem[] = [];
         items = await this.readdirRecursive(dirPath, items);
       
-
         return items;
+
     }
 
     private static async readdirRecursive(dirPath:string, items) {
@@ -81,7 +80,6 @@ export class VSCodeWorkspaceService {
 
                 const fullPath = path.join(dirPath, entry.name);
                 console.log(fullPath);
-
 
                 await this.readdirRecursive(fullPath, items);
 
