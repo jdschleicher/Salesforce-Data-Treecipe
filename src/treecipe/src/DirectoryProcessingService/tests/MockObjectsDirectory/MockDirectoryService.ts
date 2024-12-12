@@ -10,48 +10,48 @@ export class MockDirectoryService {
         const expectedMockDirectories = `[
   {
     "name": "Case",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "Example_Everything__c",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "Manufacturing_Event__e",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "MasterDetailMadness__c",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "MegaMapMadness__c",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "Order_Item__c",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "Order__c",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "Product_Family__c",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   },
   {
     "name": "Product__c",
-    "parentPath": "src/application/services/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/application/services/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects"
   }
 ]`;
       
