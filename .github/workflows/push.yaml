@@ -2,7 +2,7 @@ name: Run JESTS on PUSH
 
 on:
   push:
-  pull_request:
+  # pull_request:
 
 jobs:
   test:
