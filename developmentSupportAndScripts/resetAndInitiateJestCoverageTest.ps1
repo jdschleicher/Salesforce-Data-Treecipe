@@ -1,4 +1,5 @@
 param(
+    [Parameter(Mandatory=$true)]
     [Boolean]$runJestTests
 )
 
@@ -20,11 +21,12 @@ if ( $runJestTests ) {
     ### CLEAR OUT LATEST CODE COVERAGE ARTIFACTS
     $coverageDirectory = "./coverage/"
     If (Test-Path $coverageDirectory ) {
+        echo "REMOVING COVERAGE DIRECTORY"
         Remove-Item $coverageDirectory -Recurse -Force
     }
 
     ### RUN CONVERAGE TESTS
-    npm run jest-test
+    npm run jest-test 
 
     ### OPEN UP COVERAGE REPORT IN BROWSER BASED ON EXPECTED ROOT DIRECTORY CREATION OF COVERAGE FOLDER
     start ./coverage/lcov-report/index.html

@@ -1,9 +1,8 @@
 import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
-
-import * as vscode from 'vscode';
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 
 import * as fs from 'fs';
+import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -21,7 +20,6 @@ jest.mock('vscode', () => ({
     )
 
 }), { virtual: true });
-
 
 describe('promptForObjectsPath', () => {
 

@@ -7,6 +7,5 @@ module.exports = {
     testPathIgnorePatterns: [
         "force-app/main/default/*",
         "force-app/test/*"
-
     ]
 };

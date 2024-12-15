@@ -15,6 +15,12 @@
 				"kind": "build",
 				"isDefault": true
 			}
-		}
+		},
+		{
+            "label": "RESET JEST TEST AND RUN COVERAGE",
+            "type": "shell",
+            "command": "pwsh ./developmentSupportAndScripts/resetAndInitiateJestCoverageTest.ps1",
+            "problemMatcher": []
+        },
 	]
 }
