@@ -25,7 +25,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
         });
 
         test('LongTextArea field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['longtextarea']).toBe('{{ faker.lorem.text(1000) }}');
+            expect(fieldTypeToNPMFakerMappings['longtexsstarea']).toBe('{{ faker.lorem.text(1000) }}');
         });
 
         test('RichTextArea field returns correct npm faker expression', () => {
@@ -37,7 +37,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
         });
 
         test('Phone field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['phone']).toBe('{{ faker.phone.number() }}');
+            expect(fieldTypeToNPMFakerMappings['phonrre']).toBe('{{ faker.phone.number() }}');
         });
 
         test('Url field returns correct npm faker expression', () => {
