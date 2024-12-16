@@ -72,8 +72,6 @@ describe('promptForObjectsPath', () => {
             }
         );
     });
-
-
     
 });
 
@@ -104,5 +102,70 @@ describe('readdirRecursive', () => {
         
     });
 
+
+});
+
+describe('isPossibleTreecipeObjectsDirectory', () => {
+
+    test('given expected invalid directory name returns false', () => {
+
+        const mockDirent: fs.Dirent = {
+            name: '.git',
+            isBlockDevice: () => false,
+            isCharacterDevice: () => false,
+            isDirectory: () => true,
+            isFIFO: () => false,
+            isFile: () => false,
+            isSocket: () => false,
+            isSymbolicLink: () => false,
+            parentPath: '/',
+            path: '.git'
+        };
+           
+        const isPossibleTreecipeDirectory = VSCodeWorkspaceService.isPossibleTreecipeObjectsDirectory(mockDirent);
+        
+        expect(isPossibleTreecipeDirectory).toBeFalsy();
+
+    });
+
+    test('given expected valid directory name returns true', () => {
+
+        const mockDirent: fs.Dirent = {
+            name: 'objects',
+            isBlockDevice: () => false,
+            isCharacterDevice: () => false,
+            isDirectory: () => true,
+            isFIFO: () => false,
+            isFile: () => false,
+            isSocket: () => false,
+            isSymbolicLink: () => false,
+            parentPath: 'force-app/main/default/',
+            path: 'force-app/main/default/objects'
+        };
+           
+        const isPossibleTreecipeDirectory = VSCodeWorkspaceService.isPossibleTreecipeObjectsDirectory(mockDirent);
+        expect(isPossibleTreecipeDirectory).toBeTruthy();
+
+    });
+
+    test('given expected file Dirent returns invalid treecipe directory', () => {
+
+        const mockDirent: fs.Dirent = {
+            name: 'validfoldername',
+            isBlockDevice: () => false,
+            isCharacterDevice: () => false,
+            isDirectory: () => false,
+            isFIFO: () => false,
+            isFile: () => false,
+            isSocket: () => false,
+            isSymbolicLink: () => false,
+            parentPath: 'force-app/main/default/',
+            path: 'force-app/main/default/validfoldername'
+        };
+           
+        const isPossibleTreecipeDirectory = VSCodeWorkspaceService.isPossibleTreecipeObjectsDirectory(mockDirent);
+        expect(isPossibleTreecipeDirectory).toBeFalsy();
+
+    });
 
 });

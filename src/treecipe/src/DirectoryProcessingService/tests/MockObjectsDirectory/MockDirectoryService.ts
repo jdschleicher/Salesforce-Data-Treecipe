@@ -56,8 +56,8 @@ export class MockDirectoryService {
 ]`;
       
       
-        return expectedMockDirectories;
-      
-      }
+      return expectedMockDirectories;
+    
+    }
 
 }
