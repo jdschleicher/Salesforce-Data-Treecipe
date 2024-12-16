@@ -5,7 +5,9 @@ on:
   # pull_request:
 
 jobs:
-  test:
+  
+  Compile-and-Test-Salesforce-Data-Treecipe:
+
     runs-on: ubuntu-latest
 
     steps:
