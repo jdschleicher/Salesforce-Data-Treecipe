@@ -130,82 +130,82 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
     });
 
-    // describe('buildMultiSelectPicklistRecipeValueByXMLFieldDetail', () => {
+    describe('buildMultiSelectPicklistRecipeValueByXMLFieldDetail', () => {
 
-    //     test('given expected list of choices, returns expected multiselect picklist faker value', () => {
+        test('given expected list of choices, returns expected multiselect picklist faker value', () => {
 
-    //         const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-    //         const expectedRecipeValue = `faker.helpers.arrayElements(['apple','orange','banana'])`;
-    //         const actualFakerValue = npmFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices);
+            const possibleChoices: string[] = ['apple', 'orange', 'banana'];
+            const expectedRecipeValue = `faker.helpers.arrayElements(['apple','orange','banana'])`;
+            const actualFakerValue = npmFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices);
 
-    //         expect(actualFakerValue).toBe(expectedRecipeValue);
-    //     });
+            expect(actualFakerValue).toBe(expectedRecipeValue);
+        });
 
-    // });
+    });
 
-    // describe('buildDependentPicklistRecipeFakerValue', () => {
+    describe('buildDependentPicklistRecipeFakerValue', () => {
 
-    //     test('given expected controlling value picklist options, returns expected dependent picklist faker value', () => {
+        test('given expected controlling value picklist options, returns expected dependent picklist faker value', () => {
 
-    //         const expectedControllingValueToPicklistOptions: Record<string, string[]> = {
-    //             Toyota: ["Corolla", "Camry", "Prius"],
-    //             Ford: ["F-150", "Mustang", "Explorer"],
-    //             Honda: ["Civic", "Accord", "Pilot"],
-    //             Tesla: ["Model S", "Model 3", "Model X"],
-    //         };            
+            const expectedControllingValueToPicklistOptions: Record<string, string[]> = {
+                Toyota: ["Corolla", "Camry", "Prius"],
+                Ford: ["F-150", "Mustang", "Explorer"],
+                Honda: ["Civic", "Accord", "Pilot"],
+                Tesla: ["Model S", "Model 3", "Model X"],
+            };            
 
-    //         const controllingField = "CarBrand__c";
+            const controllingField = "CarBrand__c";
             
-    //         const expectedDependentPicklistRecipeValue =`
-    //   if:
-    //     - choice:
-    //         when: "${controllingField} == 'Toyota'"
-    //         pick:
-    //             random_choice:
-    //                 - Corolla
-    //                 - Camry
-    //                 - Prius
-    //     - choice:
-    //         when: "${controllingField} == 'Ford'"
-    //         pick:
-    //             random_choice:
-    //                 - F-150
-    //                 - Mustang
-    //                 - Explorer
-    //     - choice:
-    //         when: "${controllingField} == 'Honda'"
-    //         pick:
-    //             random_choice:
-    //                 - Civic
-    //                 - Accord
-    //                 - Pilot
-    //     - choice:
-    //         when: "${controllingField} == 'Tesla'"
-    //         pick:
-    //             random_choice:
-    //                 - Model S
-    //                 - Model 3
-    //                 - Model X`;
+            const expectedDependentPicklistRecipeValue =`
+      if:
+        - choice:
+            when: "${controllingField} == 'Toyota'"
+            pick:
+                random_choice:
+                    - Corolla
+                    - Camry
+                    - Prius
+        - choice:
+            when: "${controllingField} == 'Ford'"
+            pick:
+                random_choice:
+                    - F-150
+                    - Mustang
+                    - Explorer
+        - choice:
+            when: "${controllingField} == 'Honda'"
+            pick:
+                random_choice:
+                    - Civic
+                    - Accord
+                    - Pilot
+        - choice:
+            when: "${controllingField} == 'Tesla'"
+            pick:
+                random_choice:
+                    - Model S
+                    - Model 3
+                    - Model X`;
 
 
-    //         const actualFakerValue = npmFakerService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, controllingField);
+            const actualFakerValue = npmFakerService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, controllingField);
 
-    //         expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
-    //     });
+            expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
+        });
 
-    // });
+    });
 
-    // describe('buildPicklistRecipeValueByXMLFieldDetail', () => {
+    describe('buildPicklistRecipeValueByXMLFieldDetail', () => {
 
-    //     test('given expected list of choices, returns expected  picklist faker value', () => {
+        test('given expected list of choices, returns expected  picklist faker value', () => {
 
-    //         const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-    //         const expectedRecipeValue = `faker.helpers.arrayElement(['apple','orange','banana'])`;
-    //         const actualFakerValue = npmFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices);
+            const possibleChoices: string[] = ['apple', 'orange', 'banana'];
+            const expectedRecipeValue = `faker.helpers.arrayElement(['apple','orange','banana'])`;
+            const actualFakerValue = npmFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices);
 
-    //         expect(actualFakerValue).toBe(expectedRecipeValue);
-    //     });
+            expect(actualFakerValue).toBe(expectedRecipeValue);
+        });
 
-    // });
+    });
 
 });
