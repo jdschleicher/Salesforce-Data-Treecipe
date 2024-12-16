@@ -29,5 +29,5 @@ jobs:
       shell: pwsh
       run: |
        ls -R -A
-       . ./.github/wokrflowScripts/checkJestTestCoverage.ps1
+       . ./.github/workflow/checkJestTestCoverage.ps1
 
