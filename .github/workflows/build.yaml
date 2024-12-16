@@ -2,7 +2,6 @@ name: Run JESTS on PUSH
 
 on:
   push:
-  # pull_request:
 
 jobs:
   
@@ -26,8 +25,6 @@ jobs:
     - name: Run Jest tests
       run: xvfb-run -a npm run jest-test-summary
 
-
     - name: Check Jest Coverage and Results Summary
       shell: pwsh
       run: . .github/workflowScripts/checkJestTestCoverage.ps1
-
