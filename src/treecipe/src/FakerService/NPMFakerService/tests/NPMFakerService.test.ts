@@ -16,9 +16,6 @@ describe('NPMFakerService Shared Intstance Tests', () => {
         const referenceValuePlaceholder = '"TODO -- REFERENCE ID REQUIRED"';
         const seeOnePagerPlaceholder = '"SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445"';
 
-        console.log("heeyooo : " );  
-
-
         test('Text field returns correct npm faker expression', () => {
             expect(fieldTypeToNPMFakerMappings['text']).toBe('{{ faker.lorem.text(50) }}');
         });

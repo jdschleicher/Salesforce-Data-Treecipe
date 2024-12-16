@@ -26,7 +26,7 @@ if ( $runJestTests ) {
     }
 
     ### RUN CONVERAGE TESTS
-    npm run jest-test 
+    npm run jest-test-summary
 
     ### OPEN UP COVERAGE REPORT IN BROWSER BASED ON EXPECTED ROOT DIRECTORY CREATION OF COVERAGE FOLDER
     start ./coverage/lcov-report/index.html
