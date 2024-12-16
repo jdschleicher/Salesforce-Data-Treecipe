@@ -27,7 +27,5 @@ jobs:
 
     - name: Check Jest Coverage and Results Summary
       shell: pwsh
-      run: |
-       ls -R -A
-       . .github/workflowScripts/checkJestTestCoverage.ps1
+      run: . .github/workflowScripts/checkJestTestCoverage.ps1
 
