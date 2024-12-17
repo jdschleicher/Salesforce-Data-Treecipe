@@ -56,7 +56,7 @@ describe('promptForObjectsPath', () => {
         expect(showQuickPickSpy).toHaveBeenCalledWith(
             [
                 {
-                    label: 'Snowfakery',
+                    label: 'snowfakery',
                     description: 'CumulusCI Python port of Faker - https://snowfakery.readthedocs.io/en/latest/',
                     iconPath: expect.any(Object)
                 },

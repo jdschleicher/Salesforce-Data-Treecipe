@@ -108,7 +108,7 @@ export class VSCodeWorkspaceService {
         
         let items: vscode.QuickPickItem[] = [
             {
-                label: 'Snowfakery',
+                label: 'snowfakery',
                 description: 'CumulusCI Python port of Faker - https://snowfakery.readthedocs.io/en/latest/',
                 iconPath: new vscode.ThemeIcon('database')
             },

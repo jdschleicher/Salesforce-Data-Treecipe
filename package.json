@@ -2,7 +2,7 @@
   "name": "salesforce-data-treecipe",
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -37,7 +37,8 @@
         "properties": {
           "salesforce-data-treecipe.selectedFakerService" : {
             "type": "string",
-            "description": "faker implementation chosen as part of treecipe config setup and selections"
+            "description": "faker implementation chosen as part of treecipe config setup and selections",
+            "default": "snowfakery"
           },
           "salesforce-data-treecipe.treecipeConfigurationPath" : {
             "type": "string",

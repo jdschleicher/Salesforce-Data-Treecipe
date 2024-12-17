@@ -83,7 +83,7 @@ export class ConfigurationService {
 
         let selectedDataFakerService = null;
         if ( this.getExtensionConfigValue('useSnowfakeryAsDefault')) {
-            selectedDataFakerService = "Snowfakery";
+            selectedDataFakerService = "snowfakery";
         } else {
             selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
             if (!selectedDataFakerService) {
@@ -125,7 +125,7 @@ export class ConfigurationService {
         const selectedFakerServiceKey = "selectedFakerService";
         const fakerConfigurationSelection = this.getExtensionConfigValue(selectedFakerServiceKey);
         switch (fakerConfigurationSelection) {
-            case 'Snowfakery':
+            case 'snowfakery':
               return new SnowfakeryFakerService();
             case 'faker-js':
               return new NPMFakerService();
