@@ -2,7 +2,6 @@ import { IFakerService } from "../IFakerService";
 
 export class NPMFakerService implements IFakerService {
 
-
     generateTabs(tabCount: number):string {
         const spacesPerTab = 4;
         return ' '.repeat(spacesPerTab * tabCount);
@@ -54,7 +53,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
          
         const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
@@ -98,6 +96,5 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         return salesforceFieldToNPMFakerMap;
     }
-
 
 }
