@@ -1,7 +1,3 @@
-param(
-    [Parameter(Mandatory=$true)]
-    [Boolean]$runJestTests
-)
 
 if ((uname) -eq 'Darwin') {
     Write-Output "macOS"
@@ -14,21 +10,20 @@ If (Test-Path $compileDirectory ) {
     Remove-Item $compileDirectory -Recurse -Force
 }
 
+
+### CLEAR OUT LATEST CODE COVERAGE ARTIFACTS
+$coverageDirectory = "./coverage/"
+If (Test-Path $coverageDirectory ) {
+    echo "REMOVING COVERAGE DIRECTORY"
+    Remove-Item $coverageDirectory -Recurse -Force
+}
+
 ### RECOMPILE
 npm run compile
 
-if ( $runJestTests ) {
-    ### CLEAR OUT LATEST CODE COVERAGE ARTIFACTS
-    $coverageDirectory = "./coverage/"
-    If (Test-Path $coverageDirectory ) {
-        echo "REMOVING COVERAGE DIRECTORY"
-        Remove-Item $coverageDirectory -Recurse -Force
-    }
+### RUN CONVERAGE TESTS
+npm run jest-test-summary
 
-    ### RUN CONVERAGE TESTS
-    npm run jest-test-summary
+### OPEN UP COVERAGE REPORT IN BROWSER BASED ON EXPECTED ROOT DIRECTORY CREATION OF COVERAGE FOLDER
+start ./coverage/lcov-report/index.html
 
-    ### OPEN UP COVERAGE REPORT IN BROWSER BASED ON EXPECTED ROOT DIRECTORY CREATION OF COVERAGE FOLDER
-    start ./coverage/lcov-report/index.html
-    
-}
