@@ -7,4 +7,5 @@ export interface IFakerService {
     buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, controllingField: string): string;
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string;
     generateTabs(tabCount: number): string;
+    
 }
