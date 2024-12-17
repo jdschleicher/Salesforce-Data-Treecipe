@@ -1,6 +1,6 @@
-# Salesforce-Data-Recipe
+# Salesforce-Data-Treecipe
 
-**Salesforce-Data-Recipe** is a Visual Studio Code extension designed to streamline the process of generating production-like data during development in order to support building Quality in. This extension auto-generates a data-recipe yaml file based on what is already in the source object metadata xml of your project.
+**Salesforce-Data-Treecipe** is a Visual Studio Code extension designed to streamline the process of generating production-like data during development in order to support building Quality in. This extension auto-generates a recipe yaml file based on what is already in the source object metadata xml of your project.
 
 ---
 
@@ -50,7 +50,7 @@ https://github.com/user-attachments/assets/4b904d36-3c3c-401c-a047-8387800e504e
 
 ### Installation
 1. Open **Visual Studio Code**.
-2. Go to the **Extensions** panel and search for **Salesforce-Data-Recipe**.
+2. Go to the **Extensions** panel and search for **Salesforce-Data-Treecipe**.
 3. Click **Install**.
 
 ### Usage

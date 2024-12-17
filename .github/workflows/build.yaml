@@ -1,0 +1,31 @@
+name: Run JESTS on PUSH
+
+on:
+  push:
+  pull_request:  
+
+jobs:
+  
+  Compile-and-Test-Salesforce-Data-Treecipe:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Current Repository
+      uses: actions/checkout@v4
+
+    - name: Use Node.js 18
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run Jest tests
+      run: xvfb-run -a npm run jest-test-summary
+
+    - name: Check Jest Coverage and Results Summary
+      shell: pwsh
+      run: . .github/workflowScripts/checkJestTestCoverage.ps1

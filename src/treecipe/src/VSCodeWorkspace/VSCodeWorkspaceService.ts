@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 import path = require('path');
 import * as fs from 'fs';
-
+import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 
 
 export class VSCodeWorkspaceService {
 
-    static async getWorkspaceRoot() {
+    static getWorkspaceRoot():string {
         const workspaceRoot:string = vscode.workspace.workspaceFolders
                                     ? vscode.workspace.workspaceFolders[0].uri.fsPath
                                     : undefined;
@@ -24,7 +24,6 @@ export class VSCodeWorkspaceService {
         }
 
         let currentPath = workspaceRoot;
-        
         while (true) {
             
             const items = await this.getVSCodeQuickPickDirectoryItems(currentPath);
@@ -49,22 +48,22 @@ export class VSCodeWorkspaceService {
 
     static async getVSCodeQuickPickDirectoryItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
         
-
         let items: vscode.QuickPickItem[] = [];
         items = await this.readdirRecursive(dirPath, items);
       
-
         return items;
+
     }
 
     private static async readdirRecursive(dirPath:string, items) {
 
-        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
         const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
         for (const entry of entries) {
   
-            if (entry.isDirectory()) { 
+            if ( this.isPossibleTreecipeObjectsDirectory(entry) ) {
 
                 const fullMachinePathToEntry = entry.path;
                 const currentDirectoryName = entry.name;
@@ -82,14 +81,62 @@ export class VSCodeWorkspaceService {
                 const fullPath = path.join(dirPath, entry.name);
                 console.log(fullPath);
 
-
                 await this.readdirRecursive(fullPath, items);
 
             }
+
         }
       
         return items;
 
     }
+
+    static isPossibleTreecipeObjectsDirectory(entry: fs.Dirent):boolean {
+      
+        return (
+            entry.isDirectory() 
+            && !( entry.name.includes("node_modules") || this.isHiddenFolder(entry.name))
+        );     
+        
+    }
+
+    static isHiddenFolder(folderName: string): boolean {
+        return folderName.startsWith('.');
+    }
+
+    static async promptForFakerServiceImplementation(): Promise<string | undefined> {
+        
+        let items: vscode.QuickPickItem[] = [
+            {
+                label: 'Snowfakery',
+                description: 'CumulusCI Python port of Faker - https://snowfakery.readthedocs.io/en/latest/',
+                iconPath: new vscode.ThemeIcon('database')
+            },
+            {
+                label: 'faker-js',
+                description: 'Javascript port of Faker - https://fakerjs.dev/',
+                iconPath: new vscode.ThemeIcon('database')
+            }
+        ];
+            
+        const fakerServiceSelection = await vscode.window.showQuickPick(
+            items,
+            {
+                placeHolder: 'Select Data Faker Service',
+                ignoreFocusOut: true
+            }
+        );
+
+        if (!fakerServiceSelection) {
+            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
+            return undefined; 
+        } else {
+
+            ConfigurationService.setExtensionConfigValue('selectedFakerService', fakerServiceSelection.label);
+            return fakerServiceSelection.label;
+        }
+
+    }
+
 
 }

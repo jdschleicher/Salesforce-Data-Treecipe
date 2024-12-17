@@ -1,0 +1,42 @@
+name: Test and Release
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ closed ]
+
+jobs:
+
+  Publish-Extension:
+
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    steps:
+
+    - name: Checkout Current Repository
+      uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Publish VS Code Extension
+      shell: pwsh
+      run: |
+        # Check if VSCE_PAT secret is available
+        if ("${{ secrets.VSCE_PAT }}" -eq "") {
+          Write-Host "VSCode is not set. Skipping publish."
+          exit 0
+        }
+        
+        # Install vsce globally
+        npm install -g @vscode/vsce
+        
+        # Publish the extension
+        vsce publish -p ${{ secrets.VSCE_PAT }}

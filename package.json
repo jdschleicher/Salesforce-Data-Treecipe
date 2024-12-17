@@ -2,7 +2,7 @@
   "name": "salesforce-data-treecipe",
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -12,7 +12,9 @@
     "url": "https://github.com/jdschleicher/Salesforce-Data-Treecipe"
   },
   "categories": [
-    "Testing", "Visualization", "Programming Languages"
+    "Testing",
+    "Visualization",
+    "Programming Languages"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
@@ -28,6 +30,25 @@
         "title": "Initiate Configuration File",
         "category": "Salesforce Treecipe"
       }
+    ],
+    "configuration":[
+      {
+        "title": "TREECIPE_EXTENSION_CONFIGURATION",
+        "properties": {
+          "salesforce-data-treecipe.selectedFakerService" : {
+            "type": "string",
+            "description": "faker implementation chosen as part of treecipe config setup and selections"
+          },
+          "salesforce-data-treecipe.treecipeConfigurationPath" : {
+            "type": "string",
+            "description": "workspace path location of treecipe.config.json file"
+          },
+          "salesforce-data-treecipe.useSnowfakeryAsDefault" : {
+            "type": "boolean",
+            "description": "feature flag to drive snowfakery-data-treecipe to leverage snowfakery as default faker provider"
+          }
+        }
+      }
     ]
   },
   "scripts": {
@@ -36,10 +57,12 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test",
+    "vscode-test": "vscode-test",
+    "jest-test-summary": "jest --coverage --coverageReporters='json-summary' --json --outputFile=coverage/jest-results.json",
     "jest-test": "jest --coverage"
   },
   "devDependencies": {
+    "@faker-js/faker": "^9.2.0",
     "@types/jest": "^29.5.13",
     "@types/node": "^22.4.1",
     "@types/vscode": "^1.94.0",

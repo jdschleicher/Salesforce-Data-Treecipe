@@ -1,7 +1,8 @@
 import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
-
-import * as vscode from 'vscode';
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
+
+import * as fs from 'fs';
+import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -18,8 +19,7 @@ jest.mock('vscode', () => ({
         (name) => ({ id: name })
     )
 
-  }), { virtual: true });
-
+}), { virtual: true });
 
 describe('promptForObjectsPath', () => {
 
@@ -46,43 +46,126 @@ describe('promptForObjectsPath', () => {
         expect(vscode.window.showQuickPick).toHaveBeenCalled();
         expect(result).toBeUndefined();
     });
+
+
+    test('should call vscode.window.showQuickPick with correct parameters', async () => {
+        const showQuickPickSpy = jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined);
+
+        await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+
+        expect(showQuickPickSpy).toHaveBeenCalledWith(
+            [
+                {
+                    label: 'Snowfakery',
+                    description: 'CumulusCI Python port of Faker - https://snowfakery.readthedocs.io/en/latest/',
+                    iconPath: expect.any(Object)
+                },
+                {
+                    label: 'faker-js',
+                    description: 'Javascript port of Faker - https://fakerjs.dev/',
+                    iconPath: expect.any(Object)
+                }
+            ],
+            {
+                placeHolder: 'Select Data Faker Service',
+                ignoreFocusOut: true
+            }
+        );
+    });
     
 });
 
+describe('readdirRecursive', () => {
+    let mockItems;
 
+    beforeEach(() => {
+        jest.restoreAllMocks();
+        mockItems = [];
+    });
 
+    test('should traverse directories and add items to the list', async () => {
+        const mockDirPath = '/mockDir';
+        const mockWorkspaceRoot = '/mockWorkspace';
+     
+        const mockDirents = Promise.resolve([
+            Object.assign(new fs.Dirent(), { name: 'file1.txt', isFile: () => true }),
+            Object.assign(new fs.Dirent(), { name: 'folder1', isDirectory: () => false }),
+            Object.assign(new fs.Dirent(), { name: 'symlink1', isSymbolicLink: () => true })
+        ]);
+        jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+        jest.spyOn(fs.promises, 'readdir').mockReturnValue(mockDirents);
 
+        const result = await VSCodeWorkspaceService.getVSCodeQuickPickDirectoryItems(mockDirPath);
 
-
-// static async promptForObjectsPath(workspaceRoot:string ): Promise<string | undefined> {
-// 
-//     console.log('Workspace Root:', workspaceRoot);
-
-//     if (!workspaceRoot) {
-//         void vscode.window.showErrorMessage('No workspace folder found');
-//         return undefined;
-//     }
-
-//     let currentPath = workspaceRoot;
-    
-//     while (true) {
+    // TEST IS SETUP TO AVOID RECURSIVE
+        expect(result.length).toEqual(0);
         
-//         const items = await this.getVSCodeQuickPickDirectoryItems(currentPath);
+    });
+
+
+});
+
+describe('isPossibleTreecipeObjectsDirectory', () => {
+
+    test('given expected invalid directory name returns false', () => {
+
+        const mockDirent: fs.Dirent = {
+            name: '.git',
+            isBlockDevice: () => false,
+            isCharacterDevice: () => false,
+            isDirectory: () => true,
+            isFIFO: () => false,
+            isFile: () => false,
+            isSocket: () => false,
+            isSymbolicLink: () => false,
+            parentPath: '/',
+            path: '.git'
+        };
+           
+        const isPossibleTreecipeDirectory = VSCodeWorkspaceService.isPossibleTreecipeObjectsDirectory(mockDirent);
         
-//         const selection = await vscode.window.showQuickPick(
-//             items,
-//             {
-//                 placeHolder: 'Select directory that contains the Salesforce objects',
-//                 ignoreFocusOut: true
-//             }
-//         );
+        expect(isPossibleTreecipeDirectory).toBeFalsy();
 
-//         if (!selection) {
-//             // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
-//             return undefined; 
-//         } else {
-//             return selection.label;
-//         }
+    });
 
-//     }
-// }
+    test('given expected valid directory name returns true', () => {
+
+        const mockDirent: fs.Dirent = {
+            name: 'objects',
+            isBlockDevice: () => false,
+            isCharacterDevice: () => false,
+            isDirectory: () => true,
+            isFIFO: () => false,
+            isFile: () => false,
+            isSocket: () => false,
+            isSymbolicLink: () => false,
+            parentPath: 'force-app/main/default/',
+            path: 'force-app/main/default/objects'
+        };
+           
+        const isPossibleTreecipeDirectory = VSCodeWorkspaceService.isPossibleTreecipeObjectsDirectory(mockDirent);
+        expect(isPossibleTreecipeDirectory).toBeTruthy();
+
+    });
+
+    test('given expected file Dirent returns invalid treecipe directory', () => {
+
+        const mockDirent: fs.Dirent = {
+            name: 'validfoldername',
+            isBlockDevice: () => false,
+            isCharacterDevice: () => false,
+            isDirectory: () => false,
+            isFIFO: () => false,
+            isFile: () => false,
+            isSocket: () => false,
+            isSymbolicLink: () => false,
+            parentPath: 'force-app/main/default/',
+            path: 'force-app/main/default/validfoldername'
+        };
+           
+        const isPossibleTreecipeDirectory = VSCodeWorkspaceService.isPossibleTreecipeObjectsDirectory(mockDirent);
+        expect(isPossibleTreecipeDirectory).toBeFalsy();
+
+    });
+
+});

@@ -14,7 +14,7 @@ describe('Confirm Mock Structure Consistent', () => {
         recursive: false
       });
 
-      const actualJSONMockDirectoriesStructure = JSON.stringify(actualMockDirectoriesStructure, null, 2);
+      const actualJSONMockDirectoriesStructure = JSON.stringify(actualMockDirectoriesStructure, ["name", "parentPath", "path"], 2);
       expect(expectedJSONMockDirectoriesStructure).toEqual(actualJSONMockDirectoriesStructure);
     
     });

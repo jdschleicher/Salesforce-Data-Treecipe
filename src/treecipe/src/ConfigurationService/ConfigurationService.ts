@@ -1,25 +1,47 @@
 
+import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { IFakerService } from '../FakerService/IFakerService';
+import { NPMFakerService } from '../FakerService/NPMFakerService/NPMFakerService';
+import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
+
 import * as fs from 'fs';
 import path = require('path');
-import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import * as vscode from 'vscode';
 
+export interface ExtensionConfig {
+    selectedFakerService?: string;
+    treecipeConfigurationPath?: string;
+    useSnowfakeryAsDefault: boolean;
+}
 
 export class ConfigurationService {
     
-    static async getObjectsPathFromConfiguration() {
+    private static configSection = 'salesforce-data-treecipe';
 
-        const configurationDetail = await this.getConfigurationDetail();
+    static getExtensionConfigValue<extensionKey extends keyof ExtensionConfig>(key: extensionKey): ExtensionConfig[extensionKey] {
+        
+        const vsCodeWorkspaceConfig = vscode.workspace.getConfiguration(this.configSection);
+        return vsCodeWorkspaceConfig.get(key as string);
+    
+    }
+
+    static setExtensionConfigValue<K extends keyof ExtensionConfig>( key: K, value: ExtensionConfig[K]) {
+
+        const vsCodeWorkspaceConfig = vscode.workspace.getConfiguration(this.configSection);
+        vsCodeWorkspaceConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+
+    }
+
+    static getObjectsPathFromTreecipeJSONConfiguration():string {
+
+        const configurationDetail = this.getTreecipeConfigurationDetail();
         return configurationDetail.salesforceObjectsPath;
 
     }
 
-    static async getConfigurationDetail() {
-        const configurationFileName = this.getConfigurationFileName();
-        const configurationDirectory = this.getDefaultTreecipeConfigurationFolderName();
-        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
-
-        const fullConfigurationDirectoryPath = `${workspaceRoot}/${configurationDirectory}`;
-        const configurationPath = path.join(fullConfigurationDirectoryPath, configurationFileName);
+    static getTreecipeConfigurationDetail():any {
+        
+        const configurationPath = this.getTreecipeConfigurationFilePath();
         
         let configurationJSON = null;
         try {
@@ -32,18 +54,47 @@ export class ConfigurationService {
         return configurationDetail;
     }
 
+    static getTreecipeConfigurationFilePath() {
 
-    static async createConfigurationFile() {
+        const treecipeConfigurationKey = "treecipeConfigurationPath";
+        let configurationPath = this.getExtensionConfigValue(treecipeConfigurationKey);
+        if ( !configurationPath ) {
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+            const configurationFileName = this.getTreecipeConfigurationFileName();
+            const configurationDirectory = this.getDefaultTreecipeConfigurationFolderName();
+            const fullConfigurationDirectoryPath = `${workspaceRoot}/${configurationDirectory}`;
+            configurationPath = path.join(fullConfigurationDirectoryPath, configurationFileName);
+            this.setExtensionConfigValue(treecipeConfigurationKey, configurationPath);
 
-        const workspaceRoot = await VSCodeWorkspaceService.getWorkspaceRoot();
+        }
+
+        return configurationPath;
+        
+    }
+
+    static async createTreecipeJSONConfigurationFile() {
+
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
         const expectedObjectsPath = await VSCodeWorkspaceService.promptForObjectsPath(workspaceRoot);
         if (!expectedObjectsPath) {
             return;
         };
-        const configurationFileName = this.getConfigurationFileName();
+
+        let selectedDataFakerService = null;
+        if ( this.getExtensionConfigValue('useSnowfakeryAsDefault')) {
+            selectedDataFakerService = "Snowfakery";
+        } else {
+            selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+            if (!selectedDataFakerService) {
+                return;
+            };
+        }
+
+        const configurationFileName = this.getTreecipeConfigurationFileName();
         const configurationDetail = {
-            salesforceObjectsPath: `${expectedObjectsPath}`
+            salesforceObjectsPath: `${expectedObjectsPath}`,
+            dataFakerService: selectedDataFakerService
         };
 
         const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
@@ -64,10 +115,24 @@ export class ConfigurationService {
         return defaultTreecipeConfigurationFolder;
     }
 
-    static getConfigurationFileName() {
+    static getTreecipeConfigurationFileName() {
         const configurationFileName = "treecipe.config.json";
         return configurationFileName;
     }
+
+    static getFakerImplementationByExtensionConfigSelection(): IFakerService {
+
+        const selectedFakerServiceKey = "selectedFakerService";
+        const fakerConfigurationSelection = this.getExtensionConfigValue(selectedFakerServiceKey);
+        switch (fakerConfigurationSelection) {
+            case 'Snowfakery':
+              return new SnowfakeryFakerService();
+            case 'faker-js':
+              return new NPMFakerService();
+            default:
+              throw new Error(`Unknown Faker Service selection: ${fakerConfigurationSelection}`);
+          }
     
+    }
 
 }
