@@ -2,7 +2,7 @@
   "name": "salesforce-data-treecipe",
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "vscode": "^1.94.0"
   },
