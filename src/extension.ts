@@ -8,8 +8,7 @@ import { ExtensionCommandService } from './treecipe/src/ExtensionCommandService/
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
 
-	// below set config value of "useSnowfakeryAsDefault" will be used until an implementation is 
-	// built fully for faker-js
+	// below set config value of "useSnowfakeryAsDefault" will be used until an implementation is built fully for faker-js
 	ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', true);
 
 	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', () => {

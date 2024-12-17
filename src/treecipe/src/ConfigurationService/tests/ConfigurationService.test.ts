@@ -11,7 +11,7 @@ jest.mock('vscode', () => ({
         getConfiguration: jest.fn(() => ({
             get: jest.fn((key) => {
                 const mockConfig = {
-                    selectedFakerService: 'Snowfakery', // Replace with mock key-value pairs as needed
+                    selectedFakerService: 'snowfakery', // Replace with mock key-value pairs as needed
                 };
                 return mockConfig[key];
             }),
@@ -38,7 +38,7 @@ describe('Shared ConfigurationService Tests', () => {
           
             const requiredInterfaceConfigKeyToMockValue = "selectedFakerService";
             const actualMockedExtensionConfigValue = ConfigurationService.getExtensionConfigValue(requiredInterfaceConfigKeyToMockValue);
-            const expectedMockedExtensionConfigValue = "Snowfakery";
+            const expectedMockedExtensionConfigValue = "snowfakery";
             expect(actualMockedExtensionConfigValue).toBe(expectedMockedExtensionConfigValue);
         
         });
@@ -112,7 +112,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             const expectedConfigJson = `{
     "salesforceObjectsPath": "/mock/objects/path",
-    "dataFakerService": "Snowfakery"
+    "dataFakerService": "snowfakery"
 }`;
             expect(fs.writeFileSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}/${mockConfigFileName}`, expectedConfigJson);
 
@@ -130,14 +130,14 @@ describe('Shared ConfigurationService Tests', () => {
             
             const expectedConfigDetailJson = `{
     "salesforceObjectsPath": "/mock/objects/path",
-    "dataFakerService": "Snowfakery"
+    "dataFakerService": "snowfakery"
 }`;
 
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
             jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
 
             const actualTreecipeConfiguratoinDetail = ConfigurationService.getTreecipeConfigurationDetail();
-            expect(actualTreecipeConfiguratoinDetail.dataFakerService).toBe("Snowfakery");
+            expect(actualTreecipeConfiguratoinDetail.dataFakerService).toBe("snowfakery");
         });
 
     });
@@ -150,7 +150,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             const expectedConfigDetailJson = `{
     "salesforceObjectsPath": "${mockObjectsPath}",
-    "dataFakerService": "Snowfakery"
+    "dataFakerService": "snowfakery"
 }`;
             
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
