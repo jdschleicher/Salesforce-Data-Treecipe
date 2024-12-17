@@ -61,20 +61,27 @@ export class RecipeService {
             //     return 'test';
                 
             default: 
-                const fieldToRecipeValueMap = this.fakerService.getMapSalesforceFieldToFakerValue;
-                // CHECK IF VALID FIELD TYPE OR EXISTS IN PROGRAMS SALESFORCE FIELD MAP
-                if ( fieldType in fieldToRecipeValueMap ) {
-                    fakeRecipeValue = fieldToRecipeValueMap[fieldType];
-                } else {
-                    // NOT THROWING EXCEPTION HERE, WE WANT THE REMAINING FIELDS TO BE PROCESSED
-                    fakeRecipeValue = `"FieldType Not Handled -- ${fieldType} does not exist in this programs Salesforce field map."`;
-                }
 
+                fakeRecipeValue = this.getFakeValueIfExpectedSalesforceFieldType(fieldType);
                 return fakeRecipeValue;
-            
 
         }
 
+    }
+    
+    getFakeValueIfExpectedSalesforceFieldType(fieldType:string):string {
+        let recipeValue = null;
+        const fieldToRecipeValueMap:Record<string, string> = this.fakerService.getMapSalesforceFieldToFakerValue();
+        // CHECK IF VALID FIELD TYPE OR EXISTS IN PROGRAMS SALESFORCE FIELD MAP
+        if ( fieldType in fieldToRecipeValueMap ) {
+            recipeValue = fieldToRecipeValueMap[fieldType];
+        } else {
+            // NOT THROWING EXCEPTION HERE, WE WANT THE REMAINING FIELDS TO BE PROCESSED
+            recipeValue = `"FieldType Not Handled -- ${fieldType} does not exist in this programs Salesforce field map."`;
+        }    
+
+        return recipeValue;
+    
     }
 
     getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail): string {

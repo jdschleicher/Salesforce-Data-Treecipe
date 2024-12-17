@@ -59,6 +59,56 @@ jest.mock('vscode', () => ({
 
         });
 
+        test('given expected datetime XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedDatetimeXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
+            const expectedDatetimeSnowfakeryValue = '${{fake.date_time_between(start_date="-1y", end_date="now")}}';
+            const actualDatetimeSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail);
+
+            expect(actualDatetimeSnowfakeryValue).toBe(expectedDatetimeSnowfakeryValue);
+
+        });
+
+        test('given expected url XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedUrlFieldDetail:XMLFieldDetail = XMLMarkupMockService.getUrlXMLFieldDetail();
+            const expectedUrlSnowfakeryValue = '${{fake.url()}}';
+            const actualUrlSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail);
+
+            expect(actualUrlSnowfakeryValue).toBe(expectedUrlSnowfakeryValue);
+
+        });
+
+        test('given expected phone XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedXMLDetailForPhone:XMLFieldDetail = XMLMarkupMockService.getPhoneXMLFieldDetail();
+            const expectedSnowfakeryValueForPhone = '${{fake.phone_number()}}';
+            const actualSnowfakeryValueForPhone = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone);
+
+            expect(actualSnowfakeryValueForPhone).toBe(expectedSnowfakeryValueForPhone);
+
+        });
+
+        test('given expected number XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
+            const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999)}}';
+            const actualSnowfakeryValueForNumber = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber);
+
+            expect(actualSnowfakeryValueForNumber).toBe(expectedSnowfakeryValueForNumber);
+
+        });
+
+        test('given expected currency XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
+            const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}';
+            const actualSnowfakeryValueForCurrency = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency);
+
+            expect(actualSnowfakeryValueForCurrency).toBe(expectedSnowfakeryValueForCurrency);
+
+        });
+
     });
 
     describe('initiateRecipeByObjectName', () => {
@@ -165,14 +215,27 @@ jest.mock('vscode', () => ({
                 controllingField : "Town__c"
             };
  
-           
-
             const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValue();
             const actualRecipeValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(expectedXMLFieldDetail);
 
             expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
 
         });
+    });
+
+    describe('getFakeValueIfExpectedSalesforceFieldType', () => {
+
+        test('given expected fieldToRecipeValueMap and fieldtypes, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedFieldToRecipeValue = snowFakerService.getMapSalesforceFieldToFakerValue();
+            for ( const fieldTypeKey in expectedFieldToRecipeValue ) {
+                const recipeValue = expectedFieldToRecipeValue[fieldTypeKey];
+                const actualRecipeValue = recipeServiceWithSnow.getFakeValueIfExpectedSalesforceFieldType(fieldTypeKey);
+                expect(actualRecipeValue).toBe(recipeValue);
+            }
+            
+        });
+
     });
 
 });
