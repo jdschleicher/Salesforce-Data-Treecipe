@@ -3,9 +3,7 @@ import { SnowfakeryFakerService } from '../../FakerService/SnowfakeryFakerServic
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
 
-
 import * as fs from 'fs';
-import * as path from 'path';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -32,9 +30,7 @@ jest.mock('vscode', () => ({
 
 }), { virtual: true });
 
-
 describe('Shared ConfigurationService Tests', () => {
-
 
     describe ('getExtensionConfigValue', () => {
 
@@ -92,7 +88,7 @@ describe('Shared ConfigurationService Tests', () => {
             const mockConfigFileName = 'treecipe.config.json';
             const mockTreecipeBaseDir = 'treecipe';
         
-            // // Mock method implementations
+            // Mock method implementations
             jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue(true);
         
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
