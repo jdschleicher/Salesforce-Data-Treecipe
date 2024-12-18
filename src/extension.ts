@@ -12,7 +12,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', true);
 
 	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', () => {
-		ConfigurationService.createTreecipeJSONConfigurationFile();
+		
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.initiateTreecipeConfigurationSetup();
+		
 	});
 
 	const generateTreecipe = vscode.commands.registerCommand('treecipe.generateTreecipe', () => {
