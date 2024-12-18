@@ -42,12 +42,13 @@ export class ConfigurationService {
     static getTreecipeConfigurationDetail():any {
         
         const configurationPath = this.getTreecipeConfigurationFilePath();
-        
         let configurationJSON = null;
-        try {
+        if (fs.existsSync(configurationPath)) {
             configurationJSON = fs.readFileSync(configurationPath, 'utf-8');
-        } catch(error) {
-            console.log("A CONFIGURATION FILE WAS NOT PARSED. THE CONFIG MAY NOT YET EXIST. RUN THE COMMAND INITIATE CONFIGURATION");
+        } else {
+            const error = new Error(); 
+            error.message = `Missing treecipe configuration setup at expected path of: ${ configurationPath } -- or unknown failure`; 
+            throw(error);
         }
 
         const configurationDetail = JSON.parse(configurationJSON);

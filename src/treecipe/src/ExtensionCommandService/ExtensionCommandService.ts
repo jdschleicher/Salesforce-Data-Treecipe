@@ -14,7 +14,7 @@ export class ExtensionCommandService {
 
         try {
 
-		    ConfigurationService.createTreecipeJSONConfigurationFile();
+            ConfigurationService.createTreecipeJSONConfigurationFile();
 
         } catch(error) {
 
@@ -28,17 +28,20 @@ export class ExtensionCommandService {
 
         try {
 
-            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
             let objectsInfoWrapper = new ObjectInfoWrapper();
-          
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+
             if (workspaceRoot) {
+
               const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
               const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
               const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
               const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
               const directoryProcessor = new DirectoryProcessor();
               objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
+              throw(new Error());
               vscode.window.showInformationMessage('Directory processing completed');
+            
             }
           
             const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting '2024-11-25T16-24-15'

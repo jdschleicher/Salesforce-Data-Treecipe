@@ -2,36 +2,57 @@ import * as vscode from 'vscode';
 
 export class ErrorHandlingService {
 
+    static reportIssueButton = 'Report Issue to GitHub with Stack Trace';
+    static expectedMissingConfigError = 'Missing treecipe configuration setup at expected path of:';
+
     static handleCapturedError(error:Error, executedCommand:string) {
+
+        
+        if ( error.message.startsWith(this.expectedMissingConfigError)) {
+            this.handleMissingTreecipeConfigSetup(error, executedCommand);
+        } else {
+            
+            this.handleGenericError(error, executedCommand);
+        }
+        
+    }
+    
+    static handleGenericError(error: Error, executedCommand: string) {
 
         const errorMessage = error instanceof Error ? executedCommand + ':' + error.message : `Unknown error during command: ${ executedCommand }`;
         const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
-        const reportIssueButton = 'Report Issue to GitHub with stack trace';
         const goToTroubleshootingREADMESection = "Review Troubleshooting From README";
 
         vscode.window.showErrorMessage(
 
-            `An unexpected error occurred: \n ${errorMessage}`, 
-            reportIssueButton,
+            `Error occurred during:  ${executedCommand}
+            \n 
+
+            Please select an option below:
+
+            \n
+            `, 
+            this.reportIssueButton,
             goToTroubleshootingREADMESection
 
         ).then(selection => {
 
-            if (selection === reportIssueButton) {
+            if (selection === this.reportIssueButton) {
 
                 const githubIssueBuiltTemplateUrl = this.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
                 vscode.env.openExternal(vscode.Uri.parse(githubIssueBuiltTemplateUrl));
 
             } else if ( selection === goToTroubleshootingREADMESection ) {
 
-                const directLinkToTroubleshootingSectionInREADME = "https://github.com/jdschleicher/Salesforce-Data-Treecipe#:~:text=object%2Dmeta.xml%0A%E2%94%82%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%E2%94%94%E2%94%80%E2%94%80%20...-,Troubleshooting,-%22Generate%20Treecipe%22%20not";
+                const directLinkToTroubleshootingSectionInREADME = "https://github.com/jdschleicher/Salesforce-Data-Treecipe?tab=readme-ov-file#troubleshooting";
                 vscode.env.openExternal(vscode.Uri.parse(directLinkToTroubleshootingSectionInREADME));
 
             }
 
-        });
-        
+        });    
+    
     }
+
     static buildGitHubIssueTemplateUrl(errorMessage: string, stackTrace: string):string {
         
         const issueBody = `
@@ -88,6 +109,34 @@ ${stackTrace}
 
         return githubIssueUrl;
 
+    }
+
+    static handleMissingTreecipeConfigSetup(error, executedCommand) {
+
+        const runInitiateTreecipeConfiguration = "Run Treecipe Initiation Setup";
+        vscode.window.showErrorMessage(
+
+            `
+                Expected treecipe and config file missing
+            `, 
+            runInitiateTreecipeConfiguration,
+            this.reportIssueButton
+
+        ).then(selection => {
+
+            if (selection === this.reportIssueButton) {
+                const errorMessage = error instanceof Error ? executedCommand + ':' + error.message : `Unknown error during command: ${ executedCommand }`;
+                const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
+                const githubIssueBuiltTemplateUrl = this.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
+                vscode.env.openExternal(vscode.Uri.parse(githubIssueBuiltTemplateUrl));
+
+            } else if ( selection === runInitiateTreecipeConfiguration ) {
+
+                vscode.commands.executeCommand('treecipe.initiateConfiguration');
+
+            }
+
+        });
     }
 
 

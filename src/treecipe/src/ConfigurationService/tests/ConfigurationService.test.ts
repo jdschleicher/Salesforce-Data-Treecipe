@@ -133,6 +133,7 @@ describe('Shared ConfigurationService Tests', () => {
     "dataFakerService": "snowfakery"
 }`;
 
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
             jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
 
