@@ -29,6 +29,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		generateTreecipe,
 		initiateConfiguration
 	);
+	
 }
 
 // This method is called when your extension is deactivated
