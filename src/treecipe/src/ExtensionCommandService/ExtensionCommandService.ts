@@ -39,7 +39,6 @@ export class ExtensionCommandService {
               const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
               const directoryProcessor = new DirectoryProcessor();
               objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
-              throw(new Error());
               vscode.window.showInformationMessage('Directory processing completed');
             
             }
