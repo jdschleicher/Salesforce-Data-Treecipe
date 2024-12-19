@@ -89,7 +89,7 @@ describe('Shared ConfigurationService Tests', () => {
             const mockTreecipeBaseDir = 'treecipe';
         
             // Mock method implementations
-            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue(true);
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
         
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
             jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
@@ -125,7 +125,7 @@ describe('Shared ConfigurationService Tests', () => {
             const mockConfigFileName = 'treecipe.config.json';
             const mockTreecipeBaseDir = 'treecipe';
         
-            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue(true);
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
         
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
             jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
