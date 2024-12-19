@@ -18,7 +18,8 @@ export class ExtensionCommandService {
 
         } catch(error) {
 
-            ErrorHandlingService.handleCapturedError(error, 'initiateTreecipeConfigurationSetup');
+            const commandName = 'initiateTreecipeConfigurationSetup';
+            ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
 
@@ -56,7 +57,8 @@ export class ExtensionCommandService {
 
         } catch (error) {
 
-            ErrorHandlingService.handleCapturedError(error, 'generateRecipeFromConfigurationDetail' );
+            const commandName = 'generateRecipeFromConfigurationDetail';
+            ErrorHandlingService.handleCapturedError(error, commandName);
             
         }
       
