@@ -6,7 +6,6 @@ export class ErrorHandlingService {
     static expectedMissingConfigError = 'Missing treecipe configuration setup at expected path of:';
 
     static handleCapturedError(error:Error, executedCommand:string) {
-
         
         if ( error.message.startsWith(this.expectedMissingConfigError)) {
             this.handleMissingTreecipeConfigSetup(error, executedCommand);
@@ -115,7 +114,6 @@ ${stackTrace}
 
         const runInitiateTreecipeConfiguration = "Run Treecipe Initiation Setup";
         vscode.window.showErrorMessage(
-
             `
                 Expected treecipe and config file missing
             `, 
@@ -138,6 +136,5 @@ ${stackTrace}
 
         });
     }
-
 
 }
