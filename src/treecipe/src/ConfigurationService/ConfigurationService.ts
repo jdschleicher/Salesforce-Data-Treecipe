@@ -60,6 +60,7 @@ export class ConfigurationService {
         const treecipeConfigurationKey = "treecipeConfigurationPath";
         let configurationPath = this.getExtensionConfigValue(treecipeConfigurationKey);
         if ( !configurationPath ) {
+
             const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
             const configurationFileName = this.getTreecipeConfigurationFileName();
             const configurationDirectory = this.getDefaultTreecipeConfigurationFolderName();
@@ -79,26 +80,18 @@ export class ConfigurationService {
 
         const expectedObjectsPath = await VSCodeWorkspaceService.promptForObjectsPath(workspaceRoot);
         if (!expectedObjectsPath) {
+            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
             return;
         };
 
-        let selectedDataFakerService = null;
-        if ( this.getExtensionConfigValue('useSnowfakeryAsDefault')) {
-            selectedDataFakerService = "snowfakery";
-        } else {
-            selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
-            if (!selectedDataFakerService) {
-                return;
-            };
-        }
-
-        const configurationFileName = this.getTreecipeConfigurationFileName();
         const configurationDetail = {
-            salesforceObjectsPath: `${expectedObjectsPath}`,
-            dataFakerService: selectedDataFakerService
+            // REPLACE ALL BACKSLASHES WITH FORWARD SLASHES IN PATH SO THERE IS CONSISTENT VALUE AND READ DIRECTORY WORKS AS EXPECTED
+            salesforceObjectsPath: `${expectedObjectsPath.replace(/\\/g, "/")}`,
+            dataFakerService: await this.getDataFakerService()
         };
 
         const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
+        
         const expectedTreecipeDirectoryPath = path.join(workspaceRoot, treecipeBaseDirectory);
 
         if (!fs.existsSync(expectedTreecipeDirectoryPath)) {
@@ -106,9 +99,29 @@ export class ConfigurationService {
         }
 
         const configurationJsonData = JSON.stringify(configurationDetail, null, 4);
-        const pathToCreateConfigurationFile = `${expectedTreecipeDirectoryPath}/${configurationFileName}`;
+
+        const configurationFileName = this.getTreecipeConfigurationFileName();
+
+        const pathToCreateConfigurationFile = `${ expectedTreecipeDirectoryPath}/${configurationFileName }`;
+        
         fs.writeFileSync(pathToCreateConfigurationFile, configurationJsonData);
         
+    }
+
+    static async getDataFakerService() {
+
+        let selectedDataFakerService = null;
+        if ( this.getExtensionConfigValue('useSnowfakeryAsDefault')) {
+            selectedDataFakerService = "snowfakery";
+        } else {
+            selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+            if (!selectedDataFakerService) {
+                // NO SELECTION MADE
+                return;
+            };
+        }
+
+        return selectedDataFakerService;
     }
 
     static getDefaultTreecipeConfigurationFolderName() {
