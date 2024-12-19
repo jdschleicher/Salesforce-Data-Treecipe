@@ -66,6 +66,7 @@ https://github.com/user-attachments/assets/4b904d36-3c3c-401c-a047-8387800e504e
 After running **Initiate Configuration File**, you will be prompted to choose the **source directory** in your codebase where Salesforce objects are stored. This directory must be in **source format**.
 
 ### Example Directory Structure:
+
 ```plaintext
 my-project/
 ├── force-app/
@@ -82,9 +83,14 @@ my-project/
 
 ## Troubleshooting
 
-- **"Generate Treecipe" not working**: Ensure that you’ve successfully run **Initiate Configuration File** and selected a valid Salesforce objects directory. The **Generate Treecipe** command depends on the configuration file being present and properly set up.
+See below for troubleshooting when specific commands are not working:
+
+- ** "Salesforce Treecipe - Generate Treecipe - generateRecipeFromConfigurationDetail" **: 
+  - Ensure that you’ve successfully run **Initiate Configuration File** and selected a valid Salesforce objects directory. The **Generate Treecipe** command depends on the configuration file being present and properly set up.
+  - Ensure the captured objects path in the **treecipe.config.json** has forward-slashes. In windows machines the path can be generated with double back-slashes and would need to be replaced with one forward-slash
   
-- **Missing Configuration File**: If the configuration file is missing, the **Generate Treecipe** command will prompt you to initiate the configuration first.
+- ** Salesforce Treecipe: Initiate Configuration File - initiateTreecipeConfigurationSetup **: 
+  - Ensure an expected project directory was selected when prompted
 
 ---
 

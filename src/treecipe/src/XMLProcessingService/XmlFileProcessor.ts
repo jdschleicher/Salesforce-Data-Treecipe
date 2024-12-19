@@ -19,9 +19,9 @@ export class XmlFileProcessor {
           fieldXML = result;
       });
 
-      console.log();
-      const typeValue = fieldXML.CustomField.type[0];
-      const fieldLabel = fieldXML.CustomField.label[0];
+      const typeValue = fieldXML?.CustomField?.type?.[0] ?? "AUTO_GENERATED";
+      const fieldLabel = fieldXML?.CustomField?.label?.[0] ?? "AUTO_GENERATED";
+      
       const apiName = fieldXML.CustomField.fullName[0];
 
       xmlFieldDetail.fieldType = typeValue;

@@ -118,6 +118,42 @@ describe('Shared ConfigurationService Tests', () => {
 
           });
 
+          test('given mocked path value with windows backslashes in path, the expected path is set in treecipe configuration json file', async () => {
+            
+            const mockWorkspaceRoot = '/mock/workspace/root';
+            const mockObjectsPath = '\\mock\\objects\\path';
+            const mockConfigFileName = 'treecipe.config.json';
+            const mockTreecipeBaseDir = 'treecipe';
+        
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue(true);
+        
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
+                return mockObjectsPath;
+            });
+
+            
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+            jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
+            jest.spyOn(fs, 'writeFileSync').mockReturnValue();
+
+            await ConfigurationService.createTreecipeJSONConfigurationFile();
+        
+            // Assertions
+            expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
+            expect(VSCodeWorkspaceService.promptForObjectsPath).toHaveBeenCalledWith(mockWorkspaceRoot);
+
+            expect(fs.mkdirSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}`);
+            expect(fs.existsSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}`);
+
+            const expectedConfigJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery"
+}`;
+            expect(fs.writeFileSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}/${mockConfigFileName}`, expectedConfigJson);
+
+          });
+
     });
 
     describe('getTreecipeConfigurationDetail', () => {
@@ -133,6 +169,7 @@ describe('Shared ConfigurationService Tests', () => {
     "dataFakerService": "snowfakery"
 }`;
 
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
             jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
 

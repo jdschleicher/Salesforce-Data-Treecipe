@@ -23,17 +23,17 @@ export class FieldInfo {
   }
 
   public static create(
-    objectName: string, 
-    fieldName: string,
-    fieldLabel: string,
-    type: string,
-    picklistValues: IPicklistValue[],
-    controllingField: string,
-    referenceTo: string,
-    recipeValue ) : FieldInfo {
+                        objectName: string, 
+                        fieldName: string,
+                        fieldLabel: string,
+                        type: string,
+                        picklistValues: IPicklistValue[],
+                        controllingField: string,
+                        referenceTo: string,
+                        recipeValue ) : FieldInfo {
 
-      if (!objectName || !fieldName || !type) {
-        throw new Error('Invalid FieldInfo data');
+      if (!objectName || !fieldName ) {
+        throw new Error('Invalid FieldInfo data: FieldInfo.create()');
       }
 
       return new FieldInfo(

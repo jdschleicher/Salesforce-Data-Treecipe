@@ -1,4 +1,9 @@
-## Pull Request Description
+### Motivation and Context
+[Why is this change required? What problem does it solve? If it fixes an open issue, please link to the issue here]
+
+### What does this PR do?
+[Provide a clear and concise description of the changes in this PR]
+
 
 ### Type of Change
 - [ ] Bug fix (non-breaking change which fixes an issue)
@@ -7,11 +12,6 @@
 - [ ] Documentation update
 - [ ] Other (please describe):
 
-### What does this PR do?
-[Provide a clear and concise description of the changes in this PR]
-
-### Motivation and Context
-[Why is this change required? What problem does it solve? If it fixes an open issue, please link to the issue here]
 
 ### How Has This Been Tested?
 - [ ] Tested on Windows

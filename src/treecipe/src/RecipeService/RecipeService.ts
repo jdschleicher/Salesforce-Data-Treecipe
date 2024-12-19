@@ -56,7 +56,7 @@ export class RecipeService {
             //         type: 'lookup'
             //     };
 
-            // case 'lookiup':
+            // case 'lookup':
 
             //     return 'test';
                 
