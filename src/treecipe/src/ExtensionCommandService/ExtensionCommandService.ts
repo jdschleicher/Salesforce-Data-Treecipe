@@ -8,7 +8,6 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 export class ExtensionCommandService {
-	
     
     async initiateTreecipeConfigurationSetup() {
 
@@ -40,7 +39,7 @@ export class ExtensionCommandService {
               const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
               const directoryProcessor = new DirectoryProcessor();
               objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
-              vscode.window.showInformationMessage('Directory processing completed');
+              vscode.window.showInformationMessage('Treecipe YAML generated successfully');
             
             }
           
