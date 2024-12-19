@@ -110,11 +110,10 @@ export class DirectoryProcessor {
 
   }
 
-  getLastSegmentFromPath(path: string): string {
-    const segments = path.split('/');
-    return segments[segments.length - 1];
+  getLastSegmentFromPath(filePath: string): string {
+    return path.basename(filePath);
   }
-
+  
 }
 
 
