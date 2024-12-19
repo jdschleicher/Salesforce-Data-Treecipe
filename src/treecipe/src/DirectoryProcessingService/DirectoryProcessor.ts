@@ -20,7 +20,6 @@ export class DirectoryProcessor {
 
     const entries = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
-
     for (const [entryName, entryType] of entries) {
 
       const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
