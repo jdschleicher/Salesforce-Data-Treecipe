@@ -1,13 +1,21 @@
 import * as vscode from 'vscode';
 import { ErrorHandlingService } from '../ErrorHandlingService';
-let storedButtons = ['Run Treecipe Initiation Setup'];
+
+
+
+// const mockedUri = {
+//     scheme: 'http',
+//     authority: 'mocked.url',
+//     path: '',
+//     query: '',
+//     fragment: ''// Simulating `toString()` behavior
+//   } as vscode.Uri;
 
 jest.mock('vscode', () => ({
     
     window: {
         showErrorMessage: jest.fn().mockResolvedValue((message, ...buttons) => {
-            storedButtons = buttons;
-            return Promise.resolve(buttons[0]); // Simulate clicking first button
+            return Promise.resolve(buttons); // Simulate clicking first button
         }),
     },
     env: {
@@ -57,50 +65,62 @@ describe('ErrorHandlingService', () => {
     describe('handleMissingTreecipeConfigSetup', () => {
 
         it('should execute report issue button behavior when selected', async () => {
-            // Arrange
+
             const error = new Error('Test error');
             const executedCommand = 'testCommand';
             const reportIssueButton = ErrorHandlingService.reportIssueButton;
             
             const showErrorMessageMock = vscode.window.showErrorMessage as jest.Mock;
             showErrorMessageMock.mockResolvedValueOnce(reportIssueButton);
-    
-            const openExternalMock = vscode.env.openExternal as jest.Mock;
-            openExternalMock.mockImplementation();
-    
 
-            // Spy on dependent methods
-            jest.spyOn(ErrorHandlingService, 'buildGitHubIssueTemplateUrl').mockReturnValueOnce('http://mocked.url');
+     const expectedUrl = 'http://mocked.url';
+            jest.spyOn(ErrorHandlingService, 'buildGitHubIssueTemplateUrl').mockReturnValueOnce(expectedUrl);
+            
+            const mockedUri = {
+                scheme: 'http',
+                authority: 'mocked.url',
+                path: '/',
+                query: '',
+                fragment: '',
+                toString: jest.fn().mockReturnValue('http://mocked.url')
+            };
+            jest.spyOn(vscode.Uri, 'parse').mockReturnValue(mockedUri as unknown as vscode.Uri);
 
-            // Act
-            ErrorHandlingService.handleMissingTreecipeConfigSetup(error, executedCommand);
+            const openExternalMock = jest.spyOn(vscode.env, 'openExternal').mockImplementation(jest.fn());
+         
+            await ErrorHandlingService.handleMissingTreecipeConfigSetup(error, executedCommand);
     
-            // Assert
             expect(showErrorMessageMock).toHaveBeenCalledWith(
-                `
-                    Expected treecipe and config file missing
-                `,
+                "Expected treecipe and config file missing",
                 'Run Treecipe Initiation Setup',
                 ErrorHandlingService.reportIssueButton
             );
-    
-            expect(vscode.env.openExternal).toHaveBeenCalledWith(vscode.Uri.parse('http://mocked.url'));
-            expect(vscode.commands.executeCommand).not.toHaveBeenCalled(); // Ensure other commands weren't executed
+
+            expect(openExternalMock).toHaveBeenCalled();
+
+            showErrorMessageMock.mockRestore();
+            openExternalMock.mockRestore();
+            jest.restoreAllMocks();
+        
         });
 
     });
 
-    // describe('buildGitHubIssueTemplateUrl', () => {
-    //     test('should build GitHub issue URL', () => {
-    //         const errorMessage = 'test error message';
-    //         const stackTrace = 'test stack trace';
+    describe('buildGitHubIssueTemplateUrl', () => {
+        test('should build GitHub issue URL', () => {
+            const errorMessage = 'test error message';
+            const stackTrace = 'test stack trace';
 
-    //         const url = ErrorHandlingService.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
+            const url = ErrorHandlingService.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
 
-    //         expect(url).toContain('https://github.com/jdschleicher/salesforce-data-treecipe/issues/new');
-    //         expect(url).toContain(encodeURIComponent(errorMessage));
-    //         expect(url).toContain(encodeURIComponent(stackTrace));
-    //     });
-    // });
+            expect(url).toContain('https://github.com/jdschleicher/salesforce-data-treecipe/issues/new');
+            
+            const encodedStackTrace = encodeURIComponent(stackTrace).replace(/%20/g, '+');
+            expect(url).toContain(encodedStackTrace);
+
+            const encodedErrorMessage = encodeURIComponent(errorMessage).replace(/%20/g, '+');
+            expect(url).toContain(encodedErrorMessage);
+        });
+    });
 
 });

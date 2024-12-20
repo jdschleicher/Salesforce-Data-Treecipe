@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { Uri } from 'vscode';
 
 export class ErrorHandlingService {
 
@@ -114,16 +115,14 @@ ${stackTrace}
 
         const runInitiateTreecipeConfiguration = "Run Treecipe Initiation Setup";
         vscode.window.showErrorMessage(
-            `
-                Expected treecipe and config file missing
-            `, 
+            "Expected treecipe and config file missing",
             runInitiateTreecipeConfiguration,
             this.reportIssueButton
 
         ).then(selection => {
 
             if (selection === this.reportIssueButton) {
-                
+
                 const errorMessage = error instanceof Error ? executedCommand + ':' + error.message : `Unknown error during command: ${ executedCommand }`;
                 const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
                 const githubIssueBuiltTemplateUrl = this.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
