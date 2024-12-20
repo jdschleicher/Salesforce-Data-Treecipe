@@ -21,7 +21,7 @@ jest.mock('vscode', () => ({
       }))
   },
   window: {
-      showErrorMessage: jest.fn(),
+      showWarningMessage: jest.fn(),
       showQuickPick: jest.fn()
   },
   ThemeIcon: jest.fn().mockImplementation(
@@ -71,7 +71,7 @@ describe('Shared DirectoryProcessor Testign Context', () => {
     
   
       jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
-      jest.spyOn(vscode.window, 'showErrorMessage').mockImplementation();
+      jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
       jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
 
       let directoryProcessor = new DirectoryProcessor();
