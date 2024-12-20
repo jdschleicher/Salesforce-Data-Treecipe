@@ -1,9 +1,16 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { DirectoryProcessor } from "../DirectoryProcessor";
 
+import * as vscode from 'vscode';
+import { MockDirectoryService } from "./MockObjectsDirectory/MockDirectoryService";
+
+
 jest.mock('vscode', () => ({
   workspace: {
-      workspaceFolders: undefined
+      workspaceFolders: undefined,
+      fs: { 
+          readDirectory: jest.fn()
+      }
   },
   Uri: {
       file: (path: string) => ({ fsPath: path })
@@ -21,7 +28,7 @@ jest.mock('vscode', () => ({
 
 describe('Shared DirectoryProcessor Testign Context', () => {
     
-    describe('given expected didddrectory of mock objects, returns expected folder structure', () => {
+    describe('getLastSegmentFromPath', () => {
   
       test('given expected directory path segments, returns expected api name at end of path', () => {
 
@@ -38,6 +45,38 @@ describe('Shared DirectoryProcessor Testign Context', () => {
       });
     
     });
+
+    describe('processDirectory', () => {
+
+      const mockReadDirectory = jest.fn();
+
+      beforeEach(() => {
+        // Clear mock before each test
+        mockReadDirectory.mockReset();
+      });
+
+      it('should read directory contents', async () => {
+        const mockFiles = [
+          ['file1.txt', 1],  // FileType.File
+          ['folder1', 2],    // FileType.Directory
+          ['link1', 64]      // FileType.SymbolicLink
+        ];
+        mockReadDirectory.mockResolvedValue(mockFiles);
+    
+        // Example usage:
+        const uri = vscode.Uri.file('/test/path');
+
+        jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+
+        const result = await vscode.workspace.fs.readDirectory(uri);
+        
+        expect(result).toEqual(mockFiles);
+        expect(mockReadDirectory).toHaveBeenCalledWith(uri);
+      });
+      
+  });
+
+
   
 });
 
