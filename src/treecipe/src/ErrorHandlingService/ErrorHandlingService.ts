@@ -123,6 +123,7 @@ ${stackTrace}
         ).then(selection => {
 
             if (selection === this.reportIssueButton) {
+                
                 const errorMessage = error instanceof Error ? executedCommand + ':' + error.message : `Unknown error during command: ${ executedCommand }`;
                 const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
                 const githubIssueBuiltTemplateUrl = this.buildGitHubIssueTemplateUrl(errorMessage, stackTrace);
