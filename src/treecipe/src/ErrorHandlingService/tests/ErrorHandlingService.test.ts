@@ -1,16 +1,6 @@
 import * as vscode from 'vscode';
 import { ErrorHandlingService } from '../ErrorHandlingService';
 
-
-
-// const mockedUri = {
-//     scheme: 'http',
-//     authority: 'mocked.url',
-//     path: '',
-//     query: '',
-//     fragment: ''// Simulating `toString()` behavior
-//   } as vscode.Uri;
-
 jest.mock('vscode', () => ({
     
     window: {
@@ -120,7 +110,9 @@ describe('ErrorHandlingService', () => {
 
             const encodedErrorMessage = encodeURIComponent(errorMessage).replace(/%20/g, '+');
             expect(url).toContain(encodedErrorMessage);
+            
         });
+
     });
 
 });
