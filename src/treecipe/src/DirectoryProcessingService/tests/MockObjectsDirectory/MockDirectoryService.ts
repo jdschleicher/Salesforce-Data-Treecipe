@@ -64,11 +64,11 @@ export class MockDirectoryService {
     static getVSCodeFileTypeMockedDirectories() {
 
       const rawData = JSON.parse(this.getExpectedMockDirectoryStructure());
-      // const mockFileDirectories = rawData.map(entry => [
-      //     entry.name,
-      //     FileType.Directory
-      // ]);
-      return rawData;
+      const mockFileDirectories = rawData.map(entry => [
+          entry.name,
+          FileType.Directory
+      ]);
+      return mockFileDirectories;
   }
   
 

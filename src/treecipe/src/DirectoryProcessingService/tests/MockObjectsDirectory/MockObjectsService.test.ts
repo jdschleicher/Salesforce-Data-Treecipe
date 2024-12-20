@@ -1,9 +1,28 @@
 import * as fs from 'fs';
 import { MockDirectoryService } from './MockDirectoryService';
 
+jest.mock('vscode', () => ({
+    
+  window: {
+      showErrorMessage: jest.fn().mockResolvedValue((message, ...buttons) => {
+          return Promise.resolve(buttons);
+      }),
+  },
+  env: {
+      openExternal: jest.fn(),
+  },
+  Uri: {
+      parse: jest.fn((url) => ({ url })),
+  },
+  commands: {
+      executeCommand: jest.fn(),
+  },
+}), { virtual: true });
+
+
 describe('Confirm Mock Structure Consistent', () => {
 
-    it('given expected directory of mock objects, returns expected folder structure', async() => {
+    test('given expected directory of mock objects, returns expected folder structure', async() => {
     
       let mockObjectsDirectoryPath = 'src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects';   
   

@@ -19,45 +19,56 @@ export class DirectoryProcessor {
   async processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
 
     const entries = await vscode.workspace.fs.readDirectory(directoryPathUri);
+    if (entries === undefined || entries.length === 0) {
+      // base case for recursion -- prevents empty directories causing null reference errors
+      vscode.window.showWarningMessage('No entries found in directory: ' + directoryPathUri.fsPath);
 
-    for (const [entryName, entryType] of entries) {
+    } else {
 
-      const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
+      for (const [entryName, entryType] of entries) {
 
-      if (entryType === vscode.FileType.Directory) {
-
-        if (entryName === 'fields') {
-
-          let parentObjectdirectoryPathUri = directoryPathUri.fsPath;
-          let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
-          objectInfoWrapper.addKeyToObjectInfoMap(objectName);
-
-          let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName );
-          objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
-
-          if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
-            objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName);
+        const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
+  
+        if (entryType === vscode.FileType.Directory) {
+  
+          if (entryName === 'fields') {
+  
+            let parentObjectdirectoryPathUri = directoryPathUri.fsPath;
+            let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
+            objectInfoWrapper.addKeyToObjectInfoMap(objectName);
+  
+            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName );
+            objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
+  
+            if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
+              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName);
+            }
+  
+            fieldsInfo.forEach((fieldDetail) => {
+  
+              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
+                objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe,
+                fieldDetail.recipeValue,
+                fieldDetail.fieldName
+              );
+  
+            });
+  
+            objectInfoWrapper.combinedRecipes += objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe;
+            objectInfoWrapper.combinedRecipes += "\n";
+  
+          } else {
+  
+            await this.processDirectory(fullPath, objectInfoWrapper);
+  
           }
-
-          fieldsInfo.forEach((fieldDetail) => {
-
-            objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
-              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe,
-              fieldDetail.recipeValue,
-              fieldDetail.fieldName
-            );
-
-          });
-
-          objectInfoWrapper.combinedRecipes += objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe;
-          objectInfoWrapper.combinedRecipes += "\n";
-
-        } else {
-          await this.processDirectory(fullPath, objectInfoWrapper);
+  
         }
+  
       }
 
     }
+    
 
     return objectInfoWrapper;
 

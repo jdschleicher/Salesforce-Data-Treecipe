@@ -26,7 +26,12 @@ jest.mock('vscode', () => ({
   },
   ThemeIcon: jest.fn().mockImplementation(
       (name) => ({ id: name })
-  )
+  ),
+  FileType: {
+      Directory: 2,
+      File: 1,
+      SymbolicLink: 64
+  }
 
 }), { virtual: true });
 
@@ -53,34 +58,32 @@ describe('Shared DirectoryProcessor Testign Context', () => {
 
   describe('processDirectory', () => {
 
-    const mockReadDirectory = jest.fn();
-
-    beforeEach(() => {
-      // Clear mock before each test
-      mockReadDirectory.mockReset();
-    });
-
     test('should read directory contents', async () => {
 
-      const jsonMockedDirectoryStructure = MockDirectoryService.getExpectedMockDirectoryStructure();
-      const mockFiles = [
-        ['file1.txt', 1],  // FileType.File
-        ['folder1', 2],    // FileType.Directory
-        ['link1', 64]      // FileType.SymbolicLink
+      const jsonMockedDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedDirectories();
+      const emptyDirectory = [
+        [ 'empty', vscode.FileType.File ]
       ];
-      mockReadDirectory.mockResolvedValue(jsonMockedDirectoryStructure);
-  
-      const uri = vscode.Uri.file('/fake/path');
 
+      const mockReadDirectory = jest.fn()
+                                  .mockResolvedValueOnce(jsonMockedDirectoryStructure) // First call returns directories
+                                  .mockResolvedValueOnce(emptyDirectory); // Second call returns empty, simulating base case
+    
+  
       jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+      jest.spyOn(vscode.window, 'showErrorMessage').mockImplementation();
       jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
 
       let directoryProcessor = new DirectoryProcessor();
       let objectInfoWrapper = new ObjectInfoWrapper();
+      const uri = vscode.Uri.file('/fake/path');
+
+
       const result = await directoryProcessor.processDirectory(uri, objectInfoWrapper);
       
-      expect(result).toEqual(jsonMockedDirectoryStructure);
-      // expect(mockReadDirectory).toHaveBeenCalledWith(uri);
+      expect(result).toEqual(objectInfoWrapper); // Expected result matches mock
+      expect(mockReadDirectory).toHaveBeenCalledWith(uri); 
+      expect(mockReadDirectory).toHaveBeenCalledTimes(10); 
 
     });
     
