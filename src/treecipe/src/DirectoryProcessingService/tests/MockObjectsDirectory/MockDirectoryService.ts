@@ -1,3 +1,4 @@
+import { FileType } from "vscode";
 
 export class MockDirectoryService {
 
@@ -59,5 +60,16 @@ export class MockDirectoryService {
       return expectedMockDirectories;
     
     }
+
+    static getVSCodeFileTypeMockedDirectories() {
+
+      const rawData = JSON.parse(this.getExpectedMockDirectoryStructure());
+      // const mockFileDirectories = rawData.map(entry => [
+      //     entry.name,
+      //     FileType.Directory
+      // ]);
+      return rawData;
+  }
+  
 
 }
