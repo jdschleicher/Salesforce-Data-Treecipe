@@ -5,7 +5,7 @@ jest.mock('vscode', () => ({
     
     window: {
         showErrorMessage: jest.fn().mockResolvedValue((message, ...buttons) => {
-            return Promise.resolve(buttons); // Simulate clicking first button
+            return Promise.resolve(buttons);
         }),
     },
     env: {
@@ -63,7 +63,7 @@ describe('ErrorHandlingService', () => {
             const showErrorMessageMock = vscode.window.showErrorMessage as jest.Mock;
             showErrorMessageMock.mockResolvedValueOnce(reportIssueButton);
 
-     const expectedUrl = 'http://mocked.url';
+            const expectedUrl = 'http://mocked.url';
             jest.spyOn(ErrorHandlingService, 'buildGitHubIssueTemplateUrl').mockReturnValueOnce(expectedUrl);
             
             const mockedUri = {
@@ -110,7 +110,7 @@ describe('ErrorHandlingService', () => {
 
             const encodedErrorMessage = encodeURIComponent(errorMessage).replace(/%20/g, '+');
             expect(url).toContain(encodedErrorMessage);
-            
+
         });
 
     });
