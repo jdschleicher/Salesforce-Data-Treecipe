@@ -17,9 +17,15 @@
 			}
 		},
 		{
-            "label": "RESET JEST TEST AND RUN COVERAGE",
+            "label": "RESET JEST TEST AND GET COVERAGE SUMMARY",
             "type": "shell",
             "command": "pwsh ./developmentSupportAndScripts/resetAndInitiateJestCoverageTest.ps1",
+            "problemMatcher": []
+        },
+		{
+            "label": "RESET JEST TEST AND OPEN COVERAGE REPORT",
+            "type": "shell",
+            "command": "pwsh ./developmentSupportAndScripts/resetAndRunCoverageReport.ps1",
             "problemMatcher": []
         },
 	]
