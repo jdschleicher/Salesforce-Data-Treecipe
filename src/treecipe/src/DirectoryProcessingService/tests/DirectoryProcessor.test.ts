@@ -3,6 +3,8 @@ import { DirectoryProcessor } from "../DirectoryProcessor";
 
 import * as vscode from 'vscode';
 import { MockDirectoryService } from "./MockObjectsDirectory/MockDirectoryService";
+import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
+import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
 
 
 jest.mock('vscode', () => ({
@@ -13,7 +15,10 @@ jest.mock('vscode', () => ({
       }
   },
   Uri: {
-      file: (path: string) => ({ fsPath: path })
+      file: (path: string) => ({ fsPath: path }),
+      joinPath: jest.fn().mockImplementation((baseUri, ...pathSegments) => ({
+        fsPath: `${baseUri.fsPath}/${pathSegments.join('/')}`.replace(/\/+/g, '/'), // Ensure no double slashes
+      }))
   },
   window: {
       showErrorMessage: jest.fn(),
@@ -27,53 +32,58 @@ jest.mock('vscode', () => ({
 
 
 describe('Shared DirectoryProcessor Testign Context', () => {
-    
-    describe('getLastSegmentFromPath', () => {
-  
-      test('given expected directory path segments, returns expected api name at end of path', () => {
 
-        jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
-        
-        const expectedObjectApiName = 'objectApiName';
-        let mockObjectsDirectoryPath = `src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects/${expectedObjectApiName}`;   
-        
-        let directoryProcessor = new DirectoryProcessor();
-        let actualLastPathSegmentValue = directoryProcessor.getLastSegmentFromPath(mockObjectsDirectoryPath);
-        
-        expect(actualLastPathSegmentValue).toEqual(expectedObjectApiName);
+  describe('getLastSegmentFromPath', () => {
+
+    test('given expected directory path segments, returns expected api name at end of path', () => {
+
+      jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
       
-      });
+      const expectedObjectApiName = 'objectApiName';
+      let mockObjectsDirectoryPath = `src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects/${expectedObjectApiName}`;   
+      
+      let directoryProcessor = new DirectoryProcessor();
+      let actualLastPathSegmentValue = directoryProcessor.getLastSegmentFromPath(mockObjectsDirectoryPath);
+      
+      expect(actualLastPathSegmentValue).toEqual(expectedObjectApiName);
     
     });
+  
+  });
 
-    describe('processDirectory', () => {
+  describe('processDirectory', () => {
 
-      const mockReadDirectory = jest.fn();
+    const mockReadDirectory = jest.fn();
 
-      beforeEach(() => {
-        // Clear mock before each test
-        mockReadDirectory.mockReset();
-      });
+    beforeEach(() => {
+      // Clear mock before each test
+      mockReadDirectory.mockReset();
+    });
 
-      it('should read directory contents', async () => {
-        const mockFiles = [
-          ['file1.txt', 1],  // FileType.File
-          ['folder1', 2],    // FileType.Directory
-          ['link1', 64]      // FileType.SymbolicLink
-        ];
-        mockReadDirectory.mockResolvedValue(mockFiles);
-    
-        // Example usage:
-        const uri = vscode.Uri.file('/test/path');
+    test('should read directory contents', async () => {
 
-        jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+      const jsonMockedDirectoryStructure = MockDirectoryService.getExpectedMockDirectoryStructure();
+      const mockFiles = [
+        ['file1.txt', 1],  // FileType.File
+        ['folder1', 2],    // FileType.Directory
+        ['link1', 64]      // FileType.SymbolicLink
+      ];
+      mockReadDirectory.mockResolvedValue(jsonMockedDirectoryStructure);
+  
+      const uri = vscode.Uri.file('/fake/path');
 
-        const result = await vscode.workspace.fs.readDirectory(uri);
-        
-        expect(result).toEqual(mockFiles);
-        expect(mockReadDirectory).toHaveBeenCalledWith(uri);
-      });
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
+
+      let directoryProcessor = new DirectoryProcessor();
+      let objectInfoWrapper = new ObjectInfoWrapper();
+      const result = await directoryProcessor.processDirectory(uri, objectInfoWrapper);
       
+      expect(result).toEqual(jsonMockedDirectoryStructure);
+      // expect(mockReadDirectory).toHaveBeenCalledWith(uri);
+
+    });
+    
   });
 
 
