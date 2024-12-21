@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { MockDirectoryService } from "./MockObjectsDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
+import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 
 
 jest.mock('vscode', () => ({
@@ -58,17 +59,11 @@ describe('Shared DirectoryProcessor Testign Context', () => {
 
   describe('processDirectory', () => {
 
-    test('should read directory contents', async () => {
+    test('given mocked directory structure with expected count of 10 fake paths, recursive function gets called 10 times', async () => {
 
       const jsonMockedDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedDirectories();
-      const emptyDirectory = [
-        [ 'empty', vscode.FileType.File ]
-      ];
 
-      const mockReadDirectory = jest.fn()
-                                  .mockResolvedValueOnce(jsonMockedDirectoryStructure) // First call returns directories
-                                  .mockResolvedValueOnce(emptyDirectory); // Second call returns empty, simulating base case
-    
+      const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedDirectoryStructure);
   
       jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
       jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
@@ -78,15 +73,36 @@ describe('Shared DirectoryProcessor Testign Context', () => {
       let objectInfoWrapper = new ObjectInfoWrapper();
       const uri = vscode.Uri.file('/fake/path');
 
-
       const result = await directoryProcessor.processDirectory(uri, objectInfoWrapper);
-      
-      expect(result).toEqual(objectInfoWrapper); // Expected result matches mock
+    
+      expect(result).toEqual(objectInfoWrapper);  // the objectInfoWrapper for this test should be nothing but initialized
       expect(mockReadDirectory).toHaveBeenCalledWith(uri); 
       expect(mockReadDirectory).toHaveBeenCalledTimes(10); 
 
     });
+
+  });
+
+  describe('buildFieldInfoByXMLContent', () => {                  
+
+    test('given mocked field picklist xml content, returns expected field info object', async() => {
+
+      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
+      let directoryProcessor = new DirectoryProcessor();
+
+      const picklistXmlContent = XMLMarkupMockService.getPicklistFieldTypeXMLMarkup();
+      const fakeObjectApiName = 'Demming';
+      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(picklistXmlContent, fakeObjectApiName);
+
+      const expectedFieldInfo = XMLMarkupMockService.getPicklistXMLFieldDetail();
+      expectedFieldInfo.apiName = fakeObjectApiName;
+      const expectedRecipeInfo = "${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}";
     
+      expect(actualFieldInfo).toEqual(expectedFieldInfo);
+    
+    });
+
+  
   });
 
 
