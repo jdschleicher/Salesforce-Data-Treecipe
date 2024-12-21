@@ -98,7 +98,7 @@ export class DirectoryProcessor {
 
   }
 
-  async buildFieldInfoByXMLContent(xmlContent: string, associatedObjectName: string) {
+  async buildFieldInfoByXMLContent(xmlContent: string, associatedObjectName: string):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
     let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail);                                                        

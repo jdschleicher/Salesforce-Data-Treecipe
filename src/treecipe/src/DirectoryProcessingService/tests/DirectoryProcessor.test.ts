@@ -85,21 +85,21 @@ describe('Shared DirectoryProcessor Testign Context', () => {
 
   describe('buildFieldInfoByXMLContent', () => {                  
 
-    test('given mocked field picklist xml content, returns expected field info object', async() => {
+    test('given mocked text xml content, returns expected field info object', async() => {
 
       jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
       let directoryProcessor = new DirectoryProcessor();
 
-      const picklistXmlContent = XMLMarkupMockService.getPicklistFieldTypeXMLMarkup();
+      const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';
-      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(picklistXmlContent, fakeObjectApiName);
+      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName);
 
-      const expectedFieldInfo = XMLMarkupMockService.getPicklistXMLFieldDetail();
-      expectedFieldInfo.apiName = fakeObjectApiName;
-      const expectedRecipeInfo = "${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}";
+      const expectedFieldInfo = XMLMarkupMockService.getTextXMLFieldDetail();
     
-      expect(actualFieldInfo).toEqual(expectedFieldInfo);
-    
+      // ENSURE LABEL AND FIELD API NAME ARE AS EXPECTED, OTHER VALIDATION FUNCTIONALITY HANDLES RECIPE VALUE ASSIGNMENTS
+      expect(actualFieldInfo.fieldLabel).toEqual(expectedFieldInfo.fieldLabel); 
+      expect(actualFieldInfo.fieldName).toEqual(expectedFieldInfo.apiName);
+
     });
 
   
