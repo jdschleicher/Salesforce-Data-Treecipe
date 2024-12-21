@@ -68,7 +68,6 @@ export class DirectoryProcessor {
       }
 
     }
-    
 
     return objectInfoWrapper;
 
