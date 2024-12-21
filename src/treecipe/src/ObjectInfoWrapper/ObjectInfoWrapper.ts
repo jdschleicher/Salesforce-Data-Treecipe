@@ -1,6 +1,4 @@
-import { FieldInfo } from "./FieldInfo";
 import { ObjectInfo } from "./ObjectInfo";
-import { RelationshipService } from "../RelationshipService/RelationshipService";
 
 export class ObjectInfoWrapper {
   
