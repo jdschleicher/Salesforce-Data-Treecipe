@@ -1,7 +1,5 @@
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import * as xml2js from 'xml2js';
-import * as fs from 'fs';
-
 import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
 export class XmlFileProcessor {
