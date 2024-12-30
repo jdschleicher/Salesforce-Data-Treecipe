@@ -75,12 +75,17 @@ export class DirectoryProcessor {
 
   async processFieldsDirectory(directoryPathUri: vscode.Uri, associatedObjectName: string): Promise<FieldInfo[]> {
 
-    const files = await vscode.workspace.fs.readDirectory(directoryPathUri);
+    /* 
+      - vscode.workspace.fs.readDirectory returns Tuple of type <FileName, and FileType enum -- click into readDirectory method to see more
+      - the variable names are intended to convey and support at-a-glance understanding w/out having to click through
+      - for additional details like what brought this detailed breakdown about and performance advantages see chatgpt discussion here: https://chatgpt.com/share/6772ab2f-76c8-800a-a60a-893985a8d264
+    */
+    const vsCodeDirectoryTuples = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
-    for (const [fileName, fileType] of files) {
+    for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
-      if (fileType === vscode.FileType.File && path.extname(fileName).toLowerCase() === '.xml') {
+      if ( this.isXMLFileType(fileName, directoryItemTypeEnum) ) {
 
         const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
         const xmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
@@ -94,6 +99,13 @@ export class DirectoryProcessor {
     }
 
     return fieldInfoDetails;
+
+  }
+
+  isXMLFileType(fileName: string, directoryItemTypeEnum: number ): boolean {
+
+    return (directoryItemTypeEnum === vscode.FileType.File 
+            && path.extname(fileName).toLowerCase() === '.xml');
 
   }
 
