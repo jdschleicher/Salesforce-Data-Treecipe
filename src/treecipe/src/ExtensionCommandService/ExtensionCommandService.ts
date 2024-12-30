@@ -39,18 +39,25 @@ export class ExtensionCommandService {
               const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
               const directoryProcessor = new DirectoryProcessor();
               objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
-              vscode.window.showInformationMessage('Treecipe YAML generated successfully');
             
             }
           
             const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting '2024-11-25T16-24-15'
             const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
-            const outputFilePath = `${workspaceRoot}/treecipe/${recipeFileName}`;
+
+            // ensure dedicated directory for generated recipes exists
+            const generatedRecipesFolderName = 'GeneratedRecipes';
+            const expectedGeneratedRecipesFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}`;
+            if (!fs.existsSync(expectedGeneratedRecipesFolderPath)) {
+                fs.mkdirSync(expectedGeneratedRecipesFolderPath);
+            }
+
+            const outputFilePath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${recipeFileName}`;
             fs.writeFile(outputFilePath, objectsInfoWrapper.combinedRecipes, (err) => {
                 if (err) {
                     throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
                 } else {
-                    console.log('Data written to file successfully');
+                    vscode.window.showInformationMessage('Treecipe YAML generated successfully');
                 }
             });
 
