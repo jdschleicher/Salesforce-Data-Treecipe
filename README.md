@@ -62,18 +62,12 @@ https://github.com/user-attachments/assets/f8401f28-a04c-4abc-a56f-c860cce96dee
 
 ---
 
-#### Generate Treecipe based on treecipe.config.jcon
+#### Generate Treecipe based on treecipe.config.jcon ( keep an eye out for OOTB fields and "REMOVE ME" lines )
 
 
 
 
 https://github.com/user-attachments/assets/fd127b55-d434-4a73-9d65-cf4172fbce6f
-
-
-
-
-#### How OOTB fields are handled generateing "REMOVE ME" lines ( kept for awareness as to what is currently in the vscode directory )
-
 
 
 
@@ -136,7 +130,17 @@ See below for troubleshooting when specific commands are not working:
 
 **NOTE:**
 
-All extension commands are wrapped in a try-catch and will prompt a "Report a Bug" that will auto-generate a GitHub Issue template for a bug that includes the stack trace. This would support quick turn-around time for known issues.
+All extension commands are wrapped in a try-catch and will prompt a "Report a Bug" that will auto-generate a GitHub Issue template for a bug that includes the stack trace. This would support quick turn-around time for known issues. 
+
+See below for a video walkthough:
+
+
+
+
+https://github.com/user-attachments/assets/dff4a3cb-e244-4959-9dec-dcf094f713c2
+
+
+
 
 ---
 
