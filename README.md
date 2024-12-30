@@ -56,6 +56,10 @@ Once your configuration file and objects directory are set up, running this comm
 
 #### Initiate Treecipe Configuration with expected Objects directory
 
+
+https://github.com/user-attachments/assets/f8401f28-a04c-4abc-a56f-c860cce96dee
+
+
 ---
 
 #### Generate Treecipe based on treecipe.config.jcon
