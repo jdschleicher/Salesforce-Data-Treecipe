@@ -52,11 +52,18 @@ Once your configuration file and objects directory are set up, running this comm
 
 ---
 
-#### VIDEO WALKTHROUGH 
+### VIDEO WALKTHROUGH 
+
+#### Initiate Treecipe Configuration with expected Objects directory
+
+---
+
+#### Generate Treecipe based on treecipe.config.jcon
 
 
 
-https://github.com/user-attachments/assets/4b904d36-3c3c-401c-a047-8387800e504e
+#### How OOTB fields are handled generateing "REMOVE ME" lines ( kept for awareness as to what is currently in the vscode directory )
+
 
 
 
@@ -105,7 +112,6 @@ my-project/
 ---
 
 ## Troubleshooting, Exception Handling, and Reporting Bugs
-
 
 
 See below for troubleshooting when specific commands are not working:
