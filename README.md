@@ -9,6 +9,21 @@
 ### 1. **Salesforce Treecipe: Initiate Configuration File**
 This command initiates the creation of a configuration file that is required before using other features of the extension.
 
+The command creates a root directory folder called "treecipe" and within it a configuration file called "treecipe.config.json". 
+
+This file is auto generated based on the selection made from the prompted "Select objects directory". 
+
+The end result treecipe.config.json file is expected to look like the below:
+
+- **salesforceObjectsPath** - will vary based on selected directory in your VS Code workspace
+- **dataFakerService** - this value must be 'snowfakery' - in a distant future release there is a chance the faker-js could be used as a value
+```json
+{
+    "salesforceObjectsPath": "./force-app/main/default/objects/",
+    "dataFakerService": "snowfakery"
+}
+```
+
 #### How It Works:
 
 - Select **"Salesforce Treecipe: Initiate Configuration File"** from the command palette.
@@ -20,6 +35,14 @@ Once the configuration file is generated, you can begin using the **Generate Tre
 
 ### 2. **Salesforce Treecipe: Generate Treecipe**
 This command generates a **Treecipe**, a structured representation of your Salesforce data, based on your configuration.
+
+It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above and generate a yaml file of objects and associated fields.
+
+**NOTE** 
+
+If this command is ran before "Initiate Configuration File" is ran, an exception will be handled and you a VSCode warning box will render showing an option to run the "Initiate Configuration File" command. 
+
+There is also an option to "Report a Bug" if the initiation command has already been completed.
 
 #### Prerequisite:
 - **Generate Treecipe** will **not** work until you have completed the configuration step and selected a **Salesforce objects directory**.
@@ -81,16 +104,23 @@ my-project/
 
 ---
 
-## Troubleshooting
+## Troubleshooting, Exception Handling, and Reporting Bugs
+
+
 
 See below for troubleshooting when specific commands are not working:
 
 - ** "Salesforce Treecipe - Generate Treecipe - generateRecipeFromConfigurationDetail" **: 
   - Ensure that you’ve successfully run **Initiate Configuration File** and selected a valid Salesforce objects directory. The **Generate Treecipe** command depends on the configuration file being present and properly set up.
   - Ensure the captured objects path in the **treecipe.config.json** has forward-slashes. In windows machines the path can be generated with double back-slashes and would need to be replaced with one forward-slash
+  - Ensure the "defaultFakerService" property in the **treecipe.config.json** is set to "snowfakery"
   
 - ** Salesforce Treecipe: Initiate Configuration File - initiateTreecipeConfigurationSetup **: 
   - Ensure an expected project directory was selected when prompted
+
+**NOTE**
+
+All extension commands are wrapped in a try-catch and will prompt a "Report a Bug" that will auto-generate a GitHub Issue template for a bug that includes the stack trace. This would support quick turn-around time for known issues.
 
 ---
 
