@@ -37,18 +37,28 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 
-describe('Shared DirectoryProcessor Testign Context', () => {
+
+describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testign Context', () => {
+
+
+  let directoryProcessor: DirectoryProcessor;
+  
+  beforeEach(() => {
+  
+    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+      .mockImplementation(() => new SnowfakeryFakerService());
+  
+    directoryProcessor = new DirectoryProcessor();
+  
+  });
 
   describe('getLastSegmentFromPath', () => {
 
     test('given expected directory path segments, returns expected api name at end of path', () => {
-
-      jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
       
       const expectedObjectApiName = 'objectApiName';
       let mockObjectsDirectoryPath = `src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects/${expectedObjectApiName}`;   
       
-      let directoryProcessor = new DirectoryProcessor();
       let actualLastPathSegmentValue = directoryProcessor.getLastSegmentFromPath(mockObjectsDirectoryPath);
       
       expect(actualLastPathSegmentValue).toEqual(expectedObjectApiName);
@@ -67,9 +77,7 @@ describe('Shared DirectoryProcessor Testign Context', () => {
   
       jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
       jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
-      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
 
-      let directoryProcessor = new DirectoryProcessor();
       let objectInfoWrapper = new ObjectInfoWrapper();
       const uri = vscode.Uri.file('/fake/path');
 
@@ -88,7 +96,6 @@ describe('Shared DirectoryProcessor Testign Context', () => {
     test('given mocked text xml content, returns expected field info object', async() => {
 
       jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
-      let directoryProcessor = new DirectoryProcessor();
 
       const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';
@@ -102,10 +109,78 @@ describe('Shared DirectoryProcessor Testign Context', () => {
 
     });
 
-  
   });
 
 
+  describe('isXMLFileType', () => {
+
+    test('given expected xml file extension and filetype enum, returns true', () => {
+
+      // const isXMLFileType:boolean = directoryProcessor.isXMLFileType();
+      // expect(isXMLFileType).toBeTruthy();
+    });
+
+  });
+
+  describe('processFieldsDirectory', () => {
+    
+
+      /*
+
+        1. mock out interface implementation for faker servie
+        2. mock out readDirectory to return files with expected structure in which some would have .xml extension
+          2-a. need to confirm is file type an actual file as there could be nested directories and this is our basecase for field xml file processing recursively
+        3. mock out vscode.Uri.joinPath ( see if there is way to use expected mocked details from readDirectory to make fieldUri)
+        4. mock out xmlContent for readFile based on some sort of map from expectec directory types 
+           4-a ? - may make this the focus for the next line for buffer.from to string as that is what gives us the actual xmlContent that we can mock
+        
+        5. buildFieldInfoByXMLContent
+        
+        asserts--- 
+        1. assert - expected fieldInfoDetails???? 
+         - count of fieldInfoDetails array
+
+      */
+        
+      // mockReadDirectory = jest.fn().mockResolvedValue(mockedFields);
+      // jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+      // jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(() => 
+      //     Promise.resolve(Buffer.from(XMLMarkupMockService.getTextFieldTypeXMLMarkup()))
+      // );
+      // test('given expected directory containing 5 file types and 2 folder types, ', () => {
+
+
+
+
+      // });
   
+      // test('processes all fields in directory and updates object wrapper', async () => {
+      //     const uri = vscode.Uri.file('/fake/fields/path');
+      //     const fakeObjectName = 'FakeObject__c';
+      //     const result = await directoryProcessor.processFieldsDirectory(uri, fakeObjectName);
+  
+      //     expect(mockReadDirectory).toHaveBeenCalledWith(uri);
+      //     expect(result.length).toBe(3); // Expecting 3 field files processed
+      //     expect(result).toBeDefined();
+      //     expect(result).toContainEqual(
+      //         expect.objectContaining({
+      //             fieldName: expect.any(String),
+      //             fieldType: expect.any(String)
+      //         })
+      //     );
+      // });
+  
+      // afterEach(() => {
+      //     jest.clearAllMocks();
+      // });
+          
+  });
+
+
+
+
 });
+
+
+// });
 
