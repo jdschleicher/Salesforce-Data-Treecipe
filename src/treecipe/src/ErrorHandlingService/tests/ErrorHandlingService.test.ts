@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ErrorHandlingService } from '../ErrorHandlingService';
+import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
 
 jest.mock('vscode', () => ({
     
@@ -65,15 +66,8 @@ describe('ErrorHandlingService', () => {
 
             const expectedUrl = 'http://mocked.url';
             jest.spyOn(ErrorHandlingService, 'buildGitHubIssueTemplateUrl').mockReturnValueOnce(expectedUrl);
-            
-            const mockedUri = {
-                scheme: 'http',
-                authority: 'mocked.url',
-                path: '/',
-                query: '',
-                fragment: '',
-                toString: jest.fn().mockReturnValue('http://mocked.url')
-            };
+
+            const mockedUri = MockVSCodeWorkspaceService.getFakeVSCodeUri();
             jest.spyOn(vscode.Uri, 'parse').mockReturnValue(mockedUri as unknown as vscode.Uri);
 
             const openExternalMock = jest.spyOn(vscode.env, 'openExternal').mockImplementation(jest.fn());

@@ -6,13 +6,15 @@ import { MockDirectoryService } from "./MockObjectsDirectory/MockDirectoryServic
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
+import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
 
 
 jest.mock('vscode', () => ({
   workspace: {
       workspaceFolders: undefined,
       fs: { 
-          readDirectory: jest.fn()
+          readDirectory: jest.fn(),
+          readFile: jest.fn()
       }
   },
   Uri: {
@@ -35,8 +37,6 @@ jest.mock('vscode', () => ({
   }
 
 }), { virtual: true });
-
-
 
 describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testign Context', () => {
 
@@ -111,76 +111,89 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
   });
 
-
   describe('isXMLFileType', () => {
 
-    test('given expected xml file extension and filetype enum, returns true', () => {
+    test('given expected xml file extension and valid filetype enum, returns true', () => {
 
-      // const isXMLFileType:boolean = directoryProcessor.isXMLFileType();
-      // expect(isXMLFileType).toBeTruthy();
+      const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
+      const expectedVSCodeFileTypeEnum = 1;
+      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(validXMLFileExtensionName, expectedVSCodeFileTypeEnum);
+      expect(isXMLFileType).toBeTruthy();
+
+    });
+
+    test('given expected INVALID xml file extension and valid filetype enum, returns true', () => {
+
+      const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
+      const expectedVSCodeFileTypeEnum = 1;
+      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(invalidXMLFileExtensionName, expectedVSCodeFileTypeEnum);
+      expect(isXMLFileType).toBeFalsy();
+      
+    });
+
+    test('given expected valid xml file extension and INVALID filetype enum, returns true', () => {
+
+      const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
+      const directoryTypeEnum = 2;
+      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(validXMLFileExtensionName, directoryTypeEnum);
+      expect(isXMLFileType).toBeFalsy();
+      
+    });
+
+    test('given expected INVALID xml file extension and INVALID filetype enum, returns true', () => {
+
+      const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
+      const directoryTypeEnum = 2;
+      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(invalidXMLFileExtensionName, directoryTypeEnum);
+      expect(isXMLFileType).toBeFalsy();
+      
     });
 
   });
 
   describe('processFieldsDirectory', () => {
-    
 
-      /*
+      test('given expected mock to return non-xml files, nested directories enum types, and xml files, expected count of fieldInfo returned', async () => {
 
-        1. mock out interface implementation for faker servie
-        2. mock out readDirectory to return files with expected structure in which some would have .xml extension
-          2-a. need to confirm is file type an actual file as there could be nested directories and this is our basecase for field xml file processing recursively
-        3. mock out vscode.Uri.joinPath ( see if there is way to use expected mocked details from readDirectory to make fieldUri)
-        4. mock out xmlContent for readFile based on some sort of map from expectec directory types 
-           4-a ? - may make this the focus for the next line for buffer.from to string as that is what gives us the actual xmlContent that we can mock
+        // THIS TEST COMPLETELY MOCKS OUT XML MARKUP TO FOCUS ON FIELD RESULTS 
+        const mockedDirectory = MockDirectoryService.getMockedReadDirectorWithExpectedFoldersAndInvalidXMLFileExtensions()
+        const expectedFakeDirectoryItems = 22;
+        const expectedXMLFileTypesInDirectory = 19;
+
+        jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(() => 
+          Promise.resolve(mockedDirectory)
+        );
+
+        // this is used to ensure the mock is returning the expected result to avoid any type of effects from the mock changing in another test
+        expect(mockedDirectory.length).toBe(expectedFakeDirectoryItems);
         
-        5. buildFieldInfoByXMLContent
+        const mockedUri:vscode.Uri = MockVSCodeWorkspaceService.getFakeVSCodeUri();
+        jest.spyOn(vscode.Uri, "joinPath").mockReturnValue(mockedUri);
+
+        jest.spyOn(vscode.workspace.fs, 'readFile').mockReturnValue(
+          Promise.resolve(Buffer.from('fake xml markup'))
+        );
+
+        jest.spyOn(vscode.workspace.fs, 'readFile').mockReturnValue(
+          Promise.resolve(Buffer.from('fake xml markup'))
+        );
+
+        const mockedBuffer:any = 'dont care text';
+        jest.spyOn(Buffer, 'from').mockReturnValue(mockedBuffer);
+
+        const fakeFieldXMLInfo:any = XMLMarkupMockService.getRichTextAreaXMLFieldDetail();
+        jest.spyOn(directoryProcessor, 'buildFieldInfoByXMLContent').mockReturnValue(fakeFieldXMLInfo);
         
-        asserts--- 
-        1. assert - expected fieldInfoDetails???? 
-         - count of fieldInfoDetails array
+        const fakeUri = vscode.Uri.file('/fake/fields/fakepath');
+        const fakeObjectName = 'dont worry about me';
+        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, fakeObjectName);
 
-      */
-        
-      // mockReadDirectory = jest.fn().mockResolvedValue(mockedFields);
-      // jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
-      // jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(() => 
-      //     Promise.resolve(Buffer.from(XMLMarkupMockService.getTextFieldTypeXMLMarkup()))
-      // );
-      // test('given expected directory containing 5 file types and 2 folder types, ', () => {
+        expect(processedFileInfoDetails.length).toBe(expectedXMLFileTypesInDirectory);
 
-
-
-
-      // });
-  
-      // test('processes all fields in directory and updates object wrapper', async () => {
-      //     const uri = vscode.Uri.file('/fake/fields/path');
-      //     const fakeObjectName = 'FakeObject__c';
-      //     const result = await directoryProcessor.processFieldsDirectory(uri, fakeObjectName);
-  
-      //     expect(mockReadDirectory).toHaveBeenCalledWith(uri);
-      //     expect(result.length).toBe(3); // Expecting 3 field files processed
-      //     expect(result).toBeDefined();
-      //     expect(result).toContainEqual(
-      //         expect.objectContaining({
-      //             fieldName: expect.any(String),
-      //             fieldType: expect.any(String)
-      //         })
-      //     );
-      // });
-  
-      // afterEach(() => {
-      //     jest.clearAllMocks();
-      // });
+      });
           
   });
 
-
-
-
 });
 
-
-// });
 
