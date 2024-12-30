@@ -38,9 +38,9 @@ This command generates a **Treecipe**, a structured representation of your Sales
 
 It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above and generate a yaml file of objects and associated fields.
 
-**NOTE** 
+**NOTE:** 
 
-If this command is ran before "Initiate Configuration File" is ran, an exception will be handled and you a VSCode warning box will render showing an option to run the "Initiate Configuration File" command. 
+If this command is ran before "Initiate Configuration File" command, an exception will be handled and you a VSCode warning box will render showing an option to run the "Initiate Configuration File" command. 
 
 There is also an option to "Report a Bug" if the initiation command has already been completed.
 
@@ -110,15 +110,15 @@ my-project/
 
 See below for troubleshooting when specific commands are not working:
 
-- ** "Salesforce Treecipe - Generate Treecipe - generateRecipeFromConfigurationDetail" **: 
+- "**Salesforce Treecipe - Generate Treecipe - generateRecipeFromConfigurationDetail**": 
   - Ensure that you’ve successfully run **Initiate Configuration File** and selected a valid Salesforce objects directory. The **Generate Treecipe** command depends on the configuration file being present and properly set up.
   - Ensure the captured objects path in the **treecipe.config.json** has forward-slashes. In windows machines the path can be generated with double back-slashes and would need to be replaced with one forward-slash
   - Ensure the "defaultFakerService" property in the **treecipe.config.json** is set to "snowfakery"
   
-- ** Salesforce Treecipe: Initiate Configuration File - initiateTreecipeConfigurationSetup **: 
+- "**Salesforce Treecipe: Initiate Configuration File - initiateTreecipeConfigurationSetup**": 
   - Ensure an expected project directory was selected when prompted
 
-**NOTE**
+**NOTE:**
 
 All extension commands are wrapped in a try-catch and will prompt a "Report a Bug" that will auto-generate a GitHub Issue template for a bug that includes the stack trace. This would support quick turn-around time for known issues.
 
