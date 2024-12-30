@@ -22,6 +22,22 @@ export class MockVSCodeWorkspaceService {
         return vsCodeQuickPickMockItems;
     }
 
+    static getFakeVSCodeUri(): vscode.Uri {
+
+        const mockedUri = {
+            scheme: 'http',
+            authority: 'mocked.url',
+            path: '/',
+            query: '',
+            fragment: '',
+            toString: jest.fn().mockReturnValue('http://mocked.url')
+        };
+
+        const castGymasticsForFakeUri = mockedUri as unknown as vscode.Uri;
+        return castGymasticsForFakeUri;
+        
+    }
+
    
 
 }
