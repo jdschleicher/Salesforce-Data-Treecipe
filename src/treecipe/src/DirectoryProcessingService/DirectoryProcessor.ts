@@ -129,6 +129,10 @@ export class DirectoryProcessor {
 
   }
 
+  getLastSegmentFromPath(filePath: string): string {
+    return path.basename(filePath);
+  }
+
   getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail): string {
     let recipeValue = null;
     if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
@@ -143,10 +147,6 @@ export class DirectoryProcessor {
     
     return recipeValue;
   
-  }
-
-  getLastSegmentFromPath(filePath: string): string {
-    return path.basename(filePath);
   }
   
 }
