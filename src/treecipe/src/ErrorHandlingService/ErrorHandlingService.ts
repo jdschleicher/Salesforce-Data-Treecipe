@@ -24,12 +24,7 @@ export class ErrorHandlingService {
 
         vscode.window.showErrorMessage(
 
-            `Error occurred during:  ${executedCommand}
-            \n 
-
-            Please select an option below:
-
-            \n
+            `Error occurred during:  ${executedCommand} *** ${errorMessage} *** Please select an option below:
             `, 
             this.reportIssueButton,
             goToTroubleshootingREADMESection
