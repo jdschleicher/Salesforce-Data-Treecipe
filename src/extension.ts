@@ -25,9 +25,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const runSnowfakeryByRecipe = vscode.commands.registerCommand('treecipe.runSnowfakeryByRecipe', () => {
+		
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.runSnowfakeryGenerationByRecipeFile();
+
+	});
+
 	context.subscriptions.push(
 		generateTreecipe,
-		initiateConfiguration
+		initiateConfiguration,
+		runSnowfakeryByRecipe
 	);
 	
 }

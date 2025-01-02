@@ -6,6 +6,7 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
 
 export class ExtensionCommandService {
     
@@ -13,11 +14,26 @@ export class ExtensionCommandService {
 
         try {
 
-            ConfigurationService.createTreecipeJSONConfigurationFile();
+            await ConfigurationService.createTreecipeJSONConfigurationFile();
 
         } catch(error) {
 
             const commandName = 'initiateTreecipeConfigurationSetup';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    async runSnowfakeryGenerationByRecipeFile() {
+
+        try {
+
+            await SnowfakeryIntegrationService.runSnowfakeryGenerationByRecipeFile();
+
+        } catch(error) {
+
+            const commandName = 'runSnowfakeryGenerationByRecipeFile';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }

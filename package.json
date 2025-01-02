@@ -29,6 +29,11 @@
         "command": "treecipe.initiateConfiguration",
         "title": "Initiate Configuration File",
         "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.runSnowfakeryByRecipe",
+        "title": "Run Snowfakery by Recipe",
+        "category": "Salesforce Treecipe"
       }
     ],
     "configuration":[
