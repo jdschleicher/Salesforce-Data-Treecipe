@@ -1,0 +1,21 @@
+{
+    "records": [
+      {
+        "attributes": {
+          "type": "Account"
+        },
+        "Name": "Marsh and Sons"
+      },
+      {
+        "attributes": {
+          "type": "Example_Everything__c"
+        },
+        "Checkbox__c": "True",
+        "Currency__c": 400402.92,
+        "DateTime__c": "2024-04-15T09:12:16.382Z",
+        "Date__c": "2024-12-13",
+        "DependentPicklist__c": "rocks"
+      }
+    ]
+  }
+  
