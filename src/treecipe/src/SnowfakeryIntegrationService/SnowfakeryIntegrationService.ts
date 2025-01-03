@@ -81,30 +81,30 @@ export class SnowfakeryIntegrationService {
 
         const collectionsApiFormattedRecords = this.transformSnowfakeryJsonData(snowfakeryJsonFileContent);
 
-        this.createCollectionsApiFile(collectionsApiFormattedRecords, fileName);
+        this.createCollectionsApiFile(collectionsApiFormattedRecords, "test.json");
 
     }
 
 
     static transformSnowfakeryJsonData(snowfakeryJsonFileContent: any) {
 
-        const snowfakeryRecords = JSON.parse(`[${snowfakeryJsonFileContent}]`); // Wrap in `[]` to handle newline-separated JSON
+        const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent); // Wrap in `[]` to handle newline-separated JSON
 
         const transformedData = snowfakeryRecords.map(record => {
         
             const objectApiName = record._table; // Use the _table value dynamically as type
-            const recordTrackingReferenceId = `${objectApiName}_${record.id}`;
+            const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
             const collectionsApiConvertedRecord = {
                 attributes: {
-                  type: objectApiName,
-                  referenceId: recordTrackingReferenceId
+                    type: objectApiName,
+                    referenceId: recordTrackingReferenceId
                 },
                 ...record
-              };
+            };
           
-              // Remove unnecessary fields
-              delete collectionsApiConvertedRecord.id;
-              delete collectionsApiConvertedRecord._table;
+            // remove snowfakery properties not needed for collections api 
+            delete collectionsApiConvertedRecord.id;
+            delete collectionsApiConvertedRecord._table;
 
             return collectionsApiConvertedRecord;
 
@@ -117,14 +117,12 @@ export class SnowfakeryIntegrationService {
 
     static createCollectionsApiFile(collectionsApiFormattedRecords: any, outputFile: string) {
 
-        // Write the transformed data to a new file
-        // const outputFile = 'path/to/output.json';
         fs.writeFile(outputFile, JSON.stringify(collectionsApiFormattedRecords, null, 2), err => {
-        if (err) {
-            console.error('Error writing the output file:', err);
-        } else {
-            console.log('Transformed data saved to:', outputFile);
-        }
+            if (err) {
+                console.error('Error writing the output file:', err);
+            } else {
+                console.log('Transformed data saved to:', outputFile);
+            }
         });
 
     }
