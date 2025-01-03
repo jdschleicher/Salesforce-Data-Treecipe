@@ -1,18 +1,11 @@
-import { exec } from 'child_process';
+import { ChildProcess, exec } from 'child_process';
 
 import { SnowfakeryIntegrationService } from '../SnowfakeryIntegrationService';
 
 jest.mock('vscode', () => ({
+
   window: {
     showInformationMessage: jest.fn()
-  },
-  ThemeIcon: jest.fn().mockImplementation(
-      (name) => ({ id: name })
-  ),
-  FileType: {
-      Directory: 2,
-      File: 1,
-      SymbolicLink: 64
   }
 
 }), { virtual: true });
@@ -22,55 +15,59 @@ jest.mock('child_process', () => ({
 }));
 
 
-
 describe('Shared SnowfakeryIntegrationService tests', () => {
-
-    // let snowfakeryIntegrationService: SnowfakeryIntegrationService;
-
-    // beforeEach(() => {
-    //     snowfakeryIntegrationService = new SnowfakeryIntegrationService();
-    //     jest.clearAllMocks();
-    // });
 
     describe('isSnowfakeryInstalled', () => {
 
+        /* 
+            below leverages exec import from child_process allowing us to mock the exec funtion
+            during runtime of the unit test
+        */
+        const mockedExecChildProcessCommand = jest.mocked(exec);
 
         test('should return true when Snowfakery is installed', async () => {
-            const mockedExec = jest.mocked(exec);
+       
+            /*
+              the below cliErrorMock set to null is what is needed to simulate a successful execution
+              with this cliErroMock arg as null, the logic will result in truthy 
+            */ 
+            const cliErrorMock = null;
+            const expectedSuccessfulMockedStdOut = 'snowfakery version 4.0.0';
+            const execChildProcessMockImplementation = (cliCommand, handleCliCommandCallback) => {
+                handleCliCommandCallback(cliErrorMock, expectedSuccessfulMockedStdOut);
+                return {} as ChildProcess;
+            };
 
-            const mockStdout = 'snowfakery version 4.0.0';
-            mockedExec.mockImplementation((command, callback: any) => {
-                callback(null, mockStdout);
-                return {} as any;
-            });
-    
+            mockedExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
+
             const result = await SnowfakeryIntegrationService.isSnowfakeryInstalled();
+
+            expect(mockedExecChildProcessCommand).toHaveBeenCalledWith(
+                'snowfakery --version',
+                expect.any(Function)
+            );
             expect(result).toBe(true);
+
         });
 
-        // test('returns true when snowfakery is installed', async () => {
-        //     (exec as jest.Mock).mockImplementation((command, callback) => {
-        //         callback(null, { stdout: 'snowfakery 3.1.0' });
-        //     });
-
-        //     jest.spyOn(exec, 'exec').mockImplementation(() => new SnowfakeryFakerService());
+        test('should throw expected error message when Snowfakery command cli is not found', async () => {
             
-        //     const result = await snowfakeryIntegrationService.isSnowfakeryInstalled();
-            
-        //     expect(result).toBe(true);
-        //     expect(exec).toHaveBeenCalledWith('snowfakery --version', expect.any(Function));
-        // });
+            const expectedCliErrorMessage = 'Command failed';
+            const cliErrorMock = new Error(expectedCliErrorMessage);
+            const expectedFailureStdOut = 'command not found: snowfakery';
 
-        // test('returns false when snowfakery is not installed', async () => {
-        //     (exec as jest.Mock).mockImplementation((command, callback) => {
-        //         callback(new Error('command not found: snowfakery'), null);
-        //     });
+            const execChildProcessMockImplementation = (cliCommand, handleCliCommandCallback) => {
+                handleCliCommandCallback(cliErrorMock, expectedFailureStdOut);
+                return {} as ChildProcess;
+            };
 
-        //     const result = await snowfakeryIntegrationService.isSnowfakeryInstalled();
-            
-        //     expect(result).toBe(false);
-        //     expect(exec).toHaveBeenCalledWith('snowfakery --version', expect.any(Function));
-        // });
+            mockedExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
+    
+            await expect(SnowfakeryIntegrationService.isSnowfakeryInstalled()).rejects.toThrow(
+                `${ SnowfakeryIntegrationService.baseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
+            );
+
+        });
 
     });
 
