@@ -29,7 +29,11 @@ export class ExtensionCommandService {
 
         try {
 
-            await SnowfakeryIntegrationService.runSnowfakeryGenerationByRecipeFile();
+            const isSnowfakeryInstalled = await SnowfakeryIntegrationService.isSnowfakeryInstalled();
+            if (isSnowfakeryInstalled) {
+                await SnowfakeryIntegrationService.runSnowfakeryGenerationByRecipeFile();
+            }
+
 
         } catch(error) {
 
