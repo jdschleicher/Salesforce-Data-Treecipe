@@ -41,7 +41,7 @@ export class SnowfakeryIntegrationService {
 
     static async runSnowfakeryGenerationBySelectedRecipeFile() {
        
-        const selectedRecipeFilePathName = VSCodeWorkspaceService.promptForRecipeFileToProcess();
+        const selectedRecipeFilePathName = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
         const snowfakeryJsonResult = new Promise((resolve, reject) => {
 
             // selectedRecipeFilePathName = `treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml`;
