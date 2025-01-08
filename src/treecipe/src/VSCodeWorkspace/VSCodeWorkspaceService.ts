@@ -137,9 +137,9 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async promptForRecipeFileToProcess(): Promise<string | undefined> {
+    static async promptForRecipeFileToProcess(): Promise<vscode.QuickPickItem | undefined> {
 
-        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
         const workspaceRoot = this.getWorkspaceRoot();
         const generatedRecipesFolderPath = `${workspaceRoot}/${expectedGeneratedRecipesFolderPath}`;
 
@@ -158,7 +158,7 @@ export class VSCodeWorkspaceService {
             return undefined; 
         }
         
-        return selection.label;    
+        return selection;    
 
     }
 
@@ -170,11 +170,13 @@ export class VSCodeWorkspaceService {
   
             if (entry.isFile()) {
 
-                const quickpickLabel = `📄 ${entry.name}`; 
+                const quickpickLabel = `${entry.name}`; 
+                const fullFilePathName = path.join(entry.path, entry.name);
                 recipeFileQuickPickItems.push({
                     label: quickpickLabel,
                     description: 'File',
-                    iconPath: new vscode.ThemeIcon('file')
+                    iconPath: new vscode.ThemeIcon('file'),
+                    detail: fullFilePathName
                 });
 
             }

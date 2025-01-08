@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import * as fs from 'fs';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 
 
 export class SnowfakeryIntegrationService {
@@ -39,13 +40,17 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static async runSnowfakeryGenerationBySelectedRecipeFile() {
-       
-        const selectedRecipeFilePathName = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
-        const snowfakeryJsonResult = new Promise((resolve, reject) => {
+    static async selectSnowfakeryRecipeFileToProcess() {
 
-            // selectedRecipeFilePathName = `treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml`;
-            const generateCommand = `snowfakery  ${ selectedRecipeFilePathName } --output-format json`;
+        const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
+        return selectedRecipeFilePathNameQuickPickItem;
+    }
+
+    static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
+
+        const snowfakeryJsonResult = await new Promise((resolve, reject) => {
+
+            const generateCommand = `snowfakery  ${ fullRecipeFileNamePath } --output-format json`;
             const handleSnowfakeryDataGenerationCallback = (cliCommandError, snowfakeryCliJson) => {
 
                 if (cliCommandError) {
@@ -67,17 +72,11 @@ export class SnowfakeryIntegrationService {
 
         });
 
-        const collectionsApiFormattedRecords = this.transformSnowfakeryJsonData(snowfakeryJsonResult);
-        this.createCollectionsApiFile(collectionsApiFormattedRecords, selectedRecipeFilePathName);
+        return snowfakeryJsonResult;
 
     }
 
-    static buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName: string):string {
-
-        // const recipeCreations =
-
-        throw new Error('Method not implemented.');
-    }
+    
 
     static transformSnowfakeryJsonData(snowfakeryJsonFileContent: any) {
 
@@ -122,6 +121,22 @@ export class SnowfakeryIntegrationService {
         });
 
     }
+
+    static buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName: string):string {
+
+        // ensure dedicated directory for generated recipes exists
+        const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const expectedFakeDataSetsFolerPath = `${workspaceRoot}/${fakeDataSetsFolderPath}`;
+        if (!fs.existsSync(expectedFakeDataSetsFolerPath)) {
+            fs.mkdirSync(expectedFakeDataSetsFolerPath);
+        }
+
+        const collectionsApiFileName = selectedRecipeFilePathName;
+
+        return collectionsApiFileName;
+    }
+
 
     
 }

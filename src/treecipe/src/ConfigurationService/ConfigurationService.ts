@@ -162,5 +162,18 @@ export class ConfigurationService {
     
     }
 
+    static getFakeDataSetsFolderName() {
+        const fakeDataSetsFolderName = 'FakeDataSets';
+        return fakeDataSetsFolderName;
+    }
+
+    static getFakeDataSetsFolderPath() {
+        
+        const defaultTreecipeConfigurationFolder = this.getDefaultTreecipeConfigurationFolderName();
+        const generatedRecipesFolderName = this.getFakeDataSetsFolderName();
+        return (`${defaultTreecipeConfigurationFolder}/${generatedRecipesFolderName}`);
+
+    }
+
 
 }
