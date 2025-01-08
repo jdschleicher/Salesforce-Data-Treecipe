@@ -66,7 +66,7 @@ export class ExtensionCommandService {
             const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
 
             // ensure dedicated directory for generated recipes exists
-            const generatedRecipesFolderName = 'GeneratedRecipes';
+            const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
             const expectedGeneratedRecipesFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}`;
             if (!fs.existsSync(expectedGeneratedRecipesFolderPath)) {
                 fs.mkdirSync(expectedGeneratedRecipesFolderPath);

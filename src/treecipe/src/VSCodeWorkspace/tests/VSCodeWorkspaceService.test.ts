@@ -37,12 +37,12 @@ describe('promptForObjectsPath', () => {
     test('should return undefined when user makes no selection', async () => {       
 
         let mockedVSCodeQuickPickItems = MockVSCodeWorkspaceService.getMockVSCodeQuickPickItems();
-        jest.spyOn(VSCodeWorkspaceService as any, 'getVSCodeQuickPickDirectoryItems').mockResolvedValue(mockedVSCodeQuickPickItems);
+        jest.spyOn(VSCodeWorkspaceService as any, 'getPotentialTreecipeObjectDirectoryPathsQuickPickItems').mockResolvedValue(mockedVSCodeQuickPickItems);
 
         const expectedPath = "/test/path";
         const result = await VSCodeWorkspaceService.promptForObjectsPath(expectedPath);
         
-        expect(VSCodeWorkspaceService.getVSCodeQuickPickDirectoryItems).toHaveBeenCalledWith(expectedPath);
+        expect(VSCodeWorkspaceService.getPotentialTreecipeObjectDirectoryPathsQuickPickItems).toHaveBeenCalledWith(expectedPath);
         expect(vscode.window.showQuickPick).toHaveBeenCalled();
         expect(result).toBeUndefined();
     });
@@ -95,7 +95,7 @@ describe('parseForPotentialTreecipeObjectsDirectoriesRecursively', () => {
         jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
         jest.spyOn(fs.promises, 'readdir').mockReturnValue(mockDirents);
 
-        const result = await VSCodeWorkspaceService.getVSCodeQuickPickDirectoryItems(mockDirPath);
+        const result = await VSCodeWorkspaceService.getPotentialTreecipeObjectDirectoryPathsQuickPickItems(mockDirPath);
 
     // TEST IS SETUP TO AVOID RECURSIVE
         expect(result.length).toEqual(0);

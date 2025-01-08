@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import * as vscode from 'vscode';
 
 import * as fs from 'fs';
+import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 
 export class SnowfakeryIntegrationService {
@@ -38,16 +39,12 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static async promptForRecipeFileToRunRecipe() {
-
-    }
-
     static async runSnowfakeryGenerationBySelectedRecipeFile() {
        
-        const selectedRecipeFilePathName = this.promptForRecipeFileToRunRecipe();
+        const selectedRecipeFilePathName = VSCodeWorkspaceService.promptForRecipeFileToProcess();
         const snowfakeryJsonResult = new Promise((resolve, reject) => {
 
-            selectedRecipeFilePathName = `treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml`;
+            // selectedRecipeFilePathName = `treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml`;
             const generateCommand = `snowfakery  ${ selectedRecipeFilePathName } --output-format json`;
             const handleSnowfakeryDataGenerationCallback = (cliCommandError, snowfakeryCliJson) => {
 
@@ -76,6 +73,9 @@ export class SnowfakeryIntegrationService {
     }
 
     static buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName: string):string {
+
+        // const recipeCreations =
+
         throw new Error('Method not implemented.');
     }
 

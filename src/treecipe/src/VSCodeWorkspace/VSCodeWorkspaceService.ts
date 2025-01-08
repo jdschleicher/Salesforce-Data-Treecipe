@@ -25,7 +25,7 @@ export class VSCodeWorkspaceService {
         let currentPath = workspaceRoot;
         while (true) {
             
-            const items = await this.getVSCodeQuickPickDirectoryItems(currentPath);
+            const items = await this.getPotentialTreecipeObjectDirectoryPathsQuickPickItems(currentPath);
             
             const selection = await vscode.window.showQuickPick(
                 items,
@@ -45,7 +45,7 @@ export class VSCodeWorkspaceService {
         }
     }
 
-    static async getVSCodeQuickPickDirectoryItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
+    static async getPotentialTreecipeObjectDirectoryPathsQuickPickItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
         
         let items: vscode.QuickPickItem[] = [];
         items = await this.parseForPotentialTreecipeObjectsDirectoriesRecursively(dirPath, items);
@@ -139,29 +139,50 @@ export class VSCodeWorkspaceService {
 
     static async promptForRecipeFileToProcess(): Promise<string | undefined> {
 
+        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+        const workspaceRoot = this.getWorkspaceRoot();
+        const generatedRecipesFolderPath = `${workspaceRoot}/${expectedGeneratedRecipesFolderPath}`;
+
+        const availableRecipeFileQuickPickitems: vscode.QuickPickItem[] = await this.getAvailableRecipeFileQuickPickItems(generatedRecipesFolderPath);
         
+        const selection = await vscode.window.showQuickPick(
+            availableRecipeFileQuickPickitems,
+            {
+                placeHolder: 'Select recipe file to process',
+                ignoreFocusOut: true
+            }
+        );
 
-        while (true) {
-            
-            const items = await this.getVSCodeQuickPickDirectoryItems(currentPath);
-            
-            const selection = await vscode.window.showQuickPick(
-                items,
-                {
-                    placeHolder: 'Select recipe file to process',
-                    ignoreFocusOut: true
-                }
-            );
+        if (!selection) {
+            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
+            return undefined; 
+        }
+        
+        return selection.label;    
 
-            if (!selection) {
-                // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
-                return undefined; 
-            } else {
-                return selection.label;
+    }
+
+    static async getAvailableRecipeFileQuickPickItems(generatedRecipesFolderPath: string) {
+
+        let recipeFileQuickPickItems: vscode.QuickPickItem[] = [];
+        const entries = await fs.promises.readdir(generatedRecipesFolderPath, { withFileTypes: true });
+        for (const entry of entries) {
+  
+            if (entry.isFile()) {
+
+                const quickpickLabel = `📄 ${entry.name}`; 
+                recipeFileQuickPickItems.push({
+                    label: quickpickLabel,
+                    description: 'File',
+                    iconPath: new vscode.ThemeIcon('file')
+                });
+
             }
 
         }
-    }
+      
+        return recipeFileQuickPickItems;
 
+    }
 
 }
