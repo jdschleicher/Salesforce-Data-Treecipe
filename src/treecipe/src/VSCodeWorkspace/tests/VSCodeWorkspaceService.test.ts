@@ -75,7 +75,7 @@ describe('promptForObjectsPath', () => {
     
 });
 
-describe('readdirRecursive', () => {
+describe('parseForPotentialTreecipeObjectsDirectoriesRecursively', () => {
     let mockItems;
 
     beforeEach(() => {

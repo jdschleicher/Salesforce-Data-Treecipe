@@ -6,8 +6,9 @@ import * as fs from 'fs';
 
 export class SnowfakeryIntegrationService {
 
-    static baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for Snowfakery installation';
-    
+    static baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
+    static snowfakeryGenerationErrorMessage:string = 'An error occurred genertating snowfakery against the recipe file';
+
     static async isSnowfakeryInstalled(): Promise<boolean> {
 
         return new Promise((resolve, reject) => {
@@ -20,8 +21,8 @@ export class SnowfakeryIntegrationService {
                 } else {
 
                     /*
-                     IF NO ERROR THEN stdout CONTAINS THE VERSION INFORMATION 
-                     AND WE CAN RETURN TRUE FOR SNOWFAKERY BEING INSTALLED
+                        IF NO ERROR THEN stdout CONTAINS THE VERSION INFORMATION 
+                        AND WE CAN RETURN TRUE FOR SNOWFAKERY BEING INSTALLED
                      */
                     vscode.window.showInformationMessage(cliCommandStandardOut);
                     resolve(true);
@@ -37,16 +38,18 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    // static async promptForRecipeFileToRunRecipe() {
+    static async promptForRecipeFileToRunRecipe() {
 
-    // }
+    }
 
-    static async runSnowfakeryGenerationByRecipeFile() {
+    static async runSnowfakeryGenerationBySelectedRecipeFile() {
        
-        const cliExecPromise = new Promise((resolve, reject) => {
-            
-            const generateCommand = `snowfakery treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml --output-format json --output-file 'thisname.json' --output-folder .`;
-            const handleSnowfakeryVersionCheckCallback = (cliCommandError, cliCommandStandardOut) => {
+        const selectedRecipeFilePathName = this.promptForRecipeFileToRunRecipe();
+        const snowfakeryJsonResult = new Promise((resolve, reject) => {
+
+            selectedRecipeFilePathName = `treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml`;
+            const generateCommand = `snowfakery  ${ selectedRecipeFilePathName } --output-format json`;
+            const handleSnowfakeryDataGenerationCallback = (cliCommandError, snowfakeryCliJson) => {
 
                 if (cliCommandError) {
                     reject(new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`));
@@ -54,41 +57,31 @@ export class SnowfakeryIntegrationService {
 
                     /*
                      IF NO ERROR THEN stdout CONTAINS THE VERSION INFORMATION 
-                     AND WE CAN RETURN TRUE FOR SNOWFAKERY BEING INSTALLED
+                     AND WE CAN RETURN SNOWFAKERY JSON
                      */
-                    vscode.window.showInformationMessage(cliCommandStandardOut);
-                    resolve(true);
+                    resolve(snowfakeryCliJson);
 
                 }
 
             };
 
             // perform CLI snowfakery command
-            exec(generateCommand, handleSnowfakeryVersionCheckCallback);
+            exec(generateCommand, handleSnowfakeryDataGenerationCallback);
 
         });
 
-        // check if file exists 
-        const fileName = 'thisname.json';
-        let snowfakeryJsonFileContent = null;
-        if (fs.existsSync(fileName)) {
-            snowfakeryJsonFileContent = fs.readFileSync(fileName, 'utf-8');
-        } else {
-            const error = new Error(); 
-            error.message = `Missing expected snowfakery json file at path of: ${ fileName } -- or unknown failure`; 
-            throw(error);
-        }
-
-        const collectionsApiFormattedRecords = this.transformSnowfakeryJsonData(snowfakeryJsonFileContent);
-
-        this.createCollectionsApiFile(collectionsApiFormattedRecords, "test.json");
+        const collectionsApiFormattedRecords = this.transformSnowfakeryJsonData(snowfakeryJsonResult);
+        this.createCollectionsApiFile(collectionsApiFormattedRecords, selectedRecipeFilePathName);
 
     }
 
+    static buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName: string):string {
+        throw new Error('Method not implemented.');
+    }
 
     static transformSnowfakeryJsonData(snowfakeryJsonFileContent: any) {
 
-        const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent); // Wrap in `[]` to handle newline-separated JSON
+        const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent);
 
         const transformedData = snowfakeryRecords.map(record => {
         
@@ -114,15 +107,18 @@ export class SnowfakeryIntegrationService {
 
     }
 
+    static createCollectionsApiFile(collectionsApiFormattedRecords: string, selectedRecipeFilePathName: string) {
 
-    static createCollectionsApiFile(collectionsApiFormattedRecords: any, outputFile: string) {
+        const expectedCollectionsApiOutputFile = this.buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName);
 
-        fs.writeFile(outputFile, JSON.stringify(collectionsApiFormattedRecords, null, 2), err => {
-            if (err) {
-                console.error('Error writing the output file:', err);
+        fs.writeFile(expectedCollectionsApiOutputFile, JSON.stringify(collectionsApiFormattedRecords, null, 2), error => {
+            
+            if (error) {
+                new Error(`Error occurred in Collections Api file creation: ${error.message}`);
             } else {
-                console.log('Transformed data saved to:', outputFile);
+                vscode.window.showInformationMessage(`Collections Api file created at: ${expectedCollectionsApiOutputFile}`);
             }
+
         });
 
     }

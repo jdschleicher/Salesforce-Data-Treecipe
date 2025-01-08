@@ -31,7 +31,7 @@ export class ExtensionCommandService {
 
             const isSnowfakeryInstalled = await SnowfakeryIntegrationService.isSnowfakeryInstalled();
             if (isSnowfakeryInstalled) {
-                await SnowfakeryIntegrationService.runSnowfakeryGenerationByRecipeFile();
+                await SnowfakeryIntegrationService.runSnowfakeryGenerationBySelectedRecipeFile();
             }
 
 
