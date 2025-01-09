@@ -39,12 +39,14 @@ export class ExtensionCommandService {
             }
             
             const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
-            const fullFileNamePath = selectedRecipeQuickPickItem.detail;
-            const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullFileNamePath);
+            const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
+            const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
             const collectionsApiFormattedRecords = SnowfakeryIntegrationService.transformSnowfakeryJsonData(snowfakeryJsonResult);
-            SnowfakeryIntegrationService.createCollectionsApiFile(collectionsApiFormattedRecords, selectedRecipeQuickPickItem.label);
-    
 
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
+            const recipeFileName = selectedRecipeQuickPickItem.label;
+            SnowfakeryIntegrationService.createCollectionsApiFile(collectionsApiFormattedRecords, recipeFileName, fullPathToUniqueTimeStampedFakeDataSetsFolder);
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${recipeFileName}`);
 
         } catch(error) {
 
