@@ -46,7 +46,7 @@ export class ExtensionCommandService {
             const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
             const recipeFileName = selectedRecipeQuickPickItem.label;
             SnowfakeryIntegrationService.createCollectionsApiFile(collectionsApiFormattedRecords, recipeFileName, fullPathToUniqueTimeStampedFakeDataSetsFolder);
-            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${recipeFileName}`);
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/originFile-${recipeFileName}`);
 
         } catch(error) {
 
