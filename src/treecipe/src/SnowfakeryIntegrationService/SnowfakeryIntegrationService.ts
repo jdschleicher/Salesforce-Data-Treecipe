@@ -44,6 +44,7 @@ export class SnowfakeryIntegrationService {
 
         const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
         return selectedRecipeFilePathNameQuickPickItem;
+        
     }
 
     static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
@@ -76,8 +77,6 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    
-
     static transformSnowfakeryJsonData(snowfakeryJsonFileContent: any) {
 
         const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent);
@@ -106,16 +105,37 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static createCollectionsApiFile(collectionsApiFormattedRecords: string, selectedRecipeFilePathName: string) {
+    static createUniqueTimeStampedFakeDataSetsFolderName():string {
+
+        const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const expectedFakeDataSetsFolerPath = `${workspaceRoot}/${fakeDataSetsFolderPath}`;
+
+        if (!fs.existsSync(expectedFakeDataSetsFolerPath)) {
+            fs.mkdirSync(expectedFakeDataSetsFolerPath);
+        }
+
+        const uniqueTimeStampedFakeDataSetsFolderName = this.createFakeDataSetsTimeStampedFolderName();
+        const fullPathToUniqueTimeStampedFakeDataSetsFolder = `${expectedFakeDataSetsFolerPath}/${uniqueTimeStampedFakeDataSetsFolderName}`;
+        fs.mkdirSync(`${fullPathToUniqueTimeStampedFakeDataSetsFolder}`);
+
+        return fullPathToUniqueTimeStampedFakeDataSetsFolder;
+
+    }
+
+    static createCollectionsApiFile(collectionsApiFormattedRecords: string, 
+                                    selectedRecipeFilePathName: string,
+                                    uniqueTimeStampedFakeDataSetsFolderName: string ) {
 
         const expectedCollectionsApiOutputFile = this.buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName);
+        const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${expectedCollectionsApiOutputFile}`;
 
-        fs.writeFile(expectedCollectionsApiOutputFile, JSON.stringify(collectionsApiFormattedRecords, null, 2), error => {
+        fs.writeFile(fullCollectionsApiFilePath, JSON.stringify(collectionsApiFormattedRecords, null, 2), error => {
             
             if (error) {
                 new Error(`Error occurred in Collections Api file creation: ${error.message}`);
             } else {
-                vscode.window.showInformationMessage(`Collections Api file created at: ${expectedCollectionsApiOutputFile}`);
+                vscode.window.showInformationMessage(`Collections Api file created at: ${fullCollectionsApiFilePath}`);
             }
 
         });
@@ -124,19 +144,20 @@ export class SnowfakeryIntegrationService {
 
     static buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName: string):string {
 
-        // ensure dedicated directory for generated recipes exists
-        const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-        const expectedFakeDataSetsFolerPath = `${workspaceRoot}/${fakeDataSetsFolderPath}`;
-        if (!fs.existsSync(expectedFakeDataSetsFolerPath)) {
-            fs.mkdirSync(expectedFakeDataSetsFolerPath);
-        }
-
-        const collectionsApiFileName = selectedRecipeFilePathName;
+        const extensionRemovedFileName = selectedRecipeFilePathName.split('.')[0];
+        const collectionsApiFileName = `collectionsApi-${extensionRemovedFileName}.json`;
 
         return collectionsApiFileName;
+
     }
 
+    static createFakeDataSetsTimeStampedFolderName():string {
+        
+        const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting format '2024-11-25T16-24-15'
+        const fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
 
+        return fakeDataSetsFolderName;
+
+    }
     
 }
