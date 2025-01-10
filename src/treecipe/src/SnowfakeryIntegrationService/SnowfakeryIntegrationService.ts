@@ -51,7 +51,7 @@ export class SnowfakeryIntegrationService {
 
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {
 
-            const generateCommand = `snowfakery  ${ fullRecipeFileNamePath } --output-format json`;
+            const generateCommand = `snowfakery ${ fullRecipeFileNamePath } --output-format json`;
             const handleSnowfakeryDataGenerationCallback = (cliCommandError, snowfakeryCliJson) => {
 
                 if (cliCommandError) {
