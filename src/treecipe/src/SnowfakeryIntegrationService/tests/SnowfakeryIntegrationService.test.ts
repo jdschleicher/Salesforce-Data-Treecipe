@@ -18,7 +18,8 @@ jest.mock('child_process', () => ({
 
 jest.mock('fs', () => ({
     existsSync: jest.fn(),
-    mkdirSync: jest.fn()
+    mkdirSync: jest.fn(),
+    writeFile: jest.fn()
 }));
 
 describe('Shared SnowfakeryIntegrationService tests', () => {
@@ -98,9 +99,8 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
         test('should return generated fake data from SnowfakeryMockService', async () => {
             
             const expectedFakeData = { data: 'fake data' };
-            // jest.spyOn(SnowfakeryMockService, 'generateFakeData').mockResolvedValue(expectedFakeData);
 
-              /*
+            /*
               the below cliErrorMock set to null is what is needed to simulate a successful execution
               with this cliErroMock arg as null, the logic will result in truthy 
             */ 
@@ -127,7 +127,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
     describe('transformSnowfakeryJsonData', () => {
         
-        test('should transform Snowfakery JSON data to collections API format', () => {
+        test('should transform Snowfakery JSON data to Salesforce collections API format', () => {
             
             const snowfakeryJsonFileContent = JSON.stringify([
                 { id: 1, _table: 'Account', name: 'Test Account' },
@@ -179,6 +179,53 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
             expect(fs.mkdirSync).toHaveBeenCalledWith(mockFullPathToUniqueFolder);
             expect(result).toBe(mockFullPathToUniqueFolder);
         
+        });
+
+    });
+
+    describe('createCollectionsApiFile', () => {
+        
+        test('should create a collections API file with the correct content', () => {
+            
+            const mockCollectionsApiFormattedRecords = [
+                {
+                    attributes: {
+                        type: 'Account',
+                        referenceId: 'Account_Reference_1'
+                    },
+                    name: 'Test Account'
+                },
+                {
+                    attributes: {
+                        type: 'Account',
+                        referenceId: 'Account_Reference_2'
+                    },
+                    name: 'Test Account 2'
+                },
+            ];
+
+            const mockSelectedRecipeFilePathName = 'recipe.yml';
+            const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
+            const mockExpectedFilePath = `${mockUniqueTimeStampedFakeDataSetsFolderName}/collectionsApi-recipe.json`;
+
+            jest.spyOn(SnowfakeryIntegrationService, 'buildCollectionsApiFileNameBySelectedRecipeFileName').mockReturnValue('collectionsApi-recipe.json');
+
+            const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
+
+
+            SnowfakeryIntegrationService.createCollectionsApiFile(
+                mockCollectionsApiFormattedRecords,
+                mockSelectedRecipeFilePathName,
+                mockUniqueTimeStampedFakeDataSetsFolderName
+            );
+
+
+            expect(fs.writeFile).toHaveBeenCalledWith(
+                mockExpectedFilePath,
+                jsonMockCollectionsApiFormattedRecords,
+                expect.any(Function)
+            );
+
         });
 
     });

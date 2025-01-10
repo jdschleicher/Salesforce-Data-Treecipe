@@ -123,14 +123,16 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static createCollectionsApiFile(collectionsApiFormattedRecords: string, 
+    static createCollectionsApiFile(collectionsApiFormattedRecords: any[], 
                                     selectedRecipeFilePathName: string,
                                     uniqueTimeStampedFakeDataSetsFolderName: string ) {
 
         const expectedCollectionsApiOutputFile = this.buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName);
         const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${expectedCollectionsApiOutputFile}`;
 
-        fs.writeFile(fullCollectionsApiFilePath, JSON.stringify(collectionsApiFormattedRecords, null, 2), error => {
+        const jsonStringFormattedRecords = JSON.stringify(collectionsApiFormattedRecords, null, 2);
+
+        fs.writeFile(fullCollectionsApiFilePath, jsonStringFormattedRecords, error => {
             
             if (error) {
                 new Error(`Error occurred in Collections Api file creation: ${error.message}`);
