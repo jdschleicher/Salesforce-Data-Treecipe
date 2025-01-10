@@ -230,4 +230,38 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
     });
 
+    describe('buildCollectionsApiFileNameBySelectedRecipeFileName', () => {
+
+        test('should build the correct collections API file name based on the selected recipe file name', () => {
+            
+            const fakeSelectedRecipeFilePathName = 'recipe.yml';
+            const expectedFileName = 'collectionsApi-recipe.json';
+
+            const actualBuiltFileName = SnowfakeryIntegrationService.buildCollectionsApiFileNameBySelectedRecipeFileName(fakeSelectedRecipeFilePathName);
+
+            expect(actualBuiltFileName).toBe(expectedFileName);
+
+        });
+        
+    });
+
+    describe('createFakeDataSetsTimeStampedFolderName', () => {
+
+        test('should create a unique timestamped folder name', () => {
+
+            const mockDate = new Date('2024-11-25T16:24:15Z');
+            jest.spyOn(global, 'Date').mockReturnValue(mockDate);
+
+            jest.spyOn(global, 'Date').mockImplementation();
+            jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
+
+            const expectedFolderName = 'dataset-2024-11-25T16-24-15';
+
+            const actualFolderName = SnowfakeryIntegrationService.createFakeDataSetsTimeStampedFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+
+        });
+
+    });
+
 });
