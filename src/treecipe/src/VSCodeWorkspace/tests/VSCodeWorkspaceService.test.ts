@@ -1,3 +1,4 @@
+import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 
@@ -172,6 +173,34 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             
             const isPossibleTreecipeDirectory = VSCodeWorkspaceService.isPossibleTreecipeObjectsDirectory(mockDirent);
             expect(isPossibleTreecipeDirectory).toBeFalsy();
+
+        });
+
+    });
+
+    describe('promptForRecipeFileToProcess', () => {
+
+        test('should return undefined if no showQuickPick selection is mocked to undefined', async () => {
+            
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('/mock/workspace');
+            jest.spyOn(ConfigurationService, 'getGeneratedRecipesFolderPath').mockReturnValue('generated-recipes');
+            jest.spyOn(VSCodeWorkspaceService, 'getAvailableRecipeFileQuickPickItems').mockResolvedValue([]);
+            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined);
+
+            const result = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
+            expect(result).toBeUndefined();
+
+        });
+
+        test('should return the expected mock selected recipe file passed into mocked showQuickPick', async () => {
+
+            const expectedMockQuickPickItem = { label: 'recipe1.json', description: 'File', iconPath: expect.any(Object), detail: '/mock/workspace/generated-recipes/recipe1.json' };
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('/mock/workspace');
+            jest.spyOn(ConfigurationService, 'getGeneratedRecipesFolderPath').mockReturnValue('generated-recipes');
+            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(expectedMockQuickPickItem);
+
+            const actualQuickPickSelectedRecipeFileToProcess = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
+            expect(actualQuickPickSelectedRecipeFileToProcess).toEqual(expectedMockQuickPickItem);
 
         });
 
