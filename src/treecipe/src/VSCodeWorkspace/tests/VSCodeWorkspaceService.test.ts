@@ -27,10 +27,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     describe('promptForObjectsPath', () => {
 
-        // beforeEach(() => {
-        //     jest.clearAllMocks();
-        // });
-
         test('if no selection made, should return undefined', async () => {
             const fakeWorkspaceRoot = '/fake/workspace';
             const mockedVSCodeQuickPickItems = MockVSCodeWorkspaceService.getMockVSCodeQuickPickItems();
@@ -204,6 +200,61 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
+    });
+
+    describe('getAvailableRecipeFileQuickPickItems', () => {
+
+
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+
+        test('should return an empty array if no files are found', async () => {
+
+            const expectedEmptyQuickPickItems = [];
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue(expectedEmptyQuickPickItems);
+
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItems('/mock/generated-recipes');
+            expect(actualQuickPickItems).toEqual(expectedEmptyQuickPickItems);
+
+        });
+
+        test('should return an array of QuickPickItems for each file found', async () => {
+            const mockDirents = [
+                Object.assign(new fs.Dirent(), { 
+                    name: 'recipe1.json', 
+                    isFile: () => true, 
+                    path: '/mock/generated-recipes'
+                }),
+                Object.assign(new fs.Dirent(), { 
+                    name: 'recipe2.json', 
+                    isFile: () => true, 
+                    path: '/mock/generated-recipes'
+                }),
+            ];
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
+
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItems('/mock/generated-recipes');
+            expect(actualQuickPickItems).toEqual([
+                {
+                    label: 'recipe1.json',
+                    description: 'File',
+                    iconPath:  expect.any(Object),
+                    detail: '/mock/generated-recipes/recipe1.json'
+                },
+                {
+                    label: 'recipe2.json',
+                    description: 'File',
+                    iconPath:  expect.any(Object),
+                    detail: '/mock/generated-recipes/recipe2.json'
+                }
+            ]);
+        });
+
+    });
+
+    afterEach(() => {
+        jest.clearAllMocks();
     });
 
 });
