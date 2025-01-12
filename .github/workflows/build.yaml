@@ -2,11 +2,7 @@ name: Run JESTS on PUSH
 
 on:
   push:
-  pull_request:  
-    types:
-      - opened
-      - synchronize
-      - reopened
+  pull_request:
 
 jobs:
   
@@ -15,6 +11,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+    - name: Check if PR is a draft (PowerShell)
+      id: check_draft
+      shell: pwsh
+      run: |
+        if ($env:GITHUB_EVENT_PULL_REQUEST_DRAFT -eq 'true') {
+          Write-Host "This is a draft PR. Skipping the workflow."
+          exit 0  # Exit early to skip the rest of the job
+        } else {
+          Write-Host "This is not a draft PR. Proceeding with the workflow."
+        }
+
     - name: Checkout Current Repository
       uses: actions/checkout@v4
 
