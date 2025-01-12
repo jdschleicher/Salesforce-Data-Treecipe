@@ -101,7 +101,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const result = await VSCodeWorkspaceService.getPotentialTreecipeObjectDirectoryPathsQuickPickItems(mockDirPath);
 
-        // TEST IS SETUP TO AVOID RECURSIVE
+            // TEST IS SETUP TO AVOID RECURSIVE
             expect(result.length).toEqual(0);
             
         });
@@ -193,6 +193,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             const expectedMockQuickPickItem = { label: 'recipe1.json', description: 'File', iconPath: expect.any(Object), detail: '/mock/workspace/generated-recipes/recipe1.json' };
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('/mock/workspace');
             jest.spyOn(ConfigurationService, 'getGeneratedRecipesFolderPath').mockReturnValue('generated-recipes');
+            jest.spyOn(VSCodeWorkspaceService, 'getAvailableRecipeFileQuickPickItems').mockResolvedValue([]);
             jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(expectedMockQuickPickItem);
 
             const actualQuickPickSelectedRecipeFileToProcess = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
@@ -200,14 +201,13 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
+        afterEach(() => {        
+            jest.restoreAllMocks();
+        });
+
     });
 
     describe('getAvailableRecipeFileQuickPickItems', () => {
-
-
-        beforeEach(() => {
-            jest.clearAllMocks();
-        });
 
         test('should return an empty array if no files are found', async () => {
 
@@ -220,6 +220,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
         });
 
         test('should return an array of QuickPickItems for each file found', async () => {
+            
             const mockDirents = [
                 Object.assign(new fs.Dirent(), { 
                     name: 'recipe1.json', 
@@ -234,27 +235,29 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             ];
             jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
 
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItems('/mock/generated-recipes');
-            expect(actualQuickPickItems).toEqual([
+            const expectedQuickPickItems:vscode.QuickPickItem[] = [
                 {
                     label: 'recipe1.json',
                     description: 'File',
-                    iconPath:  expect.any(Object),
+                    iconPath:  new vscode.ThemeIcon('file'),
                     detail: '/mock/generated-recipes/recipe1.json'
                 },
                 {
                     label: 'recipe2.json',
                     description: 'File',
-                    iconPath:  expect.any(Object),
+                    iconPath:  new vscode.ThemeIcon('file'),
                     detail: '/mock/generated-recipes/recipe2.json'
                 }
-            ]);
+            ];   
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItems('/mock/generated-recipes');
+
+            console.log('Actual Keys:', Object.keys(actualQuickPickItems));
+            console.log('Expected Keys:', Object.keys(expectedQuickPickItems));
+
+            expect(actualQuickPickItems).toEqual(expectedQuickPickItems);
+
         });
 
-    });
-
-    afterEach(() => {
-        jest.clearAllMocks();
     });
 
 });
