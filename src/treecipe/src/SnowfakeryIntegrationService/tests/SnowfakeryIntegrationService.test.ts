@@ -123,6 +123,25 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
         });
 
+        test('should throw expected error message when Snowfakery command cli is not found', async () => {
+            
+            const expectedCliErrorMessage = 'Command failed';
+            const cliErrorMock = new Error(expectedCliErrorMessage);
+            const expectedFailureStdOut = 'command not found: snowfakery';
+
+            const execChildProcessMockImplementation = (cliCommand, handleCliCommandCallback) => {
+                handleCliCommandCallback(cliErrorMock, expectedFailureStdOut);
+                return {} as ChildProcess;
+            };
+
+            mockedRunSnowfakeryExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
+            const mockRecipeFilePath = 'path/to/recipe.yml';
+            await expect(SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(mockRecipeFilePath)).rejects.toThrow(
+                `${ SnowfakeryIntegrationService.baseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
+            );
+
+        });
+
     });
 
     describe('transformSnowfakeryJsonData', () => {

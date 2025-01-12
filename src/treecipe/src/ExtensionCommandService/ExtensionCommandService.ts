@@ -28,15 +28,6 @@ export class ExtensionCommandService {
     async runSnowfakeryGenerationByRecipeFile() {
 
         try {
-
-            const isSnowfakeryInstalled = await SnowfakeryIntegrationService.isSnowfakeryInstalled();
-            if (!isSnowfakeryInstalled) {
-                /* 
-                THE BELOW ERROR WILL HIT ONLY IF THE SNOWFAKERY CLI COMMAND DOES NOT THROW AN ERROR DURING CLI CALL BUT 
-                MANAGES TO NOT FIND SNOWFAKERY CLI. GOOD CHANCE THIS CODE IS UNREACHABLE 
-                */
-                new Error(`snowfakery is not installed as expected`);
-            }
             
             const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
             const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
