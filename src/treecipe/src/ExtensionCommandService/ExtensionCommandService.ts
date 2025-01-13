@@ -30,6 +30,9 @@ export class ExtensionCommandService {
         try {
             
             const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
+            if (!selectedRecipeQuickPickItem) {
+                return;
+            }
             const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
             const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
             const collectionsApiFormattedRecords = SnowfakeryIntegrationService.transformSnowfakeryJsonData(snowfakeryJsonResult);
