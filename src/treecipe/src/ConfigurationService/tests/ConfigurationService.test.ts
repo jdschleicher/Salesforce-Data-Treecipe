@@ -219,6 +219,26 @@ describe('Shared ConfigurationService Tests', () => {
 
     });
 
+    describe('getGeneratedRecipesDefaultFolderName', () => {
+
+        test('returns expected generated recipe artifcats folder name', () => {
+            const expectedFolderName = "GeneratedRecipes";
+            const actualFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getGeneratedRecipesFolderPath', () => {
+
+        test('returns expected path from project root for treecipe generated recipe artifacts', () => {
+            const expectedFolderPath = "treecipe/GeneratedRecipes";
+            const actualFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
+            expect(actualFolderPath).toBe(expectedFolderPath);
+        });
+
+    });
+
 });
 
 
