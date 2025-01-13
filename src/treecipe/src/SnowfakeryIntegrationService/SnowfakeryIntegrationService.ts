@@ -11,7 +11,7 @@ export class SnowfakeryIntegrationService {
     static baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
     static snowfakeryGenerationErrorMessage:string = 'An error occurred genertating snowfakery against the recipe file';
 
-    //2DO -  NOT USING AT THE MOMEMNT, MAY JUST GUT IN TIME - 2DO
+    //2DO -  NOT CURRENTLY USING, MAY JUST GUT IN TIME - 2DO
     static async isSnowfakeryInstalled(): Promise<boolean> {
 
         return new Promise((resolve, reject) => {
