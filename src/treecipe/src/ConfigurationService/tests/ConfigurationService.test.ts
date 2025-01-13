@@ -1,4 +1,3 @@
-
 import { SnowfakeryFakerService } from '../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
@@ -199,7 +198,26 @@ describe('Shared ConfigurationService Tests', () => {
         });
 
     });
-        
+
+    describe('getFakeDataSetsFolderName', () => {
+
+        test('returns expected treecipe dataset artifcats folder name', () => {
+            const expectedFolderName = "FakeDataSets";
+            const actualFolderName = ConfigurationService.getFakeDataSetsFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getFakeDataSetsFolderPath', () => {
+
+        test('returns expected treecipe folder name for dataset artifacts folder path', () => {
+            const expectedFolderPath = "treecipe/FakeDataSets";
+            const actualFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
+            expect(actualFolderPath).toBe(expectedFolderPath);
+        });
+
+    });
 
 });
 
