@@ -5,6 +5,10 @@ import * as fs from 'fs';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 
+interface CollectionsApiStructure {
+    allOrNone: boolean;
+    records: any[];
+}
 
 export class SnowfakeryIntegrationService {
 
@@ -78,15 +82,30 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static transformSnowfakeryJsonData(snowfakeryJsonFileContent: any) {
+    static transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent: any, fullPathToUniqueTimeStampedFakeDataSetsFolder: string) {
+
+        const mappedSObjectApiToRecords = this.mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent);   
+
+
+        mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
+
+            SnowfakeryIntegrationService.createCollectionsApiFile(sobjectApiName, collectionsApiContent, fullPathToUniqueTimeStampedFakeDataSetsFolder);
+
+        });
+    
+    }
+
+    static mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent: any): Map<string, CollectionsApiStructure> {
+
+        const objectApiToGeneratedRecords = new Map<string, CollectionsApiStructure>();
 
         const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent);
 
-        const transformedData = snowfakeryRecords.map(record => {
-        
+        snowfakeryRecords.forEach(record => {
+
             const objectApiName = record._table; // Use the _table value dynamically as type
             const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
-            const collectionsApiConvertedRecord = {
+            const sobjectGeneratedDetail = {
                 attributes: {
                     type: objectApiName,
                     referenceId: recordTrackingReferenceId
@@ -95,15 +114,28 @@ export class SnowfakeryIntegrationService {
             };
           
             // remove snowfakery properties not needed for collections api 
-            delete collectionsApiConvertedRecord.id;
-            delete collectionsApiConvertedRecord._table;
+            delete sobjectGeneratedDetail.id;
+            delete sobjectGeneratedDetail._table;
 
-            return collectionsApiConvertedRecord;
+            if (objectApiToGeneratedRecords.has(objectApiName)) {
+
+                objectApiToGeneratedRecords.get(objectApiName).records.push(sobjectGeneratedDetail);
+
+            } else {
+
+                const objectApiToRecords:CollectionsApiStructure = {
+                    allOrNone: true,
+                    records: [sobjectGeneratedDetail] 
+                };
+
+                objectApiToGeneratedRecords.set(objectApiName, objectApiToRecords);
+
+            }
 
         });
 
-        return transformedData;
-
+        return objectApiToGeneratedRecords;
+    
     }
 
     static createUniqueTimeStampedFakeDataSetsFolderName():string {
@@ -124,11 +156,9 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static createCollectionsApiFile(collectionsApiFormattedRecords: any[], 
-                                    selectedRecipeFilePathName: string,
-                                    uniqueTimeStampedFakeDataSetsFolderName: string ) {
+    static createCollectionsApiFile(objectApiName: string, collectionsApiFormattedRecords: any, uniqueTimeStampedFakeDataSetsFolderName: string ) {
 
-        const expectedCollectionsApiOutputFile = this.buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName);
+        const expectedCollectionsApiOutputFile = this.buildCollectionsApiFileNameBySobjectName(objectApiName);
         const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${expectedCollectionsApiOutputFile}`;
 
         const jsonStringFormattedRecords = JSON.stringify(collectionsApiFormattedRecords, null, 2);
@@ -137,19 +167,15 @@ export class SnowfakeryIntegrationService {
             
             if (error) {
                 new Error(`Error occurred in Collections Api file creation: ${error.message}`);
-            } else {
-                vscode.window.showInformationMessage(`Collections Api file created at: ${fullCollectionsApiFilePath}`);
-            }
+            } 
 
         });
 
     }
 
-    static buildCollectionsApiFileNameBySelectedRecipeFileName(selectedRecipeFilePathName: string):string {
+    static buildCollectionsApiFileNameBySobjectName(sobjectApiName: string):string {
 
-        const extensionRemovedFileName = selectedRecipeFilePathName.split('.')[0];
-        const collectionsApiFileName = `collectionsApi-${extensionRemovedFileName}.json`;
-
+        const collectionsApiFileName = `collectionsApi-${sobjectApiName}.json`;
         return collectionsApiFileName;
 
     }

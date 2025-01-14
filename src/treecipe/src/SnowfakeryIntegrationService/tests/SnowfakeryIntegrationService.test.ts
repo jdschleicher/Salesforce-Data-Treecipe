@@ -144,7 +144,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
     });
 
-    describe('transformSnowfakeryJsonData', () => {
+    describe('transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject', () => {
         
         test('should transform Snowfakery JSON data to Salesforce collections API format', () => {
             
@@ -171,7 +171,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
                 }
             ];
 
-            const result = SnowfakeryIntegrationService.transformSnowfakeryJsonData(snowfakeryJsonFileContent);
+            const result = SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent);
             expect(result).toEqual(expectedTransformedData);
 
         });
@@ -227,7 +227,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
             const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
             const mockExpectedFilePath = `${mockUniqueTimeStampedFakeDataSetsFolderName}/collectionsApi-recipe.json`;
 
-            jest.spyOn(SnowfakeryIntegrationService, 'buildCollectionsApiFileNameBySelectedRecipeFileName').mockReturnValue('collectionsApi-recipe.json');
+            jest.spyOn(SnowfakeryIntegrationService, 'buildCollectionsApiFileNameBySobjectName').mockReturnValue('collectionsApi-recipe.json');
 
             const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
 
@@ -249,14 +249,14 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
     });
 
-    describe('buildCollectionsApiFileNameBySelectedRecipeFileName', () => {
+    describe('buildCollectionsApiFileNameBySobjectName', () => {
 
         test('should build the correct collections API file name based on the selected recipe file name', () => {
             
             const fakeSelectedRecipeFilePathName = 'recipe.yml';
             const expectedFileName = 'collectionsApi-recipe.json';
 
-            const actualBuiltFileName = SnowfakeryIntegrationService.buildCollectionsApiFileNameBySelectedRecipeFileName(fakeSelectedRecipeFilePathName);
+            const actualBuiltFileName = SnowfakeryIntegrationService.buildCollectionsApiFileNameBySobjectName(fakeSelectedRecipeFilePathName);
 
             expect(actualBuiltFileName).toBe(expectedFileName);
 
