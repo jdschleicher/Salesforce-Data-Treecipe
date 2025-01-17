@@ -36,20 +36,20 @@
         "category": "Salesforce Treecipe"
       }
     ],
-    "configuration":[
+    "configuration": [
       {
         "title": "TREECIPE_EXTENSION_CONFIGURATION",
         "properties": {
-          "salesforce-data-treecipe.selectedFakerService" : {
+          "salesforce-data-treecipe.selectedFakerService": {
             "type": "string",
             "description": "faker implementation chosen as part of treecipe config setup and selections",
             "default": "snowfakery"
           },
-          "salesforce-data-treecipe.treecipeConfigurationPath" : {
+          "salesforce-data-treecipe.treecipeConfigurationPath": {
             "type": "string",
             "description": "workspace path location of treecipe.config.json file"
           },
-          "salesforce-data-treecipe.useSnowfakeryAsDefault" : {
+          "salesforce-data-treecipe.useSnowfakeryAsDefault": {
             "type": "boolean",
             "description": "feature flag to drive snowfakery-data-treecipe to leverage snowfakery as default faker provider"
           }
@@ -82,6 +82,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@salesforce/core": "^8.8.0",
     "ts-node": "^10.9.2",
     "xml2js": "^0.6.2"
   }
