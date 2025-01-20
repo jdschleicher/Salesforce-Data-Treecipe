@@ -88,7 +88,11 @@ export class SnowfakeryIntegrationService {
 
         mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
 
-            SnowfakeryIntegrationService.createCollectionsApiFile(sobjectApiName, collectionsApiContent, fullPathToUniqueTimeStampedFakeDataSetsFolder);
+            SnowfakeryIntegrationService.createCollectionsApiFile(
+                sobjectApiName, 
+                collectionsApiContent, 
+                fullPathToUniqueTimeStampedFakeDataSetsFolder
+            );
 
         });
     

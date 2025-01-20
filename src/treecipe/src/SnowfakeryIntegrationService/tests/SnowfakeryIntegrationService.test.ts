@@ -146,7 +146,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
     describe('transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject', () => {
         
-        test('should transform Snowfakery JSON data to Salesforce collections API format', () => {
+        test('given two different objects from snowfakery generation, calls createCollectionsApiFile twice', () => {
             
             const snowfakeryJsonFileContent = JSON.stringify([
                 { id: 1, _table: 'Account', name: 'Test Account' },
@@ -171,11 +171,28 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
                 }
             ];
 
+            // watch createCollectionsApiFile
+            jest.spyOn(SnowfakeryIntegrationService, "createCollectionsApiFile");
+
+            const mockedCreateCollectionsApiCall = jest.mocked(SnowfakeryIntegrationService.createCollectionsApiFile);
+
+            const fakeFunction = jest.fn();
+
             const fakePathToUniqueTimeStampedFakeDataSetsFolder = "mock/fake/path";
+            
+            mockedCreateCollectionsApiCall.mockImplementation(fakeFunction);
 
-            const result = SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent, fakePathToUniqueTimeStampedFakeDataSetsFolder);
-            expect(result).toEqual(expectedTransformedData);
+            const result = SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(
+                snowfakeryJsonFileContent, 
+                fakePathToUniqueTimeStampedFakeDataSetsFolder
+            );
 
+            expect(SnowfakeryIntegrationService.createCollectionsApiFile).toHaveBeenCalledTimes(2);
+
+        });
+
+        afterEach(() => {        
+            jest.restoreAllMocks();
         });
         
     });
@@ -205,7 +222,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
     });
 
     describe('createCollectionsApiFile', () => {
-        
+
         test('should create a collections API file with the correct content', () => {
             
             const mockCollectionsApiFormattedRecords = [
@@ -227,7 +244,6 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
             const expectedObjectName = 'Account';
             const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
-
 
             SnowfakeryIntegrationService.createCollectionsApiFile(
                 expectedObjectName,
@@ -251,11 +267,10 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
         test('should build the correct collections API file name based on the selected recipe file name', () => {
             
-            const fakeSelectedRecipeFilePathName = 'recipe.yml';
-            const expectedFileName = 'collectionsApi-recipe.json';
+            const expectedObjectName = 'Account';
+            const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
 
-            const actualBuiltFileName = SnowfakeryIntegrationService.buildCollectionsApiFileNameBySobjectName(fakeSelectedRecipeFilePathName);
-
+            const actualBuiltFileName = SnowfakeryIntegrationService.buildCollectionsApiFileNameBySobjectName(expectedObjectName);
             expect(actualBuiltFileName).toBe(expectedFileName);
 
         });
