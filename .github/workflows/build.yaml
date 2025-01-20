@@ -2,15 +2,18 @@ name: Run JESTS on PUSH
 
 on:
   push:
-  pull_request:  
+  pull_request:
 
 jobs:
   
   Compile-and-Test-Salesforce-Data-Treecipe:
 
+    if: github.event.pull_request.draft == false
+
     runs-on: ubuntu-latest
 
     steps:
+
     - name: Checkout Current Repository
       uses: actions/checkout@v4
 

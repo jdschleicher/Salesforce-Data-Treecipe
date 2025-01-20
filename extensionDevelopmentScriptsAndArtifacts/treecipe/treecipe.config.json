@@ -1,0 +1,4 @@
+{
+    "salesforceObjectsPath": "./force-app/main/default/objects/",
+    "dataFakerService": "snowfakery"
+}

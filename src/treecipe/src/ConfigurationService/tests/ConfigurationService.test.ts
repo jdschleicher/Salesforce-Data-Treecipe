@@ -1,4 +1,3 @@
-
 import { SnowfakeryFakerService } from '../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
@@ -199,7 +198,46 @@ describe('Shared ConfigurationService Tests', () => {
         });
 
     });
-        
+
+    describe('getFakeDataSetsFolderName', () => {
+
+        test('returns expected treecipe dataset artifcats folder name', () => {
+            const expectedFolderName = "FakeDataSets";
+            const actualFolderName = ConfigurationService.getFakeDataSetsFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getFakeDataSetsFolderPath', () => {
+
+        test('returns expected treecipe folder name for dataset artifacts folder path', () => {
+            const expectedFolderPath = "treecipe/FakeDataSets";
+            const actualFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
+            expect(actualFolderPath).toBe(expectedFolderPath);
+        });
+
+    });
+
+    describe('getGeneratedRecipesDefaultFolderName', () => {
+
+        test('returns expected generated recipe artifcats folder name', () => {
+            const expectedFolderName = "GeneratedRecipes";
+            const actualFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getGeneratedRecipesFolderPath', () => {
+
+        test('returns expected path from project root for treecipe generated recipe artifacts', () => {
+            const expectedFolderPath = "treecipe/GeneratedRecipes";
+            const actualFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
+            expect(actualFolderPath).toBe(expectedFolderPath);
+        });
+
+    });
 
 });
 

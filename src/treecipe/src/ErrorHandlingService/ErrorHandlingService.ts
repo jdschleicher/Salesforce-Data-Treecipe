@@ -18,18 +18,13 @@ export class ErrorHandlingService {
     
     static handleGenericError(error: Error, executedCommand: string) {
 
-        const errorMessage = error instanceof Error ? executedCommand + ':' + error.message : `Unknown error during command: ${ executedCommand }`;
+        const errorMessage = error instanceof Error ? executedCommand + ': ' + error.message : `Unknown error during command: ${ executedCommand }`;
         const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
         const goToTroubleshootingREADMESection = "Review Troubleshooting From README";
 
         vscode.window.showErrorMessage(
 
-            `Error occurred during:  ${executedCommand}
-            \n 
-
-            Please select an option below:
-
-            \n
+            `Error occurred during:  ${executedCommand} *** ${errorMessage} *** Please select an option below:
             `, 
             this.reportIssueButton,
             goToTroubleshootingREADMESection

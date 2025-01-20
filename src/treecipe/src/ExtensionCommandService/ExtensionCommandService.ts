@@ -6,6 +6,7 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
 
 export class ExtensionCommandService {
     
@@ -13,11 +14,36 @@ export class ExtensionCommandService {
 
         try {
 
-            ConfigurationService.createTreecipeJSONConfigurationFile();
+            await ConfigurationService.createTreecipeJSONConfigurationFile();
 
         } catch(error) {
 
             const commandName = 'initiateTreecipeConfigurationSetup';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    async runSnowfakeryGenerationByRecipeFile() {
+
+        try {
+            
+            const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
+            if (!selectedRecipeQuickPickItem) {
+                return;
+            }
+            const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
+            const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
+
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
+
+            SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/originFile-${selectedRecipeQuickPickItem.label}`);
+
+        } catch(error) {
+
+            const commandName = 'runSnowfakeryGenerationByRecipeFile';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
@@ -46,7 +72,7 @@ export class ExtensionCommandService {
             const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
 
             // ensure dedicated directory for generated recipes exists
-            const generatedRecipesFolderName = 'GeneratedRecipes';
+            const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
             const expectedGeneratedRecipesFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}`;
             if (!fs.existsSync(expectedGeneratedRecipesFolderPath)) {
                 fs.mkdirSync(expectedGeneratedRecipesFolderPath);

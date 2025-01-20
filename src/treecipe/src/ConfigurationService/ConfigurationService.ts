@@ -129,6 +129,19 @@ export class ConfigurationService {
         return defaultTreecipeConfigurationFolder;
     }
 
+    static getGeneratedRecipesDefaultFolderName() {
+        const generatedRecipesFolderName = 'GeneratedRecipes';
+        return generatedRecipesFolderName;
+    }
+
+    static getGeneratedRecipesFolderPath() {
+        
+        const defaultTreecipeConfigurationFolder = this.getDefaultTreecipeConfigurationFolderName();
+        const generatedRecipesFolderName = this.getGeneratedRecipesDefaultFolderName();
+        return (`${defaultTreecipeConfigurationFolder}/${generatedRecipesFolderName}`);
+
+    }
+
     static getTreecipeConfigurationFileName() {
         const configurationFileName = "treecipe.config.json";
         return configurationFileName;
@@ -148,5 +161,19 @@ export class ConfigurationService {
           }
     
     }
+
+    static getFakeDataSetsFolderName() {
+        const fakeDataSetsFolderName = 'FakeDataSets';
+        return fakeDataSetsFolderName;
+    }
+
+    static getFakeDataSetsFolderPath() {
+        
+        const defaultTreecipeConfigurationFolder = this.getDefaultTreecipeConfigurationFolderName();
+        const generatedRecipesFolderName = this.getFakeDataSetsFolderName();
+        return (`${defaultTreecipeConfigurationFolder}/${generatedRecipesFolderName}`);
+
+    }
+
 
 }

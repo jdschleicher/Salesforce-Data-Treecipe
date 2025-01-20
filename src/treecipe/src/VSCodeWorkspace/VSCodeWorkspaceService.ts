@@ -7,26 +7,25 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 export class VSCodeWorkspaceService {
 
     static getWorkspaceRoot():string {
+
         const workspaceRoot:string = vscode.workspace.workspaceFolders
                                     ? vscode.workspace.workspaceFolders[0].uri.fsPath
                                     : undefined;
-
-        return workspaceRoot;
-    }
-
-    static async promptForObjectsPath(workspaceRoot:string ): Promise<string | undefined> {
-
-        console.log('Workspace Root:', workspaceRoot);
 
         if (!workspaceRoot) {
             void vscode.window.showErrorMessage('No workspace folder found');
             return undefined;
         }
 
+        return workspaceRoot;
+    }
+
+    static async promptForObjectsPath(workspaceRoot:string ): Promise<string | undefined> {
+
         let currentPath = workspaceRoot;
         while (true) {
             
-            const items = await this.getVSCodeQuickPickDirectoryItems(currentPath);
+            const items = await this.getPotentialTreecipeObjectDirectoryPathsQuickPickItems(currentPath);
             
             const selection = await vscode.window.showQuickPick(
                 items,
@@ -46,16 +45,16 @@ export class VSCodeWorkspaceService {
         }
     }
 
-    static async getVSCodeQuickPickDirectoryItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
+    static async getPotentialTreecipeObjectDirectoryPathsQuickPickItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
         
         let items: vscode.QuickPickItem[] = [];
-        items = await this.readdirRecursive(dirPath, items);
+        items = await this.parseForPotentialTreecipeObjectsDirectoriesRecursively(dirPath, items);
       
         return items;
 
     }
 
-    private static async readdirRecursive(dirPath:string, items) {
+    private static async parseForPotentialTreecipeObjectsDirectoriesRecursively(dirPath:string, items) {
 
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
@@ -81,7 +80,7 @@ export class VSCodeWorkspaceService {
                 const fullPath = path.join(dirPath, entry.name);
                 console.log(fullPath);
 
-                await this.readdirRecursive(fullPath, items);
+                await this.parseForPotentialTreecipeObjectsDirectoriesRecursively(fullPath, items);
 
             }
 
@@ -138,5 +137,54 @@ export class VSCodeWorkspaceService {
 
     }
 
+    static async promptForRecipeFileToProcess(): Promise<vscode.QuickPickItem | undefined> {
+
+        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
+        const workspaceRoot = this.getWorkspaceRoot();
+        const generatedRecipesFolderPath = `${workspaceRoot}/${expectedGeneratedRecipesFolderPath}`;
+
+        const availableRecipeFileQuickPickitems: vscode.QuickPickItem[] = await this.getAvailableRecipeFileQuickPickItems(generatedRecipesFolderPath);
+        
+        const selection = await vscode.window.showQuickPick(
+            availableRecipeFileQuickPickitems,
+            {
+                placeHolder: 'Select recipe file to process',
+                ignoreFocusOut: true
+            }
+        );
+
+        if (!selection) {
+            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
+            return undefined; 
+        }
+        
+        return selection;    
+
+    }
+
+    static async getAvailableRecipeFileQuickPickItems(generatedRecipesFolderPath: string) {
+
+        let recipeFileQuickPickItems: vscode.QuickPickItem[] = [];
+        const entries = await fs.promises.readdir(generatedRecipesFolderPath, { withFileTypes: true });
+        for (const entry of entries) {
+  
+            if (entry.isFile()) {
+
+                const quickpickLabel = `${entry.name}`; 
+                const fullFilePathName = path.join(entry.path, entry.name);
+                recipeFileQuickPickItems.push({
+                    label: quickpickLabel,
+                    description: 'File',
+                    iconPath: new vscode.ThemeIcon('file'),
+                    detail: fullFilePathName
+                });
+
+            }
+
+        }
+      
+        return recipeFileQuickPickItems;
+
+    }
 
 }
