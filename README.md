@@ -91,6 +91,16 @@ https://github.com/user-attachments/assets/fd127b55-d434-4a73-9d65-cf4172fbce6f
 
 ---
 
+#### Run Snowfakery by existing recipe yaml file
+
+
+
+https://github.com/user-attachments/assets/d7dfcf70-70f8-4ce3-b254-280e2bbb0b7d
+
+
+
+---
+
 ## Features
 
 - **Easy Configuration Setup**: Define your Salesforce object directory in just a few steps.
