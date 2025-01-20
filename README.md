@@ -15,7 +15,8 @@
 
 
  ### <a name="command1"></a> 1. **Salesforce Treecipe: Initiate Configuration File**
-This command initiates the creation of a configuration file that is required before using other features of the extension.
+ 
+This [command initiates the creation of a configuration file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main#initiate-treecipe-configuration-with-expected-objects-directory) that is required before using other features of the extension.
 
 The command creates a root directory folder called "treecipe" and within it a configuration file called "treecipe.config.json". 
 
@@ -42,7 +43,7 @@ Once the configuration file is generated, you can begin using the **Generate Tre
 ---
 
 ### 2.<a name="command2"></a> **Salesforce Treecipe: Generate Treecipe**
-This command generates a **Treecipe**, a structured representation of your Salesforce data, based on your configuration.
+This command [generates a **Treecipe**](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main#generate-treecipe-based-on-treecipeconfigjcon--keep-an-eye-out-for-ootb-fields-and-remove-me-lines-), a structured representation of your Salesforce data, based on your configuration.
 
 It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above and generate a yaml file of objects and associated fields.
 
