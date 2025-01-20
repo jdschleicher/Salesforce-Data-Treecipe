@@ -63,7 +63,7 @@ Once your configuration file and objects directory are set up, running this comm
 
  ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe)**
  
-This command prompts the user to select an existing recipe(Treecipe) file to generate fake data from.
+This command [prompts the user to select an existing recipe(Treecipe) file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file) to generate fake data from.
 
 With the selection made, the snowfakery CLI will execute against they yaml file and produce json structured, production-like data which is then converted for usage with Salesforce [Collection Api](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm)
 
