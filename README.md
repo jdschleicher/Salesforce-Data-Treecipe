@@ -4,9 +4,17 @@
 
 ---
 
-## Commands
+## Get Started by following the below commands:
 
-### 1. **Salesforce Treecipe: Initiate Configuration File**
+1. [Initiate Configuration File](#command1)
+2. [Generate Treecipe](#command2)
+3. [Run Snowfakery by Recipe(Treecipe)](#command3)
+
+---
+
+
+
+ ### <a name="command1"></a> 1. **Salesforce Treecipe: Initiate Configuration File**
 This command initiates the creation of a configuration file that is required before using other features of the extension.
 
 The command creates a root directory folder called "treecipe" and within it a configuration file called "treecipe.config.json". 
@@ -33,7 +41,7 @@ Once the configuration file is generated, you can begin using the **Generate Tre
 
 ---
 
-### 2. **Salesforce Treecipe: Generate Treecipe**
+### 2.<a name="command2"></a> **Salesforce Treecipe: Generate Treecipe**
 This command generates a **Treecipe**, a structured representation of your Salesforce data, based on your configuration.
 
 It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above and generate a yaml file of objects and associated fields.
@@ -49,6 +57,15 @@ There is also an option to "Report a Bug" if the initiation command has already 
 - If the configuration file is missing or incomplete, you will be prompted to initiate the configuration first.
 
 Once your configuration file and objects directory are set up, running this command will generate a custom tree structure to assist in your Salesforce development and data handling.
+
+---
+
+ ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe)**
+ 
+This command prompts the user to select an existing recipe(Treecipe) file to generate fake data from.
+
+With the selection made, the snowfakery CLI will execute against they yaml file and produce json structured, production-like data which is then converted for usage with Salesforce [Collection Api](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm)
+
 
 ---
 
