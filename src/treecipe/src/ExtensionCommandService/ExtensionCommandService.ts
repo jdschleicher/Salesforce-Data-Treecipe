@@ -41,7 +41,6 @@ export class ExtensionCommandService {
             SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
             fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/originFile-${selectedRecipeQuickPickItem.label}`);
 
-
         } catch(error) {
 
             const commandName = 'runSnowfakeryGenerationByRecipeFile';
