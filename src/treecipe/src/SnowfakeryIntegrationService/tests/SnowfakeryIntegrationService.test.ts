@@ -171,7 +171,9 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
                 }
             ];
 
-            const result = SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent);
+            const fakePathToUniqueTimeStampedFakeDataSetsFolder = "mock/fake/path";
+
+            const result = SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent, fakePathToUniqueTimeStampedFakeDataSetsFolder);
             expect(result).toEqual(expectedTransformedData);
 
         });
@@ -223,24 +225,20 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
                 },
             ];
 
-            const mockSelectedRecipeFilePathName = 'recipe.yml';
+            const expectedObjectName = 'Account';
             const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
-            const mockExpectedFilePath = `${mockUniqueTimeStampedFakeDataSetsFolderName}/collectionsApi-recipe.json`;
-
-            jest.spyOn(SnowfakeryIntegrationService, 'buildCollectionsApiFileNameBySobjectName').mockReturnValue('collectionsApi-recipe.json');
-
-            const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
 
 
             SnowfakeryIntegrationService.createCollectionsApiFile(
+                expectedObjectName,
                 mockCollectionsApiFormattedRecords,
-                mockSelectedRecipeFilePathName,
                 mockUniqueTimeStampedFakeDataSetsFolderName
             );
 
-
+            const expectedFileName = `${mockUniqueTimeStampedFakeDataSetsFolderName}/collectionsApi-${expectedObjectName}.json`;
+            const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
             expect(fs.writeFile).toHaveBeenCalledWith(
-                mockExpectedFilePath,
+                expectedFileName,
                 jsonMockCollectionsApiFormattedRecords,
                 expect.any(Function)
             );

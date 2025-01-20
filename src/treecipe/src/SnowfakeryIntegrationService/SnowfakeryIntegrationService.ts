@@ -86,7 +86,6 @@ export class SnowfakeryIntegrationService {
 
         const mappedSObjectApiToRecords = this.mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent);   
 
-
         mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
 
             SnowfakeryIntegrationService.createCollectionsApiFile(sobjectApiName, collectionsApiContent, fullPathToUniqueTimeStampedFakeDataSetsFolder);
