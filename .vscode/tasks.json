@@ -19,13 +19,13 @@
 		{
             "label": "CUSTOM: CREATE SUMMARY FILES - CLEAN JEST TESTS RUN AND CREATE TEST SUMMARY FILES IN 'coverage' FOLDER",
             "type": "shell",
-            "command": "pwsh ./developmentSupportAndScripts/resetAndInitiateJestCoverageTest.ps1",
+            "command": "pwsh ./developmentSupportScripts/resetAndInitiateJestCoverageTest.ps1",
             "problemMatcher": []
         },
 		{
             "label": "CUSTOM: OPEN JEST IN BROWSER - CLEAN JEST TESTS AND OPEN COVERAGE REPORT IN BROWSER",
             "type": "shell",
-            "command": "pwsh ./developmentSupportAndScripts/resetAndRunCoverageReport.ps1",
+            "command": "pwsh ./developmentSupportScripts/resetAndRunCoverageReport.ps1",
             "problemMatcher": []
         },
 	]
