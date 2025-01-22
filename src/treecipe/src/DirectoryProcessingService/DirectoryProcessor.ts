@@ -9,7 +9,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as xml2js from 'xml2js';
-import { error } from 'console';
 
 export class DirectoryProcessor {
 
