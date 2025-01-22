@@ -49,7 +49,11 @@ export class SnowfakeryFakerService implements IFakerService {
 
     }
 
-    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, controllingField: string): string {
+    buildDependentPicklistRecipeFakerValue(
+                        controllingValueToPicklistOptions: Record<string, string[]>, 
+                        recordTypeByAvailablePicklistValues: Record<string, string>,
+                        controllingField: string
+                    ): string {
     
         let fakeDependentPicklistRecipeValue = "";
         let allMultiSelectChoiceRecipe:string;
@@ -59,13 +63,38 @@ export class SnowfakeryFakerService implements IFakerService {
             
             let randomChoicesBreakdown:string;
 
+            // get initial list of all available picklist values before record type sections
             picklistValuesAvailableForChoice.forEach( value => {
+
                 if (randomChoicesBreakdown) {
-                    randomChoicesBreakdown += `\n${this.generateTabs(5)}- ${value}`;
+                    const newLineBreak = `\n`;
+                    randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${value}`;
                 } else {
                     randomChoicesBreakdown = `- ${value}`;
                 }
-            });
+
+            });   
+
+            for ( const recordTypeKey in recordTypeByAvailablePicklistValues ) {
+                
+                let recordTypeValues = recordTypeByAvailablePicklistValues[recordTypeKey];
+               
+                for ( let i = 0; i < recordTypeValues.length; i++ ) {
+
+                    const recordTypeValue = recordTypeValues[i];
+                    if (i === 0) {
+                        // capture first iteration to create dedicated section for unique recordtype
+                        const newLineBreak = `\n`;
+                        randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeValue}`;
+                    } else {
+                        randomChoicesBreakdown = `- ${recordTypeValue}`;
+                    }     
+
+                }           
+            
+            }
+
+       
 
 
             let multiSelectChoiceRecipe = 

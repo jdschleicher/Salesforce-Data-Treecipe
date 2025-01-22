@@ -46,7 +46,6 @@ export class XmlFileProcessor {
     } catch (error) {
       console.error(`Error processing xmlContent ${xmlContent}:`, error);
     }
-
     
     return xmlFieldDetail;
 

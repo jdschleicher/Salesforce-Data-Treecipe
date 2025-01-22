@@ -183,7 +183,8 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                     - Model X`;
 
 
-            const actualFakerValue = snowfakeryService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, controllingField);
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualFakerValue = snowfakeryService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, recordTypeNameToRecordTypeXMLMarkup, controllingField);
 
             expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
         });

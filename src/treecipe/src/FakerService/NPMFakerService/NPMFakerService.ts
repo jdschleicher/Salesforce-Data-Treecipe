@@ -7,7 +7,10 @@ export class NPMFakerService implements IFakerService {
         return ' '.repeat(spacesPerTab * tabCount);
     }
 
-    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, controllingField: string): string {
+    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, 
+                                            recordTypeNameToRecordTypeXMLMarkup: Record<string, string>,
+                                            controllingField: string
+                                        ): string {
     
         let fakeDependentPicklistRecipeValue = "";
         let allMultiSelectChoiceRecipe:string;

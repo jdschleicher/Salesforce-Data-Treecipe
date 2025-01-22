@@ -99,7 +99,8 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
       const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';
-      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName);
+      const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName, recordTypeNameByRecordTypeNameToXMLMarkup);
 
       const expectedFieldInfo = XMLMarkupMockService.getTextXMLFieldDetail();
     
@@ -156,7 +157,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
       test('given expected mock to return non-xml files, nested directories enum types, and xml files, expected count of fieldInfo returned', async () => {
 
         // THIS TEST COMPLETELY MOCKS OUT XML MARKUP TO FOCUS ON FIELD RESULTS 
-        const mockedDirectory = MockDirectoryService.getMockedReadDirectorWithExpectedFoldersAndInvalidXMLFileExtensions()
+        const mockedDirectory = MockDirectoryService.getMockedReadDirectorWithExpectedFoldersAndInvalidXMLFileExtensions();
         const expectedFakeDirectoryItems = 22;
         const expectedXMLFileTypesInDirectory = 19;
 
@@ -186,7 +187,8 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         
         const fakeUri = vscode.Uri.file('/fake/fields/fakepath');
         const fakeObjectName = 'dont worry about me';
-        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, fakeObjectName);
+        const fakeRecordTypeNameByRecordTypeNameToXMLMarkup = {};
+        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, fakeObjectName, fakeRecordTypeNameByRecordTypeNameToXMLMarkup);
 
         expect(processedFileInfoDetails.length).toBe(expectedXMLFileTypesInDirectory);
 

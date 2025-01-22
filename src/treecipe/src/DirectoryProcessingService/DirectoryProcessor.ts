@@ -37,7 +37,9 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName );
+            // const recordTypeNameByRecordTypeNameToXMLMarkup = this.getRecordTypeMarkupsMap(fullPath.path);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeNameByRecordTypeNameToXMLMarkup );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
             if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
@@ -73,7 +75,11 @@ export class DirectoryProcessor {
 
   }
 
-  async processFieldsDirectory(directoryPathUri: vscode.Uri, associatedObjectName: string): Promise<FieldInfo[]> {
+  async processFieldsDirectory(
+        directoryPathUri: vscode.Uri, 
+        associatedObjectName: string,
+        recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, string>
+      ): Promise<FieldInfo[]> {
 
     /* 
       - vscode.workspace.fs.readDirectory returns Tuple of type <FileName, and FileType enum -- click into readDirectory method to see more
@@ -88,10 +94,10 @@ export class DirectoryProcessor {
       if ( this.isXMLFileType(fileName, directoryItemTypeEnum) ) {
 
         const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
-        const xmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
-        const xmlContent = Buffer.from(xmlContentUriData).toString('utf8');
+        const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
+        const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
 
-        let fieldInfo = await this.buildFieldInfoByXMLContent(xmlContent, associatedObjectName);
+        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, associatedObjectName, recordTypeNameByRecordTypeNameToXMLMarkup);
         fieldInfoDetails.push(fieldInfo);
 
       }
@@ -109,10 +115,13 @@ export class DirectoryProcessor {
 
   }
 
-  async buildFieldInfoByXMLContent(xmlContent: string, associatedObjectName: string):Promise<FieldInfo> {
+  async buildFieldInfoByXMLContent(xmlContent: string, 
+                                    associatedObjectName: string,
+                                    recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, string>
+                                  ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
-    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail);                                                        
+    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeNameByRecordTypeNameToXMLMarkup);                                                        
 
     let fieldInfo = FieldInfo.create(
       associatedObjectName,
@@ -133,7 +142,7 @@ export class DirectoryProcessor {
     return path.basename(filePath);
   }
 
-  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail): string {
+  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, string>): string {
     let recipeValue = null;
     if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
 
@@ -141,14 +150,40 @@ export class DirectoryProcessor {
 
     } else {
 
-      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail);
+      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeNameToRecordTypeXMLMarkup);
     
     }
     
     return recipeValue;
   
   }
+
+  // getRecordTypeMarkupsMap(associatedFieldsDirectoryPath: string): Record<string, string> {
+
+  //   const recordTypeDirectoryName = 'recordTypes';
+
+  //   // const basePathForObject = associatedFieldsDirectoryPath.split
+  //   // const recordTypesPath = `${basePathForObject}/${recordTypeDirectoryName}`;
+  //   const recordTypesPath:vscode.Uri = vscode.Uri.joinPath(basePathForObject, recordTypeDirectoryName);
+
+  //   const entries = await vscode.workspace.fs.readDirectory(recordTypesPath);
+  //   if (entries === undefined || entries.length === 0) {
+  //     // base case for recursion -- prevents empty directories causing null reference errors
+  //     vscode.window.showWarningMessage('No entries found in directory: ' + directoryPathUri.fsPath);
+
+  //   } 
+
+  //   for (const [entryName, entryType] of entries) {
+  //   }
+    
+  //   return {
+  //     'RecordType1': 'RECORD TYPE 1 XML MARKUP',
+  //     'RecordType2': 'RECORD TYPE 2 XML MARKUP',
+  //     'RecordType3': 'RECORD TYPE 3 XML MARKUP'
+  //   };
   
+  // }
+
 }
 
 

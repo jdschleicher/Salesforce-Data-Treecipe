@@ -20,7 +20,7 @@ export class RecipeService {
         this.fakerService.getMapSalesforceFieldToFakerValue();
     }
 
-    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
+    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, string>): string {
         
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
@@ -29,7 +29,7 @@ export class RecipeService {
             case 'picklist':
                 
                 if (xmlFieldDetail.controllingField) {
-                    fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail);
+                    fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
                 } else {
                     if ( !(xmlFieldDetail.picklistValues) ) {
                         return '';
@@ -84,7 +84,7 @@ export class RecipeService {
     
     }
 
-    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail): string {
+    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, string>): string {
     
         const controllingField = xmlFieldDetail.controllingField;
         let controllingValueToPicklistOptions:Record<string, string[]> = {};
@@ -109,7 +109,7 @@ export class RecipeService {
 
         });
 
-        return this.fakerService.buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions, controllingField);
+        return this.fakerService.buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions, recordTypeNameToRecordTypeXMLMarkup, controllingField);
         
     }
 
