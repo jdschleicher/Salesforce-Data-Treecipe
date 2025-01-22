@@ -7,6 +7,9 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as xml2js from 'xml2js';
+import { error } from 'console';
 
 export class DirectoryProcessor {
 
@@ -37,8 +40,8 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            // const recordTypeNameByRecordTypeNameToXMLMarkup = this.getRecordTypeMarkupsMap(fullPath.path);
-            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const recordTypeNameByRecordTypeNameToXMLMarkup = await this.getRecordTypeMarkupsMap(fullPath.path);
+            // const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeNameByRecordTypeNameToXMLMarkup );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
@@ -158,31 +161,55 @@ export class DirectoryProcessor {
   
   }
 
-  // getRecordTypeMarkupsMap(associatedFieldsDirectoryPath: string): Record<string, string> {
+  async getRecordTypeMarkupsMap(associatedFieldsDirectoryPath: string): Promise<Record<string, string>> {
 
-  //   const recordTypeDirectoryName = 'recordTypes';
+    const baseObjectPath = associatedFieldsDirectoryPath.split('/fields')[0]; // getting index of 0 will return base path 
+    const expectedRecordTypesFolderName = 'recordTypes';
+    const expectedRecordTypesPath = `${baseObjectPath}/${expectedRecordTypesFolderName}`;
+    const recordTypesDirectoryUri = vscode.Uri.parse(expectedRecordTypesPath);
 
-  //   // const basePathForObject = associatedFieldsDirectoryPath.split
-  //   // const recordTypesPath = `${basePathForObject}/${recordTypeDirectoryName}`;
-  //   const recordTypesPath:vscode.Uri = vscode.Uri.joinPath(basePathForObject, recordTypeDirectoryName);
+    let recordTypeToXMLMarkupMap: Record<string, string> = {};
 
-  //   const entries = await vscode.workspace.fs.readDirectory(recordTypesPath);
-  //   if (entries === undefined || entries.length === 0) {
-  //     // base case for recursion -- prevents empty directories causing null reference errors
-  //     vscode.window.showWarningMessage('No entries found in directory: ' + directoryPathUri.fsPath);
+    // check if recordTypes folder exists
+    if (!fs.existsSync(expectedRecordTypesPath)) {
+      // no recordTypes folder exists for object
+      return recordTypeToXMLMarkupMap;
 
-  //   } 
-
-  //   for (const [entryName, entryType] of entries) {
-  //   }
+    }
     
-  //   return {
-  //     'RecordType1': 'RECORD TYPE 1 XML MARKUP',
-  //     'RecordType2': 'RECORD TYPE 2 XML MARKUP',
-  //     'RecordType3': 'RECORD TYPE 3 XML MARKUP'
-  //   };
+    const recordTypeFileTuples = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
+    if (recordTypeFileTuples === undefined || recordTypeFileTuples.length === 0) {
+      // if folder exists but is empty
+      return recordTypeToXMLMarkupMap;
+    } 
+
+    for (const [fileName, directoryItemTypeEnum] of recordTypeFileTuples) {
+
+      if ( this.isXMLFileType(fileName, directoryItemTypeEnum) ) {
+
+        const recordTypeUri = vscode.Uri.joinPath(recordTypesDirectoryUri, fileName);
+        const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
+        const recordTypeXMLContent = Buffer.from(recordTypeContentUriData).toString('utf8');
+
+        let recordTypeXML: any;
+        xml2js.parseString(recordTypeXMLContent, function (error, result) {
+
+          if (error) {  
+            throw new Error(`Error processing record type xmlContent ${recordTypeXMLContent}: ` + error.message);
+          }
+          recordTypeXML = result;
+        });
+
+        const apiName = recordTypeXML.RecordType.fullName[0];
+        recordTypeToXMLMarkupMap[apiName] = recordTypeXMLContent;
+
+      }
+
+    }
+    
+    return recordTypeToXMLMarkupMap;
   
-  // }
+  }
 
 }
 
