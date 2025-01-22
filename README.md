@@ -8,7 +8,8 @@
 
 1. [Initiate Configuration File](#command1)
 2. [Generate Treecipe](#command2)
-3. [Run Snowfakery by Recipe(Treecipe)](#command3)
+3. [Run Snowfakery by Recipe(Treecipe) to create FakeDataSet](#command3)
+4. [Insert/Upsert FakeDataSet by Timestamped Directory](#command4)
 
 ---
 
@@ -61,12 +62,36 @@ Once your configuration file and objects directory are set up, running this comm
 
 ---
 
- ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe)**
+ ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe) to create FakeDataSet**
  
 This command [prompts the user to select an existing recipe(Treecipe) file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file) to generate fake data from.
 
 With the selection made, the snowfakery CLI will execute against they yaml file and produce json structured, production-like data which is then converted for usage with Salesforce [Collection Api](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm)
 
+
+---
+
+ ### <a name="command4"></a> 4. **Insert/Upsert FakeDataSet by Timestamped Directory**
+ 
+- as part of command#2 - genearte treecipe
+  - get recordtype info from object and provide options 
+- as part of generatign fake data, create "orderofinserts"file
+- prompts user for expected org to insert data into
+- get sobject to record type map breakdown: SELECT Id, Name, DeveloperName, SobjectType, IsActive FROM RecordType WHERE SobjectType IN ('Account', 'Example_Everything__c')
+- features
+  - stopwatch trackign time of operations
+  - success results and linked paths
+  - failured results and linked paths
+- code logic
+  - create new directory for dataInsertRuns ( attempt 1, attempt 2)
+  - prep with map variables
+    - sObjectToRecordTypeNameToRecTypeIdsMap
+      - generates recordtypemap pointing recordtypename provided with recordtype id of org
+    - referenceIdToAssociatedLookupRecordId
+    - sObjectToLookupMaps
+  - Loop over data files
+  - insertdata run
+  - upsertdata run for child relationships
 
 ---
 
