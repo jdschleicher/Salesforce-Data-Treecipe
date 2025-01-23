@@ -51,8 +51,9 @@ export class SnowfakeryFakerService implements IFakerService {
 
     buildDependentPicklistRecipeFakerValue(
                         controllingValueToPicklistOptions: Record<string, string[]>, 
-                        recordTypeByAvailablePicklistValues: Record<string, object>,
-                        controllingField: string
+                        recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
+                        controllingField: string,
+                        fieldApiName: string
                     ): string {
     
         let fakeDependentPicklistRecipeValue = "";
@@ -74,27 +75,58 @@ export class SnowfakeryFakerService implements IFakerService {
 
             });   
 
-            // for ( const recordTypeKey in recordTypeByAvailablePicklistValues ) {
+
+            for ( const recordTypeKey in recordTypeNameByRecordTypeNameToXMLMarkup ) {
                 
-            //     let recordTypeValues = recordTypeByAvailablePicklistValues[recordTypeKey];
+                let recordTypePicklistSections = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeKey]?.RecordType?.picklistValues;
+
+                if ( recordTypePicklistSections ) {
+
+                    recordTypePicklistSections.forEach( recordTypeSection => {  
+                    
+                        let recordTypeChoicesBreakdown:string;
+
+                        const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
+                        if ( fieldApiNameFromRecordTypeMarkup === fieldApiName) { 
+
+                            recordTypeSection.values.forEach( recordTypeValueDetail => {
+
+                                const newLineBreak = `\n`;
+                                const recordTypePicklistValue = recordTypeValueDetail.fullName[0];
+                                if (recordTypeChoicesBreakdown) {
+                                    recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
+                                } else {
+                                    const recordTypeTodoVerbiage = `### TODO: CONFIRM IF USING -- ${recordTypeKey} - RECORD TYPE PICKLIST VALUES BASED`;
+                                    recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
+                                }
+                
+                            });  
+
+                            randomChoicesBreakdown += recordTypeChoicesBreakdown;
+
+                        }
                
-            //     for ( let i = 0; i < recordTypeValues.length; i++ ) {
 
-            //         const recordTypeValue = recordTypeValues[i];
-            //         if (i === 0) {
-            //             // capture first iteration to create dedicated section for unique recordtype
-            //             const newLineBreak = `\n`;
-            //             randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeValue}`;
-            //         } else {
-            //             randomChoicesBreakdown = `- ${recordTypeValue}`;
-            //         }     
+                    });
 
-            //     }           
-            
-            // }
 
+
+                }
+
+                // for ( let i = 0; i < recordTypeValues.length; i++ ) {
+
+                //     const recordTypeValue = recordTypeValues[i];
+                //     if (i === 0) {
+                //         // capture first iteration to create dedicated section for unique recordtype
+                //         const newLineBreak = `\n`;
+                //         randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeValue}`;
+                //     } else {
+                //         randomChoicesBreakdown = `- ${recordTypeValue}`;
+                //     }     
+
+                // }           
        
-
+            }
 
             let multiSelectChoiceRecipe = 
 `${this.generateTabs(2)}- choice:

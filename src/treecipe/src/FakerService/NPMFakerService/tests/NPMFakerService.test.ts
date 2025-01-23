@@ -187,7 +187,11 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
 
             const recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, object> = {};
-            const actualFakerValue = npmFakerService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, recordTypeNameByRecordTypeNameToXMLMarkup, controllingField);
+            const fakeFieldApiName = "CarModel__c";
+            const actualFakerValue = npmFakerService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
+                                                        recordTypeNameByRecordTypeNameToXMLMarkup, 
+                                                        controllingField, 
+                                                        fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
         });

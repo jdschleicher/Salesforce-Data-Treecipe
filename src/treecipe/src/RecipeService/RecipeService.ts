@@ -109,9 +109,10 @@ export class RecipeService {
 
         });
 
-        
-
-        return this.fakerService.buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions, recordTypeNameToRecordTypeXMLMarkup, controllingField);
+        return this.fakerService.buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions, 
+                                                                recordTypeNameToRecordTypeXMLMarkup, 
+                                                                controllingField,
+                                                                xmlFieldDetail.apiName);
         
     }
 

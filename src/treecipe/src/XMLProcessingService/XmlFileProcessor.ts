@@ -31,13 +31,19 @@ export class XmlFileProcessor {
 
     if ( typeValue === 'Picklist' || typeValue === "MultiselectPicklist") {
 
-      let picklistValueSetMarkup = fieldXML.CustomField.valueSet[0];
-      xmlFieldDetail.picklistValues = this.extractPickListDetailsFromXMLValueTag(picklistValueSetMarkup);
+      let picklistValueSetMarkup = fieldXML.CustomField.valueSet?.[0];
 
-      const controllingFieldApiName = picklistValueSetMarkup.controllingField ? picklistValueSetMarkup.controllingField[0]: null;
-      if (controllingFieldApiName) {
-        xmlFieldDetail.controllingField = controllingFieldApiName;
+      if (picklistValueSetMarkup) {
+        xmlFieldDetail.picklistValues = this.extractPickListDetailsFromXMLValueTag(picklistValueSetMarkup);
+
+        const controllingFieldApiName = picklistValueSetMarkup.controllingField ? picklistValueSetMarkup.controllingField[0]: null;
+        if (controllingFieldApiName) {
+          xmlFieldDetail.controllingField = controllingFieldApiName;
+        }
+      } else {
+        // TODO: handle possible global picklist scenario
       }
+      
       
     } else if ( typeValue === "Lookup" || typeValue === "MasterDetail" ) {
       
