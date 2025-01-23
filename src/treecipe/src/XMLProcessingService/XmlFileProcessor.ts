@@ -2,6 +2,9 @@ import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import * as xml2js from 'xml2js';
 import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
+import * as path from 'path';
+import * as vscode from 'vscode';
+
 export class XmlFileProcessor {
 
   static async processXmlFieldContent(xmlContent: string): Promise<XMLFieldDetail> {
@@ -93,6 +96,12 @@ export class XmlFileProcessor {
 
   }
 
+  static isXMLFileType(fileName: string, directoryItemTypeEnum: number ): boolean {
+
+    return (directoryItemTypeEnum === vscode.FileType.File 
+            && path.extname(fileName).toLowerCase() === '.xml');
+
+  }
 
 
 }

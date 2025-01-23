@@ -4,11 +4,10 @@ import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
-import * as xml2js from 'xml2js';
 
 export class DirectoryProcessor {
 
@@ -39,7 +38,7 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            const recordTypeNameByRecordTypeNameToXMLMarkup = await this.getRecordTypeMarkupMap(fullPath.path);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = await RecordTypeService.getRecordTypeMarkupMap(fullPath.path);
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeNameByRecordTypeNameToXMLMarkup );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
@@ -92,7 +91,7 @@ export class DirectoryProcessor {
     let fieldInfoDetails: FieldInfo[] = [];
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
-      if ( this.isXMLFileType(fileName, directoryItemTypeEnum) ) {
+      if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
 
         const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
         const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
@@ -106,13 +105,6 @@ export class DirectoryProcessor {
     }
 
     return fieldInfoDetails;
-
-  }
-
-  isXMLFileType(fileName: string, directoryItemTypeEnum: number ): boolean {
-
-    return (directoryItemTypeEnum === vscode.FileType.File 
-            && path.extname(fileName).toLowerCase() === '.xml');
 
   }
 
@@ -156,56 +148,6 @@ export class DirectoryProcessor {
     }
     
     return recipeValue;
-  
-  }
-
-  async getRecordTypeMarkupMap(associatedFieldsDirectoryPath: string): Promise<Record<string, object>> {
-
-    const baseObjectPath = associatedFieldsDirectoryPath.split('/fields')[0]; // getting index of 0 will return base path 
-    const expectedRecordTypesFolderName = 'recordTypes';
-    const expectedRecordTypesPath = `${baseObjectPath}/${expectedRecordTypesFolderName}`;
-    const recordTypesDirectoryUri = vscode.Uri.parse(expectedRecordTypesPath);
-
-    let recordTypeToXMLMarkupMap: Record<string, object> = {};
-
-    // check if recordTypes folder exists
-    if (!fs.existsSync(expectedRecordTypesPath)) {
-      // no recordTypes folder exists for object
-      return recordTypeToXMLMarkupMap;
-
-    }
-    
-    const recordTypeFileTuples = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
-    if (recordTypeFileTuples === undefined || recordTypeFileTuples.length === 0) {
-      // if folder exists but is empty
-      return recordTypeToXMLMarkupMap;
-    } 
-
-    for (const [fileName, directoryItemTypeEnum] of recordTypeFileTuples) {
-
-      if ( this.isXMLFileType(fileName, directoryItemTypeEnum) ) {
-
-        const recordTypeUri = vscode.Uri.joinPath(recordTypesDirectoryUri, fileName);
-        const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
-        const recordTypeXMLContent = Buffer.from(recordTypeContentUriData).toString('utf8');
-
-        let recordTypeXML: any;
-        xml2js.parseString(recordTypeXMLContent, function (error, result) {
-
-          if (error) {  
-            throw new Error(`Error processing record type xmlContent ${recordTypeXMLContent}: ` + error.message);
-          }
-          recordTypeXML = result;
-        });
-
-        const apiName = recordTypeXML.RecordType.fullName[0];
-        recordTypeToXMLMarkupMap[apiName] = recordTypeXML;
-
-      }
-
-    }
-    
-    return recordTypeToXMLMarkupMap;
   
   }
 

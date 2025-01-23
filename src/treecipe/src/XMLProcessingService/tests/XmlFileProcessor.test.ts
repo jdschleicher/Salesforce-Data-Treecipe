@@ -3,6 +3,13 @@ import { XmlFileProcessor } from "../XmlFileProcessor";
 import { XMLMarkupMockService } from "./mocks/XMLMarkupMockService";
 import * as xml2js from 'xml2js';
 
+jest.mock('vscode', () => ({
+    FileType: {
+        Directory: 2,
+        File: 1,
+        SymbolicLink: 64
+    }
+}), { virtual: true });
 
 describe('extractPickListDetailsFromXMLValueTag',() => {
     
@@ -231,6 +238,47 @@ describe('processXmlFieldContent', () => {
 
         expect(actualFieldDetail).toEqual(expectedXMLMasterDetailFieldXMLFieldDetail);
 
+    });
+
+
+});
+
+describe('isXMLFileType', () => {
+
+    test('given expected xml file extension and valid filetype enum, returns true', () => {
+
+        const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
+        const expectedVSCodeFileTypeEnum = 1;
+        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(validXMLFileExtensionName, expectedVSCodeFileTypeEnum);
+        expect(isXMLFileType).toBeTruthy();
+
+    });
+
+    test('given expected INVALID xml file extension and valid filetype enum, returns true', () => {
+
+        const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
+        const expectedVSCodeFileTypeEnum = 1;
+        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(invalidXMLFileExtensionName, expectedVSCodeFileTypeEnum);
+        expect(isXMLFileType).toBeFalsy();
+        
+    });
+
+    test('given expected valid xml file extension and INVALID filetype enum, returns true', () => {
+
+        const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
+        const directoryTypeEnum = 2;
+        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(validXMLFileExtensionName, directoryTypeEnum);
+        expect(isXMLFileType).toBeFalsy();
+        
+    });
+
+    test('given expected INVALID xml file extension and INVALID filetype enum, returns true', () => {
+
+        const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
+        const directoryTypeEnum = 2;
+        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(invalidXMLFileExtensionName, directoryTypeEnum);
+        expect(isXMLFileType).toBeFalsy();
+        
     });
 
 });
