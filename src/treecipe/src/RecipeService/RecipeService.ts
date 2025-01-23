@@ -20,7 +20,7 @@ export class RecipeService {
         this.fakerService.getMapSalesforceFieldToFakerValue();
     }
 
-    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, string>): string {
+    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, object>): string {
         
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
@@ -84,7 +84,7 @@ export class RecipeService {
     
     }
 
-    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, string>): string {
+    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, object>): string {
     
         const controllingField = xmlFieldDetail.controllingField;
         let controllingValueToPicklistOptions:Record<string, string[]> = {};
@@ -108,6 +108,8 @@ export class RecipeService {
             });
 
         });
+
+        
 
         return this.fakerService.buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions, recordTypeNameToRecordTypeXMLMarkup, controllingField);
         

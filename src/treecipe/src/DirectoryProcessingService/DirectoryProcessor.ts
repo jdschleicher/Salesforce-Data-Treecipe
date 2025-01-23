@@ -39,8 +39,7 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            const recordTypeNameByRecordTypeNameToXMLMarkup = await this.getRecordTypeMarkupsMap(fullPath.path);
-            // const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const recordTypeNameByRecordTypeNameToXMLMarkup = await this.getRecordTypeMarkupMap(fullPath.path);
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeNameByRecordTypeNameToXMLMarkup );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
@@ -80,7 +79,7 @@ export class DirectoryProcessor {
   async processFieldsDirectory(
         directoryPathUri: vscode.Uri, 
         associatedObjectName: string,
-        recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, string>
+        recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, object>
       ): Promise<FieldInfo[]> {
 
     /* 
@@ -119,7 +118,7 @@ export class DirectoryProcessor {
 
   async buildFieldInfoByXMLContent(xmlContent: string, 
                                     associatedObjectName: string,
-                                    recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, string>
+                                    recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, object>
                                   ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
@@ -144,7 +143,7 @@ export class DirectoryProcessor {
     return path.basename(filePath);
   }
 
-  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, string>): string {
+  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, object>): string {
     let recipeValue = null;
     if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
 
@@ -160,14 +159,14 @@ export class DirectoryProcessor {
   
   }
 
-  async getRecordTypeMarkupsMap(associatedFieldsDirectoryPath: string): Promise<Record<string, string>> {
+  async getRecordTypeMarkupMap(associatedFieldsDirectoryPath: string): Promise<Record<string, object>> {
 
     const baseObjectPath = associatedFieldsDirectoryPath.split('/fields')[0]; // getting index of 0 will return base path 
     const expectedRecordTypesFolderName = 'recordTypes';
     const expectedRecordTypesPath = `${baseObjectPath}/${expectedRecordTypesFolderName}`;
     const recordTypesDirectoryUri = vscode.Uri.parse(expectedRecordTypesPath);
 
-    let recordTypeToXMLMarkupMap: Record<string, string> = {};
+    let recordTypeToXMLMarkupMap: Record<string, object> = {};
 
     // check if recordTypes folder exists
     if (!fs.existsSync(expectedRecordTypesPath)) {
@@ -200,7 +199,7 @@ export class DirectoryProcessor {
         });
 
         const apiName = recordTypeXML.RecordType.fullName[0];
-        recordTypeToXMLMarkupMap[apiName] = recordTypeXMLContent;
+        recordTypeToXMLMarkupMap[apiName] = recordTypeXML;
 
       }
 

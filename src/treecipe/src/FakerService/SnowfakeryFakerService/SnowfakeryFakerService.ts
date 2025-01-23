@@ -51,7 +51,7 @@ export class SnowfakeryFakerService implements IFakerService {
 
     buildDependentPicklistRecipeFakerValue(
                         controllingValueToPicklistOptions: Record<string, string[]>, 
-                        recordTypeByAvailablePicklistValues: Record<string, string>,
+                        recordTypeByAvailablePicklistValues: Record<string, object>,
                         controllingField: string
                     ): string {
     
@@ -59,10 +59,9 @@ export class SnowfakeryFakerService implements IFakerService {
         let allMultiSelectChoiceRecipe:string;
         for ( const controllingValueKey in controllingValueToPicklistOptions ) {
             
-            let picklistValuesAvailableForChoice = controllingValueToPicklistOptions[controllingValueKey];
-            
             let randomChoicesBreakdown:string;
 
+            let picklistValuesAvailableForChoice = controllingValueToPicklistOptions[controllingValueKey];
             // get initial list of all available picklist values before record type sections
             picklistValuesAvailableForChoice.forEach( value => {
 
@@ -75,24 +74,24 @@ export class SnowfakeryFakerService implements IFakerService {
 
             });   
 
-            for ( const recordTypeKey in recordTypeByAvailablePicklistValues ) {
+            // for ( const recordTypeKey in recordTypeByAvailablePicklistValues ) {
                 
-                let recordTypeValues = recordTypeByAvailablePicklistValues[recordTypeKey];
+            //     let recordTypeValues = recordTypeByAvailablePicklistValues[recordTypeKey];
                
-                for ( let i = 0; i < recordTypeValues.length; i++ ) {
+            //     for ( let i = 0; i < recordTypeValues.length; i++ ) {
 
-                    const recordTypeValue = recordTypeValues[i];
-                    if (i === 0) {
-                        // capture first iteration to create dedicated section for unique recordtype
-                        const newLineBreak = `\n`;
-                        randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeValue}`;
-                    } else {
-                        randomChoicesBreakdown = `- ${recordTypeValue}`;
-                    }     
+            //         const recordTypeValue = recordTypeValues[i];
+            //         if (i === 0) {
+            //             // capture first iteration to create dedicated section for unique recordtype
+            //             const newLineBreak = `\n`;
+            //             randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeValue}`;
+            //         } else {
+            //             randomChoicesBreakdown = `- ${recordTypeValue}`;
+            //         }     
 
-                }           
+            //     }           
             
-            }
+            // }
 
        
 
