@@ -84,6 +84,8 @@ export class SnowfakeryFakerService implements IFakerService {
 
                     recordTypePicklistSections.forEach( recordTypeSection => {  
                     
+              
+
                         let recordTypeChoicesBreakdown:string;
 
                         const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
@@ -93,12 +95,23 @@ export class SnowfakeryFakerService implements IFakerService {
 
                                 const newLineBreak = `\n`;
                                 const recordTypePicklistValue = recordTypeValueDetail.fullName[0];
-                                if (recordTypeChoicesBreakdown) {
-                                    recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
-                                } else {
-                                    const recordTypeTodoVerbiage = `### TODO: CONFIRM IF USING -- ${recordTypeKey} - RECORD TYPE PICKLIST VALUES BASED`;
-                                    recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
-                                }
+
+                                picklistValuesAvailableForChoice.forEach( availableValue => {
+
+                                    if ( availableValue === recordTypePicklistValue ) {
+
+                                        if (recordTypeChoicesBreakdown) {
+                                            recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
+                                        } else {
+                                            const recordTypeTodoVerbiage = `### TODO: CONFIRM IF USING -- ${recordTypeKey} - RECORD TYPE PICKLIST VALUES BASED`;
+                                            recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
+                                        }
+                                        
+                                    }
+                    
+                                });  
+
+                         
                 
                             });  
 
