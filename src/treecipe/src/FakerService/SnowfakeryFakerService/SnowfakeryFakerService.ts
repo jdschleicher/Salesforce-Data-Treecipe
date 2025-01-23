@@ -56,8 +56,10 @@ export class SnowfakeryFakerService implements IFakerService {
                         fieldApiName: string
                     ): string {
     
-        let fakeDependentPicklistRecipeValue = "";
-        let allMultiSelectChoiceRecipe:string;
+        let allDependentPicklistChoiceRecipe:string;
+
+        const newLineBreak = `\n`;
+
         for ( const controllingValueKey in controllingValueToPicklistOptions ) {
             
             let randomChoicesBreakdown:string;
@@ -67,14 +69,12 @@ export class SnowfakeryFakerService implements IFakerService {
             picklistValuesAvailableForChoice.forEach( value => {
 
                 if (randomChoicesBreakdown) {
-                    const newLineBreak = `\n`;
                     randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${value}`;
                 } else {
                     randomChoicesBreakdown = `- ${value}`;
                 }
 
             });   
-
 
             for ( const recordTypeKey in recordTypeNameByRecordTypeNameToXMLMarkup ) {
                 
@@ -83,17 +83,17 @@ export class SnowfakeryFakerService implements IFakerService {
                 if ( recordTypePicklistSections ) {
 
                     recordTypePicklistSections.forEach( recordTypeSection => {  
-                    
-              
-
+                
                         let recordTypeChoicesBreakdown:string;
-
                         const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
+                        /*  
+                            ENSURE THAT THE FIELD API NAME FROM THE RECORD TYPE MARKUP MATCHES THE FIELD API NAME
+                            AS THE RECORD TYPE MARKUP INCLUDES MULTIPLE FIELDS AND ASSOCIATED PICKLIST VALUES
+                        */
                         if ( fieldApiNameFromRecordTypeMarkup === fieldApiName) { 
 
                             recordTypeSection.values.forEach( recordTypeValueDetail => {
 
-                                const newLineBreak = `\n`;
                                 const recordTypePicklistValue = recordTypeValueDetail.fullName[0];
 
                                 picklistValuesAvailableForChoice.forEach( availableValue => {
@@ -103,45 +103,30 @@ export class SnowfakeryFakerService implements IFakerService {
                                         if (recordTypeChoicesBreakdown) {
                                             recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
                                         } else {
-                                            const recordTypeTodoVerbiage = `### TODO: CONFIRM IF USING -- ${recordTypeKey} - RECORD TYPE PICKLIST VALUES BASED`;
+                                            const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeKey}`;
                                             recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
                                         }
-                                        
+
                                     }
                     
                                 });  
-
-                         
                 
                             });  
-
+                    
                             randomChoicesBreakdown += recordTypeChoicesBreakdown;
 
                         }
                
-
                     });
 
 
 
-                }
-
-                // for ( let i = 0; i < recordTypeValues.length; i++ ) {
-
-                //     const recordTypeValue = recordTypeValues[i];
-                //     if (i === 0) {
-                //         // capture first iteration to create dedicated section for unique recordtype
-                //         const newLineBreak = `\n`;
-                //         randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeValue}`;
-                //     } else {
-                //         randomChoicesBreakdown = `- ${recordTypeValue}`;
-                //     }     
-
-                // }           
+                }      
        
             }
 
-            let multiSelectChoiceRecipe = 
+
+            let dependentPicklistRandomChoiceRecipe = 
 `${this.generateTabs(2)}- choice:
 ${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${controllingValueKey}' }}
 ${this.generateTabs(3)}pick:
@@ -149,19 +134,22 @@ ${this.generateTabs(4)}random_choice:
 ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
 
-            if (!(allMultiSelectChoiceRecipe)) {
-                allMultiSelectChoiceRecipe = multiSelectChoiceRecipe;
+            if (!(allDependentPicklistChoiceRecipe)) {
+                allDependentPicklistChoiceRecipe = dependentPicklistRandomChoiceRecipe;
             } else {
-                const lineBreakMultiSelectChoiceRecipe = `\n${multiSelectChoiceRecipe}`;
-                allMultiSelectChoiceRecipe += lineBreakMultiSelectChoiceRecipe;
+                const lineBreakRandomChoiceRecipe = `\n${dependentPicklistRandomChoiceRecipe}`;
+                allDependentPicklistChoiceRecipe += lineBreakRandomChoiceRecipe;
             }
+
         }
 
+        let fakeDependentPicklistRecipeValue = "";
+
         if (fakeDependentPicklistRecipeValue) {
-            fakeDependentPicklistRecipeValue += `\n${this.generateTabs(2)}${allMultiSelectChoiceRecipe}`;
+            fakeDependentPicklistRecipeValue += `\n${this.generateTabs(2)}${allDependentPicklistChoiceRecipe}`;
         } else {
             fakeDependentPicklistRecipeValue = `\n${this.generateTabs(1.5)}if:`;
-            fakeDependentPicklistRecipeValue += `\n${allMultiSelectChoiceRecipe}`;
+            fakeDependentPicklistRecipeValue += `\n${allDependentPicklistChoiceRecipe}`;
         }
 
         return fakeDependentPicklistRecipeValue;
