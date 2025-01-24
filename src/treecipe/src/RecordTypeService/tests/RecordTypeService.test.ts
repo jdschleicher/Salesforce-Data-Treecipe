@@ -33,8 +33,8 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
         test('given expected mock xml markup content and expected xml converted object expectd markup is returned and mocked functions are called with expected arguments', async () => {
 
-            const mockRecordTypeXMLContent = MockRecordTypeService.getRecordTypeXMLContent();
-            const mockRecordTypeXML = MockRecordTypeService.getRecordTypeXMLAsObject();
+            const mockRecordTypeXMLContent = MockRecordTypeService.getRecordTypeOneRecTypeXMLContent();
+            const mockRecordTypeXML = MockRecordTypeService.getRecordTypeMockOneRecTypeAsObject();
 
             (fs.existsSync as jest.Mock).mockReturnValue(true);
 

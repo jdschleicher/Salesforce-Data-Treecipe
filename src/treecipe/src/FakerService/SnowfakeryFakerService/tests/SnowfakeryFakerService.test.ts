@@ -1,3 +1,5 @@
+import { RecipeMockService } from "../../../RecipeService/tests/mocks/RecipeMockService";
+import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { SnowfakeryFakerService } from "../SnowfakeryFakerService";
 
 describe('SnowfakeryFakerService Shared Intstance Tests', () => {
@@ -140,7 +142,7 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
 
     describe('buildDependentPicklistRecipeFakerValue', () => {
 
-        test('given expected controlling value picklist options, returns expected dependent picklist faker value', () => {
+        test('given expected controlling value picklist options WITHOUT record type markup, returns expected dependent picklist faker value', () => {
 
             const expectedControllingValueToPicklistOptions: Record<string, string[]> = {
                 Toyota: ["Corolla", "Camry", "Prius"],
@@ -183,14 +185,36 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                     - Model X`;
 
 
-            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const emptyRecordTypeNameToRecordTypeXMLMarkup = {};
             const fakeFieldApiName = "CarModel__c";
             const actualFakerValue = snowfakeryService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
-                                                                                                recordTypeNameToRecordTypeXMLMarkup, 
+                                                                                                emptyRecordTypeNameToRecordTypeXMLMarkup, 
                                                                                                 controllingField, 
                                                                                                 fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
+
+        });
+
+
+        test('given expected controlling value picklist options with multiplue record types markup, returns expected dependent picklist faker value with TODO lines', () => {
+
+            
+            const expectedControllingValueToPicklistOptionsTwo = MockRecordTypeService.getDependentPicklistControllingFieldToAvailablePicklistValues();
+
+            const controllingField = "Picklist__c";
+            
+            const expectedDependentPicklistRecipeValue = RecipeMockService.getMockRecordTypeDrivenDependentPicklistRecipeValue();
+
+            const expectedRecTypesToXMLDetailMap = MockRecordTypeService.getMultipleRecordTypeXMLObjectsMap();
+            const fakeFieldApiName = "DependentPicklist__c";
+            const actualFakerValue = snowfakeryService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptionsTwo, 
+                                                                                                expectedRecTypesToXMLDetailMap, 
+                                                                                                controllingField, 
+                                                                                                fakeFieldApiName);
+
+            expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
+            
         });
 
     });
@@ -208,5 +232,52 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
         });
 
     });
+
+    describe('updateDependentPicklistRecipeFakerValueByRecordTypeSections', () => {
+
+        test('given expected recipe choices and expected recordtype to picklist map returns expected choices breakdown', () => {
+            
+            // const expectedDependentPicklistRecipeValue = RecipeMockService.getMockRecordTypeDrivenDependentPicklistRecipeValue();
+            const expectedRecTypesToXMLDetailMap = MockRecordTypeService.getMultipleRecordTypeXMLObjectsMap();
+            const fakeFieldApiName = "DependentPicklist__c";
+
+            const expectedControllingValueToPicklistOptions = MockRecordTypeService.getDependentPicklistControllingFieldToAvailablePicklistValues();
+
+            // const cleControllingValueToPicklistOptions = expectedControllingValueToPicklistOptions['cle'];
+            const mockRandomChoicesBreakdown = `- tree
+                    - weed
+                    - mulch
+                    - rocks`;
+            const expectedPicklistValuesAvailableForChoice = ['tree', 'weed', 'mulch', 'rocks'];
+            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(expectedRecTypesToXMLDetailMap, 
+                                                                                                fakeFieldApiName, 
+                                                                                                expectedPicklistValuesAvailableForChoice, 
+                                                                                                mockRandomChoicesBreakdown );
+
+            // const cleControllingValueToPicklistOptions = RecipeMockService.getCleControllingValueToPicklistOptions();
+            
+
+            const cleControllingValueToPicklistOptions = `'- tree
+                        - weed
+                        ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                        - mulch
+                        - rocks
+                        - tree
+                        - weed
+                        ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                        - mulch
+                        - rocks
+                        - tree
+                        - weed'`;
+        
+            
+            
+
+            expect(actualUpdatedRandomChoicesBreakdown).toBe(cleControllingValueToPicklistOptions);
+        
+        });
+    
+    });
+
 
 });

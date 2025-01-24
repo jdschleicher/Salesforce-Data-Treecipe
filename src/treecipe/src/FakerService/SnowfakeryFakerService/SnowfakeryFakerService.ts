@@ -76,54 +76,61 @@ export class SnowfakeryFakerService implements IFakerService {
 
             });   
 
-            for ( const recordTypeKey in recordTypeNameByRecordTypeNameToXMLMarkup ) {
+            randomChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
+                                            recordTypeNameByRecordTypeNameToXMLMarkup, 
+                                            fieldApiName, 
+                                            picklistValuesAvailableForChoice, 
+                                            randomChoicesBreakdown 
+                                        );
+
+            // for ( const recordTypeKey in recordTypeNameByRecordTypeNameToXMLMarkup ) {
                 
-                let recordTypePicklistSections = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeKey]?.RecordType?.picklistValues;
+            //     let recordTypePicklistSections = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeKey]?.RecordType?.picklistValues;
 
-                if ( recordTypePicklistSections ) {
+            //     if ( recordTypePicklistSections ) {
 
-                    recordTypePicklistSections.forEach( recordTypeSection => {  
+            //         recordTypePicklistSections.forEach( recordTypeSection => {  
                 
-                        let recordTypeChoicesBreakdown:string;
-                        const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
-                        /*  
-                            ENSURE THAT THE FIELD API NAME FROM THE RECORD TYPE MARKUP MATCHES THE FIELD API NAME
-                            AS THE RECORD TYPE MARKUP INCLUDES MULTIPLE FIELDS AND ASSOCIATED PICKLIST VALUES
-                        */
-                        if ( fieldApiNameFromRecordTypeMarkup === fieldApiName) { 
+            //             let recordTypeChoicesBreakdown:string;
+            //             const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
+            //             /*  
+            //                 ENSURE THAT THE FIELD API NAME FROM THE RECORD TYPE MARKUP MATCHES THE FIELD API NAME
+            //                 AS THE RECORD TYPE MARKUP INCLUDES MULTIPLE FIELDS AND ASSOCIATED PICKLIST VALUES
+            //             */
+            //             if ( fieldApiNameFromRecordTypeMarkup === fieldApiName) { 
 
-                            recordTypeSection.values.forEach( recordTypeValueDetail => {
+            //                 recordTypeSection.values.forEach( recordTypeValueDetail => {
 
-                                const recordTypePicklistValue = recordTypeValueDetail.fullName[0];
+            //                     const recordTypePicklistValue = recordTypeValueDetail.fullName[0];
 
-                                picklistValuesAvailableForChoice.forEach( availableValue => {
+            //                     picklistValuesAvailableForChoice.forEach( availableValue => {
 
-                                    if ( availableValue === recordTypePicklistValue ) {
+            //                         if ( availableValue === recordTypePicklistValue ) {
 
-                                        if (recordTypeChoicesBreakdown) {
-                                            recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
-                                        } else {
-                                            const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeKey}`;
-                                            recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
-                                        }
+            //                             if (recordTypeChoicesBreakdown) {
+            //                                 recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
+            //                             } else {
+            //                                 const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeKey}`;
+            //                                 recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
+            //                             }
 
-                                    }
+            //                         }
                     
-                                });  
+            //                     });  
                 
-                            });  
+            //                 });  
                     
-                            randomChoicesBreakdown += recordTypeChoicesBreakdown;
+            //                 randomChoicesBreakdown += recordTypeChoicesBreakdown;
 
-                        }
+            //             }
                
-                    });
+            //         });
 
 
 
-                }      
+            //     }      
        
-            }
+            // }
 
 
             let dependentPicklistRandomChoiceRecipe = 
@@ -161,6 +168,73 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         const commaJoinedPicklistChoices = availablePicklistChoices.join("','");
         const fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
         return fakeRecipeValue;
+
+    }
+
+
+    updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
+                                                                fieldApiName: string,
+                                                                picklistValuesAvailableForChoice: string[],
+                                                                randomChoicesBreakdown: string
+                                                            ): string {
+
+        const newLineBreak: string = `\n`;
+
+        // Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeKey, value]) => {
+        //     console.log(`Key: ${key}, Value: ${value}`);
+        //   });
+
+        Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeKey, recordTypeDetail]) => {
+
+        // for ( const recordTypeKey in recordTypeNameByRecordTypeNameToXMLMarkup ) {
+                
+            let recordTypePicklistSections = recordTypeDetail?.RecordType?.picklistValues;
+
+            if ( recordTypePicklistSections ) {
+
+                recordTypePicklistSections.forEach( recordTypeSection => {  
+            
+                    let recordTypeChoicesBreakdown:string;
+                    const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
+                    /*  
+                        ENSURE THAT THE FIELD API NAME FROM THE RECORD TYPE MARKUP MATCHES THE FIELD API NAME
+                        AS THE RECORD TYPE MARKUP INCLUDES MULTIPLE FIELDS AND ASSOCIATED PICKLIST VALUES
+                    */
+                    if ( fieldApiNameFromRecordTypeMarkup === fieldApiName) { 
+
+                        recordTypeSection.values.forEach( recordTypePicklistValueDetail => {
+
+                            const recordTypePicklistValue = recordTypePicklistValueDetail.fullName[0];
+
+                            picklistValuesAvailableForChoice.forEach( availableValue => {
+
+                                if ( availableValue === recordTypePicklistValue ) {
+
+                                    if (recordTypeChoicesBreakdown) {
+                                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
+                                    } else {
+                                        const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeKey}`;
+                                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
+                                    }
+
+                                }
+                
+                            });  
+            
+                        });  
+                
+                        randomChoicesBreakdown += recordTypeChoicesBreakdown;
+
+                    }
+            
+                });
+
+            }      
+    
+        // }
+        });
+
+        return randomChoicesBreakdown;
 
     }
 

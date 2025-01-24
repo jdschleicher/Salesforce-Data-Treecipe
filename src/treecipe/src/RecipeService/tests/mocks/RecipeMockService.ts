@@ -85,10 +85,11 @@ export class RecipeMockService {
   fields:`;
 
         return initialRecipeMarkup;
+
     }
 
     static getMockSnowfakeryDependentPicklistRecipeValue():string {
-        const controllingField = "Town__c";
+        const controllingField = "Picklist__c";
             
         const expectedDependentPicklistRecipeValue =`
       if:
@@ -128,6 +129,103 @@ export class RecipeMockService {
 
         return expectedDependentPicklistRecipeValue;
 
+    }
+
+    static getMockRecordTypeDrivenDependentPicklistRecipeValue():string {
+
+        const controllingFieldApiName = "Picklist__c";
+        const expectedDependentPicklistRecipeValue =`
+      if:
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'cle' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    - rocks
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - mulch
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - mulch
+                    - rocks
+                    - tree
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'eastlake' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - mulch
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - mulch
+                    - tree
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'madison' }}
+            pick:
+                random_choice:
+                    - tree
+                    - plant
+                    - weed
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - plant
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - plant
+                    - tree
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'willoughby' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - mulch
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - mulch
+                    - tree
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'mentor' }}
+            pick:
+                random_choice:
+                    - plant
+                    - weed
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - plant
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - plant
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'wickliffe' }}
+            pick:
+                random_choice:
+                    - weed
+                    - rocksundefined
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - rocks`;
+
+        return expectedDependentPicklistRecipeValue;
+
+    }
+
+    static getCleControllingValueToPicklistOptions():string {
+
+        const cleControllingValueToPicklistOptions = `'- tree
+                    - weed
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - mulch
+                    - rocks
+                    - tree
+                    - weed
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - mulch
+                    - rocks
+                    - tree
+                    - weed'`;
+
+        return cleControllingValueToPicklistOptions;
+    
     }
 
 
