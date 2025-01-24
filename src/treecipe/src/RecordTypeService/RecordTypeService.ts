@@ -55,6 +55,6 @@ export class RecordTypeService {
         
         return recordTypeToXMLMarkupMap;
       
-      }
+    }
 
 }
