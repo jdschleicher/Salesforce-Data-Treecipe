@@ -20,18 +20,6 @@ export class MockRecordTypeService {
             <fullName>plant</fullName>
             <default>false</default>
         </values>
-        <values>
-            <fullName>rocks</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>tree</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>weed</fullName>
-            <default>false</default>
-        </values>
     </picklistValues>
     <picklistValues>
         <picklist>MultiPicklist__c</picklist>
@@ -83,10 +71,7 @@ export class MockRecordTypeService {
                         picklist: ['DependentPicklist__c'],
                         values: [
                             { fullName: ['mulch'], default: false },
-                            { fullName: ['plant'], default: false },
-                            { fullName: ['rocks'], default: false },
-                            { fullName: ['tree'], default: false },
-                            { fullName: ['weed'], default: false }
+                            { fullName: ['plant'], default: false }
                         ]
                     },
                     {
@@ -129,7 +114,7 @@ export class MockRecordTypeService {
         </values>
         <values>
             <fullName>plant</fullName>
-            <default>false</default>
+            <default>true</default>
         </values>
         <values>
             <fullName>rocks</fullName>
@@ -137,10 +122,6 @@ export class MockRecordTypeService {
         </values>
         <values>
             <fullName>tree</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>weed</fullName>
             <default>false</default>
         </values>
     </picklistValues>
@@ -170,10 +151,6 @@ export class MockRecordTypeService {
             <default>false</default>
         </values>
         <values>
-            <fullName>madison</fullName>
-            <default>false</default>
-        </values>
-        <values>
             <fullName>willoughby</fullName>
             <default>false</default>
         </values>
@@ -199,8 +176,7 @@ export class MockRecordTypeService {
                             { fullName: ['mulch'], default: false },
                             { fullName: ['plant'], default: false },
                             { fullName: ['rocks'], default: false },
-                            { fullName: ['tree'], default: false },
-                            { fullName: ['weed'], default: false }
+                            { fullName: ['tree'], default: false }
                         ]
                     },
                     {
@@ -216,7 +192,6 @@ export class MockRecordTypeService {
                         picklist: ['Picklist__c'],
                         values: [
                             { fullName: ['cle'], default: false },
-                            { fullName: ['madison'], default: false },
                             { fullName: ['willoughby'], default: false }
                         ]
                     }
