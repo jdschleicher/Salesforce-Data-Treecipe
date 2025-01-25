@@ -13,18 +13,6 @@
             <fullName>plant</fullName>
             <default>false</default>
         </values>
-        <values>
-            <fullName>rocks</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>tree</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>weed</fullName>
-            <default>false</default>
-        </values>
     </picklistValues>
     <picklistValues>
         <picklist>MultiPicklist__c</picklist>

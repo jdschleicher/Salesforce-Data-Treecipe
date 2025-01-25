@@ -11,7 +11,7 @@
         </values>
         <values>
             <fullName>plant</fullName>
-            <default>false</default>
+            <default>true</default>
         </values>
         <values>
             <fullName>rocks</fullName>
@@ -19,10 +19,6 @@
         </values>
         <values>
             <fullName>tree</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>weed</fullName>
             <default>false</default>
         </values>
     </picklistValues>
@@ -49,10 +45,6 @@
         <picklist>Picklist__c</picklist>
         <values>
             <fullName>cle</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>madison</fullName>
             <default>false</default>
         </values>
         <values>
