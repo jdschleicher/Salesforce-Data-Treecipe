@@ -209,20 +209,7 @@ export class RecipeMockService {
 
     }
 
-    static getCleControllingValueToDependentPicklistOptions():string {
 
-        const cleControllingValueToPicklistOptions =       
-        `
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
-                    - mulch
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
-                    - mulch
-                    - rocks
-                    - tree`;
-
-        return cleControllingValueToPicklistOptions;
-    
-    }
 
 
 

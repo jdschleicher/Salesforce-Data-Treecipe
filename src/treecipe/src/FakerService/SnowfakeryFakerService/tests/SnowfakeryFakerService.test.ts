@@ -235,21 +235,43 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
 
     describe('updateDependentPicklistRecipeFakerValueByRecordTypeSections', () => {
 
-        test('given expected recipe choices and expected recordtype to picklist map returns expected choices breakdown', () => {
+        test('given expected cle controlling field recipe choices and expected recordtype to picklist map returns expected choices breakdown', () => {
             
             const expectedRecTypesToXMLDetailMap = MockRecordTypeService.getMultipleRecordTypeXMLObjectsMap();
             const fakeFieldApiName = "DependentPicklist__c";
+            const controllingFieldValue = 'cle';
 
             const expectedControllingValueToPicklistOptions = MockRecordTypeService.getDependentPicklistControllingFieldToAvailablePicklistValues();
-            const expectedPicklistValuesAvailableForCleChoice = expectedControllingValueToPicklistOptions['cle'];
+            const expectedPicklistValuesAvailableForCleChoice = expectedControllingValueToPicklistOptions[controllingFieldValue];
     
             const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(expectedRecTypesToXMLDetailMap, 
                                                                                                 fakeFieldApiName, 
+                                                                                                controllingFieldValue,
                                                                                                 expectedPicklistValuesAvailableForCleChoice
                                                                                             );
 
-            const cleControllingValueToPicklistOptions = RecipeMockService.getCleControllingValueToDependentPicklistOptions();
+            const cleControllingValueToPicklistOptions = MockRecordTypeService.getCleControllingValueToDependentPicklistOptions();
             expect(actualUpdatedRandomChoicesBreakdown).toBe(cleControllingValueToPicklistOptions);
+        
+        });
+
+        test('given expected madison controlling field recipe choices and expected recordtype to picklist map returns expected choices breakdown', () => {
+            
+            const expectedRecTypesToXMLDetailMap = MockRecordTypeService.getMultipleRecordTypeXMLObjectsMap();
+            const fakeFieldApiName = "DependentPicklist__c";
+            const controllingFieldValue = 'madison';
+
+            const expectedControllingValueToPicklistOptions = MockRecordTypeService.getDependentPicklistControllingFieldToAvailablePicklistValues();
+            const expectedPicklistValuesAvailableForCleChoice = expectedControllingValueToPicklistOptions[controllingFieldValue];
+    
+            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(expectedRecTypesToXMLDetailMap, 
+                                                                                                fakeFieldApiName, 
+                                                                                                controllingFieldValue,
+                                                                                                expectedPicklistValuesAvailableForCleChoice
+                                                                                            );
+
+            const madisonControllingValueToPicklistOptions = MockRecordTypeService.getMadisonControllingValueToDependentPicklistOptions();
+            expect(actualUpdatedRandomChoicesBreakdown).toBe(madisonControllingValueToPicklistOptions);
         
         });
     

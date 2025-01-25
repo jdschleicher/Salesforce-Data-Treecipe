@@ -79,6 +79,7 @@ export class SnowfakeryFakerService implements IFakerService {
             const allRecordTypeChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
                                             recordTypeNameByRecordTypeNameToXMLMarkup, 
                                             fieldApiName, 
+                                            controllingField,
                                             picklistValuesAvailableForChoice
                                         );
 
@@ -92,7 +93,6 @@ ${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == 
 ${this.generateTabs(3)}pick:
 ${this.generateTabs(4)}random_choice:
 ${this.generateTabs(5)}${randomChoicesBreakdown}`;
-
 
             if (!(allDependentPicklistChoiceRecipe)) {
                 allDependentPicklistChoiceRecipe = dependentPicklistRandomChoiceRecipe;
@@ -127,16 +127,26 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
                                                                 fieldApiName: string,
+                                                                controllingField: string,
                                                                 picklistValuesAvailableForChoice: string[]
                                                             ): string {
 
         const newLineBreak: string = `\n`;
         let allRecordTypeChoicesBreakdown:string = '';                                                        
 
+
+
         Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeKey, recordTypeDetail]) => {
                 
+            // let conrollingFieldRecordTypeDetail = recordTypeDetail.RecordType.picklistValues.filter(picklistDetail => picklistDetail.picklist.includes(controllingField));
             let recordTypePicklistSections = recordTypeDetail?.RecordType?.picklistValues;
-
+            // test = recordTypeDetail.RecordType.picklistValues.filter(picklistDetail => picklistDetail.picklist.includes( 'Picklist__c')).map( controlling => controlling.values)[0].map(value => value.fullName)[0][0]
+            
+            // to adjust for the structure of xml and how parseString converts it to an object, use flatMap to 
+            let goofyControllingFieldArrays = recordTypeDetail.RecordType.picklistValues
+                                                            .filter(picklistDetail => picklistDetail.picklist.includes(controllingField))
+                                                            .flatMap( controllingFieldMarkupDetailForRecordType => controllingFieldMarkupDetailForRecordType.values)
+                                                            .flatMap(value => value.fullName);
             if ( recordTypePicklistSections ) {
 
                 recordTypePicklistSections.forEach( recordTypeSection => {  

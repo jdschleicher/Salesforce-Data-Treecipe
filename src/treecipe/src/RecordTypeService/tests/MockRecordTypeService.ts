@@ -246,4 +246,33 @@ export class MockRecordTypeService {
     
     }
 
+    static getCleControllingValueToDependentPicklistOptions():string {
+
+        const cleControllingValueToPicklistOptions =       
+        `
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - mulch
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - mulch
+                    - rocks
+                    - tree`;
+
+        return cleControllingValueToPicklistOptions;
+    
+    }
+
+    static getMadisonControllingValueToDependentPicklistOptions():string {
+
+        const madisionControllingValueToPicklistOptions =       
+        `
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - Picklist__c not available for this record type
+                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - "madison" is not an available value for Picklist__c for this record type`;
+
+        return madisionControllingValueToPicklistOptions;
+    
+    }
+
+
 } 
