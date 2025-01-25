@@ -237,42 +237,18 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
 
         test('given expected recipe choices and expected recordtype to picklist map returns expected choices breakdown', () => {
             
-            // const expectedDependentPicklistRecipeValue = RecipeMockService.getMockRecordTypeDrivenDependentPicklistRecipeValue();
             const expectedRecTypesToXMLDetailMap = MockRecordTypeService.getMultipleRecordTypeXMLObjectsMap();
             const fakeFieldApiName = "DependentPicklist__c";
 
             const expectedControllingValueToPicklistOptions = MockRecordTypeService.getDependentPicklistControllingFieldToAvailablePicklistValues();
-
-            // const cleControllingValueToPicklistOptions = expectedControllingValueToPicklistOptions['cle'];
-            const mockRandomChoicesBreakdown = `- tree
-                    - weed
-                    - mulch
-                    - rocks`;
-            const expectedPicklistValuesAvailableForChoice = ['tree', 'weed', 'mulch', 'rocks'];
+            const expectedPicklistValuesAvailableForCleChoice = expectedControllingValueToPicklistOptions['cle'];
+    
             const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(expectedRecTypesToXMLDetailMap, 
                                                                                                 fakeFieldApiName, 
-                                                                                                expectedPicklistValuesAvailableForChoice, 
-                                                                                                mockRandomChoicesBreakdown );
+                                                                                                expectedPicklistValuesAvailableForCleChoice
+                                                                                            );
 
-            // const cleControllingValueToPicklistOptions = RecipeMockService.getCleControllingValueToPicklistOptions();
-            
-
-            const cleControllingValueToPicklistOptions = `'- tree
-                        - weed
-                        ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
-                        - mulch
-                        - rocks
-                        - tree
-                        - weed
-                        ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
-                        - mulch
-                        - rocks
-                        - tree
-                        - weed'`;
-        
-            
-            
-
+            const cleControllingValueToPicklistOptions = RecipeMockService.getCleControllingValueToDependentPicklistOptions();
             expect(actualUpdatedRandomChoicesBreakdown).toBe(cleControllingValueToPicklistOptions);
         
         });

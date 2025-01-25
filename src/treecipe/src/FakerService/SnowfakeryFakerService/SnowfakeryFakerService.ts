@@ -76,62 +76,15 @@ export class SnowfakeryFakerService implements IFakerService {
 
             });   
 
-            randomChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
+            const allRecordTypeChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
                                             recordTypeNameByRecordTypeNameToXMLMarkup, 
                                             fieldApiName, 
-                                            picklistValuesAvailableForChoice, 
-                                            randomChoicesBreakdown 
+                                            picklistValuesAvailableForChoice
                                         );
 
-            // for ( const recordTypeKey in recordTypeNameByRecordTypeNameToXMLMarkup ) {
-                
-            //     let recordTypePicklistSections = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeKey]?.RecordType?.picklistValues;
-
-            //     if ( recordTypePicklistSections ) {
-
-            //         recordTypePicklistSections.forEach( recordTypeSection => {  
-                
-            //             let recordTypeChoicesBreakdown:string;
-            //             const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
-            //             /*  
-            //                 ENSURE THAT THE FIELD API NAME FROM THE RECORD TYPE MARKUP MATCHES THE FIELD API NAME
-            //                 AS THE RECORD TYPE MARKUP INCLUDES MULTIPLE FIELDS AND ASSOCIATED PICKLIST VALUES
-            //             */
-            //             if ( fieldApiNameFromRecordTypeMarkup === fieldApiName) { 
-
-            //                 recordTypeSection.values.forEach( recordTypeValueDetail => {
-
-            //                     const recordTypePicklistValue = recordTypeValueDetail.fullName[0];
-
-            //                     picklistValuesAvailableForChoice.forEach( availableValue => {
-
-            //                         if ( availableValue === recordTypePicklistValue ) {
-
-            //                             if (recordTypeChoicesBreakdown) {
-            //                                 recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
-            //                             } else {
-            //                                 const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeKey}`;
-            //                                 recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
-            //                             }
-
-            //                         }
-                    
-            //                     });  
-                
-            //                 });  
-                    
-            //                 randomChoicesBreakdown += recordTypeChoicesBreakdown;
-
-            //             }
-               
-            //         });
-
-
-
-            //     }      
-       
-            // }
-
+            if (allRecordTypeChoicesBreakdown) {
+                randomChoicesBreakdown += allRecordTypeChoicesBreakdown;
+            }
 
             let dependentPicklistRandomChoiceRecipe = 
 `${this.generateTabs(2)}- choice:
@@ -174,19 +127,13 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
                                                                 fieldApiName: string,
-                                                                picklistValuesAvailableForChoice: string[],
-                                                                randomChoicesBreakdown: string
+                                                                picklistValuesAvailableForChoice: string[]
                                                             ): string {
 
         const newLineBreak: string = `\n`;
-
-        // Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeKey, value]) => {
-        //     console.log(`Key: ${key}, Value: ${value}`);
-        //   });
+        let allRecordTypeChoicesBreakdown:string = '';                                                        
 
         Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeKey, recordTypeDetail]) => {
-
-        // for ( const recordTypeKey in recordTypeNameByRecordTypeNameToXMLMarkup ) {
                 
             let recordTypePicklistSections = recordTypeDetail?.RecordType?.picklistValues;
 
@@ -205,7 +152,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                         recordTypeSection.values.forEach( recordTypePicklistValueDetail => {
 
                             const recordTypePicklistValue = recordTypePicklistValueDetail.fullName[0];
-
                             picklistValuesAvailableForChoice.forEach( availableValue => {
 
                                 if ( availableValue === recordTypePicklistValue ) {
@@ -223,7 +169,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             
                         });  
                 
-                        randomChoicesBreakdown += recordTypeChoicesBreakdown;
+                        allRecordTypeChoicesBreakdown += recordTypeChoicesBreakdown;
 
                     }
             
@@ -231,10 +177,9 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
             }      
     
-        // }
         });
 
-        return randomChoicesBreakdown;
+        return allRecordTypeChoicesBreakdown;
 
     }
 
