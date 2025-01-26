@@ -4,10 +4,12 @@ export interface IFakerService {
 
     getMapSalesforceFieldToFakerValue(): Record<string, string>;
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string;
-    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, 
-        recordTypeNameToRecordTypeXMLMarkup: Record<string, any>,  
+    buildDependentPicklistRecipeFakerValue(
+        controllingValueToPicklistOptions: Record<string, string[]>, 
+        recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,  
         controllingField: string,
-        fieldApiName ): string;
+        fieldApiName 
+    ): string;
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string;
     generateTabs(tabCount: number): string;
     

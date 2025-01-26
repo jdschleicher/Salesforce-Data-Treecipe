@@ -8,7 +8,7 @@ export class NPMFakerService implements IFakerService {
     }
 
     buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, 
-                                            recordTypeNameToRecordTypeXMLMarkup: Record<string, object>,
+                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, object>,
                                             controllingField: string,
                                             fieldApiName: string
                                         ): string {

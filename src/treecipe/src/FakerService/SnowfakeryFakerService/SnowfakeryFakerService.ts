@@ -51,7 +51,7 @@ export class SnowfakeryFakerService implements IFakerService {
 
     buildDependentPicklistRecipeFakerValue(
                         controllingValueToPicklistOptions: Record<string, string[]>, 
-                        recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
+                        recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
                         controllingField: string,
                         fieldApiName: string
                     ): string {
@@ -77,10 +77,10 @@ export class SnowfakeryFakerService implements IFakerService {
             });   
 
             const allRecordTypeChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
-                                            recordTypeNameByRecordTypeNameToXMLMarkup, 
+                recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
                                             fieldApiName, 
                                             controllingField,
-                                            picklistValuesAvailableForChoice
+                                            controllingValueKey
                                         );
 
             if (allRecordTypeChoicesBreakdown) {
@@ -126,67 +126,44 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
 
     updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
-                                                                fieldApiName: string,
-                                                                controllingField: string,
-                                                                picklistValuesAvailableForChoice: string[]
+                                                                dependentFieldApiName: string,
+                                                                controllingFieldApiName: string,
+                                                                controllingValue: string
                                                             ): string {
 
         const newLineBreak: string = `\n`;
-        let allRecordTypeChoicesBreakdown:string = '';                                                        
+        let allRecordTypeChoicesBreakdown:string = '';    
+                                                        
 
-
-
-        Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeKey, recordTypeDetail]) => {
+        Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
                 
-            // let conrollingFieldRecordTypeDetail = recordTypeDetail.RecordType.picklistValues.filter(picklistDetail => picklistDetail.picklist.includes(controllingField));
-            let recordTypePicklistSections = recordTypeDetail?.RecordType?.picklistValues;
-            // test = recordTypeDetail.RecordType.picklistValues.filter(picklistDetail => picklistDetail.picklist.includes( 'Picklist__c')).map( controlling => controlling.values)[0].map(value => value.fullName)[0][0]
-            
-            // to adjust for the structure of xml and how parseString converts it to an object, use flatMap to 
-            let goofyControllingFieldArrays = recordTypeDetail.RecordType.picklistValues
-                                                            .filter(picklistDetail => picklistDetail.picklist.includes(controllingField))
-                                                            .flatMap( controllingFieldMarkupDetailForRecordType => controllingFieldMarkupDetailForRecordType.values)
-                                                            .flatMap(value => value.fullName);
-            if ( recordTypePicklistSections ) {
+            const availableRecordTypePicklistValuesForControllingField = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeApiNameKey][controllingFieldApiName];
 
-                recordTypePicklistSections.forEach( recordTypeSection => {  
-            
-                    let recordTypeChoicesBreakdown:string;
-                    const fieldApiNameFromRecordTypeMarkup = recordTypeSection.picklist[0];
-                    /*  
-                        ENSURE THAT THE FIELD API NAME FROM THE RECORD TYPE MARKUP MATCHES THE FIELD API NAME
-                        AS THE RECORD TYPE MARKUP INCLUDES MULTIPLE FIELDS AND ASSOCIATED PICKLIST VALUES
-                    */
-                    if ( fieldApiNameFromRecordTypeMarkup === fieldApiName) { 
+            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}"${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
 
-                        recordTypeSection.values.forEach( recordTypePicklistValueDetail => {
+            if ( !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
+                // picklist value not available for record type so no dependent picklist values to process
+                allRecordTypeChoicesBreakdown += noPicklistValuesForRecordTypeVerbiage;
+           
+            } else {
 
-                            const recordTypePicklistValue = recordTypePicklistValueDetail.fullName[0];
-                            picklistValuesAvailableForChoice.forEach( availableValue => {
+                let recordTypeChoicesBreakdown:string;
 
-                                if ( availableValue === recordTypePicklistValue ) {
-
-                                    if (recordTypeChoicesBreakdown) {
-                                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;
-                                    } else {
-                                        const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeKey}`;
-                                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypePicklistValue}`;                                
-                                    }
-
-                                }
-                
-                            });  
-            
-                        });  
-                
-                        allRecordTypeChoicesBreakdown += recordTypeChoicesBreakdown;
-
-                    }
-            
-                });
-
-            }      
+                const picklistValuesForDependentField = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeApiNameKey][dependentFieldApiName];
+                picklistValuesForDependentField.forEach( recordTypeAvailablePicklistValue => {
     
+                    if (recordTypeChoicesBreakdown) {
+                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;
+                    } else {
+                        const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeApiNameKey}`;
+                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;                                
+                    }
+    
+                });
+    
+                allRecordTypeChoicesBreakdown += recordTypeChoicesBreakdown;
+            }
+
         });
 
         return allRecordTypeChoicesBreakdown;
