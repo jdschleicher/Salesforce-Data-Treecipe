@@ -77,7 +77,7 @@ export class SnowfakeryFakerService implements IFakerService {
             });   
 
             const allRecordTypeChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
-                recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
                                             fieldApiName, 
                                             controllingField,
                                             controllingValueKey
@@ -139,7 +139,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 
             const availableRecordTypePicklistValuesForControllingField = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeApiNameKey][controllingFieldApiName];
 
-            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}"${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
+            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
 
             if ( !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
                 // picklist value not available for record type so no dependent picklist values to process
@@ -155,7 +155,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                     if (recordTypeChoicesBreakdown) {
                         recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;
                     } else {
-                        const recordTypeTodoVerbiage = `### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- ${recordTypeApiNameKey}`;
+                        const recordTypeTodoVerbiage = `### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- ${recordTypeApiNameKey}`;
                         recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;                                
                     }
     

@@ -144,10 +144,12 @@ export class RecipeMockService {
                     - weed
                     - mulch
                     - rocks
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - mulch
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
-                    - mulch
+                    - plant
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
+                     - mulch
+                    - plant
                     - rocks
                     - tree
         - choice:
@@ -157,9 +159,9 @@ export class RecipeMockService {
                     - tree
                     - weed
                     - mulch
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - mulch
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - mulch
                     - tree
         - choice:
@@ -169,9 +171,9 @@ export class RecipeMockService {
                     - tree
                     - plant
                     - weed
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - plant
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - plant
                     - tree
         - choice:
@@ -181,9 +183,9 @@ export class RecipeMockService {
                     - tree
                     - weed
                     - mulch
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - mulch
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - mulch
                     - tree
         - choice:
@@ -192,17 +194,18 @@ export class RecipeMockService {
                 random_choice:
                     - plant
                     - weed
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - plant
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - plant
         - choice:
             when: \${{ ${controllingFieldApiName} == 'wickliffe' }}
             pick:
                 random_choice:
                     - weed
-                    - rocksundefined
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - rocks
+                    ### TODO: -- RecordType Options -- OneRecType -- "wickliffe" is not an available value for ${controllingFieldApiName} for record type OneRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - rocks`;
 
         return expectedDependentPicklistRecipeValue;

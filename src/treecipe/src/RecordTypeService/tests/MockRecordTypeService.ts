@@ -203,7 +203,7 @@ export class MockRecordTypeService {
 
     }
 
-    static getMultipleRecordTypeXMLObjectsMap(): Record<string, object> {
+    static getMultipleRecordTypeToFieldToPicklistValuesMap(): Record<string, Record<string, string[]>> {
         
         return {
             OneRecType: this.getOneRecTypeFieldToPicklistValuesMap(),
@@ -251,10 +251,12 @@ export class MockRecordTypeService {
 
         const cleControllingValueToPicklistOptions =       
         `
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - mulch
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - plant
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - mulch
+                    - plant
                     - rocks
                     - tree`;
 
@@ -264,12 +266,16 @@ export class MockRecordTypeService {
 
     static getMadisonControllingValueToDependentPicklistOptions():string {
 
+        const recordTypeOneRecTypeApiNameKey = 'OneRecType';
+        const recordTypeTwoRecTypeApiNameKey = 'TwoRecType';
+
+        const controllingValue = "madison";
+        const controllingFieldApiName = "Picklist__c";
+
         const madisionControllingValueToPicklistOptions =       
         `
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
-                    - "madison" is not an available value for Picklist__c for this record type
-                    ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
-                    - "madison" is not an available value for Picklist__c for this record type`;
+                    ### TODO: -- RecordType Options -- ${recordTypeOneRecTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeOneRecTypeApiNameKey}
+                    ### TODO: -- RecordType Options -- ${recordTypeTwoRecTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeTwoRecTypeApiNameKey}`;
 
         return madisionControllingValueToPicklistOptions;
     
