@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 
 export class RecordTypeService {
 
-    static async getRecordTypeMarkupMap(associatedFieldsDirectoryPath: string): Promise<Record<string, object>> {
+    static async getRecordTypeToApiFieldToPicklistValuesMap(associatedFieldsDirectoryPath: string): Promise<Record<string, Record<string, string[]>>> {
 
         const baseObjectPath = associatedFieldsDirectoryPath.split('/fields')[0]; // getting index of 0 will return base path 
         const expectedRecordTypesFolderName = 'recordTypes';

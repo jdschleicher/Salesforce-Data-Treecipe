@@ -38,7 +38,7 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = await RecordTypeService.getRecordTypeMarkupMap(fullPath.path);
+            const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = await RecordTypeService.getRecordTypeToApiFieldToPicklistValuesMap(fullPath.path);
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
