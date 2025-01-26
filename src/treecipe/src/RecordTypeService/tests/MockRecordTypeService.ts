@@ -204,6 +204,7 @@ export class MockRecordTypeService {
     }
 
     static getMultipleRecordTypeXMLObjectsMap(): Record<string, object> {
+        
         return {
             OneRecType: this.getRecordTypeMockOneRecTypeAsObject(),
             TwoRecType: this.getRecordTypeMockTwoRecTypeAsObject()
@@ -266,12 +267,20 @@ export class MockRecordTypeService {
         const madisionControllingValueToPicklistOptions =       
         `
                     ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- OneRecType
-                    - Picklist__c not available for this record type
+                    - "madison" is not an available value for Picklist__c for this record type
                     ### TODO: SELECT BELOW OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - "madison" is not an available value for Picklist__c for this record type`;
 
         return madisionControllingValueToPicklistOptions;
     
+    }
+
+    static getOneRecTypeFieldToPicklistValuesMap(): Record<string, string[]> {
+        return {
+            DependentPicklist__c: ['mulch', 'plant'],
+            MultiPicklist__c: ['chorizo', 'pork', 'steak', 'tofu'],
+            Picklist__c: ['cle', 'eastlake']
+        };
     }
 
 

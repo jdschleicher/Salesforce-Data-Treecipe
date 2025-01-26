@@ -44,10 +44,21 @@ export class RecordTypeService {
                 throw new Error(`Error processing record type xmlContent ${recordTypeXMLContent}: ` + error.message);
               }
               recordTypeXML = result;
+
             });
-    
+
+            const recordType = recordTypeXML.RecordType;
+            const picklistValues = recordType.picklistValues;
+        
+            const fieldApiToRecordTypePicklistValuesMap: Record<string, string[]> = {};
+            picklistValues.forEach((picklistValue: any) => {
+                const fieldName = picklistValue.picklist[0]; // picklist is array with one expected value
+                const recordTypePicklistValuesForField = picklistValue.values.flatMap((value: any) => value.fullName ); // Extract the list of values
+                fieldApiToRecordTypePicklistValuesMap[fieldName] = recordTypePicklistValuesForField;
+            });
+        
             const apiName = recordTypeXML.RecordType.fullName[0];
-            recordTypeToXMLMarkupMap[apiName] = recordTypeXML;
+            recordTypeToXMLMarkupMap[apiName] = fieldApiToRecordTypePicklistValuesMap;
     
           }
     
@@ -56,5 +67,7 @@ export class RecordTypeService {
         return recordTypeToXMLMarkupMap;
       
     }
+
+    
 
 }
