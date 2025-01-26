@@ -109,19 +109,15 @@ export class MockRecordTypeService {
     <picklistValues>
         <picklist>DependentPicklist__c</picklist>
         <values>
-            <fullName>mulch</fullName>
+            <fullName>tree</fullName>
             <default>false</default>
         </values>
         <values>
-            <fullName>plant</fullName>
+            <fullName>weed</fullName>
             <default>true</default>
         </values>
         <values>
-            <fullName>rocks</fullName>
-            <default>false</default>
-        </values>
-        <values>
-            <fullName>tree</fullName>
+            <fullName>mulch</fullName>
             <default>false</default>
         </values>
     </picklistValues>
@@ -227,19 +223,22 @@ export class MockRecordTypeService {
               'mulch',
             ],
             madison: [
-              'plant',
               'tree',
+              'weed',
+              'plant'
             ],
             willoughby: [
               'tree',
-              'mulch',
+              'weed',
+              'mulch'
             ],
             mentor: [
               'weed',
               'plant',
             ],
             wickliffe: [
-              'rocks',
+              'weed',
+              'rocks'
             ],
           };
 

@@ -148,7 +148,7 @@ export class RecipeMockService {
                     - mulch
                     - plant
                     ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
-                     - mulch
+                    - mulch
                     - plant
                     - rocks
                     - tree
@@ -161,21 +161,17 @@ export class RecipeMockService {
                     - mulch
                     ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - mulch
-                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
-                    - mulch
-                    - tree
+                    - plant
+                    ### TODO: -- RecordType Options -- TwoRecType -- "eastlake" is not an available value for Picklist__c for record type TwoRecType
         - choice:
             when: \${{ ${controllingFieldApiName} == 'madison' }}
             pick:
                 random_choice:
                     - tree
-                    - plant
                     - weed
-                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - plant
-                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
-                    - plant
-                    - tree
+                    ### TODO: -- RecordType Options -- OneRecType -- "madison" is not an available value for Picklist__c for record type OneRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- "madison" is not an available value for Picklist__c for record type TwoRecType
         - choice:
             when: \${{ ${controllingFieldApiName} == 'willoughby' }}
             pick:
@@ -183,21 +179,20 @@ export class RecipeMockService {
                     - tree
                     - weed
                     - mulch
-                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
-                    - mulch
+                    ### TODO: -- RecordType Options -- OneRecType -- "willoughby" is not an available value for ${controllingFieldApiName} for record type OneRecType
                     ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
                     - mulch
+                    - plant
+                    - rocks
                     - tree
         - choice:
             when: \${{ ${controllingFieldApiName} == 'mentor' }}
             pick:
                 random_choice:
-                    - plant
                     - weed
-                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
                     - plant
-                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
-                    - plant
+                    ### TODO: -- RecordType Options -- OneRecType -- "mentor" is not an available value for ${controllingFieldApiName} for record type OneRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- "mentor" is not an available value for ${controllingFieldApiName} for record type TwoRecType
         - choice:
             when: \${{ ${controllingFieldApiName} == 'wickliffe' }}
             pick:
@@ -205,8 +200,7 @@ export class RecipeMockService {
                     - weed
                     - rocks
                     ### TODO: -- RecordType Options -- OneRecType -- "wickliffe" is not an available value for ${controllingFieldApiName} for record type OneRecType
-                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
-                    - rocks`;
+                    ### TODO: -- RecordType Options -- TwoRecType -- "wickliffe" is not an available value for ${controllingFieldApiName} for record type TwoRecType`;
 
         return expectedDependentPicklistRecipeValue;
 
