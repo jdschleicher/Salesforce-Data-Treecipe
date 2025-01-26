@@ -185,10 +185,10 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                     - Model X`;
 
 
-            const emptyRecordTypeNameToRecordTypeXMLMarkup = {};
+            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
             const fakeFieldApiName = "CarModel__c";
             const actualFakerValue = snowfakeryService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
-                                                                                                emptyRecordTypeNameToRecordTypeXMLMarkup, 
+                                                                                                emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
                                                                                                 controllingField, 
                                                                                                 fakeFieldApiName);
 
@@ -240,12 +240,16 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
             const expectedRecTypesToXMLDetailMap = MockRecordTypeService.getMultipleRecordTypeXMLObjectsMap();
             const fakeFieldApiName = "DependentPicklist__c";
             const controllingFieldValue = 'cle';
+            const controllingFieldApiName = 'Picklist__c';
+
 
             const expectedControllingValueToPicklistOptions = MockRecordTypeService.getDependentPicklistControllingFieldToAvailablePicklistValues();
             const expectedPicklistValuesAvailableForCleChoice = expectedControllingValueToPicklistOptions[controllingFieldValue];
     
-            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(expectedRecTypesToXMLDetailMap, 
+            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(
+                                                                                                expectedRecTypesToXMLDetailMap, 
                                                                                                 fakeFieldApiName, 
+                                                                                                controllingFieldApiName,
                                                                                                 controllingFieldValue,
                                                                                                 expectedPicklistValuesAvailableForCleChoice
                                                                                             );
@@ -260,12 +264,15 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
             const expectedRecTypesToXMLDetailMap = MockRecordTypeService.getMultipleRecordTypeXMLObjectsMap();
             const fakeFieldApiName = "DependentPicklist__c";
             const controllingFieldValue = 'madison';
+            const controllingFieldApiName = 'Picklist__c';
 
             const expectedControllingValueToPicklistOptions = MockRecordTypeService.getDependentPicklistControllingFieldToAvailablePicklistValues();
             const expectedPicklistValuesAvailableForCleChoice = expectedControllingValueToPicklistOptions[controllingFieldValue];
     
-            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(expectedRecTypesToXMLDetailMap, 
+            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(
+                                                                                                expectedRecTypesToXMLDetailMap, 
                                                                                                 fakeFieldApiName, 
+                                                                                                controllingFieldApiName,
                                                                                                 controllingFieldValue,
                                                                                                 expectedPicklistValuesAvailableForCleChoice
                                                                                             );

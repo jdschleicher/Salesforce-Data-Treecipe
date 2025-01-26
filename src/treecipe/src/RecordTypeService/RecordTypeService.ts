@@ -15,18 +15,18 @@ export class RecordTypeService {
         const expectedRecordTypesPath = `${baseObjectPath}/${expectedRecordTypesFolderName}`;
         const recordTypesDirectoryUri = vscode.Uri.parse(expectedRecordTypesPath);
     
-        let recordTypeToXMLMarkupMap: Record<string, object> = {};
+        let recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> = {};
     
         // check if recordTypes folder exists, return and skip functionality if not
         if (!fs.existsSync(expectedRecordTypesPath)) {
           // no recordTypes folder exists for object
-          return recordTypeToXMLMarkupMap;
+          return recordTypeToPicklistFieldsToAvailablePicklistValuesMap;
         }
         
         const recordTypeFileTuples = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
         if (recordTypeFileTuples === undefined || recordTypeFileTuples.length === 0) {
           // if folder exists but is empty, return and skip functionality
-          return recordTypeToXMLMarkupMap;
+          return recordTypeToPicklistFieldsToAvailablePicklistValuesMap;
         } 
     
         for (const [fileName, directoryItemTypeEnum] of recordTypeFileTuples) {
@@ -58,13 +58,13 @@ export class RecordTypeService {
             });
         
             const apiName = recordTypeXML.RecordType.fullName[0];
-            recordTypeToXMLMarkupMap[apiName] = fieldApiToRecordTypePicklistValuesMap;
+            recordTypeToPicklistFieldsToAvailablePicklistValuesMap[apiName] = fieldApiToRecordTypePicklistValuesMap;
     
           }
     
         }
         
-        return recordTypeToXMLMarkupMap;
+        return recordTypeToPicklistFieldsToAvailablePicklistValuesMap;
       
     }
 

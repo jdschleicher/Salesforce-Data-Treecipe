@@ -206,8 +206,8 @@ export class MockRecordTypeService {
     static getMultipleRecordTypeXMLObjectsMap(): Record<string, object> {
         
         return {
-            OneRecType: this.getRecordTypeMockOneRecTypeAsObject(),
-            TwoRecType: this.getRecordTypeMockTwoRecTypeAsObject()
+            OneRecType: this.getOneRecTypeFieldToPicklistValuesMap(),
+            TwoRecType: this.getTwoRecTypeFieldToPicklistValuesMap()
         };
 
     }
@@ -280,6 +280,14 @@ export class MockRecordTypeService {
             DependentPicklist__c: ['mulch', 'plant'],
             MultiPicklist__c: ['chorizo', 'pork', 'steak', 'tofu'],
             Picklist__c: ['cle', 'eastlake']
+        };
+    }
+
+    static getTwoRecTypeFieldToPicklistValuesMap(): Record<string, string[]> {
+        return {
+            DependentPicklist__c: ['mulch', 'plant', 'rocks', 'tree'],
+            MultiPicklist__c: ['chicken', 'egg', 'fish', 'tofu'],
+            Picklist__c: ['cle', 'willoughby']
         };
     }
 

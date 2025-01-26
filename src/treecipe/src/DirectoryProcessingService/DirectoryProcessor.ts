@@ -38,8 +38,8 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            const recordTypeNameByRecordTypeNameToXMLMarkup = await RecordTypeService.getRecordTypeMarkupMap(fullPath.path);
-            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeNameByRecordTypeNameToXMLMarkup );
+            const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = await RecordTypeService.getRecordTypeMarkupMap(fullPath.path);
+            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
             if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
@@ -78,7 +78,7 @@ export class DirectoryProcessor {
   async processFieldsDirectory(
         directoryPathUri: vscode.Uri, 
         associatedObjectName: string,
-        recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, object>
+        recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> 
       ): Promise<FieldInfo[]> {
 
     /* 
@@ -97,7 +97,7 @@ export class DirectoryProcessor {
         const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
         const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
 
-        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, associatedObjectName, recordTypeNameByRecordTypeNameToXMLMarkup);
+        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, associatedObjectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
         fieldInfoDetails.push(fieldInfo);
 
       }
@@ -110,11 +110,11 @@ export class DirectoryProcessor {
 
   async buildFieldInfoByXMLContent(xmlContent: string, 
                                     associatedObjectName: string,
-                                    recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, object>
+                                    recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>
                                   ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
-    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeNameByRecordTypeNameToXMLMarkup);                                                        
+    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);                                                        
 
     let fieldInfo = FieldInfo.create(
       associatedObjectName,
@@ -135,7 +135,7 @@ export class DirectoryProcessor {
     return path.basename(filePath);
   }
 
-  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup: Record<string, object>): string {
+  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
     let recipeValue = null;
     if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
 
@@ -143,7 +143,7 @@ export class DirectoryProcessor {
 
     } else {
 
-      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeNameToRecordTypeXMLMarkup);
+      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
     
     }
     
