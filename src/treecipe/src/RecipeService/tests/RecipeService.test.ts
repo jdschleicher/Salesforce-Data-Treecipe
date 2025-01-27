@@ -198,35 +198,50 @@ jest.mock('vscode', () => ({
                     fullName: 'tree',
                     label: 'tree',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'madison']
+                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'willoughby']
+                },
+                {
+                    fullName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                },
+                {
+                    fullName: 'mulch',
+                    label: 'mulch',
+                    default: false,
+                    availableForControllingValues: ['cle', 'eastlake', 'willoughby']
+                },
+                {
+                    fullName: 'rocks',
+                    label: 'rocks',
+                    default: false,
+                    availableForControllingValues: ['cle', 'wickliffe']
                 },
                 {
                     fullName: 'plant',
                     label: 'plant',
                     default: false,
                     availableForControllingValues: ['madison', 'mentor']
-                },
-                {
-                    fullName: 'weed',
-                    label: 'weed',
-                    default: false,
-                    availableForControllingValues: ['cle', 'mentor', 'wickliffe', 'willoughby']
                 }
-           
+               
             ];
          
             const expectedXMLFieldDetail:XMLFieldDetail = {
                 fieldType : "picklist",
-                apiName : "Landscape__c",
+                apiName : "DependentPicklist__c",
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
-                fieldLabel : "Landscape Towns",
-                controllingField : "Town__c"
+                fieldLabel : "Dependent Picklist",
+                controllingField : "Picklist__c"
             };
  
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValue();
-            const actualRecipeValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(expectedXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValueWithoutRecordTypeDetail();
+            const actualRecipeValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(
+                expectedXMLFieldDetail, 
+                recordTypeNameByRecordTypeNameToXMLMarkup
+            );
 
             expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
 
