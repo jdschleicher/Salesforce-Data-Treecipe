@@ -1,6 +1,6 @@
 import { RecipeService } from "../../RecipeService";
 
-// NOTE ALL FORWARD SLASHES ARE UTILIZED TO IGNORE SPECIAL CHARACTERS IN STRING TEMPLATE e.g. " \${{ "
+// NOTE ALL BACK SLASHES ARE UTILIZED TO IGNORE SPECIAL CHARACTERS IN STRING TEMPLATE e.g. " \${{ "
 export class RecipeMockService {
 
     static getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup():string {
