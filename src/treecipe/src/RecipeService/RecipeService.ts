@@ -51,7 +51,10 @@ export class RecipeService {
                     return '';
                 }
                 const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
-                fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
+                fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
+                                                                                                        recordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                                                        xmlFieldDetail.apiName
+                                                                                                    );
         
                 return fakeRecipeValue;
                 

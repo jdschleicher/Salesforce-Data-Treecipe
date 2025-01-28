@@ -43,7 +43,7 @@ jest.mock('vscode', () => ({
         test('given expected Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-            const expectedPicklistSnowfakeryValue = "${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}";
+            const expectedPicklistSnowfakeryValue = "${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
@@ -54,7 +54,7 @@ jest.mock('vscode', () => ({
         test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
-            const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken','chorizo','egg','fish','pork','steak','tofu')))) }}";
+            const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualMultiSelectPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
