@@ -214,6 +214,29 @@ export class RecipeMockService {
 
     }
 
+    static getMockPicklistRecipeCobminedWithRecordTypes():string {
+
+        const fakeRecordTypeRecipe = `\${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}
+                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'eastlake') }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'willoughby') }}`;
+
+        return fakeRecordTypeRecipe;
+
+    }
+
+    static getMockPicklistRecordTypesRecipe():string {
+
+        const fakeRecordTypeRecipe = `                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'eastlake') }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'willoughby') }}`;
+
+        return fakeRecordTypeRecipe;
+
+    }
+
 
 
 

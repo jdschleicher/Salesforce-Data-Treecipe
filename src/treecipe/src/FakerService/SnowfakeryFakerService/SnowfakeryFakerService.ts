@@ -116,14 +116,21 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
+    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                                associatedFieldApiName): string {
 
-        const commaJoinedPicklistChoices = availablePicklistChoices.join("','");
-        const fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
+        const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
+        let fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
+
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap, associatedFieldApiName);
+        if ( recordTypeBasedRecipeValues) {
+            fakeRecipeValue += `\n${recordTypeBasedRecipeValues}`;
+        }
+
         return fakeRecipeValue;
 
     }
-
 
     updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
                                                                 dependentFieldApiName: string,
@@ -134,7 +141,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         const newLineBreak: string = `\n`;
         let allRecordTypeChoicesBreakdown:string = '';    
                                                         
-
         Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
                 
             const availableRecordTypePicklistValuesForControllingField = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeApiNameKey][controllingFieldApiName];
@@ -144,7 +150,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             if ( !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
                 // picklist value not available for record type so no dependent picklist values to process
                 allRecordTypeChoicesBreakdown += noPicklistValuesForRecordTypeVerbiage;
-           
             } else {
 
                 let recordTypeChoicesBreakdown:string;
@@ -167,6 +172,39 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         });
 
         return allRecordTypeChoicesBreakdown;
+
+    }
+
+    buildRecordTypeBasedPicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                            associatedFieldApiName: string) {
+
+        let allRecordTypeBasedPicklistOptions:string = '';
+
+        const newLineBreak = `\n`;
+
+        Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+
+            const availableRecordTypePicklistValuesForField = recordTypeToPicklistFieldsToAvailablePicklistValuesMap[recordTypeApiNameKey][associatedFieldApiName];
+            if ( availableRecordTypePicklistValuesForField ) {
+
+                const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");
+                const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
+    
+                let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
+                recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}${recordTypBasedFakeRecipeValue}`;
+                
+                if ( allRecordTypeBasedPicklistOptions.trim() === '' ) {
+                    // check to see if allRecordTypeBasedPicklistOptions has been given an initial value to properly handle recipe spacing
+                    allRecordTypeBasedPicklistOptions = `${recordTypeTodoVerbiage}`;
+                } else {
+                    allRecordTypeBasedPicklistOptions += `${newLineBreak}${recordTypeTodoVerbiage}`;
+                }
+
+    
+            }
+        });
+
+        return allRecordTypeBasedPicklistOptions;
 
     }
 

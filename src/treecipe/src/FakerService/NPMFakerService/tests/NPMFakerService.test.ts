@@ -204,7 +204,11 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
             const expectedRecipeValue = `faker.helpers.arrayElement(['apple','orange','banana'])`;
-            const actualFakerValue = npmFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices);
+            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> = {};
+            const fakeFieldApiName = "Fruit__c";
+            const actualFakerValue = npmFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
+                                                                                                emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                                                                                fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
         });

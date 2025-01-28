@@ -29,13 +29,18 @@ export class RecipeService {
             case 'picklist':
                 
                 if (xmlFieldDetail.controllingField) {
+                    // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
                     fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
                 } else {
+
                     if ( !(xmlFieldDetail.picklistValues) ) {
+                        // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
                         return '';
                     }
                     const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
-                    fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices);
+                    fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
+                                                                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                                                xmlFieldDetail.apiName);  
                 }
 
                 return fakeRecipeValue;

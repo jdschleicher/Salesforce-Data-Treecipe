@@ -57,7 +57,9 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
+    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                                associatedFieldApiName): string {
          
         const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
         const fakeMultiSelectRecipeValue = `faker.helpers.arrayElement([${joinedChoices}])`;
