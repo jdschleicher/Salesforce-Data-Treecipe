@@ -41,10 +41,19 @@ export class SnowfakeryFakerService implements IFakerService {
 
     }
 
-    buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[]): string {
+    buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
+                                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                                            associatedFieldApiName
+                                                        ): string {
 
-        const commaJoinedPicklistChoices = availablePicklistChoices.join("','");
-        const fakeMultiSelectRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
+        const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
+        let fakeMultiSelectRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
+        
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap, associatedFieldApiName);
+        if ( recordTypeBasedRecipeValues) {
+            fakeMultiSelectRecipeValue += `\n${recordTypeBasedRecipeValues}`;
+        }
+        
         return fakeMultiSelectRecipeValue;
 
     }
@@ -179,7 +188,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                                             associatedFieldApiName: string) {
 
         let allRecordTypeBasedPicklistOptions:string = '';
-
         const newLineBreak = `\n`;
 
         Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
@@ -199,13 +207,45 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 } else {
                     allRecordTypeBasedPicklistOptions += `${newLineBreak}${recordTypeTodoVerbiage}`;
                 }
-
     
             }
+            
         });
 
         return allRecordTypeBasedPicklistOptions;
 
+    }
+
+    buildRecordTypeBasedMultipicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                                    associatedFieldApiName: string) {
+
+
+        let allRecordTypeBasedMultiselectPicklistOptions:string = '';
+        const newLineBreak = `\n`;
+
+        Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+
+            const availableRecordTypePicklistValuesForField = recordTypeToPicklistFieldsToAvailablePicklistValuesMap[recordTypeApiNameKey][associatedFieldApiName];
+            if ( availableRecordTypePicklistValuesForField ) {
+
+                const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");
+                const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
+                
+                let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the Multiselect faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
+                recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}${recordTypBasedFakeRecipeValue}`;
+                
+                if ( allRecordTypeBasedMultiselectPicklistOptions.trim() === '' ) {
+                    // check to see if allRecordTypeBasedPicklistOptions has been given an initial value to properly handle recipe spacing
+                    allRecordTypeBasedMultiselectPicklistOptions = `${recordTypeTodoVerbiage}`;
+                } else {
+                    allRecordTypeBasedMultiselectPicklistOptions += `${newLineBreak}${recordTypeTodoVerbiage}`;
+                }
+    
+            }
+
+        });
+
+        return allRecordTypeBasedMultiselectPicklistOptions;
     }
 
 }

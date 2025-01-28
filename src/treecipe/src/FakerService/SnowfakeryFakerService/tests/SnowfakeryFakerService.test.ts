@@ -129,13 +129,35 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
 
     describe('buildMultiSelectPicklistRecipeValueByXMLFieldDetail', () => {
 
-        test('given expected list of choices, returns expected multiselect picklist faker value', () => {
+        test('given expected list of choices and empty recordtype selections, returns expected multiselect picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = "${{ (';').join((fake.random_sample(elements=('apple','orange','banana')))) }}";
-            const actualFakerValue = snowfakeryService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices);
+            const fakeFieldApiName = "Picklist__c";
+            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
+            const actualFakerValue = snowfakeryService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
+                                                                                                emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                                                                                fakeFieldApiName);
+
+            const expectedRecipeValue = "${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}";
+            expect(actualFakerValue).toBe(expectedRecipeValue);
+
+        });
+
+        test('given expected list of choices, returns expected multiselect picklist faker value', () => {
+
+            const possibleChoices: string[] = ['chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu'];
+            const expectedFieldApiName = "MultiPicklist__c";
+            const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToPicklistValuesMap();
+            const actualFakerValue = snowfakeryService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
+                                                                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                                                                                expectedFieldApiName);
+
+            
+            
+            const expectedRecipeValue = RecipeMockService.getMockMultiselectPicklistRecipeCobminedWithRecordTypes();
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
+       
         });
 
     });
@@ -238,9 +260,9 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
         test('given expected available picklist choices, returns expected picklist faker value', () => {
 
             const possibleChoices: string[] = ['cle','eastlake','madison','mentor','wickliffe','willoughby'];
-            const fakeFieldApiName = "Picklist__c";
+            const expectedFieldApiName = "Picklist__c";
             const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToPicklistValuesMap();
-            const actualFakerValue = snowfakeryService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, recordTypeToPicklistFieldsToAvailablePicklistValuesMap, fakeFieldApiName);
+            const actualFakerValue = snowfakeryService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, recordTypeToPicklistFieldsToAvailablePicklistValuesMap, expectedFieldApiName);
             
             const expectedFakerValue = RecipeMockService.getMockPicklistRecipeCobminedWithRecordTypes();
 
@@ -303,6 +325,23 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                                                                                                 fakeFieldApiName);
 
             const expectedFakerValue = RecipeMockService.getMockPicklistRecordTypesRecipe();
+
+            expect(actualFakerValue).toBe(expectedFakerValue);
+
+        });
+
+    });
+
+    describe('buildRecordTypeBasedPicklistRecipeValue', () => {
+
+        test('given expected record type to picklist values map, returns expected record type based picklist faker value', () => {
+
+            const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToPicklistValuesMap();
+            const fakeFieldApiName = "MultiPicklist__c";
+            const actualFakerValue = snowfakeryService.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                                                                                fakeFieldApiName);
+
+            const expectedFakerValue = RecipeMockService.getMockMultiselectPicklistRecordTypesRecipe();
 
             expect(actualFakerValue).toBe(expectedFakerValue);
 

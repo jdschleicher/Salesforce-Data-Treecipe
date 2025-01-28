@@ -237,8 +237,27 @@ export class RecipeMockService {
 
     }
 
+    static getMockMultiselectPicklistRecipeCobminedWithRecordTypes():string {
 
+        const fakeRecordTypeRecipe = `\${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chorizo', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chicken', 'egg', 'fish', 'tofu')))) }}`;
 
+return fakeRecordTypeRecipe;
 
+    }
+
+    static getMockMultiselectPicklistRecordTypesRecipe():string {
+
+        const fakeRecordTypeRecipe = `                    ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chorizo', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chicken', 'egg', 'fish', 'tofu')))) }}`;
+
+        return fakeRecordTypeRecipe;
+
+    }
 
 }
