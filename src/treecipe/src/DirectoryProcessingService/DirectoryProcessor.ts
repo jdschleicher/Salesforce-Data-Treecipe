@@ -89,11 +89,6 @@ export class DirectoryProcessor {
     const vsCodeDirectoryTuples = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
-
-    if ( recordTypeToPicklistFieldsToAvailablePicklistValuesMap ) {
- // build special RecordTypeDeveloperName vallue 
-    }
-
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
       if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
