@@ -43,7 +43,7 @@ export class DirectoryProcessor {
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
             if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
-              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName);
+              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
             }
   
             fieldsInfo.forEach((fieldDetail) => {
@@ -89,6 +89,11 @@ export class DirectoryProcessor {
     const vsCodeDirectoryTuples = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
+
+    if ( recordTypeToPicklistFieldsToAvailablePicklistValuesMap ) {
+ // build special RecordTypeDeveloperName vallue 
+    }
+
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
       if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {

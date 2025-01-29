@@ -126,14 +126,39 @@ export class RecipeService {
         
     }
 
-    initiateRecipeByObjectName(objectName: string): string {
+    initiateRecipeByObjectName(objectName: string, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
-        const objectRecipeMarkup = 
+        let objectRecipeMarkup = 
 `\n- object: ${objectName}
   nickname: ${objectName}_NickName
   count: 1
   fields:`;
+
+        if ( recordTypeToPicklistFieldsToAvailablePicklistValuesMap !== undefined && Object.keys(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).length > 0 ) {
+
+            let recordTypeDeveloperNamesToSelect:string = '';
+            const recordTypeDeveloperNameTodoVerbiage = `### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`;
+            const newLineBreak = "\n";
+            Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+                    
+                if ( recordTypeDeveloperNamesToSelect.trim() === '' ) {
+                    // check to see if recordTypeDeveloperNamesToSelect has been given an initial value to properly handle recipe spacing
+                    recordTypeDeveloperNamesToSelect = `${recordTypeDeveloperNameTodoVerbiage}`;
+
+                } 
+
+                recordTypeDeveloperNamesToSelect += `${newLineBreak}${this.generateTabs(5)}${recordTypeApiNameKey}`;
+    
+            });
+
+            objectRecipeMarkup = this.appendFieldRecipeToObjectRecipe(
+                objectRecipeMarkup,
+                recordTypeDeveloperNamesToSelect,
+                "RecordTypeId"
+            );
+    
+        }
 
         return objectRecipeMarkup;
     }

@@ -5,6 +5,7 @@ import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { RecipeMockService } from "./mocks/RecipeMockService";
 import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
+import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
 
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
 // import * as fs from 'fs';
@@ -122,7 +123,7 @@ jest.mock('vscode', () => ({
 
     describe('initiateRecipeByObjectName', () => {
 
-        test('given object api name, the expected initiation recipe properties are returned in a string', () => {
+        test('given object api name and empty recordtype map, the expected initiation recipe properties are returned in a string and RecordTypeId is NOT added to the intial recipe', () => {
 
             const objectApiName = "Account";
             const expectedRecipeInitiation = 
@@ -131,7 +132,26 @@ jest.mock('vscode', () => ({
   count: 1
   fields:`;
 
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName);
+            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
+            expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+
+        });
+
+        test('given object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
+
+            const objectApiName = "Account";
+            const expectedRecipeInitiation = 
+    `\n- object: ${objectApiName}
+  nickname: ${objectApiName}_NickName
+  count: 1
+  fields:
+    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    OneRecType
+                    TwoRecType`;
+
+            const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToPicklistValuesMap();
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
             expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
 
         });
