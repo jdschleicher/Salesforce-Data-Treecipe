@@ -4,12 +4,11 @@
 
 ---
 
-## Get Started by following the below commands:
+## Get started by walking through the below commands (see corresponding video for each step):
 
 1. [Initiate Configuration File](#command1)
 2. [Generate Treecipe](#command2)
 3. [Run Snowfakery by Recipe(Treecipe) to create FakeDataSet](#command3)
-4. [Insert/Upsert FakeDataSet by Timestamped Directory](#command4)
 
 ---
 
@@ -46,7 +45,13 @@ Once the configuration file is generated, you can begin using the **Generate Tre
 ### 2.<a name="command2"></a> **Salesforce Treecipe: Generate Treecipe**
 This command [generates a **Treecipe**](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main#generate-treecipe-based-on-treecipeconfigjcon--keep-an-eye-out-for-ootb-fields-and-remove-me-lines-), a structured representation of your Salesforce data, based on your configuration.
 
-It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above and generate a yaml file of objects and associated fields.
+It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above, and then generates a yaml file of objects and associated fields found in that directory.
+
+As part of this yaml file generation there are some items to be aware of:
+- **"TODO" items:** Because this tool can only make decisions based upon what's found in the metadata and markjup, similiar to LLM tools, it requires a "Person in the Middle" to review sections of the yaml where a comment labled "TODO" is found. Before generating a fake data set from an expected yaml file, that yaml file should be reviewed for "TODO" items and have each TODO cleared based on the message. Sometimes the "TODO" message is to confirm that a field that was added to the yaml file did not have xml markup and is an OOTB field. Other times the "TODO" is needed to select which record type values to choose for a picklist field. There could be several record types for an object and generating data for that object requires choosing what associated record type choices to populate for the fake data set.
+- **Handling of field files without xml markup:** For OOTB fields like AccountNumber or Name on the Account object, there is not detailed XML markup found in their field files. These occurrences are marked with a "TODO" item because they need to be either cleared or provided a faker value. For example, AccountNumber is an auto-generated field and doesn't need a faker value. However Account "Name" field will need a faker value, "${{ fake.company }}". In upcoming releases, there will be an auto mapper that handles OOTB objects and fields but for now requires a set of eyes to review the OOTB updates.
+- **Record Type Picklist, Dependent Picklist, Multiselect Picklist Selections:** At the start of the yaml file generation for an object found in the project source, an expected structure is parsed in order to confirm if there are different Record Types associated with the object. Within the objects folder [there should be a structure (shown below)](https://github.com/jdschleicher/Salesforce-Data-Treecipe/edit/feature/handleLocalRecordTypeMarkup/README.md#example-directory-structure) that allows the yaml generation logic to parse the "recordTypes" directory and provide picklist faker options based on each record type:
+
 
 **NOTE:** 
 
@@ -68,30 +73,6 @@ This command [prompts the user to select an existing recipe(Treecipe) file](http
 
 With the selection made, the snowfakery CLI will execute against they yaml file and produce json structured, production-like data which is then converted for usage with Salesforce [Collection Api](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm)
 
-
----
-
- ### <a name="command4"></a> 4. **Insert/Upsert FakeDataSet by Timestamped Directory**
- 
-- as part of command#2 - genearte treecipe
-  - get recordtype info from object and provide options 
-- as part of generatign fake data, create "orderofinserts"file
-- prompts user for expected org to insert data into
-- get sobject to record type map breakdown: SELECT Id, Name, DeveloperName, SobjectType, IsActive FROM RecordType WHERE SobjectType IN ('Account', 'Example_Everything__c')
-- features
-  - stopwatch trackign time of operations
-  - success results and linked paths
-  - failured results and linked paths
-- code logic
-  - create new directory for dataInsertRuns ( attempt 1, attempt 2)
-  - prep with map variables
-    - sObjectToRecordTypeNameToRecTypeIdsMap
-      - generates recordtypemap pointing recordtypename provided with recordtype id of org
-    - referenceIdToAssociatedLookupRecordId
-    - sObjectToLookupMaps
-  - Loop over data files
-  - insertdata run
-  - upsertdata run for child relationships
 
 ---
 
@@ -160,8 +141,10 @@ my-project/
 │   └── main/
 │       └── default/
 │           └── objects/
-│               ├── Account.object-meta.xml
-│               ├── Contact.object-meta.xml
+│               └──  Account/
+|                  └── fields/
+|                  └── recordTypes/
+│               └──  Contact/
 │               └── ...
 
 ```
