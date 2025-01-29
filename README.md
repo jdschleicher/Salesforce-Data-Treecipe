@@ -4,11 +4,11 @@
 
 ---
 
-## Get Started by following the below commands:
+## Get started by walking through the below commands (see corresponding video for each step):
 
 1. [Initiate Configuration File](#command1)
 2. [Generate Treecipe](#command2)
-3. [Run Snowfakery by Recipe(Treecipe)](#command3)
+3. [Run Snowfakery by Recipe(Treecipe) to create FakeDataSet](#command3)
 
 ---
 
@@ -45,7 +45,13 @@ Once the configuration file is generated, you can begin using the **Generate Tre
 ### 2.<a name="command2"></a> **Salesforce Treecipe: Generate Treecipe**
 This command [generates a **Treecipe**](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main#generate-treecipe-based-on-treecipeconfigjcon--keep-an-eye-out-for-ootb-fields-and-remove-me-lines-), a structured representation of your Salesforce data, based on your configuration.
 
-It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above and generate a yaml file of objects and associated fields.
+It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above, and then generates a yaml file of objects and associated fields found in that directory.
+
+As part of this yaml file generation there are some items to be aware of:
+- **"TODO" items:** Because this tool can only make decisions based upon what's found in the metadata and markjup, similiar to LLM tools, it requires a "Person in the Middle" to review sections of the yaml where a comment labled "TODO" is found. Before generating a fake data set from an expected yaml file, that yaml file should be reviewed for "TODO" items and have each TODO cleared based on the message. Sometimes the "TODO" message is to confirm that a field that was added to the yaml file did not have xml markup and is an OOTB field. Other times the "TODO" is needed to select which record type values to choose for a picklist field. There could be several record types for an object and generating data for that object requires choosing what associated record type choices to populate for the fake data set.
+- **Handling of field files without xml markup:** For OOTB fields like AccountNumber or Name on the Account object, there is not detailed XML markup found in their field files. These occurrences are marked with a "TODO" item because they need to be either cleared or provided a faker value. For example, AccountNumber is an auto-generated field and doesn't need a faker value. However Account "Name" field will need a faker value, "${{ fake.company }}". In upcoming releases, there will be an auto mapper that handles OOTB objects and fields but for now requires a set of eyes to review the OOTB updates.
+- **Record Type Picklist, Dependent Picklist, Multiselect Picklist Selections:** At the start of the yaml file generation for an object found in the project source, an expected structure is parsed in order to confirm if there are different Record Types associated with the object. Within the objects folder [there should be a structure (shown below)](https://github.com/jdschleicher/Salesforce-Data-Treecipe/edit/feature/handleLocalRecordTypeMarkup/README.md#example-directory-structure) that allows the yaml generation logic to parse the "recordTypes" directory and provide picklist faker options based on each record type:
+
 
 **NOTE:** 
 
@@ -61,7 +67,7 @@ Once your configuration file and objects directory are set up, running this comm
 
 ---
 
- ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe)**
+ ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe) to create FakeDataSet**
  
 This command [prompts the user to select an existing recipe(Treecipe) file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file) to generate fake data from.
 
@@ -135,8 +141,10 @@ my-project/
 │   └── main/
 │       └── default/
 │           └── objects/
-│               ├── Account.object-meta.xml
-│               ├── Contact.object-meta.xml
+│               └──  Account/
+|                  └── fields/
+|                  └── recordTypes/
+│               └──  Contact/
 │               └── ...
 
 ```

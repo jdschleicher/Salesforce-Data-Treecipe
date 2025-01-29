@@ -99,7 +99,8 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
       const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';
-      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName);
+      const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName, recordTypeNameByRecordTypeNameToXMLMarkup);
 
       const expectedFieldInfo = XMLMarkupMockService.getTextXMLFieldDetail();
     
@@ -111,52 +112,12 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
   });
 
-  describe('isXMLFileType', () => {
-
-    test('given expected xml file extension and valid filetype enum, returns true', () => {
-
-      const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
-      const expectedVSCodeFileTypeEnum = 1;
-      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(validXMLFileExtensionName, expectedVSCodeFileTypeEnum);
-      expect(isXMLFileType).toBeTruthy();
-
-    });
-
-    test('given expected INVALID xml file extension and valid filetype enum, returns true', () => {
-
-      const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
-      const expectedVSCodeFileTypeEnum = 1;
-      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(invalidXMLFileExtensionName, expectedVSCodeFileTypeEnum);
-      expect(isXMLFileType).toBeFalsy();
-      
-    });
-
-    test('given expected valid xml file extension and INVALID filetype enum, returns true', () => {
-
-      const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
-      const directoryTypeEnum = 2;
-      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(validXMLFileExtensionName, directoryTypeEnum);
-      expect(isXMLFileType).toBeFalsy();
-      
-    });
-
-    test('given expected INVALID xml file extension and INVALID filetype enum, returns true', () => {
-
-      const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
-      const directoryTypeEnum = 2;
-      const isXMLFileType:boolean = directoryProcessor.isXMLFileType(invalidXMLFileExtensionName, directoryTypeEnum);
-      expect(isXMLFileType).toBeFalsy();
-      
-    });
-
-  });
-
   describe('processFieldsDirectory', () => {
 
       test('given expected mock to return non-xml files, nested directories enum types, and xml files, expected count of fieldInfo returned', async () => {
 
         // THIS TEST COMPLETELY MOCKS OUT XML MARKUP TO FOCUS ON FIELD RESULTS 
-        const mockedDirectory = MockDirectoryService.getMockedReadDirectorWithExpectedFoldersAndInvalidXMLFileExtensions()
+        const mockedDirectory = MockDirectoryService.getMockedReadDirectorWithExpectedFoldersAndInvalidXMLFileExtensions();
         const expectedFakeDirectoryItems = 22;
         const expectedXMLFileTypesInDirectory = 19;
 
@@ -186,7 +147,8 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         
         const fakeUri = vscode.Uri.file('/fake/fields/fakepath');
         const fakeObjectName = 'dont worry about me';
-        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, fakeObjectName);
+        const fakeRecordTypeNameByRecordTypeNameToXMLMarkup = {};
+        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, fakeObjectName, fakeRecordTypeNameByRecordTypeNameToXMLMarkup);
 
         expect(processedFileInfoDetails.length).toBe(expectedXMLFileTypesInDirectory);
 

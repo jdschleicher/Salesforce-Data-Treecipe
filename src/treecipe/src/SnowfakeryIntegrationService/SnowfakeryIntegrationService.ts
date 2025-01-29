@@ -169,7 +169,7 @@ export class SnowfakeryIntegrationService {
         fs.writeFile(fullCollectionsApiFilePath, jsonStringFormattedRecords, error => {
             
             if (error) {
-                new Error(`Error occurred in Collections Api file creation: ${error.message}`);
+                throw new Error(`Error occurred in Collections Api file creation: ${error.message}`);
             } 
 
         });

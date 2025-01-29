@@ -20,7 +20,7 @@ export class RecipeService {
         this.fakerService.getMapSalesforceFieldToFakerValue();
     }
 
-    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail): string {
+    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
         
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
@@ -29,13 +29,18 @@ export class RecipeService {
             case 'picklist':
                 
                 if (xmlFieldDetail.controllingField) {
-                    fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail);
+                    // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
+                    fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
                 } else {
+
                     if ( !(xmlFieldDetail.picklistValues) ) {
+                        // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
                         return '';
                     }
                     const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
-                    fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices);
+                    fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
+                                                                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                                                xmlFieldDetail.apiName);  
                 }
 
                 return fakeRecipeValue;
@@ -46,7 +51,10 @@ export class RecipeService {
                     return '';
                 }
                 const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
-                fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices);
+                fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
+                                                                                                        recordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                                                        xmlFieldDetail.apiName
+                                                                                                    );
         
                 return fakeRecipeValue;
                 
@@ -84,7 +92,7 @@ export class RecipeService {
     
     }
 
-    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail): string {
+    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
     
         const controllingField = xmlFieldDetail.controllingField;
         let controllingValueToPicklistOptions:Record<string, string[]> = {};
@@ -109,19 +117,48 @@ export class RecipeService {
 
         });
 
-        return this.fakerService.buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions, controllingField);
+        return this.fakerService.buildDependentPicklistRecipeFakerValue(
+                                                                controllingValueToPicklistOptions, 
+                                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                                                controllingField,
+                                                                xmlFieldDetail.apiName
+                                                            );
         
     }
 
-
-    initiateRecipeByObjectName(objectName: string): string {
+    initiateRecipeByObjectName(objectName: string, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
-        const objectRecipeMarkup = 
+        let objectRecipeMarkup = 
 `\n- object: ${objectName}
   nickname: ${objectName}_NickName
   count: 1
   fields:`;
+
+        if ( recordTypeToPicklistFieldsToAvailablePicklistValuesMap !== undefined && Object.keys(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).length > 0 ) {
+
+            let recordTypeDeveloperNamesToSelect:string = '';
+            const recordTypeDeveloperNameTodoVerbiage = `### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`;
+            const newLineBreak = "\n";
+            Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+                    
+                if ( recordTypeDeveloperNamesToSelect.trim() === '' ) {
+                    // check to see if recordTypeDeveloperNamesToSelect has been given an initial value to properly handle recipe spacing
+                    recordTypeDeveloperNamesToSelect = `${recordTypeDeveloperNameTodoVerbiage}`;
+
+                } 
+
+                recordTypeDeveloperNamesToSelect += `${newLineBreak}${this.generateTabs(5)}${recordTypeApiNameKey}`;
+    
+            });
+
+            objectRecipeMarkup = this.appendFieldRecipeToObjectRecipe(
+                objectRecipeMarkup,
+                recordTypeDeveloperNamesToSelect,
+                "RecordTypeId"
+            );
+    
+        }
 
         return objectRecipeMarkup;
     }

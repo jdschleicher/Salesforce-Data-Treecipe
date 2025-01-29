@@ -1,6 +1,6 @@
 import { RecipeService } from "../../RecipeService";
 
-// NOTE ALL FORWARD SLASHES ARE UTILIZED TO IGNORE SPECIAL CHARACTERS IN STRING TEMPLATE e.g. " \${{ "
+// NOTE ALL BACK SLASHES ARE UTILIZED TO IGNORE SPECIAL CHARACTERS IN STRING TEMPLATE e.g. " \${{ "
 export class RecipeMockService {
 
     static getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup():string {
@@ -85,10 +85,11 @@ export class RecipeMockService {
   fields:`;
 
         return initialRecipeMarkup;
+
     }
 
-    static getMockSnowfakeryDependentPicklistRecipeValue():string {
-        const controllingField = "Town__c";
+    static getMockSnowfakeryDependentPicklistRecipeValueWithoutRecordTypeDetail():string {
+        const controllingField = "Picklist__c";
             
         const expectedDependentPicklistRecipeValue =`
       if:
@@ -98,38 +99,165 @@ export class RecipeMockService {
                 random_choice:
                     - tree
                     - weed
+                    - mulch
+                    - rocks
         - choice:
             when: \${{ ${controllingField} == 'eastlake' }}
             pick:
                 random_choice:
                     - tree
+                    - weed
+                    - mulch
         - choice:
             when: \${{ ${controllingField} == 'madison' }}
             pick:
                 random_choice:
                     - tree
+                    - weed
                     - plant
+        - choice:
+            when: \${{ ${controllingField} == 'willoughby' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
         - choice:
             when: \${{ ${controllingField} == 'mentor' }}
             pick:
                 random_choice:
-                    - plant
                     - weed
+                    - plant
         - choice:
             when: \${{ ${controllingField} == 'wickliffe' }}
             pick:
                 random_choice:
                     - weed
-        - choice:
-            when: \${{ ${controllingField} == 'willoughby' }}
-            pick:
-                random_choice:
-                    - weed`;
+                    - rocks`;
 
         return expectedDependentPicklistRecipeValue;
 
     }
 
+    static getMockRecordTypeDrivenDependentPicklistRecipeValue():string {
 
+        const controllingFieldApiName = "Picklist__c";
+        const expectedDependentPicklistRecipeValue =`
+      if:
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'cle' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    - rocks
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - mulch
+                    - plant
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - mulch
+                    - plant
+                    - rocks
+                    - tree
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'eastlake' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
+                    - mulch
+                    - plant
+                    ### TODO: -- RecordType Options -- TwoRecType -- "eastlake" is not an available value for Picklist__c for record type TwoRecType
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'madison' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - plant
+                    ### TODO: -- RecordType Options -- OneRecType -- "madison" is not an available value for Picklist__c for record type OneRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- "madison" is not an available value for Picklist__c for record type TwoRecType
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'willoughby' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    ### TODO: -- RecordType Options -- OneRecType -- "willoughby" is not an available value for ${controllingFieldApiName} for record type OneRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
+                    - mulch
+                    - plant
+                    - rocks
+                    - tree
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'mentor' }}
+            pick:
+                random_choice:
+                    - weed
+                    - plant
+                    ### TODO: -- RecordType Options -- OneRecType -- "mentor" is not an available value for ${controllingFieldApiName} for record type OneRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- "mentor" is not an available value for ${controllingFieldApiName} for record type TwoRecType
+        - choice:
+            when: \${{ ${controllingFieldApiName} == 'wickliffe' }}
+            pick:
+                random_choice:
+                    - weed
+                    - rocks
+                    ### TODO: -- RecordType Options -- OneRecType -- "wickliffe" is not an available value for ${controllingFieldApiName} for record type OneRecType
+                    ### TODO: -- RecordType Options -- TwoRecType -- "wickliffe" is not an available value for ${controllingFieldApiName} for record type TwoRecType`;
+
+        return expectedDependentPicklistRecipeValue;
+
+    }
+
+    static getMockPicklistRecipeCobminedWithRecordTypes():string {
+
+        const fakeRecordTypeRecipe = `\${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}
+                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'eastlake') }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'willoughby') }}`;
+
+        return fakeRecordTypeRecipe;
+
+    }
+
+    static getMockPicklistRecordTypesRecipe():string {
+
+        const fakeRecordTypeRecipe = `                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'eastlake') }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                    \${{ random_choice('cle', 'willoughby') }}`;
+
+        return fakeRecordTypeRecipe;
+
+    }
+
+    static getMockMultiselectPicklistRecipeCobminedWithRecordTypes():string {
+
+        const fakeRecordTypeRecipe = `\${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chorizo', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chicken', 'egg', 'fish', 'tofu')))) }}`;
+
+return fakeRecordTypeRecipe;
+
+    }
+
+    static getMockMultiselectPicklistRecordTypesRecipe():string {
+
+        const fakeRecordTypeRecipe = `                    ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chorizo', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c
+                    \${{ (';').join((fake.random_sample(elements=('chicken', 'egg', 'fish', 'tofu')))) }}`;
+
+        return fakeRecordTypeRecipe;
+
+    }
 
 }

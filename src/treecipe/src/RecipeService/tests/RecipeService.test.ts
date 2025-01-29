@@ -5,6 +5,7 @@ import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { RecipeMockService } from "./mocks/RecipeMockService";
 import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
+import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
 
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
 // import * as fs from 'fs';
@@ -35,15 +36,17 @@ jest.mock('vscode', () => ({
                 fieldLabel: "Fake"
             };
             const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
-            const actualRecipeValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail);
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualRecipeValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
             expect(expectedRecipeValue).toBe(actualRecipeValue);
         });
 
         test('given expected Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-            const expectedPicklistSnowfakeryValue = "${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}";
-            const actualPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail);
+            const expectedPicklistSnowfakeryValue = "${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
             expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
 
@@ -52,8 +55,9 @@ jest.mock('vscode', () => ({
         test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
-            const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken','chorizo','egg','fish','pork','steak','tofu')))) }}";
-            const actualMultiSelectPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail);
+            const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualMultiSelectPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
             expect(actualMultiSelectPicklistSnowfakeryValue).toBe(expectedMultiSelectPicklistSnowfakeryValue);
 
@@ -63,7 +67,8 @@ jest.mock('vscode', () => ({
 
             const expectedDatetimeXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
             const expectedDatetimeSnowfakeryValue = '${{fake.date_time_between(start_date="-1y", end_date="now")}}';
-            const actualDatetimeSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const actualDatetimeSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
             expect(actualDatetimeSnowfakeryValue).toBe(expectedDatetimeSnowfakeryValue);
 
@@ -73,7 +78,8 @@ jest.mock('vscode', () => ({
 
             const expectedUrlFieldDetail:XMLFieldDetail = XMLMarkupMockService.getUrlXMLFieldDetail();
             const expectedUrlSnowfakeryValue = '${{fake.url()}}';
-            const actualUrlSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const actualUrlSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
             expect(actualUrlSnowfakeryValue).toBe(expectedUrlSnowfakeryValue);
 
@@ -83,7 +89,8 @@ jest.mock('vscode', () => ({
 
             const expectedXMLDetailForPhone:XMLFieldDetail = XMLMarkupMockService.getPhoneXMLFieldDetail();
             const expectedSnowfakeryValueForPhone = '${{fake.phone_number()}}';
-            const actualSnowfakeryValueForPhone = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
+            const actualSnowfakeryValueForPhone = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone, recordTypeNameByRecordTypeNameToXMLMarkup);
 
             expect(actualSnowfakeryValueForPhone).toBe(expectedSnowfakeryValueForPhone);
 
@@ -93,7 +100,9 @@ jest.mock('vscode', () => ({
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
             const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999)}}';
-            const actualSnowfakeryValueForNumber = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
+
+            const actualSnowfakeryValueForNumber = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
 
             expect(actualSnowfakeryValueForNumber).toBe(expectedSnowfakeryValueForNumber);
 
@@ -103,7 +112,8 @@ jest.mock('vscode', () => ({
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
             const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}';
-            const actualSnowfakeryValueForCurrency = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const actualSnowfakeryValueForCurrency = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 
             expect(actualSnowfakeryValueForCurrency).toBe(expectedSnowfakeryValueForCurrency);
 
@@ -113,7 +123,7 @@ jest.mock('vscode', () => ({
 
     describe('initiateRecipeByObjectName', () => {
 
-        test('given object api name, the expected initiation recipe properties are returned in a string', () => {
+        test('given object api name and empty recordtype map, the expected initiation recipe properties are returned in a string and RecordTypeId is NOT added to the intial recipe', () => {
 
             const objectApiName = "Account";
             const expectedRecipeInitiation = 
@@ -122,7 +132,26 @@ jest.mock('vscode', () => ({
   count: 1
   fields:`;
 
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName);
+            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
+            expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+
+        });
+
+        test('given object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
+
+            const objectApiName = "Account";
+            const expectedRecipeInitiation = 
+    `\n- object: ${objectApiName}
+  nickname: ${objectApiName}_NickName
+  count: 1
+  fields:
+    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    OneRecType
+                    TwoRecType`;
+
+            const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToPicklistValuesMap();
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
             expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
 
         });
@@ -189,34 +218,50 @@ jest.mock('vscode', () => ({
                     fullName: 'tree',
                     label: 'tree',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'madison']
+                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'willoughby']
+                },
+                {
+                    fullName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                },
+                {
+                    fullName: 'mulch',
+                    label: 'mulch',
+                    default: false,
+                    availableForControllingValues: ['cle', 'eastlake', 'willoughby']
+                },
+                {
+                    fullName: 'rocks',
+                    label: 'rocks',
+                    default: false,
+                    availableForControllingValues: ['cle', 'wickliffe']
                 },
                 {
                     fullName: 'plant',
                     label: 'plant',
                     default: false,
                     availableForControllingValues: ['madison', 'mentor']
-                },
-                {
-                    fullName: 'weed',
-                    label: 'weed',
-                    default: false,
-                    availableForControllingValues: ['cle', 'mentor', 'wickliffe', 'willoughby']
                 }
-           
+               
             ];
          
             const expectedXMLFieldDetail:XMLFieldDetail = {
                 fieldType : "picklist",
-                apiName : "Landscape__c",
+                apiName : "DependentPicklist__c",
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
-                fieldLabel : "Landscape Towns",
-                controllingField : "Town__c"
+                fieldLabel : "Dependent Picklist",
+                controllingField : "Picklist__c"
             };
  
-            const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValue();
-            const actualRecipeValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(expectedXMLFieldDetail);
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValueWithoutRecordTypeDetail();
+            const actualRecipeValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(
+                expectedXMLFieldDetail, 
+                recordTypeNameByRecordTypeNameToXMLMarkup
+            );
 
             expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
 

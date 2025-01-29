@@ -2,51 +2,58 @@ import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import * as xml2js from 'xml2js';
 import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
+import * as path from 'path';
+import * as vscode from 'vscode';
+
 export class XmlFileProcessor {
 
   static async processXmlFieldContent(xmlContent: string): Promise<XMLFieldDetail> {
 
     let xmlFieldDetail = new XMLFieldDetail();
   
-    try {
+    let fieldXML: any;
+    let parseString = xml2js.parseString;
+    parseString(xmlContent, function (error, result) {
 
-      let fieldXML: any;
-      let parseString = xml2js.parseString;
-      parseString(xmlContent, function (err, result) {
-          console.dir(result);
-          fieldXML = result;
-      });
+      if (error) { 
+        throw new Error(`Error processing xmlContent ${xmlContent}:` + error);
+      }
 
-      const typeValue = fieldXML?.CustomField?.type?.[0] ?? "AUTO_GENERATED";
-      const fieldLabel = fieldXML?.CustomField?.label?.[0] ?? "AUTO_GENERATED";
-      
-      const apiName = fieldXML.CustomField.fullName[0];
+      fieldXML = result;
 
-      xmlFieldDetail.fieldType = typeValue;
-      xmlFieldDetail.fieldLabel = fieldLabel;
-      xmlFieldDetail.apiName = apiName;
+    });
 
-      if ( typeValue === 'Picklist' || typeValue === "MultiselectPicklist") {
+    const typeValue = fieldXML?.CustomField?.type?.[0] ?? "AUTO_GENERATED";
+    const fieldLabel = fieldXML?.CustomField?.label?.[0] ?? "AUTO_GENERATED";
+    
+    const apiName = fieldXML.CustomField.fullName[0];
 
-        let picklistValueSetMarkup = fieldXML.CustomField.valueSet[0];
+    xmlFieldDetail.fieldType = typeValue;
+    xmlFieldDetail.fieldLabel = fieldLabel;
+    xmlFieldDetail.apiName = apiName;
+
+    if ( typeValue === 'Picklist' || typeValue === "MultiselectPicklist") {
+
+      let picklistValueSetMarkup = fieldXML.CustomField.valueSet?.[0];
+
+      if (picklistValueSetMarkup) {
         xmlFieldDetail.picklistValues = this.extractPickListDetailsFromXMLValueTag(picklistValueSetMarkup);
 
         const controllingFieldApiName = picklistValueSetMarkup.controllingField ? picklistValueSetMarkup.controllingField[0]: null;
         if (controllingFieldApiName) {
           xmlFieldDetail.controllingField = controllingFieldApiName;
         }
-        
-      } else if ( typeValue === "Lookup" || typeValue === "MasterDetail" ) {
-        
-        const referenceTo = fieldXML.CustomField.referenceTo? fieldXML.CustomField.referenceTo[0] : null;
-        xmlFieldDetail.referenceTo = referenceTo;
-
+      } else {
+        // TODO: handle possible global picklist scenario
       }
-  
-    } catch (error) {
-      console.error(`Error processing xmlContent ${xmlContent}:`, error);
-    }
+      
+      
+    } else if ( typeValue === "Lookup" || typeValue === "MasterDetail" ) {
+      
+      const referenceTo = fieldXML.CustomField.referenceTo? fieldXML.CustomField.referenceTo[0] : null;
+      xmlFieldDetail.referenceTo = referenceTo;
 
+    }
     
     return xmlFieldDetail;
 
@@ -89,6 +96,12 @@ export class XmlFileProcessor {
 
   }
 
+  static isXMLFileType(fileName: string, directoryItemTypeEnum: number ): boolean {
+
+    return (directoryItemTypeEnum === vscode.FileType.File 
+            && path.extname(fileName).toLowerCase() === '.xml');
+
+  }
 
 
 }

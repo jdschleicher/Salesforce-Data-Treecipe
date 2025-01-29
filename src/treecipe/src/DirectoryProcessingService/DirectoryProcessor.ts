@@ -4,6 +4,7 @@ import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -37,11 +38,12 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName );
+            const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = await RecordTypeService.getRecordTypeToApiFieldToPicklistValuesMap(fullPath.path);
+            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
             if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
-              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName);
+              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
             }
   
             fieldsInfo.forEach((fieldDetail) => {
@@ -73,7 +75,11 @@ export class DirectoryProcessor {
 
   }
 
-  async processFieldsDirectory(directoryPathUri: vscode.Uri, associatedObjectName: string): Promise<FieldInfo[]> {
+  async processFieldsDirectory(
+        directoryPathUri: vscode.Uri, 
+        associatedObjectName: string,
+        recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> 
+      ): Promise<FieldInfo[]> {
 
     /* 
       - vscode.workspace.fs.readDirectory returns Tuple of type <FileName, and FileType enum -- click into readDirectory method to see more
@@ -85,13 +91,13 @@ export class DirectoryProcessor {
     let fieldInfoDetails: FieldInfo[] = [];
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
-      if ( this.isXMLFileType(fileName, directoryItemTypeEnum) ) {
+      if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
 
         const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
-        const xmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
-        const xmlContent = Buffer.from(xmlContentUriData).toString('utf8');
+        const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
+        const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
 
-        let fieldInfo = await this.buildFieldInfoByXMLContent(xmlContent, associatedObjectName);
+        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, associatedObjectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
         fieldInfoDetails.push(fieldInfo);
 
       }
@@ -102,17 +108,13 @@ export class DirectoryProcessor {
 
   }
 
-  isXMLFileType(fileName: string, directoryItemTypeEnum: number ): boolean {
-
-    return (directoryItemTypeEnum === vscode.FileType.File 
-            && path.extname(fileName).toLowerCase() === '.xml');
-
-  }
-
-  async buildFieldInfoByXMLContent(xmlContent: string, associatedObjectName: string):Promise<FieldInfo> {
+  async buildFieldInfoByXMLContent(xmlContent: string, 
+                                    associatedObjectName: string,
+                                    recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>
+                                  ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
-    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail);                                                        
+    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);                                                        
 
     let fieldInfo = FieldInfo.create(
       associatedObjectName,
@@ -133,22 +135,22 @@ export class DirectoryProcessor {
     return path.basename(filePath);
   }
 
-  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail): string {
+  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
     let recipeValue = null;
     if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
 
-      recipeValue = 'TODO -- REMOVE THIS LINE - NO TYPE IN XML MARKUP - THIS FIELD\'S VALUE MAY BE AUTO GENERATED BY SALESFORCE'; 
+      recipeValue = '### TODO -- REMOVE THIS LINE - NO TYPE IN XML MARKUP - THIS FIELD\'S VALUE MAY BE AUTO GENERATED BY SALESFORCE'; 
 
     } else {
 
-      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail);
+      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
     
     }
     
     return recipeValue;
   
   }
-  
+
 }
 
 
