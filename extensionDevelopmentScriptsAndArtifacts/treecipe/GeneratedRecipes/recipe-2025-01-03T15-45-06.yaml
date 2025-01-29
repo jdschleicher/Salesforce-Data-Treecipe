@@ -57,7 +57,7 @@
                     - weed
                     - rocks
     Email__c: ${{fake.email()}}
-    Example_Everything_Lookup__c: "TODO -- REFERENCE ID REQUIRED"
+    Example_Everything_Lookup__c: "### TODO -- REFERENCE ID REQUIRED"
     Formula__c: ${{fake.random_int(min=0, max=999999)}}
     MultiPicklist__c: ${{ (';').join((fake.random_sample(elements=('chicken','chorizo','egg','fish','pork','steak','tofu')))) }}
     Number__c: ${{fake.random_int(min=0, max=999999)}}
