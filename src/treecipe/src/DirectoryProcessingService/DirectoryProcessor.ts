@@ -8,6 +8,7 @@ import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 
 export class DirectoryProcessor {
 
@@ -38,8 +39,8 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
-            const recordTypeToPicklistFieldsToAvailablePicklistValuesMap = await RecordTypeService.getRecordTypeToApiFieldToPicklistValuesMap(fullPath.path);
-            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap );
+            const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
+            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeApiToRecordTypeWrapperMap );
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
             if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
@@ -78,7 +79,7 @@ export class DirectoryProcessor {
   async processFieldsDirectory(
         directoryPathUri: vscode.Uri, 
         associatedObjectName: string,
-        recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> 
+        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> 
       ): Promise<FieldInfo[]> {
 
     /* 
@@ -97,7 +98,7 @@ export class DirectoryProcessor {
         const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
         const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
 
-        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, associatedObjectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
+        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, associatedObjectName, recordTypeApiToRecordTypeWrapperMap);
         fieldInfoDetails.push(fieldInfo);
 
       }
@@ -110,11 +111,11 @@ export class DirectoryProcessor {
 
   async buildFieldInfoByXMLContent(xmlContent: string, 
                                     associatedObjectName: string,
-                                    recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>
+                                    recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>
                                   ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
-    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);                                                        
+    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap);                                                        
 
     let fieldInfo = FieldInfo.create(
       associatedObjectName,
@@ -135,7 +136,7 @@ export class DirectoryProcessor {
     return path.basename(filePath);
   }
 
-  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
+  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
     let recipeValue = null;
     if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
 
@@ -143,7 +144,7 @@ export class DirectoryProcessor {
 
     } else {
 
-      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
+      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap);
     
     }
     

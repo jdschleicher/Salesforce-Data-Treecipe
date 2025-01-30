@@ -1,3 +1,4 @@
+import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IFakerService } from "../IFakerService";
 
 export class NPMFakerService implements IFakerService {
@@ -8,7 +9,7 @@ export class NPMFakerService implements IFakerService {
     }
 
     buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, 
-                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, object>,
+                                            recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                                             controllingField: string,
                                             fieldApiName: string
                                         ): string {
@@ -58,7 +59,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
-                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                                recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                                                 associatedFieldApiName): string {
          
         const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
@@ -68,7 +69,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
-                                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                                            recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                                                             associatedFieldApiName
                                                         ): string {
    

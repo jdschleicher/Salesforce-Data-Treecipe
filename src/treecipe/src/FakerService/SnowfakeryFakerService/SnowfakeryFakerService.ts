@@ -1,5 +1,6 @@
 
 
+import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IFakerService } from "../IFakerService";
 
 export class SnowfakeryFakerService implements IFakerService {
@@ -42,14 +43,14 @@ export class SnowfakeryFakerService implements IFakerService {
     }
 
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
-                                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
-                                                            associatedFieldApiName
+                                                        recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
+                                                        associatedFieldApiName
                                                         ): string {
 
         const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
         let fakeMultiSelectRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
         
-        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap, associatedFieldApiName);
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
         if ( recordTypeBasedRecipeValues) {
             fakeMultiSelectRecipeValue += `\n${recordTypeBasedRecipeValues}`;
         }
@@ -60,7 +61,7 @@ export class SnowfakeryFakerService implements IFakerService {
 
     buildDependentPicklistRecipeFakerValue(
                         controllingValueToPicklistOptions: Record<string, string[]>, 
-                        recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                         controllingField: string,
                         fieldApiName: string
                     ): string {
@@ -86,11 +87,11 @@ export class SnowfakeryFakerService implements IFakerService {
             });   
 
             const allRecordTypeChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
-                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
-                                            fieldApiName, 
-                                            controllingField,
-                                            controllingValueKey
-                                        );
+                                                        recordTypeApiToRecordTypeWrapperMap, 
+                                                        fieldApiName, 
+                                                        controllingField,
+                                                        controllingValueKey
+                                                    );
 
             if (allRecordTypeChoicesBreakdown) {
                 randomChoicesBreakdown += allRecordTypeChoicesBreakdown;
@@ -126,13 +127,13 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
-                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+                                                recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                                 associatedFieldApiName): string {
 
         const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
         let fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
 
-        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap, associatedFieldApiName);
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
         if ( recordTypeBasedRecipeValues) {
             fakeRecipeValue += `\n${recordTypeBasedRecipeValues}`;
         }
@@ -141,7 +142,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, any>,
+    updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                                                 dependentFieldApiName: string,
                                                                 controllingFieldApiName: string,
                                                                 controllingValue: string
@@ -150,9 +151,9 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         const newLineBreak: string = `\n`;
         let allRecordTypeChoicesBreakdown:string = '';    
                                                         
-        Object.entries(recordTypeNameByRecordTypeNameToXMLMarkup).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+        Object.entries(recordTypeNameByRecordTypeWrapper).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
                 
-            const availableRecordTypePicklistValuesForControllingField = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeApiNameKey][controllingFieldApiName];
+            const availableRecordTypePicklistValuesForControllingField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[controllingFieldApiName];
 
             const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
 
@@ -163,7 +164,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
                 let recordTypeChoicesBreakdown:string;
 
-                const picklistValuesForDependentField = recordTypeNameByRecordTypeNameToXMLMarkup[recordTypeApiNameKey][dependentFieldApiName];
+                const picklistValuesForDependentField = recordTypeWrapper[dependentFieldApiName];
                 picklistValuesForDependentField.forEach( recordTypeAvailablePicklistValue => {
     
                     if (recordTypeChoicesBreakdown) {
@@ -184,15 +185,15 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildRecordTypeBasedPicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+    buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                             associatedFieldApiName: string) {
 
         let allRecordTypeBasedPicklistOptions:string = '';
         const newLineBreak = `\n`;
 
-        Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+        Object.entries(recordTypeNameByRecordTypeWrapper).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
 
-            const availableRecordTypePicklistValuesForField = recordTypeToPicklistFieldsToAvailablePicklistValuesMap[recordTypeApiNameKey][associatedFieldApiName];
+            const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
             if ( availableRecordTypePicklistValuesForField ) {
 
                 const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");
@@ -216,16 +217,16 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildRecordTypeBasedMultipicklistRecipeValue(recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
+    buildRecordTypeBasedMultipicklistRecipeValue(recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                                     associatedFieldApiName: string) {
 
 
         let allRecordTypeBasedMultiselectPicklistOptions:string = '';
         const newLineBreak = `\n`;
 
-        Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+        Object.entries(recordTypeNameByRecordTypeWrapper).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
 
-            const availableRecordTypePicklistValuesForField = recordTypeToPicklistFieldsToAvailablePicklistValuesMap[recordTypeApiNameKey][associatedFieldApiName];
+            const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
             if ( availableRecordTypePicklistValuesForField ) {
 
                 const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");

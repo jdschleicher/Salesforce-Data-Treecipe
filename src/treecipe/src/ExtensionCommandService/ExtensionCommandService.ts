@@ -67,6 +67,8 @@ export class ExtensionCommandService {
               const directoryProcessor = new DirectoryProcessor();
               objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
             
+            } else {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
           
             const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting '2024-11-25T16-24-15'

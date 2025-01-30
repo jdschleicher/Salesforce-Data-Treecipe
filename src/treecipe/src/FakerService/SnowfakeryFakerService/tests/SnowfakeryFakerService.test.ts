@@ -1,4 +1,5 @@
 import { RecipeMockService } from "../../../RecipeService/tests/mocks/RecipeMockService";
+import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { SnowfakeryFakerService } from "../SnowfakeryFakerService";
 
@@ -207,10 +208,10 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                     - Model X`;
 
 
-            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
+            const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "CarModel__c";
             const actualFakerValue = snowfakeryService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
-                                                                                                emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                                                                                emptyRecordTypeApiToRecordTypeWrapperMap, 
                                                                                                 controllingField, 
                                                                                                 fakeFieldApiName);
 

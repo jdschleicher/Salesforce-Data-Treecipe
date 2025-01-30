@@ -48,7 +48,7 @@ describe('RecordTypeService Shared Instance Tests', () => {
             (path.extname as jest.Mock).mockReturnValue('.xml');
 
             const mockAssociatedFieldsDirectoryPath = '/mock/path/to/fields';
-            const result = await RecordTypeService.getRecordTypeToApiFieldToPicklistValuesMap(mockAssociatedFieldsDirectoryPath);
+            const result = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(mockAssociatedFieldsDirectoryPath);
 
 
             const mockBaseObjectPath = '/mock/path/to';

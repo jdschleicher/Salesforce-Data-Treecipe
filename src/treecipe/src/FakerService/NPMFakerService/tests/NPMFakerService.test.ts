@@ -1,3 +1,4 @@
+import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { NPMFakerService } from "../NPMFakerService";
 
 describe('NPMFakerService Shared Intstance Tests', () => {
@@ -134,9 +135,9 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
             const expectedRecipeValue = `faker.helpers.arrayElements(['apple','orange','banana'])`;
-            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> = {};
+            const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
-            const actualFakerValue = npmFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, fakeFieldApiName);
+            const actualFakerValue = npmFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeApiToRecordTypeWrapperMap, fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
         });
