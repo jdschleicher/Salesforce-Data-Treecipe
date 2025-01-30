@@ -7,6 +7,7 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
+import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 
 export class ExtensionCommandService {
     
@@ -100,22 +101,30 @@ export class ExtensionCommandService {
 
 
         try {
-            
-            const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
-            if (!selectedRecipeQuickPickItem) {
+
+            const selectedDataSetDirectoryToInsert = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
+            if (!selectedDataSetDirectoryToInsert) {
                 return;
             }
-            const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
-            const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
 
-            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
+            const targetOrgAlias = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
+            if (!targetOrgAlias) {
+                return;
+            }
 
-            SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
-            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/originFile-${selectedRecipeQuickPickItem.label}`);
+            const allOrNonePreference = await CollectionsApiService.promptForAllOrNoneInsertDecision();
+            if (!allOrNonePreference) {
+                return;
+            }
 
+            const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
+
+
+
+    
         } catch(error) {
 
-            const commandName = 'runSnowfakeryGenerationByRecipeFile';
+            const commandName = 'insertDataSetBySelectedDirectory';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
@@ -127,7 +136,7 @@ export class ExtensionCommandService {
                  1. data set within directory to insert
                  2. expected target org alias
                  3. all or none
-             -. confirm authentication
+             -. confirm authentication/hanlde authentication issue
             - get record types 
             - insert data 
                 - insert 

@@ -47,7 +47,9 @@ export class SnowfakeryIntegrationService {
 
     static async selectSnowfakeryRecipeFileToProcess() {
 
-        const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
+        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
+        const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
+        const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
         return selectedRecipeFilePathNameQuickPickItem;
         
     }

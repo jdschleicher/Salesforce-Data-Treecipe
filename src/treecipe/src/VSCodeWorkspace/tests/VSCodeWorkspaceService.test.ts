@@ -79,7 +79,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
         
     });
 
-    describe('parseForPotentialTreecipeObjectsDirectoriesRecursively', () => {
+    describe('getDirectoryQuickPickItemsByStartingDirectoryPath', () => {
         let mockItems;
 
         beforeEach(() => {
@@ -174,7 +174,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
-    describe('promptForRecipeFileToProcess', () => {
+    describe('promptForDirectoryToGenerateFIleQuickItemsFrom', () => {
 
         test('should return undefined if no showQuickPick selection is mocked to undefined', async () => {
             
@@ -183,7 +183,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(VSCodeWorkspaceService, 'getAvailableFileQuickPickItemsByDirectory').mockResolvedValue([]);
             jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined);
 
-            const result = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
+            const result = await VSCodeWorkspaceService.promptForDirectoryToGenerateFIleQuickItemsFrom();
             expect(result).toBeUndefined();
 
         });
@@ -196,7 +196,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(VSCodeWorkspaceService, 'getAvailableFileQuickPickItemsByDirectory').mockResolvedValue([]);
             jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(expectedMockQuickPickItem);
 
-            const actualQuickPickSelectedRecipeFileToProcess = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
+            const actualQuickPickSelectedRecipeFileToProcess = await VSCodeWorkspaceService.promptForDirectoryToGenerateFIleQuickItemsFrom();
             expect(actualQuickPickSelectedRecipeFileToProcess).toEqual(expectedMockQuickPickItem);
 
         });

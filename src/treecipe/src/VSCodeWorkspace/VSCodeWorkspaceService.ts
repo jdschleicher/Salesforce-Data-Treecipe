@@ -48,17 +48,16 @@ export class VSCodeWorkspaceService {
     static async getPotentialTreecipeObjectDirectoryPathsQuickPickItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
         
         let items: vscode.QuickPickItem[] = [];
-        items = await this.parseForPotentialTreecipeObjectsDirectoriesRecursively(dirPath, items);
+        items = await this.getDirectoryQuickPickItemsByStartingDirectoryPath(dirPath, items);
       
         return items;
 
     }
 
-    private static async parseForPotentialTreecipeObjectsDirectoriesRecursively(dirPath:string, items) {
+    static async getDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string, items): Promise<vscode.QuickPickItem[]> {
 
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
 
         for (const entry of entries) {
   
@@ -77,10 +76,10 @@ export class VSCodeWorkspaceService {
                     iconPath: new vscode.ThemeIcon('folder')
                 });
 
-                const fullPath = path.join(dirPath, entry.name);
+                const fullPath = path.join(directoryPath, entry.name);
                 console.log(fullPath);
 
-                await this.parseForPotentialTreecipeObjectsDirectoriesRecursively(fullPath, items);
+                await this.getDirectoryQuickPickItemsByStartingDirectoryPath(fullPath, items);
 
             }
 
@@ -137,18 +136,17 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async promptForRecipeFileToProcess(): Promise<vscode.QuickPickItem | undefined> {
+    static async promptForDirectoryToGenerateQuickItemsForFileSelection(directoryPathToParseFilesFrom: string, vsCodeQuickPickItemPromptLabel: string): Promise<vscode.QuickPickItem | undefined> {
 
-        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
         const workspaceRoot = this.getWorkspaceRoot();
-        const generatedRecipesFolderPath = `${workspaceRoot}/${expectedGeneratedRecipesFolderPath}`;
+        const generatedRecipesFolderPath = `${workspaceRoot}/${directoryPathToParseFilesFrom}`;
 
         const availableRecipeFileQuickPickitems: vscode.QuickPickItem[] = await this.getAvailableFileQuickPickItemsByDirectory(generatedRecipesFolderPath);
         
         const selection = await vscode.window.showQuickPick(
             availableRecipeFileQuickPickitems,
             {
-                placeHolder: 'Select recipe file to process',
+                placeHolder: vsCodeQuickPickItemPromptLabel,
                 ignoreFocusOut: true
             }
         );
@@ -162,10 +160,10 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async getAvailableFileQuickPickItemsByDirectory(generatedRecipesFolderPath: string) {
+    static async getAvailableFileQuickPickItemsByDirectory(folderPathToParse: string) {
 
         let recipeFileQuickPickItems: vscode.QuickPickItem[] = [];
-        const entries = await fs.promises.readdir(generatedRecipesFolderPath, { withFileTypes: true });
+        const entries = await fs.promises.readdir(folderPathToParse, { withFileTypes: true });
         for (const entry of entries) {
   
             if (entry.isFile()) {
@@ -187,75 +185,15 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async promptForDataSetObjectsPath(): Promise<string | undefined> {
+    static async promptForUserInput(userPromptForInputMessage: string) {
 
-        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
-        const workspaceRoot = this.getWorkspaceRoot();
-        const generatedRecipesFolderPath = `${workspaceRoot}/${expectedGeneratedRecipesFolderPath}`;
+        const userResponse = await vscode.window.showInputBox({
+            placeHolder: userPromptForInputMessage
+        });
 
-        const availableRecipeFileQuickPickitems: vscode.QuickPickItem[] = await this.getAvailableFileQuickPickItemsByDirectory(generatedRecipesFolderPath);
-        
-        const dataSetDirectorSelection = await vscode.window.showQuickPick(
-            availableRecipeFileQuickPickitems,
-            {
-                placeHolder: 'Select recipe file to process',
-                ignoreFocusOut: true
-            }
-        );
-
-        if (!dataSetDirectorSelection) {
-            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
-            return undefined; 
-        }
-        
-        return dataSetDirectorSelection;    
-
-   
-    }
-
-    static async getPotentialDataSetObjectDirectoryPathsQuickPickItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
-        
-        let items: vscode.QuickPickItem[] = [];
-        items = await this.parseForPotentialDatasetObjectsDirectoriesRecursively(dirPath, items);
-      
-        return items;
+        return userResponse;
 
     }
-
-    private static async parseForPotentialDatasetObjectsDirectoriesRecursively(dirPath:string, items) {
-
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-
-        for (const entry of entries) {
-  
-            if ( this.isPossibleTreecipeUsableDirectory(entry) ) {
-
-                const fullMachinePathToEntry = entry.path;
-                const currentDirectoryName = entry.name;
-
-                const fullEntryPath = `${fullMachinePathToEntry}/${currentDirectoryName}`;
-                const quickPickRelativePath = fullEntryPath.split(workspaceRoot)[1];
-                const quickpickLabel = `.${quickPickRelativePath}/`;
-
-                items.push({
-                    label: quickpickLabel,
-                    description: 'Directory',
-                    iconPath: new vscode.ThemeIcon('folder')
-                });
-
-                const fullPath = path.join(dirPath, entry.name);
-                console.log(fullPath);
-
-                await this.parseForPotentialTreecipeObjectsDirectoriesRecursively(fullPath, items);
-
-            }
-
-        }
-      
-        return items;
-
-    }
+    
 
 }
