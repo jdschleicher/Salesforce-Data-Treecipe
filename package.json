@@ -35,6 +35,11 @@
         "command": "treecipe.runSnowfakeryByRecipe",
         "title": "Run Snowfakery by Recipe",
         "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.insertDataSetBySelectedDirectory",
+        "title": "Insert Data Set by Directory",
+        "category": "Salesforce Treecipe"
       }
     ],
     "configuration": [

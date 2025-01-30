@@ -96,4 +96,54 @@ export class ExtensionCommandService {
       
     }
 
+    async insertDataSetBySelectedDirectory() {
+
+
+        try {
+            
+            const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
+            if (!selectedRecipeQuickPickItem) {
+                return;
+            }
+            const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
+            const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
+
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
+
+            SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/originFile-${selectedRecipeQuickPickItem.label}`);
+
+        } catch(error) {
+
+            const commandName = 'runSnowfakeryGenerationByRecipeFile';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+        
+        try {
+            
+            /*
+              - configurationservice? get user input for:
+                 1. data set within directory to insert
+                 2. expected target org alias
+                 3. all or none
+             -. confirm authentication
+            - get record types 
+            - insert data 
+                - insert 
+                - upsert
+                - keep track of ids
+                - all or none
+              -    
+            */
+          
+        } catch(error) {
+
+            const commandName = 'insertDataSetBySelectedDirectory';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
 }
