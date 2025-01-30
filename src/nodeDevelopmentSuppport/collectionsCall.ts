@@ -1,21 +1,24 @@
-import { Connection } from '@salesforce/core';
-import { AuthInfo } from '@salesforce/core';
+import { Org } from '@salesforce/core';
 import * as fs from 'fs';
 
-async function makeCollectionsCall(orgUsername: string, collectionsApiFile: string) {
+// import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
+
+async function makeCollectionsCall(orgAlias: string, collectionsApiFile: string) {
 
 
     try {
-        
-        const authInfo = await AuthInfo.create({ username: orgUsername });
-        const objectName = getSObjectName(collectionsApiFile);
 
+        const org = await Org.create({ aliasOrUsername: orgAlias });
+        const connection = org.getConnection();
+
+        // // for quick troubleshooting
+        // const metadata = await connection.sobject('Example_Everything__c').describe();
+        // console.log('Account Object Description:', metadata.label); 
+
+        const objectName = getSObjectName(collectionsApiFile);
         if (!objectName) {
             throw new Error('Could not determine the SObject name from the file path');
         }
-
-        // Create connection using the auth info
-        const connection = await Connection.create({ authInfo });
 
         // Read the file synchronously
         const rawData = fs.readFileSync(collectionsApiFile, 'utf-8');
@@ -48,11 +51,11 @@ function getSObjectName(filePath: string): string | null {
 }
 
 
-const orgUsername = '';
+const orgAlias = 'trail-dev';
 const collectionsApiFile = "treecipe/FakeDataSets/dataset-2025-01-20T20-22-47/collectionsApi-Account.json";
 
 // Execute the function with a specific org alias
-makeCollectionsCall(orgUsername, collectionsApiFile)
+makeCollectionsCall(orgAlias, collectionsApiFile)
 .then(results => {
     // Handle successful response
 })
