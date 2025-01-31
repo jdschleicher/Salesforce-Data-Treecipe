@@ -189,10 +189,10 @@ describe('NPMFakerService Shared Intstance Tests', () => {
                     - Model X`;
 
 
-            const recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, object> = {};
+            const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "CarModel__c";
             const actualFakerValue = npmFakerService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
-                                                        recordTypeNameByRecordTypeNameToXMLMarkup, 
+                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
                                                         controllingField, 
                                                         fakeFieldApiName);
 
@@ -207,10 +207,10 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
             const expectedRecipeValue = `faker.helpers.arrayElement(['apple','orange','banana'])`;
-            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> = {};
+            const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = npmFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
-                                                                                                emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
                                                                                                 fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);

@@ -125,7 +125,7 @@ export class RecipeService {
         
     }
 
-    initiateRecipeByObjectName(objectName: string, recordTypeApiToRecordTypeWrapperMap: Record<string, Record<string, string[]>>): string {
+    initiateRecipeByObjectName(objectName: string, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
         let objectRecipeMarkup = 

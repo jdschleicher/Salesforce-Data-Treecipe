@@ -44,7 +44,7 @@ export class DirectoryProcessor {
             objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
   
             if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
-              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
+              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap);
             }
   
             fieldsInfo.forEach((fieldDetail) => {

@@ -150,7 +150,7 @@ jest.mock('vscode', () => ({
                     OneRecType
                     TwoRecType`;
 
-            const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToPicklistValuesMap();
+            const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
             const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
             expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
 

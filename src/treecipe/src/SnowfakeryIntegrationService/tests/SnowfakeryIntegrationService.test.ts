@@ -82,11 +82,11 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
         
         test('should return selected recipe file path name', async () => {
             const expectedQuickPickItem = { label: 'recipe.yml', description: 'A sample recipe file' };
-            jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateFIleQuickItemsFrom').mockResolvedValue(expectedQuickPickItem);
+            jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateQuickItemsForFileSelection').mockResolvedValue(expectedQuickPickItem);
 
             const result = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
 
-            expect(VSCodeWorkspaceService.promptForDirectoryToGenerateFIleQuickItemsFrom).toHaveBeenCalled();
+            expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).toHaveBeenCalled();
             expect(result).toBe(expectedQuickPickItem);
         });
 

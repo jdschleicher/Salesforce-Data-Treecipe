@@ -164,7 +164,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
                 let recordTypeChoicesBreakdown:string;
 
-                const picklistValuesForDependentField = recordTypeWrapper[dependentFieldApiName];
+                const picklistValuesForDependentField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[dependentFieldApiName];
                 picklistValuesForDependentField.forEach( recordTypeAvailablePicklistValue => {
     
                     if (recordTypeChoicesBreakdown) {

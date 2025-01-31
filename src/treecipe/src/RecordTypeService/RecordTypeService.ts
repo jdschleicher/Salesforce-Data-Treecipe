@@ -53,6 +53,7 @@ export class RecordTypeService {
         
             const recordTypeApiName = recordTypeXML.RecordType.fullName[0];
             let recordTypeWrapper = new RecordTypeWrapper();
+            recordTypeWrapper.RecordTypeId = '';
             recordTypeWrapper.DeveloperName = recordTypeApiName;
 
             const associatedFieldApiToRecordTypePicklistValuesMap: Record<string, string[]> = {};
@@ -61,8 +62,10 @@ export class RecordTypeService {
                 const recordTypePicklistValuesForField = picklistValue.values.flatMap((value: any) => value.fullName ); // Extract the list of values
                 associatedFieldApiToRecordTypePicklistValuesMap[fieldName] = recordTypePicklistValuesForField;
             });
+
+            recordTypeWrapper.PicklistFieldSectionsToPicklistDetail = associatedFieldApiToRecordTypePicklistValuesMap;
         
-            recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName].PicklistFieldSectionsToPicklistDetail = associatedFieldApiToRecordTypePicklistValuesMap;
+            recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
 
           }
     

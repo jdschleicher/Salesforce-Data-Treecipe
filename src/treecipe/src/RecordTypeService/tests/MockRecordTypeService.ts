@@ -1,3 +1,4 @@
+import { RecordTypeWrapper } from "../RecordTypesWrapper";
 
 
 export class MockRecordTypeService {
@@ -199,11 +200,24 @@ export class MockRecordTypeService {
 
     }
 
-    static getMultipleRecordTypeToFieldToPicklistValuesMap(): Record<string, Record<string, string[]>> {
+    static getMultipleRecordTypeToFieldToRecordTypeWrapperMap(): Record<string, RecordTypeWrapper> {
         
+        const oneRecordTypeWrapper:RecordTypeWrapper = {
+            DeveloperName: "OneRecType",
+            PicklistFieldSectionsToPicklistDetail: this.getOneRecTypeFieldToPicklistValuesMap(),
+            RecordTypeId: ''
+        };
+
+        const twoRecordTypeWrapper:RecordTypeWrapper = {
+            DeveloperName: "TwoRecType",
+            PicklistFieldSectionsToPicklistDetail: this.getTwoRecTypeFieldToPicklistValuesMap(),
+            RecordTypeId: ''
+        };
+
+
         return {
-            OneRecType: this.getOneRecTypeFieldToPicklistValuesMap(),
-            TwoRecType: this.getTwoRecTypeFieldToPicklistValuesMap()
+            OneRecType: oneRecordTypeWrapper,
+            TwoRecType: twoRecordTypeWrapper
         };
 
     }
