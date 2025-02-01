@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
+import path = require("path");
 
 export class ExtensionCommandService {
     
@@ -35,12 +36,39 @@ export class ExtensionCommandService {
                 return;
             }
             const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
+            
             const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
 
-            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
+            const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting format '2024-11-25T16-24-15'
+            const uniqueTimeStampedFakeDataSetsFolderName = SnowfakeryIntegrationService.createFakedataSetsTimeStampedFolderName(isoDateTimestamp);
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
 
             SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
-            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/originFile-${selectedRecipeQuickPickItem.label}`);
+            
+            const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/BaseArtifactFiles`;
+            fs.mkdirSync(fullPathToBaseArtifactsFolder);
+
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeQuickPickItem.label}`);
+
+            /* 
+                The below lines get the timestamped parent recipe folder 
+                in order to traverse through and get all other artifacts files to use in
+                data generation and inserts commands
+            */
+            const selectedRecipeParentDirectory = path.dirname(recipeFullFileNamePath);
+            if ( path.basename(selectedRecipeParentDirectory) !== "GeneratedRecipes" ) {
+                const filesWithinSelecteRecipeFolder = fs.readdirSync(selectedRecipeParentDirectory, { withFileTypes: true });
+                const expectedObjectsInfoWrapperNamePrefix = 'treecipeObjectsWrapper';
+                const matchingTreecipeObjectsWrapperFile = filesWithinSelecteRecipeFolder.find(file => 
+                    file.isFile() && file.name.startsWith(expectedObjectsInfoWrapperNamePrefix)
+                );
+    
+                if (matchingTreecipeObjectsWrapperFile) {
+                    const fullTreecipeObjectsWrapperPath = path.join(selectedRecipeParentDirectory, matchingTreecipeObjectsWrapperFile.name);
+                    fs.copyFileSync(fullTreecipeObjectsWrapperPath, `${fullPathToBaseArtifactsFolder}/originalTreecipeWrapper-${matchingTreecipeObjectsWrapperFile.name}`);
+                } 
+            }
+       
 
         } catch(error) {
 
@@ -120,9 +148,13 @@ export class ExtensionCommandService {
         try {
 
             const selectedDataSetDirectoryToInsert = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
+            
             if (!selectedDataSetDirectoryToInsert) {
                 return;
             }
+
+            // const fakeDataSetDirectoryFiles = VSCodeWorkspaceService
+
 
             const targetOrgAlias = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
             if (!targetOrgAlias) {
@@ -136,7 +168,11 @@ export class ExtensionCommandService {
 
             const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
 
+            // const treecipeObjectInfoWrapperPath = `treecipeObjectsWrapper-2025-01-31T18-34-11`
+            // const treecipeObjectInfoWrapperJson = await VSCodeWorkspaceService.getFileContentByPath(treecipeObjectInfoWrapperPath);
+            // const recordTypeDetail = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNames);
 
+            CollectionsApiService.insertUpsertDataSetToSelectedOrg(selectedDataSetDirectoryToInsert, aliasAuthenticationConnection);
 
     
         } catch(error) {
