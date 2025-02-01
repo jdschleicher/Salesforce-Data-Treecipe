@@ -136,13 +136,15 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async promptForDirectoryToGenerateQuickItemsForFileSelection(directoryPathToParseFilesFrom: string, vsCodeQuickPickItemPromptLabel: string): Promise<vscode.QuickPickItem | undefined> {
+    static async promptForDirectoryToGenerateQuickItemsForFileSelection(directoryPathToParseSearchForRecipeFilesFrom: string, vsCodeQuickPickItemPromptLabel: string): Promise<vscode.QuickPickItem | undefined> {
 
         const workspaceRoot = this.getWorkspaceRoot();
-        const generatedRecipesFolderPath = `${workspaceRoot}/${directoryPathToParseFilesFrom}`;
+        const generatedRecipesFolderPath = `${workspaceRoot}/${directoryPathToParseSearchForRecipeFilesFrom}`;
 
-        const availableRecipeFileQuickPickitems: vscode.QuickPickItem[] = await this.getAvailableFileQuickPickItemsByDirectory(generatedRecipesFolderPath);
-        
+        let availableRecipeFileQuickPickitems: vscode.QuickPickItem[] = [];
+        const quickPickItems = await this.getAvailableRecipeFileQuickPickItemsByDirectory(availableRecipeFileQuickPickitems, generatedRecipesFolderPath);
+        availableRecipeFileQuickPickitems.concat(quickPickItems);
+
         const selection = await vscode.window.showQuickPick(
             availableRecipeFileQuickPickitems,
             {
@@ -160,13 +162,13 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async getAvailableFileQuickPickItemsByDirectory(folderPathToParse: string) {
+    static async getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems: vscode.QuickPickItem[], folderPathToParse: string) {
 
-        let recipeFileQuickPickItems: vscode.QuickPickItem[] = [];
         const entries = await fs.promises.readdir(folderPathToParse, { withFileTypes: true });
         for (const entry of entries) {
   
-            if (entry.isFile()) {
+            if (entry.isFile() && 
+                ( path.extname(entry.name) === '.yaml' || path.extname(entry.name) === '.yml' )) {
 
                 const quickpickLabel = `${entry.name}`; 
                 const fullFilePathName = path.join(entry.path, entry.name);
@@ -176,6 +178,14 @@ export class VSCodeWorkspaceService {
                     iconPath: new vscode.ThemeIcon('file'),
                     detail: fullFilePathName
                 });
+
+            } else if ( entry.isDirectory()) {
+                
+                const recipeDirectoryPathToParseUri = path.join(folderPathToParse, entry.name);
+                const recipeFileVSCodeItems: vscode.QuickPickItem[] = await this.getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems, recipeDirectoryPathToParseUri);
+                if ( recipeFileVSCodeItems.length > 0 ) {
+                    recipeFileQuickPickItems.concat(recipeFileVSCodeItems);
+                }
 
             }
 
@@ -195,5 +205,4 @@ export class VSCodeWorkspaceService {
 
     }
     
-
 }

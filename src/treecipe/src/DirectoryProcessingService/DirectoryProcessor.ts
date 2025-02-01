@@ -41,25 +41,31 @@ export class DirectoryProcessor {
   
             const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, objectName, recordTypeApiToRecordTypeWrapperMap );
-            objectInfoWrapper.objectToObjectInfoMap[objectName].fields = fieldsInfo;
+            objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
   
-            if (!(objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe)) {
-              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap);
+            if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe)) {
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap);
             }
   
             fieldsInfo.forEach((fieldDetail) => {
   
-              objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
-                objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe,
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
+                objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe,
                 fieldDetail.recipeValue,
                 fieldDetail.fieldName
               );
   
             });
   
-            objectInfoWrapper.combinedRecipes += objectInfoWrapper.objectToObjectInfoMap[objectName].fullRecipe;
-            objectInfoWrapper.combinedRecipes += "\n";
+            objectInfoWrapper.CombinedRecipes += objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe;
+            objectInfoWrapper.CombinedRecipes += "\n";
   
+            if ( recordTypeApiToRecordTypeWrapperMap !== undefined && Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
+              // if there are keys in the recordTypeMap, add them to the objectsInfoWrapper
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].RecordTypesMap = recordTypeApiToRecordTypeWrapperMap;
+
+            }
+
           } else {
   
             await this.processDirectory(fullPath, objectInfoWrapper);

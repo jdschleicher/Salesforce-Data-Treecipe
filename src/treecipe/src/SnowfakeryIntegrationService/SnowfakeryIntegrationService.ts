@@ -56,13 +56,17 @@ export class SnowfakeryIntegrationService {
 
     static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
+        // let snowfakeryError:Error = null;
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {
 
             const generateCommand = `snowfakery ${ fullRecipeFileNamePath } --output-format json`;
             const handleSnowfakeryDataGenerationCallback = (cliCommandError, snowfakeryCliJson) => {
 
                 if (cliCommandError) {
-                    reject(new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`));
+                    
+                    const snowfakeryError = new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`);
+                    reject(snowfakeryError);
+
                 } else {
 
                     /*

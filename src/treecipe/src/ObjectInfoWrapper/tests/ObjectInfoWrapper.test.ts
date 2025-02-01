@@ -10,7 +10,7 @@ describe('addObjectInfoKey', () => {
     objectInfoWrapper.addKeyToObjectInfoMap(newTestKey);
 
     // SHOULD BE ONLY 1 KEY/VALUE PAIR
-    for ( const objectKey in objectInfoWrapper.objectToObjectInfoMap ) {
+    for ( const objectKey in objectInfoWrapper.ObjectToObjectInfoMap ) {
       expect(objectKey).toBe(newTestKey);
     }
 

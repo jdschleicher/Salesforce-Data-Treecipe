@@ -72,6 +72,7 @@ export class ExtensionCommandService {
             }
           
             const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting '2024-11-25T16-24-15'
+            
             const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
 
             // ensure dedicated directory for generated recipes exists
@@ -81,12 +82,26 @@ export class ExtensionCommandService {
                 fs.mkdirSync(expectedGeneratedRecipesFolderPath);
             }
 
-            const outputFilePath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${recipeFileName}`;
-            fs.writeFile(outputFilePath, objectsInfoWrapper.combinedRecipes, (err) => {
+            const timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
+            fs.mkdirSync(timestampedRecipeGenerationFolder);
+
+            const outputFilePath = `${timestampedRecipeGenerationFolder}/${recipeFileName}`;
+            fs.writeFile(outputFilePath, objectsInfoWrapper.CombinedRecipes, (err) => {
                 if (err) {
                     throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
                 } else {
                     vscode.window.showInformationMessage('Treecipe YAML generated successfully');
+                }
+            });
+
+            const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
+            const filePathOfOjectsInfoWrapperJson = `${timestampedRecipeGenerationFolder}/${objectsInfoWrapperFileName}`;
+            const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
+            fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
+                if (err) {
+                    throw new Error('an error occurred when attempting to create the "treecipeObjectsWrapper-DateTime.json" file.');
+                } else {
+                    vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
                 }
             });
 
