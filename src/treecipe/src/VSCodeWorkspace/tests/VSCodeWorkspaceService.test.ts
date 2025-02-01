@@ -217,8 +217,9 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             const expectedEmptyQuickPickItems = [];
             jest.spyOn(fs.promises, 'readdir').mockResolvedValue(expectedEmptyQuickPickItems);
 
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory('/mock/generated-recipes');
-            expect(actualQuickPickItems).toEqual(expectedEmptyQuickPickItems);
+            let emptyQuickPickItems: vscode.QuickPickItem[] = [];
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/mock/generated-recipes');
+            expect(actualQuickPickItems).toEqual(emptyQuickPickItems);
 
         });
 
@@ -226,12 +227,12 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             
             const mockDirents = [
                 Object.assign(new fs.Dirent(), { 
-                    name: 'recipe1.json', 
+                    name: 'recipe1.yaml', 
                     isFile: () => true, 
                     path: '/mock/generated-recipes'
                 }),
                 Object.assign(new fs.Dirent(), { 
-                    name: 'recipe2.json', 
+                    name: 'recipe2.yaml', 
                     isFile: () => true, 
                     path: '/mock/generated-recipes'
                 }),
@@ -240,19 +241,21 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const expectedQuickPickItems:vscode.QuickPickItem[] = [
                 {
-                    label: 'recipe1.json',
+                    label: 'recipe1.yaml',
                     description: 'File',
                     iconPath:  new vscode.ThemeIcon('file'),
-                    detail: '/mock/generated-recipes/recipe1.json'
+                    detail: '/mock/generated-recipes/recipe1.yaml'
                 },
                 {
-                    label: 'recipe2.json',
+                    label: 'recipe2.yaml',
                     description: 'File',
                     iconPath:  new vscode.ThemeIcon('file'),
-                    detail: '/mock/generated-recipes/recipe2.json'
+                    detail: '/mock/generated-recipes/recipe2.yaml'
                 }
             ];   
-            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory('/mock/generated-recipes');
+
+            let emptyQuickPickItems: vscode.QuickPickItem[] = [];
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/mock/generated-recipes');
 
             console.log('Actual Keys:', Object.keys(actualQuickPickItems));
             console.log('Expected Keys:', Object.keys(expectedQuickPickItems));
