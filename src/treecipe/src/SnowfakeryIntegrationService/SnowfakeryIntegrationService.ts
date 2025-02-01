@@ -192,7 +192,7 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static createFakedataSetsTimeStampedFolderName(isoDateTimestamp):string {
+    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
         
         const fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
         return fakeDataSetsFolderName;

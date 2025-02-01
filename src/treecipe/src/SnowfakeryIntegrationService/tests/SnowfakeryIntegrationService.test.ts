@@ -200,18 +200,20 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
     describe('createUniqueTimeStampedFakeDataSetsFolderName', () => {
         
         test('should create a unique timestamped folder for fake data sets', () => {
+
+            const uniqueTimeStampedFakeDataSetsFolderName = '2024-11-25T16-24-15';
             const mockWorkspaceRoot = '/mock/workspace';
             const mockFakeDataSetsFolderPath = 'treecipe/FakeDataSets';
             const mockExpectedFolderPath = `${mockWorkspaceRoot}/${mockFakeDataSetsFolderPath}`;
-            const mockUniqueFolderName = 'dataset-2024-11-25T16-24-15';
+            const mockUniqueFolderName = `dataset-${uniqueTimeStampedFakeDataSetsFolderName}`;
             const mockFullPathToUniqueFolder = `${mockExpectedFolderPath}/${mockUniqueFolderName}`;
 
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
-            jest.spyOn(SnowfakeryIntegrationService, 'createFakedataSetsTimeStampedFolderName').mockReturnValue(mockUniqueFolderName);
+            jest.spyOn(SnowfakeryIntegrationService, 'createFakeDatasetsTimeStampedFolderName').mockReturnValue(mockUniqueFolderName);
 
             (fs.existsSync as jest.Mock).mockReturnValue(true);
 
-            const result = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
+            const result = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName(mockUniqueFolderName);
 
             expect(fs.existsSync).toHaveBeenCalledWith(mockExpectedFolderPath);
             expect(fs.mkdirSync).toHaveBeenCalledWith(mockFullPathToUniqueFolder);
@@ -277,19 +279,20 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
         
     });
 
-    describe('createFakedataSetsTimeStampedFolderName', () => {
+    describe('createFakeDatasetsTimeStampedFolderName', () => {
 
         test('should create a unique timestamped folder name', () => {
 
+            const fakeTimestamp = '2024-11-25T16-24-15';
             const mockDate = new Date('2024-11-25T16:24:15Z');
             jest.spyOn(global, 'Date').mockReturnValue(mockDate);
 
             jest.spyOn(global, 'Date').mockImplementation();
             jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
 
-            const expectedFolderName = 'dataset-2024-11-25T16-24-15';
+            const expectedFolderName = `dataset-${fakeTimestamp}`;
 
-            const actualFolderName = SnowfakeryIntegrationService.createFakedataSetsTimeStampedFolderName();
+            const actualFolderName = SnowfakeryIntegrationService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
             expect(actualFolderName).toBe(expectedFolderName);
 
         });
