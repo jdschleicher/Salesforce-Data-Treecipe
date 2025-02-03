@@ -147,7 +147,7 @@ export class RecipeService {
 
                 } 
 
-                recordTypeDeveloperNamesToSelect += `${newLineBreak}${this.generateTabs(5)}${recordTypeApiNameKey}`;
+                recordTypeDeveloperNamesToSelect += `${newLineBreak}${this.generateTabs(5)}${objectName}.${recordTypeApiNameKey}`;
     
             });
 

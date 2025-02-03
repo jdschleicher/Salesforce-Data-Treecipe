@@ -54,38 +54,47 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async getDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string, items): Promise<vscode.QuickPickItem[]> {
+    static async getDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string, quickPickItems: vscode.QuickPickItem[]): Promise<vscode.QuickPickItem[]> {
 
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
         const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
         for (const entry of entries) {
   
             if ( this.isPossibleTreecipeUsableDirectory(entry) ) {
 
-                const fullMachinePathToEntry = entry.path;
-                const currentDirectoryName = entry.name;
-
-                const fullEntryPath = `${fullMachinePathToEntry}/${currentDirectoryName}`;
-                const quickPickRelativePath = fullEntryPath.split(workspaceRoot)[1];
-                const quickpickLabel = `.${quickPickRelativePath}/`;
-
-                items.push({
-                    label: quickpickLabel,
-                    description: 'Directory',
-                    iconPath: new vscode.ThemeIcon('folder')
-                });
+                const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot);
+                quickPickItems.push(quickPickDirectoryItem);
 
                 const fullPath = path.join(directoryPath, entry.name);
-                console.log(fullPath);
-
-                await this.getDirectoryQuickPickItemsByStartingDirectoryPath(fullPath, items);
+                await this.getDirectoryQuickPickItemsByStartingDirectoryPath(fullPath, quickPickItems);
 
             }
 
         }
       
-        return items;
+        return quickPickItems;
+
+    }
+
+    static async getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string, quickPickItems: vscode.QuickPickItem[]): Promise<vscode.QuickPickItem[]> {
+
+        const datasetEntries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+
+        const datasetDirectoryNameFilter = 'dataset';
+        for (const entry of datasetEntries) {
+
+            if ( entry.name.includes(datasetDirectoryNameFilter)) {
+
+                const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot);
+                quickPickItems.push(quickPickDirectoryItem);
+
+            }
+  
+        }
+      
+        return quickPickItems;
 
     }
 
@@ -100,6 +109,26 @@ export class VSCodeWorkspaceService {
 
     static isHiddenFolder(folderName: string): boolean {
         return folderName.startsWith('.');
+    }
+
+    static buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry: fs.Dirent, workspaceRoot: string) {
+        
+        const fullMachinePathToEntry = entry.path;
+        const currentDirectoryName = entry.name;
+
+        const fullEntryPath = `${fullMachinePathToEntry}/${currentDirectoryName}`;
+        const quickPickRelativePath = fullEntryPath.split(workspaceRoot)[1];
+        const quickpickLabel = `.${quickPickRelativePath}/`;
+
+        const quickPickItem = {
+            label: quickpickLabel,
+            description: 'Directory',
+            iconPath: new vscode.ThemeIcon('folder'),
+            detail: fullEntryPath
+        };
+
+        return quickPickItem;
+
     }
 
     static async promptForFakerServiceImplementation(): Promise<string | undefined> {
@@ -202,6 +231,15 @@ export class VSCodeWorkspaceService {
         });
 
         return userResponse;
+
+    }
+
+    static async getFileContentByPath(filePath: string) {
+
+        const fileUri = vscode.Uri.file(filePath);
+        const fileContentUriData = await vscode.workspace.fs.readFile(fileUri);
+        const fileContent = Buffer.from(fileContentUriData).toString('utf8');
+        return fileContent;
 
     }
     

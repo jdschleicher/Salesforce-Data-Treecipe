@@ -175,5 +175,22 @@ export class ConfigurationService {
 
     }
 
+    static getTreecipeObjectsWrapperName() {
+
+        const treecipeObjectsWrapperPrefix = 'treecipeObjectsWrapper';
+        return treecipeObjectsWrapperPrefix;
+
+    }
+
+    static getBaseArtifactsFolderName() {
+        const baseArtifactsFolderName = 'BaseArtifactFiles';
+        return baseArtifactsFolderName;
+    }
+
+    static getDatasetCollectionApiFilesFolderName() {
+        const collectionsApiFilesFolderName = 'DatasetFilesForCollectionsApi';
+        return collectionsApiFilesFolderName;
+    }
+
 
 }

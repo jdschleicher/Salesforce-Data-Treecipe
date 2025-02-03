@@ -5,6 +5,7 @@ import { RecordTypeWrapper } from './RecordTypesWrapper';
 import * as fs from 'fs';
 import * as xml2js from 'xml2js';
 import * as vscode from 'vscode';
+import { Connection } from '@salesforce/core';
 
 
 export class RecordTypeService {
@@ -73,6 +74,24 @@ export class RecordTypeService {
         
         return recordTypeDeveloperNameToRecordTypeWrapper;
       
+    }
+
+    static async getRecordTypeIdsByConnection(
+                                            conn: Connection, 
+                                            objectApiNames: string[]
+                                          ): Promise<any> {
+        
+      const joinedObjectNames = objectApiNames.join("','");
+      const recordTypeDetail = await conn.query(`
+          SELECT Id, 
+              SObjectType,
+              DeveloperName 
+          FROM RecordType 
+          WHERE SObjectType IN ('${joinedObjectNames}')
+      `); 
+    
+      return recordTypeDetail;
+
     }
 
 }

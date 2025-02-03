@@ -1,12 +1,14 @@
-import { Org } from "@salesforce/core";
+import { Config, Connection, Org } from "@salesforce/core";
 import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import path = require('path');
 
 export class CollectionsApiService {
 
-    static async promptForDataSetObjectsPathVSCodeQuickItems(): Promise<string | undefined> {
+    static async promptForDataSetObjectsPathVSCodeQuickItems(): Promise<vscode.QuickPickItem> | undefined {
 
         const expectedFakeDataSetsPath = ConfigurationService.getFakeDataSetsFolderPath();
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
@@ -16,7 +18,7 @@ export class CollectionsApiService {
 
         while (true) {
             
-            fakeDataSetDirectoryVSCodeQuickPickItems = await VSCodeWorkspaceService.getDirectoryQuickPickItemsByStartingDirectoryPath(generatedFakeDataSetsPath, fakeDataSetDirectoryVSCodeQuickPickItems);
+            fakeDataSetDirectoryVSCodeQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(generatedFakeDataSetsPath, fakeDataSetDirectoryVSCodeQuickPickItems);
 
             const selection = await vscode.window.showQuickPick(
                 fakeDataSetDirectoryVSCodeQuickPickItems,
@@ -30,7 +32,7 @@ export class CollectionsApiService {
                 // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
                 return undefined; 
             } else {
-                return selection.label;
+                return selection;
             }
 
         }
@@ -88,5 +90,114 @@ export class CollectionsApiService {
         
         return connection;
     }
+
+    static async insertUpsertDataSetToSelectedOrg(datasetChildFoldersToFilesMap: Record<string, string[]>, 
+                                                    recordTypeDetailFromTargetOrg: any,
+                                                    aliasAuthenticationConnection: Connection) {
+
+        const collectionsApiFilesDirectoryFolderName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
+        const collectionApiFiles = datasetChildFoldersToFilesMap[collectionsApiFilesDirectoryFolderName];
+
+        for ( const collectionsApiFilePath of collectionApiFiles ) {
+
+            const objectNameForFile = 'collectionsApi-Example_Everything__c.json';
+
+            let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
+            collectionsApiJson = this.updateCollectionApiDetailWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+            const collectionApiDataDetail = JSON.parse(collectionsApiJson);
+
+            const result = await aliasAuthenticationConnection.sobject(objectNameForFile).create(
+                            collectionApiDataDetail.records,
+                            { allOrNone: true }
+                        );
+   
+
+        }
+
+
+   
+        // get collectionsApiDiectroy
+
+    }
+
+    static async getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName: string): Promise<Record<string, string[]>> {
+
+        const baseArtficactFilesDirectoryName = ConfigurationService.getBaseArtifactsFolderName();
+        const datasetCollectionsApiFilesDirectoryName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
+        const childFoldersToRetrieveFilesFrom = [baseArtficactFilesDirectoryName, datasetCollectionsApiFilesDirectoryName];
+
+        const childFolderToFilesMap = await this.getFilesFromChildDirectoriesBySharedParentDirectory(datasetDirectoryName, childFoldersToRetrieveFilesFrom);
+        
+        return childFolderToFilesMap;
+
+    }
+
+
+    static async getFilesFromChildDirectoriesBySharedParentDirectory(datasetParentDirectory: string, datasetChildDirectoriesToGetFilesFrom: string[]): Promise<Record<string, string[]>> {
+
+        const filesByDirectory: Record<string, string[]> = {};
+        for ( const childFolderName of datasetChildDirectoriesToGetFilesFrom ) {
+
+            const fullPath = `${datasetParentDirectory}/${childFolderName}`;
+            const files = await this.getFilesInDirectory(fullPath);
+            filesByDirectory[childFolderName] = files;
+
+        }
+    
+        return filesByDirectory;
+        
+    }
+
+    static async getFilesInDirectory(directoryToGetFilesFrom: string): Promise<string[]> {
+
+        const entries = await fs.promises.readdir(directoryToGetFilesFrom, { withFileTypes: true });
+       
+        const filesFromDirectory: string[] = [];
+        for (const entry of entries) {
+            const fullPath = path.join(directoryToGetFilesFrom, entry.name);
+            if (entry.isFile()) {
+                filesFromDirectory.push(fullPath);
+            }
+        }
+
+        return filesFromDirectory;
+
+    }
+
+    static async getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap: Record<string, string[]>) {
+        
+        const expectedObjectsInfoWrapperNamePrefix = 'originalTreecipeWrapper';
+        const baseArtifactFilesDirectory = ConfigurationService.getBaseArtifactsFolderName();
+
+        const originalTreecipeWrapperFilePath = datasetChildFoldersToFilesMap[baseArtifactFilesDirectory].filter(
+            fileName => fileName.includes(expectedObjectsInfoWrapperNamePrefix)
+        );
+
+        const treecipeObjectInfoWrapperJson = await VSCodeWorkspaceService.getFileContentByPath(originalTreecipeWrapperFilePath[0]);
+        const treecipeObjectInfoWrapperDetail = JSON.parse(treecipeObjectInfoWrapperJson);
+
+        return treecipeObjectInfoWrapperDetail;
+
+    }
+
+    static updateCollectionApiDetailWithOrgRecordTypeIds(collectionsApiJson: string, recordTypeDetailFromTargetOrg: any): any {
+    
+        for ( const recordTypeInfo of recordTypeDetailFromTargetOrg.records ) {
+
+            const objectName = recordTypeInfo.SObjectType;
+            const recordTypeDeveloperName = recordTypeInfo.DeveloperName;
+            const recordTypeIdForOrg = recordTypeInfo.Id;
+
+            const recordTypeIdentifierToReplace = `${objectName}.${recordTypeDeveloperName}`;
+            collectionsApiJson.replace(recordTypeIdentifierToReplace, recordTypeIdForOrg);
+
+        }
+
+        return collectionsApiJson;
+    
+    }
+
+
+
 
 }

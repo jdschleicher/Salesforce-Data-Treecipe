@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import path = require("path");
+import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 
 export class ExtensionCommandService {
     
@@ -45,7 +46,8 @@ export class ExtensionCommandService {
 
             SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
             
-            const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/BaseArtifactFiles`;
+            const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();
+            const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
 
             fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeQuickPickItem.label}`);
@@ -58,7 +60,7 @@ export class ExtensionCommandService {
             const selectedRecipeParentDirectory = path.dirname(recipeFullFileNamePath);
             if ( path.basename(selectedRecipeParentDirectory) !== "GeneratedRecipes" ) {
                 const filesWithinSelecteRecipeFolder = fs.readdirSync(selectedRecipeParentDirectory, { withFileTypes: true });
-                const expectedObjectsInfoWrapperNamePrefix = 'treecipeObjectsWrapper';
+                const expectedObjectsInfoWrapperNamePrefix = ConfigurationService.getTreecipeObjectsWrapperName();
                 const matchingTreecipeObjectsWrapperFile = filesWithinSelecteRecipeFolder.find(file => 
                     file.isFile() && file.name.startsWith(expectedObjectsInfoWrapperNamePrefix)
                 );
@@ -144,17 +146,13 @@ export class ExtensionCommandService {
 
     async insertDataSetBySelectedDirectory() {
 
-
         try {
 
-            const selectedDataSetDirectoryToInsert = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
+            const selectedDataSetDirectoryToInsert:vscode.QuickPickItem = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
             
             if (!selectedDataSetDirectoryToInsert) {
                 return;
             }
-
-            // const fakeDataSetDirectoryFiles = VSCodeWorkspaceService
-
 
             const targetOrgAlias = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
             if (!targetOrgAlias) {
@@ -168,11 +166,18 @@ export class ExtensionCommandService {
 
             const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
 
-            // const treecipeObjectInfoWrapperPath = `treecipeObjectsWrapper-2025-01-31T18-34-11`
-            // const treecipeObjectInfoWrapperJson = await VSCodeWorkspaceService.getFileContentByPath(treecipeObjectInfoWrapperPath);
-            // const recordTypeDetail = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNames);
+            const datasetChildFoldersToFilesMap = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(selectedDataSetDirectoryToInsert.detail);
+            
+            const treecipeObjectWrapperDetail = await CollectionsApiService.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
+            
+            const objectApiNamesToGetRecordTypeInfoFrom = Object.keys(treecipeObjectWrapperDetail.ObjectToObjectInfoMap);
 
-            CollectionsApiService.insertUpsertDataSetToSelectedOrg(selectedDataSetDirectoryToInsert, aliasAuthenticationConnection);
+
+            const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
+            
+            CollectionsApiService.insertUpsertDataSetToSelectedOrg(datasetChildFoldersToFilesMap, 
+                                                                    recordTypeDetailFromOrg, 
+                                                                    aliasAuthenticationConnection);
 
     
         } catch(error) {
