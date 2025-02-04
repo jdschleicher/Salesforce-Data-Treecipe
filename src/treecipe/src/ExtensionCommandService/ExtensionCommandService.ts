@@ -159,8 +159,8 @@ export class ExtensionCommandService {
                 return;
             }
 
-            const allOrNonePreference = await CollectionsApiService.promptForAllOrNoneInsertDecision();
-            if (!allOrNonePreference) {
+            const allOrNoneSelection:boolean = await CollectionsApiService.promptForAllOrNoneInsertDecision();
+            if (!allOrNoneSelection) {
                 return;
             }
 
@@ -174,10 +174,11 @@ export class ExtensionCommandService {
 
 
             const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
-            
+
             CollectionsApiService.insertUpsertDataSetToSelectedOrg(datasetChildFoldersToFilesMap, 
                                                                     recordTypeDetailFromOrg, 
-                                                                    aliasAuthenticationConnection);
+                                                                    aliasAuthenticationConnection,
+                                                                    allOrNoneSelection);
 
     
         } catch(error) {
@@ -187,29 +188,23 @@ export class ExtensionCommandService {
 
         }
         
-        try {
+        // try {
             
-            /*
-              - configurationservice? get user input for:
-                 1. data set within directory to insert
-                 2. expected target org alias
-                 3. all or none
-             -. confirm authentication/hanlde authentication issue
-            - get record types 
-            - insert data 
-                - insert 
-                - upsert
-                - keep track of ids
-                - all or none
-              -    
-            */
+  
+        //     - insert data 
+        //         - insert 
+        //         - upsert
+        //         - keep track of ids
+        //         - all or none
+        //       -    
+        //     */
           
-        } catch(error) {
+        // } catch(error) {
 
-            const commandName = 'insertDataSetBySelectedDirectory';
-            ErrorHandlingService.handleCapturedError(error, commandName);
+        //     const commandName = 'insertDataSetBySelectedDirectory';
+        //     ErrorHandlingService.handleCapturedError(error, commandName);
 
-        }
+        // }
 
     }
 
