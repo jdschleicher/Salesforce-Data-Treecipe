@@ -27,8 +27,8 @@ describe('NPMFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToNPMFakerMappings['longtextarea']).toBe('{{ faker.lorem.text(1000) }}');
         });
 
-        test('RichTextArea field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['richtextarea']).toBe('{{ faker.lorem.text(1000) }}');
+        test('RichTextArea Html field returns correct npm faker expression', () => {
+            expect(fieldTypeToNPMFakerMappings['html']).toBe('{{ faker.lorem.text(1000) }}');
         });
 
         test('Email field returns correct npm faker expression', () => {
@@ -97,7 +97,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
         test('All Salesforce field types have a corresponding mapping', () => {
             const expectedFields = [
-                'text', 'textarea', 'longtextarea', 'richtextarea', 'email', 
+                'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
                 'lookup', 'masterdetail', 'formula', 'location'

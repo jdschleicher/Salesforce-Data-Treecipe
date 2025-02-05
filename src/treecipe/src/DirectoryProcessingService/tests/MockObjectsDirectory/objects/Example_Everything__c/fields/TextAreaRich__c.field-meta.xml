@@ -4,6 +4,6 @@
     <label>TextAreaRich</label>
     <length>32768</length>
     <trackTrending>false</trackTrending>
-    <type>RichTextArea</type>
+    <type>Hml</type>
     <visibleLines>25</visibleLines>
 </CustomField>

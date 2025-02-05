@@ -26,8 +26,8 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToSnowfakeryMappings['longtextarea']).toBe('${{fake.text(max_nb_chars=1000)}}');
         });
 
-        test('RichTextArea field returns correct faker expression', () => {
-            expect(fieldTypeToSnowfakeryMappings['richtextarea']).toBe('${{fake.text(max_nb_chars=1000)}}');
+        test('RichTextArea html field returns correct faker expression', () => {
+            expect(fieldTypeToSnowfakeryMappings['html']).toBe('${{fake.text(max_nb_chars=1000)}}');
         });
 
         test('Email field returns correct faker expression', () => {

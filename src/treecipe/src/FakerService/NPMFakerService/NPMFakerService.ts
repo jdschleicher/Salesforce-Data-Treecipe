@@ -85,7 +85,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             'text': '{{ faker.lorem.text(50) }}',
             'textarea': '{{ faker.lorem.paragraph() }}',
             'longtextarea': '{{ faker.lorem.text(1000) }}',
-            'richtextarea': '{{ faker.lorem.text(1000) }}',
+            'html': '{{ faker.lorem.text(1000) }}',
             'email': '{{ faker.internet.email() }}',
             'phone': '{{ faker.phone.number() }}',
             'url': '{{ faker.internet.url() }}',

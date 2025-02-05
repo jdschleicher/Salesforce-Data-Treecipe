@@ -199,7 +199,7 @@ describe('processXmlFieldContent', () => {
 
     });
 
-    test('given expected "RichTextArea" field type xml markup, returns expected RichTextArea XMLFieldDetail', async () => {
+    test('given expected "RichTextArea" html field type xml markup, returns expected RichTextArea XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getRichTextAreaFieldTypeXMLMarkup();
         const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
