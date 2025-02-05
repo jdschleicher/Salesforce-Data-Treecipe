@@ -1,10 +1,13 @@
 import { Connection, Org, SfError } from "@salesforce/core";
+import { Connection, Org, SfError } from "@salesforce/core";
 import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import path = require('path');
+// import { Record, RecordResult, SuccessResult, ErrorResult, ExecuteOptions, DescribeSObjectResult } from 'jsforce';
+
 // import { Record, RecordResult, SuccessResult, ErrorResult, ExecuteOptions, DescribeSObjectResult } from 'jsforce';
 
 
@@ -91,7 +94,8 @@ export class CollectionsApiService {
         return connection;
     }
 
-    static async upsertDataSetToSelectedOrg(datasetChildFoldersToFilesMap: Record<string, string[]>, 
+    static async upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath: string,
+                                            datasetChildFoldersToFilesMap: Record<string, string[]>, 
                                             recordTypeDetailFromTargetOrg: any,
                                             aliasAuthenticationConnection: Connection,
                                             allOrNoneSelection: boolean) {
@@ -101,23 +105,77 @@ export class CollectionsApiService {
 
         let objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
 
+        const insertAttemptsDirectoryName = 'InsertAttempts';
+        const pathToInsertAttemptsDirectory = path.join(selectedDataSetFullDirectoryPath, insertAttemptsDirectoryName);
+        if (!fs.existsSync(pathToInsertAttemptsDirectory)) {
+            fs.mkdirSync(pathToInsertAttemptsDirectory);
+        }
+
+        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();                                
+        const timestampedInsertAttemptDirectoryFullPath = `${pathToInsertAttemptsDirectory}/insertAttempt-${isoDateTimestamp}`;
+        fs.mkdirSync(timestampedInsertAttemptDirectoryFullPath);
+
+        let allCollectionApiFilesSobjectResults: Record<string, any[]> = {
+            'SuccessResults' : [],
+            'FailureResults' : []
+        };
+
         for ( const collectionsApiFilePath of collectionApiFiles ) {
 
-            const objectNameForFile = this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath);
-
             let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
-            collectionsApiJson = this.updateCollectionApiDetailWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
-            
+            collectionsApiJson = this.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
             const preparedCollectionsApiDetail = JSON.parse(collectionsApiJson);
 
+            const objectNameForFile = this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath);
             const collectionsApiSobjectResult = this.makeCollectionsApiCall(preparedCollectionsApiDetail, 
                                                                             aliasAuthenticationConnection,
                                                                             allOrNoneSelection,
                                                                             objectNameForFile);
 
+                
+            allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, collectionsApiSobjectResult);
+            objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult);
        
         }
 
+    }
+
+    static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, any[]>, sObjectResults ) {
+
+
+        return allCollectionApiFilesSobjectResults;
+        
+    }
+
+    static updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>, sObjectResults) {
+
+                    // $record_index = 0
+            // ### ENSURE RESULTS TYPE IS OF LIST; POWERSHELL AUTO CASTS WHEN PASSING LIST VARIABLES THAT HAVE ONLY 1 ITEM IN THE COLLECTION
+            // $upserted_records_results = [PSCustomObject[]]$upserted_records_results
+            // $prepared_data_for_capturing_index_to_reference_id = [PSCustomObject[]]$prepared_data_for_capturing_index_to_reference_id
+            // foreach ( $completed_data_upsert_result in $upserted_records_results ) {
+        
+            //     $record_id = $completed_data_upsert_result.Id
+            //     $reference_id = $prepared_data_for_capturing_index_to_reference_id.records[$record_index].attributes.referenceId
+        
+            //     if ( -not($reference_id_to_associated_lookup_record_id_map.ContainsKey($reference_id)) ) {
+        
+            //         $reference_id_to_associated_lookup_record_id_map.Add( $reference_id, $record_id) | Out-Null
+        
+            //     } 
+        
+            //     $record_index++
+            // }
+        
+            // $reference_id_to_associated_lookup_record_id_map
+
+        for ( const recordResult in sObjectResults.records ) {
+
+            const expecteIdProperty = "Id";
+
+        }
+        
+        return objectReferenceIdToOrgCreatedRecordIdMap;
     }
 
     static async makeCollectionsApiCall(preparedCollectionsApiDetail: any,
@@ -125,7 +183,7 @@ export class CollectionsApiService {
                                         allOrNoneSelection: boolean,
                                         sobjectNameToUpsert ) {
 
-        const sobjectsResult: any[] = new Array<any>();
+        const sobjectsResult = new Array<any>();
         const recordsToUpsert = preparedCollectionsApiDetail.records;
 
         if (recordsToUpsert && recordsToUpsert.length > 0) {
@@ -148,7 +206,6 @@ export class CollectionsApiService {
             // UPDATING RECORDS
             if (recordsToUpdate.length > 0) {
     
-
                 for (let i = 0; i < recordsToUpdate.length; i += batchSize) {
                 // @ts-ignore: Don't know why, but TypeScript doesn't use the correct method override
                     
@@ -177,7 +234,7 @@ export class CollectionsApiService {
                     const recordsBatchToInsert = recordsToInsert.slice(i, i + batchSize);
 
                     const chunkResults = await aliasAuthenticationConnection
-                        .sobject(sobjectNameToUpsert) // @ts-ignore: TODO: working code, but look at TS warning
+                        .sobject(sobjectNameToUpsert) 
                         .insert(recordsBatchToInsert, { 
                                 allowRecursive: true, 
                                 allOrNone: allOrNoneSelection 
@@ -193,22 +250,6 @@ export class CollectionsApiService {
             }
             
         }
-
-        // try {
-
-        //     const result = await aliasAuthenticationConnection.sobject(objectToUpsert).create(
-        //         preparedCollectionsApiDetail.records,
-        //         { allOrNone: allOrNoneSelection }
-        //     );
-
-        //     console.log(result);
-
-        // } catch (error) {
-            
-        //     const dmlInsertError = new Error(`There was an error inserting ${objectToUpsert}`);
-        //     throw dmlInsertError;
-
-        // }
 
         return sobjectsResult;
 
@@ -289,7 +330,7 @@ export class CollectionsApiService {
 
     }
 
-    static updateCollectionApiDetailWithOrgRecordTypeIds(collectionsApiJson: string, recordTypeDetailFromTargetOrg: any): any {
+    static updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson: string, recordTypeDetailFromTargetOrg: any): any {
     
         for ( const recordTypeInfo of recordTypeDetailFromTargetOrg.records ) {
 

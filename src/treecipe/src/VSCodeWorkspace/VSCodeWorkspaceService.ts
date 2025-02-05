@@ -242,5 +242,12 @@ export class VSCodeWorkspaceService {
         return fileContent;
 
     }
+
+    static getNowIsoDateTimestamp() {
+        // expecting format '2024-11-25T16-24-15'
+        return (
+            new Date().toISOString().split(".")[0].replace(/:/g,"-")
+        ); 
+    }
     
 }

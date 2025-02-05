@@ -40,7 +40,7 @@ export class ExtensionCommandService {
             
             const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
 
-            const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting format '2024-11-25T16-24-15'
+            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
             const uniqueTimeStampedFakeDataSetsFolderName = SnowfakeryIntegrationService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
             const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
 
@@ -101,7 +101,7 @@ export class ExtensionCommandService {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
           
-            const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting '2024-11-25T16-24-15'
+            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
             
             const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
 
@@ -164,9 +164,12 @@ export class ExtensionCommandService {
                 return;
             }
 
+         
+
             const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
 
-            const datasetChildFoldersToFilesMap = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(selectedDataSetDirectoryToInsert.detail);
+            const selectedDataSetFullDirectoryPath = selectedDataSetDirectoryToInsert.detail;
+            const datasetChildFoldersToFilesMap = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(selectedDataSetFullDirectoryPath);
             
             const treecipeObjectWrapperDetail = await CollectionsApiService.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
             
@@ -175,10 +178,11 @@ export class ExtensionCommandService {
 
             const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
 
-            CollectionsApiService.upsertDataSetToSelectedOrg(datasetChildFoldersToFilesMap, 
-                                                                    recordTypeDetailFromOrg, 
-                                                                    aliasAuthenticationConnection,
-                                                                    allOrNoneSelection);
+            CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
+                                                                datasetChildFoldersToFilesMap, 
+                                                                recordTypeDetailFromOrg, 
+                                                                aliasAuthenticationConnection,
+                                                                allOrNoneSelection);
 
     
         } catch(error) {
