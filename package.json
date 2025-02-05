@@ -89,6 +89,7 @@
   },
   "dependencies": {
     "@salesforce/core": "^8.8.0",
+    "jsforce": "^3.6.4",
     "ts-node": "^10.9.2",
     "xml2js": "^0.6.2"
   }
