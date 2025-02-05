@@ -1,10 +1,12 @@
-import { Config, Connection, Org } from "@salesforce/core";
+import { Connection, Org, SfError } from "@salesforce/core";
 import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import path = require('path');
+// import { Record, RecordResult, SuccessResult, ErrorResult, ExecuteOptions, DescribeSObjectResult } from 'jsforce';
+
 
 export class CollectionsApiService {
 
@@ -89,14 +91,15 @@ export class CollectionsApiService {
         return connection;
     }
 
-    static async insertUpsertDataSetToSelectedOrg(datasetChildFoldersToFilesMap: Record<string, string[]>, 
-                                                    recordTypeDetailFromTargetOrg: any,
-                                                    aliasAuthenticationConnection: Connection,
-                                                    allOrNoneSelection: boolean) {
+    static async upsertDataSetToSelectedOrg(datasetChildFoldersToFilesMap: Record<string, string[]>, 
+                                            recordTypeDetailFromTargetOrg: any,
+                                            aliasAuthenticationConnection: Connection,
+                                            allOrNoneSelection: boolean) {
 
         const collectionsApiFilesDirectoryFolderName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
         const collectionApiFiles = datasetChildFoldersToFilesMap[collectionsApiFilesDirectoryFolderName];
 
+        let objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
 
         for ( const collectionsApiFilePath of collectionApiFiles ) {
 
@@ -104,33 +107,114 @@ export class CollectionsApiService {
 
             let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
             collectionsApiJson = this.updateCollectionApiDetailWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
-            const collectionApiDataDetail = JSON.parse(collectionsApiJson);
+            
+            const preparedCollectionsApiDetail = JSON.parse(collectionsApiJson);
 
-            try {
+            const collectionsApiSobjectResult = this.makeCollectionsApiCall(preparedCollectionsApiDetail, 
+                                                                            aliasAuthenticationConnection,
+                                                                            allOrNoneSelection,
+                                                                            objectNameForFile);
 
-                const result = await aliasAuthenticationConnection.sobject(objectNameForFile).create(
-                    collectionApiDataDetail.records,
-                    { allOrNone: allOrNoneSelection }
-                );
-
-                console.log(result);
-
-            } catch (error) {
-                
-                const dmlInsertError = new Error(`There was an error inserting ${objectNameForFile}`);
-                throw dmlInsertError;
-
-            }
-   
-   
-
+       
         }
 
+    }
 
-   
-        // get collectionsApiDiectroy
+    static async makeCollectionsApiCall(preparedCollectionsApiDetail: any,
+                                        aliasAuthenticationConnection: Connection,
+                                        allOrNoneSelection: boolean,
+                                        sobjectNameToUpsert ) {
+
+        const sobjectsResult: any[] = new Array<any>();
+        const recordsToUpsert = preparedCollectionsApiDetail.records;
+
+        if (recordsToUpsert && recordsToUpsert.length > 0) {
+
+            const recordsToInsert: any[] = new Array<any>();
+            const recordsToUpdate: any[] = new Array<any>();
+
+            for (const record of recordsToUpsert) {
+                if (record.Id) {
+                // There is an Id, so it's an update
+                    recordsToUpdate.push(record);
+                } else {
+                // No Id, insert record
+                    recordsToInsert.push(record);
+                }
+            }
+
+            const batchSize = 200;
+
+            // UPDATING RECORDS
+            if (recordsToUpdate.length > 0) {
+    
+
+                for (let i = 0; i < recordsToUpdate.length; i += batchSize) {
+                // @ts-ignore: Don't know why, but TypeScript doesn't use the correct method override
+                    
+                    const recordsBatchToUpdate = recordsToUpdate.slice(i, i + batchSize);
+                    const chunkResults = await aliasAuthenticationConnection
+                        .sobject(sobjectNameToUpsert) // @ts-ignore: TODO: working code, but look at TS warning
+                        .update(recordsBatchToUpdate, { 
+                                    allowRecursive: true, 
+                                    allOrNone: allOrNoneSelection 
+                                })
+                        .catch((err) => {
+                            throw new SfError(`Error importing records: ${err}`);
+                            });
+
+                    sobjectsResult.push(...chunkResults);
+
+                }
+
+            }
+    
+            // INSERTING RECORDS
+            if (recordsToInsert.length > 0) {
+             
+                for (let i = 0; i < recordsToInsert.length; i += batchSize) {
+
+                    const recordsBatchToInsert = recordsToInsert.slice(i, i + batchSize);
+
+                    const chunkResults = await aliasAuthenticationConnection
+                        .sobject(sobjectNameToUpsert) // @ts-ignore: TODO: working code, but look at TS warning
+                        .insert(recordsBatchToInsert, { 
+                                allowRecursive: true, 
+                                allOrNone: allOrNoneSelection 
+                            })
+                        .catch((err) => {
+                            throw new SfError(`Error importing records: ${err}`);
+                        });
+
+                    sobjectsResult.push(...chunkResults);
+
+                }
+
+            }
+            
+        }
+
+        // try {
+
+        //     const result = await aliasAuthenticationConnection.sobject(objectToUpsert).create(
+        //         preparedCollectionsApiDetail.records,
+        //         { allOrNone: allOrNoneSelection }
+        //     );
+
+        //     console.log(result);
+
+        // } catch (error) {
+            
+        //     const dmlInsertError = new Error(`There was an error inserting ${objectToUpsert}`);
+        //     throw dmlInsertError;
+
+        // }
+
+        return sobjectsResult;
 
     }
+
+
 
     static getObjectNameFromCollectionsApiFilePath(filePath: string): string | null {
         
@@ -157,7 +241,6 @@ export class CollectionsApiService {
         return childFolderToFilesMap;
 
     }
-
 
     static async getFilesFromChildDirectoriesBySharedParentDirectory(datasetParentDirectory: string, datasetChildDirectoriesToGetFilesFrom: string[]): Promise<Record<string, string[]>> {
 
@@ -222,8 +305,5 @@ export class CollectionsApiService {
         return collectionsApiJson;
     
     }
-
-
-
 
 }
