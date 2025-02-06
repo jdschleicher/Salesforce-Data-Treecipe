@@ -4,7 +4,7 @@
 		"target": "ES6",
 		"outDir": "out",
 		"lib": [
-			"ES6"
+			"ES2023"
 		],
 		"sourceMap": true,
 		"rootDir": "src",
