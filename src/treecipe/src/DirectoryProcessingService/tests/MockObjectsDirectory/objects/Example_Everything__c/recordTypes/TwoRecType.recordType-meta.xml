@@ -6,15 +6,19 @@
     <picklistValues>
         <picklist>DependentPicklist__c</picklist>
         <values>
-            <fullName>tree</fullName>
+            <fullName>mulch</fullName>
             <default>false</default>
         </values>
         <values>
-            <fullName>weed</fullName>
+            <fullName>plant</fullName>
             <default>true</default>
         </values>
         <values>
-            <fullName>mulch</fullName>
+            <fullName>rocks</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>tree</fullName>
             <default>false</default>
         </values>
     </picklistValues>
