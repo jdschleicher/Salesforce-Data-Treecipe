@@ -164,8 +164,6 @@ export class ExtensionCommandService {
                 return;
             }
 
-         
-
             const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
 
             const selectedDataSetFullDirectoryPath = selectedDataSetDirectoryToInsert.detail;
@@ -175,7 +173,6 @@ export class ExtensionCommandService {
             
             const objectApiNamesToGetRecordTypeInfoFrom = Object.keys(treecipeObjectWrapperDetail.ObjectToObjectInfoMap);
 
-
             const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
 
             CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
@@ -184,7 +181,6 @@ export class ExtensionCommandService {
                                                                 aliasAuthenticationConnection,
                                                                 allOrNoneSelection);
 
-    
         } catch(error) {
 
             const commandName = 'insertDataSetBySelectedDirectory';
@@ -192,24 +188,6 @@ export class ExtensionCommandService {
 
         }
         
-        // try {
-            
-  
-        //     - insert data 
-        //         - insert 
-        //         - upsert
-        //         - keep track of ids
-        //         - all or none
-        //       -    
-        //     */
-          
-        // } catch(error) {
-
-        //     const commandName = 'insertDataSetBySelectedDirectory';
-        //     ErrorHandlingService.handleCapturedError(error, commandName);
-
-        // }
-
     }
 
 }

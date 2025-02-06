@@ -1,15 +1,10 @@
 import { Connection, Org, SfError } from "@salesforce/core";
-import { Connection, Org, SfError } from "@salesforce/core";
 import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import path = require('path');
-// import { Record, RecordResult, SuccessResult, ErrorResult, ExecuteOptions, DescribeSObjectResult } from 'jsforce';
-
-// import { Record, RecordResult, SuccessResult, ErrorResult, ExecuteOptions, DescribeSObjectResult } from 'jsforce';
-
 
 export class CollectionsApiService {
 
@@ -103,8 +98,6 @@ export class CollectionsApiService {
         const collectionsApiFilesDirectoryFolderName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
         const collectionApiFiles = datasetChildFoldersToFilesMap[collectionsApiFilesDirectoryFolderName];
 
-        let objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
-
         const insertAttemptsDirectoryName = 'InsertAttempts';
         const pathToInsertAttemptsDirectory = path.join(selectedDataSetFullDirectoryPath, insertAttemptsDirectoryName);
         if (!fs.existsSync(pathToInsertAttemptsDirectory)) {
@@ -115,67 +108,94 @@ export class CollectionsApiService {
         const timestampedInsertAttemptDirectoryFullPath = `${pathToInsertAttemptsDirectory}/insertAttempt-${isoDateTimestamp}`;
         fs.mkdirSync(timestampedInsertAttemptDirectoryFullPath);
 
-        let allCollectionApiFilesSobjectResults: Record<string, any[]> = {
-            'SuccessResults' : [],
-            'FailureResults' : []
+        let allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>> = {
+            'SuccessResults' : {},
+            'FailureResults' : {}
         };
+        let objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
 
         for ( const collectionsApiFilePath of collectionApiFiles ) {
 
             let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
             collectionsApiJson = this.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+            collectionsApiJson = this.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
             const preparedCollectionsApiDetail = JSON.parse(collectionsApiJson);
 
             const objectNameForFile = this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath);
-            const collectionsApiSobjectResult = this.makeCollectionsApiCall(preparedCollectionsApiDetail, 
+            const collectionsApiSobjectResult = await this.makeCollectionsApiCall(preparedCollectionsApiDetail, 
                                                                             aliasAuthenticationConnection,
                                                                             allOrNoneSelection,
                                                                             objectNameForFile);
 
                 
-            allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, collectionsApiSobjectResult);
-            objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult);
+            allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, collectionsApiSobjectResult, objectNameForFile);
+            objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
        
         }
 
+        const resultsFileName = `insertAttemptResults-${isoDateTimestamp}.json`;
+        const fullPathToResultsFile = path.join(timestampedInsertAttemptDirectoryFullPath, resultsFileName);
+        
+        const allCollectionApiFilesSobjectResultsJson = JSON.stringify(allCollectionApiFilesSobjectResults, null, 2);
+        fs.writeFile(fullPathToResultsFile, allCollectionApiFilesSobjectResultsJson, (err) => {
+            if (err) {
+                throw new Error('an error occurred when creating results file.');
+            }
+        });
+
     }
 
-    static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, any[]>, sObjectResults ) {
+    static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, sObjectResults, sobjectApiName ) {
 
+        for ( let i = 0; i < sObjectResults.length; i++) {
+
+            const recordResult = sObjectResults[i];
+            if ( recordResult.success ) {
+
+                const currentSuccessResultsMap = allCollectionApiFilesSobjectResults["SuccessResults"];
+                allCollectionApiFilesSobjectResults["SuccessResults"] = this.addItemToRecordMap(currentSuccessResultsMap, sobjectApiName, recordResult);   
+
+            } else {
+
+                const currentFailureResultsMap = allCollectionApiFilesSobjectResults["FailureResults"];
+                allCollectionApiFilesSobjectResults["FailureResults"] = this.addItemToRecordMap(currentFailureResultsMap, sobjectApiName, recordResult);   
+
+            }
+
+        }
 
         return allCollectionApiFilesSobjectResults;
         
     }
 
-    static updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>, sObjectResults) {
-
-                    // $record_index = 0
-            // ### ENSURE RESULTS TYPE IS OF LIST; POWERSHELL AUTO CASTS WHEN PASSING LIST VARIABLES THAT HAVE ONLY 1 ITEM IN THE COLLECTION
-            // $upserted_records_results = [PSCustomObject[]]$upserted_records_results
-            // $prepared_data_for_capturing_index_to_reference_id = [PSCustomObject[]]$prepared_data_for_capturing_index_to_reference_id
-            // foreach ( $completed_data_upsert_result in $upserted_records_results ) {
-        
-            //     $record_id = $completed_data_upsert_result.Id
-            //     $reference_id = $prepared_data_for_capturing_index_to_reference_id.records[$record_index].attributes.referenceId
-        
-            //     if ( -not($reference_id_to_associated_lookup_record_id_map.ContainsKey($reference_id)) ) {
-        
-            //         $reference_id_to_associated_lookup_record_id_map.Add( $reference_id, $record_id) | Out-Null
-        
-            //     } 
-        
-            //     $record_index++
-            // }
-        
-            // $reference_id_to_associated_lookup_record_id_map
-
-        for ( const recordResult in sObjectResults.records ) {
-
-            const expecteIdProperty = "Id";
-
+    // Function to add an item to the list corresponding to a key
+    static addItemToRecordMap(recordMap: Record<string, any[]>, key: string, item: any) {
+       
+        if (key in recordMap) {
+            recordMap[key].push(item);
+        } else {
+            recordMap[key] = [item];
         }
+
+        return recordMap;
+
+    }
+
+    static updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>, sObjectResults, orderedCollectionsApiRecordsDetailJustUpserted ) {
+
+        for ( let i = 0; i < sObjectResults.length; i++) {
+
+            const referenceName = orderedCollectionsApiRecordsDetailJustUpserted[i].attributes.referenceId;
+            const recordId = sObjectResults[i].id;
+
+            if ( !(referenceName in objectReferenceIdToOrgCreatedRecordIdMap) ) {
+                objectReferenceIdToOrgCreatedRecordIdMap[referenceName] = recordId;
+            }
         
+        }
+
         return objectReferenceIdToOrgCreatedRecordIdMap;
+
     }
 
     static async makeCollectionsApiCall(preparedCollectionsApiDetail: any,
@@ -339,12 +359,24 @@ export class CollectionsApiService {
             const recordTypeIdForOrg = recordTypeInfo.Id;
 
             const recordTypeIdentifierToReplace = `${objectName}.${recordTypeDeveloperName}`;
-            collectionsApiJson = collectionsApiJson.replace(recordTypeIdentifierToReplace, recordTypeIdForOrg);
+            collectionsApiJson = collectionsApiJson.replaceAll(recordTypeIdentifierToReplace, recordTypeIdForOrg);
 
         }
 
         return collectionsApiJson;
     
+    }
+
+    static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
+
+        for (const [referenceIdKey, referenceIdAssociatedRecordIdValue ] of  Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
+
+            collectionsApiJson = collectionsApiJson.replaceAll(referenceIdKey, referenceIdAssociatedRecordIdValue);
+        
+        }
+
+        return collectionsApiJson;
+
     }
 
 }

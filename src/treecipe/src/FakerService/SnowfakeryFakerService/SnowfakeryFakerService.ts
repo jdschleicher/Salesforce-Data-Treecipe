@@ -34,7 +34,7 @@ export class SnowfakeryFakerService implements IFakerService {
             'checkbox': '${{ (random_choice("true", "false")).lower() }}',
             'lookup': '"### TODO -- REFERENCE ID REQUIRED"',
             'masterdetail': '"### TODO -- REFERENCE ID REQUIRED"',
-            'formula': 'Formula fields are calculated, not generated',
+            'formula': '### TODO - REMOVE ME - Formula fields are calculated, not generated',
             'location': '"### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445"'
         };
     
