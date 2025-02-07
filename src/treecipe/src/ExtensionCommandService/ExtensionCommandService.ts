@@ -175,7 +175,7 @@ export class ExtensionCommandService {
 
             const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
 
-            CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
+            await CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
                                                                 datasetChildFoldersToFilesMap, 
                                                                 recordTypeDetailFromOrg, 
                                                                 aliasAuthenticationConnection,
