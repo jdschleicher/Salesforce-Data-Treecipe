@@ -66,7 +66,7 @@ jest.mock('vscode', () => ({
         test('given expected datetime XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedDatetimeXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
-            const expectedDatetimeSnowfakeryValue = '${{fake.date_time_between(start_date="-1y", end_date="now")}}';
+            const expectedDatetimeSnowfakeryValue = '${{ (fake.date_time_between(start_date="-1y", end_date="now")).strftime("%Y-%m-%dT%H:%M:%S.000+0000") }}';
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualDatetimeSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
@@ -147,8 +147,8 @@ jest.mock('vscode', () => ({
   count: 1
   fields:
     RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
-                    OneRecType
-                    TwoRecType`;
+                    Account.OneRecType
+                    Account.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
             const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);

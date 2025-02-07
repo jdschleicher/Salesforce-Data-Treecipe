@@ -59,7 +59,7 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
         });
 
         test('DateTime field returns correct faker expression', () => {
-            expect(fieldTypeToSnowfakeryMappings['datetime']).toBe('${{fake.date_time_between(start_date="-1y", end_date="now")}}');
+            expect(fieldTypeToSnowfakeryMappings['datetime']).toBe('${{ (fake.date_time_between(start_date="-1y", end_date="now")).strftime("%Y-%m-%dT%H:%M:%S.000+0000") }}');
         });
 
         test('Time field returns correct faker expression', () => {
@@ -75,7 +75,7 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
         });
 
         test('Checkbox field returns correct faker expression', () => {
-            expect(fieldTypeToSnowfakeryMappings['checkbox']).toBe('${{fake.boolean()}}');
+            expect(fieldTypeToSnowfakeryMappings['checkbox']).toBe('${{ (random_choice("true", "false")).lower() }}');
         });
 
         test('Lookup field returns correct faker expression', () => {
@@ -87,7 +87,7 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
         });
 
         test('Formula field returns correct message', () => {
-            expect(fieldTypeToSnowfakeryMappings['formula']).toBe('Formula fields are calculated, not generated');
+            expect(fieldTypeToSnowfakeryMappings['formula']).toBe('### TODO - REMOVE ME - Formula fields are calculated, not generated');
         });
 
         test('Location field returns correct faker expression', () => {
@@ -96,7 +96,7 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
 
         test('All Salesforce field types have a corresponding mapping', () => {
             const expectedFields = [
-                'text', 'textarea', 'longtextarea', 'richtextarea', 'email', 
+                'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
                 'lookup', 'masterdetail', 'formula', 'location'
