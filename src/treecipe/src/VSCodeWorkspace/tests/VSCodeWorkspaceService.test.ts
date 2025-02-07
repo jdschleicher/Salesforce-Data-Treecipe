@@ -7,14 +7,18 @@ import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
     workspace: {
-        workspaceFolders: undefined
+        workspaceFolders: undefined,
+        fs: {
+            readFile: jest.fn()
+        },
     },
     Uri: {
         file: (path: string) => ({ fsPath: path })
     },
     window: {
         showErrorMessage: jest.fn(),
-        showQuickPick: jest.fn()
+        showQuickPick: jest.fn(),
+        showInputBox: jest.fn()
     },
     ThemeIcon: jest.fn().mockImplementation(
         (name) => ({ id: name })
@@ -266,4 +270,176 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
+    describe('promptForUserInput', () => {
+
+        test('should return user input when showInputBox is called', async () => {
+
+            const expectedMockedResponse = 'test input';
+            const expectedPlaceholderArgument = 'Please enter a value:';
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(expectedMockedResponse);
+
+            const actualResponse = await VSCodeWorkspaceService.promptForUserInput(expectedPlaceholderArgument);
+
+            expect(actualResponse).toBe(expectedMockedResponse);
+            expect(vscode.window.showInputBox).toHaveBeenCalledWith({
+                placeHolder: expectedPlaceholderArgument
+            });
+
+        });
+
+        test('should return undefined if the user cancels the input', async () => {
+
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+
+            const result = await VSCodeWorkspaceService.promptForUserInput('Please enter a value:');
+
+            expect(result).toBeUndefined();
+
+        });
+
+    });
+
+    describe('getFileContentByPath', () => {
+
+        test('given expected file content to be returned from readFile, should return file content when readFile is successful', async () => {
+            
+            const filePath = '/path/to/file.txt';
+            const fileContent = 'File content here';
+            (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(Buffer.from(fileContent));
+
+            const result = await VSCodeWorkspaceService.getFileContentByPath(filePath);
+
+            expect(result).toBe(fileContent);
+            expect(vscode.workspace.fs.readFile).toHaveBeenCalledWith(vscode.Uri.file(filePath));
+        
+        });
+
+    });
+
+    describe('getNowIsoDateTimestamp', () => {
+        test('given expected value for datetime, should return the correctly formatted ISO date timestamp', () => {
+
+            const expectedDateTimeToBeFormatted = new Date('2024-11-25T16:24:15.000Z');
+            jest.spyOn(global, 'Date').mockImplementationOnce(() => expectedDateTimeToBeFormatted as any);
+
+            const actualIsoDateTimeResult = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+
+            expect(actualIsoDateTimeResult).toBe('2024-11-25T16-24-15');
+
+        });
+
+    });
+
+    describe('buildDirectoryVSCodeQuickPickItemByDirectoryEntry', () => {
+        
+        test('given expected arguments and mocked out modules, should build the correct quickPickItem', () => {
+            
+            const fakeWorkspaceRoot = '/mock/workspace/root';
+            const fakeDirectoryName = 'fakeDirectory';
+            const pathToFakeDirectory = 'mock/path/to/entry';
+            const rootPathToFakeDirectory = `${fakeWorkspaceRoot}/${pathToFakeDirectory}`;
+            
+            const mockDirent = {
+                path: rootPathToFakeDirectory, 
+                name: fakeDirectoryName, 
+            } as fs.Dirent;
+    
+    
+            const mockIcon = new vscode.ThemeIcon('folder');
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
+
+            const actualQuickPickItemEntry = VSCodeWorkspaceService.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(mockDirent, fakeWorkspaceRoot);
+    
+            const fullFakePath = `${fakeWorkspaceRoot}/${pathToFakeDirectory}/${fakeDirectoryName}`;
+            const fakeRelativePath = `./${pathToFakeDirectory}/${fakeDirectoryName}/`;
+            expect(actualQuickPickItemEntry).toEqual({
+                label: fakeRelativePath,
+                description: 'Directory',
+                iconPath: mockIcon,
+                detail: fullFakePath,
+            });
+
+        });
+
+    });
+
+    describe('getDataSetDirectoryQuickPickItemsByStartingDirectoryPath', () => {
+
+        test('should return quick pick items for directories containing "dataset"', async () => {
+
+            const subStringToIdentifyDirectoryAsDataSetDirectory = 'dataset';
+            const mockReaddir = jest.fn().mockResolvedValue([
+                { 
+                    name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/rest-ofdirectoryname`, 
+                    isDirectory: () => true }, 
+                { 
+                    name: 'other', 
+                    isDirectory: () => true }, // expected to not be in returned quickpick items
+                { 
+                    name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/anotherone-rest-ofdirectoryname`, 
+                    isDirectory: () => true } 
+            ]);
+            fs.promises.readdir = mockReaddir;
+    
+            const mockWorkspaceRoot = '/mock/workspace/root';
+            jest.spyOn(VSCodeWorkspaceService, "getWorkspaceRoot").mockReturnValue(mockWorkspaceRoot);
+
+            const mockIcon = new vscode.ThemeIcon('folder');
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
+            const mockQuickPickItem = { 
+                label: 'mock label', 
+                description: 'mock description', 
+                iconPath: mockIcon, 
+                detail: 'mock detail' 
+            };
+            jest.spyOn(VSCodeWorkspaceService, 'buildDirectoryVSCodeQuickPickItemByDirectoryEntry').mockReturnValue(mockQuickPickItem);
+    
+            const quickPickItems: vscode.QuickPickItem[] = [];
+            const directoryPath = '/mock/directory/path';
+            const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
+    
+            expect(mockReaddir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
+            expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
+            
+            const expectedQuickPickItems = [
+                { 
+                    label: 'mock label', 
+                    description: 'mock description', 
+                    iconPath: mockIcon, 
+                    detail: 'mock detail' 
+                },
+                { 
+                    label: 'mock label', 
+                    description: 'mock description', 
+                    iconPath: mockIcon, 
+                    detail: 'mock detail' 
+                }
+            ];
+
+            expect(actualDataSetQuickPickItems).toEqual(expectedQuickPickItems);
+
+        });
+    
+        test('given no directories with dataset substring, should not return non-dataset directories', async () => {
+
+            const mockReaddir = jest.fn().mockResolvedValue([
+                { name: 'other1', isDirectory: () => true },
+                { name: 'other2', isDirectory: () => true }
+            ]);
+            fs.promises.readdir = mockReaddir;
+    
+            const quickPickItems: vscode.QuickPickItem[] = [];
+            const directoryPath = '/mock/directory/path';
+            const result = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
+    
+            expect(result).toEqual([]); 
+        
+        });
+
+    });
+
 });
+
+
+
+
