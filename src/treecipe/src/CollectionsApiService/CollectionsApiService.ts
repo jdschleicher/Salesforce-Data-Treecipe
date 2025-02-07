@@ -128,7 +128,10 @@ export class CollectionsApiService {
                                                                             objectNameForFile);
 
                 
-            allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, collectionsApiSobjectResult, objectNameForFile);
+            allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, 
+                                                                                                    collectionsApiSobjectResult, 
+                                                                                                    objectNameForFile, 
+                                                                                                    aliasAuthenticationConnection);
             objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
        
         }
@@ -145,7 +148,10 @@ export class CollectionsApiService {
 
     }
 
-    static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, sObjectResults, sobjectApiName ) {
+    static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, 
+                                                        sObjectResults, 
+                                                        sobjectApiName,
+                                                        aliasAuthenticationConnection: Connection, ) {
 
         for ( let i = 0; i < sObjectResults.length; i++) {
 
@@ -153,6 +159,7 @@ export class CollectionsApiService {
             if ( recordResult.success ) {
 
                 const currentSuccessResultsMap = allCollectionApiFilesSobjectResults["SuccessResults"];
+                recordResult.orgRecordLink = `${aliasAuthenticationConnection.instanceUrl}/${recordResult.id}`;
                 allCollectionApiFilesSobjectResults["SuccessResults"] = this.addItemToRecordMap(currentSuccessResultsMap, sobjectApiName, recordResult);   
 
             } else {
@@ -371,7 +378,7 @@ export class CollectionsApiService {
 
         for (const [referenceIdKey, referenceIdAssociatedRecordIdValue ] of  Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
 
-            collectionsApiJson = collectionsApiJson.replaceAll(referenceIdKey, referenceIdAssociatedRecordIdValue);
+            collectionsApiJson = collectionsApiJson.replaceAll(referenceIdKey, `${referenceIdAssociatedRecordIdValue}`);
         
         }
 
