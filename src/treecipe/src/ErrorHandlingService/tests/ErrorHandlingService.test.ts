@@ -17,7 +17,8 @@ jest.mock('vscode', () => ({
     },
     commands: {
         executeCommand: jest.fn(),
-    },
+    }
+    
 }), { virtual: true });
 
 describe('ErrorHandlingService', () => {

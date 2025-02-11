@@ -1,4 +1,5 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
+import { MockDirectoryService } from "../../DirectoryProcessingService/tests/MockObjectsDirectory/MockDirectoryService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 
@@ -32,6 +33,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
     describe('promptForObjectsPath', () => {
 
         test('if no selection made, should return undefined', async () => {
+
             const fakeWorkspaceRoot = '/fake/workspace';
             const mockedVSCodeQuickPickItems = MockVSCodeWorkspaceService.getMockVSCodeQuickPickItems();
 
@@ -45,7 +47,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
         test('should return undefined when user makes no selection', async () => {       
 
             const mockedVSCodeQuickPickItems = MockVSCodeWorkspaceService.getMockVSCodeQuickPickItems();
-            jest.spyOn(VSCodeWorkspaceService as any, 'getPotentialTreecipeObjectDirectoryPathsQuickPickItems').mockResolvedValue(mockedVSCodeQuickPickItems);
+            jest.spyOn(VSCodeWorkspaceService, 'getPotentialTreecipeObjectDirectoryPathsQuickPickItems').mockResolvedValue(mockedVSCodeQuickPickItems);
 
             const expectedPath = "/test/path";
             const result = await VSCodeWorkspaceService.promptForObjectsPath(expectedPath);
@@ -53,10 +55,12 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             expect(VSCodeWorkspaceService.getPotentialTreecipeObjectDirectoryPathsQuickPickItems).toHaveBeenCalledWith(expectedPath);
             expect(vscode.window.showQuickPick).toHaveBeenCalled();
             expect(result).toBeUndefined();
+
         });
 
 
         test('should call vscode.window.showQuickPick with correct parameters', async () => {
+
             const showQuickPickSpy = jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined);
 
             await VSCodeWorkspaceService.promptForFakerServiceImplementation();
@@ -367,52 +371,38 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         test('should return quick pick items for directories containing "dataset"', async () => {
 
-            const subStringToIdentifyDirectoryAsDataSetDirectory = 'dataset';
-            const mockReaddir = jest.fn().mockResolvedValue([
-                { 
-                    name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/rest-ofdirectoryname`, 
-                    isDirectory: () => true }, 
-                { 
-                    name: 'other', 
-                    isDirectory: () => true }, // expected to not be in returned quickpick items
-                { 
-                    name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/anotherone-rest-ofdirectoryname`, 
-                    isDirectory: () => true } 
-            ]);
-            fs.promises.readdir = mockReaddir;
+            const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
+            jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
     
-            const mockWorkspaceRoot = '/mock/workspace/root';
+            const mockWorkspaceRoot = 'theworkspaceroot'; // "theworkspaceroot" is found in the "path" property of the expected mocked directories. The matching workspaceroot is needed to build out quickpickitems correctly
             jest.spyOn(VSCodeWorkspaceService, "getWorkspaceRoot").mockReturnValue(mockWorkspaceRoot);
 
             const mockIcon = new vscode.ThemeIcon('folder');
             jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
-            const mockQuickPickItem = { 
-                label: 'mock label', 
-                description: 'mock description', 
-                iconPath: mockIcon, 
-                detail: 'mock detail' 
-            };
-            jest.spyOn(VSCodeWorkspaceService, 'buildDirectoryVSCodeQuickPickItemByDirectoryEntry').mockReturnValue(mockQuickPickItem);
-    
+       
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';
             const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
     
-            expect(mockReaddir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
+            expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
             
             const expectedQuickPickItems = [
-                { 
-                    label: 'mock label', 
-                    description: 'mock description', 
-                    iconPath: mockIcon, 
-                    detail: 'mock detail' 
+                {
+                    "label": "./andotherthings/dataset/rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset/rest-ofdirectoryname"
                 },
-                { 
-                    label: 'mock label', 
-                    description: 'mock description', 
-                    iconPath: mockIcon, 
-                    detail: 'mock detail' 
+                {
+                    "label": "./andotherthings/dataset/anotherone-rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset/anotherone-rest-ofdirectoryname"
                 }
             ];
 

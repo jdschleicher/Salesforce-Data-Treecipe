@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 
 export class MockDirectoryService {
 
@@ -98,6 +99,32 @@ export class MockDirectoryService {
       ["README.md", vscode.FileType.File],
     ];
     return mockedFiles;
+  }
+
+  static getMockedDirectoriesWithDatSetItemsIncluded() {
+
+    const subStringToIdentifyDirectoryAsDataSetDirectory = 'dataset';
+    const fakeDataSetDirectories: any[] = [
+      { 
+          name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/rest-ofdirectoryname`, 
+          isDirectory: () => true,
+          path: 'theworkspaceroot/andotherthings'
+      }, 
+      { 
+          name: 'other', // expected to not be in returned quickpick items
+          isDirectory: () => true,
+          path: 'theworkspaceroot/andotherthings'
+      }, 
+      { 
+          name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/anotherone-rest-ofdirectoryname`, 
+          isDirectory: () => true,
+          path: 'theworkspaceroot/andotherthings'
+      } 
+
+    ];  
+
+    return fakeDataSetDirectories as fs.Dirent[];
+
   }
 
 }

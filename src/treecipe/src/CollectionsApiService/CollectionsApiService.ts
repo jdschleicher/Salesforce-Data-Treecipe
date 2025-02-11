@@ -39,17 +39,39 @@ export class CollectionsApiService {
     
     }
 
-    static getExpectedSalesforceOrgToInsertAgainst() {
+    static async getExpectedSalesforceOrgToInsertAgainst() {
 
         const userPromptForInputMessage = 'What Salesforce alias will the data set be inserted against? -- DO NOT USE PRODUCTION ORG';
-        const salesforceOrgToInsertAgainst = VSCodeWorkspaceService.promptForUserInput(userPromptForInputMessage);
+        const salesforceOrgToInsertAgainst = await VSCodeWorkspaceService.promptForUserInput(userPromptForInputMessage);
         return salesforceOrgToInsertAgainst;
 
     }
 
      static async promptForAllOrNoneInsertDecision(): Promise<boolean | undefined> {
             
-        let items: vscode.QuickPickItem[] = [
+        let allOrNoneItems = this.getAllOrNoneQuickPickItemSelections();
+      
+        const allOrNoneSelection = await vscode.window.showQuickPick(
+            allOrNoneItems,
+            {
+                placeHolder: 'Select AllOrNone preference:',
+                ignoreFocusOut: true
+            }
+        );
+
+        if (!allOrNoneSelection) {
+            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
+            return undefined; 
+        } else {
+            const booleanConvertedAllOrNone = allOrNoneSelection.detail as unknown as boolean;
+            return booleanConvertedAllOrNone;
+        }
+
+    }
+
+    static getAllOrNoneQuickPickItemSelections() {
+
+        const allOrNoneItems: vscode.QuickPickItem[] = [
             {
                 label: 'AllOrNone: TRUE',
                 description: 'If true, any insert failure will reset any successful inserts previously made',
@@ -64,20 +86,7 @@ export class CollectionsApiService {
             }
         ];
 
-        const allOrNoneSelection = await vscode.window.showQuickPick(
-            items,
-            {
-                placeHolder: 'Select AllOrNone preference:',
-                ignoreFocusOut: true
-            }
-        );
-
-        if (!allOrNoneSelection) {
-            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
-            return undefined; 
-        } else {
-            return allOrNoneSelection.detail as unknown as boolean;
-        }
+        return allOrNoneItems;
 
     }
 
@@ -175,7 +184,6 @@ export class CollectionsApiService {
         
     }
 
-    // Function to add an item to the list corresponding to a key
     static addItemToRecordMap(recordMap: Record<string, any[]>, key: string, item: any) {
        
         if (key in recordMap) {
@@ -281,8 +289,6 @@ export class CollectionsApiService {
         return sobjectsResult;
 
     }
-
-
 
     static getObjectNameFromCollectionsApiFilePath(filePath: string): string | null {
         
