@@ -14,6 +14,8 @@ import { CollectionsApiService } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
 import { MockDirectoryService } from '../../DirectoryProcessingService/tests/MockObjectsDirectory/MockDirectoryService';
+import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
+import { allowedNodeEnvironmentFlags } from 'process';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -123,6 +125,34 @@ describe('Shared tests for CollectionsApiService', () => {
 
             expect(actualAllOrNoneSelections[0].detail).toBe('true');
             expect(actualAllOrNoneSelections[1].detail).toBe('false');
+
+        });
+
+    });
+
+    describe('updateCompleteCollectionApiSobjectResults', () => {
+
+        test('given mocked failed and success, returns expected details for all or None selections', () => {
+
+            let initialCollectionApiResults: Record<string, Record<string, any[]>> = {
+                'SuccessResults' : {},
+                'FailureResults' : {}
+            };
+            const expectedObjectName = 'Account';
+            const mockSobjectCollectionApiResults = MockCollectionsApiService.getMockCombinedSuccessAndFailureCollectionResults();
+            const fakeSalesforceCoreConnection = MockCollectionsApiService.getFakeSalesforceCoreConnection();
+            const actualAllSobjectCollectionResults = CollectionsApiService.updateCompleteCollectionApiSobjectResults(
+                initialCollectionApiResults,
+                mockSobjectCollectionApiResults,
+                expectedObjectName,
+                fakeSalesforceCoreConnection
+            );
+        
+            const countOfAccountSuccessResults = actualAllSobjectCollectionResults.SuccessResults[expectedObjectName].length;
+            const countOfAccountFailureResults = actualAllSobjectCollectionResults.FailureResults[expectedObjectName].length;
+
+            expect(countOfAccountSuccessResults).toBe(3);
+            expect(countOfAccountFailureResults).toBe(2);
 
         });
 

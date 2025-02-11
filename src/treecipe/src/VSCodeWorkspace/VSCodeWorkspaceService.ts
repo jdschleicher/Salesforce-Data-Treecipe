@@ -249,5 +249,22 @@ export class VSCodeWorkspaceService {
             new Date().toISOString().split(".")[0].replace(/:/g,"-")
         ); 
     }
+
+
+    static async getFilesInDirectory(directoryToGetFilesFrom: string): Promise<string[]> {
+
+        const entries = await fs.promises.readdir(directoryToGetFilesFrom, { withFileTypes: true });
+       
+        const filesFromDirectory: string[] = [];
+        for (const entry of entries) {
+            const fullPath = path.join(directoryToGetFilesFrom, entry.name);
+            if (entry.isFile()) {
+                filesFromDirectory.push(fullPath);
+            }
+        }
+
+        return filesFromDirectory;
+
+    }
     
 }

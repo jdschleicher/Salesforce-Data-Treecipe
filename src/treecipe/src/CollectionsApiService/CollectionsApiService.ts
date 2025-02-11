@@ -228,10 +228,8 @@ export class CollectionsApiService {
 
             for (const record of recordsToUpsert) {
                 if (record.Id) {
-                // There is an Id, so it's an update
                     recordsToUpdate.push(record);
                 } else {
-                // No Id, insert record
                     recordsToInsert.push(record);
                 }
             }
@@ -242,18 +240,17 @@ export class CollectionsApiService {
             if (recordsToUpdate.length > 0) {
     
                 for (let i = 0; i < recordsToUpdate.length; i += batchSize) {
-                // @ts-ignore: Don't know why, but TypeScript doesn't use the correct method override
                     
                     const recordsBatchToUpdate = recordsToUpdate.slice(i, i + batchSize);
                     const chunkResults = await aliasAuthenticationConnection
-                        .sobject(sobjectNameToUpsert) // @ts-ignore: TODO: working code, but look at TS warning
+                        .sobject(sobjectNameToUpsert) 
                         .update(recordsBatchToUpdate, { 
                                     allowRecursive: true, 
                                     allOrNone: allOrNoneSelection 
                                 })
                         .catch((err) => {
                             throw new SfError(`Error importing records: ${err}`);
-                            });
+                        });
 
                     sobjectsResult.push(...chunkResults);
 
@@ -291,15 +288,15 @@ export class CollectionsApiService {
     }
 
     static getObjectNameFromCollectionsApiFilePath(filePath: string): string | null {
-        
+        // expected filename pattern should be "collectionsApi-Example_Object__c.json"
         const matchObjectNameInFilePathRegex = /collectionsApi-(.*?)\.json$/;
         
         const expectedObjectNameMatch = filePath.match(matchObjectNameInFilePathRegex);
         
         if (expectedObjectNameMatch) {
-            return expectedObjectNameMatch[1]; // This will be the captured object name (Example_Everything__c)
+            return expectedObjectNameMatch[1]; 
         } else {
-            return null; // If the pattern doesn't match, return null
+            return null; 
         }
 
     }
@@ -322,29 +319,13 @@ export class CollectionsApiService {
         for ( const childFolderName of datasetChildDirectoriesToGetFilesFrom ) {
 
             const fullPath = `${datasetParentDirectory}/${childFolderName}`;
-            const files = await this.getFilesInDirectory(fullPath);
+            const files = await VSCodeWorkspaceService.getFilesInDirectory(fullPath);
             filesByDirectory[childFolderName] = files;
 
         }
     
         return filesByDirectory;
         
-    }
-
-    static async getFilesInDirectory(directoryToGetFilesFrom: string): Promise<string[]> {
-
-        const entries = await fs.promises.readdir(directoryToGetFilesFrom, { withFileTypes: true });
-       
-        const filesFromDirectory: string[] = [];
-        for (const entry of entries) {
-            const fullPath = path.join(directoryToGetFilesFrom, entry.name);
-            if (entry.isFile()) {
-                filesFromDirectory.push(fullPath);
-            }
-        }
-
-        return filesFromDirectory;
-
     }
 
     static async getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap: Record<string, string[]>) {
