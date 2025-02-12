@@ -117,6 +117,10 @@ export class CollectionsApiService {
         const timestampedInsertAttemptDirectoryFullPath = `${pathToInsertAttemptsDirectory}/insertAttempt-${isoDateTimestamp}`;
         fs.mkdirSync(timestampedInsertAttemptDirectoryFullPath);
 
+        // File and directory prep for capturing Collection Api call results
+        const resultsFileName = `insertAttemptResults-${isoDateTimestamp}.json`;
+        const fullPathToResultsFile = path.join(timestampedInsertAttemptDirectoryFullPath, resultsFileName);
+
         let allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>> = {
             'SuccessResults' : {},
             'FailureResults' : {}
@@ -135,25 +139,22 @@ export class CollectionsApiService {
                                                                             aliasAuthenticationConnection,
                                                                             allOrNoneSelection,
                                                                             objectNameForFile);
-
                 
             allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, 
                                                                                                     collectionsApiSobjectResult, 
                                                                                                     objectNameForFile, 
                                                                                                     aliasAuthenticationConnection);
+
+            this.appendInsertAttemptsFileWithLatestSobjectResults(allCollectionApiFilesSobjectResults, fullPathToResultsFile);
+
+            // IF ALLORNONE ARGUMENT SET TO --TRUE-- AND ANY OBJECT KEYS ARE FOUND IN FAILURE RESULTS, DELETE PREVIOUS SAVED RECORDS
+            if ( allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0 ) {
+                this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                break;
+            }
             objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
        
         }
-
-        const resultsFileName = `insertAttemptResults-${isoDateTimestamp}.json`;
-        const fullPathToResultsFile = path.join(timestampedInsertAttemptDirectoryFullPath, resultsFileName);
-        
-        const allCollectionApiFilesSobjectResultsJson = JSON.stringify(allCollectionApiFilesSobjectResults, null, 2);
-        fs.writeFile(fullPathToResultsFile, allCollectionApiFilesSobjectResultsJson, (err) => {
-            if (err) {
-                throw new Error('an error occurred when creating results file.');
-            }
-        });
 
     }
 
@@ -182,6 +183,52 @@ export class CollectionsApiService {
 
         return allCollectionApiFilesSobjectResults;
         
+    }
+
+    static appendInsertAttemptsFileWithLatestSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, fullPathToResultsFile: string) {
+       
+        const allCollectionApiFilesSobjectResultsJson = JSON.stringify(allCollectionApiFilesSobjectResults, null, 2);
+        fs.writeFileSync(fullPathToResultsFile, allCollectionApiFilesSobjectResultsJson);
+        
+    }
+
+    static async deletePreviouslySavedRecords(fullPathToInsertAttemptResultsFile:string, aliasAuthenticationConnection: Connection) {
+
+        const previousSaveResultsJson = fs.readFileSync(fullPathToInsertAttemptResultsFile, 'utf-8');
+        const saveResultsDetail:Record<string, Record<string, any[]>> = JSON.parse(previousSaveResultsJson);
+
+        const objectToSuccessfulRecordCreationResults = saveResultsDetail["SuccessResults"];
+
+        const collectionsApiRecordBatchSizeLimitPerRestCall = 200;
+
+        // may do something with the batched delete results in the future; just collecting results at the moment
+        const deleteSobjectsResults = new Array<any>();
+
+            // loop over objects
+        // loop over success results
+        // get all for one object
+        // batch delete calls
+        // test - if allornone true deletes old records --- test if allornon false skips over and keeps going --- test if allornone true break stops save result and what happens ? showinfovscode?
+        for (const [objectKey, successfulSavesForObject ] of  Object.entries(objectToSuccessfulRecordCreationResults)) {
+
+            for (let i = 0; i < successfulSavesForObject.length; i += collectionsApiRecordBatchSizeLimitPerRestCall) {
+                
+                const recordsBatchToUpdate = successfulSavesForObject.slice(i, i + collectionsApiRecordBatchSizeLimitPerRestCall);
+                const recordIdsToDelete:string[] = recordsBatchToUpdate.map((savedRecordInBatch) => savedRecordInBatch.id);
+
+                const chunkResults = await aliasAuthenticationConnection
+                                            .sobject(objectKey) 
+                                            .delete(recordIdsToDelete)
+                                            .catch((err) => {
+                                                throw new SfError(`Error deleting records for ${objectKey}: ${err}`);
+                                            });
+            
+                deleteSobjectsResults.push(...chunkResults);
+
+            }
+
+        }
+
     }
 
     static addItemToRecordMap(recordMap: Record<string, any[]>, key: string, item: any) {
@@ -234,23 +281,23 @@ export class CollectionsApiService {
                 }
             }
 
-            const batchSize = 200;
+            const collectionsApiRecordBatchSizeLimitPerRestCall = 200;
 
             // UPDATING RECORDS
             if (recordsToUpdate.length > 0) {
     
-                for (let i = 0; i < recordsToUpdate.length; i += batchSize) {
+                for (let i = 0; i < recordsToUpdate.length; i += collectionsApiRecordBatchSizeLimitPerRestCall) {
                     
-                    const recordsBatchToUpdate = recordsToUpdate.slice(i, i + batchSize);
+                    const recordsBatchToUpdate = recordsToUpdate.slice(i, i + collectionsApiRecordBatchSizeLimitPerRestCall);
                     const chunkResults = await aliasAuthenticationConnection
-                        .sobject(sobjectNameToUpsert) 
-                        .update(recordsBatchToUpdate, { 
-                                    allowRecursive: true, 
-                                    allOrNone: allOrNoneSelection 
-                                })
-                        .catch((err) => {
-                            throw new SfError(`Error importing records: ${err}`);
-                        });
+                                                .sobject(sobjectNameToUpsert) 
+                                                .update(recordsBatchToUpdate, { 
+                                                    allowRecursive: false, 
+                                                    allOrNone: allOrNoneSelection 
+                                                })
+                                                .catch((err) => {
+                                                    throw new SfError(`Error importing records: ${err}`);
+                                                });
 
                     sobjectsResult.push(...chunkResults);
 
@@ -261,19 +308,19 @@ export class CollectionsApiService {
             // INSERTING RECORDS
             if (recordsToInsert.length > 0) {
              
-                for (let i = 0; i < recordsToInsert.length; i += batchSize) {
+                for (let i = 0; i < recordsToInsert.length; i += collectionsApiRecordBatchSizeLimitPerRestCall) {
 
-                    const recordsBatchToInsert = recordsToInsert.slice(i, i + batchSize);
+                    const recordsBatchToInsert = recordsToInsert.slice(i, i + collectionsApiRecordBatchSizeLimitPerRestCall);
 
                     const chunkResults = await aliasAuthenticationConnection
-                        .sobject(sobjectNameToUpsert) 
-                        .insert(recordsBatchToInsert, { 
-                                allowRecursive: true, 
-                                allOrNone: allOrNoneSelection 
-                            })
-                        .catch((err) => {
-                            throw new SfError(`Error importing records: ${err}`);
-                        });
+                                                .sobject(sobjectNameToUpsert) 
+                                                .insert(recordsBatchToInsert, { 
+                                                    allowRecursive: false, 
+                                                    allOrNone: allOrNoneSelection 
+                                                })
+                                                .catch((err) => {
+                                                    throw new SfError(`Error importing records: ${err}`);
+                                                });
 
                     sobjectsResult.push(...chunkResults);
 
