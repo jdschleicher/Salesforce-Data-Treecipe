@@ -63,7 +63,7 @@ export class CollectionsApiService {
             // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
             return undefined; 
         } else {
-            const booleanConvertedAllOrNone = allOrNoneSelection.detail as unknown as boolean;
+            const booleanConvertedAllOrNone:boolean = (allOrNoneSelection.detail.toLowerCase() === "true"); 
             return booleanConvertedAllOrNone;
         }
 
