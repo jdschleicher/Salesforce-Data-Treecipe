@@ -310,4 +310,37 @@ export class MockRecordTypeService {
         };
     }
 
+    static getFakeRecordTypeByIdsQueryResults() {
+
+        const fakeRecordTypeQueryResults = `
+        {
+"records": [
+    {
+        "Id": "0120Y000001tZ1Q",
+        "SObjectType": "Account",
+        "DeveloperName": "Account_Record_Type"
+    },
+    {
+        "Id": "0120Y000001tZ2R",
+        "SObjectType": "Contact",
+        "DeveloperName": "Contact_Record_Type"
+    },
+    {
+        "Id": "0120Y000001tZ3S",
+        "SObjectType": "Opportunity",
+        "DeveloperName": "Opportunity_Record_Type"
+    },
+    {
+        "Id": "0120Y000001tZ4T",
+        "SObjectType": "Lead",
+        "DeveloperName": "Lead_Record_Type"
+    }
+  ]
+}
+        `;
+
+        return fakeRecordTypeQueryResults;
+
+    }
+
 } 

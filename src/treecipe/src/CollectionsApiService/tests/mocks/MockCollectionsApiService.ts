@@ -42,5 +42,18 @@ export class MockCollectionsApiService {
         return fakeConnection;
     }
 
+    static getFakeTreecipeObjectInfoWrapperJson() {
+
+        const fakeTreecipeObjectInfoWrapperJson = `
+{
+    "propertyone": "fakevalue"
+}
+`;
+
+        return fakeTreecipeObjectInfoWrapperJson;
+
+    }
+
+
 
 }

@@ -1,21 +1,13 @@
 // import * as vscode from 'vscode';
 // import { CollectionsApiService } from '../yourModule';
-// import { VSCodeWorkspaceService } from '../services/VSCodeWorkspaceService';
-// import { ConfigurationService } from '../services/ConfigurationService';
-
-// jest.mock('vscode');
-// jest.mock('../services/VSCodeWorkspaceService');
-// jest.mock('../services/ConfigurationService');
-
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { CollectionsApiService } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
 import { MockDirectoryService } from '../../DirectoryProcessingService/tests/MockObjectsDirectory/MockDirectoryService';
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
-import { allowedNodeEnvironmentFlags } from 'process';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -158,9 +150,163 @@ describe('Shared tests for CollectionsApiService', () => {
 
     });
 
+    describe('updateCompleteCollectionApiSobjectResults', () => {
+      
+        test('given successfull records should add successful records to SuccessResults', () => {
+            
+            let allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>> = {
+                'SuccessResults' : {},
+                'FailureResults' : {}
+            };
+
+            const fakeSalesforceConnection = MockCollectionsApiService.getFakeSalesforceCoreConnection();
+            const expectedSuccessfulResults = MockCollectionsApiService.getMockedCollectionApiSuccessfulResults();
  
+            const sobjectApiName = 'mockSObjectApiName';
+        
+            allCollectionApiFilesSobjectResults = CollectionsApiService.updateCompleteCollectionApiSobjectResults(
+                allCollectionApiFilesSobjectResults,
+                expectedSuccessfulResults,
+                sobjectApiName,
+                fakeSalesforceConnection
+            );
+        
+            const actualCountOfSuccessResults = Object.values(allCollectionApiFilesSobjectResults.SuccessResults)[0].length;
+            const expectedCountOfSucessResults = expectedSuccessfulResults.length;
+            expect(actualCountOfSuccessResults).toBe(expectedCountOfSucessResults);
+        
+        });
+        
+        test('given fake failure and successful tests, should add to expected FailureResults and SuccessResults maps', () => {
+            
+            let allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>> = {
+                'SuccessResults' : {},
+                'FailureResults' : {}
+            };
 
+            const sObjectResults = MockCollectionsApiService.getMockCombinedSuccessAndFailureCollectionResults();
+            const sobjectApiName = 'mockSObjectApiName';
+            const fakeSalesforceConnection = MockCollectionsApiService.getFakeSalesforceCoreConnection();
 
-  
+            const spyAddItemsToRecordMap = jest.spyOn(CollectionsApiService, 'addItemToRecordMap');
 
+            allCollectionApiFilesSobjectResults = CollectionsApiService.updateCompleteCollectionApiSobjectResults(
+                allCollectionApiFilesSobjectResults,
+                sObjectResults,
+                sobjectApiName,
+                fakeSalesforceConnection
+            );
+
+            const expectedSuccessResultsCount = 3;
+            const actualCountOfSuccessResults = Object.values(allCollectionApiFilesSobjectResults.SuccessResults)[0].length;
+            expect(actualCountOfSuccessResults).toBe(expectedSuccessResultsCount);
+            
+            const expectedFailureResultsCount = 2;
+            const actualCountOfFailureResults = Object.values(allCollectionApiFilesSobjectResults.FailureResults)[0].length;
+            expect(actualCountOfFailureResults).toBe(expectedFailureResultsCount);
+        
+            // not sure how useful this spy test is but with the expected combined mock sobject results being 5 we can confirm its making the expected amount of map updates
+            const expectedCountOfSocjectResults = sObjectResults.length;
+            expect(spyAddItemsToRecordMap).toHaveBeenCalledTimes(expectedCountOfSocjectResults);
+
+        });
+
+    });
+
+    describe('addItemToRecordMap', () => {
+        
+        test('given expected records for existing key, should add an item to an existing key in the recordMap', () => {
+          
+            const expectedExistingRecord = {
+                id: 1, name: 'Item 1'
+            };
+            const recordMap: Record<string, any[]> = {
+                'existingKey': [
+                    expectedExistingRecord
+                ]
+            };
+
+            const key = 'existingKey';
+            const newRecordToAddToExistingKey = { id: 2, name: 'Item 2' };
+        
+            const updatedRecordMap = CollectionsApiService.addItemToRecordMap(recordMap, key, newRecordToAddToExistingKey);
+        
+            expect(updatedRecordMap[key]).toHaveLength(2);
+            expect(updatedRecordMap[key]).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining(expectedExistingRecord),
+                    expect.objectContaining(newRecordToAddToExistingKey),
+                ])
+            );
+
+        });
+      
+        test('given empty map, should create a new key and add the item when the key does not exist in the recordMap', () => {
+            
+            const recordMap: Record<string, any[]> = {};
+            const key = 'newKey';
+            const newRecordForNewKey = { id: 2, name: 'Item 2' };
+        
+            const updatedRecordMap = CollectionsApiService.addItemToRecordMap(recordMap, key, newRecordForNewKey);
+        
+            expect(updatedRecordMap[key]).toHaveLength(1);
+            expect(updatedRecordMap[key]).toEqual([expect.objectContaining(newRecordForNewKey)]);
+
+        });
+      
+ 
+    });
+
+    describe('getObjectNameFromCollectionsApiFilePath', () => {
+
+        test('given non matching collections api file name pattern, returns null, ', async() => {
+
+            const nonmatchingFileName = 'thiswontwork.json';
+
+            const actualObjectName = CollectionsApiService.getObjectNameFromCollectionsApiFilePath(nonmatchingFileName);
+
+            expect(actualObjectName).toBeNull();
+
+        });
+
+        test('given matching collections api file name pattern, returns object name from file name, ', async() => {
+
+            const expectedObjectName = 'theObjectInTheForest';
+            const nonmatchingFileName = `collectionsApi-${expectedObjectName}.json`;
+
+            const actualObjectName = CollectionsApiService.getObjectNameFromCollectionsApiFilePath(nonmatchingFileName);
+
+            expect(actualObjectName).toBe(expectedObjectName);
+
+        });
+
+    });
+
+    describe('getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap', () => {
+
+        test('given mocked file content with expected treecipe json returns expected treecipe info wrapper detail', async() => {
+
+            const fakeJsonTreecipeObjectInfoWrapper = MockCollectionsApiService.getFakeTreecipeObjectInfoWrapperJson();
+            jest.spyOn(VSCodeWorkspaceService, 'getFileContentByPath').mockReturnValue(Promise.resolve(fakeJsonTreecipeObjectInfoWrapper));
+            
+            const datasetChildFoldersToFilesMap = {
+                "someDirectory": ["file1", "file2"],
+                "BaseArtifactFiles": ["originalTreecipeWrapper_123.json", "otherFile.json"]
+            };
+            const actualTreecipeObjectInfoWrapper = await CollectionsApiService.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
+
+            expect(actualTreecipeObjectInfoWrapper.propertyone).toBe('fakevalue'); 
+        
+        });
+
+    });
+
+    describe('updateCollectionApiJsonContentWithOrgRecordTypeIds', () => {
+
+        
+        
+    
+    });
+
+    
 });

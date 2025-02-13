@@ -239,6 +239,26 @@ describe('Shared ConfigurationService Tests', () => {
 
     });
 
+    describe('getBaseArtifactsFolderName', () => {
+
+        test('returns expected base artifcats folder name', () => {
+            const expectedFolderName = "BaseArtifactFiles";
+            const actualFolderName = ConfigurationService.getBaseArtifactsFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getDatasetCollectionApiFilesFolderName', () => {
+
+        test('returns expected dataset collections api folder name', () => {
+            const expectedFolderName = "DatasetFilesForCollectionsApi";
+            const actualFolderName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
 });
 
 

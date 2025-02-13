@@ -47,10 +47,10 @@ export class CollectionsApiService {
 
     }
 
-     static async promptForAllOrNoneInsertDecision(): Promise<boolean | undefined> {
+    static async promptForAllOrNoneInsertDecision(): Promise<boolean | undefined> {
             
         let allOrNoneItems = this.getAllOrNoneQuickPickItemSelections();
-      
+        
         const allOrNoneSelection = await vscode.window.showQuickPick(
             allOrNoneItems,
             {
@@ -204,11 +204,6 @@ export class CollectionsApiService {
         // may do something with the batched delete results in the future; just collecting results at the moment
         const deleteSobjectsResults = new Array<any>();
 
-            // loop over objects
-        // loop over success results
-        // get all for one object
-        // batch delete calls
-        // test - if allornone true deletes old records --- test if allornon false skips over and keeps going --- test if allornone true break stops save result and what happens ? showinfovscode?
         for (const [objectKey, successfulSavesForObject ] of  Object.entries(objectToSuccessfulRecordCreationResults)) {
 
             for (let i = 0; i < successfulSavesForObject.length; i += collectionsApiRecordBatchSizeLimitPerRestCall) {
@@ -266,45 +261,12 @@ export class CollectionsApiService {
                                         sobjectNameToUpsert ) {
 
         const sobjectsResult = new Array<any>();
-        const recordsToUpsert = preparedCollectionsApiDetail.records;
+        const recordsToInsert = preparedCollectionsApiDetail.records;
 
-        if (recordsToUpsert && recordsToUpsert.length > 0) {
-
-            const recordsToInsert: any[] = new Array<any>();
-            const recordsToUpdate: any[] = new Array<any>();
-
-            for (const record of recordsToUpsert) {
-                if (record.Id) {
-                    recordsToUpdate.push(record);
-                } else {
-                    recordsToInsert.push(record);
-                }
-            }
+        if (recordsToInsert && recordsToInsert.length > 0) {
 
             const collectionsApiRecordBatchSizeLimitPerRestCall = 200;
 
-            // UPDATING RECORDS
-            if (recordsToUpdate.length > 0) {
-    
-                for (let i = 0; i < recordsToUpdate.length; i += collectionsApiRecordBatchSizeLimitPerRestCall) {
-                    
-                    const recordsBatchToUpdate = recordsToUpdate.slice(i, i + collectionsApiRecordBatchSizeLimitPerRestCall);
-                    const chunkResults = await aliasAuthenticationConnection
-                                                .sobject(sobjectNameToUpsert) 
-                                                .update(recordsBatchToUpdate, { 
-                                                    allowRecursive: false, 
-                                                    allOrNone: allOrNoneSelection 
-                                                })
-                                                .catch((err) => {
-                                                    throw new SfError(`Error importing records: ${err}`);
-                                                });
-
-                    sobjectsResult.push(...chunkResults);
-
-                }
-
-            }
-    
             // INSERTING RECORDS
             if (recordsToInsert.length > 0) {
              
