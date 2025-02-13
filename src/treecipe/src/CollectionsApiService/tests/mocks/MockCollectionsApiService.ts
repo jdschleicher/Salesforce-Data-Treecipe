@@ -54,6 +54,14 @@ export class MockCollectionsApiService {
 
     }
 
+    static getMockedSalesforceCoreConnection() {
+        const mockedConnection = {
+            query: jest.fn(),
+        } as unknown as jest.Mocked<Connection>;
+
+        return mockedConnection;
+    }
+
 
 
 }

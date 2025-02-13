@@ -6,11 +6,11 @@ import * as xml2js from 'xml2js';
 import * as path from 'path';
 import { MockRecordTypeService } from "./MockRecordTypeService";
 import { Connection } from "@salesforce/core";
+import { MockCollectionsApiService } from "../../CollectionsApiService/tests/mocks/MockCollectionsApiService";
 
 jest.mock('fs');
 jest.mock('path');
 jest.mock('xml2js');
-
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -71,16 +71,15 @@ describe('RecordTypeService Shared Instance Tests', () => {
     describe('getRecordTypeIdsByConnection', () => {
 
         test('given mocked Connection instance and mocked query funtcion, should query record type IDs for given object API names', async () => {   
-            const mockedConnectionWithMockedQueryReturn = {
-                query: jest.fn(),
-            } as unknown as jest.Mocked<Connection>;
+            
+            const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();
             
             const mockRecordTypes:any = MockRecordTypeService.getFakeRecordTypeByIdsQueryResults();     
-            mockedConnectionWithMockedQueryReturn.query.mockResolvedValue(mockRecordTypes);
+            mockedConnection.query.mockResolvedValue(mockRecordTypes);
 
             const doesntMatterObjectNames = ['Account', 'Contact'];
             const result = await RecordTypeService.getRecordTypeIdsByConnection(
-                mockedConnectionWithMockedQueryReturn,
+                mockedConnection,
                 doesntMatterObjectNames
             );
    

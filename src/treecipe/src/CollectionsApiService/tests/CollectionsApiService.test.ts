@@ -301,12 +301,144 @@ describe('Shared tests for CollectionsApiService', () => {
 
     });
 
-    describe('updateCollectionApiJsonContentWithOrgRecordTypeIds', () => {
-
-        
-        
+    describe('updateReferenceIdMapWithCreatedRecords', () => {
+        test('should update the map with created record IDs when reference IDs are not already present', () => {
+            
+            const objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
+            
+            const sObjectResults = [
+                { id: '001ABC' },
+                { id: '002DEF' },
+            ];
     
+            const orderedCollectionsApiRecordsDetailJustUpserted = [
+                { attributes: { referenceId: 'ref1' } },
+                { attributes: { referenceId: 'ref2' } },
+            ];
+    
+            const result = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(
+                objectReferenceIdToOrgCreatedRecordIdMap,
+                sObjectResults,
+                orderedCollectionsApiRecordsDetailJustUpserted
+            );
+    
+            expect(result).toEqual({
+                ref1: '001ABC',
+                ref2: '002DEF',
+            });
+
+        });
+    
+        test('should not overwrite existing reference IDs in the map', () => {
+           
+            const objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {
+                ref1: 'newlyCreatedId',
+            };
+            
+            const collectionApiJsonToBeInserted = [
+                { id: '001ABC' },
+                { id: '002DEF' },
+            ];
+    
+            const orderedCollectionsApiRecordsDetailJustUpserted = [
+                // ref1 key already exists in objectReferenceIdToOrgCreatedRecordIdMap, so ref1 wont be overwritten with ID
+                { attributes: { referenceId: 'ref1' } }, 
+                { attributes: { referenceId: 'ref2' } },
+            ];
+    
+            const result = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(
+                objectReferenceIdToOrgCreatedRecordIdMap,
+                collectionApiJsonToBeInserted,
+                orderedCollectionsApiRecordsDetailJustUpserted
+            );
+    
+            expect(result).toEqual({
+                ref1: 'newlyCreatedId',
+                ref2: '002DEF',
+            });
+        });
+    
+        test('should handle empty input arrays gracefully', () => {
+            const objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
+    
+            const result = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(
+                objectReferenceIdToOrgCreatedRecordIdMap,
+                [],
+                []
+            );
+    
+            expect(result).toEqual({});
+
+        });
+
     });
+
+
+    describe('updateLookupReferencesInCollectionApiJson', () => {
+    
+        test('should replace reference IDs with corresponding record IDs', () => {
+            const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"ref2"}]}';
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                ref1: '001ABC',
+                ref2: '002DEF',
+            };
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(result).toBe('{"records":[{"Id":"001ABC"},{"Id":"002DEF"}]}');
+        });
+
+        test('should replace multiple occurrences of the same reference ID', () => {
+            
+            const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"ref1"}]}';
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                ref1: '001ABC',
+            };
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(result).toBe('{"records":[{"Id":"001ABC"},{"Id":"001ABC"}]}');
+
+        });
+
+        test('should not modify the JSON if no reference IDs match', () => {
+
+            const collectionsApiJson = '{"records":[{"Id":"noMatch"}]}';
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                ref1: '001ABC',
+            };
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(result).toBe(collectionsApiJson);
+
+        });
+
+        test('should handle an empty JSON string gracefully', () => {
+
+            const collectionsApiJson = '';
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                ref1: '001ABC',
+            };
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(result).toBe('');
+
+        });
+
+        test('should handle an empty reference map gracefully', () => {
+            const collectionsApiJson = '{"records":[{"Id":"ref1"}]}';
+            const objectReferenceIdToOrgCreatedRecordIdMap = {};
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(result).toBe(collectionsApiJson);
+
+        });
+
+    });
+
 
     
 });
