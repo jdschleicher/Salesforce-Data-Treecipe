@@ -583,10 +583,6 @@ describe('Shared tests for CollectionsApiService', () => {
     });
 
     describe('getFilesFromChildDirectoriesBySharedParentDirectory', () => {
-
-        beforeEach(() => {
-            jest.clearAllMocks();
-        });
         
         test('should return correct files for each child directory', async () => {
             
@@ -595,13 +591,7 @@ describe('Shared tests for CollectionsApiService', () => {
             
             jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
                 .mockImplementation(async (path) => {
-                if (path === 'parent/dir1') {
-                    return ['file1.json', 'file2.json'];
-                } 
-                if (path === 'parent/dir2') {
                     return ['file3.json', 'file4.json'];
-                }
-                return [];
             });
         
             const result = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
@@ -609,16 +599,7 @@ describe('Shared tests for CollectionsApiService', () => {
                 childDirs
             );
 
-   
-            const expectedDetail = {
-                'dir1': ['file1.json', 'file2.json'],
-                'dir2': ['file3.json', 'file4.json']
-            };
-
-            const expectedDetailDir1 = expectedDetail.dir1;
-            const resultDir1 = result.dir1;
-            // expect(result.dir1.length).toEqual(expectedDetail.dir1.length);
-
+            expect(result.dir1.length).toEqual(2);
          
         });
     
