@@ -138,7 +138,7 @@ describe('Shared tests for CollectionsApiService', () => {
             };
             const expectedObjectName = 'Account';
             const mockSobjectCollectionApiResults = MockCollectionsApiService.getMockCombinedSuccessAndFailureCollectionResults();
-            const fakeSalesforceCoreConnection = MockCollectionsApiService.getFakeSalesforceCoreConnection();
+            const fakeSalesforceCoreConnection = MockCollectionsApiService.getSimpleCoreConnectionMock();
             const actualAllSobjectCollectionResults = CollectionsApiService.updateCompleteCollectionApiSobjectResults(
                 initialCollectionApiResults,
                 mockSobjectCollectionApiResults,
@@ -165,7 +165,7 @@ describe('Shared tests for CollectionsApiService', () => {
                 'FailureResults' : {}
             };
 
-            const fakeSalesforceConnection = MockCollectionsApiService.getFakeSalesforceCoreConnection();
+            const fakeSalesforceConnection = MockCollectionsApiService.getSimpleCoreConnectionMock();
             const expectedSuccessfulResults = MockCollectionsApiService.getMockedCollectionApiSuccessfulResults();
  
             const sobjectApiName = 'mockSObjectApiName';
@@ -192,7 +192,7 @@ describe('Shared tests for CollectionsApiService', () => {
 
             const sObjectResults = MockCollectionsApiService.getMockCombinedSuccessAndFailureCollectionResults();
             const sobjectApiName = 'mockSObjectApiName';
-            const fakeSalesforceConnection = MockCollectionsApiService.getFakeSalesforceCoreConnection();
+            const fakeSalesforceConnection = MockCollectionsApiService.getSimpleCoreConnectionMock();
 
             const spyAddItemsToRecordMap = jest.spyOn(CollectionsApiService, 'addItemToRecordMap');
 
@@ -605,9 +605,57 @@ describe('Shared tests for CollectionsApiService', () => {
          
         });
     
-      
-        
     });
 
+
+    describe('makeCollectionsApiCall', () => {
+
+        test('given mocked Connection instance and mocked insert funtcion and success results, should return expected sobject results list', async () => {   
+            
+            
+            const mockSobjectInsertResults:any = MockCollectionsApiService.getMockCombinedSuccessAndFailureCollectionResults();
+            // mockedConnection.sobject.mockResolvedValue(mockSobjectInsertResults);
+
+            const doesntMatterObjectNameToUpsert = 'Account';
+
+            const mockedCollectionsApiDetail = MockCollectionsApiService.getFakeCollectionApiDetail();
+            
+            const mockInsertResult = [{ id: '001xx000003DGb2AAG', success: true }];
+            const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();
+            // const implementation = () => ({
+            //     insert: jest.fn().mockResolvedValue(
+            //         mockInsertResult as any[]
+            //     ) // Ensure proper return type
+            // } as any);
+            // mockedConnection.sobject.mockImplementation(implementation);
+
+
+            const implementation = () => ({
+                insert: jest.fn().mockResolvedValue(
+                            mockInsertResult as any[]
+                 ) // Define insert() but don't set its value yet
+            } as any);   
+              
+            // Apply the mock implementation to `sobject()`
+            mockedConnection.sobject.mockImplementation(implementation);
+            
+            // Now separately mock the `insert` method inside `sobject`
+            (mockedConnection.sobject('nomatter').insert as jest.Mock).mockResolvedValue(mockInsertResult);
+              
+              // Example test case
+
+            const allOrNoneSelection = true;
+            const result = await CollectionsApiService.makeCollectionsApiCall(
+                mockedCollectionsApiDetail,
+                mockedConnection,
+                allOrNoneSelection,
+                doesntMatterObjectNameToUpsert
+            );
+    
+            expect(result).toEqual(mockInsertResult);
+            
+        });
+
+    });
     
 });
