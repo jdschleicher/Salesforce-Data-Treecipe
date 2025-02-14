@@ -60,10 +60,18 @@ describe('Shared tests for CollectionsApiService', () => {
         });
     
         test('given no selection made for quickpick item, should return undefined if no selection is made', async () => {
+            
+            const mockWorkspaceRoot = 'rootMock/mock';
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            
+            const dontCareAsWeAreExpectingNoSelection = undefined;
+            jest.spyOn(VSCodeWorkspaceService, 'getDataSetDirectoryQuickPickItemsByStartingDirectoryPath').mockReturnValue(Promise.resolve(dontCareAsWeAreExpectingNoSelection));
+
             (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
-    
+
             const result = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
             expect(result).toBeUndefined();
+
         });
 
     });
@@ -523,7 +531,6 @@ describe('Shared tests for CollectionsApiService', () => {
             
         test('should return correct mapping of directories to files', async () => {
           
-            // Arrange
             const datasetDirectoryName = 'testDataset';
             const baseArtifactsFolder = 'artifacts';
             const datasetCollectionsFolder = 'collections';
@@ -577,7 +584,7 @@ describe('Shared tests for CollectionsApiService', () => {
     });
 
     describe('getFilesFromChildDirectoriesBySharedParentDirectory', () => {
-        
+
         test('should return correct files for each child directory', async () => {
             
             const parentDir = 'parent';
@@ -588,14 +595,13 @@ describe('Shared tests for CollectionsApiService', () => {
                     return ['file3.json', 'file4.json'];
             });
         
-            const eeeee = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
+            const parentDirectoryToChildFiles = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
                 parentDir, 
                 childDirs
             );
 
-            const other = eeeee["dir1"];
-            // // other
-            expect(other.length).toEqual(2);
+            const directory1ChildFiles = parentDirectoryToChildFiles["dir1"];
+            expect(directory1ChildFiles.length).toEqual(2);
          
         });
     
