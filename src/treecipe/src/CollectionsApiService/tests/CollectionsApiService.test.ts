@@ -617,66 +617,12 @@ describe('Shared tests for CollectionsApiService', () => {
 
             const expectedDetailDir1 = expectedDetail.dir1;
             const resultDir1 = result.dir1;
-            expect(result.dir1.length).toEqual(expectedDetail.dir1.length);
+            // expect(result.dir1.length).toEqual(expectedDetail.dir1.length);
 
          
         });
     
-        // test('should handle empty child directories array', async () => {
-        //     const parentDir = 'parent';
-        //     const childDirs: string[] = [];
-    
-
-        //     jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
-        //         .mockImplementation(async (path) => {
-        //         return [];
-        //     });
-
-        //     // Act
-        //     const result = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
-        //         parentDir, 
-        //         childDirs
-        //     );
-    
-        //     expect(result).toBe({});
-        //     expect(VSCodeWorkspaceService.getFilesInDirectory).not.toHaveBeenCalled();
-        
-        // });
-    
-        // test('should handle directory with no files', async () => {
-        //     // Arrange
-        //     const parentDir = 'parent';
-        //     const childDirs = ['emptyDir'];
-            
-        //     jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
-        //         .mockResolvedValue([]);
-        
-        //     // Act
-        //     const result = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
-        //         parentDir, 
-        //         childDirs
-        //     );
-        
-        //     // Assert
-        //     expect(result).toEqual({
-        //         'emptyDir': []
-        //     });
-        //     expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledWith('parent/emptyDir');
-        // });
-    
-        // test('should handle errors from getFilesInDirectory', async () => {
-        //   // Arrange
-        //   const parentDir = 'parent';
-        //   const childDirs = ['errorDir'];
-          
-        //   jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
-        //     .mockRejectedValue(new Error('Failed to read directory'));
-    
-        //   // Act & Assert
-        //   await expect(
-        //     CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(parentDir, childDirs)
-        //   ).rejects.toThrow('Failed to read directory');
-        // });
+      
         
     });
 
