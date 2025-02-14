@@ -7,6 +7,9 @@ import { MockDirectoryService } from '../../DirectoryProcessingService/tests/Moc
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
+
+
+
 jest.mock('vscode', () => ({
     workspace: {
         workspaceFolders: undefined,
@@ -34,10 +37,11 @@ describe('Shared tests for CollectionsApiService', () => {
 
     describe('promptForDataSetObjectsPathVSCodeQuickItems', () => {
 
-        // because we are testing the returned selection of the vscode.windwos.showQuickPickItem, the tests are mainly 
-        // mocking out async module methods that would cause the test to fail if called as expected. However, the mocks that are included
-        // would be expected to be correct values
-        
+        /*
+            because we are testing the returned selection of the vscode.windwos.showQuickPickItem, the tests are mainly 
+            mocking out async module methods that would cause the test to fail if called as expected. However, the mocks that are included
+            would be expected to be correct values
+         */ 
         test('given mocked modules and given expected quick pick item, should return expected selected QuickPickItem', async () => {
         
             const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
@@ -519,111 +523,165 @@ describe('Shared tests for CollectionsApiService', () => {
 
     });
     
-    // describe('getDataSetChildDirectoriesNameToFilesMap', () => {
-    
-    //     test('should retrieve files from expected child directories', async () => {
-           
-    //         const datasetDirectoryName = 'DatasetFilesForCollectionsApi';
-    //         const mockBaseArtifactsFolder = 'BaseArtifactFiles';
-    //         const mockDatasetCollectionsFolder = 'collections';
-    
-    
-    //         const mockFilesMap = {
-    //             [mockBaseArtifactsFolder]: ['file1.json', 'file2.json'],
-    //             [mockDatasetCollectionsFolder]: ['file3.json'],
-    //         };
-    //         jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
-    //             .mockResolvedValue(mockFilesMap);
-    
-    //         const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
-    
-    //         expect(result).toEqual(mockFilesMap);
-    //         expect(global.getFilesFromChildDirectoriesBySharedParentDirectory).toHaveBeenCalledWith(datasetDirectoryName, [mockBaseArtifactsFolder, mockDatasetCollectionsFolder]);
+    describe('getDataSetChildDirectoriesNameToFilesMap', () => {
+            
+        test('should return correct mapping of directories to files', async () => {
+          
+            // Arrange
+            const datasetDirectoryName = 'testDataset';
+            const baseArtifactsFolder = 'artifacts';
+            const datasetCollectionsFolder = 'collections';
+            
+            // Mock configuration service
+            jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
+                .mockReturnValue(baseArtifactsFolder);
+            jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
+                .mockReturnValue(datasetCollectionsFolder);
         
-    //     });
-
-    // });
-    
-    describe('getFilesFromChildDirectoriesBySharedParentDirectory', () => {
-    
-        describe('getDataSetChildDirectoriesNameToFilesMap', () => {
+            // Mock the child directory function
+            const expectedResult = {
+                'artifacts': ['file1.json', 'file2.json'],
+                'collections': ['file3.json', 'file4.json']
+            };
             
-            test('should return correct mapping of directories to files', async () => {
-              
-                // Arrange
-                const datasetDirectoryName = 'testDataset';
-                const baseArtifactsFolder = 'artifacts';
-                const datasetCollectionsFolder = 'collections';
-                
-                // Mock configuration service
-                jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
-                    .mockReturnValue(baseArtifactsFolder);
-                jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
-                    .mockReturnValue(datasetCollectionsFolder);
-            
-                // Mock the child directory function
-                const expectedResult = {
-                    'artifacts': ['file1.json', 'file2.json'],
-                    'collections': ['file3.json', 'file4.json']
-                };
-                
-                jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
-                    .mockResolvedValue(expectedResult);
-            
-                // Act
-                const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
-            
-                // Assert
-                expect(result).toEqual(expectedResult);
-                expect(ConfigurationService.getBaseArtifactsFolderName).toHaveBeenCalled();
-                expect(ConfigurationService.getDatasetCollectionApiFilesFolderName).toHaveBeenCalled();
-                expect(CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory)
-                    .toHaveBeenCalledWith(datasetDirectoryName, [baseArtifactsFolder, datasetCollectionsFolder]);
-                
-            });
-        
-            test('should handle empty directory names from configuration', async () => {
-              // Arrange
-              const datasetDirectoryName = 'testDataset';
-              
-              jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
-                .mockReturnValue('');
-              jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
-                .mockReturnValue('');
-        
-              const expectedResult = { '': [] };
-              jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
+            jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
                 .mockResolvedValue(expectedResult);
         
-              // Act
-              const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
+            // Act
+            const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
         
-              // Assert
-              expect(result).toEqual(expectedResult);
+            // Assert
+            expect(result).toEqual(expectedResult);
+            expect(ConfigurationService.getBaseArtifactsFolderName).toHaveBeenCalled();
+            expect(ConfigurationService.getDatasetCollectionApiFilesFolderName).toHaveBeenCalled();
+            expect(CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory)
+                .toHaveBeenCalledWith(datasetDirectoryName, [baseArtifactsFolder, datasetCollectionsFolder]);
+            
+        });
+    
+        test('should handle empty directory names from configuration', async () => {
+          // Arrange
+          const datasetDirectoryName = 'testDataset';
+          
+          jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
+            .mockReturnValue('');
+          jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
+            .mockReturnValue('');
+    
+          const expectedResult = { '': [] };
+          jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
+            .mockResolvedValue(expectedResult);
+    
+          // Act
+          const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
+    
+          // Assert
+          expect(result).toEqual(expectedResult);
 
+        });
+
+    });
+
+    describe('getFilesFromChildDirectoriesBySharedParentDirectory', () => {
+
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+        
+        test('should return correct files for each child directory', async () => {
+            
+            const parentDir = 'parent';
+            const childDirs = ['dir1', 'dir2'];
+            
+            jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
+                .mockImplementation(async (path) => {
+                if (path === 'parent/dir1') {
+                    return ['file1.json', 'file2.json'];
+                } 
+                if (path === 'parent/dir2') {
+                    return ['file3.json', 'file4.json'];
+                }
+                return [];
             });
+        
+            const result = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
+                parentDir, 
+                childDirs
+            );
 
-          });
+   
+            const expectedDetail = {
+                'dir1': ['file1.json', 'file2.json'],
+                'dir2': ['file3.json', 'file4.json']
+            };
+
+            const expectedDetailDir1 = expectedDetail.dir1;
+            const resultDir1 = result.dir1;
+            expect(result.dir1.length).toEqual(expectedDetail.dir1.length);
+
+            // expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledTimes(2);
+            // expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledWith('parent/dir1');
+            // expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledWith('parent/dir2');
+       
+        });
     
-        // test('should return empty lists if directories have no files', async () => {
-        //     const datasetParentDirectory = 'testDataset';
-        //     const datasetChildDirectoriesToGetFilesFrom = ['artifacts', 'collections'];
+        // test('should handle empty child directories array', async () => {
+        //     const parentDir = 'parent';
+        //     const childDirs: string[] = [];
     
-        //     (VSCodeWorkspaceService.getFilesInDirectory as jest.Mock).mockResolvedValue([]);
-    
-        //     const result = await getFilesFromChildDirectoriesBySharedParentDirectory(datasetParentDirectory, datasetChildDirectoriesToGetFilesFrom);
-    
-        //     expect(result).toEqual({
-        //         artifacts: [],
-        //         collections: [],
+
+        //     jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
+        //         .mockImplementation(async (path) => {
+        //         return [];
         //     });
+
+        //     // Act
+        //     const result = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
+        //         parentDir, 
+        //         childDirs
+        //     );
     
-        //     expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledTimes(2);
+        //     expect(result).toBe({});
+        //     expect(VSCodeWorkspaceService.getFilesInDirectory).not.toHaveBeenCalled();
+        
+        // });
+    
+        // test('should handle directory with no files', async () => {
+        //     // Arrange
+        //     const parentDir = 'parent';
+        //     const childDirs = ['emptyDir'];
+            
+        //     jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
+        //         .mockResolvedValue([]);
+        
+        //     // Act
+        //     const result = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
+        //         parentDir, 
+        //         childDirs
+        //     );
+        
+        //     // Assert
+        //     expect(result).toEqual({
+        //         'emptyDir': []
+        //     });
+        //     expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledWith('parent/emptyDir');
+        // });
+    
+        // test('should handle errors from getFilesInDirectory', async () => {
+        //   // Arrange
+        //   const parentDir = 'parent';
+        //   const childDirs = ['errorDir'];
+          
+        //   jest.spyOn(VSCodeWorkspaceService, 'getFilesInDirectory')
+        //     .mockRejectedValue(new Error('Failed to read directory'));
+    
+        //   // Act & Assert
+        //   await expect(
+        //     CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(parentDir, childDirs)
+        //   ).rejects.toThrow('Failed to read directory');
         // });
         
     });
-    
-
 
     
 });
