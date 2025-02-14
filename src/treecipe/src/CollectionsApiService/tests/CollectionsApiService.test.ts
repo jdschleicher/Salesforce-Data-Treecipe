@@ -619,10 +619,7 @@ describe('Shared tests for CollectionsApiService', () => {
             const resultDir1 = result.dir1;
             expect(result.dir1.length).toEqual(expectedDetail.dir1.length);
 
-            // expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledTimes(2);
-            // expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledWith('parent/dir1');
-            // expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledWith('parent/dir2');
-       
+         
         });
     
         // test('should handle empty child directories array', async () => {
