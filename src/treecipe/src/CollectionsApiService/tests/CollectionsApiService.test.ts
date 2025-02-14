@@ -7,9 +7,6 @@ import { MockDirectoryService } from '../../DirectoryProcessingService/tests/Moc
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
-
-
-
 jest.mock('vscode', () => ({
     workspace: {
         workspaceFolders: undefined,
@@ -30,7 +27,6 @@ jest.mock('vscode', () => ({
     )
 
 }), { virtual: true });
-
 
 
 describe('Shared tests for CollectionsApiService', () => {
@@ -560,23 +556,21 @@ describe('Shared tests for CollectionsApiService', () => {
         });
     
         test('should handle empty directory names from configuration', async () => {
-          // Arrange
-          const datasetDirectoryName = 'testDataset';
           
-          jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
-            .mockReturnValue('');
-          jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
-            .mockReturnValue('');
-    
-          const expectedResult = { '': [] };
-          jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
-            .mockResolvedValue(expectedResult);
-    
-          // Act
-          const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
-    
-          // Assert
-          expect(result).toEqual(expectedResult);
+            const datasetDirectoryName = 'testDataset';
+          
+            jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
+                .mockReturnValue('');
+            jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
+                .mockReturnValue('');
+        
+            const expectedResult = { '': [] };
+            jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
+                .mockResolvedValue(expectedResult);
+        
+            const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
+        
+            expect(result).toEqual(expectedResult);
 
         });
 
@@ -594,12 +588,14 @@ describe('Shared tests for CollectionsApiService', () => {
                     return ['file3.json', 'file4.json'];
             });
         
-            const result = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
+            const eeeee = await CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory(
                 parentDir, 
                 childDirs
             );
 
-            expect(result.dir1.length).toEqual(2);
+            const other = eeeee["dir1"];
+            // // other
+            expect(other.length).toEqual(2);
          
         });
     
