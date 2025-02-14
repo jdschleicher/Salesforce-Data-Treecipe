@@ -1,5 +1,3 @@
-// import * as vscode from 'vscode';
-// import { CollectionsApiService } from '../yourModule';
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -389,7 +387,7 @@ describe('Shared tests for CollectionsApiService', () => {
         });
 
         test('should replace multiple occurrences of the same reference ID', () => {
-            
+
             const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"ref1"}]}';
             const objectReferenceIdToOrgCreatedRecordIdMap = {
                 ref1: '001ABC',
@@ -438,6 +436,193 @@ describe('Shared tests for CollectionsApiService', () => {
         });
 
     });
+
+    describe('updateCollectionApiJsonContentWithOrgRecordTypeIds', () => {
+        
+        test('should replace record type identifiers with corresponding record type IDs', () => {
+            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"},{"RecordTypeId":"Contact.Special"}]}';
+            const recordTypeDetailFromTargetOrg = {
+                records: [
+                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
+                    { SobjectType: 'Contact', DeveloperName: 'Special', Id: 'RTID002' },
+                ],
+            };
+
+            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+
+            expect(result).toBe('{"records":[{"RecordTypeId":"RTID001"},{"RecordTypeId":"RTID002"}]}');
+        
+        });
+
+        test('should replace multiple occurrences of the same record type identifier', () => {
+           
+            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"},{"RecordTypeId":"Account.Standard"}]}';
+            const recordTypeDetailFromTargetOrg = {
+                records: [
+                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
+                ],
+            };
+
+            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+
+            expect(result).toBe('{"records":[{"RecordTypeId":"RTID001"},{"RecordTypeId":"RTID001"}]}');
+        
+        });
+
+        test('should replace multiple occurrences of the same record type identifier', () => {
+            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"},{"RecordTypeId":"Account.Standard"}]}';
+            const recordTypeDetailFromTargetOrg = {
+                records: [
+                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
+                ],
+            };
+    
+            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+    
+            expect(result).toBe('{"records":[{"RecordTypeId":"RTID001"},{"RecordTypeId":"RTID001"}]}');
+        });
+    
+        test('should not modify the JSON if no record type identifiers match', () => {
+            const collectionsApiJson = '{"records":[{"RecordTypeId":"Unknown.Type"}]}';
+            const recordTypeDetailFromTargetOrg = {
+                records: [
+                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
+                ],
+            };
+    
+            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+    
+            expect(result).toBe(collectionsApiJson);
+        });
+    
+        test('should handle an empty JSON string gracefully', () => {
+            const collectionsApiJson = '';
+            const recordTypeDetailFromTargetOrg = {
+                records: [
+                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
+                ],
+            };
+    
+            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+    
+            expect(result).toBe('');
+        });
+    
+        test('should handle an empty record type details object gracefully', () => {
+            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"}]}';
+            const recordTypeDetailFromTargetOrg = { records: [] };
+    
+            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+    
+            expect(result).toBe(collectionsApiJson);
+        });
+
+    });
+    
+    // describe('getDataSetChildDirectoriesNameToFilesMap', () => {
+    
+    //     test('should retrieve files from expected child directories', async () => {
+           
+    //         const datasetDirectoryName = 'DatasetFilesForCollectionsApi';
+    //         const mockBaseArtifactsFolder = 'BaseArtifactFiles';
+    //         const mockDatasetCollectionsFolder = 'collections';
+    
+    
+    //         const mockFilesMap = {
+    //             [mockBaseArtifactsFolder]: ['file1.json', 'file2.json'],
+    //             [mockDatasetCollectionsFolder]: ['file3.json'],
+    //         };
+    //         jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
+    //             .mockResolvedValue(mockFilesMap);
+    
+    //         const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
+    
+    //         expect(result).toEqual(mockFilesMap);
+    //         expect(global.getFilesFromChildDirectoriesBySharedParentDirectory).toHaveBeenCalledWith(datasetDirectoryName, [mockBaseArtifactsFolder, mockDatasetCollectionsFolder]);
+        
+    //     });
+
+    // });
+    
+    describe('getFilesFromChildDirectoriesBySharedParentDirectory', () => {
+    
+        describe('getDataSetChildDirectoriesNameToFilesMap', () => {
+            
+            test('should return correct mapping of directories to files', async () => {
+              
+                // Arrange
+                const datasetDirectoryName = 'testDataset';
+                const baseArtifactsFolder = 'artifacts';
+                const datasetCollectionsFolder = 'collections';
+                
+                // Mock configuration service
+                jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
+                    .mockReturnValue(baseArtifactsFolder);
+                jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
+                    .mockReturnValue(datasetCollectionsFolder);
+            
+                // Mock the child directory function
+                const expectedResult = {
+                    'artifacts': ['file1.json', 'file2.json'],
+                    'collections': ['file3.json', 'file4.json']
+                };
+                
+                jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
+                    .mockResolvedValue(expectedResult);
+            
+                // Act
+                const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
+            
+                // Assert
+                expect(result).toEqual(expectedResult);
+                expect(ConfigurationService.getBaseArtifactsFolderName).toHaveBeenCalled();
+                expect(ConfigurationService.getDatasetCollectionApiFilesFolderName).toHaveBeenCalled();
+                expect(CollectionsApiService.getFilesFromChildDirectoriesBySharedParentDirectory)
+                    .toHaveBeenCalledWith(datasetDirectoryName, [baseArtifactsFolder, datasetCollectionsFolder]);
+                
+            });
+        
+            test('should handle empty directory names from configuration', async () => {
+              // Arrange
+              const datasetDirectoryName = 'testDataset';
+              
+              jest.spyOn(ConfigurationService, 'getBaseArtifactsFolderName')
+                .mockReturnValue('');
+              jest.spyOn(ConfigurationService, 'getDatasetCollectionApiFilesFolderName')
+                .mockReturnValue('');
+        
+              const expectedResult = { '': [] };
+              jest.spyOn(CollectionsApiService, 'getFilesFromChildDirectoriesBySharedParentDirectory')
+                .mockResolvedValue(expectedResult);
+        
+              // Act
+              const result = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetDirectoryName);
+        
+              // Assert
+              expect(result).toEqual(expectedResult);
+
+            });
+
+          });
+    
+        // test('should return empty lists if directories have no files', async () => {
+        //     const datasetParentDirectory = 'testDataset';
+        //     const datasetChildDirectoriesToGetFilesFrom = ['artifacts', 'collections'];
+    
+        //     (VSCodeWorkspaceService.getFilesInDirectory as jest.Mock).mockResolvedValue([]);
+    
+        //     const result = await getFilesFromChildDirectoriesBySharedParentDirectory(datasetParentDirectory, datasetChildDirectoriesToGetFilesFrom);
+    
+        //     expect(result).toEqual({
+        //         artifacts: [],
+        //         collections: [],
+        //     });
+    
+        //     expect(VSCodeWorkspaceService.getFilesInDirectory).toHaveBeenCalledTimes(2);
+        // });
+        
+    });
+    
 
 
     
