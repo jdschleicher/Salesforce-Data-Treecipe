@@ -94,6 +94,284 @@ export class MockCollectionsApiService {
           };
 
           return salesforceCollection;
+
+    }
+
+    static getMockedInsertAttemptFileJsonContent() {
+
+        const insertAttemptJsonContent = `
+        {
+  "SuccessResults": {
+    "Account": [
+      {
+        "id": "001DK000017d3k5YAA",
+        "success": true,
+        "errors": [],
+        "orgRecordLink": "https://platform-dream-4197-dev-ed.scratch.my.salesforce.com/001DK000017d3k5YAA"
+      }
+    ]
+  },
+  "FailureResults": {
+    "Example_Everything__c": [
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST",
+            "message": "Picklist: bad value for restricted picklist field: whooooofailllll",
+            "fields": [
+              "Picklist__c"
+            ]
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "success": false,
+        "errors": [
+          {
+            "statusCode": "ALL_OR_NONE_OPERATION_ROLLED_BACK",
+            "message": "Record rolled back because not all records were valid and the request was using AllOrNone header",
+            "fields": []
+          }
+        ]
+      }
+    ]
+  }
+}
+        
+        `;
+
+        return insertAttemptJsonContent;
     }
 
 

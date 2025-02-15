@@ -666,5 +666,42 @@ describe('Shared tests for CollectionsApiService', () => {
         });
 
     });
+
+    describe('deletePreviouslySavedRecords', () => {
+
+        test('given mocked Connection instance and mocked insert funtcion and success results, should return expected sobject results list', async () => {   
+            
+            const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();
+            const mockedDeleteResult = [
+                {
+                    "id": "0015g00000Xy2LmAA",
+                    "status": "SUCCESS",
+                    "errors": []
+                }
+            ];
+            const mockInsertAttemptResults = MockCollectionsApiService.getMockedInsertAttemptFileJsonContent();
+
+            jest.spyOn(VSCodeWorkspaceService, 'getFileContentByPath').mockReturnValue(Promise.resolve(mockInsertAttemptResults));
+
+            const mockDeleteCallout = jest.spyOn(CollectionsApiService, 'deleteCollectionsApiCallout').mockReturnValue(Promise.resolve(mockedDeleteResult as any));
+            const fakeFullPathToInsertAttemptResultsFile = 'fake/path';
+            await CollectionsApiService.deletePreviouslySavedRecords(
+                fakeFullPathToInsertAttemptResultsFile,
+                mockedConnection
+            );
+
+            const expectedIdsToDeleteFromMockedSuccessResults = [
+                '001DK000017d3k5YAA'
+            ];
+            expect(mockDeleteCallout).toHaveBeenCalled();
+            expect(mockDeleteCallout).toHaveBeenCalledWith(
+                expectedIdsToDeleteFromMockedSuccessResults,
+                mockedConnection,
+                'Account'
+            );
+            
+        });
+
+    });
     
 });

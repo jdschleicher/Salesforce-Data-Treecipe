@@ -194,7 +194,8 @@ export class CollectionsApiService {
 
     static async deletePreviouslySavedRecords(fullPathToInsertAttemptResultsFile:string, aliasAuthenticationConnection: Connection) {
 
-        const previousSaveResultsJson = fs.readFileSync(fullPathToInsertAttemptResultsFile, 'utf-8');
+        const previousSaveResultsJson = await VSCodeWorkspaceService.getFileContentByPath(fullPathToInsertAttemptResultsFile);
+
         const saveResultsDetail:Record<string, Record<string, any[]>> = JSON.parse(previousSaveResultsJson);
 
         const objectToSuccessfulRecordCreationResults = saveResultsDetail["SuccessResults"];
@@ -211,18 +212,32 @@ export class CollectionsApiService {
                 const recordsBatchToUpdate = successfulSavesForObject.slice(i, i + collectionsApiRecordBatchSizeLimitPerRestCall);
                 const recordIdsToDelete:string[] = recordsBatchToUpdate.map((savedRecordInBatch) => savedRecordInBatch.id);
 
-                const chunkResults = await aliasAuthenticationConnection
-                                            .sobject(objectKey) 
-                                            .delete(recordIdsToDelete)
-                                            .catch((err) => {
-                                                throw new SfError(`Error deleting records for ${objectKey}: ${err}`);
-                                            });
+                const chunkResults = await this.deleteCollectionsApiCallout(
+                    recordIdsToDelete,
+                    aliasAuthenticationConnection,
+                    objectKey
+                );
             
                 deleteSobjectsResults.push(...chunkResults);
 
             }
 
         }
+
+    }
+
+    static async deleteCollectionsApiCallout(recordIdsToDelete: string[],
+                                                aliasAuthenticationConnection: Connection,
+                                                sobjectApiNameOfRecordIdsToDelete) {
+
+        const deleteChunkResults = await aliasAuthenticationConnection
+                                    .sobject(sobjectApiNameOfRecordIdsToDelete) 
+                                    .delete(recordIdsToDelete)
+                                    .catch((err) => {
+                                        throw new SfError(`Error deleting records for ${sobjectApiNameOfRecordIdsToDelete}: ${err}`);
+                                    });
+
+        return deleteChunkResults;
 
     }
 
