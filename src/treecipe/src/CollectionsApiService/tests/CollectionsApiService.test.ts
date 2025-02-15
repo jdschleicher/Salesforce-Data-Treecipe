@@ -612,47 +612,56 @@ describe('Shared tests for CollectionsApiService', () => {
 
         test('given mocked Connection instance and mocked insert funtcion and success results, should return expected sobject results list', async () => {   
             
-            
             const mockSobjectInsertResults:any = MockCollectionsApiService.getMockCombinedSuccessAndFailureCollectionResults();
-            // mockedConnection.sobject.mockResolvedValue(mockSobjectInsertResults);
-
             const doesntMatterObjectNameToUpsert = 'Account';
-
             const mockedCollectionsApiDetail = MockCollectionsApiService.getFakeCollectionApiDetail();
-            
-            const mockInsertResult = [{ id: '001xx000003DGb2AAG', success: true }];
             const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();
-            // const implementation = () => ({
-            //     insert: jest.fn().mockResolvedValue(
-            //         mockInsertResult as any[]
-            //     ) // Ensure proper return type
-            // } as any);
-            // mockedConnection.sobject.mockImplementation(implementation);
 
-
-            const implementation = () => ({
-                insert: jest.fn().mockResolvedValue(
-                            mockInsertResult as any[]
-                 ) // Define insert() but don't set its value yet
-            } as any);   
-              
-            // Apply the mock implementation to `sobject()`
-            mockedConnection.sobject.mockImplementation(implementation);
-            
-            // Now separately mock the `insert` method inside `sobject`
-            (mockedConnection.sobject('nomatter').insert as jest.Mock).mockResolvedValue(mockInsertResult);
-              
-              // Example test case
-
+            jest.spyOn(CollectionsApiService, 'insertCollectionsApiCallout').mockReturnValue(Promise.resolve(mockSobjectInsertResults as any));
             const allOrNoneSelection = true;
-            const result = await CollectionsApiService.makeCollectionsApiCall(
+            const actualMockedResults = await CollectionsApiService.makeCollectionsApiCall(
                 mockedCollectionsApiDetail,
                 mockedConnection,
                 allOrNoneSelection,
                 doesntMatterObjectNameToUpsert
             );
     
-            expect(result).toEqual(mockInsertResult);
+            expect(actualMockedResults).toEqual(mockSobjectInsertResults);
+            
+        });
+
+    });
+
+    describe('insertCollectionsApiCallout', () => {
+
+        test('given mocked salesforce core insert call with expected mocked insert funtcion and success results, should return expected sobject results list', async () => {   
+            
+            const doesntMatterObjectNameToUpsert = 'Account';
+            const mockedCollectionsApiDetail = MockCollectionsApiService.getFakeCollectionApiDetail();
+            
+            const mockSobjectInsertResults:any = MockCollectionsApiService.getMockCombinedSuccessAndFailureCollectionResults();
+            const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();
+    
+            // Create mock implementation for chained connectoin funtions and apply the mock implementation to `sobject()`
+            const implementation = () => ({
+                insert: jest.fn().mockResolvedValue(
+                    mockSobjectInsertResults 
+                )
+            } as any);   
+            mockedConnection.sobject.mockImplementation(implementation);
+            const mockedSobjectInsertChainedCommand = (mockedConnection.sobject('nomatter').insert as jest.Mock);
+            mockedSobjectInsertChainedCommand.mockResolvedValue(mockSobjectInsertResults);
+              
+            const allOrNoneSelection = true;
+            const mockedRecords = mockedCollectionsApiDetail.records;
+            const result = await CollectionsApiService.insertCollectionsApiCallout(
+                mockedRecords,
+                mockedConnection,
+                allOrNoneSelection,
+                doesntMatterObjectNameToUpsert
+            );
+    
+            expect(result).toEqual(mockSobjectInsertResults);
             
         });
 

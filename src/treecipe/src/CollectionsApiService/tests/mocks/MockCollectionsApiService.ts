@@ -43,32 +43,8 @@ export class MockCollectionsApiService {
 
     static getMockedSalesforceCoreConnection() {
 
-        const mockSobjectInsertResults: any[] = [
-            { id: "001ABC000123XYZ", success: true, errors: [] },
-            { id: "001ABC000456DEF", success: true, errors: [] }
-          ];
-          
         const mockedConnection = {
             query: jest.fn(),
-            // sobject: jest.fn().mockReturnValue({
-            //     insert: jest.fn().mockReturnValue({
-            //         mockResolvedValue: jest.fn()
-            //     })
-            // })
-            // sobject: jest.fn( (fakeObject) => {
-            //     return {
-            //         insert: jest.fn( (fakeRecordDetails:any, fakeCallProperties:any) => {
-            //             return {
-            //                 catch: jest.fn( (fakeError) => {
-
-            //                 })
-            //             };
-            //         })
-            //     };
-            // })
-            // sobject: jest.fn().mockImplementation(() => ({
-            //     insert: jest.fn().mockResolvedValue(mockSobjectInsertResults) // Ensure proper return type
-            // }))
             sobject: jest.fn()
  
         } as unknown as jest.Mocked<Connection>;

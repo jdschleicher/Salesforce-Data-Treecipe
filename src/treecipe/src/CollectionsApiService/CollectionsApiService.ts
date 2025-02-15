@@ -258,7 +258,7 @@ export class CollectionsApiService {
     static async makeCollectionsApiCall(preparedCollectionsApiDetail: any,
                                         aliasAuthenticationConnection: Connection,
                                         allOrNoneSelection: boolean,
-                                        sobjectNameToUpsert ) {
+                                        sobjectNameToUpsert) {
 
         const sobjectsResult = new Array<any>();
         const recordsToInsert = preparedCollectionsApiDetail.records;
@@ -274,15 +274,12 @@ export class CollectionsApiService {
 
                     const recordsBatchToInsert = recordsToInsert.slice(i, i + collectionsApiRecordBatchSizeLimitPerRestCall);
 
-                    const chunkResults = await aliasAuthenticationConnection
-                                                .sobject(sobjectNameToUpsert) 
-                                                .insert(recordsBatchToInsert, { 
-                                                    allowRecursive: false, 
-                                                    allOrNone: allOrNoneSelection 
-                                                })
-                                                .catch((err) => {
-                                                    throw new SfError(`Error importing records: ${err}`);
-                                                });
+                    const chunkResults = await this.insertCollectionsApiCallout(
+                        recordsBatchToInsert,
+                        aliasAuthenticationConnection,
+                        allOrNoneSelection,
+                        sobjectNameToUpsert
+                    );
 
                     sobjectsResult.push(...chunkResults);
 
@@ -293,6 +290,25 @@ export class CollectionsApiService {
         }
 
         return sobjectsResult;
+
+    }
+
+    static async insertCollectionsApiCallout(recordsBatchToInsert: any,
+                                                aliasAuthenticationConnection: Connection,
+                                                allOrNoneSelection: boolean,
+                                                sobjectNameToInsert) {
+
+        const insertCollectionsApiResults = await aliasAuthenticationConnection
+                                                    .sobject(sobjectNameToInsert) 
+                                                    .insert(recordsBatchToInsert, { 
+                                                        allowRecursive: false, 
+                                                        allOrNone: allOrNoneSelection 
+                                                    })
+                                                    .catch((err) => {
+                                                        throw new SfError(`Error importing records: ${err}`);
+                                                    });
+
+        return insertCollectionsApiResults;
 
     }
 
