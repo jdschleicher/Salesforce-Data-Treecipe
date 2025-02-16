@@ -1,7 +1,6 @@
 import { IFakerService } from "../FakerService/IFakerService";
-
+import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
-
 
 export class RecipeService {
 
@@ -20,7 +19,7 @@ export class RecipeService {
         this.fakerService.getMapSalesforceFieldToFakerValue();
     }
 
-    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
+    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
         
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
@@ -30,7 +29,7 @@ export class RecipeService {
                 
                 if (xmlFieldDetail.controllingField) {
                     // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
-                    fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap);
+                    fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
                 } else {
 
                     if ( !(xmlFieldDetail.picklistValues) ) {
@@ -39,7 +38,7 @@ export class RecipeService {
                     }
                     const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
                     fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
-                                                                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                                                recordTypeApiToRecordTypeWrapperMap,
                                                                                                 xmlFieldDetail.apiName);  
                 }
 
@@ -52,7 +51,7 @@ export class RecipeService {
                 }
                 const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
                 fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
-                                                                                                        recordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                                                        recordTypeApiToRecordTypeWrapperMap,
                                                                                                         xmlFieldDetail.apiName
                                                                                                     );
         
@@ -92,7 +91,7 @@ export class RecipeService {
     
     }
 
-    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
+    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
     
         const controllingField = xmlFieldDetail.controllingField;
         let controllingValueToPicklistOptions:Record<string, string[]> = {};
@@ -119,14 +118,14 @@ export class RecipeService {
 
         return this.fakerService.buildDependentPicklistRecipeFakerValue(
                                                                 controllingValueToPicklistOptions, 
-                                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                                                                recordTypeApiToRecordTypeWrapperMap, 
                                                                 controllingField,
                                                                 xmlFieldDetail.apiName
                                                             );
         
     }
 
-    initiateRecipeByObjectName(objectName: string, recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>): string {
+    initiateRecipeByObjectName(objectName: string, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
         let objectRecipeMarkup = 
@@ -135,12 +134,12 @@ export class RecipeService {
   count: 1
   fields:`;
 
-        if ( recordTypeToPicklistFieldsToAvailablePicklistValuesMap !== undefined && Object.keys(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).length > 0 ) {
+        if ( recordTypeApiToRecordTypeWrapperMap !== undefined && Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
 
             let recordTypeDeveloperNamesToSelect:string = '';
             const recordTypeDeveloperNameTodoVerbiage = `### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`;
             const newLineBreak = "\n";
-            Object.entries(recordTypeToPicklistFieldsToAvailablePicklistValuesMap).forEach(([recordTypeApiNameKey, recordTypeDetail]) => {
+            Object.entries(recordTypeApiToRecordTypeWrapperMap).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
                     
                 if ( recordTypeDeveloperNamesToSelect.trim() === '' ) {
                     // check to see if recordTypeDeveloperNamesToSelect has been given an initial value to properly handle recipe spacing
@@ -148,7 +147,7 @@ export class RecipeService {
 
                 } 
 
-                recordTypeDeveloperNamesToSelect += `${newLineBreak}${this.generateTabs(5)}${recordTypeApiNameKey}`;
+                recordTypeDeveloperNamesToSelect += `${newLineBreak}${this.generateTabs(5)}${objectName}.${recordTypeApiNameKey}`;
     
             });
 

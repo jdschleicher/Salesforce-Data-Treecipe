@@ -7,6 +7,9 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
+import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
+import path = require("path");
+import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 
 export class ExtensionCommandService {
     
@@ -34,12 +37,40 @@ export class ExtensionCommandService {
                 return;
             }
             const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
+            
             const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
 
-            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName();
+            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+            const uniqueTimeStampedFakeDataSetsFolderName = SnowfakeryIntegrationService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
 
             SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
-            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/originFile-${selectedRecipeQuickPickItem.label}`);
+            
+            const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();
+            const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
+            fs.mkdirSync(fullPathToBaseArtifactsFolder);
+
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeQuickPickItem.label}`);
+
+            /* 
+                The below lines get the timestamped parent recipe folder 
+                in order to traverse through and get all other artifacts files to use in
+                data generation and inserts commands
+            */
+            const selectedRecipeParentDirectory = path.dirname(recipeFullFileNamePath);
+            if ( path.basename(selectedRecipeParentDirectory) !== "GeneratedRecipes" ) {
+                const filesWithinSelecteRecipeFolder = fs.readdirSync(selectedRecipeParentDirectory, { withFileTypes: true });
+                const expectedObjectsInfoWrapperNamePrefix = ConfigurationService.getTreecipeObjectsWrapperName();
+                const matchingTreecipeObjectsWrapperFile = filesWithinSelecteRecipeFolder.find(file => 
+                    file.isFile() && file.name.startsWith(expectedObjectsInfoWrapperNamePrefix)
+                );
+    
+                if (matchingTreecipeObjectsWrapperFile) {
+                    const fullTreecipeObjectsWrapperPath = path.join(selectedRecipeParentDirectory, matchingTreecipeObjectsWrapperFile.name);
+                    fs.copyFileSync(fullTreecipeObjectsWrapperPath, `${fullPathToBaseArtifactsFolder}/originalTreecipeWrapper-${matchingTreecipeObjectsWrapperFile.name}`);
+                } 
+            }
+       
 
         } catch(error) {
 
@@ -66,9 +97,12 @@ export class ExtensionCommandService {
               const directoryProcessor = new DirectoryProcessor();
               objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
             
+            } else {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
           
-            const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting '2024-11-25T16-24-15'
+            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+            
             const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
 
             // ensure dedicated directory for generated recipes exists
@@ -78,12 +112,26 @@ export class ExtensionCommandService {
                 fs.mkdirSync(expectedGeneratedRecipesFolderPath);
             }
 
-            const outputFilePath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${recipeFileName}`;
-            fs.writeFile(outputFilePath, objectsInfoWrapper.combinedRecipes, (err) => {
+            const timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
+            fs.mkdirSync(timestampedRecipeGenerationFolder);
+
+            const outputFilePath = `${timestampedRecipeGenerationFolder}/${recipeFileName}`;
+            fs.writeFile(outputFilePath, objectsInfoWrapper.CombinedRecipes, (err) => {
                 if (err) {
                     throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
                 } else {
                     vscode.window.showInformationMessage('Treecipe YAML generated successfully');
+                }
+            });
+
+            const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
+            const filePathOfOjectsInfoWrapperJson = `${timestampedRecipeGenerationFolder}/${objectsInfoWrapperFileName}`;
+            const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
+            fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
+                if (err) {
+                    throw new Error('an error occurred when attempting to create the "treecipeObjectsWrapper-DateTime.json" file.');
+                } else {
+                    vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
                 }
             });
 
@@ -94,6 +142,49 @@ export class ExtensionCommandService {
             
         }
       
+    }
+
+    async insertDataSetBySelectedDirectory() {
+
+        try {
+
+            const selectedDataSetDirectoryToInsert:vscode.QuickPickItem = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
+            
+            if (!selectedDataSetDirectoryToInsert) {
+                return;
+            }
+
+            const targetOrgAlias = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
+            if (!targetOrgAlias) {
+                return;
+            }
+
+            const allOrNoneSelection:boolean = await CollectionsApiService.promptForAllOrNoneInsertDecision();
+
+            const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
+
+            const selectedDataSetFullDirectoryPath = selectedDataSetDirectoryToInsert.detail;
+            const datasetChildFoldersToFilesMap = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(selectedDataSetFullDirectoryPath);
+            
+            const treecipeObjectWrapperDetail = await CollectionsApiService.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
+            
+            const objectApiNamesToGetRecordTypeInfoFrom = Object.keys(treecipeObjectWrapperDetail.ObjectToObjectInfoMap);
+
+            const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
+
+            await CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
+                                                                datasetChildFoldersToFilesMap, 
+                                                                recordTypeDetailFromOrg, 
+                                                                aliasAuthenticationConnection,
+                                                                allOrNoneSelection);
+
+        } catch(error) {
+
+            const commandName = 'insertDataSetBySelectedDirectory';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+        
     }
 
 }

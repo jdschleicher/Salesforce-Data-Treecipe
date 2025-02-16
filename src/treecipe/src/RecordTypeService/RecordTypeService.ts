@@ -1,32 +1,34 @@
 
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
+import { RecordTypeWrapper } from './RecordTypesWrapper';
 
 import * as fs from 'fs';
 import * as xml2js from 'xml2js';
 import * as vscode from 'vscode';
+import { Connection } from '@salesforce/core';
 
 
 export class RecordTypeService {
 
-    static async getRecordTypeToApiFieldToPicklistValuesMap(associatedFieldsDirectoryPath: string): Promise<Record<string, Record<string, string[]>>> {
+    static async getRecordTypeToApiFieldToRecordTypeWrapper(associatedFieldsDirectoryPath: string): Promise<Record<string, RecordTypeWrapper>> {
 
         const baseObjectPath = associatedFieldsDirectoryPath.split('/fields')[0]; // getting index of 0 will return base path 
         const expectedRecordTypesFolderName = 'recordTypes';
         const expectedRecordTypesPath = `${baseObjectPath}/${expectedRecordTypesFolderName}`;
         const recordTypesDirectoryUri = vscode.Uri.parse(expectedRecordTypesPath);
     
-        let recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> = {};
+        let recordTypeDeveloperNameToRecordTypeWrapper: Record<string, RecordTypeWrapper> = {};
     
         // check if recordTypes folder exists, return and skip functionality if not
         if (!fs.existsSync(expectedRecordTypesPath)) {
           // no recordTypes folder exists for object
-          return recordTypeToPicklistFieldsToAvailablePicklistValuesMap;
+          return recordTypeDeveloperNameToRecordTypeWrapper;
         }
         
         const recordTypeFileTuples = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
         if (recordTypeFileTuples === undefined || recordTypeFileTuples.length === 0) {
           // if folder exists but is empty, return and skip functionality
-          return recordTypeToPicklistFieldsToAvailablePicklistValuesMap;
+          return recordTypeDeveloperNameToRecordTypeWrapper;
         } 
     
         for (const [fileName, directoryItemTypeEnum] of recordTypeFileTuples) {
@@ -47,27 +49,49 @@ export class RecordTypeService {
 
             });
 
-            const recordType = recordTypeXML.RecordType;
-            const picklistValues = recordType.picklistValues;
+            const recordTypeXMLDetail = recordTypeXML.RecordType;
+            const picklistValues = recordTypeXMLDetail.picklistValues;
         
-            const fieldApiToRecordTypePicklistValuesMap: Record<string, string[]> = {};
+            const recordTypeApiName = recordTypeXML.RecordType.fullName[0];
+            let recordTypeWrapper = new RecordTypeWrapper();
+            recordTypeWrapper.RecordTypeId = '';
+            recordTypeWrapper.DeveloperName = recordTypeApiName;
+
+            const associatedFieldApiToRecordTypePicklistValuesMap: Record<string, string[]> = {};
             picklistValues.forEach((picklistValue: any) => {
                 const fieldName = picklistValue.picklist[0]; // picklist is array with one expected value
                 const recordTypePicklistValuesForField = picklistValue.values.flatMap((value: any) => value.fullName ); // Extract the list of values
-                fieldApiToRecordTypePicklistValuesMap[fieldName] = recordTypePicklistValuesForField;
+                associatedFieldApiToRecordTypePicklistValuesMap[fieldName] = recordTypePicklistValuesForField;
             });
+
+            recordTypeWrapper.PicklistFieldSectionsToPicklistDetail = associatedFieldApiToRecordTypePicklistValuesMap;
         
-            const apiName = recordTypeXML.RecordType.fullName[0];
-            recordTypeToPicklistFieldsToAvailablePicklistValuesMap[apiName] = fieldApiToRecordTypePicklistValuesMap;
-    
+            recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
+
           }
     
         }
         
-        return recordTypeToPicklistFieldsToAvailablePicklistValuesMap;
+        return recordTypeDeveloperNameToRecordTypeWrapper;
       
     }
 
+    static async getRecordTypeIdsByConnection(
+                                            conn: Connection, 
+                                            objectApiNames: string[]
+                                          ): Promise<any> {
+        
+      const joinedObjectNames = objectApiNames.join("','");
+      const recordTypeDetail = await conn.query(`
+          SELECT Id, 
+              SObjectType,
+              DeveloperName 
+          FROM RecordType 
+          WHERE SObjectType IN ('${joinedObjectNames}')
+      `); 
     
+      return recordTypeDetail;
+
+    }
 
 }

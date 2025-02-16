@@ -183,12 +183,15 @@ describe('Shared ConfigurationService Tests', () => {
         test('given mocked configuration, returns expected objects path.', () => {
             
             const mockObjectsPath = '/mock/objects/path';
+            const mockWorkspaceRoot = '/mock/workspace/root';
 
             const expectedConfigDetailJson = `{
     "salesforceObjectsPath": "${mockObjectsPath}",
     "dataFakerService": "snowfakery"
 }`;
             
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
             jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
 
@@ -235,6 +238,39 @@ describe('Shared ConfigurationService Tests', () => {
             const expectedFolderPath = "treecipe/GeneratedRecipes";
             const actualFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
             expect(actualFolderPath).toBe(expectedFolderPath);
+        });
+
+    });
+
+    describe('getBaseArtifactsFolderName', () => {
+
+        test('returns expected base artifcats folder name', () => {
+            const expectedFolderName = "BaseArtifactFiles";
+            const actualFolderName = ConfigurationService.getBaseArtifactsFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getDatasetCollectionApiFilesFolderName', () => {
+
+        test('returns expected dataset collections api folder name', () => {
+            const expectedFolderName = "DatasetFilesForCollectionsApi";
+            const actualFolderName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getTreecipeObjectsWrapperName', () => {
+
+        test('returns expected treecipe object wrapper name', () => {
+
+            const expectedWrapperName = 'treecipeObjectsWrapper';
+            const actualWrapperName = ConfigurationService.getTreecipeObjectsWrapperName();
+
+            expect(actualWrapperName).toBe(expectedWrapperName);
+
         });
 
     });

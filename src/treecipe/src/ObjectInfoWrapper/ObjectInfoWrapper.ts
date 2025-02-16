@@ -3,16 +3,16 @@ import { ObjectInfo } from "./ObjectInfo";
 export class ObjectInfoWrapper {
   
 
-  public objectToObjectInfoMap:Record<string, ObjectInfo> = {};
-  public combinedRecipes:string = "";
+  ObjectToObjectInfoMap:Record<string, ObjectInfo> = {};
+  CombinedRecipes:string = "";
 
 
   public addKeyToObjectInfoMap(objectApiName: string) {
 
     // WITH THE ITERATION OF OBJECTS AND THE NEED TO ADD REFERENCES BASED ON LOOKUPS
     // AN OBJECT KEY COULD BE ADDED DUE TO A LOOKUP RELATIONSHIP BEFORE AN OBJECT IS ITERATED OVER
-    if ( !(objectApiName in this.objectToObjectInfoMap) ) {
-      this.objectToObjectInfoMap[objectApiName] = new ObjectInfo(objectApiName);
+    if ( !(objectApiName in this.ObjectToObjectInfoMap) ) {
+      this.ObjectToObjectInfoMap[objectApiName] = new ObjectInfo(objectApiName);
     }
 
   }

@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import * as xml2js from 'xml2js';
 import * as path from 'path';
 import { MockRecordTypeService } from "./MockRecordTypeService";
+import { MockCollectionsApiService } from "../../CollectionsApiService/tests/mocks/MockCollectionsApiService";
 
 jest.mock('fs');
 jest.mock('path');
@@ -33,7 +34,6 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
         test('given expected mock xml markup content and expected xml converted object expectd markup is returned and mocked functions are called with expected arguments', async () => {
 
-
             (fs.existsSync as jest.Mock).mockReturnValue(true);
 
             const fileTypeEnum = 1;
@@ -48,8 +48,7 @@ describe('RecordTypeService Shared Instance Tests', () => {
             (path.extname as jest.Mock).mockReturnValue('.xml');
 
             const mockAssociatedFieldsDirectoryPath = '/mock/path/to/fields';
-            const result = await RecordTypeService.getRecordTypeToApiFieldToPicklistValuesMap(mockAssociatedFieldsDirectoryPath);
-
+            const actualOneRecTypeResults = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(mockAssociatedFieldsDirectoryPath);
 
             const mockBaseObjectPath = '/mock/path/to';
             const mockRecordTypesPath = `${mockBaseObjectPath}/recordTypes`;
@@ -58,12 +57,32 @@ describe('RecordTypeService Shared Instance Tests', () => {
             expect(vscode.workspace.fs.readFile).toHaveBeenCalledWith(vscode.Uri.joinPath(vscode.Uri.parse(mockRecordTypesPath), mockRecordTypeFileName));
             expect(xml2js.parseString).toHaveBeenCalledWith(mockRecordTypeXMLContent, expect.any(Function));
            
-            const expectedRecordTypeFieldToPicklistValuesMap = MockRecordTypeService.getOneRecTypeFieldToPicklistValuesMap();
-            const expectedRecordTypeToXMLMarkupMap = { OneRecType: expectedRecordTypeFieldToPicklistValuesMap };
-            expect(result).toEqual(
-                expectedRecordTypeToXMLMarkupMap
+            const expectedRecordTypeToRecordTypeWrapperMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
+            expect(actualOneRecTypeResults.OneRecType).toEqual(
+                expectedRecordTypeToRecordTypeWrapperMap.OneRecType
             );
         
+        });
+
+    });
+
+    describe('getRecordTypeIdsByConnection', () => {
+
+        test('given mocked Connection instance and mocked query funtcion, should query record type IDs for given object API names', async () => {   
+            
+            const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();
+            
+            const mockRecordTypes:any = MockRecordTypeService.getFakeRecordTypeByIdsQueryResults();     
+            mockedConnection.query.mockResolvedValue(mockRecordTypes);
+
+            const doesntMatterObjectNames = ['Account', 'Contact'];
+            const result = await RecordTypeService.getRecordTypeIdsByConnection(
+                mockedConnection,
+                doesntMatterObjectNames
+            );
+   
+            expect(result).toEqual(mockRecordTypes);
+          
         });
 
     });

@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -34,6 +34,11 @@
       {
         "command": "treecipe.runSnowfakeryByRecipe",
         "title": "Run Snowfakery by Recipe",
+        "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.insertDataSetBySelectedDirectory",
+        "title": "Insert Data Set by Directory",
         "category": "Salesforce Treecipe"
       }
     ],
@@ -79,6 +84,7 @@
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.11.1",
     "jest": "^29.7.0",
+    "jsforce": "^3.6.4",
     "ts-jest": "^29.2.5",
     "typescript": "^5.6.3"
   },

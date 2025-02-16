@@ -1,15 +1,17 @@
 import { FieldInfo } from "./FieldInfo";
 import { RelationshipDetail } from "../RelationshipService/RelationshipDetail";
+import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 
 export class ObjectInfo {
 
-  apiName: string;
-  fields: FieldInfo[];
-  relationshipDetail: RelationshipDetail;
-  fullRecipe: string;
+  ApiName: string;
+  Fields: FieldInfo[];
+  RelationshipDetail: RelationshipDetail;
+  FullRecipe: string;
+  RecordTypesMap: Record<string, RecordTypeWrapper>;
   
   constructor(objectApiName:string)  {
-    this.apiName = objectApiName;
+    this.ApiName = objectApiName;
   };
 
 }

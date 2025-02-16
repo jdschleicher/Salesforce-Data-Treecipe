@@ -98,7 +98,7 @@ export class XMLMarkupMockService {
     static getRichTextAreaXMLFieldDetail() {
 
         const richTextAreaXMLField: XMLFieldDetail = {
-            fieldType: "RichTextArea",
+            fieldType: "Html",
             apiName: "TextAreaRich__c",
             fieldLabel: "TextAreaRich"
         };
@@ -115,7 +115,7 @@ export class XMLMarkupMockService {
     <label>TextAreaRich</label>
     <length>32768</length>
     <trackTrending>false</trackTrending>
-    <type>RichTextArea</type>
+    <type>Html</type>
     <visibleLines>25</visibleLines>
 </CustomField>        
 `;

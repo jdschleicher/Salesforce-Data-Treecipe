@@ -1,3 +1,4 @@
+import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { NPMFakerService } from "../NPMFakerService";
 
 describe('NPMFakerService Shared Intstance Tests', () => {
@@ -26,8 +27,8 @@ describe('NPMFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToNPMFakerMappings['longtextarea']).toBe('{{ faker.lorem.text(1000) }}');
         });
 
-        test('RichTextArea field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['richtextarea']).toBe('{{ faker.lorem.text(1000) }}');
+        test('RichTextArea Html field returns correct npm faker expression', () => {
+            expect(fieldTypeToNPMFakerMappings['html']).toBe('{{ faker.lorem.text(1000) }}');
         });
 
         test('Email field returns correct npm faker expression', () => {
@@ -96,7 +97,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
         test('All Salesforce field types have a corresponding mapping', () => {
             const expectedFields = [
-                'text', 'textarea', 'longtextarea', 'richtextarea', 'email', 
+                'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
                 'lookup', 'masterdetail', 'formula', 'location'
@@ -134,9 +135,9 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
             const expectedRecipeValue = `faker.helpers.arrayElements(['apple','orange','banana'])`;
-            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> = {};
+            const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
-            const actualFakerValue = npmFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, fakeFieldApiName);
+            const actualFakerValue = npmFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeApiToRecordTypeWrapperMap, fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
         });
@@ -188,10 +189,10 @@ describe('NPMFakerService Shared Intstance Tests', () => {
                     - Model X`;
 
 
-            const recordTypeNameByRecordTypeNameToXMLMarkup: Record<string, object> = {};
+            const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "CarModel__c";
             const actualFakerValue = npmFakerService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
-                                                        recordTypeNameByRecordTypeNameToXMLMarkup, 
+                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
                                                         controllingField, 
                                                         fakeFieldApiName);
 
@@ -206,10 +207,10 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
             const expectedRecipeValue = `faker.helpers.arrayElement(['apple','orange','banana'])`;
-            const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>> = {};
+            const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = npmFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
-                                                                                                emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap, 
+                emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
                                                                                                 fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);

@@ -47,20 +47,26 @@ export class SnowfakeryIntegrationService {
 
     static async selectSnowfakeryRecipeFileToProcess() {
 
-        const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForRecipeFileToProcess();
+        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
+        const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
+        const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
         return selectedRecipeFilePathNameQuickPickItem;
         
     }
 
     static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
+        // let snowfakeryError:Error = null;
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {
 
             const generateCommand = `snowfakery ${ fullRecipeFileNamePath } --output-format json`;
             const handleSnowfakeryDataGenerationCallback = (cliCommandError, snowfakeryCliJson) => {
 
                 if (cliCommandError) {
-                    reject(new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`));
+                    
+                    const snowfakeryError = new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`);
+                    reject(snowfakeryError);
+
                 } else {
 
                     /*
@@ -86,12 +92,16 @@ export class SnowfakeryIntegrationService {
 
         const mappedSObjectApiToRecords = this.mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent);   
 
+        const directoryToStoreCollectionDatasetFiles = 'DatasetFilesForCollectionsApi';
+        const fullPathToStoreDatasetFiles = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${directoryToStoreCollectionDatasetFiles}`;
+        fs.mkdirSync(fullPathToStoreDatasetFiles);
+
         mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
 
             SnowfakeryIntegrationService.createCollectionsApiFile(
                 sobjectApiName, 
                 collectionsApiContent, 
-                fullPathToUniqueTimeStampedFakeDataSetsFolder
+                fullPathToStoreDatasetFiles
             );
 
         });
@@ -141,7 +151,7 @@ export class SnowfakeryIntegrationService {
     
     }
 
-    static createUniqueTimeStampedFakeDataSetsFolderName():string {
+    static createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName: string):string {
 
         const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
@@ -151,7 +161,6 @@ export class SnowfakeryIntegrationService {
             fs.mkdirSync(expectedFakeDataSetsFolerPath);
         }
 
-        const uniqueTimeStampedFakeDataSetsFolderName = this.createFakeDataSetsTimeStampedFolderName();
         const fullPathToUniqueTimeStampedFakeDataSetsFolder = `${expectedFakeDataSetsFolerPath}/${uniqueTimeStampedFakeDataSetsFolderName}`;
         fs.mkdirSync(`${fullPathToUniqueTimeStampedFakeDataSetsFolder}`);
 
@@ -183,11 +192,9 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static createFakeDataSetsTimeStampedFolderName():string {
+    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
         
-        const isoDateTimestamp = new Date().toISOString().split(".")[0].replace(/:/g,"-"); // expecting format '2024-11-25T16-24-15'
         const fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
-
         return fakeDataSetsFolderName;
 
     }

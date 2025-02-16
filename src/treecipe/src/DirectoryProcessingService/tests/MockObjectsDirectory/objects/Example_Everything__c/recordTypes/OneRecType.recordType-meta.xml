@@ -10,7 +10,15 @@
             <default>false</default>
         </values>
         <values>
-            <fullName>plant</fullName>
+            <fullName>rocks</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>tree</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>weed</fullName>
             <default>false</default>
         </values>
     </picklistValues>

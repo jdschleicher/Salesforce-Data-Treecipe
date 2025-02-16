@@ -1,18 +1,18 @@
-import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
+import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 
 export interface IFakerService {
 
     getMapSalesforceFieldToFakerValue(): Record<string, string>;
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
-                                                            recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
-                                                            fieldApiName): string;
+        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+        fieldApiName): string;
     buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, 
-                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,  
-                                                controllingField: string,
-                                                fieldApiName): string;
+        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+        controllingField: string,
+        fieldApiName): string;
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
-                                                recordTypeToPicklistFieldsToAvailablePicklistValuesMap: Record<string, Record<string, string[]>>,
-                                                fieldApiName): string;
+        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+        fieldApiName): string;
     generateTabs(tabCount: number): string;
     
 }
