@@ -57,6 +57,11 @@ The end result treecipe.config.json file is expected to look like the below:
 
 Once the configuration file is generated, you can begin using the **Generate Treecipe** command.
 
+
+#### Corresponding Video:
+
+https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#initiate-treecipe-configuration-with-expected-objects-directory
+
 ---
 
 ### 2.<a name="command2"></a> **Salesforce Treecipe: Generate Treecipe**
@@ -81,6 +86,11 @@ There is also an option to "Report a Bug" if the initiation command has already 
 
 Once your configuration file and objects directory are set up, running this command will generate a custom tree structure to assist in your Salesforce development and data handling.
 
+
+#### Corresponding Video:
+
+https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#generate-treecipe-based-on-treecipeconfigjcon--keep-an-eye-out-for-ootb-fields-and-remove-me-lines-
+
 ---
 
  ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe) to create FakeDataSet**
@@ -89,6 +99,9 @@ This command [prompts the user to select an existing recipe(Treecipe) file](http
 
 With the selection made, the snowfakery CLI will execute against they yaml file and produce json structured, production-like data which is then converted for usage with Salesforce [Collection Api](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm)
 
+#### Corresponding Video:
+
+https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file
 
 ---
 
@@ -118,16 +131,12 @@ https://github.com/user-attachments/assets/f8401f28-a04c-4abc-a56f-c860cce96dee
 #### Generate Treecipe based on treecipe.config.jcon ( keep an eye out for OOTB fields and "REMOVE ME" lines )
 
 
-
-
 https://github.com/user-attachments/assets/fd127b55-d434-4a73-9d65-cf4172fbce6f
-
 
 
 ---
 
 #### Run Snowfakery by existing recipe yaml file
-
 
 
 https://github.com/user-attachments/assets/d7dfcf70-70f8-4ce3-b254-280e2bbb0b7d
@@ -136,6 +145,13 @@ https://github.com/user-attachments/assets/d7dfcf70-70f8-4ce3-b254-280e2bbb0b7d
 
 ---
 
+#### Insert Data Set by Directory
+
+
+
+
+
+---
 
 
 ## Troubleshooting, Exception Handling, and Reporting Bugs
