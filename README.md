@@ -7,7 +7,7 @@
 ## Prerequisites
 
 1. [Install Snowfakery CLI](#install-snowfakery) 
-2. 
+   
 ---
 
 ## Installation
