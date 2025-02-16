@@ -104,6 +104,16 @@ describe('Shared tests for CollectionsApiService', () => {
 
         });
 
+        test('given false selection made, should return undefined', async () => {
+
+            const expectedFalseSelection = { detail: 'false' } as vscode.QuickPickItem;
+            (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(expectedFalseSelection);
+        
+            const actualSelection = await CollectionsApiService.promptForAllOrNoneInsertDecision();
+            expect(actualSelection).toBe(false);
+    
+        });
+
         test('given no selection made, should return undefined', async () => {
 
             (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);

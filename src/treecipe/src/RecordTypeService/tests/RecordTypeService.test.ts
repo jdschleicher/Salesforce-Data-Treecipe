@@ -5,7 +5,6 @@ import * as vscode from 'vscode';
 import * as xml2js from 'xml2js';
 import * as path from 'path';
 import { MockRecordTypeService } from "./MockRecordTypeService";
-import { Connection } from "@salesforce/core";
 import { MockCollectionsApiService } from "../../CollectionsApiService/tests/mocks/MockCollectionsApiService";
 
 jest.mock('fs');
@@ -59,7 +58,6 @@ describe('RecordTypeService Shared Instance Tests', () => {
             expect(xml2js.parseString).toHaveBeenCalledWith(mockRecordTypeXMLContent, expect.any(Function));
            
             const expectedRecordTypeToRecordTypeWrapperMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
-            // const expectedRecordTypeToRecordTypeWrapperMap = { OneRecType: expectedRecordTypeFieldToPicklistValuesMap };
             expect(actualOneRecTypeResults.OneRecType).toEqual(
                 expectedRecordTypeToRecordTypeWrapperMap.OneRecType
             );
