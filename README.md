@@ -10,7 +10,7 @@
    
 ---
 
-## Installation
+## VS Code Extension Installation
 
 1. Open **Visual Studio Code**.
 2. Go to the **Extensions** panel and search for **Salesforce-Data-Treecipe**.
