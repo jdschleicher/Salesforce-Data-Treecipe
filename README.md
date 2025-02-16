@@ -4,11 +4,28 @@
 
 ---
 
+## Prerequisites
+
+1. [Install Snowfakery CLI](#install-snowfakery) 
+2. 
+---
+
+## Installation
+
+1. Open **Visual Studio Code**.
+2. Go to the **Extensions** panel and search for **Salesforce-Data-Treecipe**.
+3. Click **Install**.
+
+---
+
 ## Get started by walking through the below commands (see corresponding video for each step):
+
+Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palette.
 
 1. [Initiate Configuration File](#command1)
 2. [Generate Treecipe](#command2)
 3. [Run Snowfakery by Recipe(Treecipe) to create FakeDataSet](#command3)
+4. [Insert Data Set by Directory ](#command4)
 
 ---
 
@@ -52,7 +69,6 @@ As part of this yaml file generation there are some items to be aware of:
 - **Handling of field files without xml markup:** For OOTB fields like AccountNumber or Name on the Account object, there is not detailed XML markup found in their field files. These occurrences are marked with a "TODO" item because they need to be either cleared or provided a faker value. For example, AccountNumber is an auto-generated field and doesn't need a faker value. However Account "Name" field will need a faker value, "${{ fake.company }}". In upcoming releases, there will be an auto mapper that handles OOTB objects and fields but for now requires a set of eyes to review the OOTB updates.
 - **Record Type Picklist, Dependent Picklist, Multiselect Picklist Selections:** At the start of the yaml file generation for an object found in the project source, an expected structure is parsed in order to confirm if there are different Record Types associated with the object. Within the objects folder [there should be a structure (shown below)](https://github.com/jdschleicher/Salesforce-Data-Treecipe/edit/feature/handleLocalRecordTypeMarkup/README.md#example-directory-structure) that allows the yaml generation logic to parse the "recordTypes" directory and provide picklist faker options based on each record type:
 
-
 **NOTE:** 
 
 If this command is ran before "Initiate Configuration File" command, an exception will be handled and you a VSCode warning box will render showing an option to run the "Initiate Configuration File" command. 
@@ -72,6 +88,19 @@ Once your configuration file and objects directory are set up, running this comm
 This command [prompts the user to select an existing recipe(Treecipe) file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file) to generate fake data from.
 
 With the selection made, the snowfakery CLI will execute against they yaml file and produce json structured, production-like data which is then converted for usage with Salesforce [Collection Api](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm)
+
+
+---
+
+ ### <a name="command4"></a> 4. **Salesforce Treecipe: Insert Data Set by Directory**
+ 
+This command prompts the user for the following items:
+1. Select a pre-existing "dataset" directory with expected Collections-Api structure files
+2. Enter name of already locally authenticated Salesforce alis (DO NOT USE PRODUCTION ORG!!!)
+3. Select "ALL OR NONE" option. 
+   1. "false" will not perform any roll back and keep any successfully inserted records as is
+   2. "true" will roll back all inserted records
+
 
 
 ---
@@ -107,49 +136,7 @@ https://github.com/user-attachments/assets/d7dfcf70-70f8-4ce3-b254-280e2bbb0b7d
 
 ---
 
-## Features
 
-- **Easy Configuration Setup**: Define your Salesforce object directory in just a few steps.
-- **Dynamic Tree Generation**: Once configured, quickly generate Treecipe data trees tailored to your project.
-
----
-
-## Getting Started
-
-### Installation
-1. Open **Visual Studio Code**.
-2. Go to the **Extensions** panel and search for **Salesforce-Data-Treecipe**.
-3. Click **Install**.
-
-### Usage
-1. After installation, press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palette.
-2. Choose one of the following commands:
-   - **Initiate Configuration File**: Set up your Salesforce object directory.
-   - **Generate Treecipe**: Generate a tree based on the configuration.
-
----
-
-## Configuration
-
-After running **Initiate Configuration File**, you will be prompted to choose the **source directory** in your codebase where Salesforce objects are stored. This directory must be in **source format**.
-
-### Example Directory Structure:
-
-```plaintext
-my-project/
-├── force-app/
-│   └── main/
-│       └── default/
-│           └── objects/
-│               └──  Account/
-|                  └── fields/
-|                  └── recordTypes/
-│               └──  Contact/
-│               └── ...
-
-```
-
----
 
 ## Troubleshooting, Exception Handling, and Reporting Bugs
 
@@ -180,6 +167,7 @@ https://github.com/user-attachments/assets/dff4a3cb-e244-4959-9dec-dcf094f713c2
 
 ---
 
+
 ## Contributing
 
 This project and codebase will be open-sourced shortly :)
@@ -189,3 +177,68 @@ This project and codebase will be open-sourced shortly :)
 ## License
 
 This extension is licensed under the [MIT License](LICENSE).
+
+---
+
+### <a name="install-snowfakery"></a> Install Snowfakery CLI
+
+
+#### Snowfakery CLI Installation and Usage
+
+#### Overview
+
+Snowfakery is a tool for generating synthetic data. This document provides instructions for installing and using the Snowfakery CLI on any operating system.
+
+#### Prerequisites
+
+- **Python 3.8+** is required. You can verify your Python version by running:
+  
+  ```bash
+  python --version
+  ```
+
+  If you need to install or upgrade Python, you can download the latest version from the official Python website:  
+  [https://www.python.org/downloads/](https://www.python.org/downloads/).
+
+- **pip** (Python package manager) should also be installed. You can follow the installation instructions here:  
+  [https://pip.pypa.io/en/stable/installation/](https://pip.pypa.io/en/stable/installation/).
+
+#### Installation
+
+##### 1. Install Snowfakery via pip
+
+To install Snowfakery globally, open your terminal or command prompt and run the following command:
+
+```bash
+pip install snowfakery
+```
+
+#### 2. Verify the Installation
+
+After installation, verify that Snowfakery is installed by checking the version:
+
+```bash
+snowfakery --version
+```
+
+You should see the version number of Snowfakery printed in the terminal, confirming a successful installation.
+
+#### Usage (Withou Salesforce Data Treecipe Extension)
+
+Once installed, you can generate synthetic data by running Snowfakery from the command line:
+
+```bash
+snowfakery generate <path_to_your_snowfakery_recipe>
+```
+
+For more information about writing Snowfakery recipes and using the tool, please refer to the official documentation:  
+[https://snowfakery.readthedocs.io/](https://snowfakery.readthedocs.io/)
+
+#### Uninstalling Snowfakery
+
+If you wish to uninstall Snowfakery, you can do so using pip:
+
+```bash
+pip uninstall snowfakery
+```
+
