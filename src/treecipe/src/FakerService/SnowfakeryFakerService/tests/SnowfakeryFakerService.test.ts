@@ -309,12 +309,12 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                                                                                                 controllingFieldValue
                                                                                             );
 
-            const madisonControllingValueToPicklistOptions = MockRecordTypeService.getNotAvailableControllingValueToDependentPicklistOptionsVerbiageBasedOnExpectedRecordTypes(controllingFieldValue, controllingFieldApiName);
-            expect(actualUpdatedRandomChoicesBreakdown).toBe(madisonControllingValueToPicklistOptions);
+            const expectedRecordTypeControllingValueToPicklistOptionsFakerValue = MockRecordTypeService.getNotAvailableControllingValueToDependentPicklistOptionsVerbiageBasedOnExpectedRecordTypes(controllingFieldValue, controllingFieldApiName);
+            expect(actualUpdatedRandomChoicesBreakdown).toBe(expectedRecordTypeControllingValueToPicklistOptionsFakerValue);
         
         });
 
-        test('given no record type associated xml markup, "no record type selections" verbiage is added to recipe value', () => {
+        test('given expected record type files but no record type associated xml markup, "no record type selections" verbiage is added to recipe value', () => {
             
             const expectedRecordTypeDeveloperNameToRecordTypeWrapperMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
             const fakeFieldApiName = "DependentPicklist__c";
@@ -329,8 +329,28 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                                                                                                 controllingFieldValue
                                                                                             );
 
-            const madisonControllingValueToPicklistOptions = MockRecordTypeService.getNotAvailableControllingValueToDependentPicklistOptionsVerbiageBasedOnExpectedRecordTypes(controllingFieldValue, controllingFieldApiName);
-            expect(actualUpdatedRandomChoicesBreakdown).toBe(madisonControllingValueToPicklistOptions);
+            const expectedRecordTypeControllingValueToPicklistOptionsFakerValue = MockRecordTypeService.getNotAvailableControllingValueToDependentPicklistOptionsVerbiageBasedOnExpectedRecordTypes(controllingFieldValue, controllingFieldApiName);
+            expect(actualUpdatedRandomChoicesBreakdown).toBe(expectedRecordTypeControllingValueToPicklistOptionsFakerValue);
+        
+        });
+
+        test('given NO record type files at all, no record type verbiage is added to recipe value', () => {
+            
+            const noRecordTypeDeveloperNameToRecordTypeWrapperMap = {};
+            const fakeFieldApiName = "DependentPicklist__c";
+            const controllingFieldValue = 'madison';
+            const controllingFieldApiName = 'apiFieldThatDoesntExistInAnyRecordTypeXMLMarkup';
+
+    
+            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(
+                                                                                                noRecordTypeDeveloperNameToRecordTypeWrapperMap, 
+                                                                                                fakeFieldApiName, 
+                                                                                                controllingFieldApiName,
+                                                                                                controllingFieldValue
+                                                                                            );
+
+            const expectedRecordTypeControllingValueToPicklistOptionsFakerValue = "";
+            expect(actualUpdatedRandomChoicesBreakdown).toBe(expectedRecordTypeControllingValueToPicklistOptionsFakerValue);
         
         });
     
