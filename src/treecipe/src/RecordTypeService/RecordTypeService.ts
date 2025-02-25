@@ -34,7 +34,7 @@ export class RecordTypeService {
         for (const [fileName, directoryItemTypeEnum] of recordTypeFileTuples) {
     
           if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
-    
+
             const recordTypeUri = vscode.Uri.joinPath(recordTypesDirectoryUri, fileName);
             const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
             const recordTypeXMLContent = Buffer.from(recordTypeContentUriData).toString('utf8');
