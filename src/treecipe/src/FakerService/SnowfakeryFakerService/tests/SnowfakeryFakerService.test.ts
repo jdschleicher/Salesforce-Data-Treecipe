@@ -309,7 +309,27 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                                                                                                 controllingFieldValue
                                                                                             );
 
-            const madisonControllingValueToPicklistOptions = MockRecordTypeService.getMadisonControllingValueToDependentPicklistOptions();
+            const madisonControllingValueToPicklistOptions = MockRecordTypeService.getNotAvailableControllingValueToDependentPicklistOptionsVerbiageBasedOnExpectedRecordTypes(controllingFieldValue, controllingFieldApiName);
+            expect(actualUpdatedRandomChoicesBreakdown).toBe(madisonControllingValueToPicklistOptions);
+        
+        });
+
+        test('given no record type associated xml markup, "no record type selections" verbiage is added to recipe value', () => {
+            
+            const expectedRecordTypeDeveloperNameToRecordTypeWrapperMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
+            const fakeFieldApiName = "DependentPicklist__c";
+            const controllingFieldValue = 'madison';
+            const controllingFieldApiName = 'apiFieldThatDoesntExistInAnyRecordTypeXMLMarkup';
+
+    
+            const actualUpdatedRandomChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(
+                                                                                                expectedRecordTypeDeveloperNameToRecordTypeWrapperMap, 
+                                                                                                fakeFieldApiName, 
+                                                                                                controllingFieldApiName,
+                                                                                                controllingFieldValue
+                                                                                            );
+
+            const madisonControllingValueToPicklistOptions = MockRecordTypeService.getNotAvailableControllingValueToDependentPicklistOptionsVerbiageBasedOnExpectedRecordTypes(controllingFieldValue, controllingFieldApiName);
             expect(actualUpdatedRandomChoicesBreakdown).toBe(madisonControllingValueToPicklistOptions);
         
         });

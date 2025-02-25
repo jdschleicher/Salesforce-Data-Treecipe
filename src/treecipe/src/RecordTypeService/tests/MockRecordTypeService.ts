@@ -277,20 +277,17 @@ export class MockRecordTypeService {
     
     }
 
-    static getMadisonControllingValueToDependentPicklistOptions():string {
+    static getNotAvailableControllingValueToDependentPicklistOptionsVerbiageBasedOnExpectedRecordTypes(controllingFieldValue: string, controllingFieldApiName: string):string {
 
         const recordTypeOneRecTypeApiNameKey = 'OneRecType';
         const recordTypeTwoRecTypeApiNameKey = 'TwoRecType';
 
-        const controllingValue = "madison";
-        const controllingFieldApiName = "Picklist__c";
-
-        const madisionControllingValueToPicklistOptions =       
+        const expectedControllingValueToPicklistOptions =       
         `
-                    ### TODO: -- RecordType Options -- ${recordTypeOneRecTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeOneRecTypeApiNameKey}
-                    ### TODO: -- RecordType Options -- ${recordTypeTwoRecTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeTwoRecTypeApiNameKey}`;
+                    ### TODO: -- RecordType Options -- ${recordTypeOneRecTypeApiNameKey} -- "${controllingFieldValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeOneRecTypeApiNameKey}
+                    ### TODO: -- RecordType Options -- ${recordTypeTwoRecTypeApiNameKey} -- "${controllingFieldValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeTwoRecTypeApiNameKey}`;
 
-        return madisionControllingValueToPicklistOptions;
+        return expectedControllingValueToPicklistOptions;
     
     }
 
