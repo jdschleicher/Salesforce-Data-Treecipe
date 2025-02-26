@@ -255,4 +255,200 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return allRecordTypeBasedMultiselectPicklistOptions;
     }
 
+    getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>> {
+
+        const salesforceSnowfakeryMappings: Record<string, Record<string, string>> = {
+            
+            "Account": {
+              "Name": "{{fake.company}}",
+              "AccountNumber": "{{random_number(8)}}",
+              "AnnualRevenue": "{{random_number(7)}}",
+              "BillingStreet": "{{fake.street_address}}",
+              "BillingCity": "{{fake.city}}",
+              "BillingState": "{{fake.state}}",
+              "BillingPostalCode": "{{fake.zipcode}}",
+              "BillingCountry": "{{fake.country}}",
+              "Description": "{{fake.catch_phrase}}",
+              "Industry": "{{random_choice('Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education')}}",
+              "NumberOfEmployees": "{{random_number(4)}}",
+              "Phone": "{{fake.phone_number}}",
+              "Rating": "{{random_choice('Hot', 'Warm', 'Cold')}}",
+              "ShippingStreet": "{{fake.street_address}}",
+              "ShippingCity": "{{fake.city}}",
+              "ShippingState": "{{fake.state}}",
+              "ShippingPostalCode": "{{fake.zipcode}}",
+              "ShippingCountry": "{{fake.country}}",
+              "Sic": "{{random_number(4)}}",
+              "Type": "{{random_choice('Customer', 'Partner', 'Prospect')}}",
+              "Website": "{{fake.domain_name}}"
+            },
+            
+            "Contact": {
+              "FirstName": "{{fake.first_name}}",
+              "LastName": "{{fake.last_name}}",
+              "Email": "{{fake.email}}",
+              "Phone": "{{fake.phone_number}}",
+              "MobilePhone": "{{fake.phone_number}}",
+              "Title": "{{fake.job_title}}",
+              "Department": "{{random_choice('Sales', 'Marketing', 'IT', 'Finance', 'HR', 'Operations')}}",
+              "Birthdate": "{{fake.date_of_birth}}",
+              "Description": "{{fake.paragraph}}",
+              "MailingStreet": "{{fake.street_address}}",
+              "MailingCity": "{{fake.city}}",
+              "MailingState": "{{fake.state}}",
+              "MailingPostalCode": "{{fake.zipcode}}",
+              "MailingCountry": "{{fake.country}}",
+              "OtherStreet": "{{fake.street_address}}",
+              "OtherCity": "{{fake.city}}",
+              "OtherState": "{{fake.state}}",
+              "OtherPostalCode": "{{fake.zipcode}}",
+              "OtherCountry": "{{fake.country}}",
+              "LeadSource": "{{random_choice('Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other')}}",
+              "Salutation": "{{random_choice('Mr.', 'Ms.', 'Mrs.', 'Dr.')}}",
+              "AssistantName": "{{fake.name}}",
+              "AssistantPhone": "{{fake.phone_number}}"
+            },
+            
+            "Opportunity": {
+              "Name": "{{fake.catch_phrase}}",
+              "Amount": "{{random_number(6)}}.00",
+              "CloseDate": "{{date_between(start_date='-30d', end_date='+90d')}}",
+              "Description": "{{fake.paragraph}}",
+              "ExpectedRevenue": "{{random_number(6)}}.00",
+              "LeadSource": "{{random_choice('Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other')}}",
+              "NextStep": "{{fake.sentence}}",
+              "Probability": "{{random_number(2)}}.0",
+              "StageName": "{{random_choice('Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost')}}",
+              "Type": "{{random_choice('New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade')}}",
+              "ForecastCategory": "{{random_choice('Pipeline', 'Best Case', 'Commit', 'Closed')}}"
+            },
+            
+            "Lead": {
+              "FirstName": "{{fake.first_name}}",
+              "LastName": "{{fake.last_name}}",
+              "Company": "{{fake.company}}",
+              "Title": "{{fake.job_title}}",
+              "Email": "{{fake.email}}",
+              "Phone": "{{fake.phone_number}}",
+              "MobilePhone": "{{fake.phone_number}}",
+              "Street": "{{fake.street_address}}",
+              "City": "{{fake.city}}",
+              "State": "{{fake.state}}",
+              "PostalCode": "{{fake.zipcode}}",
+              "Country": "{{fake.country}}",
+              "Industry": "{{random_choice('Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education')}}",
+              "AnnualRevenue": "{{random_number(7)}}",
+              "Description": "{{fake.paragraph}}",
+              "LeadSource": "{{random_choice('Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other')}}",
+              "Rating": "{{random_choice('Hot', 'Warm', 'Cold')}}",
+              "Status": "{{random_choice('Open - Not Contacted', 'Working - Contacted', 'Closed - Converted', 'Closed - Not Converted')}}",
+              "NumberOfEmployees": "{{random_number(4)}}"
+            },
+            
+            "Case": {
+              "Subject": "{{fake.catch_phrase}}",
+              "Description": "{{fake.paragraph}}",
+              "Status": "{{random_choice('New', 'Working', 'Escalated', 'Closed')}}",
+              "Origin": "{{random_choice('Email', 'Phone', 'Web', 'Social')}}",
+              "Priority": "{{random_choice('High', 'Medium', 'Low')}}",
+              "Type": "{{random_choice('Problem', 'Feature Request', 'Question')}}",
+              "Reason": "{{random_choice('Installation', 'Equipment Complexity', 'Performance', 'Breakdown', 'Equipment Design', 'Feedback')}}",
+              "SuppliedName": "{{fake.name}}",
+              "SuppliedEmail": "{{fake.email}}",
+              "SuppliedPhone": "{{fake.phone_number}}",
+              "SuppliedCompany": "{{fake.company}}"
+            },
+            
+            "Campaign": {
+              "Name": "{{fake.bs}}",
+              "Type": "{{random_choice('Email', 'Webinar', 'Conference', 'Direct Mail', 'Advertisement')}}",
+              "Status": "{{random_choice('Planned', 'In Progress', 'Completed', 'Aborted')}}",
+              "StartDate": "{{date_between(start_date='-30d', end_date='+90d')}}",
+              "EndDate": "{{date_between(start_date='+91d', end_date='+180d')}}",
+              "Description": "{{fake.paragraph}}",
+              "BudgetedCost": "{{random_number(5)}}.00",
+              "ActualCost": "{{random_number(5)}}.00",
+              "ExpectedRevenue": "{{random_number(6)}}.00",
+              "ExpectedResponse": "{{random_number(2)}}.0",
+              "NumberOfContacts": "{{random_number(3)}}",
+              "NumberOfLeads": "{{random_number(3)}}",
+              "NumberOfOpportunities": "{{random_number(2)}}",
+              "NumberOfResponses": "{{random_number(3)}}"
+            },
+            
+            // Task object
+            "Task": {
+              "Subject": "{{fake.catch_phrase}}",
+              "Description": "{{fake.paragraph}}",
+              "Status": "{{random_choice('Not Started', 'In Progress', 'Completed', 'Waiting on someone else', 'Deferred')}}",
+              "Priority": "{{random_choice('High', 'Normal', 'Low')}}",
+              "ActivityDate": "{{date_between(start_date='-7d', end_date='+30d')}}",
+              "Type": "{{random_choice('Call', 'Meeting', 'Other')}}",
+              "CallType": "{{random_choice('Inbound', 'Outbound')}}"
+            },
+            
+            "Event": {
+              "Subject": "{{fake.catch_phrase}}",
+              "Description": "{{fake.paragraph}}",
+              "StartDateTime": "{{date_time_between(start_date='-7d', end_date='+30d')}}",
+              "EndDateTime": "{{date_time_between(start_date='+31d', end_date='+38d')}}",
+              "Location": "{{fake.address}}",
+              "ShowAs": "{{random_choice('Busy', 'Free', 'OutOfOffice', 'Working')}}",
+              "Type": "{{random_choice('Meeting', 'Call', 'Other')}}",
+              "IsAllDayEvent": "{{random_choice('true', 'false')}}"
+            },
+            
+            "Product2": {
+              "Name": "{{fake.product_name}}",
+              "Description": "{{fake.paragraph}}",
+              "ProductCode": "{{fake.ean}}",
+              "IsActive": "{{random_choice('true', 'false')}}",
+              "Family": "{{random_choice('Hardware', 'Software', 'Services', 'Other')}}",
+              "QuantityUnitOfMeasure": "{{random_choice('Each', 'Case', 'Box', 'Pallet')}}",
+              "DisplayUrl": "{{fake.url}}",
+              "ExternalId": "{{fake.uuid4}}"
+            },
+            
+            "PriceBook2": {
+              "Name": "{{fake.bs}} Price Book",
+              "Description": "{{fake.paragraph}}",
+              "IsActive": "{{random_choice('true', 'false')}}"
+            },
+            
+            "Asset": {
+              "Name": "{{fake.product_name}}",
+              "Description": "{{fake.paragraph}}",
+              "InstallDate": "{{date_between(start_date='-365d', end_date='today')}}",
+              "PurchaseDate": "{{date_between(start_date='-730d', end_date='-366d')}}",
+              "SerialNumber": "{{fake.ean}}-{{random_number(6)}}",
+              "Status": "{{random_choice('Purchased', 'Shipped', 'Installed', 'Registered')}}",
+              "Price": "{{random_number(5)}}.00",
+              "Quantity": "{{random_number(2)}}"
+            },
+            
+            "Contract": {
+              "Status": "{{random_choice('Draft', 'In Approval Process', 'Activated', 'Terminated')}}",
+              "StartDate": "{{date_between(start_date='-30d', end_date='+90d')}}",
+              "ContractTerm": "{{random_number(2)}}",
+              "OwnerExpirationNotice": "{{random_choice('15', '30', '45', '60', '90')}}",
+              "Description": "{{fake.paragraph}}",
+              "BillingStreet": "{{fake.street_address}}",
+              "BillingCity": "{{fake.city}}",
+              "BillingState": "{{fake.state}}",
+              "BillingPostalCode": "{{fake.zipcode}}",
+              "BillingCountry": "{{fake.country}}",
+              "ShippingStreet": "{{fake.street_address}}",
+              "ShippingCity": "{{fake.city}}",
+              "ShippingState": "{{fake.state}}",
+              "ShippingPostalCode": "{{fake.zipcode}}",
+              "ShippingCountry": "{{fake.country}}",
+              "SpecialTerms": "{{fake.paragraph}}"
+            }
+          };
+
+
+        return salesforceSnowfakeryMappings;
+
+    }
+
 }
