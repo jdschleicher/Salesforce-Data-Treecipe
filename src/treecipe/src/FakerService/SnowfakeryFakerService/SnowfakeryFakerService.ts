@@ -157,9 +157,15 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
             const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
 
-            if ( !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
-                // picklist value not available for record type so no dependent picklist values to process
+            if ( !availableRecordTypePicklistValuesForControllingField || !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
+  
+                /*
+                    EITHER
+                     - picklist value not available for record type so no dependent picklist values to process
+                     - controlling api field doesn't exist in record type markup so no dependent picklist values to process
+                */
                 allRecordTypeChoicesBreakdown += noPicklistValuesForRecordTypeVerbiage;
+                
             } else {
 
                 let recordTypeChoicesBreakdown:string;
