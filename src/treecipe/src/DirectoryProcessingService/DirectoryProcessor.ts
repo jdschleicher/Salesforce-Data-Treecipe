@@ -105,7 +105,7 @@ export class DirectoryProcessor {
     let fieldInfoDetails: FieldInfo[] = [];
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
-      if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) && this.isOOTBSalesforceField(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
+      if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) && !this.isInMappingsOfOotbSalesforceFields(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
 
         const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
         const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
@@ -167,10 +167,12 @@ export class DirectoryProcessor {
   
   }
 
-  isOOTBSalesforceField(fileName: string, associatedObjectName: string, salesforceOOTBFakerMappings: Record<string, Record<string, string>>):boolean {
+  isInMappingsOfOotbSalesforceFields(fileName: string, associatedObjectName: string, salesforceOOTBFakerMappings: Record<string, Record<string, string>>):boolean {
 
-    const trimmedFileNameToCaptureOOTBFieldApiName = fileName.replace('.xml', '');
-    const parsedSalesforceFieldFileNameInOOTBMappings:boolean = salesforceOOTBFakerMappings[associatedObjectName].hasOwnProperty(trimmedFileNameToCaptureOOTBFieldApiName);
+    // IF FILE NAME INCLUDES OOTB SALESFORCE FIELD ALREADY IN OOTB MAPPINGS WE DO NOT WANT TO PROCESS IT AS ANOTHER FIELD FOR THE RECIPE
+    const expectedFieldFileNameExtension = '.field-meta.xml';
+    const trimmedFileNameToCaptureOOTBFieldApiName = fileName.replace(expectedFieldFileNameExtension, '');
+    const parsedSalesforceFieldFileNameInOOTBMappings:boolean = ( (associatedObjectName in salesforceOOTBFakerMappings) && salesforceOOTBFakerMappings[associatedObjectName].hasOwnProperty(trimmedFileNameToCaptureOOTBFieldApiName) );
     return parsedSalesforceFieldFileNameInOOTBMappings;
 
   }
