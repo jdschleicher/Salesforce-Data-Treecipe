@@ -58,12 +58,14 @@ export class RecordTypeService {
             recordTypeWrapper.DeveloperName = recordTypeApiName;
 
             const associatedFieldApiToRecordTypePicklistValuesMap: Record<string, string[]> = {};
-            picklistValues.forEach((picklistValue: any) => {
+            if ( picklistValues !== undefined ) {
+              picklistValues.forEach((picklistValue: any) => {
                 const fieldName = picklistValue.picklist[0]; // picklist is array with one expected value
                 const recordTypePicklistValuesForField = picklistValue.values.flatMap((value: any) => value.fullName ); // Extract the list of values
                 associatedFieldApiToRecordTypePicklistValuesMap[fieldName] = recordTypePicklistValuesForField;
-            });
-
+              });
+            }
+      
             recordTypeWrapper.PicklistFieldSectionsToPicklistDetail = associatedFieldApiToRecordTypePicklistValuesMap;
         
             recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
