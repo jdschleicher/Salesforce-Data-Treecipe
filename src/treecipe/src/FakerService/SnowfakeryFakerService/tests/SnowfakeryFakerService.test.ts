@@ -419,8 +419,6 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
 
         });
 
-
     });
-
 
 });
