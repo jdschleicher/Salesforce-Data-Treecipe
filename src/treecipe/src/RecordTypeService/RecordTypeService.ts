@@ -6,7 +6,6 @@ import * as fs from 'fs';
 import * as xml2js from 'xml2js';
 import * as vscode from 'vscode';
 import { Connection } from '@salesforce/core';
-import exp = require('constants');
 
 export class RecordTypeService {
 
