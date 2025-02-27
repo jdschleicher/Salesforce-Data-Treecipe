@@ -26,14 +26,9 @@ export class RecordTypeService {
   
         if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
 
-          const recordTypeUri = vscode.Uri.joinPath(recordTypesDirectoryUri, fileName);
-          const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
-          const recordTypeXMLContent = Buffer.from(recordTypeContentUriData).toString('utf8');
-  
-          const recordTypeXMLDetail: any = this.convertRecordTypeXMLToXMLDetailObject(recordTypeXMLContent);
-          const recordTypeApiName = recordTypeXMLDetail.fullName[0];
-          
-          const recordTypeWrapper = this.initiateRecordTypeWrapperByXMLDetail(recordTypeXMLDetail, recordTypeApiName);
+          const recordTypeXMLObjectDetail:any = await this.getRecordTypeDetailFromRecordTypeFile(fileName, recordTypesDirectoryUri);
+          const recordTypeApiName = recordTypeXMLObjectDetail.fullName[0];
+          const recordTypeWrapper = this.initiateRecordTypeWrapperByXMLDetail(recordTypeXMLObjectDetail, recordTypeApiName);
           recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
 
         }
@@ -99,14 +94,14 @@ export class RecordTypeService {
       if folder exists but is empty, return and skip functionality
     */ 
 
-    const recordTypesDirectoryExists = ( !fs.existsSync(expectedRecordTypesPath) );
-    const recordTypeFilesExists = (recordTypeFileTuples === undefined || recordTypeFileTuples.length === 0);
+    const recordTypesDirectoryExists = ( fs.existsSync(expectedRecordTypesPath) );
+    const recordTypeFilesExists = (recordTypeFileTuples === undefined || recordTypeFileTuples.length > 0);
     
     return (recordTypesDirectoryExists && recordTypeFilesExists);
 
   }
 
-  static convertRecordTypeXMLToXMLDetailObject(recordTypeXMLContent: string): any {
+  static convertRecordTypeXMLContentToXMLDetailObject(recordTypeXMLContent: string): any {
 
     let recordTypeXML: any = {};
     xml2js.parseString(recordTypeXMLContent, function (error, result) {
@@ -123,5 +118,15 @@ export class RecordTypeService {
   
   }
 
+  static async getRecordTypeDetailFromRecordTypeFile(fileName: string, recordTypesDirectoryUri: vscode.Uri) {
+      
+    const recordTypeUri = vscode.Uri.joinPath(recordTypesDirectoryUri, fileName);
+    const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
+    const recordTypeXMLContent = Buffer.from(recordTypeContentUriData).toString('utf8');
+
+    const recordTypeXMLDetail: any = this.convertRecordTypeXMLContentToXMLDetailObject(recordTypeXMLContent);
+    return recordTypeXMLDetail;
+
+  }
 
 }
