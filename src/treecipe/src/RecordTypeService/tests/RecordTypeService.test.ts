@@ -15,7 +15,8 @@ jest.mock('vscode', () => ({
     workspace: {
         fs: { 
             readDirectory: jest.fn(),
-            readFile: jest.fn()
+            readFile: jest.fn(),
+            existsSync: jest.fn()
         }
     },
     Uri: {
@@ -42,13 +43,13 @@ describe('RecordTypeService Shared Instance Tests', () => {
             
             const fileTypeEnum = 1;
             const mockRecordTypeFileName = 'TestRecordType.xml';
-            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([[mockRecordTypeFileName, fileTypeEnum]]);
+            jest.spyOn(RecordTypeService, 'getRecordTypeTuplesFromExpectedRecordTypesDirectory').mockResolvedValue(
+                [[mockRecordTypeFileName, fileTypeEnum]]
+            );
     
-            jest.spyOn(RecordTypeService, 'isValidRedcordTypesDirectory').mockReturnValue(true);
         });
   
         test('given mocked record type detail with expected picklist, fullname, and developern name structures, returns expected record type api to record type wrapper map', async () => {
-
   
             const expectedRecordTypeXMLDetail = MockRecordTypeService.getRecordTypeMockOneRecTypeAsObject();
             jest.spyOn(RecordTypeService, 'getRecordTypeDetailFromRecordTypeFile').mockResolvedValue(expectedRecordTypeXMLDetail.RecordType);
@@ -134,50 +135,6 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
     });
 
-    describe('isValidRedcordTypesDirectory', () => {    
-
-        test('given expected directory but no items within directory, should return false', async () => {  
-            
-            const mockedPath = '/mock/path/to/recordTypes';
-            const directoryExists:boolean = true;
-            (fs.existsSync as jest.Mock).mockReturnValue(directoryExists);
-
-            const emptyDirectoryItems = [];
-            const actualResult = RecordTypeService.isValidRedcordTypesDirectory(mockedPath, emptyDirectoryItems);
-            expect(actualResult).toEqual(false);
-        
-        });
-
-        test('given expected directory DOESNT exist, should return false', async () => { 
-           
-            const mockedPath = '/mock/path/to/recordTypes';
-
-            const directoryExists:boolean = false;
-            (fs.existsSync as jest.Mock).mockReturnValue(directoryExists);
-
-            const actualResult = RecordTypeService.isValidRedcordTypesDirectory(mockedPath, []);
-            expect(actualResult).toEqual(false);
-        
-        });
-
-        test('given expected directory exists and expected files exists, should return true', async () => { 
-           
-            const mockedPath = '/mock/path/to/recordTypes';
-            (fs.existsSync as jest.Mock).mockReturnValue(true);
-
-            const expectedFilesInPath:[string, vscode.FileType][] = [
-                  ["OneRecType.recordType-meta.xml", vscode.FileType.File],
-                  ["TwoRecType.recordType-meta.xml", vscode.FileType.File],
-                  ["OtherThing.field-meta.xml", vscode.FileType.File]
-            ];
-        
-            const actualResult = RecordTypeService.isValidRedcordTypesDirectory(mockedPath, expectedFilesInPath);
-            expect(actualResult).toEqual(true);
-        
-        });
-
-    });
-
     describe('getExpectedRecordTypesPathByFieldsDirectoryPath', () => {
 
         test('given expected fields directory path, should return expected record types path', async () => {   
@@ -187,6 +144,41 @@ describe('RecordTypeService Shared Instance Tests', () => {
             const expectedRecordTypesPath = '/mock/path/to/recordTypes';
             expect(actualRecordTypesPath).toEqual(expectedRecordTypesPath);
         
+        });
+
+    });
+
+    describe('getRecordTypeTuplesFromExpectedRecordTypesDirectory', () => {
+
+       test('given mocked record types directory, should return expected record type file tuples', async () => {
+            
+            const mockRecordTypesDirectory = '/mock/path/to/recordTypes';
+            
+            const mockRecordTypeFileName = 'TestRecordType.xml';
+            const fileTypeEnum = 1;
+
+            const mockUri = MockVSCodeWorkspaceService.getFakeVSCodeUri();
+            (vscode.Uri.parse as jest.Mock).mockReturnValue(mockUri);
+
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([[mockRecordTypeFileName, fileTypeEnum]]);
+            (fs.existsSync as jest.Mock).mockResolvedValue(true);
+
+            const actualRecordTypeTuples = await RecordTypeService.getRecordTypeTuplesFromExpectedRecordTypesDirectory(mockRecordTypesDirectory);
+            const expectedRecordTypeTuples = [[mockRecordTypeFileName, fileTypeEnum]];
+            expect(actualRecordTypeTuples).toEqual(expectedRecordTypeTuples);
+        
+        });
+
+        test('given mocked record types directory that does not exist, should return empty array', async () => {
+            
+            const mockRecordTypesDirectory = '/other/path/to/recordTypes';
+            
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            const recordTypeTuplesResults = await RecordTypeService.getRecordTypeTuplesFromExpectedRecordTypesDirectory(mockRecordTypesDirectory);
+            let expectedEmptyRecordTypeFileTuples:[string, number][] = [];
+            expect(recordTypeTuplesResults).toEqual(expectedEmptyRecordTypeFileTuples);
+
         });
 
     });

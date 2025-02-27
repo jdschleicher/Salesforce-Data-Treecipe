@@ -352,15 +352,7 @@ jest.mock('vscode', () => ({
                 controllingField : "Picklist__c"
             };
 
-            const expectedDependentPicklistRecipeValue =`    ### TODO -- THERE ARE NO DEPENDENT PICKLIST "valueSettings" in xml markup of Picklist field ${expectedXMLFieldDetail.apiName} for controlling field ${expectedXMLFieldDetail.controllingField}. The below "choice-if" structure cannot be populated.
-    # if:
-    #  - choice:
-    #      when: \${{ ${expectedXMLFieldDetail.controllingField} == 'GOT NOTHING FOR YOU' }}
-    #      pick:
-    #          random_choice:
-    #              - check ${expectedXMLFieldDetail.apiName} xml file for valeSetDefintions to add here 
-    #              - check ${expectedXMLFieldDetail.apiName} xml file for valeSetDefintions to add here`;
-
+            const expectedDependentPicklistRecipeValue = recipeServiceWithSnow.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
             const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const actualFakerValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(
                 expectedXMLFieldDetail,

@@ -79,7 +79,8 @@ export class XmlFileProcessor {
       };
 
       if ( picklistValueSetMarkup.controllingField ) {
-        // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST AND CONTROLLING FIELD VALUE SETTINGS
+        // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST
+        // THERE CAN BE INSTANCES WHERE CONTROLLING FIELD IS SELECTED BUT NO VALUE SETTINGS ARE MADE AND SO WE NEED TO MANAGE FOR BOTH
         let availableForControllingValuesForPicklistOption = picklistValueSetMarkup.valueSettings?.filter( 
           (dependentPicklistSetting) => dependentPicklistSetting.valueName[0] === picklistApiFullName
         );
