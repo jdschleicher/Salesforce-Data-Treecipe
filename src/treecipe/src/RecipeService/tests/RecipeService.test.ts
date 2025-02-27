@@ -24,6 +24,7 @@ jest.mock('vscode', () => ({
 
     const snowFakerService = new SnowfakeryFakerService();
     let recipeServiceWithSnow = new RecipeService(snowFakerService);  
+    const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = recipeServiceWithSnow.getOOTBExpectedObjectToFakerValueMappings();
 
     describe('getRecipeFakeValueByXMLFieldDetail', () => {
 
@@ -123,36 +124,77 @@ jest.mock('vscode', () => ({
 
     describe('initiateRecipeByObjectName', () => {
 
-        test('given object api name and empty recordtype map, the expected initiation recipe properties are returned in a string and RecordTypeId is NOT added to the intial recipe', () => {
-
-            const objectApiName = "Account";
-            const expectedRecipeInitiation = 
-    `\n- object: ${objectApiName}
+        const objectApiName = "Account";
+        let expectedRecipeInitiation = 
+`\n- object: ${objectApiName}
   nickname: ${objectApiName}_NickName
   count: 1
   fields:`;
 
+        let fieldsToAddToRecipe = "";
+        Object.entries(salesforceOOTBFakerMappings[objectApiName]).forEach(([ootbFieldApiName, expectedOOTBFieldRecipe]) => {
+            fieldsToAddToRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(
+                fieldsToAddToRecipe, 
+                expectedOOTBFieldRecipe, 
+                ootbFieldApiName
+            );
+        });
+
+
+        test('given OOTB Account object api name and empty recordtype map, the expected initiation recipe properties are returned in a string and RecordTypeId is NOT added to the intial recipe', () => {
+
             const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
-            expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, 
+                                                            emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                            salesforceOOTBFakerMappings
+                                                        );
+            const initialRecipeCombinedWithAccountExpectedFieldsWithoutRecordTypeId = expectedRecipeInitiation + fieldsToAddToRecipe;
+            expect(actualRecipeInitiation).toBe(initialRecipeCombinedWithAccountExpectedFieldsWithoutRecordTypeId);
 
         });
 
-        test('given object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
+        test('given Accont OOTB object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
 
-            const objectApiName = "Account";
-            const expectedRecipeInitiation = 
-    `\n- object: ${objectApiName}
-  nickname: ${objectApiName}_NickName
-  count: 1
-  fields:
-    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
                     Account.OneRecType
                     Account.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
-            expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
+                                                                        objectApiName,
+                                                                        expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                        salesforceOOTBFakerMappings
+                                                                    );
+
+
+            const initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields = expectedRecipeInitiation + expectedRecordTypeMarkup + fieldsToAddToRecipe;
+            expect(actualRecipeInitiation).toBe(initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields);
+
+        });
+
+        test('given Custom object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
+
+            const customFakeObjectName = 'CustomFake__c';
+
+            let expectedRecipeInitiation = 
+`\n- object: ${customFakeObjectName}
+  nickname: ${customFakeObjectName}_NickName
+  count: 1
+  fields:`;
+
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    ${customFakeObjectName}.OneRecType
+                    ${customFakeObjectName}.TwoRecType`;
+
+            const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
+                                                                        customFakeObjectName,
+                                                                        expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                        salesforceOOTBFakerMappings
+                                                                    );
+
+            const initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields = expectedRecipeInitiation + expectedRecordTypeMarkup;;
+            expect(actualRecipeInitiation).toBe(initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields);
 
         });
 
