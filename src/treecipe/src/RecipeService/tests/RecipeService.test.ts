@@ -6,6 +6,7 @@ import { RecipeMockService } from "./mocks/RecipeMockService";
 import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
+import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
 // import * as fs from 'fs';
@@ -308,6 +309,69 @@ jest.mock('vscode', () => ({
             expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
 
         });
+
+        test('given no controllingValueToPicklistOptions with record type markup, returns expected dependent picklist faker value', () => {
+
+            const expectedPicklistFieldDetails:IPicklistValue[] = [
+                {
+                    fullName: 'tree',
+                    label: 'tree',
+                    default: false
+                },
+                {
+                    fullName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    availableForControllingValues: []
+                },
+                {
+                    fullName: 'mulch',
+                    label: 'mulch',
+                    default: false,
+                },
+                {
+                    fullName: 'rocks',
+                    label: 'rocks',
+                    default: false                
+                },
+                {
+                    fullName: 'plant',
+                    label: 'plant',
+                    default: false,
+                    availableForControllingValues: []
+                }
+               
+            ];
+         
+            const expectedXMLFieldDetail:XMLFieldDetail = {
+                fieldType : "picklist",
+                apiName : "DependentPicklist__c",
+                picklistValues : expectedPicklistFieldDetails,
+                referenceTo : "",
+                fieldLabel : "Dependent Picklist",
+                controllingField : "Picklist__c"
+            };
+
+            const expectedDependentPicklistRecipeValue =`    ### TODO -- THERE ARE NO DEPENDENT PICKLIST "valueSettings" in xml markup of Picklist field ${expectedXMLFieldDetail.apiName} for controlling field ${expectedXMLFieldDetail.controllingField}. The below "choice-if" structure cannot be populated.
+    # if:
+    #  - choice:
+    #      when: \${{ ${expectedXMLFieldDetail.controllingField} == 'GOT NOTHING FOR YOU' }}
+    #      pick:
+    #          random_choice:
+    #              - check ${expectedXMLFieldDetail.apiName} xml file for valeSetDefintions to add here 
+    #              - check ${expectedXMLFieldDetail.apiName} xml file for valeSetDefintions to add here`;
+
+            const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
+            const actualFakerValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(
+                expectedXMLFieldDetail,
+                emptyRecordTypeApiToRecordTypeWrapperMap,
+
+            );
+
+            expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
+
+        });
+
     });
 
     describe('getFakeValueIfExpectedSalesforceFieldType', () => {

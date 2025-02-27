@@ -140,12 +140,32 @@ export class RecipeService {
 
         });
 
-        return this.fakerService.buildDependentPicklistRecipeFakerValue(
-                                                                controllingValueToPicklistOptions, 
-                                                                recordTypeApiToRecordTypeWrapperMap, 
-                                                                controllingField,
-                                                                xmlFieldDetail.apiName
-                                                            );
+        if ( Object.keys(controllingValueToPicklistOptions).length === 0 ) {
+
+            // If there is a controlling field in the xml markup but there are no valueSettings in the XML markup, there may be an unexpected issue with how the dependent picklist was setup
+            const noValueSettingsForControllingFieldRecipe =`    ### TODO -- THERE ARE NO DEPENDENT PICKLIST "valueSettings" in xml markup of Picklist field ${xmlFieldDetail.apiName} for controlling field ${controllingField}. The below "choice-if" structure cannot be populated.
+    # if:
+    #  - choice:
+    #      when: \${{ ${controllingField} == 'GOT NOTHING FOR YOU' }}
+    #      pick:
+    #          random_choice:
+    #              - check ${xmlFieldDetail.apiName} xml file for valeSetDefintions to add here 
+    #              - check ${xmlFieldDetail.apiName} xml file for valeSetDefintions to add here`;
+        
+
+            return noValueSettingsForControllingFieldRecipe;
+
+        } else {
+
+            return this.fakerService.buildDependentPicklistRecipeFakerValue(
+                controllingValueToPicklistOptions, 
+                recordTypeApiToRecordTypeWrapperMap, 
+                controllingField,
+                xmlFieldDetail.apiName
+            );
+
+        }
+
         
     }
 
