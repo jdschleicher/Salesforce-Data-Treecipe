@@ -340,4 +340,45 @@ export class MockRecordTypeService {
 
     }
 
+    static getSingleRecTypeWrapper() {
+
+        const fakeRecordTypeWrapper:RecordTypeWrapper = {
+            DeveloperName: "OneRecType",
+            PicklistFieldSectionsToPicklistDetail: this.getOneRecTypeFieldToPicklistValuesMap(),
+            RecordTypeId: ''
+        };
+
+        return fakeRecordTypeWrapper;
+
+    }
+
+    static getEmptyPicklistRecordTypeWrapperMap() {
+
+        const fakeRecordTypeWrapper:RecordTypeWrapper = {
+            DeveloperName: "NoPicklistOneRecType",
+            PicklistFieldSectionsToPicklistDetail: {},
+            RecordTypeId: ''
+        };
+
+        return {
+            NoPicklistOneRecType: fakeRecordTypeWrapper
+        };
+
+    }
+
+    static getRecordTypeWithoutPicklistDetail(): any {
+
+        const mockRecordTypeXML = {
+
+            RecordType: {
+                fullName: ['NoPicklistOneRecType'],
+                active: [true],
+                label: ['NoPicklistOneRecType']
+            }
+        };
+
+        return mockRecordTypeXML;
+    
+    }
+
 } 

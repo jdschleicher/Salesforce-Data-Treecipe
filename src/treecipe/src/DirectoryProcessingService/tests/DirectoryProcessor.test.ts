@@ -148,13 +148,73 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         const fakeUri = vscode.Uri.file('/fake/fields/fakepath');
         const fakeObjectName = 'dont worry about me';
         const fakeRecordTypeNameByRecordTypeNameToXMLMarkup = {};
-        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, fakeObjectName, fakeRecordTypeNameByRecordTypeNameToXMLMarkup);
+        const salesforceOOTBMappings = {};
+        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, 
+                                                                                          fakeObjectName, 
+                                                                                          fakeRecordTypeNameByRecordTypeNameToXMLMarkup,
+                                                                                          salesforceOOTBMappings);
 
         expect(processedFileInfoDetails.length).toBe(expectedXMLFileTypesInDirectory);
 
       });
           
   });
+
+  describe('isInMappingsOfOotbSalesforceFields', () => {
+
+    test('given expected file name and associated object name, returns true if in mappings of ootb salesforce fields', () => {
+      
+      const fakeFieldApiName = 'fakeField';
+      const fakeFileName = `${fakeFieldApiName}.field-meta.xml`;
+      const fakeAssociatedObjectName = 'fakeObject';
+      const fakeSalesforceOOTBMappings = {
+        [fakeAssociatedObjectName]: {
+          'fakeField': 'some value'
+        }
+      };
+
+      const result = directoryProcessor.isInMappingsOfOotbSalesforceFields(fakeFileName, fakeAssociatedObjectName, fakeSalesforceOOTBMappings);
+    
+      expect(result).toBe(true);
+
+    });
+
+    test('given expected file name and associated object name, returns false if not in mappings of ootb salesforce fields', () => {
+     
+      const fakeFieldApiName = 'fakeField';
+      const fakeFileName = `${fakeFieldApiName}.field-meta.xml`;
+      const fakeAssociatedObjectName = 'fakeObject';
+      const fakeSalesforceOOTBMappings = {
+        [fakeAssociatedObjectName]: {
+          'someOtherField': 'some value'
+        }
+      };
+
+      const result = directoryProcessor.isInMappingsOfOotbSalesforceFields(fakeFileName, fakeAssociatedObjectName, fakeSalesforceOOTBMappings);
+    
+      expect(result).toBe(false);
+
+    });
+
+    test('given expected mapping and expected object key name not in mapping, returns false if not in mappings of ootb salesforce object keys', () => {
+      
+      const fakeFieldApiName = 'fakeField';
+      const fakeFileName = `${fakeFieldApiName}.field-meta.xml`;
+      const objectNotInMappings = 'fakeObject';
+      const fakeSalesforceOOTBMappings = {
+        'Account': {
+          'someOtherField': 'some value'
+        }
+      };
+
+      const result = directoryProcessor.isInMappingsOfOotbSalesforceFields(fakeFileName, objectNotInMappings, fakeSalesforceOOTBMappings);
+    
+      expect(result).toBe(false);
+
+    });
+
+  });
+
 
 });
 

@@ -14,5 +14,6 @@ export interface IFakerService {
         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
         fieldApiName): string;
     generateTabs(tabCount: number): string;
+    getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>>;
     
 }

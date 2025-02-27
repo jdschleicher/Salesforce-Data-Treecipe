@@ -218,4 +218,35 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
     });
 
+    describe('getOOTBExpectedObjectToFakerValueMappings', () => { 
+
+        test('given expected list of OOTB object keys, mapping keys are found', () => {
+            
+            const actualMappings = npmFakerService.getOOTBObjectApiNameToFieldApiNameMap();
+
+            const expectedObjectsInMappings = [
+                'Account',
+                'Contact',
+                'Opportunity',
+                'Lead',
+                'Case',
+                'Campaign',
+                'Task',
+                'Event',
+                'Product2',
+                'PriceBook2',
+                'Asset',
+                'Contract'
+            ];
+
+            expectedObjectsInMappings.forEach(objectName => {
+                expect(objectName in actualMappings).toBe(true);
+            });
+
+            expect(Object.keys(actualMappings).length).toBe(expectedObjectsInMappings.length);
+
+        });
+
+    });
+
 });

@@ -4,10 +4,31 @@ import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 
 export class RecipeService {
 
-
     private fakerService: IFakerService;
     constructor(private fakerServiceImplementation) {
         this.fakerService = fakerServiceImplementation;
+    }
+
+    private fakerFieldTypeMappings: Record<string, string> = null;
+    getFakerFieldTypeMappings() {
+
+        if ( !this.fakerFieldTypeMappings ) {
+            this.fakerFieldTypeMappings = this.fakerService.getMapSalesforceFieldToFakerValue();
+        }
+
+        return this.fakerFieldTypeMappings;
+
+    }
+
+    private ootbSobjectToOttbFieldFakerValue:  Record<string, Record<string, string>> = null;
+    getOOTBExpectedObjectToFakerValueMappings() {
+        
+        if ( !this.ootbSobjectToOttbFieldFakerValue ) {
+            this.ootbSobjectToOttbFieldFakerValue = this.fakerService.getOOTBObjectApiNameToFieldApiNameMap();
+        }
+
+        return this.ootbSobjectToOttbFieldFakerValue;
+
     }
 
     generateTabs(tabCount: number):string {
@@ -34,7 +55,8 @@ export class RecipeService {
 
                     if ( !(xmlFieldDetail.picklistValues) ) {
                         // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
-                        return '';
+                        const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ random_choice('apple', 'orange', 'banana') }}`;
+                        return emptyPicklistXMLDetailRecipePlaceholder;
                     }
                     const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
                     fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
@@ -47,7 +69,9 @@ export class RecipeService {
             case 'multiselectpicklist':
 
                 if ( !(xmlFieldDetail.picklistValues) ) {
-                    return '';
+                    // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
+                    const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
+                    return emptyMultiSelectXMLDetailPlaceholder;
                 }
                 const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
                 fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
@@ -78,7 +102,7 @@ export class RecipeService {
     
     getFakeValueIfExpectedSalesforceFieldType(fieldType:string):string {
         let recipeValue = null;
-        const fieldToRecipeValueMap:Record<string, string> = this.fakerService.getMapSalesforceFieldToFakerValue();
+        const fieldToRecipeValueMap:Record<string, string> = this.getFakerFieldTypeMappings();
         // CHECK IF VALID FIELD TYPE OR EXISTS IN PROGRAMS SALESFORCE FIELD MAP
         if ( fieldType in fieldToRecipeValueMap ) {
             recipeValue = fieldToRecipeValueMap[fieldType];
@@ -116,16 +140,46 @@ export class RecipeService {
 
         });
 
-        return this.fakerService.buildDependentPicklistRecipeFakerValue(
-                                                                controllingValueToPicklistOptions, 
-                                                                recordTypeApiToRecordTypeWrapperMap, 
-                                                                controllingField,
-                                                                xmlFieldDetail.apiName
-                                                            );
+        if ( Object.keys(controllingValueToPicklistOptions).length === 0 ) {
+
+            // If there is a controlling field in the xml markup but there are no valueSettings in the XML markup, there may be an unexpected issue with how the dependent picklist was setup
+            const noValueSettingsForControllingFieldRecipe = this.getNoValueSettingsToDoRecipeValue(xmlFieldDetail);
+            return noValueSettingsForControllingFieldRecipe;
+
+        } else {
+
+            return this.fakerService.buildDependentPicklistRecipeFakerValue(
+                controllingValueToPicklistOptions, 
+                recordTypeApiToRecordTypeWrapperMap, 
+                controllingField,
+                xmlFieldDetail.apiName
+            );
+
+        }
+
         
     }
 
-    initiateRecipeByObjectName(objectName: string, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+    getNoValueSettingsToDoRecipeValue(xmlFieldDetail:XMLFieldDetail): string {
+
+        const noValueSettingsForControllingFieldRecipe =` ### TODO -- THERE ARE NO DEPENDENT PICKLIST "valueSettings" in xml markup of Picklist field "${xmlFieldDetail.apiName}" for controlling field "${xmlFieldDetail.controllingField}". The below "choice-if" structure cannot be populated.
+        # if:
+        #  - choice:
+        #      when: \${{ ${xmlFieldDetail.controllingField} == 'GOT NOTHING FOR YOU' }}
+        #      pick:
+        #          random_choice:
+        #              - check ${xmlFieldDetail.apiName}.field-meta.xml field file's xml for valeSetDefintions to add here 
+        #              - check ${xmlFieldDetail.apiName}.field-meta.xml field file's xml for valeSetDefintions to add here `;
+
+        return noValueSettingsForControllingFieldRecipe;
+
+    }
+
+    initiateRecipeByObjectName(
+                                objectName: string, 
+                                recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                                salesforceOOTBFakerMappings: Record<string, Record<string, string>> 
+                            ): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
         let objectRecipeMarkup = 
@@ -159,18 +213,39 @@ export class RecipeService {
     
         }
 
+        if ( salesforceOOTBFakerMappings[objectName] ) {
+
+            Object.entries(salesforceOOTBFakerMappings[objectName]).forEach(([ootbFieldApiName, expectedOOTBFieldRecipe]) => {
+                objectRecipeMarkup = this.appendFieldRecipeToObjectRecipe(
+                    objectRecipeMarkup, 
+                    expectedOOTBFieldRecipe, 
+                    ootbFieldApiName
+                );
+            });
+
+        }
+
         return objectRecipeMarkup;
+
     }
 
     appendFieldRecipeToObjectRecipe(objectRecipe:string, fieldRecipe: string, fieldApiName: string): string {
+
         const fieldPropertAndRecipeValue = `${fieldApiName}: ${fieldRecipe}`;
         const updatedObjectRecipe =
 `${objectRecipe}
 ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;
 
         return updatedObjectRecipe;
+
     }
 
+    getRecipeValueWithMissingXMLDetailByFieldApiName(): string {
+        
+        // IF AN OOTB FIELD HAS BEEN PULLED DOWN INTO SOURCE THAT ISNT ALREADY IN EXPECTED OOTB MAPPINGS IT COULD BE AN AUTO GENERATED FIELD OR WE NEED TO GET THE OOTB MAPPINGS UPDATED WITH THAT FIELD
+        const ootbAutoGeneratedRecipeValue = '### TODO -- REVIEW THIS LINE TO DETERMINE IF IT SHOULD BE REMOVED - IN THE FIELD FILE THERE IS NO TYPE DEFINITION IN XML MARKUP - THIS FIELD\'S VALUE MAY BE AUTO GENERATED BY SALESFORCE'; 
+        return ootbAutoGeneratedRecipeValue;
 
+    }
     
 }

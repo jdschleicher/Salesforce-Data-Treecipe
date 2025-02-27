@@ -37,7 +37,7 @@ This [command initiates the creation of a configuration file](https://github.com
 
 The command creates a root directory folder called "treecipe" and within it a configuration file called "treecipe.config.json". 
 
-This file is auto generated based on the selection made from the prompted "Select objects directory". 
+This file is auto generated based on the field configurations detailed selection made when prompted "Select objects directory".
 
 The end result treecipe.config.json file is expected to look like the below:
 
@@ -65,7 +65,7 @@ https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#ini
 ---
 
 ### 2.<a name="command2"></a> **Salesforce Treecipe: Generate Treecipe**
-This command [generates a **Treecipe**](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main#generate-treecipe-based-on-treecipeconfigjcon--keep-an-eye-out-for-ootb-fields-and-remove-me-lines-), a structured representation of your Salesforce data, based on your configuration.
+This command [generates a **Treecipe**](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main#generate-treecipe-based-on-treecipeconfigjcon--keep-an-eye-out-for-ootb-fields-and-remove-me-lines-), a structured representation of your Salesforce data, based on your treecipe configuration and the objects directory it is pointed to.
 
 It parses the "salesforceObjectsPath" directory path that was provided when running the "Initiate Configuration File" command above, and then generates a yaml file of objects and associated fields found in that directory.
 
