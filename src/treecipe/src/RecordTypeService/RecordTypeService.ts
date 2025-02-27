@@ -6,27 +6,21 @@ import * as fs from 'fs';
 import * as xml2js from 'xml2js';
 import * as vscode from 'vscode';
 import { Connection } from '@salesforce/core';
+import exp = require('constants');
 
 export class RecordTypeService {
 
   static async getRecordTypeToApiFieldToRecordTypeWrapper(associatedFieldsDirectoryPath: string): Promise<Record<string, RecordTypeWrapper>> {
 
       const expectedRecordTypesPath = this.getExpectedRecordTypesPathByFieldsDirectoryPath(associatedFieldsDirectoryPath);
-      const recordTypesDirectoryUri = vscode.Uri.parse(expectedRecordTypesPath);
-  
+      const recordTypeFileTuples = await this.getRecordTypeTuplesFromExpectedRecordTypesDirectory(expectedRecordTypesPath);
       let recordTypeDeveloperNameToRecordTypeWrapper: Record<string, RecordTypeWrapper> = {};
 
-      const recordTypeFileTuples = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
-
-      if ( !this.isValidRedcordTypesDirectory(expectedRecordTypesPath, recordTypeFileTuples) ) {
-        return recordTypeDeveloperNameToRecordTypeWrapper;
-      }
-     
       for (const [fileName, directoryItemTypeEnum] of recordTypeFileTuples) {
   
         if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
 
-          const recordTypeXMLObjectDetail:any = await this.getRecordTypeDetailFromRecordTypeFile(fileName, recordTypesDirectoryUri);
+          const recordTypeXMLObjectDetail:any = await this.getRecordTypeDetailFromRecordTypeFile(fileName, expectedRecordTypesPath);
           const recordTypeApiName = recordTypeXMLObjectDetail.fullName[0];
           const recordTypeWrapper = this.initiateRecordTypeWrapperByXMLDetail(recordTypeXMLObjectDetail, recordTypeApiName);
           recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
@@ -87,17 +81,22 @@ export class RecordTypeService {
 
   }
 
-  static isValidRedcordTypesDirectory(expectedRecordTypesPath: string, recordTypeFileTuples: [string, number][]):boolean {
+  static async getRecordTypeTuplesFromExpectedRecordTypesDirectory(expectedRecordTypesPath):Promise<[string, number][]> {
 
     /*
-      check if recordTypes folder exists, return and skip functionality if not
+      check if recordTypes folder exists, return empty and skip functionality if not
       if folder exists but is empty, return and skip functionality
     */ 
 
+    let recordTypeFileTuples: [string, number][] = [];
     const recordTypesDirectoryExists = ( fs.existsSync(expectedRecordTypesPath) );
-    const recordTypeFilesExists = (recordTypeFileTuples === undefined || recordTypeFileTuples.length > 0);
-    
-    return (recordTypesDirectoryExists && recordTypeFilesExists);
+
+    if ( recordTypesDirectoryExists ) {
+      const recordTypesDirectoryUri = vscode.Uri.parse(expectedRecordTypesPath);
+      recordTypeFileTuples = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
+    }
+
+    return recordTypeFileTuples;
 
   }
 
@@ -118,9 +117,9 @@ export class RecordTypeService {
   
   }
 
-  static async getRecordTypeDetailFromRecordTypeFile(fileName: string, recordTypesDirectoryUri: vscode.Uri) {
+  static async getRecordTypeDetailFromRecordTypeFile(fileName: string, recordTypesPath: string) {
       
-    const recordTypeUri = vscode.Uri.joinPath(recordTypesDirectoryUri, fileName);
+    const recordTypeUri = vscode.Uri.joinPath((vscode.Uri.parse(recordTypesPath)), fileName);
     const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
     const recordTypeXMLContent = Buffer.from(recordTypeContentUriData).toString('utf8');
 
