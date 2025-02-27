@@ -6,6 +6,7 @@ import * as xml2js from 'xml2js';
 import * as path from 'path';
 import { MockRecordTypeService } from "./MockRecordTypeService";
 import { MockCollectionsApiService } from "../../CollectionsApiService/tests/mocks/MockCollectionsApiService";
+import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
 
 jest.mock('fs');
 jest.mock('path');
@@ -30,15 +31,25 @@ jest.mock('vscode', () => ({
 
 describe('RecordTypeService Shared Instance Tests', () => {
 
-    describe('getRecordTypeMarkupMap', () => {
+    describe('getRecordTypeToApiFieldToRecordTypeWrapper', () => {
+
+
 
         test('given expected mock xml markup content and expected xml converted object expectd markup is returned and mocked functions are called with expected arguments', async () => {
 
-            (fs.existsSync as jest.Mock).mockReturnValue(true);
-
+            const fakeRecordTypesPath = '/mock/path/to/recordTypes';
+            jest.spyOn(RecordTypeService, 'getExpectedRecordTypesPathByFieldsDirectoryPath').mockReturnValue(fakeRecordTypesPath);
+            
+            const mockUri = MockVSCodeWorkspaceService.getFakeVSCodeUri();
+            (vscode.Uri.parse as jest.Mock).mockReturnValue(mockUri);
+            
             const fileTypeEnum = 1;
             const mockRecordTypeFileName = 'TestRecordType.xml';
             (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([[mockRecordTypeFileName, fileTypeEnum]]);
+
+            jest.spyOn(RecordTypeService, 'isValidRedcordTypesDirectory').mockReturnValue(true);
+
+
 
             const mockRecordTypeXMLContent = MockRecordTypeService.getRecordTypeOneRecTypeXMLContent();
             (vscode.workspace.fs.readFile as jest.Mock).mockResolvedValue(Buffer.from(mockRecordTypeXMLContent));
@@ -52,8 +63,9 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
             const mockBaseObjectPath = '/mock/path/to';
             const mockRecordTypesPath = `${mockBaseObjectPath}/recordTypes`;
-            expect(fs.existsSync).toHaveBeenCalledWith(mockRecordTypesPath);
+
             expect(vscode.workspace.fs.readDirectory).toHaveBeenCalledWith(vscode.Uri.parse(mockRecordTypesPath));
+
             expect(vscode.workspace.fs.readFile).toHaveBeenCalledWith(vscode.Uri.joinPath(vscode.Uri.parse(mockRecordTypesPath), mockRecordTypeFileName));
             expect(xml2js.parseString).toHaveBeenCalledWith(mockRecordTypeXMLContent, expect.any(Function));
            
