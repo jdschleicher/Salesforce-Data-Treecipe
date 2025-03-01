@@ -160,7 +160,10 @@ export class ExtensionCommandService {
             }
 
             const allOrNoneSelection:boolean = await CollectionsApiService.promptForAllOrNoneInsertDecision();
-
+            if (!allOrNoneSelection) {
+                return;
+            }
+            
             const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
 
             const selectedDataSetFullDirectoryPath = selectedDataSetDirectoryToInsert.detail;
