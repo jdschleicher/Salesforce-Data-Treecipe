@@ -287,7 +287,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "Email": "${{fake.email}}",
               "Phone": "${{fake.phone_number}}",
               "MobilePhone": "${{fake.phone_number}}",
-              "Title": "${{fake.job_title}}",
+              "Title": "${{fake.job}}",
               "Department": "${{random_choice('Sales', 'Marketing', 'IT', 'Finance', 'HR', 'Operations')}}",
               "Birthdate": "${{fake.date_of_birth}}",
               "Description": "${{fake.paragraph}}",
@@ -325,7 +325,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "FirstName": "${{fake.first_name}}",
               "LastName": "${{fake.last_name}}",
               "Company": "${{fake.company}}",
-              "Title": "${{fake.job_title}}",
+              "Title": "${{fake.job}}",
               "Email": "${{fake.email}}",
               "Phone": "${{fake.phone_number}}",
               "MobilePhone": "${{fake.phone_number}}",
@@ -385,7 +385,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             },
             
             "Product2": {
-              "Name": "${{fake.product_name}}",
+              "Name": "${{fake.catch_phrase}}",
               "Description": "${{fake.paragraph}}",
               "ProductCode": "${{fake.ean}}",
               "IsActive": "${{random_choice('true', 'false')}}",
