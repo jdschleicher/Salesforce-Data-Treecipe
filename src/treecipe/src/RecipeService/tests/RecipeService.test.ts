@@ -6,6 +6,7 @@ import { RecipeMockService } from "./mocks/RecipeMockService";
 import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
+import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
 // import * as fs from 'fs';
@@ -24,6 +25,7 @@ jest.mock('vscode', () => ({
 
     const snowFakerService = new SnowfakeryFakerService();
     let recipeServiceWithSnow = new RecipeService(snowFakerService);  
+    const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = recipeServiceWithSnow.getOOTBExpectedObjectToFakerValueMappings();
 
     describe('getRecipeFakeValueByXMLFieldDetail', () => {
 
@@ -123,36 +125,77 @@ jest.mock('vscode', () => ({
 
     describe('initiateRecipeByObjectName', () => {
 
-        test('given object api name and empty recordtype map, the expected initiation recipe properties are returned in a string and RecordTypeId is NOT added to the intial recipe', () => {
-
-            const objectApiName = "Account";
-            const expectedRecipeInitiation = 
-    `\n- object: ${objectApiName}
+        const objectApiName = "Account";
+        let expectedRecipeInitiation = 
+`\n- object: ${objectApiName}
   nickname: ${objectApiName}_NickName
   count: 1
   fields:`;
 
+        let fieldsToAddToRecipe = "";
+        Object.entries(salesforceOOTBFakerMappings[objectApiName]).forEach(([ootbFieldApiName, expectedOOTBFieldRecipe]) => {
+            fieldsToAddToRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(
+                fieldsToAddToRecipe, 
+                expectedOOTBFieldRecipe, 
+                ootbFieldApiName
+            );
+        });
+
+
+        test('given OOTB Account object api name and empty recordtype map, the expected initiation recipe properties are returned in a string and RecordTypeId is NOT added to the intial recipe', () => {
+
             const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
-            expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, 
+                                                            emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                            salesforceOOTBFakerMappings
+                                                        );
+            const initialRecipeCombinedWithAccountExpectedFieldsWithoutRecordTypeId = expectedRecipeInitiation + fieldsToAddToRecipe;
+            expect(actualRecipeInitiation).toBe(initialRecipeCombinedWithAccountExpectedFieldsWithoutRecordTypeId);
 
         });
 
-        test('given object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
+        test('given Accont OOTB object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
 
-            const objectApiName = "Account";
-            const expectedRecipeInitiation = 
-    `\n- object: ${objectApiName}
-  nickname: ${objectApiName}_NickName
-  count: 1
-  fields:
-    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
                     Account.OneRecType
                     Account.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap);
-            expect(actualRecipeInitiation).toBe(expectedRecipeInitiation);
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
+                                                                        objectApiName,
+                                                                        expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                        salesforceOOTBFakerMappings
+                                                                    );
+
+
+            const initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields = expectedRecipeInitiation + expectedRecordTypeMarkup + fieldsToAddToRecipe;
+            expect(actualRecipeInitiation).toBe(initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields);
+
+        });
+
+        test('given Custom object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
+
+            const customFakeObjectName = 'CustomFake__c';
+
+            let expectedRecipeInitiation = 
+`\n- object: ${customFakeObjectName}
+  nickname: ${customFakeObjectName}_NickName
+  count: 1
+  fields:`;
+
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    ${customFakeObjectName}.OneRecType
+                    ${customFakeObjectName}.TwoRecType`;
+
+            const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
+            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
+                                                                        customFakeObjectName,
+                                                                        expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
+                                                                        salesforceOOTBFakerMappings
+                                                                    );
+
+            const initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields = expectedRecipeInitiation + expectedRecordTypeMarkup;;
+            expect(actualRecipeInitiation).toBe(initialRecipeCombinedWithRecordTypeMarkupAndAccountExpectedFields);
 
         });
 
@@ -266,6 +309,61 @@ jest.mock('vscode', () => ({
             expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
 
         });
+
+        test('given no controllingValueToPicklistOptions with record type markup, returns expected dependent picklist faker value', () => {
+
+            const expectedPicklistFieldDetails:IPicklistValue[] = [
+                {
+                    fullName: 'tree',
+                    label: 'tree',
+                    default: false
+                },
+                {
+                    fullName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    availableForControllingValues: []
+                },
+                {
+                    fullName: 'mulch',
+                    label: 'mulch',
+                    default: false,
+                },
+                {
+                    fullName: 'rocks',
+                    label: 'rocks',
+                    default: false                
+                },
+                {
+                    fullName: 'plant',
+                    label: 'plant',
+                    default: false,
+                    availableForControllingValues: []
+                }
+               
+            ];
+         
+            const expectedXMLFieldDetail:XMLFieldDetail = {
+                fieldType : "picklist",
+                apiName : "DependentPicklist__c",
+                picklistValues : expectedPicklistFieldDetails,
+                referenceTo : "",
+                fieldLabel : "Dependent Picklist",
+                controllingField : "Picklist__c"
+            };
+
+            const expectedDependentPicklistRecipeValue = recipeServiceWithSnow.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
+            const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
+            const actualFakerValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(
+                expectedXMLFieldDetail,
+                emptyRecordTypeApiToRecordTypeWrapperMap,
+
+            );
+
+            expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
+
+        });
+
     });
 
     describe('getFakeValueIfExpectedSalesforceFieldType', () => {
