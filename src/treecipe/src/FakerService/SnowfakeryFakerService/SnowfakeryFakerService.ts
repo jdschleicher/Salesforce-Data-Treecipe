@@ -355,33 +355,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "SuppliedCompany": "${{fake.company}}"
             },
             
-            "Campaign": {
-              "Name": "${{fake.bs}}",
-              "Type": "${{random_choice('Email', 'Webinar', 'Conference', 'Direct Mail', 'Advertisement')}}",
-              "Status": "${{random_choice('Planned', 'In Progress', 'Completed', 'Aborted')}}",
-              "StartDate": "${{date_between(start_date='-30d', end_date='+90d')}}",
-              "EndDate": "${{date_between(start_date='+91d', end_date='+180d')}}",
-              "Description": "${{fake.paragraph}}",
-              "BudgetedCost": "${{random_number(10000,99999)}}.00",
-              "ActualCost": "${{random_number(10000,99999)}}.00",
-              "ExpectedRevenue": "${{random_number(100000,999999)}}.00",
-              "ExpectedResponse": "${{random_number(10,99)}}.0",
-              "NumberOfContacts": "${{random_number(100,999)}}",
-              "NumberOfLeads": "${{random_number(100,999)}}",
-              "NumberOfOpportunities": "${{random_number(10,99)}}",
-              "NumberOfResponses": "${{random_number(100,999)}}"
-            },
-            
-            "Task": {
-              "Subject": "${{fake.catch_phrase}}",
-              "Description": "${{fake.paragraph}}",
-              "Status": "${{random_choice('Not Started', 'In Progress', 'Completed', 'Waiting on someone else', 'Deferred')}}",
-              "Priority": "${{random_choice('High', 'Normal', 'Low')}}",
-              "ActivityDate": "${{date_between(start_date='-7d', end_date='+30d')}}",
-              "Type": "${{random_choice('Call', 'Meeting', 'Other')}}",
-              "CallType": "${{random_choice('Inbound', 'Outbound')}}"
-            },
-            
             "Product2": {
               "Name": "${{fake.catch_phrase}}",
               "Description": "${{fake.bs}}",

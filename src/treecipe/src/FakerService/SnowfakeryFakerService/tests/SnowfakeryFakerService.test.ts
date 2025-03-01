@@ -401,8 +401,6 @@ describe('SnowfakeryFakerService Shared Intstance Tests', () => {
                 'Opportunity',
                 'Lead',
                 'Case',
-                'Campaign',
-                'Task',
                 'Product2',
                 'Pricebook2'
             ];
