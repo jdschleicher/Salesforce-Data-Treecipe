@@ -312,13 +312,11 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "Amount": "${{random_number(100000,999999)}}.00",
               "CloseDate": "${{date_between(start_date='-30d', end_date='+90d')}}",
               "Description": "${{fake.paragraph}}",
-              "ExpectedRevenue": "${{random_number(100000,999999)}}.00",
               "LeadSource": "${{random_choice('Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other')}}",
               "NextStep": "${{fake.sentence}}",
               "Probability": "${{random_number(10,99)}}.0",
               "StageName": "${{random_choice('Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost')}}",
-              "Type": "${{random_choice('New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade')}}",
-              "ForecastCategory": "${{random_choice('Pipeline', 'Best Case', 'Commit', 'Closed')}}"
+              "Type": "${{random_choice('New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade')}}"
             },
             
             "Lead": {
