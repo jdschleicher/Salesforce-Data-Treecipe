@@ -160,7 +160,7 @@ export class ExtensionCommandService {
             }
 
             const allOrNoneSelection:boolean = await CollectionsApiService.promptForAllOrNoneInsertDecision();
-            if (!allOrNoneSelection) {
+            if (allOrNoneSelection === undefined) {
                 return;
             }
             
