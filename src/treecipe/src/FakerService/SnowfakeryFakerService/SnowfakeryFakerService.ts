@@ -261,7 +261,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             
             "Account": {
               "Name": "${{fake.company}}",
-              "AnnualRevenue": "${{random_number(7)}}",
+              "AnnualRevenue": "${{random_number(1000000,9999999)}}.00",
               "BillingStreet": "${{fake.street_address}}",
               "BillingCity": "${{fake.city}}",
               "BillingState": "${{fake.state}}",
@@ -269,7 +269,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "BillingCountry": "${{fake.country}}",
               "Description": "${{fake.catch_phrase}}",
               "Industry": "${{random_choice('Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education')}}",
-              "NumberOfEmployees": "${{random_number(4)}}",
+              "NumberOfEmployees": "${{random_number(1000,9999)}}",
               "Phone": "${{fake.phone_number}}",
               "Rating": "${{random_choice('Hot', 'Warm', 'Cold')}}",
               "ShippingStreet": "${{fake.street_address}}",
@@ -309,13 +309,13 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             
             "Opportunity": {
               "Name": "${{fake.catch_phrase}}",
-              "Amount": "${{random_number(6)}}.00",
+              "Amount": "${{random_number(100000,999999)}}.00",
               "CloseDate": "${{date_between(start_date='-30d', end_date='+90d')}}",
               "Description": "${{fake.paragraph}}",
-              "ExpectedRevenue": "${{random_number(6)}}.00",
+              "ExpectedRevenue": "${{random_number(100000,999999)}}.00",
               "LeadSource": "${{random_choice('Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other')}}",
               "NextStep": "${{fake.sentence}}",
-              "Probability": "${{random_number(2)}}.0",
+              "Probability": "${{random_number(10,99)}}.0",
               "StageName": "${{random_choice('Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost')}}",
               "Type": "${{random_choice('New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade')}}",
               "ForecastCategory": "${{random_choice('Pipeline', 'Best Case', 'Commit', 'Closed')}}"
@@ -335,12 +335,12 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "PostalCode": "${{fake.zipcode}}",
               "Country": "${{fake.country}}",
               "Industry": "${{random_choice('Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education')}}",
-              "AnnualRevenue": "${{random_number(7)}}",
+              "AnnualRevenue": "${{random_number(1000000,9999999)}}",
               "Description": "${{fake.paragraph}}",
               "LeadSource": "${{random_choice('Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other')}}",
               "Rating": "${{random_choice('Hot', 'Warm', 'Cold')}}",
               "Status": "${{random_choice('Open - Not Contacted', 'Working - Contacted', 'Closed - Converted', 'Closed - Not Converted')}}",
-              "NumberOfEmployees": "${{random_number(4)}}"
+              "NumberOfEmployees": "${{random_number(1000,9999)}}"
             },
             
             "Case": {
@@ -364,14 +364,14 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "StartDate": "${{date_between(start_date='-30d', end_date='+90d')}}",
               "EndDate": "${{date_between(start_date='+91d', end_date='+180d')}}",
               "Description": "${{fake.paragraph}}",
-              "BudgetedCost": "${{random_number(5)}}.00",
-              "ActualCost": "${{random_number(5)}}.00",
-              "ExpectedRevenue": "${{random_number(6)}}.00",
-              "ExpectedResponse": "${{random_number(2)}}.0",
-              "NumberOfContacts": "${{random_number(3)}}",
-              "NumberOfLeads": "${{random_number(3)}}",
-              "NumberOfOpportunities": "${{random_number(2)}}",
-              "NumberOfResponses": "${{random_number(3)}}"
+              "BudgetedCost": "${{random_number(10000,99999)}}.00",
+              "ActualCost": "${{random_number(10000,99999)}}.00",
+              "ExpectedRevenue": "${{random_number(100000,999999)}}.00",
+              "ExpectedResponse": "${{random_number(10,99)}}.0",
+              "NumberOfContacts": "${{random_number(100,999)}}",
+              "NumberOfLeads": "${{random_number(100,999)}}",
+              "NumberOfOpportunities": "${{random_number(10,99)}}",
+              "NumberOfResponses": "${{random_number(100,999)}}"
             },
             
             "Task": {
@@ -417,16 +417,16 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               "Description": "${{fake.paragraph}}",
               "InstallDate": "${{date_between(start_date='-365d', end_date='today')}}",
               "PurchaseDate": "${{date_between(start_date='-730d', end_date='-366d')}}",
-              "SerialNumber": "${{fake.ean}}-${{random_number(6)}}",
+              "SerialNumber": "${{fake.ean}}-${{random_number(100000,999999)}}",
               "Status": "${{random_choice('Purchased', 'Shipped', 'Installed', 'Registered')}}",
-              "Price": "${{random_number(5)}}.00",
-              "Quantity": "${{random_number(2)}}"
+              "Price": "${{random_number(10000,99999)}}.00",
+              "Quantity": "${{random_number(10,99)}}"
             },
             
             "Contract": {
               "Status": "${{random_choice('Draft', 'In Approval Process', 'Activated', 'Terminated')}}",
               "StartDate": "${{date_between(start_date='-30d', end_date='+90d')}}",
-              "ContractTerm": "${{random_number(2)}}",
+              "ContractTerm": "${{random_number(10,99)}}",
               "OwnerExpirationNotice": "${{random_choice('15', '30', '45', '60', '90')}}",
               "Description": "${{fake.paragraph}}",
               "BillingStreet": "${{fake.street_address}}",
