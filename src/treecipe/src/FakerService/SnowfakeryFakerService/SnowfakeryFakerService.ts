@@ -384,7 +384,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             
             "Product2": {
               "Name": "${{fake.catch_phrase}}",
-              "Description": "${{fake.paragraph}}",
+              "Description": "${{fake.bs}}",
               "ProductCode": "${{fake.ean}}",
               "IsActive": "${{random_choice('true', 'false')}}",
               "Family": "${{random_choice('Hardware', 'Software', 'Services', 'Other')}}",
