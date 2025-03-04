@@ -11,7 +11,7 @@
   - adding changelog :) 
 
 
-## [1.2.1] [PR#13](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/13) - Bug: always expected a record types directory to exist 
+## [1.2.1] [PR#13](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/13) - Bug: logic always expects a record types directory to exist under the custom object directory  
 
 - bug fix stemming from record type logic always expecting a record types directory to exists and record type configurations to build picklists and multiselect picklists from
 
