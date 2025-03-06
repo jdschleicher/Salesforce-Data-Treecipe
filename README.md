@@ -18,6 +18,12 @@
 
 ---
 
+## "How To" YouTube Walkthroughs: 
+
+- [Salesforce Data Treecipe Initiation, Setup, and Simple Account and Contact Example in VS Code:](https://youtu.be/xCB7vcB4nqM?si=e3N2HmtI2Ca-U7m3)
+
+---
+
 ## Get started by walking through the below commands (see corresponding video for each step):
 
 Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palette.
@@ -28,7 +34,6 @@ Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palet
 4. [Insert Data Set by Directory ](#command4)
 
 ---
-
 
 
  ### <a name="command1"></a> 1. **Salesforce Treecipe: Initiate Configuration File**
