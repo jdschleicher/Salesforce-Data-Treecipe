@@ -264,5 +264,22 @@ export class VSCodeWorkspaceService {
         return filesFromDirectory;
 
     }
+
+    static createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName: string):string {
+
+        const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
+        const workspaceRoot = this.getWorkspaceRoot();
+        const expectedFakeDataSetsFolerPath = `${workspaceRoot}/${fakeDataSetsFolderPath}`;
+
+        if (!fs.existsSync(expectedFakeDataSetsFolerPath)) {
+            fs.mkdirSync(expectedFakeDataSetsFolerPath);
+        }
+
+        const fullPathToUniqueTimeStampedFakeDataSetsFolder = `${expectedFakeDataSetsFolerPath}/${uniqueTimeStampedFakeDataSetsFolderName}`;
+        fs.mkdirSync(`${fullPathToUniqueTimeStampedFakeDataSetsFolder}`);
+
+        return fullPathToUniqueTimeStampedFakeDataSetsFolder;
+
+    }
     
 }

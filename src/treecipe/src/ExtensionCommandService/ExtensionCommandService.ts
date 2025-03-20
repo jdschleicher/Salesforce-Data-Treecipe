@@ -10,6 +10,7 @@ import { SnowfakeryIntegrationService } from "../FakerIntegrationService/Snowfak
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import path = require("path");
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
+import { RecipeService } from "../RecipeService/RecipeService";
 
 export class ExtensionCommandService {
     
@@ -32,25 +33,26 @@ export class ExtensionCommandService {
 
         try {
             
-
-            const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectFakerRecipeFileToProcess();
-            if (!selectedRecipeQuickPickItem) {
+            const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
+            const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
+            const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
+            if (!selectedRecipeFilePathNameQuickPickItem) {
                 return;
             }
-            const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
+            const recipeFullFileNamePath = selectedRecipeFilePathNameQuickPickItem.detail;
             
             const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
 
             const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
             const uniqueTimeStampedFakeDataSetsFolderName = SnowfakeryIntegrationService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
-            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
 
             SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
             
             const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();
             const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
-            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeQuickPickItem.label}`);
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeFilePathNameQuickPickItem.label}`);
 
             /* 
                 The below lines get the timestamped parent recipe folder 

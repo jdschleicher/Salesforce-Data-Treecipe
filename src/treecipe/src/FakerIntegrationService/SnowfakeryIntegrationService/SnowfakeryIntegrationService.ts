@@ -2,8 +2,6 @@ import { exec } from 'child_process';
 import * as vscode from 'vscode';
 
 import * as fs from 'fs';
-import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
 interface CollectionsApiStructure {
     allOrNone: boolean;
@@ -42,15 +40,6 @@ export class SnowfakeryIntegrationService {
 
         });
 
-    }
-
-    static async selectFakerRecipeFileToProcess() {
-
-        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
-        const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
-        const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
-        return selectedRecipeFilePathNameQuickPickItem;
-        
     }
 
     static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
@@ -147,23 +136,6 @@ export class SnowfakeryIntegrationService {
 
         return objectApiToGeneratedRecords;
     
-    }
-
-    static createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName: string):string {
-
-        const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-        const expectedFakeDataSetsFolerPath = `${workspaceRoot}/${fakeDataSetsFolderPath}`;
-
-        if (!fs.existsSync(expectedFakeDataSetsFolerPath)) {
-            fs.mkdirSync(expectedFakeDataSetsFolerPath);
-        }
-
-        const fullPathToUniqueTimeStampedFakeDataSetsFolder = `${expectedFakeDataSetsFolerPath}/${uniqueTimeStampedFakeDataSetsFolderName}`;
-        fs.mkdirSync(`${fullPathToUniqueTimeStampedFakeDataSetsFolder}`);
-
-        return fullPathToUniqueTimeStampedFakeDataSetsFolder;
-
     }
 
     static createCollectionsApiFile(objectApiName: string, collectionsApiFormattedRecords: any, uniqueTimeStampedFakeDataSetsFolderName: string ) {

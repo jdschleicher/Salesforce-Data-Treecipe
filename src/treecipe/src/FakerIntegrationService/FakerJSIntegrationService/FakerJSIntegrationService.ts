@@ -1,5 +1,4 @@
 import { exec } from 'child_process';
-import * as vscode from 'vscode';
 
 import * as fs from 'fs';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -10,50 +9,11 @@ interface CollectionsApiStructure {
     records: any[];
 }
 
-export class SnowfakeryIntegrationService {
+export class FakerJSIntegrationService {
 
-    static baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
-    static snowfakeryGenerationErrorMessage:string = 'An error occurred genertating snowfakery against the recipe file';
+    static baseFakerJSInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
 
-    static async isSnowfakeryInstalled(): Promise<boolean> {
-
-        return new Promise((resolve, reject) => {
-            
-            const snowfakeryVersionCheckCommand = 'snowfakery --version';
-            const handleSnowfakeryVersionCheckCallback = (cliCommandError, cliCommandStandardOut) => {
-
-                if (cliCommandError) {
-                    reject(new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`));
-                } else {
-
-                    /*
-                        IF NO ERROR THEN stdout CONTAINS THE VERSION INFORMATION 
-                        AND WE CAN RETURN TRUE FOR SNOWFAKERY BEING INSTALLED
-                     */
-                    vscode.window.showInformationMessage(cliCommandStandardOut);
-                    resolve(true);
-
-                }
-
-            };
-
-            // perform CLI snowfakery command
-            exec(snowfakeryVersionCheckCommand, handleSnowfakeryVersionCheckCallback);
-
-        });
-
-    }
-
-    static async selectFakerRecipeFileToProcess() {
-
-        const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
-        const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
-        const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
-        return selectedRecipeFilePathNameQuickPickItem;
-        
-    }
-
-    static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
+    static async runFakerDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {
 
@@ -62,7 +22,7 @@ export class SnowfakeryIntegrationService {
 
                 if (cliCommandError) {
                     
-                    const snowfakeryError = new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`);
+                    const snowfakeryError = new Error(`${this.baseFakerJSInstallationErrorMessage}: ${cliCommandError.message}`);
                     reject(snowfakeryError);
 
                 } else {
