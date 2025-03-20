@@ -1,13 +1,13 @@
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
-import { NPMFakerService } from "../NPMFakerService";
+import { FakerJSService } from "../FakerJSService";
 
-describe('NPMFakerService Shared Intstance Tests', () => {
+describe('FakerJSService Shared Intstance Tests', () => {
 
-    let npmFakerService = new NPMFakerService();
+    let fakerJSService = new FakerJSService();
 
     describe('getMapSalesforceFieldToFakerValue', () => {
 
-        let fakerService = new NPMFakerService();
+        let fakerService = new FakerJSService();
         const fieldTypeToNPMFakerMappings = fakerService.getMapSalesforceFieldToFakerValue();
         
         
@@ -121,7 +121,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
         test('given 1 tab argument, returns expected spaces', () => {
 
             const expectedTabs = 4; 
-            const actualTabResult = npmFakerService.generateTabs(1);
+            const actualTabResult = fakerJSService.generateTabs(1);
             const actualSpacesCount = actualTabResult.length;
             expect(actualSpacesCount).toEqual(expectedTabs);
 
@@ -137,7 +137,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
             const expectedRecipeValue = `faker.helpers.arrayElements(['apple','orange','banana'])`;
             const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
-            const actualFakerValue = npmFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeApiToRecordTypeWrapperMap, fakeFieldApiName);
+            const actualFakerValue = fakerJSService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeApiToRecordTypeWrapperMap, fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
         });
@@ -191,7 +191,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "CarModel__c";
-            const actualFakerValue = npmFakerService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
+            const actualFakerValue = fakerJSService.buildDependentPicklistRecipeFakerValue(expectedControllingValueToPicklistOptions, 
                                                         emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
                                                         controllingField, 
                                                         fakeFieldApiName);
@@ -209,7 +209,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
             const expectedRecipeValue = `faker.helpers.arrayElement(['apple','orange','banana'])`;
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
-            const actualFakerValue = npmFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
+            const actualFakerValue = fakerJSService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
                 emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
                                                                                                 fakeFieldApiName);
 
@@ -222,7 +222,7 @@ describe('NPMFakerService Shared Intstance Tests', () => {
 
         test('given expected list of OOTB object keys, mapping keys are found', () => {
             
-            const actualMappings = npmFakerService.getOOTBObjectApiNameToFieldApiNameMap();
+            const actualMappings = fakerJSService.getOOTBObjectApiNameToFieldApiNameMap();
 
             const expectedObjectsInMappings = [
                 'Account',

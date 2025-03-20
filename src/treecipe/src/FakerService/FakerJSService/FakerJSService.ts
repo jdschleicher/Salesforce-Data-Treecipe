@@ -1,7 +1,7 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IFakerService } from "../IFakerService";
 
-export class NPMFakerService implements IFakerService {
+export class FakerJSService implements IFakerService {
 
     generateTabs(tabCount: number):string {
         const spacesPerTab = 4;

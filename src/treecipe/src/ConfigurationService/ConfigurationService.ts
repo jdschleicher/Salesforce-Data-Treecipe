@@ -1,7 +1,7 @@
 
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerService } from '../FakerService/IFakerService';
-import { NPMFakerService } from '../FakerService/NPMFakerService/NPMFakerService';
+import { FakerJSService } from '../FakerService/FakerJSService/FakerJSService';
 import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
 import { SnowfakeryIntegrationService } from '../FakerIntegrationService/SnowfakeryIntegrationService/SnowfakeryIntegrationService';
 
@@ -162,7 +162,7 @@ export class ConfigurationService {
             case 'snowfakery':
               return new SnowfakeryFakerService();
             case 'faker-js':
-              return new NPMFakerService();
+              return new FakerJSService();
             default:
               throw new Error(`Unknown Faker Service selection: ${fakerConfigurationSelection}`);
           }
