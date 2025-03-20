@@ -713,5 +713,64 @@ describe('Shared tests for CollectionsApiService', () => {
         });
 
     });
+
+
+    describe('createCollectionsApiFile', () => {
+
+        test('should create a collections API file with the correct content', () => {
+            
+            const mockCollectionsApiFormattedRecords = [
+                {
+                    attributes: {
+                        type: 'Account',
+                        referenceId: 'Account_Reference_1'
+                    },
+                    name: 'Test Account'
+                },
+                {
+                    attributes: {
+                        type: 'Account',
+                        referenceId: 'Account_Reference_2'
+                    },
+                    name: 'Test Account 2'
+                },
+            ];
+
+            const expectedObjectName = 'Account';
+            const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
+
+            CollectionsApiService.createCollectionsApiFile(
+                expectedObjectName,
+                mockCollectionsApiFormattedRecords,
+                mockUniqueTimeStampedFakeDataSetsFolderName
+            );
+
+            const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
+            const expectedFullPathWithFileName = `${mockUniqueTimeStampedFakeDataSetsFolderName}/${expectedFileName}`;
+
+            const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
+            expect(fs.writeFile).toHaveBeenCalledWith(
+                expectedFullPathWithFileName,
+                jsonMockCollectionsApiFormattedRecords,
+                expect.any(Function)
+            );
+
+        });
+
+    });
+
+    // describe('buildCollectionsApiFileNameBySobjectName', () => {
+
+    //     test('should build the correct collections API file name based on the selected recipe file name', () => {
+            
+    //         const expectedObjectName = 'Account';
+    //         const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
+
+    //         const actualBuiltFileName = CollectionsApiService.buildCollectionsApiFileNameBySobjectName(expectedObjectName);
+    //         expect(actualBuiltFileName).toBe(expectedFileName);
+
+    //     });
+        
+    // });
     
 });

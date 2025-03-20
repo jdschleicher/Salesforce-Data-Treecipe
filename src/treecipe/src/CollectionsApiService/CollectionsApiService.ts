@@ -413,4 +413,28 @@ export class CollectionsApiService {
 
     }
 
+    static createCollectionsApiFile(objectApiName: string, collectionsApiFormattedRecords: any, uniqueTimeStampedFakeDataSetsFolderName: string ) {
+
+        const expectedCollectionsApiOutputFile = this.buildCollectionsApiFileNameBySobjectName(objectApiName);
+        const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${expectedCollectionsApiOutputFile}`;
+
+        const jsonStringFormattedRecords = JSON.stringify(collectionsApiFormattedRecords, null, 2);
+
+        fs.writeFile(fullCollectionsApiFilePath, jsonStringFormattedRecords, error => {
+            
+            if (error) {
+                throw new Error(`Error occurred in Collections Api file creation: ${error.message}`);
+            } 
+
+        });
+
+    }
+
+    protected static buildCollectionsApiFileNameBySobjectName(sobjectApiName: string):string {
+
+        const collectionsApiFileName = `collectionsApi-${sobjectApiName}.json`;
+        return collectionsApiFileName;
+
+    }
+
 }

@@ -1,13 +1,15 @@
 
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IFakerService } from '../FakerService/IFakerService';
-import { FakerJSService } from '../FakerService/FakerJSService/FakerJSService';
 import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
-import { SnowfakeryIntegrationService } from '../FakerIntegrationService/SnowfakeryIntegrationService/SnowfakeryIntegrationService';
+import { FakerJSService } from '../FakerService/FakerJSService/FakerJSService';
+import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
+import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 
 import * as fs from 'fs';
 import path = require('path');
 import * as vscode from 'vscode';
+import { IFakerRecipeProcessor } from '../FakerRecipeProcessor/IFakerRecipeProcessor';
 
 export interface ExtensionConfig {
     selectedFakerService?: string;
@@ -85,14 +87,7 @@ export class ConfigurationService {
             return;
         };
 
-        let isSnowfakeryInstalled:boolean = await SnowfakeryIntegrationService.isSnowfakeryInstalled();
-        let selectedDataFakerService = null;
-        if (isSnowfakeryInstalled) {
-            selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
-        } else {
-            selectedDataFakerService = 'faker-js';
-        }
-
+        let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
         if (!selectedDataFakerService) {
             // NO SELECTION MADE
             return;
@@ -165,6 +160,20 @@ export class ConfigurationService {
               return new FakerJSService();
             default:
               throw new Error(`Unknown Faker Service selection: ${fakerConfigurationSelection}`);
+          }
+    
+    }
+
+    static getFakerRecipeProcessorByExtensionConfigSelection(): IFakerRecipeProcessor {
+
+        const fakerConfigurationSelection = this.getSelectedDataFakerServiceConfig();
+        switch (fakerConfigurationSelection) {
+            case 'snowfakery':
+              return new SnowfakeryRecipeProcessor();
+            case 'faker-js':
+              return new FakerJSRecipeProcessor();
+            default:
+              throw new Error(`Unknown Faker Recipe Processor selection: ${fakerConfigurationSelection}`);
           }
     
     }

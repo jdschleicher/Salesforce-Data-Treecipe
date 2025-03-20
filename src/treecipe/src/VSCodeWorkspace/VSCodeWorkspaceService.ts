@@ -281,5 +281,12 @@ export class VSCodeWorkspaceService {
         return fullPathToUniqueTimeStampedFakeDataSetsFolder;
 
     }
+
+    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
+        
+        const fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
+        return fakeDataSetsFolderName;
+
+    }
     
 }

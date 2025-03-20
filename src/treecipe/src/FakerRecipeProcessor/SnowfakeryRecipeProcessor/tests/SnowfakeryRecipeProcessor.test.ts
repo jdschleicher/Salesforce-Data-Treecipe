@@ -1,7 +1,7 @@
 import { ChildProcess, exec } from 'child_process';
 import * as fs from 'fs';
 
-import { SnowfakeryIntegrationService } from '../SnowfakeryIntegrationService';
+import { SnowfakeryIntegrationService } from '../SnowfakeryRecipeProcessor';
 import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 jest.mock('vscode', () => ({
@@ -144,7 +144,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
     });
 
-    describe('transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject', () => {
+    describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
         
         test('given two different objects from snowfakery generation, calls createCollectionsApiFile twice', () => {
             
@@ -182,7 +182,7 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
             
             mockedCreateCollectionsApiCall.mockImplementation(fakeFunction);
 
-            const result = SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(
+            const result = SnowfakeryIntegrationService.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(
                 snowfakeryJsonFileContent, 
                 fakePathToUniqueTimeStampedFakeDataSetsFolder
             );
@@ -193,88 +193,6 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
         afterEach(() => {        
             jest.restoreAllMocks();
-        });
-        
-    });
-
-    describe('createUniqueTimeStampedFakeDataSetsFolderName', () => {
-        
-        test('should create a unique timestamped folder for fake data sets', () => {
-
-            const uniqueTimeStampedFakeDataSetsFolderName = '2024-11-25T16-24-15';
-            const mockWorkspaceRoot = '/mock/workspace';
-            const mockFakeDataSetsFolderPath = 'treecipe/FakeDataSets';
-            const mockExpectedFolderPath = `${mockWorkspaceRoot}/${mockFakeDataSetsFolderPath}`;
-            const mockUniqueFolderName = `dataset-${uniqueTimeStampedFakeDataSetsFolderName}`;
-            const mockFullPathToUniqueFolder = `${mockExpectedFolderPath}/${mockUniqueFolderName}`;
-
-            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
-            jest.spyOn(SnowfakeryIntegrationService, 'createFakeDatasetsTimeStampedFolderName').mockReturnValue(mockUniqueFolderName);
-
-            (fs.existsSync as jest.Mock).mockReturnValue(true);
-
-            const result = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName(mockUniqueFolderName);
-
-            expect(fs.existsSync).toHaveBeenCalledWith(mockExpectedFolderPath);
-            expect(fs.mkdirSync).toHaveBeenCalledWith(mockFullPathToUniqueFolder);
-            expect(result).toBe(mockFullPathToUniqueFolder);
-        
-        });
-
-    });
-
-    describe('createCollectionsApiFile', () => {
-
-        test('should create a collections API file with the correct content', () => {
-            
-            const mockCollectionsApiFormattedRecords = [
-                {
-                    attributes: {
-                        type: 'Account',
-                        referenceId: 'Account_Reference_1'
-                    },
-                    name: 'Test Account'
-                },
-                {
-                    attributes: {
-                        type: 'Account',
-                        referenceId: 'Account_Reference_2'
-                    },
-                    name: 'Test Account 2'
-                },
-            ];
-
-            const expectedObjectName = 'Account';
-            const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
-
-            SnowfakeryIntegrationService.createCollectionsApiFile(
-                expectedObjectName,
-                mockCollectionsApiFormattedRecords,
-                mockUniqueTimeStampedFakeDataSetsFolderName
-            );
-
-            const expectedFileName = `${mockUniqueTimeStampedFakeDataSetsFolderName}/collectionsApi-${expectedObjectName}.json`;
-            const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
-            expect(fs.writeFile).toHaveBeenCalledWith(
-                expectedFileName,
-                jsonMockCollectionsApiFormattedRecords,
-                expect.any(Function)
-            );
-
-        });
-
-    });
-
-    describe('buildCollectionsApiFileNameBySobjectName', () => {
-
-        test('should build the correct collections API file name based on the selected recipe file name', () => {
-            
-            const expectedObjectName = 'Account';
-            const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
-
-            const actualBuiltFileName = SnowfakeryIntegrationService.buildCollectionsApiFileNameBySobjectName(expectedObjectName);
-            expect(actualBuiltFileName).toBe(expectedFileName);
-
         });
         
     });

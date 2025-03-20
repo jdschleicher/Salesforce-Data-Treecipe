@@ -428,6 +428,33 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
+    describe('createUniqueTimeStampedFakeDataSetsFolderName', () => {
+        
+        test('should create a unique timestamped folder for fake data sets', () => {
+
+            const uniqueTimeStampedFakeDataSetsFolderName = '2024-11-25T16-24-15';
+            const mockWorkspaceRoot = '/mock/workspace';
+            const mockFakeDataSetsFolderPath = 'treecipe/FakeDataSets';
+            const mockExpectedFolderPath = `${mockWorkspaceRoot}/${mockFakeDataSetsFolderPath}`;
+            const mockUniqueFolderName = `dataset-${uniqueTimeStampedFakeDataSetsFolderName}`;
+            const mockFullPathToUniqueFolder = `${mockExpectedFolderPath}/${mockUniqueFolderName}`;
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'createFakeDatasetsTimeStampedFolderName').mockReturnValue(mockUniqueFolderName);
+
+            (fs.existsSync as jest.Mock).mockReturnValue(true);
+
+            const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockUniqueFolderName);
+
+            expect(fs.existsSync).toHaveBeenCalledWith(mockExpectedFolderPath);
+            expect(fs.mkdirSync).toHaveBeenCalledWith(mockFullPathToUniqueFolder);
+            expect(result).toBe(mockFullPathToUniqueFolder);
+        
+        });
+
+    });
+
+
 });
 
 

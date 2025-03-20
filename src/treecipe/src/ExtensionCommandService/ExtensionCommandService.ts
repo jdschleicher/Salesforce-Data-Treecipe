@@ -6,11 +6,12 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { SnowfakeryIntegrationService } from "../FakerIntegrationService/SnowfakeryIntegrationService/SnowfakeryIntegrationService";
+import { SnowfakeryIntegrationService } from "../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor";
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import path = require("path");
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { RecipeService } from "../RecipeService/RecipeService";
+import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 
 export class ExtensionCommandService {
     
@@ -41,13 +42,28 @@ export class ExtensionCommandService {
             }
             const recipeFullFileNamePath = selectedRecipeFilePathNameQuickPickItem.detail;
             
+            let fakerRecipeProcessor:IFakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
             const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
 
             const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-            const uniqueTimeStampedFakeDataSetsFolderName = SnowfakeryIntegrationService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
+            const uniqueTimeStampedFakeDataSetsFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
             const fullPathToUniqueTimeStampedFakeDataSetsFolder = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
 
-            SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
+            const mappedSObjectApiToRecords = fakerRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult);
+
+            const directoryToStoreCollectionDatasetFiles = 'DatasetFilesForCollectionsApi';
+            const fullPathToStoreDatasetFiles = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${directoryToStoreCollectionDatasetFiles}`;
+            fs.mkdirSync(fullPathToStoreDatasetFiles);
+
+            mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
+
+                SnowfakeryIntegrationService.createCollectionsApiFile(
+                    sobjectApiName, 
+                    collectionsApiContent, 
+                    fullPathToStoreDatasetFiles
+                );
+
+            });
             
             const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();
             const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;

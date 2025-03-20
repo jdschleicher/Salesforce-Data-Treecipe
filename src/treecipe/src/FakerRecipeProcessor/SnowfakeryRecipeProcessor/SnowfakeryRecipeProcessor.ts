@@ -2,18 +2,15 @@ import { exec } from 'child_process';
 import * as vscode from 'vscode';
 
 import * as fs from 'fs';
+import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 
-interface CollectionsApiStructure {
-    allOrNone: boolean;
-    records: any[];
-}
 
-export class SnowfakeryIntegrationService {
+export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
-    static baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
-    static snowfakeryGenerationErrorMessage:string = 'An error occurred genertating snowfakery against the recipe file';
+    private baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
+    // private snowfakeryGenerationErrorMessage:string = 'An error occurred genertating snowfakery against the recipe file';
 
-    static async isSnowfakeryInstalled(): Promise<boolean> {
+    async isRecipeProcessorSetup(): Promise<boolean> {
 
         return new Promise((resolve, reject) => {
             
@@ -42,7 +39,8 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
+    // static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
+    async generateFakeDataBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {
 
@@ -75,31 +73,12 @@ export class SnowfakeryIntegrationService {
 
     }
 
-    static transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent: any, fullPathToUniqueTimeStampedFakeDataSetsFolder: string) {
+    // transformFakerJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent: any, fullPathToUniqueTimeStampedFakeDataSetsFolder: string) {
+    transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerContent: string): Map<string, CollectionsApiJsonStructure> {
 
-        const mappedSObjectApiToRecords = this.mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent);   
+        const objectApiToGeneratedRecords = new Map<string, CollectionsApiJsonStructure>();
 
-        const directoryToStoreCollectionDatasetFiles = 'DatasetFilesForCollectionsApi';
-        const fullPathToStoreDatasetFiles = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${directoryToStoreCollectionDatasetFiles}`;
-        fs.mkdirSync(fullPathToStoreDatasetFiles);
-
-        mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
-
-            SnowfakeryIntegrationService.createCollectionsApiFile(
-                sobjectApiName, 
-                collectionsApiContent, 
-                fullPathToStoreDatasetFiles
-            );
-
-        });
-    
-    }
-
-    static mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent: any): Map<string, CollectionsApiStructure> {
-
-        const objectApiToGeneratedRecords = new Map<string, CollectionsApiStructure>();
-
-        const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent);
+        const snowfakeryRecords = JSON.parse(fakerContent);
 
         snowfakeryRecords.forEach(record => {
 
@@ -123,7 +102,7 @@ export class SnowfakeryIntegrationService {
 
             } else {
 
-                const objectApiToRecords:CollectionsApiStructure = {
+                const objectApiToRecords:CollectionsApiJsonStructure = {
                     allOrNone: true,
                     records: [sobjectGeneratedDetail] 
                 };
@@ -135,38 +114,53 @@ export class SnowfakeryIntegrationService {
         });
 
         return objectApiToGeneratedRecords;
+
     
     }
 
-    static createCollectionsApiFile(objectApiName: string, collectionsApiFormattedRecords: any, uniqueTimeStampedFakeDataSetsFolderName: string ) {
+    // mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent: any): Map<string, CollectionsApiStructure> {
 
-        const expectedCollectionsApiOutputFile = this.buildCollectionsApiFileNameBySobjectName(objectApiName);
-        const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${expectedCollectionsApiOutputFile}`;
+    //     const objectApiToGeneratedRecords = new Map<string, CollectionsApiStructure>();
 
-        const jsonStringFormattedRecords = JSON.stringify(collectionsApiFormattedRecords, null, 2);
+    //     const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent);
 
-        fs.writeFile(fullCollectionsApiFilePath, jsonStringFormattedRecords, error => {
-            
-            if (error) {
-                throw new Error(`Error occurred in Collections Api file creation: ${error.message}`);
-            } 
+    //     snowfakeryRecords.forEach(record => {
 
-        });
+    //         const objectApiName = record._table; // snowfakery captures the object api name value in _table property
+    //         const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
+    //         const sobjectGeneratedDetail = {
+    //             attributes: {
+    //                 type: objectApiName,
+    //                 referenceId: recordTrackingReferenceId
+    //             },
+    //             ...record
+    //         };
+          
+    //         // remove snowfakery properties not needed for collections api 
+    //         delete sobjectGeneratedDetail.id;
+    //         delete sobjectGeneratedDetail._table;
 
-    }
+    //         if (objectApiToGeneratedRecords.has(objectApiName)) {
 
-    static buildCollectionsApiFileNameBySobjectName(sobjectApiName: string):string {
+    //             objectApiToGeneratedRecords.get(objectApiName).records.push(sobjectGeneratedDetail);
 
-        const collectionsApiFileName = `collectionsApi-${sobjectApiName}.json`;
-        return collectionsApiFileName;
+    //         } else {
 
-    }
+    //             const objectApiToRecords:CollectionsApiStructure = {
+    //                 allOrNone: true,
+    //                 records: [sobjectGeneratedDetail] 
+    //             };
 
-    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
-        
-        const fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
-        return fakeDataSetsFolderName;
+    //             objectApiToGeneratedRecords.set(objectApiName, objectApiToRecords);
 
-    }
+    //         }
+
+    //     });
+
+    //     return objectApiToGeneratedRecords;
+    
+    // }
+
+
     
 }

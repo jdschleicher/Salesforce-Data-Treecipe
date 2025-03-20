@@ -3,13 +3,14 @@ import { exec } from 'child_process';
 import * as fs from 'fs';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 
 interface CollectionsApiStructure {
     allOrNone: boolean;
     records: any[];
 }
 
-export class FakerJSIntegrationService {
+export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     static baseFakerJSInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
 
@@ -46,7 +47,7 @@ export class FakerJSIntegrationService {
 
     }
 
-    static transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent: any, fullPathToUniqueTimeStampedFakeDataSetsFolder: string) {
+    static transformFakerJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent: any, fullPathToUniqueTimeStampedFakeDataSetsFolder: string) {
 
         const mappedSObjectApiToRecords = this.mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent);   
 
@@ -143,17 +144,10 @@ export class FakerJSIntegrationService {
 
     }
 
-    static buildCollectionsApiFileNameBySobjectName(sobjectApiName: string):string {
+    private static buildCollectionsApiFileNameBySobjectName(sobjectApiName: string):string {
 
         const collectionsApiFileName = `collectionsApi-${sobjectApiName}.json`;
         return collectionsApiFileName;
-
-    }
-
-    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
-        
-        const fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
-        return fakeDataSetsFolderName;
 
     }
     
