@@ -158,8 +158,6 @@ export class VSCodeWorkspaceService {
             // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
             return undefined; 
         } else {
-
-            ConfigurationService.setExtensionConfigValue('selectedFakerService', fakerServiceSelection.label);
             return fakerServiceSelection.label;
         }
 
