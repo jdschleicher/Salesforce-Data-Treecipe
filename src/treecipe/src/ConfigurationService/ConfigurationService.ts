@@ -208,5 +208,10 @@ export class ConfigurationService {
         return collectionsApiFilesFolderName;
     }
 
+    static getDatasetFilesForCollectionsApiFolderName() {
+        const datasetFilesForCollectionsApiFolderName = 'DatasetFilesForCollectionsApi';
+        return datasetFilesForCollectionsApiFolderName;
+    }
+
 
 }

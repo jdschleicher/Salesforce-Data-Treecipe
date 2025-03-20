@@ -51,18 +51,16 @@ export class ExtensionCommandService {
 
             const mappedSObjectApiToRecords = fakerRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult);
 
-            const directoryToStoreCollectionDatasetFiles = 'DatasetFilesForCollectionsApi';
+            const directoryToStoreCollectionDatasetFiles = ConfigurationService.getDatasetFilesForCollectionsApiFolderName();
             const fullPathToStoreDatasetFiles = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${directoryToStoreCollectionDatasetFiles}`;
             fs.mkdirSync(fullPathToStoreDatasetFiles);
 
             mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
-
-                SnowfakeryIntegrationService.createCollectionsApiFile(
+                CollectionsApiService.createCollectionsApiFile(
                     sobjectApiName, 
                     collectionsApiContent, 
                     fullPathToStoreDatasetFiles
                 );
-
             });
             
             const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();

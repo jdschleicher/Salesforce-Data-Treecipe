@@ -1,7 +1,6 @@
 import { exec } from 'child_process';
 import * as vscode from 'vscode';
 
-import * as fs from 'fs';
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 
 

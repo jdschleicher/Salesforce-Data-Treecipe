@@ -1,7 +1,6 @@
 import { ChildProcess, exec } from 'child_process';
 import * as fs from 'fs';
 
-import { SnowfakeryIntegrationService } from '../SnowfakeryRecipeProcessor';
 import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 jest.mock('vscode', () => ({
@@ -22,7 +21,7 @@ jest.mock('fs', () => ({
     writeFile: jest.fn()
 }));
 
-describe('Shared SnowfakeryIntegrationService tests', () => {
+describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
     describe('isSnowfakeryInstalled', () => {
 
