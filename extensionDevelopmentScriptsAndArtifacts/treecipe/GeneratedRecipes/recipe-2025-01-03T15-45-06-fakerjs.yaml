@@ -1,0 +1,71 @@
+
+- object: Account
+  nickname: Account_NickName
+  count: 11
+  fields:
+    Name: ${{ faker.company() }}
+    
+- object: Example_Everything__c
+  nickname: Example_Everything__c_NickName
+  count: 1
+  fields:
+    Checkbox__c: ${{faker.boolean()}}
+    Currency__c: ${{faker.pydecimal(left_digits=6, right_digits=2, positive=True)}}
+    DateTime__c: ${{faker.date_time_between(start_date="-1y", end_date="now")}}
+    Date__c: ${{date(faker.date_between(start_date="-1y", end_date="today"))}}
+    DependentPicklist__c: 
+      if:
+        - choice:
+            when: ${{ Picklist__c == 'cle' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    - rocks
+        - choice:
+            when: ${{ Picklist__c == 'eastlake' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: ${{ Picklist__c == 'madison' }}
+            pick:
+                random_choice:
+                    - tree
+                    - plant
+                    - weed
+        - choice:
+            when: ${{ Picklist__c == 'willoughby' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: ${{ Picklist__c == 'mentor' }}
+            pick:
+                random_choice:
+                    - plant
+                    - weed
+        - choice:
+            when: ${{ Picklist__c == 'wickliffe' }}
+            pick:
+                random_choice:
+                    - weed
+                    - rocks
+    Email__c: ${{faker.email()}}
+    Example_Everything_Lookup__c: "### TODO -- REFERENCE ID REQUIRED"
+    Formula__c: ${{faker.random_int(min=0, max=999999)}}
+    MultiPicklist__c: ${{ (';').join((faker.random_sample(elements=('chicken','chorizo','egg','fish','pork','steak','tofu')))) }}
+    Number__c: ${{faker.random_int(min=0, max=999999)}}
+    Percent__c: ${{faker.pydecimal(left_digits=2, right_digits=2, positive=True)}}
+    Phone__c: ${{faker.phone_number()}}
+    Picklist__c: ${{ random_choice('cle','eastlake','madison','mentor','wickliffe','willoughby') }}
+    TextAreaRich__c: ${{faker.text(max_nb_chars=1000)}}
+    Text_Area_Long__c: ${{faker.text(max_nb_chars=1000)}}
+    Text__c: ${{faker.text(max_nb_chars=50)}}
+    Time__c: ${{faker.time()}}
+    Url__c: ${{faker.url()}}

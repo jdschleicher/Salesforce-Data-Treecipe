@@ -1,15 +1,21 @@
 import * as fs from 'fs';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
+
 import { faker } from '@faker-js/faker';
 
-// Helper functions for generating random values
-const getRandomChoice = (...options: string[]) => options[Math.floor(Math.random() * options.length)];
-const getRandomNumber = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+const test  = faker.color.human();
+
+
+
+// // Helper functions for generating random values
+// const getRandomChoice = (...options: string[]) => options[Math.floor(Math.random() * options.length)];
+// const getRandomNumber = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 /**
  * Evaluates expressions within `${{ ... }}` dynamically using Faker.js and helper functions.
- */
+//  */
 const evaluateExpression = (expression: string): string => {
+    
     return expression.replace(/\${{(.*?)}}/g, (_, code) => {
         try {
             return eval(code.trim()); // Executes the dynamic code
@@ -18,14 +24,15 @@ const evaluateExpression = (expression: string): string => {
             return `ERROR`;
         }
     });
+
 };
 
 /**
  * Reads the YAML file and processes each entry by replacing placeholder values with fake data.
  */
-const generateFakeDataFromYaml = (filePath: string): any[] => {
-    const yamlContent = fs.readFileSync(filePath, 'utf8'); // Read the YAML file
-    const parsedData = yaml.load(yamlContent) as any[]; // Parse YAML into JavaScript objects
+const generateFakeDataFromYaml = (fileToProcess: string): any[] => {
+    const yamlContent = fs.readFileSync(fileToProcess, 'utf8'); // Read the YAML file
+    const parsedData = yaml.load(yamlContent) as any[]; 
 
     let generatedData: any[] = [];
 
@@ -55,7 +62,17 @@ const generateFakeDataFromYaml = (filePath: string): any[] => {
     return generatedData;
 };
 
+
 // Execute the function and display the results
-const fileToProcess = 'extensionDevelopmentScriptsAndArtifacts/treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml';
+const fileToProcess = 'extensionDevelopmentScriptsAndArtifacts/treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06-fakerjs.yaml';
 const fakeData = generateFakeDataFromYaml(fileToProcess); // Replace with your YAML file path
 console.log(JSON.stringify(fakeData, null, 2));
+
+
+// const fileToProcess = 'extensionDevelopmentScriptsAndArtifacts/treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml';
+// npx ts-node fileToProcess
+
+// const fileToProcess = 'extensionDevelopmentScriptsAndArtifacts/treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml';
+// const yamlContent = fs.readFileSync(fileToProcess, 'utf8'); // Read the YAML file
+// // const parsedData = yaml.load(yamlContent) as any[]; 
+// const parsedData = yaml.load(yamlContent);
