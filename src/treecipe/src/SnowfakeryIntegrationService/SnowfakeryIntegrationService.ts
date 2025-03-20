@@ -56,7 +56,6 @@ export class SnowfakeryIntegrationService {
 
     static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
-        // let snowfakeryError:Error = null;
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {
 
             const generateCommand = `snowfakery ${ fullRecipeFileNamePath } --output-format json`;
@@ -116,7 +115,7 @@ export class SnowfakeryIntegrationService {
 
         snowfakeryRecords.forEach(record => {
 
-            const objectApiName = record._table; // Use the _table value dynamically as type
+            const objectApiName = record._table; // snowfakery captures the object api name value in _table property
             const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
             const sobjectGeneratedDetail = {
                 attributes: {
