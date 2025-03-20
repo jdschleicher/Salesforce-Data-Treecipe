@@ -3,7 +3,7 @@ import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceServic
 import { IFakerService } from '../FakerService/IFakerService';
 import { NPMFakerService } from '../FakerService/NPMFakerService/NPMFakerService';
 import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
-import { SnowfakeryIntegrationService } from '../SnowfakeryIntegrationService/SnowfakeryIntegrationService';
+import { SnowfakeryIntegrationService } from '../FakerIntegrationService/SnowfakeryIntegrationService/SnowfakeryIntegrationService';
 
 import * as fs from 'fs';
 import path = require('path');

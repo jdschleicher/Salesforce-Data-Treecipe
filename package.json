@@ -32,8 +32,8 @@
         "category": "Salesforce Treecipe"
       },
       {
-        "command": "treecipe.runSnowfakeryByRecipe",
-        "title": "Run Snowfakery by Recipe",
+        "command": "treecipe.runFakerByRecipe",
+        "title": "Run Faker by Recipe",
         "category": "Salesforce Treecipe"
       },
       {

@@ -6,7 +6,7 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
+import { SnowfakeryIntegrationService } from "../FakerIntegrationService/SnowfakeryIntegrationService/SnowfakeryIntegrationService";
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import path = require("path");
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
@@ -28,11 +28,12 @@ export class ExtensionCommandService {
 
     }
 
-    async runSnowfakeryGenerationByRecipeFile() {
+    async runFakerGenerationByRecipeFile() {
 
         try {
             
-            const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
+
+            const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectFakerRecipeFileToProcess();
             if (!selectedRecipeQuickPickItem) {
                 return;
             }
@@ -49,7 +50,6 @@ export class ExtensionCommandService {
             const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();
             const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
-
             fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeQuickPickItem.label}`);
 
             /* 
@@ -74,7 +74,7 @@ export class ExtensionCommandService {
 
         } catch(error) {
 
-            const commandName = 'runSnowfakeryGenerationByRecipeFile';
+            const commandName = 'runFakerGenerationByRecipeFile';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }

@@ -2,7 +2,7 @@ import { ChildProcess, exec } from 'child_process';
 import * as fs from 'fs';
 
 import { SnowfakeryIntegrationService } from '../SnowfakeryIntegrationService';
-import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 jest.mock('vscode', () => ({
 
@@ -78,13 +78,13 @@ describe('Shared SnowfakeryIntegrationService tests', () => {
 
     });
 
-    describe('selectSnowfakeryRecipeFileToProcess', () => {
+    describe('selectFakerRecipeFileToProcess', () => {
         
         test('should return selected recipe file path name', async () => {
             const expectedQuickPickItem = { label: 'recipe.yml', description: 'A sample recipe file' };
             jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateQuickItemsForFileSelection').mockResolvedValue(expectedQuickPickItem);
 
-            const result = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
+            const result = await SnowfakeryIntegrationService.selectFakerRecipeFileToProcess();
 
             expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).toHaveBeenCalled();
             expect(result).toBe(expectedQuickPickItem);
