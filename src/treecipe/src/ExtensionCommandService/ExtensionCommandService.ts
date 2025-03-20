@@ -190,4 +190,11 @@ export class ExtensionCommandService {
         
     }
 
+    async changeFakerImplementationService() {
+
+        let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+        ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+
+	}
+
 }

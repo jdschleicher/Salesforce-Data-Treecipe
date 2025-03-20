@@ -40,6 +40,11 @@
         "command": "treecipe.insertDataSetBySelectedDirectory",
         "title": "Insert Data Set by Directory",
         "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.changeFakerImplementationService",
+        "title": "Select Faker Implementation",
+        "category": "Salesforce Treecipe"
       }
     ],
     "configuration": [
