@@ -3,7 +3,7 @@
   nickname: Account_NickName
   count: 11
   fields:
-    Name: ${{ faker.company() }}
+    Name: ${{ faker.company.name() }}
     
 - object: Example_Everything__c
   nickname: Example_Everything__c_NickName
