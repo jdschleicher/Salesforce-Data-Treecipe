@@ -3,7 +3,7 @@ import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XML
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 
 import { RecipeMockService } from "./mocks/RecipeMockService";
-import { SnowfakeryFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
+import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
@@ -23,7 +23,7 @@ jest.mock('vscode', () => ({
 
   describe('RecipeService Shared Intstance Tests', () => {
 
-    const snowFakerService = new SnowfakeryFakerService();
+    const snowFakerService = new SnowfakeryRecipeFakerService();
     let recipeServiceWithSnow = new RecipeService(snowFakerService);  
     const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = recipeServiceWithSnow.getOOTBExpectedObjectToFakerValueMappings();
 

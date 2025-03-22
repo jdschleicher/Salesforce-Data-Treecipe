@@ -1,11 +1,11 @@
 import { RecipeMockService } from "../../../RecipeService/tests/mocks/RecipeMockService";
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
-import { SnowfakeryFakerService } from "../SnowfakeryRecipeFakerService";
+import { SnowfakeryRecipeFakerService } from "../SnowfakeryRecipeFakerService";
 
-describe('SnowfakeryFakerService Shared Intstance Tests', () => {
+describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
-    let snowfakeryService = new SnowfakeryFakerService();
+    let snowfakeryService = new SnowfakeryRecipeFakerService();
 
     describe('getMapSalesforceFieldToFakerValue', () => {
 

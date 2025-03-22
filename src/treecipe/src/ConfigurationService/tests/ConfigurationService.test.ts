@@ -1,4 +1,4 @@
-import { SnowfakeryFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
+import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
 
@@ -67,7 +67,7 @@ describe('Shared ConfigurationService Tests', () => {
         test('given expected setup of "selectedFakerService" extension config value, returns expecte IRecipeFakerService implementation', () => {
             
             const actualImplementationFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
-            expect(actualImplementationFakerService).toBeInstanceOf(SnowfakeryFakerService);
+            expect(actualImplementationFakerService).toBeInstanceOf(SnowfakeryRecipeFakerService);
 
         });
 

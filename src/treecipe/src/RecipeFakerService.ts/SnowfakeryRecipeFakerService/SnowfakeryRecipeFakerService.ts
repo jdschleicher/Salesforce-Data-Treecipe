@@ -3,7 +3,7 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 
-export class SnowfakeryFakerService implements IRecipeFakerService {
+export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
     openingRecipeSyntax:string = "${{";
     closingRecipeSyntax:string = "}}";

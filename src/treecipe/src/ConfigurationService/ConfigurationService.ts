@@ -1,7 +1,7 @@
 
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
-import { SnowfakeryFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
+import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
@@ -155,7 +155,7 @@ export class ConfigurationService {
         const fakerConfigurationSelection = this.getSelectedDataFakerServiceConfig();
         switch (fakerConfigurationSelection) {
             case 'snowfakery':
-              return new SnowfakeryFakerService();
+              return new SnowfakeryRecipeFakerService();
             case 'faker-js':
               return new FakerJSRecipeFakerService();
             default:
