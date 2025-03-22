@@ -1,4 +1,4 @@
-import { SnowfakeryFakerService } from '../../RecipeFakerService.ts/SnowfakeryFakerService/SnowfakeryFakerService';
+import { SnowfakeryFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
 

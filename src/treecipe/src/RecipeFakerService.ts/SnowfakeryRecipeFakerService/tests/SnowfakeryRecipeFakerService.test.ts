@@ -1,7 +1,7 @@
 import { RecipeMockService } from "../../../RecipeService/tests/mocks/RecipeMockService";
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
-import { SnowfakeryFakerService } from "../SnowfakeryFakerService";
+import { SnowfakeryFakerService } from "../SnowfakeryRecipeFakerService";
 
 describe('SnowfakeryFakerService Shared Intstance Tests', () => {
 

@@ -3,7 +3,7 @@ import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XML
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 
 import { RecipeMockService } from "./mocks/RecipeMockService";
-import { SnowfakeryFakerService } from "../../RecipeFakerService.ts/SnowfakeryFakerService/SnowfakeryFakerService";
+import { SnowfakeryFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";

@@ -4,7 +4,7 @@ import { DirectoryProcessor } from "../DirectoryProcessor";
 import * as vscode from 'vscode';
 import { MockDirectoryService } from "./MockObjectsDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
-import { SnowfakeryFakerService } from "../../RecipeFakerService.ts/SnowfakeryFakerService/SnowfakeryFakerService";
+import { SnowfakeryFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
 
