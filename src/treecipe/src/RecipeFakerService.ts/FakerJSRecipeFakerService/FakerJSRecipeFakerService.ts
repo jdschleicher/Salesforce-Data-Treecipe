@@ -1,7 +1,7 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
-import { IFakerService } from "../IFakerService";
+import { IRecipeFakerService } from "../IRecipeFakerService";
 
-export class FakerJSService implements IFakerService {
+export class FakerJSRecipeFakerService implements IRecipeFakerService {
 
     generateTabs(tabCount: number):string {
         const spacesPerTab = 4;

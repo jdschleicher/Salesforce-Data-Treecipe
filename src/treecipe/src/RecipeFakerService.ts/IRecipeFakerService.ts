@@ -1,6 +1,6 @@
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 
-export interface IFakerService {
+export interface IRecipeFakerService {
 
     getMapSalesforceFieldToFakerValue(): Record<string, string>;
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],

@@ -1,8 +1,8 @@
 
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
-import { IFakerService } from '../FakerService/IFakerService';
-import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
-import { FakerJSService } from '../FakerService/FakerJSService/FakerJSService';
+import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
+import { SnowfakeryFakerService } from '../RecipeFakerService.ts/SnowfakeryFakerService/SnowfakeryFakerService';
+import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 
@@ -150,14 +150,14 @@ export class ConfigurationService {
         return configurationFileName;
     }
 
-    static getFakerImplementationByExtensionConfigSelection(): IFakerService {
+    static getFakerImplementationByExtensionConfigSelection(): IRecipeFakerService {
 
         const fakerConfigurationSelection = this.getSelectedDataFakerServiceConfig();
         switch (fakerConfigurationSelection) {
             case 'snowfakery':
               return new SnowfakeryFakerService();
             case 'faker-js':
-              return new FakerJSService();
+              return new FakerJSRecipeFakerService();
             default:
               throw new Error(`Unknown Faker Service selection: ${fakerConfigurationSelection}`);
           }
