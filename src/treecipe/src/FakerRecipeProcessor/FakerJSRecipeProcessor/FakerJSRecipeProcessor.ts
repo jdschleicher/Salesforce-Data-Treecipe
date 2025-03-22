@@ -1,6 +1,5 @@
 import { exec } from 'child_process';
 
-import * as fs from 'fs';
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 
 
@@ -45,7 +44,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         // });
 
-        // return snowfakeryJsonResult;
+        return '';
 
     }
 

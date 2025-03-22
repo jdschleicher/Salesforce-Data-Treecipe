@@ -38,7 +38,6 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
-    // static async runSnowfakeryFakeDataGenerationBySelectedRecipeFile(fullRecipeFileNamePath: string) {
     async generateFakeDataBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {

@@ -1,5 +1,4 @@
 import { ChildProcess, exec } from 'child_process';
-import * as fs from 'fs';
 
 import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
 
