@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
-import { faker } from '@faker-js/faker';
+const { faker } = require('@faker-js/faker');
 
 const test  = faker.color.human();
 
