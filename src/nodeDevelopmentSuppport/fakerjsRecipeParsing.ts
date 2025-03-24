@@ -3,7 +3,7 @@ import * as yaml from 'js-yaml';
 
 const { faker } = require('@faker-js/faker');
 
-const test  = faker.color.human();
+// const test  = faker.color.human();
 
 
 
@@ -14,16 +14,95 @@ const test  = faker.color.human();
 /**
  * Evaluates expressions within `${{ ... }}` dynamically using Faker.js and helper functions.
 //  */
-const evaluateExpression = (expression: string): string => {
+
+function getExistingPicklistValue() {
+
+}
+
+const evaluateExpression = (expression: any, existingFieldEvaluations: Record<string, string>): string => {
     
-    return expression.replace(/\${{(.*?)}}/g, (_, code) => {
-        try {
-            return eval(code.trim()); // Executes the dynamic code
-        } catch (error) {
-            console.error(`Error evaluating: ${code}`, error);
-            return `ERROR`;
+    const regexExpressionForFakerSyntaxBookEnds = /\${{(.*?)}}/g;
+
+    let evalExpressionResult: string;
+
+    const dependentPicklistKeyIndicator = "if";
+    if ( (typeof expression !== 'string') 
+            && (dependentPicklistKeyIndicator in expression) 
+            && Object.keys(expression).length === 1 ) {
+
+        let picklistValue = '';
+        const choices = expression.if;
+
+        const whenYamlExpression = choices.length > 0 ? choices[0].choice.when : '';
+        if (!whenYamlExpression) {
+            throw new Error('No choices available in the YAML data');
         }
+    
+        const splitResult = whenYamlExpression.split(' == ');
+    
+        if (splitResult.length !== 2) {
+            throw new Error('Invalid condition format in YAML data');
+        }
+    
+        let expectedExistingFieldApiNameForDependentPicklist = splitResult[0];
+    
+        if (!existingFieldEvaluations || !existingFieldEvaluations[expectedExistingFieldApiNameForDependentPicklist]) {
+            throw new Error(`Field "${expectedExistingFieldApiNameForDependentPicklist}" not found in existing field evaluations`);
+        }
+
+        picklistValue = existingFieldEvaluations[expectedExistingFieldApiNameForDependentPicklist];
+  
+        // Find the matching choice based on the picklistValue
+        const matchingChoice = choices.find(item => {
+
+            const condition = item.choice.when;
+            const [fieldApiName, fieldValue] = condition.split('==');
+            
+            // Remove quotes from the value for comparison
+            const trimmedValue = fieldValue.trim();
+            const expectedQuotesAroundPicklistWhenSelection = /['"]/g; 
+            const cleanValue = trimmedValue.replace(expectedQuotesAroundPicklistWhenSelection, '');
+
+            const trimmedFieldApiName = fieldApiName.trim();
+
+            return (trimmedFieldApiName === expectedExistingFieldApiNameForDependentPicklist && cleanValue === picklistValue);
+
+        });
+        
+        if ( matchingChoice ) {
+            const availablePicklistOptions = matchingChoice.choice.pick.random_choice;
+            const randomChoiceFromAvailablePicklistDependencyOptions = faker.helpers.arrayElement(availablePicklistOptions);
+            return randomChoiceFromAvailablePicklistDependencyOptions;
+        } else {
+            throw new Error('no matching value for expected picklist');
+        }
+        // Return the random_choice array if found, otherwise empty array
+        // return matchingChoice ? matchingChoice.choice.pick.random_choice : [];
+    }
+
+
+    const generatedFakerValue = expression.replace(regexExpressionForFakerSyntaxBookEnds, (match, code) => {
+        
+        console.log(`Processing match: ${match}`);
+        const trimmedCode = code.trim();
+    
+        try {
+
+            const evaluation = eval(trimmedCode);
+            console.log(`Evaluation result: ${evaluation}`);
+            evalExpressionResult = String(evaluation);
+
+        } catch (error) {
+            console.error(`Error evaluating expression: ${trimmedCode}`, error);
+            evalExpressionResult = "ERROR";
+
+        }
+
+        return evalExpressionResult;
+    
     });
+    
+    return generatedFakerValue;
 
 };
 
@@ -47,7 +126,7 @@ const generateFakeDataFromYaml = (fileToProcess: string): any[] => {
 
             // Process each field and replace placeholders with actual values
             for (const [fieldName, fieldExpression] of Object.entries(fieldsTemplate)) {
-                populatedFields[fieldName] = evaluateExpression(fieldExpression as string);
+                populatedFields[fieldName] = evaluateExpression(fieldExpression, populatedFields);
             }
 
             // Store the generated object with populated fields
