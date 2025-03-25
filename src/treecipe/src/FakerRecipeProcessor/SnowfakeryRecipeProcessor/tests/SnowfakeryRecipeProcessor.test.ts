@@ -1,6 +1,7 @@
 import { ChildProcess, exec } from 'child_process';
 
 import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { SnowfakeryRecipeProcessor } from '../SnowfakeryRecipeProcessor';
 
 jest.mock('vscode', () => ({
 
@@ -22,7 +23,10 @@ jest.mock('fs', () => ({
 
 describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
-    describe('isSnowfakeryInstalled', () => {
+    const snowfakeryRecipeProcessor = new SnowfakeryRecipeProcessor();
+    const expectedBaseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
+
+    describe('isRecipeProcessorSetup', () => {
 
         /* 
             below leverages exec import from child_process allowing us to mock the exec funtion
@@ -45,7 +49,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
             mockedExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
 
-            const result = await SnowfakeryIntegrationService.isSnowfakeryInstalled();
+            const result = await snowfakeryRecipeProcessor.isRecipeProcessorSetup();
 
             expect(mockedExecChildProcessCommand).toHaveBeenCalledWith(
                 'snowfakery --version',
@@ -67,30 +71,16 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
             };
 
             mockedExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
-    
-            await expect(SnowfakeryIntegrationService.isSnowfakeryInstalled()).rejects.toThrow(
-                `${ SnowfakeryIntegrationService.baseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
+
+            await expect(snowfakeryRecipeProcessor.isRecipeProcessorSetup()).rejects.toThrow(
+                `${ expectedBaseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
             );
 
         });
 
     });
 
-    describe('selectFakerRecipeFileToProcess', () => {
-        
-        test('should return selected recipe file path name', async () => {
-            const expectedQuickPickItem = { label: 'recipe.yml', description: 'A sample recipe file' };
-            jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateQuickItemsForFileSelection').mockResolvedValue(expectedQuickPickItem);
-
-            const result = await SnowfakeryIntegrationService.selectFakerRecipeFileToProcess();
-
-            expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).toHaveBeenCalled();
-            expect(result).toBe(expectedQuickPickItem);
-        });
-
-    });
-
-    describe('runSnowfakeryFakeDataGenerationBySelectedRecipeFile', () => {
+    describe('generateFakeDataBySelectedRecipeFile', () => {
 
         const mockedRunSnowfakeryExecChildProcessCommand = jest.mocked(exec);
 
@@ -111,7 +101,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
             mockedRunSnowfakeryExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
   
             const mockRecipeFilePath = 'path/to/recipe.yml';
-            const result = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(mockRecipeFilePath);
+            const result = await snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile(mockRecipeFilePath);
   
             expect(mockedRunSnowfakeryExecChildProcessCommand).toHaveBeenCalledWith(
                   `snowfakery ${ mockRecipeFilePath } --output-format json`,
@@ -134,8 +124,8 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
             mockedRunSnowfakeryExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
             const mockRecipeFilePath = 'path/to/recipe.yml';
-            await expect(SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(mockRecipeFilePath)).rejects.toThrow(
-                `${ SnowfakeryIntegrationService.baseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
+            await expect(snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile(mockRecipeFilePath)).rejects.toThrow(
+                `${ expectedBaseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
             );
 
         });
@@ -151,41 +141,47 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
                 { id: 2, _table: 'Contact', firstName: 'John', lastName: 'Doe' }
             ]);
 
-            const expectedTransformedData = [
-                {
-                    attributes: {
-                        type: 'Account',
-                        referenceId: 'Account_Reference_1'
-                    },
-                    name: 'Test Account'
-                },
-                {
-                    attributes: {
-                        type: 'Contact',
-                        referenceId: 'Contact_Reference_2'
-                    },
-                    firstName: 'John',
-                    lastName: 'Doe'
-                }
-            ];
+            const expectedTransformedDataMap = new Map<string, Object>(
+                [
+                    [
+                        "Account", {
+                            allOrNone: true,
+                            records: [
+                                {
+                                    attributes: {
+                                    type: 'Account',
+                                    referenceId: 'Account_Reference_1'
+                                },
+                                name: 'Test Account'
+                            }
+                            ]
+                
+                        }
+                    ],
+                    [
 
-            // watch createCollectionsApiFile
-            jest.spyOn(SnowfakeryIntegrationService, "createCollectionsApiFile");
-
-            const mockedCreateCollectionsApiCall = jest.mocked(SnowfakeryIntegrationService.createCollectionsApiFile);
-
-            const fakeFunction = jest.fn();
-
-            const fakePathToUniqueTimeStampedFakeDataSetsFolder = "mock/fake/path";
-            
-            mockedCreateCollectionsApiCall.mockImplementation(fakeFunction);
-
-            const result = SnowfakeryIntegrationService.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(
-                snowfakeryJsonFileContent, 
-                fakePathToUniqueTimeStampedFakeDataSetsFolder
+                        "Contact", {
+                            allOrNone: true,
+                            records: [
+                                {
+                                    attributes: {
+                                        type: 'Contact',
+                                        referenceId: 'Contact_Reference_2'
+                                    },
+                                    firstName: 'John',
+                                    lastName: 'Doe' 
+                                }
+                            ]
+                        }
+                ]
+                ]
             );
 
-            expect(SnowfakeryIntegrationService.createCollectionsApiFile).toHaveBeenCalledTimes(2);
+            const actualTransformedData = snowfakeryRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(
+                snowfakeryJsonFileContent
+            );
+
+            expect(actualTransformedData).toEqual(expectedTransformedDataMap);
 
         });
 
@@ -193,26 +189,6 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
             jest.restoreAllMocks();
         });
         
-    });
-
-    describe('createFakeDatasetsTimeStampedFolderName', () => {
-
-        test('should create a unique timestamped folder name', () => {
-
-            const fakeTimestamp = '2024-11-25T16-24-15';
-            const mockDate = new Date('2024-11-25T16:24:15Z');
-            jest.spyOn(global, 'Date').mockReturnValue(mockDate);
-
-            jest.spyOn(global, 'Date').mockImplementation();
-            jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
-
-            const expectedFolderName = `dataset-${fakeTimestamp}`;
-
-            const actualFolderName = SnowfakeryIntegrationService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
-            expect(actualFolderName).toBe(expectedFolderName);
-
-        });
-
     });
 
 });

@@ -7,7 +7,6 @@ import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
     private baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
-    // private snowfakeryGenerationErrorMessage:string = 'An error occurred genertating snowfakery against the recipe file';
 
     async isRecipeProcessorSetup(): Promise<boolean> {
 
@@ -71,7 +70,6 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
-    // transformFakerJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonFileContent: any, fullPathToUniqueTimeStampedFakeDataSetsFolder: string) {
     transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerContent: string): Map<string, CollectionsApiJsonStructure> {
 
         const objectApiToGeneratedRecords = new Map<string, CollectionsApiJsonStructure>();
@@ -115,50 +113,5 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
     
     }
-
-    // mapSnowfakeryJsonResultsToSobjectMap(snowfakeryJsonFileContent: any): Map<string, CollectionsApiStructure> {
-
-    //     const objectApiToGeneratedRecords = new Map<string, CollectionsApiStructure>();
-
-    //     const snowfakeryRecords = JSON.parse(snowfakeryJsonFileContent);
-
-    //     snowfakeryRecords.forEach(record => {
-
-    //         const objectApiName = record._table; // snowfakery captures the object api name value in _table property
-    //         const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
-    //         const sobjectGeneratedDetail = {
-    //             attributes: {
-    //                 type: objectApiName,
-    //                 referenceId: recordTrackingReferenceId
-    //             },
-    //             ...record
-    //         };
-          
-    //         // remove snowfakery properties not needed for collections api 
-    //         delete sobjectGeneratedDetail.id;
-    //         delete sobjectGeneratedDetail._table;
-
-    //         if (objectApiToGeneratedRecords.has(objectApiName)) {
-
-    //             objectApiToGeneratedRecords.get(objectApiName).records.push(sobjectGeneratedDetail);
-
-    //         } else {
-
-    //             const objectApiToRecords:CollectionsApiStructure = {
-    //                 allOrNone: true,
-    //                 records: [sobjectGeneratedDetail] 
-    //             };
-
-    //             objectApiToGeneratedRecords.set(objectApiName, objectApiToRecords);
-
-    //         }
-
-    //     });
-
-    //     return objectApiToGeneratedRecords;
-    
-    // }
-
-
     
 }

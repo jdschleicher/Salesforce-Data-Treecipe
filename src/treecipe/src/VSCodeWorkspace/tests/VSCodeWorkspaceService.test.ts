@@ -455,6 +455,25 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
+    describe('createFakeDatasetsTimeStampedFolderName', () => {
+
+        test('should create a unique timestamped folder name', () => {
+
+            const fakeTimestamp = '2024-11-25T16-24-15';
+            const mockDate = new Date('2024-11-25T16:24:15Z');
+            jest.spyOn(global, 'Date').mockReturnValue(mockDate);
+
+            jest.spyOn(global, 'Date').mockImplementation();
+            jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
+
+            const expectedFolderName = `dataset-${fakeTimestamp}`;
+
+            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
+            expect(actualFolderName).toBe(expectedFolderName);
+
+        });
+
+    });
 
 });
 
