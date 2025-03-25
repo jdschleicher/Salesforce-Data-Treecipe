@@ -442,7 +442,8 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
             jest.spyOn(VSCodeWorkspaceService, 'createFakeDatasetsTimeStampedFolderName').mockReturnValue(mockUniqueFolderName);
 
-            (fs.existsSync as jest.Mock).mockReturnValue(true);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'mkdirSync').mockImplementation();
 
             const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockUniqueFolderName);
 

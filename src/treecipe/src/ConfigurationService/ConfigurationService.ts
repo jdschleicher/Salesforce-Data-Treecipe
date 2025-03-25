@@ -125,8 +125,6 @@ export class ConfigurationService {
         return fakerConfigurationSelection;
     }
 
-    // getDataFakerService
-
     static getDefaultTreecipeConfigurationFolderName() {
         const defaultTreecipeConfigurationFolder = "treecipe";
         return defaultTreecipeConfigurationFolder;
