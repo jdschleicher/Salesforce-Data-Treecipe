@@ -739,6 +739,8 @@ describe('Shared tests for CollectionsApiService', () => {
             const expectedObjectName = 'Account';
             const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
 
+            jest.spyOn(fs, 'writeFile').mockReturnValue();
+            
             CollectionsApiService.createCollectionsApiFile(
                 expectedObjectName,
                 mockCollectionsApiFormattedRecords,
