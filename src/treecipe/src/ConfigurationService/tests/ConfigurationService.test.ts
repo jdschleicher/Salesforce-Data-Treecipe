@@ -1,3 +1,4 @@
+import { Config } from '@salesforce/core';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
@@ -81,20 +82,23 @@ describe('Shared ConfigurationService Tests', () => {
         });
 
         test('given mocked functions for VSCodeWorkspaceService, fs, and path, the expected values are used as arguments', async () => {
-            // Setup mock values
+            
             const mockWorkspaceRoot = '/mock/workspace/root';
             const mockObjectsPath = '/mock/objects/path';
             const mockConfigFileName = 'treecipe.config.json';
             const mockTreecipeBaseDir = 'treecipe';
         
-            // Mock method implementations
             jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
         
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
             jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
                 return mockObjectsPath;
             });
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockImplementation(async () => {
+                return 'faker-js';
+            });
 
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation();
             
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
             jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
@@ -102,7 +106,6 @@ describe('Shared ConfigurationService Tests', () => {
 
             await ConfigurationService.createTreecipeJSONConfigurationFile();
         
-            // Assertions
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
             expect(VSCodeWorkspaceService.promptForObjectsPath).toHaveBeenCalledWith(mockWorkspaceRoot);
 
@@ -111,14 +114,14 @@ describe('Shared ConfigurationService Tests', () => {
 
             const expectedConfigJson = `{
     "salesforceObjectsPath": "/mock/objects/path",
-    "dataFakerService": "snowfakery"
+    "dataFakerService": "faker-js"
 }`;
             expect(fs.writeFileSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}/${mockConfigFileName}`, expectedConfigJson);
 
-          });
+        });
 
-          test('given mocked path value with windows backslashes in path, the expected path is set in treecipe configuration json file', async () => {
-            
+        test('given mocked path value with windows backslashes in path, the expected path is set in treecipe configuration json file', async () => {
+        
             const mockWorkspaceRoot = '/mock/workspace/root';
             const mockObjectsPath = '\\mock\\objects\\path';
             const mockConfigFileName = 'treecipe.config.json';
@@ -130,7 +133,11 @@ describe('Shared ConfigurationService Tests', () => {
             jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
                 return mockObjectsPath;
             });
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockImplementation(async () => {
+                return 'snowfakery';
+            });
 
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation();
             
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
             jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
@@ -151,7 +158,7 @@ describe('Shared ConfigurationService Tests', () => {
 }`;
             expect(fs.writeFileSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}/${mockConfigFileName}`, expectedConfigJson);
 
-          });
+        });
 
     });
 
