@@ -38,7 +38,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
         test('Phone field returns correct npm faker expression', () => {
             const phoneFakerExpression = fieldTypeToNPMFakerMappings['phone'];
-            expect(phoneFakerExpression).toBe('"${{ faker.phone.number({style:"national"}) }}"');
+            expect(phoneFakerExpression).toBe('"${{ faker.phone.number({style:\'national\'}) }}"');
         });
 
         test('Url field returns correct npm faker expression', () => {
@@ -58,15 +58,15 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         });
 
         test('Date field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['date']).toBe('\"${{ faker.date.between({ from: new Date("2023-01-01"), to: new Date() }).toISOString().split("T")[0] }}\"');
+            expect(fieldTypeToNPMFakerMappings['date']).toBe('\"${{ faker.date.between({ from: new Date(\'2023-01-01\'), to: new Date() }).toISOString().split(\'T\')[0] }}\"');
         });
 
         test('DateTime field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['datetime']).toBe('\"${{ faker.date.between({ from: new Date("2023-01-01T00:00:00Z"), to: new Date() }).toISOString() }}\"');
+            expect(fieldTypeToNPMFakerMappings['datetime']).toBe('\"${{ faker.date.between({ from: new Date(\'2023-01-01T00:00:00Z\'), to: new Date() }).toISOString() }}\"');
         });
 
         test('Time field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['time']).toBe('\"${{ faker.date.between({ from: new Date("1970-01-01T00:00:00Z"), to: new Date("1970-01-01T23:59:59Z") }).toISOString().split("T")[1] }}\"');
+            expect(fieldTypeToNPMFakerMappings['time']).toBe('\"${{ faker.date.between({ from: new Date(\'1970-01-01T00:00:00Z\'), to: new Date(\'1970-01-01T23:59:59Z\') }).toISOString().split(\'T\')[1] }}\"');
         });
 
         test('Picklist field returns correct npm faker expression', () => {
