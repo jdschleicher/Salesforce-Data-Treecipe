@@ -3,6 +3,9 @@ import { IRecipeFakerService } from "../IRecipeFakerService";
 
 export class FakerJSRecipeFakerService implements IRecipeFakerService {
 
+    openingRecipeSyntax:string = `"\${{`;
+    closingRecipeSyntax:string = `}}""`;
+
     generateTabs(tabCount: number):string {
         const spacesPerTab = 4;
         return ' '.repeat(spacesPerTab * tabCount);
@@ -14,68 +17,209 @@ export class FakerJSRecipeFakerService implements IRecipeFakerService {
                                             fieldApiName: string
                                         ): string {
     
-        let fakeDependentPicklistRecipeValue = "";
-        let allMultiSelectChoiceRecipe:string;
+        let allDependentPicklistChoiceRecipe:string;
+
+        const newLineBreak = `\n`;
+        
         for ( const controllingValueKey in controllingValueToPicklistOptions ) {
-            
-            let picklistValuesAvailableForChoice = controllingValueToPicklistOptions[controllingValueKey];
-            
+
             let randomChoicesBreakdown:string;
 
+            let picklistValuesAvailableForChoice = controllingValueToPicklistOptions[controllingValueKey];
+            // get initial list of all available picklist values before record type sections
             picklistValuesAvailableForChoice.forEach( value => {
+
                 if (randomChoicesBreakdown) {
-                    randomChoicesBreakdown += `\n${this.generateTabs(5)}- ${value}`;
+                    randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${value}`;
                 } else {
                     randomChoicesBreakdown = `- ${value}`;
                 }
-            });
 
+            });   
 
-            let multiSelectChoiceRecipe = 
+            const allRecordTypeChoicesBreakdown = this.updateDependentPicklistRecipeFakerValueByRecordTypeSections( 
+                                                        recordTypeApiToRecordTypeWrapperMap, 
+                                                        fieldApiName, 
+                                                        controllingField,
+                                                        controllingValueKey
+                                                    );
+
+            if (allRecordTypeChoicesBreakdown) {
+                randomChoicesBreakdown += allRecordTypeChoicesBreakdown;
+            }
+
+            let dependentPicklistRandomChoiceRecipe = 
 `${this.generateTabs(2)}- choice:
-${this.generateTabs(3)}when: "${controllingField} == '${controllingValueKey}'"
+${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${controllingValueKey}' }}
 ${this.generateTabs(3)}pick:
 ${this.generateTabs(4)}random_choice:
 ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
-
-            if (!(allMultiSelectChoiceRecipe)) {
-                allMultiSelectChoiceRecipe = multiSelectChoiceRecipe;
+            if (!(allDependentPicklistChoiceRecipe)) {
+                allDependentPicklistChoiceRecipe = dependentPicklistRandomChoiceRecipe;
             } else {
-                const lineBreakMultiSelectChoiceRecipe = `\n${multiSelectChoiceRecipe}`;
-                allMultiSelectChoiceRecipe += lineBreakMultiSelectChoiceRecipe;
+                const lineBreakRandomChoiceRecipe = `\n${dependentPicklistRandomChoiceRecipe}`;
+                allDependentPicklistChoiceRecipe += lineBreakRandomChoiceRecipe;
             }
+
         }
 
+        let fakeDependentPicklistRecipeValue = "";
+
         if (fakeDependentPicklistRecipeValue) {
-            fakeDependentPicklistRecipeValue += `\n${this.generateTabs(2)}${allMultiSelectChoiceRecipe}`;
+            fakeDependentPicklistRecipeValue += `\n${this.generateTabs(2)}${allDependentPicklistChoiceRecipe}`;
         } else {
             fakeDependentPicklistRecipeValue = `\n${this.generateTabs(1.5)}if:`;
-            fakeDependentPicklistRecipeValue += `\n${allMultiSelectChoiceRecipe}`;
+            fakeDependentPicklistRecipeValue += `\n${allDependentPicklistChoiceRecipe}`;
         }
 
         return fakeDependentPicklistRecipeValue;
 
     }
 
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
-                                                recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
-                                                associatedFieldApiName): string {
-         
-        const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
-        const fakeMultiSelectRecipeValue = `"\${{ faker.helpers.arrayElement([${joinedChoices}]) }}"`;
-        return fakeMultiSelectRecipeValue;
+    updateDependentPicklistRecipeFakerValueByRecordTypeSections(recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
+        dependentFieldApiName: string,
+        controllingFieldApiName: string,
+        controllingValue: string
+    ): string {
+
+        const newLineBreak: string = `\n`;
+        let allRecordTypeChoicesBreakdown:string = '';    
+
+        Object.entries(recordTypeNameByRecordTypeWrapper).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
+
+            const availableRecordTypePicklistValuesForControllingField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[controllingFieldApiName];
+
+            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
+
+            if ( !availableRecordTypePicklistValuesForControllingField || !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
+
+                /*
+                EITHER
+                - picklist value not available for record type so no dependent picklist values to process
+                - controlling api field doesn't exist in record type markup so no dependent picklist values to process
+                */
+                allRecordTypeChoicesBreakdown += noPicklistValuesForRecordTypeVerbiage;
+
+            } else {
+
+                let recordTypeChoicesBreakdown:string;
+
+                const picklistValuesForDependentField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[dependentFieldApiName];
+                picklistValuesForDependentField.forEach( recordTypeAvailablePicklistValue => {
+
+                    if (recordTypeChoicesBreakdown) {
+                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;
+                    } else {
+                        const recordTypeTodoVerbiage = `### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- ${recordTypeApiNameKey}`;
+                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;                                
+                    }
+
+                });
+
+                allRecordTypeChoicesBreakdown += recordTypeChoicesBreakdown;
+            }
+
+        });
+
+        return allRecordTypeChoicesBreakdown;
 
     }
 
+    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+                                                recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
+                                                associatedFieldApiName): string {
+         
+        const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
+        let fakeRecipeValue = `"\${{ faker.helpers.arrayElement([${joinedChoices}]) }}"`;
+        
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
+        if ( recordTypeBasedRecipeValues) {
+            fakeRecipeValue += `\n${recordTypeBasedRecipeValues}`;
+        }
+
+        return fakeRecipeValue;
+
+    }
+
+    buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
+                                                associatedFieldApiName: string) {
+
+        let allRecordTypeBasedPicklistOptions:string = '';
+        const newLineBreak = `\n`;
+
+        Object.entries(recordTypeNameByRecordTypeWrapper).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
+
+            const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
+            if ( availableRecordTypePicklistValuesForField ) {
+
+                const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");
+                const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} faker.helpers.arrayElement([${commaJoinedPicklistChoices}]) ${this.closingRecipeSyntax}`;
+
+                let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
+                recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}${recordTypBasedFakeRecipeValue}`;
+
+                if ( allRecordTypeBasedPicklistOptions.trim() === '' ) {
+                // check to see if allRecordTypeBasedPicklistOptions has been given an initial value to properly handle recipe spacing
+                allRecordTypeBasedPicklistOptions = `${recordTypeTodoVerbiage}`;
+                } else {
+                allRecordTypeBasedPicklistOptions += `${newLineBreak}${recordTypeTodoVerbiage}`;
+                }
+
+            }
+
+        });
+
+        return allRecordTypeBasedPicklistOptions;
+
+    }
+
+
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
-                                                            recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                                                            recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                                             associatedFieldApiName
                                                         ): string {
    
         const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
-        const fakeMultiSelectRecipeValue = `"\${{ faker.helpers.arrayElements([${joinedChoices}]).join(';') }}"`; 
+        let fakeMultiSelectRecipeValue = `"\${{ faker.helpers.arrayElements([${joinedChoices}]).join(';') }}"`; 
+        
+        
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
+        if ( recordTypeBasedRecipeValues) {
+            fakeMultiSelectRecipeValue += `\n${recordTypeBasedRecipeValues}`;
+        }
         return fakeMultiSelectRecipeValue;
+
+    }
+
+    buildRecordTypeBasedMultipicklistRecipeValue(recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
+                                                    associatedFieldApiName: string) {
+
+        let allRecordTypeBasedMultiselectPicklistOptions:string = '';
+        const newLineBreak = `\n`;
+
+        Object.entries(recordTypeNameByRecordTypeWrapper).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
+
+            const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
+            if ( availableRecordTypePicklistValuesForField ) {
+
+            const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");
+            const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} faker.helpers.arrayElements([${commaJoinedPicklistChoices}]).join(';') ${this.closingRecipeSyntax}`;
+            let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the Multiselect faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
+            recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}${recordTypBasedFakeRecipeValue}`;
+
+            if ( allRecordTypeBasedMultiselectPicklistOptions.trim() === '' ) {
+                // check to see if allRecordTypeBasedPicklistOptions has been given an initial value to properly handle recipe spacing
+                allRecordTypeBasedMultiselectPicklistOptions = `${recordTypeTodoVerbiage}`;
+            } else {
+                allRecordTypeBasedMultiselectPicklistOptions += `${newLineBreak}${recordTypeTodoVerbiage}`;
+            }
+
+        }
+
+        });
+
+        return allRecordTypeBasedMultiselectPicklistOptions;
 
     }
 
