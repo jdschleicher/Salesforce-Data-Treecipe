@@ -109,10 +109,10 @@ const evaluateExpression = (expression: any, existingFieldEvaluations: Record<st
  */
 const generateFakeDataFromYaml = (fileToProcess: string): any[] => {
     const yamlContent = fs.readFileSync(fileToProcess, 'utf8'); // Read the YAML file
-    const parsedData = yaml.load(yamlContent) as any[]; 
+    const parsedData = yaml.load(yamlContent); 
 
     let generatedData: any[] = [];
-
+    
     parsedData.forEach((entry) => {
         const objectType = entry.object;
         const nickname = entry.nickname;
@@ -144,7 +144,7 @@ const generateFakeDataFromYaml = (fileToProcess: string): any[] => {
 const fileToProcess = 'extensionDevelopmentScriptsAndArtifacts/treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06-fakerjs.yaml';
 const fakeData = generateFakeDataFromYaml(fileToProcess); // Replace with your YAML file path
 console.log(JSON.stringify(fakeData, null, 2));
-
+// "${{ faker.helpers.arrayElement(['chorizo','pork','steak','tofu']).join(';') }}"
 
 // const fileToProcess = 'extensionDevelopmentScriptsAndArtifacts/treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml';
 // npx ts-node fileToProcess
