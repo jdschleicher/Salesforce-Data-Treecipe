@@ -26,17 +26,18 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     
         let generatedData: any[] = [];
     
-        parsedData.forEach((entry) => {
+        for (const entry of parsedData) {
 
             const objectType = entry.object;
             const nickname = entry.nickname;
             const count = entry.count || 1; // Default to 1 if count isn't provided
-            const fieldsTemplate = entry.fields; // Field definitions with placeholders
+            const fieldsTemplate = entry.fields;
     
             for (let i = 0; i < count; i++) {
 
                 let fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
                 for (const [fieldName, fieldExpression] of Object.entries(fieldsTemplate)) {
+
                     fieldApiNameByFakerJSEvaluations[fieldName] = await this.evaluateFakerJSExpression(fieldExpression, 
                                                                                                         fieldApiNameByFakerJSEvaluations, 
                                                                                                         fieldName);
@@ -49,7 +50,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     fields: fieldApiNameByFakerJSEvaluations,
                 });
             }
-        });
+
+        };
     
         const jsonGeneratedData = JSON.stringify(generatedData, null, 2);
         console.log(jsonGeneratedData);
