@@ -63,7 +63,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                                                 associatedFieldApiName): string {
          
         const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
-        const fakeMultiSelectRecipeValue = `faker.helpers.arrayElement([${joinedChoices}])`;
+        const fakeMultiSelectRecipeValue = `"\${{ faker.helpers.arrayElement([${joinedChoices}]) }}"`;
         return fakeMultiSelectRecipeValue;
 
     }
@@ -74,7 +74,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                                                         ): string {
    
         const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
-        const fakeMultiSelectRecipeValue = `faker.helpers.arrayElements([${joinedChoices}])`;
+        const fakeMultiSelectRecipeValue = `"\${{ faker.helpers.arrayElements([${joinedChoices}]).join(';') }}"`; 
         return fakeMultiSelectRecipeValue;
 
     }
@@ -164,7 +164,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             "Opportunity": {
                 "Name": `"\${{faker.company.catchPhrase()}}"`,
                 "Amount": `"\{{ (faker.string.numeric(6)).00 }}"`,
-                "CloseDate": `"\${{faker.date.between({from: "-30d', to: "+90d"})}}"`,
+                "CloseDate": `"\${{faker.date.between({from: '-30d', to: '+90d'})}}"`,
                 "Description": `"\${{faker.lorem.paragraph()}}"`,
                 "ExpectedRevenue": `"\{{ (faker.string.numeric(6)).00 }}"`,
                 "LeadSource": `"\${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}"`,

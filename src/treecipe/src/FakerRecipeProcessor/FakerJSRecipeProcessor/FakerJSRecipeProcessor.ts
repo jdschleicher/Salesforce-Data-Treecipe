@@ -213,9 +213,9 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         try {
             
-            const evaluationFunction = new Function(`return (${trimmedFakerJSCode})`)();
-            fakeEvalExpressionResult = String(evaluationFunction);
-
+            const fakerInstanceRepresentation = 'faker';
+            const evaluationFunction = new Function(fakerInstanceRepresentation, `return (${trimmedFakerJSCode})`);
+            fakeEvalExpressionResult = String(evaluationFunction(faker));
         } catch (error) {
             throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
         }
