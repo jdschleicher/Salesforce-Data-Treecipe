@@ -113,7 +113,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 && (dependentPicklistKeyIndicator in fakerJSExpression) 
                 && Object.keys(fakerJSExpression).length === 1 ) {
     
-            let picklistValue = '';
             const choices = fakerJSExpression.if;
     
             const whenIndicatorInYamlExpression = choices.length > 0 ? choices[0].choice.when : '';
@@ -121,31 +120,33 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 throw new Error('No choices available in the YAML data');
             }
         
-            const splitResult = whenIndicatorInYamlExpression.split(' == ');
-        
-            if (splitResult.length !== 2) {
-                throw new Error('Invalid condition format in YAML data');
+            const fieldApiNameInWhenConditionRegex = this.buildWhenConditionRegexMatchForControllingField();
+           
+            const controllingFieldPicklsitMatch = whenIndicatorInYamlExpression.match(fieldApiNameInWhenConditionRegex);
+            if ( !controllingFieldPicklsitMatch ) {
+                throw new Error('Incorrect format for dependent picklist faker value. Should match \"${{ Picklist__c == \'cle\' }}\"');
             }
         
-            let expectedExistingControllingFieldApiNameForDependentPicklist = splitResult[0];
+            let expectedExistingControllingFieldApiNameForDependentPicklist = controllingFieldPicklsitMatch[1];
             if (!fieldApiNameByFakerJSEvaluations || !fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist]) {
                 throw new Error(`Field "${expectedExistingControllingFieldApiNameForDependentPicklist}" not found in existing field evaluations`);
             }
     
-            picklistValue = fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist];
-      
+            const controllingFieldPicklistValue = fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist];
             const matchingControllingFieldGeneratedValueSection = choices.find(item => {
     
-                const condition = item.choice.when;
-                const [fieldApiName, fieldValue] = condition.split('==');
+                const controllingFieldWhencondition = item.choice.when;
+                const controllingFIeldWhenConditionMatches = controllingFieldWhencondition.match(fieldApiNameInWhenConditionRegex);
+
+                const controllingPicklistValueMatchIndex = 2;
+                const controllingFieldValue = controllingFIeldWhenConditionMatches[controllingPicklistValueMatchIndex];
                 
-                // Remove quotes from the value for comparison
-                const trimmedValue = fieldValue.trim();
+                // Remove surrounding quotes from the value for comparison
+                const trimmedValue = controllingFieldValue.trim();
                 const expectedQuotesAroundPicklistWhenSelection = /['"]/g; 
                 const cleanValue = trimmedValue.replace(expectedQuotesAroundPicklistWhenSelection, '');
     
-                const trimmedFieldApiName = fieldApiName.trim();
-                const availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue = (trimmedFieldApiName === expectedExistingControllingFieldApiNameForDependentPicklist && cleanValue === picklistValue);
+                const availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue = (cleanValue === controllingFieldPicklistValue);
                 return availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue;
     
             });
@@ -161,7 +162,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 throw new Error(`FakerJSRecipeProcessor: Expected processed and matching value 
                     of controlling picklist field: ${expectedExistingControllingFieldApiNameForDependentPicklist}
                     , no existing matching value for dependent picklist ${fieldApiNameToEvaluate}`);
-            // may need to move controlling field up in object detail
+                // may need to move controlling field up in object detail as its not in map yet
             }
 
         }
@@ -173,31 +174,35 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
+    buildWhenConditionRegexMatchForControllingField() {
+
+        const openingExpressionSyntaxLiteral = "\{\\{";
+        const whitespaceMatch = "\\s*";
+        const allContentBeforeDoubleEqual = "(.*?)";
+        const whitespaceFollowingExpectedApiName = "\\s*";
+        const doubleEqualsLiteral = "==";
+        const allContentAfterDoubleEqual = "(.*?)";
+        const closingExpressionSyntaxLiteral = "\}\\}";
+
+
+
+        const controllingFieldRegex = new RegExp(openingExpressionSyntaxLiteral 
+                                                + whitespaceMatch 
+                                                + allContentBeforeDoubleEqual 
+                                                + whitespaceFollowingExpectedApiName 
+                                                + doubleEqualsLiteral
+                                                + allContentAfterDoubleEqual
+                                                + closingExpressionSyntaxLiteral); 
+
+        return controllingFieldRegex;
+
+    }   
+
+
     async getFakeValueFromFakerJSExpression(fakerJSExpression: string): Promise<string> {
 
         let fakeEvalExpressionResult: string;
         const regexExpressionForFakerSyntaxBookEnds = /\${{(.*?)}}/g;
-        
-        // fakerJSExpression.replace(regexExpressionForFakerSyntaxBookEnds, (match, code) => {
-            
-        //     console.log(`Processing match: ${match}`);
-        //     const trimmedCode = code.trim();
-        
-        //     try {
-    
-        //         const evaluation = eval(trimmedCode);
-        //         console.log(`Evaluation result: ${evaluation}`);
-        //         fakeEvalExpressionResult = String(evaluation);
-    
-        //     } catch (error) {
-        //         console.error(`Error evaluating expression: ${trimmedCode}`, error);
-        //         fakeEvalExpressionResult = "ERROR";
-    
-        //     }
-    
-        //     return fakeEvalExpressionResult;
-        
-        // });
 
         const matches = [...fakerJSExpression.matchAll(regexExpressionForFakerSyntaxBookEnds)];
         if (matches.length > 1) {
@@ -205,7 +210,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         }
 
         if (matches.length === 0) {
-            throw new Error(`getFakeValueFromFakerJSExpression: No match found for expected faker-js surrounding expression syntax: ${fakerJSExpression}`);
+            // if no expected faker-js expression syntax, field value may be hard coded string or special value like object nickname or record type api name
+            return fakerJSExpression;
         }
 
         const [fullMatch, fakerJSCode] = matches[0];
@@ -216,6 +222,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             const fakerInstanceRepresentation = 'faker';
             const evaluationFunction = new Function(fakerInstanceRepresentation, `return (${trimmedFakerJSCode})`);
             fakeEvalExpressionResult = String(evaluationFunction(faker));
+
         } catch (error) {
             throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
         }
