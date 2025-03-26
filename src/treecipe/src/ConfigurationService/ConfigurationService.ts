@@ -17,6 +17,11 @@ export interface ExtensionConfig {
     useSnowfakeryAsDefault: boolean;
 }
 
+export interface TreecipeConfigDetail {
+    salesforceObjectsPath: string;
+    dataFakerService: string;
+}
+
 export class ConfigurationService {
     
     private static configSection = 'salesforce-data-treecipe';
@@ -80,7 +85,6 @@ export class ConfigurationService {
     static async createTreecipeJSONConfigurationFile() {
 
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-
         const expectedObjectsPath = await VSCodeWorkspaceService.promptForObjectsPath(workspaceRoot);
         if (!expectedObjectsPath) {
             // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
@@ -101,21 +105,40 @@ export class ConfigurationService {
         };
 
         const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
-        
         const expectedTreecipeDirectoryPath = path.join(workspaceRoot, treecipeBaseDirectory);
+
+        this.createTreecipeConfigFile(configurationDetail, expectedTreecipeDirectoryPath);
+
+    }
+
+    static async createTreecipeConfigFile(treecipeContrigurationDetail, expectedTreecipeDirectoryPath) {
 
         if (!fs.existsSync(expectedTreecipeDirectoryPath)) {
             fs.mkdirSync(expectedTreecipeDirectoryPath);
         }
 
-        const configurationJsonData = JSON.stringify(configurationDetail, null, 4);
+        const configurationJsonData = JSON.stringify(treecipeContrigurationDetail, null, 4);
 
         const configurationFileName = this.getTreecipeConfigurationFileName();
 
         const pathToCreateConfigurationFile = `${ expectedTreecipeDirectoryPath}/${configurationFileName }`;
         
         fs.writeFileSync(pathToCreateConfigurationFile, configurationJsonData);
+
+    }
+
+    static async updateTreecipeConfigFile(treecipeContrigurationDetail) {
+
+        const configurationFileName = this.getTreecipeConfigurationFileName();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
+        const expectedTreecipeDirectoryPath = path.join(workspaceRoot, treecipeBaseDirectory);
+
+        const pathToCreateConfigurationFile = `${ expectedTreecipeDirectoryPath}/${configurationFileName }`;
         
+        const configurationJsonData = JSON.stringify(treecipeContrigurationDetail, null, 4);
+        fs.writeFileSync(pathToCreateConfigurationFile, configurationJsonData);
+
     }
 
     static getSelectedDataFakerServiceConfig() {

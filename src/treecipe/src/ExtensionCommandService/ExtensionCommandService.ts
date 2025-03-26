@@ -1,4 +1,4 @@
-import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
+import { ConfigurationService, TreecipeConfigDetail } from "../ConfigurationService/ConfigurationService";
 import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
@@ -11,7 +11,6 @@ import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProce
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import path = require("path");
-
 
 export class ExtensionCommandService {
     
@@ -208,8 +207,23 @@ export class ExtensionCommandService {
 
     async changeFakerImplementationService() {
 
-        let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
-        ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+        try {
+
+            let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+            ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+            
+            const existingTreecipeConfigDetail:TreecipeConfigDetail = ConfigurationService.getTreecipeConfigurationDetail();
+            existingTreecipeConfigDetail.dataFakerService = selectedDataFakerService;
+            await ConfigurationService.updateTreecipeConfigFile(existingTreecipeConfigDetail);
+            
+        } catch(error) {
+
+            const commandName = 'changeFakerImplementationService';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+       
 
 	}
 

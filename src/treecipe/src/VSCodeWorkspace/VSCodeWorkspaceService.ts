@@ -248,7 +248,6 @@ export class VSCodeWorkspaceService {
         ); 
     }
 
-
     static async getFilesInDirectory(directoryToGetFilesFrom: string): Promise<string[]> {
 
         const entries = await fs.promises.readdir(directoryToGetFilesFrom, { withFileTypes: true });

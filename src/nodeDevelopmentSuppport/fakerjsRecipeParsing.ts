@@ -76,8 +76,6 @@ const evaluateExpression = (expression: any, existingFieldEvaluations: Record<st
         } else {
             throw new Error('no matching value for expected picklist');
         }
-        // Return the random_choice array if found, otherwise empty array
-        // return matchingChoice ? matchingChoice.choice.pick.random_choice : [];
     }
 
 
