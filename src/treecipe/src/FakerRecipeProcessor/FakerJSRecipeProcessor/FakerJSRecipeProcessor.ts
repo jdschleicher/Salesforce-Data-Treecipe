@@ -220,39 +220,31 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
 
 
-            const evaluation = eval(preparedCode);
-            console.log(`Evaluation result: ${evaluation}`);
-            const evalExpressionResult = String(evaluation);
+            // const evaluation = eval(preparedCode);
+            // console.log(`Evaluation result: ${evaluation}`);
+            // const evalExpressionResult = String(evaluation);
+
+            const evaluationFunction = new Function(
+                                                    fakerInstanceRepresentation,
+                                                    'dateUtils',
+                                                    `return (${preparedCode})`
+                                                );
+            
+              // Execute the function with all necessary dependencies
+              fakerEvalExpressionResult = evaluationFunction(
+                    faker, 
+                    this.dateUtils
+              );
 
             // const evaluationFunction = new Function(
-            //                                         fakerInstanceRepresentation, 
-            //                                         'parseRelativeDate', 
-            //                                         'date', 
-            //                                         'datetime', 
-            //                                         'date_between',
-            //                                         'datetime_between',
-            //                                         `return (${preparedCode})`
-            //                                     );
-            
-            //   // Execute the function with all necessary dependencies
-            //   fakerEvalExpressionResult = evaluationFunction(
-            //         faker, 
-            //         this.parseRelativeDate, 
-            //         this.date, 
-            //         this.datetime,
-            //         this.date_between,
-            //         this.datetime_between
-            //   );
+            //     fakerInstanceRepresentation, 
+            //     `return (${preparedCode})`
+            // );
 
-              const evaluationFunction = new Function(
-                fakerInstanceRepresentation, 
-                `return (${preparedCode})`
-            );
-
-            // Execute the function with all necessary dependencies
-            fakerEvalExpressionResult = evaluationFunction(
-                faker
-            );
+            // // Execute the function with all necessary dependencies
+            // fakerEvalExpressionResult = evaluationFunction(
+            //     faker
+            // );
 
 
 
@@ -268,41 +260,41 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
-    parseRelativeDate(dateStr, isDateTime = false) {
+    // parseRelativeDate(dateStr, isDateTime = false) {
        
-        // If it's already a valid JavaScript date expression, return as-is
-        if (!dateStr || typeof dateStr === 'object' || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-            return dateStr;
-        }
+    //     // If it's already a valid JavaScript date expression, return as-is
+    //     if (!dateStr || typeof dateStr === 'object' || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    //         return dateStr;
+    //     }
         
-        // Trim whitespace
-        dateStr = dateStr.trim();
+    //     // Trim whitespace
+    //     dateStr = dateStr.trim();
         
-        // Check for special keywords
-        if (dateStr.toLowerCase() === 'today') {
-            return new Date();
-        }
+    //     // Check for special keywords
+    //     if (dateStr.toLowerCase() === 'today') {
+    //         return new Date();
+    //     }
         
-        // Handle relative date syntax
-        const matches = dateStr.match(/^([+-])(\d+)$/);
-        if (matches) {
-            const [, sign, days] = matches;
-            const date = new Date();
+    //     // Handle relative date syntax
+    //     const matches = dateStr.match(/^([+-])(\d+)$/);
+    //     if (matches) {
+    //         const [, sign, days] = matches;
+    //         const date = new Date();
             
-            // Adjust the date based on the sign
-            if (sign === '+') {
-                date.setDate(date.getDate() + parseInt(days));
-            } else {
-                date.setDate(date.getDate() - parseInt(days));
-            }
+    //         // Adjust the date based on the sign
+    //         if (sign === '+') {
+    //             date.setDate(date.getDate() + parseInt(days));
+    //         } else {
+    //             date.setDate(date.getDate() - parseInt(days));
+    //         }
         
-            return isDateTime ? date : date.toISOString().split('T')[0];
-        }
+    //         return isDateTime ? date : date.toISOString().split('T')[0];
+    //     }
         
-        // If no special syntax is found, return the original input
-        return dateStr;
+    //     // If no special syntax is found, return the original input
+    //     return dateStr;
 
-    }
+    // }
 
 
     prepareFakerDateSyntax(originalCode) {
@@ -321,7 +313,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             dateBetweenRegex, 
             (match, fromValue, toValue) => {
             console.log('Date Between Match:', { match, fromValue, toValue });
-            return `date_between({from: '${fromValue}', to: '${toValue}'})`;
+            return `dateUtils.date_between({from: '${fromValue}', to: '${toValue}'})`;
             }
         );
 
@@ -330,7 +322,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             datetimeBetweenRegex, 
             (match, fromValue, toValue) => {
             console.log('Datetime Between Match:', { match, fromValue, toValue });
-            return `datetime_between({from: '${fromValue}', to: '${toValue}'})`;
+            return `dateUtils.datetime_between({from: '${fromValue}', to: '${toValue}'})`;
             }
         );
 
@@ -339,7 +331,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             dateRegex, 
             (match, inputValue) => {
             console.log('Date Match:', { match, inputValue });
-            return `date('${inputValue}')`;
+            return `dateUtils.date('${inputValue}')`;
             }
         );
 
@@ -348,7 +340,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             datetimeRegex, 
             (match, inputValue) => {
             console.log('Datetime Match:', { match, inputValue });
-            return `datetime('${inputValue}')`;
+            return `dateUtils.datetime('${inputValue}')`;
             }
         );
 
@@ -356,59 +348,128 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
-    date_between(options) {
-
-        const { from, to } = options;
-        
-        // Parse relative dates
-        const parsedFrom = this.parseRelativeDate(from);
-        const parsedTo = this.parseRelativeDate(to);
-        
-        return faker.date.between({
-            from: parsedFrom,
-            to: parsedTo
-        });
-
-    }
-      
-    datetime_between(options) {
-
-        const { from, to } = options;
-        
-        // Parse relative dates with datetime flag
-        const parsedFrom = this.parseRelativeDate(from, true);
-        const parsedTo = this.parseRelativeDate(to, true);
-    
-        return faker.date.between({
-            from: parsedFrom,
-            to: parsedTo
-        });
-
-    }
-    
-    date(input) {
-
-        // Handle 'today' or other relative date syntax
-        const parsedInput = this.parseRelativeDate(input);
-        
-        // If input is a date object or valid date string, convert to date string
-        if (parsedInput instanceof Date) {
+    dateUtils = {
+        // Date generation functions
+        date(input) {
+          const parsedInput = this.parseRelativeDate(input);
+          
+          if (parsedInput instanceof Date) {
             return parsedInput.toISOString().split('T')[0];
-        }
+          }
+          
+          return parsedInput;
+        },
         
-        return parsedInput;
-
-    }
+        datetime(input) {
+          return this.parseRelativeDate(input, true);
+        },
       
-    datetime(input) {
-    
-        // Handle 'today' or other relative date syntax
-        const parsedInput = this.parseRelativeDate(input, true);
-        
-        // If input is a date object or valid date string, return it
-        return parsedInput;
+        // Date range generation functions
+        date_between({ from, to }) {
+          return faker.date.between({
+            from: this.parseRelativeDate(from),
+            to: this.parseRelativeDate(to)
+          });
+        },
+      
+        datetime_between({ from, to }) {
+          return faker.date.between({
+            from: this.parseRelativeDate(from, true),
+            to: this.parseRelativeDate(to, true)
+          });
+        },
 
-    }
+        parseRelativeDate(dateStr, isDateTime = false) {
+       
+            // If it's already a valid JavaScript date expression, return as-is
+            if (!dateStr || typeof dateStr === 'object' || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+                return dateStr;
+            }
+            
+            // Trim whitespace
+            dateStr = dateStr.trim();
+            
+            // Check for special keywords
+            if (dateStr.toLowerCase() === 'today') {
+                return new Date();
+            }
+            
+            // Handle relative date syntax
+            const matches = dateStr.match(/^([+-])(\d+)$/);
+            if (matches) {
+                const [, sign, days] = matches;
+                const date = new Date();
+                
+                // Adjust the date based on the sign
+                if (sign === '+') {
+                    date.setDate(date.getDate() + parseInt(days));
+                } else {
+                    date.setDate(date.getDate() - parseInt(days));
+                }
+            
+                return isDateTime ? date : date.toISOString().split('T')[0];
+            }
+            
+            // If no special syntax is found, return the original input
+            return dateStr;
+    
+        }
+
+    };
+
+    // date_between(options) {
+
+    //     const { from, to } = options;
+        
+    //     // Parse relative dates
+    //     const parsedFrom = this.parseRelativeDate(from);
+    //     const parsedTo = this.parseRelativeDate(to);
+        
+    //     return faker.date.between({
+    //         from: parsedFrom,
+    //         to: parsedTo
+    //     });
+
+    // }
+      
+    // datetime_between(options) {
+
+    //     const { from, to } = options;
+        
+    //     // Parse relative dates with datetime flag
+    //     const parsedFrom = this.parseRelativeDate(from, true);
+    //     const parsedTo = this.parseRelativeDate(to, true);
+    
+    //     return faker.date.between({
+    //         from: parsedFrom,
+    //         to: parsedTo
+    //     });
+
+    // }
+    
+    // date(input) {
+
+    //     // Handle 'today' or other relative date syntax
+    //     const parsedInput = this.parseRelativeDate(input);
+        
+    //     // If input is a date object or valid date string, convert to date string
+    //     if (parsedInput instanceof Date) {
+    //         return parsedInput.toISOString().split('T')[0];
+    //     }
+        
+    //     return parsedInput;
+
+    // }
+      
+    // datetime(input) {
+    
+    //     // Handle 'today' or other relative date syntax
+    //     const parsedInput = this.parseRelativeDate(input, true);
+        
+    //     // If input is a date object or valid date string, return it
+    //     return parsedInput;
+
+    // }
       
     createComposableRegex() {
         // Whitespace handling
