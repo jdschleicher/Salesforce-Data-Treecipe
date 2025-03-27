@@ -325,7 +325,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             "Opportunity": {
                 "Name": `"\${{faker.company.catchPhrase()}}"`,
                 "Amount": `"\{{ (faker.string.numeric(6)).00 }}"`,
-                "CloseDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30), to: (new Date().setDate(new Date().getDate() + 90) })}}"`,
+                "CloseDate": `"\${{ faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) }) }}"`,
                 "Description": `"\${{faker.lorem.paragraph()}}"`,
                 "ExpectedRevenue": `"\{{ (faker.string.numeric(6)).00 }}"`,
                 "LeadSource": `"\${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}"`,
@@ -376,8 +376,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 "Name": `"\${{faker.company.bs()}}"`,
                 "Type": `"\${{faker.helpers.arrayElement(['Email', 'Webinar', 'Conference', 'Direct Mail', 'Advertisement'])}}"`,
                 "Status": `"\${{faker.helpers.arrayElement(['Planned', 'In Progress', 'Completed', 'Aborted'])}}"`,
-                "StartDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30), to: (new Date().setDate(new Date().getDate() + 90) })}}"`,
-                "EndDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 91), to: (new Date().setDate(new Date().getDate() + 180) })}}"`,
+                "StartDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) })}}"`,
+                "EndDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 91)), to: (new Date().setDate(new Date().getDate() + 180)) })}}"`,
                 "Description": `"\${{faker.lorem.paragraph()}}"`,
                 "BudgetedCost": `"\{{ (faker.string.numeric(5)).00 }}"`,
                 "ActualCost": `"\{{ (faker.string.numeric(5)).00 }}"`,
@@ -394,7 +394,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 "Description": `"\${{faker.lorem.paragraph()}}"`,
                 "Status": `"\${{faker.helpers.arrayElement(['Not Started', 'In Progress', 'Completed', 'Waiting on someone else', 'Deferred'])}}"`,
                 "Priority": `"\${{faker.helpers.arrayElement(['High', 'Normal', 'Low'])}}"`,
-                "ActivityDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 7), to: (new Date().setDate(new Date().getDate() + 30) })}}"`,
+                "ActivityDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 7)), to: (new Date().setDate(new Date().getDate() + 30)) })}}"`,
                 "Type": `"\${{faker.helpers.arrayElement(['Call', 'Meeting', 'Other'])}}"`,
                 "CallType": `"\${{faker.helpers.arrayElement(['Inbound', 'Outbound'])}}"`
             },
@@ -402,8 +402,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             "Event": {
                 "Subject": `"\${{faker.company.catchPhrase()}}"`,
                 "Description": `"\${{faker.lorem.paragraph()}}"`,
-                "StartDateTime": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 7), to: (new Date().setDate(new Date().getDate() + 30) })}}"`,
-                "EndDateTime": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 31), to: (new Date().setDate(new Date().getDate() + 38) })}}"`,
+                "StartDateTime": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 7)), to: (new Date().setDate(new Date().getDate() + 30)) })}}"`,
+                "EndDateTime": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 31)), to: (new Date().setDate(new Date().getDate() + 38)) })}}"`,
                 "Location": `"\${{faker.location.streetAddress()}}, {{faker.location.city()}}, {{faker.location.state()}} {{faker.location.zipCode()}}"`,
                 "ShowAs": `"\${{faker.helpers.arrayElement(['Busy', 'Free', 'OutOfOffice', 'Working'])}}"`,
                 "Type": `"\${{faker.helpers.arrayElement(['Meeting', 'Call', 'Other'])}}"`,
@@ -430,8 +430,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             "Asset": {
                 "Name": `"\${{faker.commerce.productName()}}"`,
                 "Description": `"\${{faker.lorem.paragraph()}}"`,
-                "InstallDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 365), to: (new Date()) })}}"`,
-                "PurchaseDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 730), to: (new Date().setDate(new Date().getDate() - 366) })}}"`,
+                "InstallDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 365)), to: (new Date()) })}}"`,
+                "PurchaseDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 730)), to: (new Date().setDate(new Date().getDate() - 366)) })}}"`,
                 "SerialNumber": `"\${{faker.string.alphanumeric(10)}}-{{faker.string.numeric(6)}}"`,
                 "Status": `"\${{faker.helpers.arrayElement(['Purchased', 'Shipped', 'Installed', 'Registered'])}}"`,
                 "Price": `"\{{ (faker.string.numeric(5)).00 }}"`,
@@ -440,7 +440,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 
             "Contract": {
                 "Status": `"\${{faker.helpers.arrayElement(['Draft', 'In Approval Process', 'Activated', 'Terminated'])}}"`,
-                "StartDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30), to: (new Date().setDate(new Date().getDate() + 90) })}}"`,
+                "StartDate": `"\${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) })}}"`,
                 "ContractTerm": `"\${{faker.string.numeric(2)}}"`,
                 "OwnerExpirationNotice": `"\${{faker.helpers.arrayElement(['15', '30', '45', '60', '90'])}}"`,
                 "Description": `"\${{faker.lorem.paragraph()}}"`,

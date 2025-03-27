@@ -216,8 +216,31 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         try {
             
             const fakerInstanceRepresentation = 'faker';
-            const evaluationFunction = new Function(fakerInstanceRepresentation, `return (${trimmedFakerJSCode})`);
-            fakerEvalExpressionResult = String(evaluationFunction(faker));
+
+            const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
+
+            const evaluationFunction = new Function(
+                                                    fakerInstanceRepresentation, 
+                                                    'parseRelativeDate', 
+                                                    'date', 
+                                                    'datetime', 
+                                                    `return (${preparedCode})`
+                                                );
+            
+              // Execute the function with all necessary dependencies
+              fakerEvalExpressionResult = evaluationFunction(
+                    faker, 
+                    this.parseRelativeDate, 
+                    this.date, 
+                    this.datetime,
+                    this.date_between,
+                    this.datetime_between
+              );
+
+
+
+            // const evaluationFunction = new Function(fakerInstanceRepresentation, `return (${trimmedFakerJSCode})`);
+            // fakerEvalExpressionResult = String(evaluationFunction(faker));
 
         } catch (error) {
             throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
@@ -227,5 +250,182 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
+    parseRelativeDate(dateStr, isDateTime = false) {
+        // If it's already a valid JavaScript date expression, return as-is
+        if (!dateStr || typeof dateStr === 'object' || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+          return dateStr;
+        }
+      
+        // Trim whitespace
+        dateStr = dateStr.trim();
+      
+        // Check for special keywords
+        if (dateStr.toLowerCase() === 'today') {
+          return new Date();
+        }
+      
+        // Handle relative date syntax
+        const matches = dateStr.match(/^([+-])(\d+)$/);
+        if (matches) {
+          const [, sign, days] = matches;
+          const date = new Date();
+          
+          // Adjust the date based on the sign
+          if (sign === '+') {
+            date.setDate(date.getDate() + parseInt(days));
+          } else {
+            date.setDate(date.getDate() - parseInt(days));
+          }
+      
+          return isDateTime ? date : date.toISOString().split('T')[0];
+        }
+      
+        // If no special syntax is found, return the original input
+        return dateStr;
+      }
+
+
+    prepareFakerDateSyntax(originalCode) {
+        
+        // Regular expressions to match our custom date syntax
+        const dateRangeRegex = /date_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/;
+        const datetimeRangeRegex = /datetime_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/;
+        const dateRegex = /date\(['"]?([^'"]+)['"]?\)/;
+        const datetimeRegex = /datetime\(['"]?([^'"]+)['"]?\)/;
+      
+        // Custom replacements for our special syntax
+        let modifiedCode = originalCode;
+      
+        // Replace date_between
+        modifiedCode = modifiedCode.replace(dateRangeRegex, (match, from, to) => {
+          return `faker.date.between({ from: parseRelativeDate('${from}'), to: parseRelativeDate('${to}') })`;
+        });
+      
+        // Replace datetime_between
+        modifiedCode = modifiedCode.replace(datetimeRangeRegex, (match, from, to) => {
+          return `faker.date.between({ from: parseRelativeDate('${from}', true), to: parseRelativeDate('${to}', true) })`;
+        });
+      
+        // Replace date
+        modifiedCode = modifiedCode.replace(dateRegex, (match, input) => {
+          return `date('${input}')`;
+        });
+      
+        // Replace datetime
+        modifiedCode = modifiedCode.replace(datetimeRegex, (match, input) => {
+          return `datetime('${input}')`;
+        });
+      
+        return modifiedCode;
+
+    }
+
+    date_between(options) {
+
+        const { from, to } = options;
+        
+        // Parse relative dates
+        const parsedFrom = this.parseRelativeDate(from);
+        const parsedTo = this.parseRelativeDate(to);
+        
+        return faker.date.between({
+            from: parsedFrom,
+            to: parsedTo
+        });
+
+    }
+      
+    datetime_between(options) {
+
+        const { from, to } = options;
+        
+        // Parse relative dates with datetime flag
+        const parsedFrom = this.parseRelativeDate(from, true);
+        const parsedTo = this.parseRelativeDate(to, true);
     
+        return faker.date.between({
+            from: parsedFrom,
+            to: parsedTo
+        });
+
+    }
+    
+    date(input) {
+
+        // Handle 'today' or other relative date syntax
+        const parsedInput = this.parseRelativeDate(input);
+        
+        // If input is a date object or valid date string, convert to date string
+        if (parsedInput instanceof Date) {
+            return parsedInput.toISOString().split('T')[0];
+        }
+        
+        return parsedInput;
+
+    }
+      
+    datetime(input) {
+    
+        // Handle 'today' or other relative date syntax
+        const parsedInput = this.parseRelativeDate(input, true);
+        
+        // If input is a date object or valid date string, return it
+        return parsedInput;
+
+    }
+      
+      
+
+
+
+
 }
+
+
+
+
+
+    // parseRelativeDate(dateStr, isDateTime = false) {
+
+    //     // If it's already a valid JavaScript date expression, return as-is
+    //     if (!dateStr || typeof dateStr === 'object' || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    //       return dateStr;
+    //     }
+      
+    //     // Trim whitespace
+    //     dateStr = dateStr.trim();
+      
+    //     // Check for special keywords
+    //     if (dateStr.toLowerCase() === 'today') {
+    //       return new Date();
+    //     }
+      
+    //     // Handle relative date syntax
+    //     const matches = dateStr.match(/^([+-])(\d+)$/);
+    //     if (matches) {
+    //       const [, sign, days] = matches;
+    //       const date = new Date();
+          
+    //       // Adjust the date based on the sign
+    //       if (sign === '+') {
+    //         date.setDate(date.getDate() + parseInt(days));
+    //       } else {
+    //         date.setDate(date.getDate() - parseInt(days));
+    //       }
+      
+    //       return isDateTime ? date : date.toISOString().split('T')[0];
+    //     }
+      
+    //     // If no special syntax is found, return the original input
+    //     return dateStr;
+        
+    //   }
+      
+
+    //   // Example usage:
+      // const randomDate1 = date_between({ from: '-30', to: '+32' });
+      // const randomDateTime1 = datetime_between({ from: '-30', to: '+5' });
+      // const todayDate = date('today');
+      // const todayDateTime = datetime('today');
+
+    
