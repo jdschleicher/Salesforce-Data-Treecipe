@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 
-
 export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
     private baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
