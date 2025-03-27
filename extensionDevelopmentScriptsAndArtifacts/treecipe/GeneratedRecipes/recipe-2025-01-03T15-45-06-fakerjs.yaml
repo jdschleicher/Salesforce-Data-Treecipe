@@ -31,6 +31,7 @@
   nickname: Example_Everything__c_NickName
   count: 1
   fields:
+    date: "${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30), to: (new Date().setDate(new Date().getDate() + 90) })}}",
     MultiPicklist__c: '${{ (faker.helpers.arrayElements(["chicken","chorizo","egg","fish","pork","steak","tofu"])).join(";") }}'
     Picklist__c: "${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}"
     DependentPicklist__c: 
