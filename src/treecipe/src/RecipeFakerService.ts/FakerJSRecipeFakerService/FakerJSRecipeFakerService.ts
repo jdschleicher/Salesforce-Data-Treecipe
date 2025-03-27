@@ -130,8 +130,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                                                 recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                                 associatedFieldApiName): string {
          
-        const fakerJoinedChoicesSyntax = this.buildFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices);
-        let fakeRecipeValue = `"\${{ ${fakerJoinedChoicesSyntax} }}"`;
+        const fakerJoinedChoicesSyntax = this.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices);
+        let fakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
 
         const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
         if ( recordTypeBasedRecipeValues) {
@@ -153,7 +153,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
             if ( availableRecordTypePicklistValuesForField ) {
 
-                const fakerJoinedChoicesSyntax = this.buildFakerArrayElementsSyntaxByPicklistOptions(availableRecordTypePicklistValuesForField);
+                const fakerJoinedChoicesSyntax = this.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availableRecordTypePicklistValuesForField);
                 const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
 
                 let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
@@ -180,9 +180,9 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                                                             associatedFieldApiName
                                                         ): string {
    
-        const fakerJoinedChoicesSyntax = this.buildFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices);
-        let fakeMultiSelectRecipeValue = `"\${{ ${fakerJoinedChoicesSyntax}.join(';') }}"`; 
-        
+        const fakerJoinedChoicesSyntax = this.buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices);
+        let fakeMultiSelectRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
+
         const recordTypeBasedRecipeValues = this.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
         if ( recordTypeBasedRecipeValues) {
             fakeMultiSelectRecipeValue += `\n${recordTypeBasedRecipeValues}`;
@@ -202,8 +202,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
             if ( availableRecordTypePicklistValuesForField ) {
 
-                const fakerJSJoinedPicklsitChoicesSyntax = this.buildFakerArrayElementsSyntaxByPicklistOptions(availableRecordTypePicklistValuesForField);
-                const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJSJoinedPicklsitChoicesSyntax}.join(';') ${this.closingRecipeSyntax}`;
+                const fakerJSJoinedMultiPicklsitChoicesSyntax = this.buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(availableRecordTypePicklistValuesForField);
+                const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJSJoinedMultiPicklsitChoicesSyntax} ${this.closingRecipeSyntax}`;
                 let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the Multiselect faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
                 recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}${recordTypBasedFakeRecipeValue}`;
 
@@ -222,10 +222,19 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
+    buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
 
         const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
         const fakerjsChoicesSyntax = `faker.helpers.arrayElement([${joinedChoices}])`;
+
+        return fakerjsChoicesSyntax;
+
+    }
+
+    buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
+
+        const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
+        const fakerjsChoicesSyntax = `(faker.helpers.arrayElements([${joinedChoices}])).join(';')`;
 
         return fakerjsChoicesSyntax;
 

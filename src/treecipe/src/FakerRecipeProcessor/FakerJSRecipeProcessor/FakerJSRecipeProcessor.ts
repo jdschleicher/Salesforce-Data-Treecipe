@@ -3,10 +3,7 @@ import * as yaml from 'js-yaml';
 
 const { faker } = require('@faker-js/faker');
 
-// import { exec } from 'child_process';
-
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
-
 
 export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
@@ -99,7 +96,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         });
 
         return objectApiToGeneratedRecords;
-
     
     }
 
@@ -201,7 +197,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     async getFakeValueFromFakerJSExpression(fakerJSExpression: string): Promise<string> {
 
-        let fakeEvalExpressionResult: string;
+        let fakerEvalExpressionResult: string;
         const regexExpressionForFakerSyntaxBookEnds = /\${{(.*?)}}/g;
 
         const matches = [...fakerJSExpression.matchAll(regexExpressionForFakerSyntaxBookEnds)];
@@ -221,13 +217,13 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             
             const fakerInstanceRepresentation = 'faker';
             const evaluationFunction = new Function(fakerInstanceRepresentation, `return (${trimmedFakerJSCode})`);
-            fakeEvalExpressionResult = String(evaluationFunction(faker));
+            fakerEvalExpressionResult = String(evaluationFunction(faker));
 
         } catch (error) {
             throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
         }
 
-        return fakeEvalExpressionResult;
+        return fakerEvalExpressionResult;
 
     }
 
