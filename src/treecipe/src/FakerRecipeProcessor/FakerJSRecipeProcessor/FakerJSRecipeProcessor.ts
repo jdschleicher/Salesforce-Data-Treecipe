@@ -40,7 +40,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                                                                                                         fieldName);
                 }
     
-                // Store the generated object with populated fields
                 generatedData.push({
                     id: (i+1),
                     object: objectType,
@@ -196,45 +195,84 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     async getFakeValueFromFakerJSExpression(fakerJSExpression: string): Promise<string> {
 
-        let fakerEvalExpressionResult: string;
         const regexExpressionForFakerSyntaxBookEnds = /\${{(.*?)}}/g;
 
-        const matches = [...fakerJSExpression.matchAll(regexExpressionForFakerSyntaxBookEnds)];
-        if (matches.length > 1) {
-            throw new Error(`Expected exactly one faker-js yaml syntax match, but found ${matches.length} matches. Here is the value leading to multiple matches: ${fakerJSExpression}`);
-        }
+        const expressionSyntaxMatches = [...fakerJSExpression.matchAll(regexExpressionForFakerSyntaxBookEnds)];
 
-        if (matches.length === 0) {
+        if (expressionSyntaxMatches.length === 0) {
             // if no expected faker-js expression syntax, field value may be hard coded string or special value like object nickname or record type api name
             return fakerJSExpression;
         }
 
-        const [fullMatch, fakerJSCode] = matches[0];
-        const trimmedFakerJSCode = fakerJSCode.trim();
+        let originalExpressionCopyForFakerEvalReplacements = fakerJSExpression;
 
-        try {
+        const fakerInstanceRepresentation = faker;
+
+        for (let i = expressionSyntaxMatches.length - 1; i >= 0; i--) {
             
-            const fakerInstanceRepresentation = 'faker';
+            const expressionMatch = expressionSyntaxMatches[i];
+            const [fullIndexMatch, fakerJSCode] = expressionMatch;
 
-            const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
+            const matchIndex = expressionMatch.index; 
 
-            const evaluationFunction = new Function(
-                                                    fakerInstanceRepresentation,
-                                                    'dateUtils',
-                                                    `return (${preparedCode})`
-                                                );
+            const matchCharactersLength = fullIndexMatch.length;
+            const trimmedFakerJSCode = fakerJSCode.trim();
             
-              // Execute the function with all necessary dependencies
-              fakerEvalExpressionResult = evaluationFunction(
-                    faker, 
+            let fakerEvalExpressionResult;
+            
+            try {
+
+                const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
+                
+                const evaluationFunction = new Function(
+                    fakerInstanceRepresentation,
+                    'dateUtils',
+                    `return (${preparedCode})`
+                );
+                
+                // Execute the function with all necessary dependencies
+                fakerEvalExpressionResult = evaluationFunction(
+                    fakerInstanceRepresentation, 
                     this.dateUtils
-              );
-
-        } catch (error) {
-            throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
+                );
+                
+            } catch (error) {
+                throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
+            }
+            
+            originalExpressionCopyForFakerEvalReplacements = originalExpressionCopyForFakerEvalReplacements.substring(0, matchIndex) + 
+                                                                fakerEvalExpressionResult + 
+                                                                originalExpressionCopyForFakerEvalReplacements.substring(matchIndex + matchCharactersLength);
+        
         }
 
-        return fakerEvalExpressionResult;
+        return originalExpressionCopyForFakerEvalReplacements;
+
+        // const [fullMatch, fakerJSCode] = matches[0];
+        // const trimmedFakerJSCode = fakerJSCode.trim();
+
+        // try {
+            
+
+        //     const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
+
+        //     const evaluationFunction = new Function(
+        //                                             fakerInstanceRepresentation,
+        //                                             'dateUtils',
+        //                                             `return (${preparedCode})`
+        //                                         );
+            
+        //       // Execute the function with all necessary dependencies
+        //       fakerEvalExpressionResult = evaluationFunction(
+        //             faker, 
+        //             this.dateUtils
+        //       );
+
+        // } catch (error) {
+        //     throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
+        // }
+
+        // return fakerEvalExpressionResult;
 
     }
 
