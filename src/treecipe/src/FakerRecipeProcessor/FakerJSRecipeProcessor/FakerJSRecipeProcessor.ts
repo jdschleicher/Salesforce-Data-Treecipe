@@ -206,7 +206,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         let originalExpressionCopyForFakerEvalReplacements = fakerJSExpression;
 
-        const fakerInstanceRepresentation = faker;
 
         for (let i = expressionSyntaxMatches.length - 1; i >= 0; i--) {
             
@@ -225,14 +224,14 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
                 
                 const evaluationFunction = new Function(
-                    fakerInstanceRepresentation,
+                    'faker',
                     'dateUtils',
                     `return (${preparedCode})`
                 );
                 
                 // Execute the function with all necessary dependencies
                 fakerEvalExpressionResult = evaluationFunction(
-                    fakerInstanceRepresentation, 
+                    faker, 
                     this.dateUtils
                 );
                 
@@ -247,32 +246,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         }
 
         return originalExpressionCopyForFakerEvalReplacements;
-
-        // const [fullMatch, fakerJSCode] = matches[0];
-        // const trimmedFakerJSCode = fakerJSCode.trim();
-
-        // try {
-            
-
-        //     const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
-
-        //     const evaluationFunction = new Function(
-        //                                             fakerInstanceRepresentation,
-        //                                             'dateUtils',
-        //                                             `return (${preparedCode})`
-        //                                         );
-            
-        //       // Execute the function with all necessary dependencies
-        //       fakerEvalExpressionResult = evaluationFunction(
-        //             faker, 
-        //             this.dateUtils
-        //       );
-
-        // } catch (error) {
-        //     throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
-        // }
-
-        // return fakerEvalExpressionResult;
 
     }
 
