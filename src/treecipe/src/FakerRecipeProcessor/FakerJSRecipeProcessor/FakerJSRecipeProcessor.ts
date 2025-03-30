@@ -42,6 +42,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     
                 // Store the generated object with populated fields
                 generatedData.push({
+                    id: (i+1),
                     object: objectType,
                     nickname: nickname,
                     fields: fieldApiNameByFakerJSEvaluations,
@@ -51,7 +52,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         };
     
         const jsonGeneratedData = JSON.stringify(generatedData, null, 2);
-        console.log(jsonGeneratedData);
 
         return jsonGeneratedData;
     }
@@ -76,6 +76,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
           
             // remove unneeded properties
             delete sobjectGeneratedDetail.object;
+            delete sobjectGeneratedDetail.id;
 
             if (objectApiToGeneratedRecords.has(objectApiName)) {
 
