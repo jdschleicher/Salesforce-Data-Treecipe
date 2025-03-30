@@ -60,9 +60,9 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         const objectApiToGeneratedRecords = new Map<string, CollectionsApiJsonStructure>();
 
-        const snowfakeryRecords = JSON.parse(fakerContent);
+        const fakerJSRecords = JSON.parse(fakerContent);
 
-        snowfakeryRecords.forEach(record => {
+        fakerJSRecords.forEach(record => {
 
             const objectApiName = record.object;
             const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
@@ -74,9 +74,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 ...record
             };
           
-            // remove snowfakery properties not needed for collections api 
-            delete sobjectGeneratedDetail.id;
-            delete sobjectGeneratedDetail._table;
+            // remove unneeded properties
+            delete sobjectGeneratedDetail.object;
 
             if (objectApiToGeneratedRecords.has(objectApiName)) {
 
@@ -181,7 +180,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const closingExpressionSyntaxLiteral = "\}\\}";
 
 
-
         const controllingFieldRegex = new RegExp(openingExpressionSyntaxLiteral 
                                                 + whitespaceMatch 
                                                 + allContentBeforeDoubleEqual 
@@ -219,11 +217,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
             const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
 
-
-            // const evaluation = eval(preparedCode);
-            // console.log(`Evaluation result: ${evaluation}`);
-            // const evalExpressionResult = String(evaluation);
-
             const evaluationFunction = new Function(
                                                     fakerInstanceRepresentation,
                                                     'dateUtils',
@@ -236,22 +229,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     this.dateUtils
               );
 
-            // const evaluationFunction = new Function(
-            //     fakerInstanceRepresentation, 
-            //     `return (${preparedCode})`
-            // );
-
-            // // Execute the function with all necessary dependencies
-            // fakerEvalExpressionResult = evaluationFunction(
-            //     faker
-            // );
-
-
-
-
-            // const evaluationFunction = new Function(fakerInstanceRepresentation, `return (${trimmedFakerJSCode})`);
-            // fakerEvalExpressionResult = String(evaluationFunction(faker));
-
         } catch (error) {
             throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
         }
@@ -259,43 +236,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         return fakerEvalExpressionResult;
 
     }
-
-    // parseRelativeDate(dateStr, isDateTime = false) {
-       
-    //     // If it's already a valid JavaScript date expression, return as-is
-    //     if (!dateStr || typeof dateStr === 'object' || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-    //         return dateStr;
-    //     }
-        
-    //     // Trim whitespace
-    //     dateStr = dateStr.trim();
-        
-    //     // Check for special keywords
-    //     if (dateStr.toLowerCase() === 'today') {
-    //         return new Date();
-    //     }
-        
-    //     // Handle relative date syntax
-    //     const matches = dateStr.match(/^([+-])(\d+)$/);
-    //     if (matches) {
-    //         const [, sign, days] = matches;
-    //         const date = new Date();
-            
-    //         // Adjust the date based on the sign
-    //         if (sign === '+') {
-    //             date.setDate(date.getDate() + parseInt(days));
-    //         } else {
-    //             date.setDate(date.getDate() - parseInt(days));
-    //         }
-        
-    //         return isDateTime ? date : date.toISOString().split('T')[0];
-    //     }
-        
-    //     // If no special syntax is found, return the original input
-    //     return dateStr;
-
-    // }
-
 
     prepareFakerDateSyntax(originalCode) {
 
@@ -418,6 +358,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     };
       
     createComposableRegex() {
+
         // Whitespace handling
         const OPTIONAL_WHITESPACE = '\\s*';
         
@@ -484,11 +425,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         };
       
     }
-
-      
-
-
-
 
 }
 
