@@ -64,7 +64,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         snowfakeryRecords.forEach(record => {
 
-            const objectApiName = record._table; // snowfakery captures the object api name value in _table property
+            const objectApiName = record.object;
             const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
             const sobjectGeneratedDetail = {
                 attributes: {
@@ -416,60 +416,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         }
 
     };
-
-    // date_between(options) {
-
-    //     const { from, to } = options;
-        
-    //     // Parse relative dates
-    //     const parsedFrom = this.parseRelativeDate(from);
-    //     const parsedTo = this.parseRelativeDate(to);
-        
-    //     return faker.date.between({
-    //         from: parsedFrom,
-    //         to: parsedTo
-    //     });
-
-    // }
-      
-    // datetime_between(options) {
-
-    //     const { from, to } = options;
-        
-    //     // Parse relative dates with datetime flag
-    //     const parsedFrom = this.parseRelativeDate(from, true);
-    //     const parsedTo = this.parseRelativeDate(to, true);
-    
-    //     return faker.date.between({
-    //         from: parsedFrom,
-    //         to: parsedTo
-    //     });
-
-    // }
-    
-    // date(input) {
-
-    //     // Handle 'today' or other relative date syntax
-    //     const parsedInput = this.parseRelativeDate(input);
-        
-    //     // If input is a date object or valid date string, convert to date string
-    //     if (parsedInput instanceof Date) {
-    //         return parsedInput.toISOString().split('T')[0];
-    //     }
-        
-    //     return parsedInput;
-
-    // }
-      
-    // datetime(input) {
-    
-    //     // Handle 'today' or other relative date syntax
-    //     const parsedInput = this.parseRelativeDate(input, true);
-        
-    //     // If input is a date object or valid date string, return it
-    //     return parsedInput;
-
-    // }
       
     createComposableRegex() {
         // Whitespace handling
@@ -511,7 +457,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const datetimeBetweenRegex = new RegExp(
           `${DATETIME_BETWEEN_NAME}${OPENING_PARENTHESIS}` +
           `${OPENING_BRACE}` +
-          `${FROM_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
+            `${FROM_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
           `${OPTIONAL_WHITESPACE},${OPTIONAL_WHITESPACE}` +
           `${TO_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
           `${OPTIONAL_WHITESPACE}${CLOSING_BRACE}` +
