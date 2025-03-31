@@ -61,7 +61,7 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
             };
 
             // perform CLI snowfakery command
-            exec(generateCommand, handleSnowfakeryDataGenerationCallback);
+            exec(generateCommand, { maxBuffer: 1024 * 1024 * 10}, handleSnowfakeryDataGenerationCallback);
 
         });
 
