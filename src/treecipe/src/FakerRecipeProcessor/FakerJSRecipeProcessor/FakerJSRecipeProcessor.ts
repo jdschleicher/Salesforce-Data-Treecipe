@@ -70,12 +70,13 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     type: objectApiName,
                     referenceId: recordTrackingReferenceId
                 },
-                ...record
+                ...record.fields
             };
           
             // remove unneeded properties
             delete sobjectGeneratedDetail.object;
             delete sobjectGeneratedDetail.id;
+            delete sobjectGeneratedDetail.nickname;
 
             if (objectApiToGeneratedRecords.has(objectApiName)) {
 
