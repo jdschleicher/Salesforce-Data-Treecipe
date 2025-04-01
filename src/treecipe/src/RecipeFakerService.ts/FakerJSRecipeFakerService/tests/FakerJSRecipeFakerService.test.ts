@@ -136,7 +136,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         test('given expected list of choices, returns expected multiselect picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = `faker.helpers.arrayElements(['apple','orange','banana'])`;
+            const expectedRecipeValue = `"\${{ (faker.helpers.arrayElements(['apple','orange','banana'])).join(';') }}"`;
             const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = fakerJSRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeApiToRecordTypeWrapperMap, fakeFieldApiName);
@@ -162,28 +162,28 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             const expectedDependentPicklistRecipeValue =`
       if:
         - choice:
-            when: "${controllingField} == 'Toyota'"
+            when: "\${{ ${controllingField} == 'Toyota' }}"
             pick:
                 random_choice:
                     - Corolla
                     - Camry
                     - Prius
         - choice:
-            when: "${controllingField} == 'Ford'"
+            when: "\${{ ${controllingField} == 'Ford' }}"
             pick:
                 random_choice:
                     - F-150
                     - Mustang
                     - Explorer
         - choice:
-            when: "${controllingField} == 'Honda'"
+            when: "\${{ ${controllingField} == 'Honda' }}"
             pick:
                 random_choice:
                     - Civic
                     - Accord
                     - Pilot
         - choice:
-            when: "${controllingField} == 'Tesla'"
+            when: "\${{ ${controllingField} == 'Tesla' }}"
             pick:
                 random_choice:
                     - Model S
@@ -208,12 +208,12 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         test('given expected list of choices, returns expected  picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = `faker.helpers.arrayElement(['apple','orange','banana'])`;
+            const expectedRecipeValue = `"\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}"`;
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
-                emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
-                                                                                                fakeFieldApiName);
+                                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
+                                                                        fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
         });
