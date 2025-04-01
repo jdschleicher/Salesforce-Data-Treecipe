@@ -1,6 +1,5 @@
 import { ChildProcess, exec } from 'child_process';
 
-import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SnowfakeryRecipeProcessor } from '../SnowfakeryRecipeProcessor';
 
 jest.mock('vscode', () => ({
@@ -92,8 +91,10 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
               the below cliErrorMock set to null is what is needed to simulate a successful execution
               with this cliErroMock arg as null, the logic will result in truthy 
             */ 
+
             const cliErrorMock = null;
-            const execChildProcessMockImplementation = (cliCommand, handleCliCommandCallback) => {
+            const mockedMaxBuffer = {maxBuffer:  10485760};
+            const execChildProcessMockImplementation = (cliCommand, mockedMaxBuffer, handleCliCommandCallback) => {
                 handleCliCommandCallback(cliErrorMock, expectedFakeData);
                 return {} as ChildProcess;
             };
@@ -105,6 +106,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
   
             expect(mockedRunSnowfakeryExecChildProcessCommand).toHaveBeenCalledWith(
                   `snowfakery ${ mockRecipeFilePath } --output-format json`,
+                  mockedMaxBuffer,
                   expect.any(Function)
             );
             expect(result).toBe(expectedFakeData);
@@ -116,8 +118,9 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
             const expectedCliErrorMessage = 'Command failed';
             const cliErrorMock = new Error(expectedCliErrorMessage);
             const expectedFailureStdOut = 'command not found: snowfakery';
+            const mockedMaxBuffer = {maxBuffer:  10485760};
 
-            const execChildProcessMockImplementation = (cliCommand, handleCliCommandCallback) => {
+            const execChildProcessMockImplementation = (cliCommand, mockedMaxBuffer, handleCliCommandCallback) => {
                 handleCliCommandCallback(cliErrorMock, expectedFailureStdOut);
                 return {} as ChildProcess;
             };
@@ -188,7 +191,9 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
         afterEach(() => {        
             jest.restoreAllMocks();
         });
+
         
     });
 
+    
 });
