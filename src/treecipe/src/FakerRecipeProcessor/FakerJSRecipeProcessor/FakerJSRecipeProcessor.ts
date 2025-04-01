@@ -9,13 +9,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     static baseFakerJSInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
 
-    async isRecipeProcessorSetup(): Promise<boolean> {
-
-        const theValue:boolean = true;
-        return Promise.resolve(theValue);
-
-    }
-
     async generateFakeDataBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
         const yamlContent = fs.readFileSync(fullRecipeFileNamePath, 'utf8'); // Read the YAML file
