@@ -3,18 +3,12 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import { FakerJSRecipeProcessor } from '../FakerJSRecipeProcessor';
 
-jest.mock('fs', () => ({
-    // existsSync: jest.fn(),
-    // mkdirSync: jest.fn(),
-    // writeFile: jest.fn()
-}));
-
 
 describe('Shared FakerJSRecipeProcessor tests', () => {
 
-    let fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+    const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
 
-    describe('generateFakeDataBySelectedRecipeFile', async() => {
+    describe('generateFakeDataBySelectedRecipeFile', () => {
         
         test('should process YAML file and generate fake data', async () => {
 
@@ -33,8 +27,8 @@ Description: "\${{ faker.company.catchPhrase() }}"
                     nickname: 'standard_account',
                     count: 2,
                     fields: {
-                    Name: "${{ faker.company.name() }}",
-                    Description: "${{ faker.company.catchPhrase() }}"
+                        Name: "${{ faker.company.name() }}",
+                        Description: "${{ faker.company.catchPhrase() }}"
                     }
                 }
             ];
@@ -54,7 +48,7 @@ Description: "\${{ faker.company.catchPhrase() }}"
                                             }
                                             return "";
                                         }
-                                );
+                                    );
     
             // Execute the method
             const result = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('test.yaml');

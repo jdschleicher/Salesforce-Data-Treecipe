@@ -14,12 +14,6 @@ jest.mock('child_process', () => ({
     exec: jest.fn()
 }));
 
-jest.mock('fs', () => ({
-    existsSync: jest.fn(),
-    mkdirSync: jest.fn(),
-    writeFile: jest.fn()
-}));
-
 describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
     const snowfakeryRecipeProcessor = new SnowfakeryRecipeProcessor();
