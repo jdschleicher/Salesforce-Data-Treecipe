@@ -15,12 +15,13 @@ let fakerJsonResult;
 (async () => {
     try {
      fakerJsonResult = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(fileToProcess);
+     console.log(JSON.stringify(fakerJsonResult, null, 2));
+
     } catch (error) {
       console.error("Error:", error);
     }
   })();
   
-console.log(JSON.stringify(fakerJsonResult, null, 2));
 // "${{ faker.helpers.arrayElement(['chorizo','pork','steak','tofu']).join(';') }}"
 
 // const fileToProcess = 'extensionDevelopmentScriptsAndArtifacts/treecipe/GeneratedRecipes/recipe-2025-01-03T15-45-06.yaml';

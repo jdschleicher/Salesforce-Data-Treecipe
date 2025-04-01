@@ -8,7 +8,8 @@ import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     static baseFakerJSInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
-
+    static regExpressionForSurroundingFakerJSSyntax = /\${{(.*?)}}/g;
+    
     async generateFakeDataBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
         const yamlContent = fs.readFileSync(fullRecipeFileNamePath, 'utf8'); // Read the YAML file
@@ -44,7 +45,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         };
     
         const jsonGeneratedData = JSON.stringify(generatedData, null, 2);
-
         return jsonGeneratedData;
     }
 
@@ -187,9 +187,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     }   
 
 
+
     async getFakeValueFromFakerJSExpression(fakerJSExpression: string): Promise<string> {
 
-        const regexExpressionForFakerSyntaxBookEnds = /\${{(.*?)}}/g;
+        const regexExpressionForFakerSyntaxBookEnds = FakerJSRecipeProcessor.regExpressionForSurroundingFakerJSSyntax;
 
         const expressionSyntaxMatches = [...fakerJSExpression.matchAll(regexExpressionForFakerSyntaxBookEnds)];
 
@@ -200,38 +201,16 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         let originalExpressionCopyForFakerEvalReplacements = fakerJSExpression;
 
-
         for (let i = expressionSyntaxMatches.length - 1; i >= 0; i--) {
             
             const expressionMatch = expressionSyntaxMatches[i];
             const [fullIndexMatch, fakerJSCode] = expressionMatch;
 
             const matchIndex = expressionMatch.index; 
-
             const matchCharactersLength = fullIndexMatch.length;
             const trimmedFakerJSCode = fakerJSCode.trim();
             
-            let fakerEvalExpressionResult;
-            
-            try {
-
-                const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
-                
-                const evaluationFunction = new Function(
-                    'faker',
-                    'dateUtils',
-                    `return (${preparedCode})`
-                );
-                
-                // Execute the function with all necessary dependencies
-                fakerEvalExpressionResult = evaluationFunction(
-                    faker, 
-                    this.dateUtils
-                );
-                
-            } catch (error) {
-                throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
-            }
+            const fakerEvalExpressionResult = this.replaceFakerJSExpressionMatchLocationWithEvaluatedFakerValue(trimmedFakerJSCode);
             
             originalExpressionCopyForFakerEvalReplacements = originalExpressionCopyForFakerEvalReplacements.substring(0, matchIndex) + 
                                                                 fakerEvalExpressionResult + 
@@ -240,6 +219,34 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         }
 
         return originalExpressionCopyForFakerEvalReplacements;
+
+    }
+
+    replaceFakerJSExpressionMatchLocationWithEvaluatedFakerValue(trimmedFakerJSCode) {
+
+        let fakerEvalExpressionResult;
+            
+        try {
+
+            const preparedCode = this.prepareFakerDateSyntax(trimmedFakerJSCode);
+            
+            const evaluationFunction = new Function(
+                'faker',
+                'dateUtils',
+                `return (${preparedCode})`
+            );
+            
+            // Execute the function with all necessary dependencies
+            fakerEvalExpressionResult = evaluationFunction(
+                faker, 
+                this.dateUtils
+            );
+            
+        } catch (error) {
+            throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
+        }
+
+        return fakerEvalExpressionResult;  
 
     }
 
