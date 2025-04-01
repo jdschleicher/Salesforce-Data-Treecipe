@@ -186,8 +186,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }   
 
-
-
     async getFakeValueFromFakerJSExpression(fakerJSExpression: string): Promise<string> {
 
         const regexExpressionForFakerSyntaxBookEnds = FakerJSRecipeProcessor.regExpressionForSurroundingFakerJSSyntax;
@@ -210,7 +208,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             const matchCharactersLength = fullIndexMatch.length;
             const trimmedFakerJSCode = fakerJSCode.trim();
             
-            const fakerEvalExpressionResult = this.replaceFakerJSExpressionMatchLocationWithEvaluatedFakerValue(trimmedFakerJSCode);
+            const fakerEvalExpressionResult = this.getFakerJSExpressionEvaluation(trimmedFakerJSCode);
             
             originalExpressionCopyForFakerEvalReplacements = originalExpressionCopyForFakerEvalReplacements.substring(0, matchIndex) + 
                                                                 fakerEvalExpressionResult + 
@@ -222,7 +220,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
-    replaceFakerJSExpressionMatchLocationWithEvaluatedFakerValue(trimmedFakerJSCode) {
+    getFakerJSExpressionEvaluation(trimmedFakerJSCode) {
 
         let fakerEvalExpressionResult;
             
