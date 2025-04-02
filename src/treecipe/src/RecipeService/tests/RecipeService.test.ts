@@ -733,7 +733,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         test('given expected fieldToRecipeValueMap and fieldtypes, returns the expected snowfakery YAML recipe value', () => {
 
-            const expectedFieldToRecipeValue = recipeServiceWithFakerJS.getMapSalesforceFieldToFakerValue();
+            const expectedFieldToRecipeValue = fakerJSRecipeService.getMapSalesforceFieldToFakerValue();
             for ( const fieldTypeKey in expectedFieldToRecipeValue ) {
                 const recipeValue = expectedFieldToRecipeValue[fieldTypeKey];
                 const actualRecipeValue = recipeServiceWithFakerJS.getFakeValueIfExpectedSalesforceFieldType(fieldTypeKey);
