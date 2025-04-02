@@ -11,7 +11,6 @@ module.exports = {
         "/mocks/",
     ],
     collectCoverageFrom: [
-        "!**/mocks/**",
         "!**/out/**"
     ]
 };
