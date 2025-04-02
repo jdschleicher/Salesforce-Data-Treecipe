@@ -430,7 +430,7 @@ export class CollectionsApiService {
 
     }
 
-    protected static buildCollectionsApiFileNameBySobjectName(sobjectApiName: string):string {
+    static buildCollectionsApiFileNameBySobjectName(sobjectApiName: string):string {
 
         const collectionsApiFileName = `collectionsApi-${sobjectApiName}.json`;
         return collectionsApiFileName;

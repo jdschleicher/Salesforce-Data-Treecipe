@@ -761,18 +761,18 @@ describe('Shared tests for CollectionsApiService', () => {
 
     });
 
-    // describe('buildCollectionsApiFileNameBySobjectName', () => {
+    describe('buildCollectionsApiFileNameBySobjectName', () => {
 
-    //     test('should build the correct collections API file name based on the selected recipe file name', () => {
+        test('should build the correct collections API file name based on the selected recipe file name', () => {
             
-    //         const expectedObjectName = 'Account';
-    //         const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
+            const expectedObjectName = 'Account';
+            const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
 
-    //         const actualBuiltFileName = CollectionsApiService.buildCollectionsApiFileNameBySobjectName(expectedObjectName);
-    //         expect(actualBuiltFileName).toBe(expectedFileName);
+            const actualBuiltFileName = CollectionsApiService.buildCollectionsApiFileNameBySobjectName(expectedObjectName);
+            expect(actualBuiltFileName).toBe(expectedFileName);
 
-    //     });
+        });
         
-    // });
+    });
     
 });
