@@ -7,7 +7,15 @@ import * as yaml from 'js-yaml';
 
 const { faker } = require('@faker-js/faker');
 
+jest.mock('@faker-js/faker', () => ({
 
+  faker: {
+    helpers: {
+      arrayElement: jest.fn().mockReturnValue('Software'),
+    },
+  }
+
+}));
 
 describe('Shared FakerJSRecipeProcessor tests', () => {
 
@@ -34,14 +42,9 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
             // Mock the evaluateFakerJSExpression method
             const expressionEvalSpy = jest.spyOn(fakerJSRecipeProcessor, 'evaluateFakerJSExpression')
-                                        .mockImplementation(async (expr) => {
-                                            if ( expr === "${{ faker.company.name() }}" ) {
-                                                return "Acme Corp";
-                                            } 
-                                            if ( expr === "${{ faker.company.catchPhrase() }}" ) {
-                                                return "Innovative solutions";
-                                            }
-                                            return "";
+                                        .mockImplementation(async (fakerJSExpression) => {
+                                            const mockedExpressionEval = FakerJSExpressionMocker.getMockValue(fakerJSExpression);
+                                            return mockedExpressionEval;
                                         }
                                     );
     
@@ -65,7 +68,6 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
             expect(parsedResult[0].fields.Description).toBe('Innovative solutions');
 
         });
-
 
     });
 
@@ -129,11 +131,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     
             const mockDependentPicklistExpression = FakerJSExpressionMocker.getExpectedMockYamlDependentPicklistStructure();
 
-            // Mock the faker.helpers.arrayElement method
-
-         
             (faker.helpers.arrayElement as jest.Mock).mockResolvedValue('Software');
-            // (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
       
             const result = await fakerJSRecipeProcessor.evaluateFakerJSExpression(
                 mockDependentPicklistExpression, 
