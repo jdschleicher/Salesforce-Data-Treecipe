@@ -406,81 +406,82 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
             expect(expectedRecipeValue).toBe(actualRecipeValue);
         });
 
-        test('given expected Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-            const expectedPicklistSnowfakeryValue = "${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}";
+            const expectedPicklistFakerJSValue = "\"${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}\"";
             const recordTypeNameToRecordTypeXMLMarkup = {};
-            const actualPicklistSnowfakeryValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+            const actualPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
-            expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
+            expect(actualPicklistFakerJSExpression).toBe(expectedPicklistFakerJSValue);
 
         });
 
-        test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
-            const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}";
+            const expectedFakerJSMultiSelectPicklistExpression = "\"${{ (faker.helpers.arrayElements(['chicken','chorizo','egg','fish','pork','steak','tofu'])).join(';') }}\"";
             const recordTypeNameToRecordTypeXMLMarkup = {};
-            const actualMultiSelectPicklistSnowfakeryValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+            const actualMultiSelectPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
-            expect(actualMultiSelectPicklistSnowfakeryValue).toBe(expectedMultiSelectPicklistSnowfakeryValue);
+            expect(actualMultiSelectPicklistFakerJSExpression).toBe(expectedFakerJSMultiSelectPicklistExpression);
 
         });
 
-        test('given expected datetime XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected datetime XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedDatetimeXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
-            const expectedDatetimeSnowfakeryValue = '${{ (fake.date_time_between(start_date="-1y", end_date="now")).strftime("%Y-%m-%dT%H:%M:%S.000+0000") }}';
+            // const expectedDatetimeSnowfakeryValue = '${{ (fake.date_time_between(start_date="-1y", end_date="now")).strftime("%Y-%m-%dT%H:%M:%S.000+0000") }}';
+            const expectedDatetimeFakerJSExpression = "\"${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}\"";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const actualDatetimeSnowfakeryValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualDatetimeFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualDatetimeSnowfakeryValue).toBe(expectedDatetimeSnowfakeryValue);
+            expect(actualDatetimeFakerJSExpression).toBe(expectedDatetimeFakerJSExpression);
 
         });
 
-        test('given expected url XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected url XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedUrlFieldDetail:XMLFieldDetail = XMLMarkupMockService.getUrlXMLFieldDetail();
-            const expectedUrlSnowfakeryValue = '${{fake.url()}}';
+            const expectedUrlFakerJSExpressionValue = "\"${{ faker.internet.url() }}\"";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const actualUrlSnowfakeryValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualUrlFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualUrlSnowfakeryValue).toBe(expectedUrlSnowfakeryValue);
+            expect(actualUrlFakerJSExpression).toBe(expectedUrlFakerJSExpressionValue);
 
         });
 
-        test('given expected phone XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected phone XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForPhone:XMLFieldDetail = XMLMarkupMockService.getPhoneXMLFieldDetail();
-            const expectedSnowfakeryValueForPhone = '${{fake.phone_number()}}';
+            const expectedFakerJSExpressionForPhone = "\"${{ faker.phone.number({style:'national'}) }}\"";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
-            const actualSnowfakeryValueForPhone = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualFakerJSExpressionForPhone = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualSnowfakeryValueForPhone).toBe(expectedSnowfakeryValueForPhone);
+            expect(actualFakerJSExpressionForPhone).toBe(expectedFakerJSExpressionForPhone);
 
         });
 
-        test('given expected number XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected number XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
-            const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999)}}';
+            const expectedFakerJSExpressionForNumber =  "\"${{ faker.number.int({min: 0, max: 999999}) }}\"";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
 
-            const actualSnowfakeryValueForNumber = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualFakerJSForNumber = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualSnowfakeryValueForNumber).toBe(expectedSnowfakeryValueForNumber);
+            expect(actualFakerJSForNumber).toBe(expectedFakerJSExpressionForNumber);
 
         });
 
-        test('given expected currency XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected currency XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
-            const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}';
+            const expectedFakerJSExpressionForCurrency = "\"${{ faker.finance.amount(0, 999999, 2) }}\"";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const actualSnowfakeryValueForCurrency = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualFakerJSForCurrency = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualSnowfakeryValueForCurrency).toBe(expectedSnowfakeryValueForCurrency);
+            expect(actualFakerJSForCurrency).toBe(expectedFakerJSExpressionForCurrency);
 
         });
 
@@ -568,8 +569,9 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         test('given existing object recipe string and new recipe value, the resulting updated recipe is returned', () => {
 
+            // ok to use snowfakery mock return as we are testing what appending will do to the recipe and this behavior should be the same for both implementations
             const initialMarkup = RecipeMockService.getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup();
-            const fakeRecipevalue = "${{fake.superduperfakeFirstName}}";
+            const fakeRecipevalue = `"\${{ fake.superduperfakeFirstName }}"`;
             const fakeFieldApiName = "FirstName__c";
             const fakeFieldRecipeValue = `${fakeFieldApiName}: ${fakeRecipevalue}`;
             const expectedUpdateRecipe = 
@@ -663,7 +665,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
             };
  
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValueWithoutRecordTypeDetail();
+            const expectedDependentListFakeValue = RecipeMockService.getMockFakerJSDependentPicklistRecipeValueWithoutRecordTypeDetail();
             const actualRecipeValue = recipeServiceWithFakerJS.getDependentPicklistRecipeFakerValue(
                 expectedXMLFieldDetail, 
                 recordTypeNameByRecordTypeNameToXMLMarkup

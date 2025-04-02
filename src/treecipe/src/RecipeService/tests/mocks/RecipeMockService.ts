@@ -260,4 +260,55 @@ return fakeRecordTypeRecipe;
 
     }
 
+    static getMockFakerJSDependentPicklistRecipeValueWithoutRecordTypeDetail():string {
+        const controllingField = "Picklist__c";
+            
+        const expectedDependentPicklistRecipeValue =`
+      if:
+        - choice:
+            when: "\${{ ${controllingField} == 'cle' }}"
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    - rocks
+        - choice:
+            when: "\${{ ${controllingField} == 'eastlake' }}"
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: "\${{ ${controllingField} == 'madison' }}"
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - plant
+        - choice:
+            when: "\${{ ${controllingField} == 'willoughby' }}"
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: "\${{ ${controllingField} == 'mentor' }}"
+            pick:
+                random_choice:
+                    - weed
+                    - plant
+        - choice:
+            when: "\${{ ${controllingField} == 'wickliffe' }}"
+            pick:
+                random_choice:
+                    - weed
+                    - rocks`;
+
+        return expectedDependentPicklistRecipeValue;
+
+    }
+
 }
