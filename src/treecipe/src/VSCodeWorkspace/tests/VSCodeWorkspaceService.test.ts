@@ -1,5 +1,5 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
-import { MockDirectoryService } from "../../DirectoryProcessingService/tests/MockObjectsDirectory/MockDirectoryService";
+import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockObjectsDirectory/MockDirectoryService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 

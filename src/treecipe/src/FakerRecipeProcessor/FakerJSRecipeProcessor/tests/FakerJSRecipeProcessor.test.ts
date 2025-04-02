@@ -197,68 +197,65 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     
           expect(result).toBe("dateUtils.datetime('today')");
         });
-      });
+    });
 
-      describe('dateUtils.parseRelativeDate', () => {
-        test('should handle today keyword', () => {
-          const mockDate = new Date('2023-01-01T12:00:00Z');
-          jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
-    
-          const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
-          
-          expect(result).toEqual(mockDate);
-        });
-    
-        // test('should handle relative days in the future', () => {
-
-        //     const mockDate = new Date('2023-01-01T12:00:00Z');
-        //     const futureMockDate = new Date('2023-01-06T12:00:00Z');
-            
-        //     let currentDate = mockDate;
-        //     jest.spyOn(global, 'Date').mockImplementation(() => {
-        //         const dateCopy = new Date(currentDate.getTime());
-        //         return dateCopy as any;
-        //     });
+    describe('dateUtils.parseRelativeDate', () => {
+      test('should handle today keyword', () => {
+        const mockDate = new Date('2023-01-01T12:00:00Z');
+        jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
+  
+        const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
         
-        //     // Mock the Date.prototype.setDate to simulate adding days
-        //     const originalSetDate = Date.prototype.setDate;
-        //     Date.prototype.setDate = jest.fn(function(day) {
-        //         if (day === currentDate.getDate() + 5) {
-        //         // Simulate adding 5 days
-        //         currentDate = futureMockDate;
-        //         return futureMockDate.getTime();
-        //         }
-        //         return originalSetDate.call(this, day);
-        //     });
+        expect(result).toEqual(mockDate);
+      });
+  
+      // test('should handle relative days in the future', () => {
+
+      //     const mockDate = new Date('2023-01-01T12:00:00Z');
+      //     const futureMockDate = new Date('2023-01-06T12:00:00Z');
+          
+      //     let currentDate = mockDate;
+      //     jest.spyOn(global, 'Date').mockImplementation(() => {
+      //         const dateCopy = new Date(currentDate.getTime());
+      //         return dateCopy as any;
+      //     });
+      
+      //     // Mock the Date.prototype.setDate to simulate adding days
+      //     const originalSetDate = Date.prototype.setDate;
+      //     Date.prototype.setDate = jest.fn(function(day) {
+      //         if (day === currentDate.getDate() + 5) {
+      //         // Simulate adding 5 days
+      //         currentDate = futureMockDate;
+      //         return futureMockDate.getTime();
+      //         }
+      //         return originalSetDate.call(this, day);
+      //     });
+      
+      //     const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('+5');
+          
+      //     expect(result).toBe('2023-01-06');
+          
+      //     // Restore original method
+      //     Date.prototype.setDate = originalSetDate;
+
+      // });
+
+    });
+
+
+    describe('buildWhenConditionRegexMatchForControllingField', () => {
+
+      test('should create regex for matching controlling field expressions', () => {
+        const regex = fakerJSRecipeProcessor.buildWhenConditionRegexMatchForControllingField();
         
-        //     const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('+5');
-            
-        //     expect(result).toBe('2023-01-06');
-            
-        //     // Restore original method
-        //     Date.prototype.setDate = originalSetDate;
-
-        // });
-
+        const testExpression = "${{ Industry == 'Technology' }}";
+        const matches = testExpression.match(regex);
+        
+        expect(matches).not.toBeNull();
+        expect(matches[1].trim()).toBe('Industry');
+        expect(matches[2].trim()).toBe("'Technology'");
       });
 
-
-      describe('buildWhenConditionRegexMatchForControllingField', () => {
-
-        test('should create regex for matching controlling field expressions', () => {
-          const regex = fakerJSRecipeProcessor.buildWhenConditionRegexMatchForControllingField();
-          
-          const testExpression = "${{ Industry == 'Technology' }}";
-          const matches = testExpression.match(regex);
-          
-          expect(matches).not.toBeNull();
-          expect(matches[1].trim()).toBe('Industry');
-          expect(matches[2].trim()).toBe("'Technology'");
-        });
-
-      });
-
-
-
+    });
 
 });

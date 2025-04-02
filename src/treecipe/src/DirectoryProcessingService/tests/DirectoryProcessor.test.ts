@@ -2,7 +2,7 @@ import { ConfigurationService } from "../../ConfigurationService/ConfigurationSe
 import { DirectoryProcessor } from "../DirectoryProcessor";
 
 import * as vscode from 'vscode';
-import { MockDirectoryService } from "./MockObjectsDirectory/MockDirectoryService";
+import { MockDirectoryService } from "./mocks/MockObjectsDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";

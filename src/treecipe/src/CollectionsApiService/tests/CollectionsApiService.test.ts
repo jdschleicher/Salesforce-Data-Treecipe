@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { CollectionsApiService } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { MockDirectoryService } from '../../DirectoryProcessingService/tests/MockObjectsDirectory/MockDirectoryService';
+import { MockDirectoryService } from '../../DirectoryProcessingService/tests/mocks/MockObjectsDirectory/MockDirectoryService';
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
