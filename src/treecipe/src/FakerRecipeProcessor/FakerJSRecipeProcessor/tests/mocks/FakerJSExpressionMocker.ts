@@ -35,11 +35,6 @@ export class FakerJSExpressionMocker {
 
     ]);
       
-    /**
-     * Gets a mock value for a faker expression
-     * @param expression The faker expression
-     * @returns The corresponding mock value or an empty string if not found
-     */
     static getMockValue(fakerJSExpression: string): string {
 
         // Try exact match first
@@ -79,6 +74,52 @@ export class FakerJSExpressionMocker {
         
         // Default empty value if no match is found
         return "";
+
+    }
+
+    static getMockYamlRecipeContent() {
+
+        const fakeYamlRecipeObjectStructure = this.getFakeYamlRecipeObjectStructure();
+        const fakeRecipeYamlContent = JSON.stringify(fakeYamlRecipeObjectStructure);
+
+        return fakeRecipeYamlContent;
+
+    }
+
+    static getFakeYamlRecipeObjectStructure() {
+
+        const fakeRecipeYamlObjectDetail = [
+            {
+                id: 1,
+                object: 'Account',
+                nickname: 'standard_account',
+                fields: {
+                    Name: 'Acme Corp',
+                    Description: 'Innovative solutions'
+                }
+            },
+            {
+                id: 2,
+                object: 'Account',
+                nickname: 'standard_account',
+                fields: {
+                    Name: 'Widget Inc',
+                    Description: 'Quality products'
+                }
+            },
+            {
+                id: 1,
+                object: 'Contact',
+                nickname: 'primary_contact',
+                fields: {
+                    FirstName: 'John',
+                    LastName: 'Doe',
+                    Email: 'john@example.com'
+                }
+            }
+        ];
+
+        return fakeRecipeYamlObjectDetail;
 
     }
 

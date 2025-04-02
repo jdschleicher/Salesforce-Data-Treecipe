@@ -2,6 +2,7 @@ import * as fs from 'fs';
 
 import * as yaml from 'js-yaml';
 import { FakerJSRecipeProcessor } from '../FakerJSRecipeProcessor';
+import { FakerJSExpressionMocker } from './mocks/FakerJSExpressionMocker';
 
 
 describe('Shared FakerJSRecipeProcessor tests', () => {
@@ -13,32 +14,22 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
         test('should process YAML file and generate fake data', async () => {
 
             const mockYamlContent = `
-- object: Account
-nickname: standard_account
-count: 2
-fields:
-Name: "\${{ faker.company.name() }}"
-Description: "\${{ faker.company.catchPhrase() }}"
+  - object: Account
+    nickname: standard_account
+    count: 2
+    fields:
+      Name: "\${{ faker.company.name() }}"
+      Description: "\${{ faker.company.catchPhrase() }}"
 `;
             
-            const mockParsedData = [
-                {
-                    object: 'Account',
-                    nickname: 'standard_account',
-                    count: 2,
-                    fields: {
-                        Name: "${{ faker.company.name() }}",
-                        Description: "${{ faker.company.catchPhrase() }}"
-                    }
-                }
-            ];
-    
-            // Setup mocks
             jest.spyOn(fs, 'readFileSync').mockReturnValue(mockYamlContent);
-            jest.spyOn(yaml, 'load').mockReturnValue(mockParsedData);
+            
+            // creating yaml.load "spy" to check what is being passed into the load argument
+            // this argument should be mockYamlContent as its the mock value used for fs.readFileSync
+            jest.spyOn(yaml, 'load');
 
             // Mock the evaluateFakerJSExpression method
-            const evaluateSpy = jest.spyOn(fakerJSRecipeProcessor, 'evaluateFakerJSExpression')
+            const expressionEvalSpy = jest.spyOn(fakerJSRecipeProcessor, 'evaluateFakerJSExpression')
                                         .mockImplementation(async (expr) => {
                                             if ( expr === "${{ faker.company.name() }}" ) {
                                                 return "Acme Corp";
@@ -50,17 +41,17 @@ Description: "\${{ faker.company.catchPhrase() }}"
                                         }
                                     );
     
-            // Execute the method
-            const result = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('test.yaml');
-            
-     
-    
+            const fakeTestFile = 'test.yaml';                        
+            const result = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile(fakeTestFile);
+                
             // Assertions
-            expect(fs.readFileSync).toHaveBeenCalledWith('test.yaml', 'utf8');
-            expect(yaml.load).toHaveBeenCalledWith(mockYamlContent);
-            expect(evaluateSpy).toHaveBeenCalledTimes(4); // 2 fields × 2 records
+            expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
 
-            // Parse the result
+            // below expect assert will not work without spy
+            expect(yaml.load).toHaveBeenCalledWith(mockYamlContent);
+
+            expect(expressionEvalSpy).toHaveBeenCalledTimes(4); // count is set to 2 and there are 2 fields that have to be evaluated, (2x2=4)
+
             const parsedResult = JSON.parse(result);
 
             expect(parsedResult.length).toBe(2);
@@ -73,6 +64,40 @@ Description: "\${{ faker.company.catchPhrase() }}"
 
 
     });
+
+    describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
+
+        test('given expected fakerContent', () => {
+
+        });
+
+    });
+
+    describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
+        
+        test('should transform faker JSON to collection API format', () => {
+          
+            const fakerContent = FakerJSExpressionMocker.getMockYamlRecipeContent();
+            const actualMappedSObjectApiToRecords = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerContent);
+        
+            expect(actualMappedSObjectApiToRecords.size).toBe(2); 
+            
+            const accountData = actualMappedSObjectApiToRecords.get('Account');
+            expect(accountData).toBeDefined();
+            expect(accountData.records.length).toBe(2);
+            expect(accountData.records[0].attributes.type).toBe('Account');
+            expect(accountData.records[0].attributes.referenceId).toBe('Account_Reference_1');
+            expect(accountData.records[0].Name).toBe('Acme Corp');
+            
+            const contactData = actualMappedSObjectApiToRecords.get('Contact');
+            expect(contactData).toBeDefined();
+            expect(contactData.records.length).toBe(1);
+            expect(contactData.records[0].attributes.type).toBe('Contact');
+            expect(contactData.records[0].FirstName).toBe('John');
+
+        });
+
+      });
 
 
 
