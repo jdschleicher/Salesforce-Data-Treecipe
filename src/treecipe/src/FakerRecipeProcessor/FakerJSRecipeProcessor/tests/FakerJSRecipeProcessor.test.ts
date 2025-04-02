@@ -3,7 +3,10 @@ import { FakerJSExpressionMocker } from './mocks/FakerJSExpressionMocker';
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
+
+
 const { faker } = require('@faker-js/faker');
+
 
 
 describe('Shared FakerJSRecipeProcessor tests', () => {
@@ -112,61 +115,42 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
             {}, 
             'Name'
           );
-    
-          expect(getFakeValueSpy).toHaveBeenCalledWith("${{ faker.company.name() }}");
-          expect(result).toBe('Acme Corp');
+      
+            expect(getFakeValueSpy).toHaveBeenCalledWith("${{ faker.company.name() }}");
+            expect(result).toBe('Acme Corp');
+
         });
     
-        // test('should handle dependent picklist values', async () => {
+        test('should handle dependent picklist values', async () => {
           
-        //     const fieldValues = {
-        //         'Industry': 'Technology'
-        //     };
+            const fieldValues = {
+                'Industry': 'Technology'
+            };
     
-        //     const dependentPicklistExpression = {
-        //         if: [
-        //         {
-        //             choice: {
-        //             when: "${{ Industry == 'Technology' }}",
-        //             pick: {
-        //                 random_choice: ['Software', 'Hardware', 'Cloud Services']
-        //             }
-        //             }
-        //         },
-        //         {
-        //             choice: {
-        //             when: "${{ Industry == 'Healthcare' }}",
-        //             pick: {
-        //                 random_choice: ['Hospital', 'Pharmacy', 'Medical Devices']
-        //             }
-        //             }
-        //         }
-        //         ]
-        //     };
-    
-        //     // Mock the buildWhenConditionRegexMatchForControllingField method
-        //     const mockRegex = /\{\{(.*?)\s*==\s*(.*?)\}\}/;
-        //     jest.spyOn(fakerJSRecipeProcessor, 'buildWhenConditionRegexMatchForControllingField')
-        //         .mockReturnValue(mockRegex);
-        
-        //     // Mock the faker.helpers.arrayElement method
-        //     (faker.helpers.arrayElement as jest.Mock).mockReturnValue('Software');
-        
-        //     const result = await fakerJSRecipeProcessor.evaluateFakerJSExpression(
-        //         dependentPicklistExpression, 
-        //         fieldValues, 
-        //         'SubIndustry'
-        //     );
-        
-        //     expect(result).toBe('Software');
-        //     expect(faker.helpers.arrayElement).toHaveBeenCalledWith(['Software', 'Hardware', 'Cloud Services']);
-        
-        // });
+            const mockDependentPicklistExpression = FakerJSExpressionMocker.getExpectedMockYamlDependentPicklistStructure();
+
+            // Mock the faker.helpers.arrayElement method
+
+         
+            (faker.helpers.arrayElement as jest.Mock).mockResolvedValue('Software');
+            // (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+      
+            const result = await fakerJSRecipeProcessor.evaluateFakerJSExpression(
+                mockDependentPicklistExpression, 
+                fieldValues, 
+                'SubIndustry'
+            );
+          
+            expect(result).toBe('Software');
+            expect(faker.helpers.arrayElement).toHaveBeenCalledWith(['Software', 'Hardware', 'Cloud Services']);
+          
+        });
 
     });
 
     describe('prepareFakerDateSyntax', () => {
-        test('should transform date_between syntax', () => {
+        
+      test('should transform date_between syntax', () => {
           // Mock the createComposableRegex method
           jest.spyOn(fakerJSRecipeProcessor, 'createComposableRegex').mockReturnValue({
             dateBetweenRegex: /date_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
@@ -200,6 +184,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     });
 
     describe('dateUtils.parseRelativeDate', () => {
+
       test('should handle today keyword', () => {
         const mockDate = new Date('2023-01-01T12:00:00Z');
         jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
@@ -257,5 +242,72 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
       });
 
     });
+
+    describe('getFakeValueFromFakerJSExpression', () => {
+      // Define the regex statically for tests
+      beforeEach(() => {
+        FakerJSRecipeProcessor.regExpressionForSurroundingFakerJSSyntax = /\{\{(.*?)\}\}/g;
+      });
+  
+      test('should return original string when no faker syntax is present', async () => {
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('plain text');
+        expect(result).toBe('plain text');
+      });
+  
+      test('should process a single faker expression', async () => {
+        // Spy on the getFakerJSExpressionEvaluation method
+        jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockReturnValue('John');
+        
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Name: {{faker.name.firstName()}}');
+        
+        expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledWith('faker.name.firstName()');
+        expect(result).toBe('Name: John');
+      });
+  
+      test('should process multiple faker expressions', async () => {
+
+        const mockImplementation = (code) => {
+          if (code === 'faker.name.firstName()') { return 'John';}
+          if (code === 'faker.internet.email()') { return 'john@example.com';}
+          return '';
+        };
+      
+        jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockImplementation(mockImplementation);
+        
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('{{faker.name.firstName()}} has email {{faker.internet.email()}}');
+        
+        expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
+        expect(result).toBe('John has email john@example.com');
+
+      });
+  
+      test('should process nested expressions in correct order', async () => {
+        const mockImplementation = (code) => {
+          if (code === 'faker.name.firstName()') {return 'John';}
+          if (code === 'faker.random.number()') {return '42';}
+          return '';
+        };
+        
+        jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockImplementation(mockImplementation);
+        
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Outer {{faker.name.firstName()}} with {{faker.random.number()}}');
+        
+        expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
+        expect(result).toBe('Outer John with 42');
+      });
+  
+      test('should handle whitespace in expressions', async () => {
+
+        jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockReturnValue('John');
+        
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Name: {{  faker.name.firstName()  }}');
+        
+        expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledWith('faker.name.firstName()');
+        expect(result).toBe('Name: John');
+      });
+    });
+  
+
+ 
 
 });

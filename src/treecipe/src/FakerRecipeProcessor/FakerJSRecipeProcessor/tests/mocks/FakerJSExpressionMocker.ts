@@ -123,4 +123,34 @@ export class FakerJSExpressionMocker {
 
     }
 
+    static getExpectedMockYamlDependentPicklistStructure() {
+
+      const mockDependentPicklistExpression = {
+
+          if: [
+            {
+              choice: {
+                when: "${{ Industry == 'Technology' }}",
+                pick: {
+                    random_choice: ['Software', 'Hardware', 'Cloud Services']
+                }
+              }
+            },
+            {
+              choice: {
+                when: "${{ Industry == 'Healthcare' }}",
+                pick: {
+                    random_choice: ['Hospital', 'Pharmacy', 'Medical Devices']
+                }
+              }
+            }
+
+          ]
+
+      };
+
+      return mockDependentPicklistExpression;
+
+    }
+
 }

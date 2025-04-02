@@ -101,64 +101,76 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 && (dependentPicklistKeyIndicator in fakerJSExpression) 
                 && Object.keys(fakerJSExpression).length === 1 ) {
     
-            const choices = fakerJSExpression.if;
-    
-            const whenIndicatorInYamlExpression = choices.length > 0 ? choices[0].choice.when : '';
-            if (!whenIndicatorInYamlExpression) {
-                throw new Error('No choices available in the YAML data');
-            }
-        
-            const fieldApiNameInWhenConditionRegex = this.buildWhenConditionRegexMatchForControllingField();
-           
-            const controllingFieldPicklsitMatch = whenIndicatorInYamlExpression.match(fieldApiNameInWhenConditionRegex);
-            if ( !controllingFieldPicklsitMatch ) {
-                throw new Error('Incorrect format for dependent picklist faker value. Should match \"${{ Picklist__c == \'cle\' }}\"');
-            }
-        
-            let expectedExistingControllingFieldApiNameForDependentPicklist = controllingFieldPicklsitMatch[1];
-            if (!fieldApiNameByFakerJSEvaluations || !fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist]) {
-                throw new Error(`Field "${expectedExistingControllingFieldApiNameForDependentPicklist}" not found in existing field evaluations`);
-            }
-    
-            const controllingFieldPicklistValue = fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist];
-            const matchingControllingFieldGeneratedValueSection = choices.find(item => {
-    
-                const controllingFieldWhencondition = item.choice.when;
-                const controllingFIeldWhenConditionMatches = controllingFieldWhencondition.match(fieldApiNameInWhenConditionRegex);
-
-                const controllingPicklistValueMatchIndex = 2;
-                const controllingFieldValue = controllingFIeldWhenConditionMatches[controllingPicklistValueMatchIndex];
-                
-                // Remove surrounding quotes from the value for comparison
-                const trimmedValue = controllingFieldValue.trim();
-                const expectedQuotesAroundPicklistWhenSelection = /['"]/g; 
-                const cleanValue = trimmedValue.replace(expectedQuotesAroundPicklistWhenSelection, '');
-    
-                const availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue = (cleanValue === controllingFieldPicklistValue);
-                return availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue;
-    
-            });
-            
-            if ( matchingControllingFieldGeneratedValueSection ) {
-
-                const availablePicklistOptions = matchingControllingFieldGeneratedValueSection.choice.pick.random_choice;
-                const randomChoiceFromAvailablePicklistDependencyOptions = faker.helpers.arrayElement(availablePicklistOptions);
-                return randomChoiceFromAvailablePicklistDependencyOptions;
-
-            } else {
-
-                throw new Error(`FakerJSRecipeProcessor: Expected processed and matching value 
-                    of controlling picklist field: ${expectedExistingControllingFieldApiNameForDependentPicklist}
-                    , no existing matching value for dependent picklist ${fieldApiNameToEvaluate}`);
-                // may need to move controlling field up in object detail as its not in map yet
-            }
+                const evaluatedRandomChoiceFromAvailablePicklistDependencyOptions = this.evaluateDependentPicklistFakerJSExpression(fakerJSExpression, fieldApiNameByFakerJSEvaluations, fieldApiNameToEvaluate);
+                return evaluatedRandomChoiceFromAvailablePicklistDependencyOptions;
 
         }
     
         const generatedFakerJSExpressionToFakeValue = await this.getFakeValueFromFakerJSExpression(fakerJSExpression);
-    
-        
+
         return generatedFakerJSExpressionToFakeValue;
+
+    }
+
+    evaluateDependentPicklistFakerJSExpression(dependentPicklistfakerJSExpressionDetail:any,  
+                                                fieldApiNameByFakerJSEvaluations: Record<string, string>,
+                                                fieldApiNameToEvaluate: string): Promise<string> {
+
+        let evaluatedPicklistDependencyOptions;
+
+        const choices = dependentPicklistfakerJSExpressionDetail.if;
+
+        const whenIndicatorInYamlExpression = choices.length > 0 ? choices[0].choice.when : '';
+        if (!whenIndicatorInYamlExpression) {
+            throw new Error('No choices available in the YAML data');
+        }
+    
+        const fieldApiNameInWhenConditionRegex = this.buildWhenConditionRegexMatchForControllingField();
+       
+        const controllingFieldPicklsitMatch = whenIndicatorInYamlExpression.match(fieldApiNameInWhenConditionRegex);
+        if ( !controllingFieldPicklsitMatch ) {
+            throw new Error('Incorrect format for dependent picklist faker value. Should match \"${{ Picklist__c == \'cle\' }}\"');
+        }
+    
+        let expectedExistingControllingFieldApiNameForDependentPicklist = controllingFieldPicklsitMatch[1];
+        if (!fieldApiNameByFakerJSEvaluations || !fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist]) {
+            throw new Error(`Field "${expectedExistingControllingFieldApiNameForDependentPicklist}" not found in existing field evaluations`);
+        }
+
+        const controllingFieldPicklistValue = fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist];
+        const matchingControllingFieldGeneratedValueSection = choices.find(item => {
+
+            const controllingFieldWhencondition = item.choice.when;
+            const controllingFIeldWhenConditionMatches = controllingFieldWhencondition.match(fieldApiNameInWhenConditionRegex);
+
+            const controllingPicklistValueMatchIndex = 2;
+            const controllingFieldValue = controllingFIeldWhenConditionMatches[controllingPicklistValueMatchIndex];
+            
+            // Remove surrounding quotes from the value for comparison
+            const trimmedValue = controllingFieldValue.trim();
+            const expectedQuotesAroundPicklistWhenSelection = /['"]/g; 
+            const cleanValue = trimmedValue.replace(expectedQuotesAroundPicklistWhenSelection, '');
+
+            const availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue = (cleanValue === controllingFieldPicklistValue);
+            return availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue;
+
+        });
+        
+        if ( matchingControllingFieldGeneratedValueSection ) {
+
+            const availablePicklistOptions = matchingControllingFieldGeneratedValueSection.choice.pick.random_choice;
+            evaluatedPicklistDependencyOptions = faker.helpers.arrayElement(availablePicklistOptions);
+
+        } else {
+
+            throw new Error(`FakerJSRecipeProcessor: Expected processed and matching value 
+                of controlling picklist field: ${expectedExistingControllingFieldApiNameForDependentPicklist}
+                , no existing matching value for dependent picklist ${fieldApiNameToEvaluate}`);
+            // may need to move controlling field up in object detail as its not in map yet
+
+        }
+
+        return evaluatedPicklistDependencyOptions;
 
     }
 
