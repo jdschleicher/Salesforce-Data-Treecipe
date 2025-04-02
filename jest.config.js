@@ -7,6 +7,11 @@ module.exports = {
     },
     testPathIgnorePatterns: [
         "force-app/main/default/*",
-        "force-app/test/*"
+        "force-app/test/*",
+        "/mocks/",
+    ],
+    collectCoverageFrom: [
+        "!**/mocks/**",
+        "!**/out/**"
     ]
 };
