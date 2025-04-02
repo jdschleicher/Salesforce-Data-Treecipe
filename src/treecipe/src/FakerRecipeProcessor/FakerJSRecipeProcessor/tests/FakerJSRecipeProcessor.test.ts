@@ -1,8 +1,9 @@
-import * as fs from 'fs';
-
-import * as yaml from 'js-yaml';
 import { FakerJSRecipeProcessor } from '../FakerJSRecipeProcessor';
 import { FakerJSExpressionMocker } from './mocks/FakerJSExpressionMocker';
+
+import * as fs from 'fs';
+import * as yaml from 'js-yaml';
+const { faker } = require('@faker-js/faker');
 
 
 describe('Shared FakerJSRecipeProcessor tests', () => {
@@ -97,8 +98,165 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         });
 
+    });
+
+    describe('evaluateFakerJSExpression', () => {
+
+        test('should evaluate simple faker expression', async () => {
+          // Mock the getFakeValueFromFakerJSExpression method
+          const getFakeValueSpy = jest.spyOn(fakerJSRecipeProcessor, 'getFakeValueFromFakerJSExpression')
+            .mockResolvedValue('Acme Corp');
+    
+          const result = await fakerJSRecipeProcessor.evaluateFakerJSExpression(
+            "${{ faker.company.name() }}", 
+            {}, 
+            'Name'
+          );
+    
+          expect(getFakeValueSpy).toHaveBeenCalledWith("${{ faker.company.name() }}");
+          expect(result).toBe('Acme Corp');
+        });
+    
+        // test('should handle dependent picklist values', async () => {
+          
+        //     const fieldValues = {
+        //         'Industry': 'Technology'
+        //     };
+    
+        //     const dependentPicklistExpression = {
+        //         if: [
+        //         {
+        //             choice: {
+        //             when: "${{ Industry == 'Technology' }}",
+        //             pick: {
+        //                 random_choice: ['Software', 'Hardware', 'Cloud Services']
+        //             }
+        //             }
+        //         },
+        //         {
+        //             choice: {
+        //             when: "${{ Industry == 'Healthcare' }}",
+        //             pick: {
+        //                 random_choice: ['Hospital', 'Pharmacy', 'Medical Devices']
+        //             }
+        //             }
+        //         }
+        //         ]
+        //     };
+    
+        //     // Mock the buildWhenConditionRegexMatchForControllingField method
+        //     const mockRegex = /\{\{(.*?)\s*==\s*(.*?)\}\}/;
+        //     jest.spyOn(fakerJSRecipeProcessor, 'buildWhenConditionRegexMatchForControllingField')
+        //         .mockReturnValue(mockRegex);
+        
+        //     // Mock the faker.helpers.arrayElement method
+        //     (faker.helpers.arrayElement as jest.Mock).mockReturnValue('Software');
+        
+        //     const result = await fakerJSRecipeProcessor.evaluateFakerJSExpression(
+        //         dependentPicklistExpression, 
+        //         fieldValues, 
+        //         'SubIndustry'
+        //     );
+        
+        //     expect(result).toBe('Software');
+        //     expect(faker.helpers.arrayElement).toHaveBeenCalledWith(['Software', 'Hardware', 'Cloud Services']);
+        
+        // });
+
+    });
+
+    describe('prepareFakerDateSyntax', () => {
+        test('should transform date_between syntax', () => {
+          // Mock the createComposableRegex method
+          jest.spyOn(fakerJSRecipeProcessor, 'createComposableRegex').mockReturnValue({
+            dateBetweenRegex: /date_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
+            datetimeBetweenRegex: /datetime_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
+            dateRegex: /date\(\s*['"]?([^'")+]*)['"]?\s*\)/,
+            datetimeRegex: /datetime\(\s*['"]?([^'")+]*)['"]?\s*\)/
+          });
+    
+          const result = fakerJSRecipeProcessor.prepareFakerDateSyntax(
+            "date_between({from: 'today', to: '+30'})"
+          );
+    
+          expect(result).toBe("dateUtils.date_between({from: 'today', to: '+30'})");
+        });
+    
+        test('should transform datetime syntax', () => {
+          // Mock the createComposableRegex method
+          jest.spyOn(fakerJSRecipeProcessor, 'createComposableRegex').mockReturnValue({
+            dateBetweenRegex: /date_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
+            datetimeBetweenRegex: /datetime_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
+            dateRegex: /date\(\s*['"]?([^'")+]*)['"]?\s*\)/,
+            datetimeRegex: /datetime\(\s*['"]?([^'")+]*)['"]?\s*\)/
+          });
+    
+          const result = fakerJSRecipeProcessor.prepareFakerDateSyntax(
+            "datetime('today')"
+          );
+    
+          expect(result).toBe("dateUtils.datetime('today')");
+        });
       });
 
+      describe('dateUtils.parseRelativeDate', () => {
+        test('should handle today keyword', () => {
+          const mockDate = new Date('2023-01-01T12:00:00Z');
+          jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
+    
+          const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
+          
+          expect(result).toEqual(mockDate);
+        });
+    
+        // test('should handle relative days in the future', () => {
+
+        //     const mockDate = new Date('2023-01-01T12:00:00Z');
+        //     const futureMockDate = new Date('2023-01-06T12:00:00Z');
+            
+        //     let currentDate = mockDate;
+        //     jest.spyOn(global, 'Date').mockImplementation(() => {
+        //         const dateCopy = new Date(currentDate.getTime());
+        //         return dateCopy as any;
+        //     });
+        
+        //     // Mock the Date.prototype.setDate to simulate adding days
+        //     const originalSetDate = Date.prototype.setDate;
+        //     Date.prototype.setDate = jest.fn(function(day) {
+        //         if (day === currentDate.getDate() + 5) {
+        //         // Simulate adding 5 days
+        //         currentDate = futureMockDate;
+        //         return futureMockDate.getTime();
+        //         }
+        //         return originalSetDate.call(this, day);
+        //     });
+        
+        //     const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('+5');
+            
+        //     expect(result).toBe('2023-01-06');
+            
+        //     // Restore original method
+        //     Date.prototype.setDate = originalSetDate;
+
+        // });
+
+      });
+
+
+      describe('buildWhenConditionRegexMatchForControllingField', () => {
+
+        test('should create regex for matching controlling field expressions', () => {
+          const regex = fakerJSRecipeProcessor.buildWhenConditionRegexMatchForControllingField();
+          
+          const testExpression = "${{ Industry == 'Technology' }}";
+          const matches = testExpression.match(regex);
+          
+          expect(matches).not.toBeNull();
+          expect(matches[1].trim()).toBe('Industry');
+          expect(matches[2].trim()).toBe("'Technology'");
+        });
+
+      });
 
 
 

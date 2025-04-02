@@ -51,7 +51,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerContent: string): Map<string, CollectionsApiJsonStructure> {
 
         const objectApiToGeneratedRecords = new Map<string, CollectionsApiJsonStructure>();
-        
+
         const fakerJSRecords = JSON.parse(fakerContent);
         fakerJSRecords.forEach(record => {
 
@@ -171,7 +171,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const doubleEqualsLiteral = "==";
         const allContentAfterDoubleEqual = "(.*?)";
         const closingExpressionSyntaxLiteral = "\}\\}";
-
 
         const controllingFieldRegex = new RegExp(openingExpressionSyntaxLiteral 
                                                 + whitespaceMatch 
