@@ -14,13 +14,39 @@ function Get-CurrentBranch {
 
 # Determines the main/base branch of the repository
 function Get-BaseBranch {
-    $baseBranch = git rev-parse --abbrev-ref origin/HEAD 2>$null
-    if (-not $baseBranch) {
-        # Default to main if origin/HEAD is not set
-        $baseBranch = "origin/main"
+    # If explicitly provided, use that
+    if ($baseBranchName) {
+        Write-Host "Using specified base branch: $baseBranchName" -ForegroundColor Cyan
+        return $baseBranchName
     }
-    $cleanedBranch = $baseBranch -replace "origin/", ""
-    return $cleanedBranch
+    
+    # Try multiple methods to detect default branch
+    # Method 1: Check origin/HEAD reference
+    $originHead = git rev-parse --abbrev-ref origin/HEAD 2>$null
+    if ($originHead) {
+        $defaultBranch = $originHead -replace "origin/", ""
+        Write-Host "Detected default branch from origin/HEAD: $defaultBranch" -ForegroundColor Cyan
+        return $defaultBranch
+    }
+    
+    # Method 2: Try common default branch names
+    $commonBranches = @("main", "master", "develop", "trunk")
+    foreach ($branch in $commonBranches) {
+        $branchExists = git rev-parse --verify "origin/$branch" 2>$null
+        if ($branchExists) {
+            Write-Host "Found common default branch: $branch" -ForegroundColor Cyan
+            return $branch
+        }
+    }
+    
+    # Method 3: Ask user
+    Write-Host "Could not automatically detect default branch. Please enter the name of your default branch:" -ForegroundColor Yellow
+    $userBranch = Read-Host
+    if (-not $userBranch) {
+        Write-Host "No branch provided, using 'main' as fallback" -ForegroundColor Yellow
+        return "main"
+    }
+    return $userBranch
 }
 
 # Gets the common ancestor commit between two branches
