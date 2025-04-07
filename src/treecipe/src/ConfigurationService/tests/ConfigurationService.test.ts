@@ -1,4 +1,5 @@
-import { Config } from '@salesforce/core';
+import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
+import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
@@ -160,6 +161,52 @@ describe('Shared ConfigurationService Tests', () => {
 
         });
 
+        test('given mocked empty return for VSCodeWorkspaceService.promptForObjectsPath to mimic no selection, prevents method from completing', async () => {
+            
+        
+            const noSelectionMimic = null;
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(noSelectionMimic);
+            jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
+                return noSelectionMimic;
+            });
+
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue');
+            jest.spyOn(ConfigurationService, 'createTreecipeConfigFile');
+
+        
+            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            
+            expect(ConfigurationService.setExtensionConfigValue).not.toHaveBeenCalled();
+            expect(ConfigurationService.createTreecipeConfigFile).not.toHaveBeenCalled();
+
+        });
+
+        test('given mocked empty return for VSCodeWorkspaceService.promptForFakerServiceImplementation to mimic no selection, prevents method from completing', async () => {
+            
+        
+            const mockWorkspaceRoot = '/mock/workspace/root';
+            const mockObjectsPath = '/mock/objects/path';
+                   
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
+                return mockObjectsPath;
+            });
+
+            const noSelectionMimic = null;
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockImplementation(async () => {
+                return noSelectionMimic;
+            });
+
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue');
+            jest.spyOn(ConfigurationService, 'createTreecipeConfigFile');
+
+            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            
+            expect(ConfigurationService.setExtensionConfigValue).not.toHaveBeenCalled();
+            expect(ConfigurationService.createTreecipeConfigFile).not.toHaveBeenCalled();
+
+        });
+
     });
 
     describe('getTreecipeConfigurationDetail', () => {
@@ -281,6 +328,56 @@ describe('Shared ConfigurationService Tests', () => {
         });
 
     });
+
+    describe('getDatasetFilesForCollectionsApiFolderName', () => {
+
+        test('returns expected dataset collections api folder name', () => {
+
+            const expectedCollectionsApiFolderName = 'DatasetFilesForCollectionsApi';
+            const actualCollectionsApiFolderName = ConfigurationService.getDatasetFilesForCollectionsApiFolderName();
+
+            expect(actualCollectionsApiFolderName).toBe(expectedCollectionsApiFolderName);
+
+        });
+
+    });
+
+    describe('getFakerRecipeProcessorByExtensionConfigSelection', () => {
+      
+        test('returns SnowfakeryRecipeProcessor when config is "snowfakery"', () => {
+          
+            jest
+                .spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig')
+                .mockReturnValue('snowfakery');
+        
+            const processor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+            expect(processor).toBeInstanceOf(SnowfakeryRecipeProcessor);
+        
+        });
+      
+        test('returns FakerJSRecipeProcessor when config is "faker-js"', () => {
+          
+            jest
+                .spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig')
+                .mockReturnValue('faker-js');
+      
+            const processor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+            expect(processor).toBeInstanceOf(FakerJSRecipeProcessor);
+        
+        });
+      
+        test('throws an error when config is unknown', () => {
+          
+            jest
+                .spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig')
+                .mockReturnValue('unknown-option');
+        
+            expect(() =>
+                ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection()
+            ).toThrowError('Unknown Faker Recipe Processor selection: unknown-option');
+        
+        });
+      });
 
 });
 
