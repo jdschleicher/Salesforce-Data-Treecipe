@@ -197,23 +197,23 @@ function Format-ChangelogTable {
     if ($isRename) {
         $table += @"
 
-### Renamed Files
+## Renamed Files
 | Old Path | New Path | Commits | History |
 |----------|----------|---------|---------|
 "@
         foreach ($file in $files) {
-            $table += "`n| $($file.OldPath) | $($file.NewPath) | $($file.CommitCount) | [View History]($($file.CommitUrl)) |"
+            $table += "`n| $($file.OldPath) | $($file.NewPath) | $($file.CommitCount) | [View Full History]($($file.CommitUrl)) |"
         }
     }
     else {
         $table += @"
 
-### $changeType Files
-| File | Commits | History |
+## $changeType Files
+| $changeType File | Commits | History |
 |------|---------|---------|
 "@
         foreach ($file in $files) {
-            $table += "`n| $($file.Path) | $($file.CommitCount) | [View History]($($file.CommitUrl)) |"
+            $table += "`n| $($file.Path) | $($file.CommitCount) | [View Full History]($($file.CommitUrl)) |"
         }
     }
     
@@ -231,6 +231,9 @@ function Format-ChangelogContent {
     $currentDate = Get-Date -Format "yyyy-MM-dd"
     
     $content = @"
+
+***
+
 # Changelog for branch: $branchName
 
 Generated on: $currentDate
@@ -241,6 +244,8 @@ Generated on: $currentDate
 - Files modified: $($fileChanges.Modified.Count)
 - Files deleted: $($fileChanges.Deleted.Count)
 - Files renamed: $($fileChanges.Renamed.Count)
+
+*** 
 
 ## Changes at a glance
 "@
