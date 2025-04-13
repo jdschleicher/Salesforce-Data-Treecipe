@@ -79,14 +79,14 @@ export class FakerJSExpressionMocker {
 
     static getMockYamlRecipeContent() {
 
-        const fakeYamlRecipeObjectStructure = this.getFakeYamlRecipeObjectStructure();
+        const fakeYamlRecipeObjectStructure = this.getFakeAccountYamlRecipeObjectStructure();
         const fakeRecipeYamlContent = JSON.stringify(fakeYamlRecipeObjectStructure);
 
         return fakeRecipeYamlContent;
 
     }
 
-    static getFakeYamlRecipeObjectStructure() {
+    static getFakeAccountYamlRecipeObjectStructure() {
 
         const fakeRecipeYamlObjectDetail = [
             {

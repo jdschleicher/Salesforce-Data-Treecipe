@@ -11,7 +11,7 @@ jest.mock('@faker-js/faker', () => ({
 
   faker: {
     helpers: {
-      arrayElement: jest.fn().mockReturnValue('Software'),
+      arrayElement: jest.fn()
     },
   }
 
@@ -72,19 +72,13 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     });
 
     describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
-
-        test('given expected fakerContent', () => {
-
-        });
-
-    });
-
-    describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
         
         test('should transform faker JSON to collection API format', () => {
-          
-            const fakerContent = FakerJSExpressionMocker.getMockYamlRecipeContent();
-            const actualMappedSObjectApiToRecords = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerContent);
+                      
+            const fakeAccountYamlRecipeObjectStructure = FakerJSExpressionMocker.getFakeAccountYamlRecipeObjectStructure();
+            const fakeAccountRecipeYamlContent = JSON.stringify(fakeAccountYamlRecipeObjectStructure);
+    
+            const actualMappedSObjectApiToRecords = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakeAccountRecipeYamlContent);
         
             expect(actualMappedSObjectApiToRecords.size).toBe(2); 
             
@@ -242,10 +236,6 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     });
 
     describe('getFakeValueFromFakerJSExpression', () => {
-      // Define the regex statically for tests
-      beforeEach(() => {
-        FakerJSRecipeProcessor.regExpressionForSurroundingFakerJSSyntax = /\{\{(.*?)\}\}/g;
-      });
   
       test('should return original string when no faker syntax is present', async () => {
         const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('plain text');
@@ -256,7 +246,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
         // Spy on the getFakerJSExpressionEvaluation method
         jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockReturnValue('John');
         
-        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Name: {{faker.name.firstName()}}');
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Name: "${{faker.name.firstName()}}"');
         
         expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledWith('faker.name.firstName()');
         expect(result).toBe('Name: John');
@@ -272,7 +262,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
       
         jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockImplementation(mockImplementation);
         
-        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('{{faker.name.firstName()}} has email {{faker.internet.email()}}');
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('"${{faker.name.firstName()}}" has email "${{faker.internet.email()}}"');
         
         expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
         expect(result).toBe('John has email john@example.com');

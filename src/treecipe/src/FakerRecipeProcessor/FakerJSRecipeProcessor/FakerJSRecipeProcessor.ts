@@ -8,7 +8,7 @@ import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     static baseFakerJSInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
-    static regExpressionForSurroundingFakerJSSyntax = /\${{(.*?)}}/g;
+    static regExpressionForSurroundingFakerJSSyntax = /"\${{(.*?)}}"/g;
     
     async generateFakeDataBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
