@@ -142,7 +142,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     describe('prepareFakerDateSyntax', () => {
         
-      test('should transform date_between syntax', () => {
+        test('should transform date_between syntax', () => {
           // Mock the createComposableRegex method
           jest.spyOn(fakerJSRecipeProcessor, 'createComposableRegex').mockReturnValue({
             dateBetweenRegex: /date_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
@@ -173,6 +173,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     
           expect(result).toBe("dateUtils.datetime('today')");
         });
+
     });
 
     describe('dateUtils.parseRelativeDate', () => {
@@ -271,14 +272,18 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
   
       test('should process nested expressions in correct order', async () => {
         const mockImplementation = (code) => {
-          if (code === 'faker.name.firstName()') {return 'John';}
-          if (code === 'faker.random.number()') {return '42';}
+          if (code === 'faker.name.firstName()') {
+            return 'John';
+          }
+          if (code === 'faker.random.number()') {
+            return '42';
+          }
           return '';
         };
         
         jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockImplementation(mockImplementation);
         
-        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Outer {{faker.name.firstName()}} with {{faker.random.number()}}');
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Outer "${{faker.name.firstName()}}" with "${{faker.random.number()}}"');
         
         expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
         expect(result).toBe('Outer John with 42');
@@ -288,14 +293,13 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockReturnValue('John');
         
-        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Name: {{  faker.name.firstName()  }}');
+        const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Name: "${{  faker.name.firstName()  }}"');
         
         expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledWith('faker.name.firstName()');
         expect(result).toBe('Name: John');
+
       });
     });
-  
-
  
 
 });
