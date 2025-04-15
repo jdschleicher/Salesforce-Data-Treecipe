@@ -1,3 +1,20 @@
+# -- only uncomment locally
+### CLEAR OUT LATEST BUILD
+# $compileDirectory = "./out/"
+# If (Test-Path $compileDirectory ) {
+#     Remove-Item $compileDirectory -Recurse -Force
+# }
+
+
+# ### CLEAR OUT LATEST CODE COVERAGE ARTIFACTS
+# $coverageDirectory = "./coverage/"
+# If (Test-Path $coverageDirectory ) {
+#     echo "REMOVING COVERAGE DIRECTORY"
+#     Remove-Item $coverageDirectory -Recurse -Force
+# }
+
+# npm run compile
+# npm run jest-test-summary 
 
 $expectedJestTestFailedSummaryPath = "./coverage/jest-results.json"
 if ( -not(Test-Path $expectedJestTestFailedSummaryPath) ) {

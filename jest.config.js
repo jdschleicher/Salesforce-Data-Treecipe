@@ -9,5 +9,6 @@ module.exports = {
         "force-app/main/default/*",
         "force-app/test/*",
         "out/*",
+        ".*MockObjectsService\\.test\\.ts$"
     ]
 };

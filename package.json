@@ -75,7 +75,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "vscode-test": "vscode-test",
-    "jest-test-summary": "jest --coverage --coverageReporters='json-summary' --json --outputFile=coverage/jest-results.json",
+    "jest-test-summary": "jest --coverage --coverageReporters='json-summary' --json --outputFile=coverage/jest-results.json --config=jest.config.js",
     "jest-test": "jest --coverage"
   },
   "devDependencies": {
