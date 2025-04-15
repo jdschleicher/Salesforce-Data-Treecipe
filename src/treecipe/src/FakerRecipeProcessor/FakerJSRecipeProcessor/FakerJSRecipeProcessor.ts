@@ -265,52 +265,49 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             datetimeBetweenRegex,
             dateRegex,
             datetimeRegex
-        } = this.createComposableRegex();
+        } = this.getExpectedDateRegExPatterns();
 
         let modifiedCode = originalCode;
 
         // Replace date_between
-        modifiedCode = modifiedCode.replace(
-            dateBetweenRegex, 
-            (match, fromValue, toValue) => {
+        modifiedCode = modifiedCode.replace(dateBetweenRegex, (match, fromValue, toValue) => {
+
             console.log('Date Between Match:', { match, fromValue, toValue });
             return `dateUtils.date_between({from: '${fromValue}', to: '${toValue}'})`;
-            }
-        );
+
+        });
 
         // Replace datetime_between
-        modifiedCode = modifiedCode.replace(
-            datetimeBetweenRegex, 
-            (match, fromValue, toValue) => {
+        modifiedCode = modifiedCode.replace(datetimeBetweenRegex, (match, fromValue, toValue) => {
+
             console.log('Datetime Between Match:', { match, fromValue, toValue });
             return `dateUtils.datetime_between({from: '${fromValue}', to: '${toValue}'})`;
-            }
-        );
+
+        });
 
         // Replace date
-        modifiedCode = modifiedCode.replace(
-            dateRegex, 
-            (match, inputValue) => {
+        modifiedCode = modifiedCode.replace(dateRegex, (match, inputValue) => {
+
             console.log('Date Match:', { match, inputValue });
             return `dateUtils.date('${inputValue}')`;
-            }
-        );
+        
+        });
 
         // Replace datetime
-        modifiedCode = modifiedCode.replace(
-            datetimeRegex, 
-            (match, inputValue) => {
+        modifiedCode = modifiedCode.replace(datetimeRegex, (match, inputValue) => {
+            
             console.log('Datetime Match:', { match, inputValue });
             return `dateUtils.datetime('${inputValue}')`;
-            }
-        );
+
+        });
 
         return modifiedCode;
 
     }
 
+    // THESE DATE UTILS ARE LEVERAGED AS PART OF THE prepareFakerDateSyntax FUNCTION
     dateUtils = {
-        // Date generation functions
+        
         date(input) {
           const parsedInput = this.parseRelativeDate(input);
           
@@ -343,8 +340,12 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         parseRelativeDate(dateStr, isDateTime = false) {
        
             // If it's already a valid JavaScript date expression, return as-is
-            if (!dateStr || typeof dateStr === 'object' || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-                return dateStr;
+            if (!dateStr 
+                || typeof dateStr === 'object' 
+                || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+
+                    return dateStr;
+
             }
             
             // Trim whitespace
@@ -378,7 +379,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     };
       
-    createComposableRegex() {
+    getExpectedDateRegExPatterns() {
 
         // Whitespace handling
         const OPTIONAL_WHITESPACE = '\\s*';
@@ -389,7 +390,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         // Value capture (supports relative dates, 'today', and hardcoded dates)
         const VALUE_CAPTURE = "([^'\"},]+)";
         
-        // Function name patterns
+        // Expected "Date" function expression patterns
         const DATE_BETWEEN_NAME = 'date_between';
         const DATETIME_BETWEEN_NAME = 'datetime_between';
         const DATE_NAME = 'date';
@@ -405,7 +406,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const FROM_PARAM = 'from:';
         const TO_PARAM = 'to:';
         
-        // Composable regex for each function type
         const dateBetweenRegex = new RegExp(
           `${DATE_BETWEEN_NAME}${OPENING_PARENTHESIS}` +
           `${OPENING_BRACE}` +

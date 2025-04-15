@@ -143,29 +143,16 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
     describe('prepareFakerDateSyntax', () => {
         
         test('should transform date_between syntax', () => {
-          // Mock the createComposableRegex method
-          jest.spyOn(fakerJSRecipeProcessor, 'createComposableRegex').mockReturnValue({
-            dateBetweenRegex: /date_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
-            datetimeBetweenRegex: /datetime_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
-            dateRegex: /date\(\s*['"]?([^'")+]*)['"]?\s*\)/,
-            datetimeRegex: /datetime\(\s*['"]?([^'")+]*)['"]?\s*\)/
-          });
     
           const result = fakerJSRecipeProcessor.prepareFakerDateSyntax(
             "date_between({from: 'today', to: '+30'})"
           );
     
           expect(result).toBe("dateUtils.date_between({from: 'today', to: '+30'})");
+
         });
     
         test('should transform datetime syntax', () => {
-          // Mock the createComposableRegex method
-          jest.spyOn(fakerJSRecipeProcessor, 'createComposableRegex').mockReturnValue({
-            dateBetweenRegex: /date_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
-            datetimeBetweenRegex: /datetime_between\(\{from:\s*['"]?([^'"}]+)['"]?,\s*to:\s*['"]?([^'"}]+)['"]?\}\)/,
-            dateRegex: /date\(\s*['"]?([^'")+]*)['"]?\s*\)/,
-            datetimeRegex: /datetime\(\s*['"]?([^'")+]*)['"]?\s*\)/
-          });
     
           const result = fakerJSRecipeProcessor.prepareFakerDateSyntax(
             "datetime('today')"
@@ -178,45 +165,44 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     describe('dateUtils.parseRelativeDate', () => {
 
-      test('should handle today keyword', () => {
-        const mockDate = new Date('2023-01-01T12:00:00Z');
-        jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
-  
-        const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
+        test('should handle today keyword', () => {
+          const mockDate = new Date('2023-01-01T12:00:00Z');
+          jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
+    
+          const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
+          
+          expect(result).toEqual(mockDate);
+
+        });
+      
+        test('should handle relative days in the future', () => {
+            
+            let currentDate = new Date();
+            const expectedDaysInFuture = 377;
+
+            const futureExpectedDate:Date = new Date(currentDate.setDate(currentDate.getDate() + expectedDaysInFuture));
         
-        expect(result).toEqual(mockDate);
+            const parsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(`+${expectedDaysInFuture}`);
+            
+            // to focus on just date, parse to ISO string and split off the time element
+            const futureExpectedDateTrimmedOfIsoString =  futureExpectedDate.toISOString().split('T')[0];
+            expect(parsedDate).toBe(futureExpectedDateTrimmedOfIsoString);
+
+        });
+
+        test('should handle relative days in the past', () => {
+            
+          let currentDate = new Date();
+          const expectedDaysInPast = 15;
+          const pastExpectedDate:Date = new Date(currentDate.setDate(currentDate.getDate() - expectedDaysInPast));
+      
+          const parsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(`-${expectedDaysInPast}`);
+          
+          // to focus on just date, parse to ISO string and split off the time element
+          const pastExpectedDateTrimmedOfIsoString =  pastExpectedDate.toISOString().split('T')[0];
+          expect(parsedDate).toBe(pastExpectedDateTrimmedOfIsoString);
+
       });
-  
-      // test('should handle relative days in the future', () => {
-
-      //     const mockDate = new Date('2023-01-01T12:00:00Z');
-      //     const futureMockDate = new Date('2023-01-06T12:00:00Z');
-          
-      //     let currentDate = mockDate;
-      //     jest.spyOn(global, 'Date').mockImplementation(() => {
-      //         const dateCopy = new Date(currentDate.getTime());
-      //         return dateCopy as any;
-      //     });
-      
-      //     // Mock the Date.prototype.setDate to simulate adding days
-      //     const originalSetDate = Date.prototype.setDate;
-      //     Date.prototype.setDate = jest.fn(function(day) {
-      //         if (day === currentDate.getDate() + 5) {
-      //         // Simulate adding 5 days
-      //         currentDate = futureMockDate;
-      //         return futureMockDate.getTime();
-      //         }
-      //         return originalSetDate.call(this, day);
-      //     });
-      
-      //     const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('+5');
-          
-      //     expect(result).toBe('2023-01-06');
-          
-      //     // Restore original method
-      //     Date.prototype.setDate = originalSetDate;
-
-      // });
 
     });
 
@@ -299,6 +285,29 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
         expect(result).toBe('Name: John');
 
       });
+
+    });
+
+    describe('getExpectedDateRegExPatterns', () => {
+
+        const dateRegExPatterns = fakerJSRecipeProcessor.getExpectedDateRegExPatterns();
+
+        test('thinking', () => {
+
+
+
+          const result = fakerJSRecipeProcessor.prepareFakerDateSyntax(
+            "date_between({from: 'today', to: '+30'})"
+          );
+    
+          expect(result).toBe("dateUtils.date_between({from: 'today', to: '+30'})");
+
+        
+        });
+      
+
+
+
     });
  
 
