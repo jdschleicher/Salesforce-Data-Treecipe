@@ -127,4 +127,47 @@ export class MockDirectoryService {
 
   }
 
+  static getReaddirMockImplBySetOfMockedDirents(mockedDirents) {
+
+      type DirentOptions = { withFileTypes: true };
+      type StringOptions = { withFileTypes?: false };
+  
+      function readdirMockImpl(path: fs.PathLike, options: DirentOptions): Promise<fs.Dirent[]>;
+
+      function readdirMockImpl(path: fs.PathLike, options?: StringOptions): Promise<string[]>;
+      
+      function readdirMockImpl(
+                      path: fs.PathLike,
+                      options?: DirentOptions | StringOptions
+                  ): Promise<string[] | fs.Dirent[]> {
+
+          const matching = mockedDirents.filter(dirent => dirent.path === path);
+
+          if (options?.withFileTypes) {
+              return Promise.resolve(matching); // ✅ Dirent[]
+          } else {
+              return Promise.resolve(matching.map(d => d.name)); // ✅ string[]
+          }
+          
+      }
+
+      return readdirMockImpl;
+
+  };
+
+  static createMockedDirent(
+      name: string,
+      path: string,
+      type: 'file' | 'dir'
+    ): fs.Dirent {
+      
+    return Object.assign(new fs.Dirent(), {
+      name: name,
+      isFile: () => type === 'file',
+      isDirectory: () => type === 'dir',
+      path: path,
+    });
+      
+  }
+
 }

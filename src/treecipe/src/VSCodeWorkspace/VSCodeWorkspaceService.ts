@@ -191,11 +191,22 @@ export class VSCodeWorkspaceService {
 
     static async getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems: vscode.QuickPickItem[], folderPathToParse: string) {
 
+        const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+        const expectedFakerJSRecipeFileIndicator = 'recipe-fakerjs';
+
         const entries = await fs.promises.readdir(folderPathToParse, { withFileTypes: true });
         for (const entry of entries) {
   
             if (entry.isFile() && 
                 ( path.extname(entry.name) === '.yaml' || path.extname(entry.name) === '.yml' )) {
+
+                const isFakerJSFileWithSnowfakerySelectedAsFakerService = (selectedDataFakerService === 'snowfakery' && entry.name.includes(expectedFakerJSRecipeFileIndicator));
+                const isNotFakerJSFileWithFakerJSAsFakerService = (selectedDataFakerService === 'faker-js' && !entry.name.includes(expectedFakerJSRecipeFileIndicator));
+                if (isFakerJSFileWithSnowfakerySelectedAsFakerService || isNotFakerJSFileWithFakerJSAsFakerService) {
+                    // IF THERE IS A MISMATCH BETWEEN THE CURRENT SELECTED FAKER SERVICE AND THE DIRECTORY NAME THAT INDICATES WHAT FAKER SERVICE WAS USED TO GENERATE FAKER EXPRESSIONS 
+                    // THEN DO NOT INCLUDE THIS DIRECTORY IN THE RESULTING RECIPES TO PROCESS
+                    continue;
+                }
 
                 const quickpickLabel = `${entry.name}`; 
                 const fullFilePathName = path.join(entry.path, entry.name);
@@ -209,6 +220,15 @@ export class VSCodeWorkspaceService {
             } else if ( entry.isDirectory()) {
                 
                 const recipeDirectoryPathToParseUri = path.join(folderPathToParse, entry.name);
+
+                const isFakerJSDirectoryWithSnowfakerySelectedAsFakerService = (selectedDataFakerService === 'snowfakery' && recipeDirectoryPathToParseUri.includes(expectedFakerJSRecipeFileIndicator));
+                const isNotFakerJSDirectoryWithFakerJSAsFakerService = (selectedDataFakerService === 'faker-js' && !recipeDirectoryPathToParseUri.includes(expectedFakerJSRecipeFileIndicator));
+                if (isFakerJSDirectoryWithSnowfakerySelectedAsFakerService || isNotFakerJSDirectoryWithFakerJSAsFakerService) {
+                    // IF THERE IS A MISMATCH BETWEEN THE CURRENT SELECTED FAKER SERVICE AND THE DIRECTORY NAME THAT INDICATES WHAT FAKER SERVICE WAS USED TO GENERATE FAKER EXPRESSIONS 
+                    // THEN DO NOT INCLUDE THIS DIRECTORY IN THE RESULTING RECIPES TO PROCESS
+                    continue;
+                }
+                
                 const recipeFileVSCodeItems: vscode.QuickPickItem[] = await this.getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems, recipeDirectoryPathToParseUri);
                 if ( recipeFileVSCodeItems.length > 0 ) {
                     recipeFileQuickPickItems.concat(recipeFileVSCodeItems);

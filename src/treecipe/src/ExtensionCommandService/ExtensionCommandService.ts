@@ -115,10 +115,6 @@ export class ExtensionCommandService {
             } else {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
-          
-            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-            
-            const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
 
             // ensure dedicated directory for generated recipes exists
             const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
@@ -127,7 +123,26 @@ export class ExtensionCommandService {
                 fs.mkdirSync(expectedGeneratedRecipesFolderPath);
             }
 
-            const timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
+            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+            let recipeFileName = '';
+            let timestampedRecipeGenerationFolder = '';
+            const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+            // THE BELOW CONDITIONAL ADJUSTS HOW RECIPE FILE GETS GENERATED TO INCLUDE A SPECIAL FAKERJS INDICATOR OF THE SELECTED FAKER SERVICE IS 'faker-js' 
+            // WITH THIS INDICATOR IN THE RECIPE FILE NAME, THIS WILL PREVENT A FAKER-JS TRYING TO BE PROCESSED
+            // WHEN THE SELECTED FAKER SERVICE IS CONFIGURED FOR 'snowfakery'
+            if (selectedDataFakerService === 'faker-js') {
+
+                const fakerjsRecipeIndicator = 'recipe-fakerjs';
+                recipeFileName = `${fakerjsRecipeIndicator}-${isoDateTimestamp}.yaml`;
+                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${fakerjsRecipeIndicator}-${isoDateTimestamp}`;
+
+            } else {
+
+                recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
+                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
+
+            }
+            
             fs.mkdirSync(timestampedRecipeGenerationFolder);
 
             const outputFilePath = `${timestampedRecipeGenerationFolder}/${recipeFileName}`;
