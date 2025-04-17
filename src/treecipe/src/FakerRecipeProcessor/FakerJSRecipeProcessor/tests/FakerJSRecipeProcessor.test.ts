@@ -165,42 +165,62 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     describe('dateUtils.parseRelativeDate', () => {
 
-        test('should handle today keyword', () => {
-          const mockDate = new Date('2023-01-01T12:00:00Z');
-          jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
-    
-          const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
-          
-          expect(result).toEqual(mockDate);
+      test('should handle today keyword', () => {
 
-        });
-      
-        test('should handle relative days in the future', () => {
-            
-            let currentDate = new Date();
-            const expectedDaysInFuture = 377;
-
-            const futureExpectedDate:Date = new Date(currentDate.setDate(currentDate.getDate() + expectedDaysInFuture));
+        const mockDate = new Date('2023-01-01T12:00:00Z');
+        jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
+  
+        const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
         
-            const parsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(`+${expectedDaysInFuture}`);
-            
-            // to focus on just date, parse to ISO string and split off the time element
-            const futureExpectedDateTrimmedOfIsoString =  futureExpectedDate.toISOString().split('T')[0];
-            expect(parsedDate).toBe(futureExpectedDateTrimmedOfIsoString);
+        expect(result).toEqual(mockDate);
 
-        });
-
-        test('should handle relative days in the past', () => {
-            
-          let currentDate = new Date();
-          const expectedDaysInPast = 15;
-          const pastExpectedDate:Date = new Date(currentDate.setDate(currentDate.getDate() - expectedDaysInPast));
+      });
       
-          const parsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(`-${expectedDaysInPast}`);
+      test('should handle relative days in the future', () => {
+          
+          let currentDate = new Date();
+          const expectedDaysInFuture = 377;
+
+          const futureExpectedDate:Date = new Date(currentDate.setDate(currentDate.getDate() + expectedDaysInFuture));
+      
+          const parsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(`+${expectedDaysInFuture}`);
           
           // to focus on just date, parse to ISO string and split off the time element
-          const pastExpectedDateTrimmedOfIsoString =  pastExpectedDate.toISOString().split('T')[0];
-          expect(parsedDate).toBe(pastExpectedDateTrimmedOfIsoString);
+          const futureExpectedDateTrimmedOfIsoString =  futureExpectedDate.toISOString().split('T')[0];
+          expect(parsedDate).toBe(futureExpectedDateTrimmedOfIsoString);
+
+      });
+
+      test('should handle relative days in the past', () => {
+          
+        let currentDate = new Date();
+        const expectedDaysInPast = 15;
+        const pastExpectedDate:Date = new Date(currentDate.setDate(currentDate.getDate() - expectedDaysInPast));
+    
+        const parsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(`-${expectedDaysInPast}`);
+        
+        // to focus on just date, parse to ISO string and split off the time element
+        const pastExpectedDateTrimmedOfIsoString =  pastExpectedDate.toISOString().split('T')[0];
+        expect(parsedDate).toBe(pastExpectedDateTrimmedOfIsoString);
+
+      });
+
+      test('given invalid Javascript date expression, should return value combined with todo to check the date', () => {
+        
+        const dateExpression = "new Date('2023-01-01')";
+        const actualParsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(dateExpression);
+        
+        const expectedTodoValue = `${dateExpression} ### TODO: THIS MAY NOT BE A VALID DATE VALUE`;
+        expect(actualParsedDate).toBe(expectedTodoValue);
+
+      });
+
+      test('given valid YYYY-MM-DD match with no surrounding characters outside of quotes, should return and stop parsing for relative date', () => {
+        
+        const dateExpression = "2023-01-01";
+        const actualParsedDate = fakerJSRecipeProcessor.dateUtils.parseRelativeDate(dateExpression);
+        
+        expect(actualParsedDate).toBe(dateExpression);
 
       });
 
@@ -218,6 +238,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
         expect(matches).not.toBeNull();
         expect(matches[1].trim()).toBe('Industry');
         expect(matches[2].trim()).toBe("'Technology'");
+
       });
 
     });
@@ -273,6 +294,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
         
         expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
         expect(result).toBe('Outer John with 42');
+        
       });
   
       test('should handle whitespace in expressions', async () => {

@@ -295,7 +295,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         // Replace datetime
         modifiedCode = modifiedCode.replace(datetimeRegex, (match, inputValue) => {
-            
+
             console.log('Datetime Match:', { match, inputValue });
             return `dateUtils.datetime('${inputValue}')`;
 
@@ -337,27 +337,46 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
           });
         },
 
-        parseRelativeDate(dateStr, isDateTime = false) {
+        parseRelativeDate(dateArgument, isDateTime = false) {
        
-            // If it's already a valid JavaScript date expression, return as-is
-            if (!dateStr 
-                || typeof dateStr === 'object' 
-                || /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+            // Trim whitespace
+            dateArgument = dateArgument.trim();
 
-                    return dateStr;
+            // If it's already a valid JavaScript date expression, return as-is
+            // const dateYYYYMMDDRegexPattern = /^\d{4}-\d{2}-\d{2}/;
+
+            const startOfLine = '^';
+            const optionalWhitespaceStart = '\\s*';
+            const optionalOpeningQuote = "['\"]?";  // matches ' or "
+            const datePattern = '\\d{4}-\\d{2}-\\d{2}';  // yyyy-mm-dd
+            const optionalClosingQuote = "['\"]?";
+            const optionalWhitespaceEnd = '\\s*';
+            const endOfLine = '$';
+            const combinedDateRegexPattern = startOfLine 
+                                                + optionalWhitespaceStart 
+                                                + optionalOpeningQuote 
+                                                + datePattern 
+                                                + optionalClosingQuote 
+                                                + optionalWhitespaceEnd 
+                                                + endOfLine;
+
+            const dateYYYYMMDDRegexPattern = new RegExp(combinedDateRegexPattern);
+            if (!dateArgument 
+                || typeof dateArgument === 'object' 
+                || dateYYYYMMDDRegexPattern.test(dateArgument)) {
+
+                return dateArgument;
 
             }
             
-            // Trim whitespace
-            dateStr = dateStr.trim();
-            
             // Check for special keywords
-            if (dateStr.toLowerCase() === 'today') {
+            if (dateArgument.toLowerCase() === 'today') {
                 return new Date();
             }
             
             // Handle relative date syntax
-            const matches = dateStr.match(/^([+-])(\d+)$/);
+            const expectedSyntaxForDayIncreaseOrDecreaseRegexMatch = /^([+-])(\d+)$/;
+            const matches = dateArgument.match(expectedSyntaxForDayIncreaseOrDecreaseRegexMatch);
             if (matches) {
                 const [, sign, days] = matches;
                 const date = new Date();
@@ -373,7 +392,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             }
             
             // If no special syntax is found, return the original input
-            return dateStr;
+            const dateArgumentTodoSyntax = `${dateArgument} ### TODO: THIS MAY NOT BE A VALID DATE VALUE`;
+            return dateArgumentTodoSyntax;
     
         }
 

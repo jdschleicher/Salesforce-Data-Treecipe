@@ -40,40 +40,9 @@ export class FakerJSExpressionMocker {
         // Try exact match first
         if (this.fakerMockValues.has(fakerJSExpression)) {
           return this.fakerMockValues.get(fakerJSExpression) || "";
+        } else {
+          throw new Error(`Mock value for ${fakerJSExpression} not found`);
         }
-        
-        // // If no exact match, try to find a partial match
-        // // This helps with expressions that might have whitespace differences or minor variations
-        // for (const [key, value] of fakerMockValues.entries()) {
-        //   // Clean up expressions for comparison by removing whitespace
-        //   const cleanKey = key.replace(/\s+/g, '');
-        //   const cleanExpr = expression.replace(/\s+/g, '');
-          
-        //   if (cleanExpr === cleanKey) {
-        //     return value;
-        //   }
-        // }
-        
-        // Handle expressions with dynamic parameters by checking for pattern matches
-        // This is useful for expressions like faker.lorem.text() with different length parameters
-        if (fakerJSExpression.includes("faker.lorem.text")) {
-          return "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
-        }
-        
-        if (fakerJSExpression.includes("faker.date.between")) {
-
-          if (fakerJSExpression.includes("split('T')[0]")) {
-            return "2023-06-15";
-          } else if (fakerJSExpression.includes("split('T')[1]")) {
-            return "14:35:22.000Z";
-          } else {
-            return "2023-06-15T10:30:15.123Z";
-          }
-
-        }
-        
-        // Default empty value if no match is found
-        return "";
 
     }
 
