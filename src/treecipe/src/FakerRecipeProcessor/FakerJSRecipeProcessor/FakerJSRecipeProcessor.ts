@@ -8,7 +8,7 @@ import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     static baseFakerJSInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
-    static regExpressionForSurroundingFakerJSSyntax = /"\${{(.*?)}}"/g;
+    static regExpressionForSurroundingFakerJSSyntax = /\${{(.*?)}}/g;
     
     async generateFakeDataBySelectedRecipeFile(fullRecipeFileNamePath: string) {
 
@@ -129,7 +129,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
        
         const controllingFieldPicklsitMatch = whenIndicatorInYamlExpression.match(fieldApiNameInWhenConditionRegex);
         if ( !controllingFieldPicklsitMatch ) {
-            throw new Error('Incorrect format for dependent picklist faker value. Should match \"${{ Picklist__c == \'cle\' }}\"');
+            throw new Error('Incorrect format for dependent picklist faker value. Should match the following pattern: \"${{ PicklistApiName__c == \'picklistValue\' }}\"');
         }
     
         let expectedExistingControllingFieldApiNameForDependentPicklist = controllingFieldPicklsitMatch[1];
