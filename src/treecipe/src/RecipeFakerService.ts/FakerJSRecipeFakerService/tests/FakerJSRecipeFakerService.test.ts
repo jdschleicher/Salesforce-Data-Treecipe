@@ -13,60 +13,66 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         const seeOnePagerPlaceholder = '### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445';
 
         test('Text field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['text']).toBe('"${{ faker.lorem.text(50) }}"');
+            expect(fieldTypeToNPMFakerMappings['text']).toBe('${{ faker.lorem.text(50) }}');
         });
 
         test('TextArea field returns correct npm faker expression', () => {
 
             const textAreaExpression = fieldTypeToNPMFakerMappings['textarea'];
-            expect(textAreaExpression).toBe('"${{ faker.lorem.paragraph() }}"');
+            expect(textAreaExpression).toBe('${{ faker.lorem.paragraph() }}');
             
         });
 
         test('LongTextArea field returns correct npm faker expression', () => {
             const longTextAreaExpression = fieldTypeToNPMFakerMappings['longtextarea'];
-            expect(longTextAreaExpression).toBe('"${{ faker.lorem.text(1000) }}"');
+            expect(longTextAreaExpression).toBe('${{ faker.lorem.text(1000) }}');
         });
 
         test('RichTextArea Html field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['html']).toBe('"${{ faker.lorem.text(1000) }}"');
+            expect(fieldTypeToNPMFakerMappings['html']).toBe('${{ faker.lorem.text(1000) }}');
         });
 
         test('Email field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['email']).toBe('\"${{ faker.internet.email() }}\"');
+            expect(fieldTypeToNPMFakerMappings['email']).toBe('\${{ faker.internet.email() }}');
         });
 
         test('Phone field returns correct npm faker expression', () => {
             const phoneFakerExpression = fieldTypeToNPMFakerMappings['phone'];
-            expect(phoneFakerExpression).toBe('"${{ faker.phone.number({style:\'national\'}) }}"');
+            expect(phoneFakerExpression).toBe(`|
+                \${{ faker.phone.number({style:\'national\'}) }}`);
         });
 
         test('Url field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['url']).toBe('\"${{ faker.internet.url() }}\"');
+            expect(fieldTypeToNPMFakerMappings['url']).toBe('\${{ faker.internet.url() }}');
         });
 
         test('Number field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['number']).toBe('\"${{ faker.number.int({min: 0, max: 999999}) }}\"');
+            expect(fieldTypeToNPMFakerMappings['number']).toBe(`|
+                \${{ faker.number.int({min: 0, max: 999999}) }}`);
         });
 
         test('Currency field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['currency']).toBe('\"${{ faker.finance.amount(0, 999999, 2) }}\"');
+            expect(fieldTypeToNPMFakerMappings['currency']).toBe('\${{ faker.finance.amount(0, 999999, 2) }}');
         });
 
         test('Percent field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['percent']).toBe('\"${{ faker.number.float({ min: 0, max: 99, precision: 0.01 }).toFixed(2) }}\"');
+            expect(fieldTypeToNPMFakerMappings['percent']).toBe(`|
+                \${{ faker.number.float({ min: 0, max: 99, precision: 0.01 }).toFixed(2) }}`);
         });
 
         test('Date field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['date']).toBe('\"${{ faker.date.between({ from: new Date(\'2023-01-01\'), to: new Date() }).toISOString().split(\'T\')[0] }}\"');
+            expect(fieldTypeToNPMFakerMappings['date']).toBe(`|
+                \${{ faker.date.between({ from: new Date(\'2023-01-01\'), to: new Date() }).toISOString().split(\'T\')[0] }}`);
         });
 
         test('DateTime field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['datetime']).toBe('\"${{ faker.date.between({ from: new Date(\'2023-01-01T00:00:00Z\'), to: new Date() }).toISOString() }}\"');
+            expect(fieldTypeToNPMFakerMappings['datetime']).toBe(`|
+                \${{ faker.date.between({ from: new Date(\'2023-01-01T00:00:00Z\'), to: new Date() }).toISOString() }}`);
         });
 
         test('Time field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['time']).toBe('\"${{ faker.date.between({ from: new Date(\'1970-01-01T00:00:00Z\'), to: new Date(\'1970-01-01T23:59:59Z\') }).toISOString().split(\'T\')[1] }}\"');
+            expect(fieldTypeToNPMFakerMappings['time']).toBe(`|
+                \${{ faker.date.between({ from: new Date(\'1970-01-01T00:00:00Z\'), to: new Date(\'1970-01-01T23:59:59Z\') }).toISOString().split(\'T\')[1] }}`);
         });
 
         test('Picklist field returns correct npm faker expression', () => {
@@ -78,7 +84,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         });
 
         test('Checkbox field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['checkbox']).toBe('\"${{ faker.datatype.boolean() }}\"');
+            expect(fieldTypeToNPMFakerMappings['checkbox']).toBe('\${{ faker.datatype.boolean() }}');
         });
 
         test('Lookup field returns correct npm faker expression', () => {
@@ -136,7 +142,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         test('given expected list of choices, returns expected multiselect picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = `"\${{ (faker.helpers.arrayElements(['apple','orange','banana'])).join(';') }}"`;
+            const expectedRecipeValue = `\${{ (faker.helpers.arrayElements(['apple','orange','banana'])).join(';') }}`;
             const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = fakerJSRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeApiToRecordTypeWrapperMap, fakeFieldApiName);
@@ -162,28 +168,28 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             const expectedDependentPicklistRecipeValue =`
       if:
         - choice:
-            when: "\${{ ${controllingField} == 'Toyota' }}"
+            when: \${{ ${controllingField} == 'Toyota' }}
             pick:
                 random_choice:
                     - Corolla
                     - Camry
                     - Prius
         - choice:
-            when: "\${{ ${controllingField} == 'Ford' }}"
+            when: \${{ ${controllingField} == 'Ford' }}
             pick:
                 random_choice:
                     - F-150
                     - Mustang
                     - Explorer
         - choice:
-            when: "\${{ ${controllingField} == 'Honda' }}"
+            when: \${{ ${controllingField} == 'Honda' }}
             pick:
                 random_choice:
                     - Civic
                     - Accord
                     - Pilot
         - choice:
-            when: "\${{ ${controllingField} == 'Tesla' }}"
+            when: \${{ ${controllingField} == 'Tesla' }}
             pick:
                 random_choice:
                     - Model S
@@ -208,7 +214,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         test('given expected list of choices, returns expected  picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = `"\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}"`;
+            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}`;
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 

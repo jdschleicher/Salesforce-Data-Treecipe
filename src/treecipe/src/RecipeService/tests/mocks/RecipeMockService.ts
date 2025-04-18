@@ -266,7 +266,7 @@ return fakeRecordTypeRecipe;
         const expectedDependentPicklistRecipeValue =`
       if:
         - choice:
-            when: "\${{ ${controllingField} == 'cle' }}"
+            when: \${{ ${controllingField} == 'cle' }}
             pick:
                 random_choice:
                     - tree
@@ -274,34 +274,34 @@ return fakeRecordTypeRecipe;
                     - mulch
                     - rocks
         - choice:
-            when: "\${{ ${controllingField} == 'eastlake' }}"
+            when: \${{ ${controllingField} == 'eastlake' }}
             pick:
                 random_choice:
                     - tree
                     - weed
                     - mulch
         - choice:
-            when: "\${{ ${controllingField} == 'madison' }}"
+            when: \${{ ${controllingField} == 'madison' }}
             pick:
                 random_choice:
                     - tree
                     - weed
                     - plant
         - choice:
-            when: "\${{ ${controllingField} == 'willoughby' }}"
+            when: \${{ ${controllingField} == 'willoughby' }}
             pick:
                 random_choice:
                     - tree
                     - weed
                     - mulch
         - choice:
-            when: "\${{ ${controllingField} == 'mentor' }}"
+            when: \${{ ${controllingField} == 'mentor' }}
             pick:
                 random_choice:
                     - weed
                     - plant
         - choice:
-            when: "\${{ ${controllingField} == 'wickliffe' }}"
+            when: \${{ ${controllingField} == 'wickliffe' }}
             pick:
                 random_choice:
                     - weed
@@ -316,7 +316,7 @@ return fakeRecordTypeRecipe;
         const fakeObjectMarkupForEverythingExample = 
 `- object: Example_Everything__c
   nickname: Example_Everything__c_NickName
-  count: 1
+  count: 2
   fields:
     RecordTypeId: (\${{faker.name.firstName()}} has email \${{faker.internet.email()}})
     Checkbox__c: \${{ faker.datatype.boolean() }}

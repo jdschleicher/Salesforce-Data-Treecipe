@@ -409,7 +409,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-            const expectedPicklistFakerJSValue = "\"${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}\"";
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
@@ -420,7 +420,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
-            const expectedFakerJSMultiSelectPicklistExpression = "\"${{ (faker.helpers.arrayElements(['chicken','chorizo','egg','fish','pork','steak','tofu'])).join(';') }}\"";
+            const expectedFakerJSMultiSelectPicklistExpression = "\${{ (faker.helpers.arrayElements(['chicken','chorizo','egg','fish','pork','steak','tofu'])).join(';') }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualMultiSelectPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
@@ -432,7 +432,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
             const expectedDatetimeXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
             // const expectedDatetimeSnowfakeryValue = '${{ (fake.date_time_between(start_date="-1y", end_date="now")).strftime("%Y-%m-%dT%H:%M:%S.000+0000") }}';
-            const expectedDatetimeFakerJSExpression = "\"${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}\"";
+            const expectedDatetimeFakerJSExpression = `|
+                \${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualDatetimeFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
@@ -443,7 +444,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected url XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedUrlFieldDetail:XMLFieldDetail = XMLMarkupMockService.getUrlXMLFieldDetail();
-            const expectedUrlFakerJSExpressionValue = "\"${{ faker.internet.url() }}\"";
+            const expectedUrlFakerJSExpressionValue = "\${{ faker.internet.url() }}";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualUrlFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
@@ -454,7 +455,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected phone XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForPhone:XMLFieldDetail = XMLMarkupMockService.getPhoneXMLFieldDetail();
-            const expectedFakerJSExpressionForPhone = "\"${{ faker.phone.number({style:'national'}) }}\"";
+            const expectedFakerJSExpressionForPhone = `|
+                \${{ faker.phone.number({style:'national'}) }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
             const actualFakerJSExpressionForPhone = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone, recordTypeNameByRecordTypeNameToXMLMarkup);
 
@@ -465,11 +467,11 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected number XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
-            const expectedFakerJSExpressionForNumber =  "\"${{ faker.number.int({min: 0, max: 999999}) }}\"";
+            const expectedFakerJSExpressionForNumber =  `|
+                \${{ faker.number.int({min: 0, max: 999999}) }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
 
             const actualFakerJSForNumber = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
-
             expect(actualFakerJSForNumber).toBe(expectedFakerJSExpressionForNumber);
 
         });
@@ -477,7 +479,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected currency XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
-            const expectedFakerJSExpressionForCurrency = "\"${{ faker.finance.amount(0, 999999, 2) }}\"";
+            const expectedFakerJSExpressionForCurrency = "\${{ faker.finance.amount(0, 999999, 2) }}";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualFakerJSForCurrency = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 
