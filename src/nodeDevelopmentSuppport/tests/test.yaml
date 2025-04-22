@@ -2,6 +2,8 @@
   nickname: Example_Everything__c_NickName
   count: 2
   fields:
+    # DateTwo__c: hardcoded date
+    # DateTimeOne__c: hardcoded datetime
     DateOne__c: |
         ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
     DateTwo__c: |
