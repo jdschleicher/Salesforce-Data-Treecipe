@@ -332,6 +332,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 from: fromResult,
                 to: toResult
             }).toISOString().split('T')[0];
+            
+            console.log('date_between fakerDate:', fakerDate);
 
             return fakerDate;
         },
@@ -346,7 +348,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 to: toResult
             }).toISOString();
 
-
+            console.log('datetime_between fakerDate:', fakerDate);
             return fakerDate;
         },
 
@@ -406,6 +408,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 const formattedDate = isDateTime ? 
                                         date.toISOString() 
                                         : date.toISOString().split('T')[0];
+
+                console.log('formattedDate:', formattedDate);
                 return formattedDate;
             }
             
