@@ -2,6 +2,14 @@
   nickname: Example_Everything__c_NickName
   count: 2
   fields:
+    DateOne__c: |
+        ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+    DateTwo__c: |
+        ${{ date_between({from: 'today', to: '+3'}) }}
+    DateTimeOne__c: |
+        ${{ datetime_between({from: 'today', to: '+3'}) }}
+    DateTimeTwo__c: |
+        ${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
     RecordTypeId: (${{faker.name.firstName()}} has email ${{faker.internet.email()}})
     Checkbox__c: ${{ faker.datatype.boolean() }}
     Currency__c: ${{ faker.finance.amount(0, 999999, 2) }}
