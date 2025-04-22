@@ -382,7 +382,11 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             
             // Check for special keywords
             if (dateArgument.toLowerCase() === 'today') {
-                return new Date();
+                const todaysDate = new Date();
+                const todaysDateFormatted = (isDateTime)
+                                        ? todaysDate.toISOString() 
+                                        : todaysDate.toISOString().split('T')[0];
+                return todaysDateFormatted;
             }
             
             // Handle relative date syntax
