@@ -1,0 +1,55 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Example_Everything__c",
+        "referenceId": "Example_Everything__c_Reference_1"
+      },
+      "RecordTypeId": "(Alyson has email Kattie_Zulauf@hotmail.com)",
+      "Checkbox__c": "true",
+      "Currency__c": "532.00",
+      "DateTime__c": "2023-04-07T14:42:58.325Z\n",
+      "Date__c": "2024-11-16\n",
+      "Picklist__c": "eastlake",
+      "DependentPicklist__c": "weed",
+      "Email__c": "Danny.Mayert@gmail.com",
+      "Formula__c": "391464\n",
+      "MultiPicklist__c": "steak",
+      "Number__c": "427922\n",
+      "Percent__c": "60.90\n",
+      "Phone__c": "(712) 459-1896",
+      "RichTextAreaHtml__c": "Ait surgo aggredior deludo clam aufero tutis cuius.",
+      "TextAreaRich__c": "Occaecati clam balbus quisquam. Abundans uterque contra turbo vulgus velociter summisse architecto vel. Verecundia celo beatae delectus territo quae aro aurum.\nUmquam sit trado calco neque concido ascit pariatur. Crepusculum ut argentum cruciamentum voveo aranea. Baiulus aegrus admoneo ciminatio decor vero adopto curtus stipes vix.\nCreptio curriculum vesco cariosus. Velut vita fuga comburo sublime blanditiis sum virgo avaritia. Spectaculum aduro curatio.",
+      "Text_Area_Long__c": "Correptius audeo reiciendis sed damnatio accusator amaritudo vix abstergo vinum. Subito ea deinde tepidus. Caste cras curso libero acidus cimentarius.",
+      "Text__c": "Clarus sub vilicus delicate.\nTorqueo ipsam astrum universe ulciscor tollo.",
+      "Time__c": "13:15:25.047Z\n",
+      "Url__c": "https://far-premeditation.info"
+    },
+    {
+      "attributes": {
+        "type": "Example_Everything__c",
+        "referenceId": "Example_Everything__c_Reference_2"
+      },
+      "RecordTypeId": "(Estevan has email Margaretta_Johns95@gmail.com)",
+      "Checkbox__c": "true",
+      "Currency__c": "439.25",
+      "DateTime__c": "2024-04-26T22:48:20.170Z\n",
+      "Date__c": "2024-02-25\n",
+      "Picklist__c": "eastlake",
+      "DependentPicklist__c": "tree",
+      "Email__c": "Frederick24@yahoo.com",
+      "Formula__c": "227315\n",
+      "MultiPicklist__c": "pork;chorizo;steak;tofu",
+      "Number__c": "757627\n",
+      "Percent__c": "4.35\n",
+      "Phone__c": "(845) 201-6564",
+      "RichTextAreaHtml__c": "Callide laudantium administratio substantia depono optio vobis vomito totus. Ait una torqueo carus cuppedia atrocitas soleo absorbeo averto crur. Vesica urbs depromo anser ipsam.\nVerbera auditor claudeo vir conicio. Ars aurum corona depraedor patrocinor. Tolero decimus audacia.\nBenigne desipio optio. Triduana tepesco crepusculum communis suus aetas molestiae debitis. Tergum vinco tui audentia arx curatio abscido abeo substantia temporibus.",
+      "TextAreaRich__c": "Arbustum somnus eius.",
+      "Text_Area_Long__c": "Adeo adstringo ante contego beneficium solium caterva.\nDeficio correptius vorax avarus decerno corpus valeo synagoga.\nQuo succurro ultra velut caveo suscipio.\nExercitationem vulgus curriculum asperiores vitium calco cui.",
+      "Text__c": "Audacia eligendi vito claudeo adeo trepide deludo quidem alias. Ultra aegrotatio tenetur thema careo credo. Temporibus eos in caelum ciminatio paens barba ustilo summopere.",
+      "Time__c": "14:36:03.129Z\n",
+      "Url__c": "https://big-tackle.info"
+    }
+  ]
+}

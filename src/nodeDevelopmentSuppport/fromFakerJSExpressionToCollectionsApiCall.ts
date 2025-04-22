@@ -62,9 +62,10 @@ async function makeCollectionsCall(orgAlias: string, collectionsApiFile: string)
 async function processFakerJSExpressionToCollectionsApiCall() {
 
     const mockYamlContent = RecipeMockService.getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup();
-    const fakeTestFile = 'src/nodeDevelopmentSupport/tests/test.yaml';                        
+    const fakeTestFile = 'src/nodeDevelopmentSuppport/tests/test.yaml';                        
 
     fs.writeFileSync(fakeTestFile, mockYamlContent, 'utf8'); // Write the YAML file
+
     const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
      
     const fakerJsonResult = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile(fakeTestFile);
@@ -98,7 +99,9 @@ async function processFakerJSExpressionToCollectionsApiCall() {
 function createCollectionsApiFile(objectApiName: string, collectionsApiFormattedRecords: any, uniqueTimeStampedFakeDataSetsFolderName: string ) {
 
         const expectedCollectionsApiOutputFile = buildCollectionsApiFileNameBySobjectName(objectApiName);
-        const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${expectedCollectionsApiOutputFile}`;
+        const dateTime = new Date().toISOString().split(".")[0].replace(/:/g,"-");
+
+        const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${dateTime}/${expectedCollectionsApiOutputFile}`;
 
         const jsonStringFormattedRecords = JSON.stringify(collectionsApiFormattedRecords, null, 2);
 
