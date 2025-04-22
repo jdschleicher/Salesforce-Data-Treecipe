@@ -309,6 +309,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     dateUtils = {
         
         date(input) {
+
           const parsedInput = this.parseRelativeDate(input);
           
           if (parsedInput instanceof Date) {
@@ -324,17 +325,29 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
       
         // Date range generation functions
         date_between({ from, to }) {
-          return faker.date.between({
-            from: this.parseRelativeDate(from),
-            to: this.parseRelativeDate(to)
-          });
+            const fromResult = this.parseRelativeDate(from);
+            const toResult = this.parseRelativeDate(to);
+
+            const fakerDate = faker.date.between({
+                from: fromResult,
+                to: toResult
+            }).toISOString().split('T')[0];
+
+            return fakerDate;
         },
       
         datetime_between({ from, to }) {
-          return faker.date.between({
-            from: this.parseRelativeDate(from, true),
-            to: this.parseRelativeDate(to, true)
-          });
+
+            const fromResult = this.parseRelativeDate(from, true);
+            const toResult = this.parseRelativeDate(to, true);
+
+            const fakerDate = faker.date.between({
+                from: fromResult,
+                to: toResult
+            }).toISOString();
+
+
+            return fakerDate;
         },
 
         parseRelativeDate(dateArgument, isDateTime = false) {
@@ -343,8 +356,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             dateArgument = dateArgument.trim();
 
             // If it's already a valid JavaScript date expression, return as-is
-            // const dateYYYYMMDDRegexPattern = /^\d{4}-\d{2}-\d{2}/;
-
             const startOfLine = '^';
             const optionalWhitespaceStart = '\\s*';
             const optionalOpeningQuote = "['\"]?";  // matches ' or "
@@ -388,7 +399,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     date.setDate(date.getDate() - parseInt(days));
                 }
             
-                return isDateTime ? date : date.toISOString().split('T')[0];
+                const formattedDate = isDateTime ? 
+                                        date.toISOString() 
+                                        : date.toISOString().split('T')[0];
+                return formattedDate;
             }
             
             // If no special syntax is found, return the original input
