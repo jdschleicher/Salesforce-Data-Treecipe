@@ -101,7 +101,7 @@ function createCollectionsApiFile(objectApiName: string, collectionsApiFormatted
         const expectedCollectionsApiOutputFile = buildCollectionsApiFileNameBySobjectName(objectApiName);
         const dateTime = new Date().toISOString().split(".")[0].replace(/:/g,"-");
 
-        const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${dateTime}/${expectedCollectionsApiOutputFile}`;
+        const fullCollectionsApiFilePath = `${uniqueTimeStampedFakeDataSetsFolderName}/${dateTime}-${expectedCollectionsApiOutputFile}`;
 
         const jsonStringFormattedRecords = JSON.stringify(collectionsApiFormattedRecords, null, 2);
 
