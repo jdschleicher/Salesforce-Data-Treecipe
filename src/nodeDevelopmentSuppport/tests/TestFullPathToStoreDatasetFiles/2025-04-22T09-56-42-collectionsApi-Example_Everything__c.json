@@ -1,0 +1,59 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Example_Everything__c",
+        "referenceId": "Example_Everything__c_Reference_1"
+      },
+      "DateOne__c": "2023-08-03\n",
+      "DateTwo__c": "2025-04-24\n",
+      "DateTimeOne__c": "2025-04-22T13:47:42.037Z\n",
+      "DateTimeTwo__c": "2024-07-11T05:57:11.175Z\n",
+      "Checkbox__c": "true",
+      "Currency__c": "691.27",
+      "DateTime__c": "2023-02-14T02:27:45.737Z\n",
+      "Date__c": "2024-12-08\n",
+      "Picklist__c": "eastlake",
+      "DependentPicklist__c": "mulch",
+      "Email__c": "Christophe69@gmail.com",
+      "MultiPicklist__c": "tofu;pork;chorizo;steak",
+      "Number__c": "818709\n",
+      "Percent__c": "83.29\n",
+      "Phone__c": "(947) 286-0633",
+      "RichTextAreaHtml__c": "Amor aeternus voveo id amaritudo debilito spiritus urbs.",
+      "TextAreaRich__c": "Sopor thalassinus taceo cibo aspicio adduco.",
+      "Text_Area_Long__c": "(Agustin has email Jennifer1@hotmail.com)",
+      "Text__c": "Est voluptas tempus canto crustulum una cicuta odit.\nVilitas enim adstringo terreo.\nEa celebrer aspicio aufero depromo numquam.\nTermes vilitas appositus abeo vespillo nam combibo.",
+      "Time__c": "10:43:37.310Z\n",
+      "Url__c": "https://delectable-sock.com"
+    },
+    {
+      "attributes": {
+        "type": "Example_Everything__c",
+        "referenceId": "Example_Everything__c_Reference_2"
+      },
+      "DateOne__c": "2025-03-09\n",
+      "DateTwo__c": "2025-04-23\n",
+      "DateTimeOne__c": "2025-04-22T13:30:10.772Z\n",
+      "DateTimeTwo__c": "2024-01-27T01:45:00.424Z\n",
+      "Checkbox__c": "true",
+      "Currency__c": "561.86",
+      "DateTime__c": "2024-03-01T11:19:36.562Z\n",
+      "Date__c": "2024-06-04\n",
+      "Picklist__c": "eastlake",
+      "DependentPicklist__c": "mulch",
+      "Email__c": "Anne_Kemmer@gmail.com",
+      "MultiPicklist__c": "tofu;pork",
+      "Number__c": "876360\n",
+      "Percent__c": "68.17\n",
+      "Phone__c": "(317) 270-7876",
+      "RichTextAreaHtml__c": "Coma cresco ancilla basium distinctio solutio cogo velum clementia.",
+      "TextAreaRich__c": "Cresco adicio ipsum cupiditas.",
+      "Text_Area_Long__c": "(Eleazar has email Verner14@hotmail.com)",
+      "Text__c": "Sumptus officia vinculum accendo cubicularis venia claro tres. Cattus voluptas coaegresco appositus sono voluptatem territo. Sperno argumentum audentia minima. Vulticulus voluptatem turpis depopulo accommodo rerum demum. Aperiam vacuus spiritus benevolent",
+      "Time__c": "04:31:07.868Z\n",
+      "Url__c": "https://recent-corral.net/"
+    }
+  ]
+}
