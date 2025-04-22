@@ -52,19 +52,23 @@ async function makeCollectionsCall(orgAlias: string, collectionsApiFile: string)
                                                         );
         console.log('processed: ' + result.length);
         console.log('create Describe:', JSON.stringify(result, null, 2));
-    
+        const notVoid = JSON.stringify(result, null, 2);
+        fs.writeFileSync(`${collectionsApiFile}-results.json`, notVoid, 'utf8'); // Write the YAML file
+
     } catch (error) {
         console.error('Error making Collections API call:', error);
+        fs.writeFileSync(`${collectionsApiFile}-errrrrresults.json`, error, 'utf8'); // Write the YAML file
+
         throw error;
     }
 }
 
 async function processFakerJSExpressionToCollectionsApiCall() {
 
-    const mockYamlContent = RecipeMockService.getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup();
+    // const mockYamlContent = RecipeMockService.getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup();
     const fakeTestFile = 'src/nodeDevelopmentSuppport/tests/test.yaml';                        
 
-    fs.writeFileSync(fakeTestFile, mockYamlContent, 'utf8'); // Write the YAML file
+    // fs.writeFileSync(fakeTestFile, mockYamlContent, 'utf8'); // Write the YAML file
 
     const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
      
@@ -82,15 +86,7 @@ async function processFakerJSExpressionToCollectionsApiCall() {
 
 
         // Execute the function with a specific org alias
-        makeCollectionsCall(orgAlias, pathFileName)
-            .then(results => {
-                console.log('test');
-                // Handle successful response
-            })
-            .catch(error => {
-                // Handle any errors
-                console.log(error);
-        });
+        makeCollectionsCall(orgAlias, pathFileName);
         
     });
     
