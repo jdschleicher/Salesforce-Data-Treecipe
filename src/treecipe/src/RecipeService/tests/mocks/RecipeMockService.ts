@@ -345,8 +345,7 @@ return fakeRecordTypeRecipe;
                     - tree
                     - weed
     Email__c: \${{ faker.internet.email() }}
-    Formula__c: | 
-        \${{ faker.number.int({ min: 0, max: 999999}) }}
+    Formula__c: Formula fields are calculated, not generated
     MultiPicklist__c: \${{ (faker.helpers.arrayElements(['chorizo','pork','steak','tofu'])).join(';') }}
     Number__c: |
         \${{ faker.number.int({min: 0, max: 999999}) }}
