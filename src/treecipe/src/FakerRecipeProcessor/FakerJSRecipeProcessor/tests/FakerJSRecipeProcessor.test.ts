@@ -214,14 +214,27 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     describe('dateUtils.parseRelativeDate', () => {
 
-      test('should handle today keyword', () => {
+      test('should handle today keyword when no DateTime boolean is provided', () => {
+
+        const mockDate = new Date('2023-01-01');
+        jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
+  
+        const actualResult = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
+        
+        const expectedResultForMockedDate = mockDate.toISOString().split("T")[0];
+        expect(actualResult).toEqual(expectedResultForMockedDate);
+
+      });
+
+      test('should handle today keyword when DateTime boolean IS provided', () => {
 
         const mockDate = new Date('2023-01-01T12:00:00Z');
         jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
   
-        const result = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today');
-        
-        expect(result).toEqual(mockDate);
+        const actualResult = fakerJSRecipeProcessor.dateUtils.parseRelativeDate('today', true);
+        const expectedResultForMockedDate = mockDate.toISOString();
+
+        expect(actualResult).toEqual(expectedResultForMockedDate);
 
       });
       
