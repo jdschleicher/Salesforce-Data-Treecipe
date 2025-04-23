@@ -251,7 +251,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             );
             
         } catch (error) {
-            throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode}`);
+            throw new Error(`getFakeValueFromFakerJSExpression: Error evaluating expression: ${trimmedFakerJSCode} - ${error.message}`);
         }
 
         return fakerEvalExpressionResult;  
@@ -264,10 +264,15 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             dateBetweenRegex,
             datetimeBetweenRegex,
             dateRegex,
-            datetimeRegex
+            datetimeRegex,
+            matchingCustomFunctionRegex
         } = this.getExpectedDateRegExPatterns();
 
-        let modifiedCode = originalCode.replaceAll(" ", ""); // Remove all whitespace to avoid any scenarios where expected regex matches wouldn't work
+        // const isCustomDateFunction = (originalCode: string) => matchingCustomFunctionRegex.test(originalCode);
+        let modifiedCode = originalCode;
+        // if ( isCustomDateFunction ) {
+        //     modifiedCode = modifiedCode.replaceAll(" ", ""); // Remove all whitespace to avoid any scenarios where expected regex matches wouldn't work
+        // }
 
         // Replace date_between
         modifiedCode = modifiedCode.replace(dateBetweenRegex, (match, fromValue, toValue) => {
@@ -461,42 +466,58 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const TO_PARAM = 'to:';
         
         const dateBetweenRegex = new RegExp(
-          `${DATE_BETWEEN_NAME}${OPENING_PARENTHESIS}` +
-          `${OPENING_BRACE}` +
+          `${DATE_BETWEEN_NAME}${OPENING_PARENTHESIS}${OPTIONAL_WHITESPACE}` +
+          `${OPENING_BRACE}${OPTIONAL_WHITESPACE}` +
           `${FROM_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
           `${OPTIONAL_WHITESPACE},${OPTIONAL_WHITESPACE}` +
           `${TO_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
-          `${OPTIONAL_WHITESPACE}${CLOSING_BRACE}` +
+          `${OPTIONAL_WHITESPACE}${CLOSING_BRACE}${OPTIONAL_WHITESPACE}` +
           `${CLOSING_PARENTHESIS}`
         );
       
         const datetimeBetweenRegex = new RegExp(
-          `${DATETIME_BETWEEN_NAME}${OPENING_PARENTHESIS}` +
-          `${OPENING_BRACE}` +
-            `${FROM_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
+          `${DATETIME_BETWEEN_NAME}${OPENING_PARENTHESIS}${OPTIONAL_WHITESPACE}` +
+          `${OPENING_BRACE}${OPTIONAL_WHITESPACE}` +
+          `${FROM_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
           `${OPTIONAL_WHITESPACE},${OPTIONAL_WHITESPACE}` +
           `${TO_PARAM}${OPTIONAL_WHITESPACE}${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
-          `${OPTIONAL_WHITESPACE}${CLOSING_BRACE}` +
+          `${OPTIONAL_WHITESPACE}${CLOSING_BRACE}${OPTIONAL_WHITESPACE}` +
           `${CLOSING_PARENTHESIS}`
         );
       
         const dateRegex = new RegExp(
-          `${DATE_NAME}${OPENING_PARENTHESIS}` +
-          `${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
+          `${DATE_NAME}${OPENING_PARENTHESIS}${OPTIONAL_WHITESPACE}` +
+          `${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}${OPTIONAL_WHITESPACE}` +
           `${CLOSING_PARENTHESIS}`
         );
       
         const datetimeRegex = new RegExp(
           `${DATETIME_NAME}${OPENING_PARENTHESIS}` +
-          `${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}` +
+          `${OPTIONAL_QUOTE}${VALUE_CAPTURE}${OPTIONAL_QUOTE}${OPTIONAL_WHITESPACE}` +
           `${CLOSING_PARENTHESIS}`
         );
+
+        // THE BELOW FUNCTION NAMES INCLUDE OPENING PARENTHESIS TO DIFFERENTIATE THEM FROM COMMON USE CASES OF "new Date" AND "faker.date.between"
+        const fakerCustomDateMethods = [
+            DATETIME_BETWEEN_NAME,
+            DATE_BETWEEN_NAME,
+            DATE_NAME,
+            DATETIME_NAME
+        ];
+
+        const OR_OPERATOR_REGEX = '|';
+        
+        // Create individual name patterns
+        const individualMethodNameMatchingPattern = fakerCustomDateMethods.map(name => `${name}${OPENING_PARENTHESIS}`);
+        const combinedPatterns = individualMethodNameMatchingPattern.join(OR_OPERATOR_REGEX);
+        const matchingCustomFunctionRegex = new RegExp(combinedPatterns);
       
         return {
             dateBetweenRegex,
             datetimeBetweenRegex,
             dateRegex,
-            datetimeRegex
+            datetimeRegex,
+            matchingCustomFunctionRegex
         };
       
     }

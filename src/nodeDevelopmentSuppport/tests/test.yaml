@@ -53,41 +53,43 @@
 #     Url__c: ${{ faker.internet.url() }}
 
 
-# - object: Example_Everything__c
-#   nickname: Set-1
-#   count: 1
-#   fields:
-#     DateOne__c: '2023-01-10'
-#     DateTwo__c: ${{ date('today') }}
-#     DateTimeOne__c: '2025-04-22T16:42:05.932Z'
-#     DateTimeTwo__c: ${{ datetime('today') }}
+- object: Example_Everything__c
+  nickname: Set-1
+  count: 1
+  fields:
+    DateOne__c: '2023-01-10'
+    DateTwo__c: ${{ date('today') }}
+    DateTimeOne__c: '2025-04-22T16:42:05.932Z'
+    DateTimeTwo__c: ${{ datetime('today') }}
 
-# - object: Example_Everything__c
-#   nickname: Set-2
-#   count: 1
-#   fields:
-#     DateOne__c: |
-#         ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
-#     DateTwo__c: |
-#         ${{ date_between({from: 'today', to: '+3'}) }}
-#     DateTimeOne__c: |
-#         ${{ datetime_between({from: 'today', to: '+3'}) }}
-#     DateTimeTwo__c: |
-#         ${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
+- object: Example_Everything__c
+  nickname: Set-2
+  count: 1
+  fields:
+    DateOne__c: |
+        ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+    DateTwo__c: |
+        ${{ date_between({from: 'today', to: '+3'}) }}
+    DateTimeOne__c: |
+        ${{ datetime_between({from: 'today', to: '+3'}) }}
+    DateTimeTwo__c: |
+        ${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
     
 
 - object: Example_Everything__c
   nickname: Set-3
   count: 1
   fields:
-    # DateOne__c: |
-    #     ${{ faker.date.between({ from: new Date('1923-01-01'), to: new Date() }).toISOString().split('T')[0] }}
     DateOne__c: |
         ${{ date_between({from: '-4', to: '+3'}) }}
     DateTwo__c: |
-        ${{ date_between( { from: '-250000000', to: 'today'} ) }}
+        ${{ date_between( { from: "-2024", to: 'today'} ) }}
+
+      ## will cause out of valid salesforce range error  ${{ date_between( { from: '-250000000', to: 'today'} ) }} 
     DateTimeOne__c: |
         ${{ datetime_between( {from: '-4', to: '+3'} ) }}
     DateTimeTwo__c: |
-        ${{ faker.date.between( { from: '-15', to: 'today'} )  }}
+        ${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
+
+ ### invalid date: ${{ faker.date.between( { from: '-15', to: 'today'} )  }}
     
