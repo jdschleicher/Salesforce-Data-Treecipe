@@ -267,7 +267,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             datetimeRegex
         } = this.getExpectedDateRegExPatterns();
 
-        let modifiedCode = originalCode;
+        let modifiedCode = originalCode.replaceAll(" ", ""); // Remove all whitespace to avoid any scenarios where expected regex matches wouldn't work
 
         // Replace date_between
         modifiedCode = modifiedCode.replace(dateBetweenRegex, (match, fromValue, toValue) => {
@@ -332,7 +332,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 from: fromResult,
                 to: toResult
             }).toISOString().split('T')[0];
-            
+
             console.log('date_between fakerDate:', fakerDate);
 
             return fakerDate;
@@ -399,12 +399,24 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 const date = new Date();
                 
                 // Adjust the date based on the sign
+                const daysToShift = parseInt(days);
+   
                 if (sign === '+') {
-                    date.setDate(date.getDate() + parseInt(days));
+                    date.setDate(date.getDate() + daysToShift);
                 } else {
-                    date.setDate(date.getDate() - parseInt(days));
+                    date.setDate(date.getDate() - daysToShift);
                 }
-            
+
+                const minSalesforceDate = new Date('0001-01-01T00:00:00.000Z');
+                const maxSalesforceDate = new Date('9999-12-31T23:59:59.999Z');
+
+                const isWithinSalesforceDateRange = (date.getTime() >= minSalesforceDate.getTime() 
+                                                        && date.getTime() <= maxSalesforceDate.getTime());
+
+                if (!isWithinSalesforceDateRange) {
+                    throw new Error(`Shifted date "${sign}${days}" is outside the valid Salesforce date range. minimum date is 0001-01-01 and maximum date is 9999-12-31.`);
+                }
+
                 const formattedDate = isDateTime ? 
                                         date.toISOString() 
                                         : date.toISOString().split('T')[0];

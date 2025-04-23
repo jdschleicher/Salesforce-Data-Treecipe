@@ -80,12 +80,14 @@
   nickname: Set-3
   count: 1
   fields:
+    # DateOne__c: |
+    #     ${{ faker.date.between({ from: new Date('1923-01-01'), to: new Date() }).toISOString().split('T')[0] }}
     DateOne__c: |
-        ${{ faker.date.between({ from: new Date('1923-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+        ${{ date_between({from: '-4', to: '+3'}) }}
     DateTwo__c: |
-        ${{ date_between( { from: -250000000, to: 'today'} ) }}
+        ${{ date_between( { from: '-250000000', to: 'today'} ) }}
     DateTimeOne__c: |
-        ${{ datetime_between( {from: -4, to: '+3'} ) }}
+        ${{ datetime_between( {from: '-4', to: '+3'} ) }}
     DateTimeTwo__c: |
-        ${{ faker.date.between( { from: -15, to: 'today'} )  }}
+        ${{ faker.date.between( { from: '-15', to: 'today'} )  }}
     
