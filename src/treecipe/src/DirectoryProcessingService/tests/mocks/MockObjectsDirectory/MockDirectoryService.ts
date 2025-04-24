@@ -103,10 +103,10 @@ export class MockDirectoryService {
 
   static getMockedDirectoriesWithDatSetItemsIncluded() {
 
-    const subStringToIdentifyDirectoryAsDataSetDirectory = 'dataset';
+    const subStringToIdentifyDirectoryAsDataSetDirectory = 'dataset-';
     const fakeDataSetDirectories: any[] = [
       { 
-          name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/rest-ofdirectoryname`, 
+          name: `${subStringToIdentifyDirectoryAsDataSetDirectory}foldernameone/rest-ofdirectoryname`, 
           isDirectory: () => true,
           path: 'theworkspaceroot/andotherthings'
       }, 
@@ -116,9 +116,24 @@ export class MockDirectoryService {
           path: 'theworkspaceroot/andotherthings'
       }, 
       { 
-          name: `${subStringToIdentifyDirectoryAsDataSetDirectory}/anotherone-rest-ofdirectoryname`, 
+          name: `${subStringToIdentifyDirectoryAsDataSetDirectory}abc/anotherone-rest-ofdirectoryname`, 
           isDirectory: () => true,
           path: 'theworkspaceroot/andotherthings'
+      },
+      { 
+        name: `${subStringToIdentifyDirectoryAsDataSetDirectory}-fff-fakerjs/anotherone-rest-ofdirectoryname`, 
+        isDirectory: () => true,
+        path: 'theworkspaceroot/andotherthings'
+      },
+      { 
+        name: `${subStringToIdentifyDirectoryAsDataSetDirectory}fakerjs-test/anotherone-rest-ofdirectoryname`, 
+        isDirectory: () => true,
+        path: 'theworkspaceroot/andotherthings'
+      },    
+      { 
+        name: `${subStringToIdentifyDirectoryAsDataSetDirectory}fakerjs-testtwo/anotherone-rest-ofdirectoryname`, 
+        isDirectory: () => true,
+        path: 'theworkspaceroot/andotherthings'
       } 
 
     ];  

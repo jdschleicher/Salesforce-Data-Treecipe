@@ -82,10 +82,20 @@ export class VSCodeWorkspaceService {
         const datasetEntries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
-        const datasetDirectoryNameFilter = 'dataset';
+        const selectedFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+        const expectedFakerJSDirectoryName = 'dataset-fakerjs';
+        const expectedSnowfakeryDirectoryName = 'dataset';
+        const isFakerJS = (selectedFakerService === 'faker-js');
+        const isSnowfakery = (selectedFakerService === 'snowfakery');
+
         for (const entry of datasetEntries) {
 
-            if ( entry.name.includes(datasetDirectoryNameFilter)) {
+            const isFakerJSDatasetWhenFakerJSSelected = (isFakerJS && entry.name.includes(expectedFakerJSDirectoryName));
+            const isSnowfakeryDatasetWhenSnowfakerySelected = (isSnowfakery 
+                                                                && entry.name.includes(expectedSnowfakeryDirectoryName)
+                                                                && !(entry.name.includes(expectedFakerJSDirectoryName)));
+
+            if ( isFakerJSDatasetWhenFakerJSSelected || isSnowfakeryDatasetWhenSnowfakerySelected ) {
 
                 const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot);
                 quickPickItems.push(quickPickDirectoryItem);
@@ -303,7 +313,14 @@ export class VSCodeWorkspaceService {
 
     static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
         
-        const fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
+        let fakeDataSetsFolderName = '';
+        const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+        if ( selectedDataFakerService === 'faker-js' ) {
+            fakeDataSetsFolderName = `dataset-fakerjs-${isoDateTimestamp}`;
+        } else {
+            fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
+        }
+
         return fakeDataSetsFolderName;
 
     }

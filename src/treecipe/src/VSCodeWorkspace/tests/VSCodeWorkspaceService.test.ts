@@ -505,7 +505,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     describe('getDataSetDirectoryQuickPickItemsByStartingDirectoryPath', () => {
 
-        test('should return quick pick items for directories containing "dataset"', async () => {
+        test('given snowfakery mocked as faker service and expected "dataset-" and "dataset-fakerjs" named folders, should return quick pick items for directories containing "dataset-" only and no "dataset-fakerjs"', async () => {
 
             const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
             jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
@@ -518,6 +518,9 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
        
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';
+
+            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("snowfakery");
+
             const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
     
             expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
@@ -525,20 +528,72 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             
             const expectedQuickPickItems = [
                 {
-                    "label": "./andotherthings/dataset/rest-ofdirectoryname/",
+                    "label": "./andotherthings/dataset-foldernameone/rest-ofdirectoryname/",
                     "description": "Directory",
                     "iconPath": {
                     "id": "folder"
                     },
-                    "detail": "theworkspaceroot/andotherthings/dataset/rest-ofdirectoryname"
+                    "detail": "theworkspaceroot/andotherthings/dataset-foldernameone/rest-ofdirectoryname"
                 },
                 {
-                    "label": "./andotherthings/dataset/anotherone-rest-ofdirectoryname/",
+                    "label": "./andotherthings/dataset-abc/anotherone-rest-ofdirectoryname/",
                     "description": "Directory",
                     "iconPath": {
                     "id": "folder"
                     },
-                    "detail": "theworkspaceroot/andotherthings/dataset/anotherone-rest-ofdirectoryname"
+                    "detail": "theworkspaceroot/andotherthings/dataset-abc/anotherone-rest-ofdirectoryname"
+                },
+                {
+                    "label": "./andotherthings/dataset--fff-fakerjs/anotherone-rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset--fff-fakerjs/anotherone-rest-ofdirectoryname"
+                }
+            ];
+
+            expect(actualDataSetQuickPickItems).toEqual(expectedQuickPickItems);
+
+        });
+
+        test('given faker-js mocked as faker service and expected "dataset-" and "dataset-fakerjs" named folders, should return quick pick items for directories containing "dataset-fakerjs" only and no "dataset-"', async () => {
+
+            const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
+            jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
+    
+            const mockWorkspaceRoot = 'theworkspaceroot'; // "theworkspaceroot" is found in the "path" property of the expected mocked directories. The matching workspaceroot is needed to build out quickpickitems correctly
+            jest.spyOn(VSCodeWorkspaceService, "getWorkspaceRoot").mockReturnValue(mockWorkspaceRoot);
+
+            const mockIcon = new vscode.ThemeIcon('folder');
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
+       
+            const quickPickItems: vscode.QuickPickItem[] = [];
+            const directoryPath = '/mock/directory/path';
+
+            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("faker-js");
+
+            const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
+    
+            expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
+            expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
+            
+            const expectedQuickPickItems = [
+                {
+                    "label": "./andotherthings/dataset-fakerjs-test/anotherone-rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset-fakerjs-test/anotherone-rest-ofdirectoryname"
+                },
+                {
+                    "label": "./andotherthings/dataset-fakerjs-testtwo/anotherone-rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset-fakerjs-testtwo/anotherone-rest-ofdirectoryname"
                 }
             ];
 
@@ -556,6 +611,10 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
     
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';
+
+            //mocking faker service to avoid test run time failure
+            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("faker-js");
+
             const result = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
     
             expect(result).toEqual([]); 
@@ -593,7 +652,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     describe('createFakeDatasetsTimeStampedFolderName', () => {
 
-        test('should create a unique timestamped folder name', () => {
+        test('given snowfakery selected as faker service, should create a unique timestamped folder name', () => {
 
             const fakeTimestamp = '2024-11-25T16-24-15';
             const mockDate = new Date('2024-11-25T16:24:15Z');
@@ -603,6 +662,26 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
 
             const expectedFolderName = `dataset-${fakeTimestamp}`;
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('snowfakery');
+
+            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
+            expect(actualFolderName).toBe(expectedFolderName);
+
+        });
+
+        test('given fakerjs selected as faker service, should create a unique timestamped folder name with fakerjs included', () => {
+
+            const fakeTimestamp = '2024-11-25T16-24-15';
+            const mockDate = new Date('2024-11-25T16:24:15Z');
+            jest.spyOn(global, 'Date').mockReturnValue(mockDate);
+
+            jest.spyOn(global, 'Date').mockImplementation();
+            jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
+
+            const expectedFolderName = `dataset-fakerjs-${fakeTimestamp}`;
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
 
             const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
             expect(actualFolderName).toBe(expectedFolderName);
