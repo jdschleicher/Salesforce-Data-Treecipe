@@ -96,7 +96,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         });
 
         test('Formula field returns correct message', () => {
-            expect(fieldTypeToNPMFakerMappings['formula']).toBe('Formula fields are calculated, not generated');
+            expect(fieldTypeToNPMFakerMappings['formula']).toBe('### TODO - Formula fields are calculated, not generated - remove this line');
         });
 
         test('Location field returns correct npm faker expression', () => {
