@@ -267,6 +267,7 @@ function Save-ChangelogToFile {
     
     $currentDate = Get-Date -Format "yyyy-MM-dd"
     $fileName = "changelog-$branchName-$currentDate.md"
+    $fileName = $fileName -replace "/", "_"
     $content | Out-File -FilePath $fileName -Encoding utf8
     
     Write-Host "Changelog has been generated as $fileName" -ForegroundColor Green
