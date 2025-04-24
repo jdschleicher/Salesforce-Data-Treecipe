@@ -127,7 +127,72 @@ export class CollectionsApiService {
         };
         let objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
 
-        for ( const collectionsApiFilePath of collectionApiFiles ) {
+        await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Inserting Salesforce Collection API files...",
+              cancellable: true
+            },
+            
+            async (progress, token) => {
+
+              const totalFiles = collectionApiFiles.length;
+          
+              for (let i = 0; i < totalFiles; i++) {
+
+                if (token.isCancellationRequested) {
+                  vscode.window.showWarningMessage("Import cancelled by user.");
+                  return;
+                }
+          
+                const collectionsApiFilePath = collectionApiFiles[i];
+          
+                // Optional: just the filename (not full path)
+                const fileName = path.basename(collectionsApiFilePath);
+          
+                progress.report({
+                    message: `Processing file ${i + 1} of ${totalFiles}: ${fileName}`,
+                    increment: (100 / totalFiles)
+                });
+          
+                try {
+
+                  const successResult = await this.processAndInsertCollectionFile(collectionsApiFilePath, 
+                                                            recordTypeDetailFromTargetOrg,
+                                                            objectReferenceIdToOrgCreatedRecordIdMap,
+                                                            aliasAuthenticationConnection,
+                                                            allOrNoneSelection,
+                                                            allCollectionApiFilesSobjectResults,
+                                                            fullPathToResultsFile,
+                                                            token);
+                    if (!successResult) {
+                        break;                    
+                    }
+
+                } catch (error) {
+
+                    vscode.window.showWarningMessage(`Failed to process ${fileName}`);
+
+                }
+              }
+          
+              vscode.window.showInformationMessage("All files processed.");
+
+            }
+        );
+
+    }
+
+    static async processAndInsertCollectionFile(collectionsApiFilePath,
+                                                recordTypeDetailFromTargetOrg,
+                                                objectReferenceIdToOrgCreatedRecordIdMap,
+                                                aliasAuthenticationConnection,
+                                                allOrNoneSelection,
+                                                allCollectionApiFilesSobjectResults,
+                                                fullPathToResultsFile,
+                                                token: vscode.CancellationToken): Promise<boolean> {
+    
+        // for ( const collectionsApiFilePath of collectionApiFiles ) {
 
             let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
             collectionsApiJson = this.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
@@ -149,13 +214,15 @@ export class CollectionsApiService {
 
             // IF ALLORNONE ARGUMENT SET TO --TRUE-- AND ANY OBJECT KEYS ARE FOUND IN FAILURE RESULTS, DELETE PREVIOUS SAVED RECORDS
             if ( allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0 ) {
-                this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
-                break;
+                await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                return false;
             }
-            objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
-       
-        }
 
+            objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
+            return true;
+            
+        // }
+    
     }
 
     static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, 

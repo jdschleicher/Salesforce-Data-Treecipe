@@ -206,10 +206,10 @@ export class ExtensionCommandService {
             const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
 
             await CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
-                                                                datasetChildFoldersToFilesMap, 
-                                                                recordTypeDetailFromOrg, 
-                                                                aliasAuthenticationConnection,
-                                                                allOrNoneSelection);
+                                                                    datasetChildFoldersToFilesMap, 
+                                                                    recordTypeDetailFromOrg, 
+                                                                    aliasAuthenticationConnection,
+                                                                    allOrNoneSelection);                  
 
         } catch(error) {
 

@@ -25,17 +25,39 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
-	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', () => {
+	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', async () => {
 		
 		extensionCommandService.runFakerGenerationByRecipeFile();
 
 	});
 
-	const insertDataSetBySelectedDirectory = vscode.commands.registerCommand('treecipe.insertDataSetBySelectedDirectory', () => {
+	const insertDataSetBySelectedDirectory = vscode.commands.registerCommand('treecipe.insertDataSetBySelectedDirectory', async () => {
 		
 		extensionCommandService.insertDataSetBySelectedDirectory();
+		
+		// await vscode.window.withProgress(
+		// 	{
+		// 	  location: vscode.ProgressLocation.Notification,
+		// 	  title: "Inserting dataset...",
+		// 	  cancellable: true
+		// 	},
+		// 	async (progress, token) => {
+
+		// 		progress.report({ message: "Working..." });
+
+		// 	  token.onCancellationRequested(() => {
+		// 		vscode.window.showWarningMessage("Insertion cancelled.");
+		// 	  });
+		  
+			//   await extensionCommandService.insertDataSetBySelectedDirectory();
+			  
+			//   progress.report({ message: "Insert dataest completed!" });
+
+			// }
+		// );
 
 	});
+
 
 	const changeFakerImplementationService = vscode.commands.registerCommand("treecipe.changeFakerImplementationService", () => {
 
