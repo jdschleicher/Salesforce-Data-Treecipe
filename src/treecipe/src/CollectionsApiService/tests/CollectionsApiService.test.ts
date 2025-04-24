@@ -38,7 +38,7 @@ describe('Shared tests for CollectionsApiService', () => {
             mocking out async module methods that would cause the test to fail if called as expected. However, the mocks that are included
             would be expected to be correct values
          */ 
-        test('given mocked modules and given expected quick pick item, should return expected selected QuickPickItem', async () => {
+        test('given mocked modules, expected quick pick item, and snowfakery selected as faker service, should return expected selected QuickPickItem', async () => {
         
             const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
             jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
@@ -53,6 +53,30 @@ describe('Shared tests for CollectionsApiService', () => {
             };
 
             (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(expectedQuickPickItem);
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('snowfakery');
+
+            const actualSelection = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
+            expect(actualSelection).toEqual(expectedQuickPickItem);
+    
+        });
+
+
+        test('given mocked modules, given expected quick pick item, and faker-js selected as faker service, should return expected selected QuickPickItem', async () => {
+        
+            const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
+            jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
+    
+            const expectedQuickPickItem = {
+                "label": "./andotherthings/dataset/rest-ofdirectoryname/",
+                "description": "Directory",
+                "iconPath": {
+                    "id": "folder"
+                },
+                "detail": "theworkspaceroot/andotherthings/dataset/rest-ofdirectoryname"
+            };
+
+            (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(expectedQuickPickItem);
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
 
             const actualSelection = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
             expect(actualSelection).toEqual(expectedQuickPickItem);
