@@ -318,7 +318,7 @@ return fakeRecordTypeRecipe;
   nickname: Example_Everything__c_NickName
   count: 2
   fields:
-    RecordTypeId: (\${{faker.name.firstName()}} has email \${{faker.internet.email()}})
+    RecordTypeId: (\${{faker.person.firstName()}} has email \${{faker.internet.email()}})
     Checkbox__c: \${{ faker.datatype.boolean() }}
     Currency__c: \${{ faker.finance.amount(0, 999999, 2) }}
     DateTime__c: |
