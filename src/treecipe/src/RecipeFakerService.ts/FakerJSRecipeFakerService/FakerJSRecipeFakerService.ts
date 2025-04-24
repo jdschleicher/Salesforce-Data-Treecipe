@@ -334,14 +334,14 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 
             "Opportunity": {
                 "Name": `\${{faker.company.catchPhrase()}}`,
-                "Amount": `\${{ (faker.string.numeric(6)).00 }}`,
+                "Amount": `\${{ (faker.string.numeric(6)) }}.00`,
                 "CloseDate": `|
                     \${{ faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) }) }}`,
                 "Description": `\${{faker.lorem.paragraph()}}`,
-                "ExpectedRevenue": `\${{ (faker.string.numeric(6)).00 }}`,
+                "ExpectedRevenue": `\${{ (faker.string.numeric(6)) }}.00`,
                 "LeadSource": `\${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}`,
                 "NextStep": `\${{faker.lorem.sentence()}}`,
-                "Probability": `\${{ (faker.string.numeric(2)).0 }}`,
+                "Probability": `\${{ (faker.string.numeric(2))}}.0 `,
                 "StageName": `\${{faker.helpers.arrayElement(['Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'])}}`,
                 "Type": `\${{faker.helpers.arrayElement(['New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade'])}}`,
                 "ForecastCategory": `\${{faker.helpers.arrayElement(['Pipeline', 'Best Case', 'Commit', 'Closed'])}}`
@@ -395,10 +395,10 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 "EndDate": `|
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 91)), to: (new Date().setDate(new Date().getDate() + 180)) })}}`,
                 "Description": `\${{faker.lorem.paragraph()}}`,
-                "BudgetedCost": `"\{{ (faker.string.numeric(5)).00 }}`,
-                "ActualCost": `"\{{ (faker.string.numeric(5)).00 }}`,
-                "ExpectedRevenue": `"\{{ (faker.string.numeric(6)).00 }}`,
-                "ExpectedResponse": `"\{{ (faker.string.numeric(2)).0 }}`,
+                "BudgetedCost": `"\{{ (faker.string.numeric(5)) }}.00`,
+                "ActualCost": `"\{{ (faker.string.numeric(5)) }}.00`,
+                "ExpectedRevenue": `"\{{ (faker.string.numeric(6)) }}.00`,
+                "ExpectedResponse": `"\{{ (faker.string.numeric(2)) }}.0`,
                 "NumberOfContacts": `\${{faker.string.numeric(3)}}`,
                 "NumberOfLeads": `\${{faker.string.numeric(3)}}`,
                 "NumberOfOpportunities": `\${{faker.string.numeric(2)}}`,
@@ -455,7 +455,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                     \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 730)), to: (new Date().setDate(new Date().getDate() - 366)) })}}`,
                 "SerialNumber": `\${{faker.string.alphanumeric(10)}}-{{faker.string.numeric(6)}}`,
                 "Status": `\${{faker.helpers.arrayElement(['Purchased', 'Shipped', 'Installed', 'Registered'])}}`,
-                "Price": `\${{ (faker.string.numeric(5)).00 }}`,
+                "Price": `\${{ (faker.string.numeric(5)) }}.00`,
                 "Quantity": `\${{faker.string.numeric(2)}}`
             },
                 
