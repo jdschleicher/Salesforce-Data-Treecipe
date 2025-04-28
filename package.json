@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "1.3.17",
+  "version": "1.3.18",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -17,7 +17,9 @@
     "Visualization",
     "Programming Languages"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand.treecipe.generateTreecipe"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -95,10 +97,10 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@faker-js/faker": "^9.6.0",
     "@salesforce/core": "^8.8.6",
     "js-yaml": "^4.1.0",
     "ts-node": "^10.9.2",
-    "xml2js": "^0.6.2",
-    "@faker-js/faker": "^9.6.0"
+    "xml2js": "^0.6.2"
   }
 }
