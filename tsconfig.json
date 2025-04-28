@@ -8,9 +8,6 @@
 		],
 		"sourceMap": true,
 		"rootDir": "src",
-		"strict": false,
-		"types": [
-			"jest"
-		],
+		"strict": false
 	}
 }
