@@ -10,8 +10,7 @@
 		"rootDir": "src",
 		"strict": false,
 		"types": [
-			"jest",
-			"node"
+			"jest"
 		],
 	}
 }
