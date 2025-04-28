@@ -24,12 +24,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', () => {
+
 		const extensionCommandService = new ExtensionCommandService();
 		extensionCommandService.runFakerGenerationByRecipeFile();
 
 	});
 
 	const insertDataSetBySelectedDirectory = vscode.commands.registerCommand('treecipe.insertDataSetBySelectedDirectory', () => {
+
 		const extensionCommandService = new ExtensionCommandService();
 		extensionCommandService.insertDataSetBySelectedDirectory();
 
