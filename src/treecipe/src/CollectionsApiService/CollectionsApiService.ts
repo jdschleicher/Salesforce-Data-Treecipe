@@ -157,7 +157,7 @@ export class CollectionsApiService {
           
                 try {
 
-                  const successResult = await this.processAndInsertCollectionFile(collectionsApiFilePath, 
+                    const successResult = await this.processAndInsertCollectionFile(collectionsApiFilePath, 
                                                             recordTypeDetailFromTargetOrg,
                                                             objectReferenceIdToOrgCreatedRecordIdMap,
                                                             aliasAuthenticationConnection,
@@ -220,7 +220,7 @@ export class CollectionsApiService {
 
             objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
             return true;
-            
+
         // }
     
     }

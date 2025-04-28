@@ -42,6 +42,7 @@ export class ExtensionCommandService {
             const recipeFullFileNamePath = selectedRecipeFilePathNameQuickPickItem.detail;
             
             let fakerRecipeProcessor:IFakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+
             const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFullFileNamePath) as string;
 
             const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
