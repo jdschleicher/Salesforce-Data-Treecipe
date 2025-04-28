@@ -9,3 +9,7 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+
+# Explicitly include faker module
+!node_modules/@faker-js/**
+!node_modules/@faker-js/faker/**
