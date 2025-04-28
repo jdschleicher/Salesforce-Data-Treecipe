@@ -260,4 +260,110 @@ return fakeRecordTypeRecipe;
 
     }
 
+    static getMockFakerJSDependentPicklistRecipeValueWithoutRecordTypeDetail():string {
+        const controllingField = "Picklist__c";
+            
+        const expectedDependentPicklistRecipeValue =`
+      if:
+        - choice:
+            when: \${{ ${controllingField} == 'cle' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+                    - rocks
+        - choice:
+            when: \${{ ${controllingField} == 'eastlake' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: \${{ ${controllingField} == 'madison' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - plant
+        - choice:
+            when: \${{ ${controllingField} == 'willoughby' }}
+            pick:
+                random_choice:
+                    - tree
+                    - weed
+                    - mulch
+        - choice:
+            when: \${{ ${controllingField} == 'mentor' }}
+            pick:
+                random_choice:
+                    - weed
+                    - plant
+        - choice:
+            when: \${{ ${controllingField} == 'wickliffe' }}
+            pick:
+                random_choice:
+                    - weed
+                    - rocks`;
+
+        return expectedDependentPicklistRecipeValue;
+
+    }
+
+    static getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup():string {
+
+        const fakeObjectMarkupForEverythingExample = 
+`- object: Example_Everything__c
+  nickname: Example_Everything__c_NickName
+  count: 2
+  fields:
+    RecordTypeId: (\${{faker.person.firstName()}} has email \${{faker.internet.email()}})
+    Checkbox__c: \${{ faker.datatype.boolean() }}
+    Currency__c: \${{ faker.finance.amount(0, 999999, 2) }}
+    DateTime__c: |
+        \${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
+    Date__c: |
+        \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+    Picklist__c: \${{ faker.helpers.arrayElement(['cle','eastlake']) }}
+    DependentPicklist__c: 
+      if:
+        - choice:
+            when: \${{ Picklist__c == 'cle' }}
+            pick:
+                random_choice:
+                    - mulch
+                    - rocks
+                    - tree
+                    - weed
+        - choice:
+            when: \${{ Picklist__c == 'eastlake' }}
+            pick:
+                random_choice:
+                    - mulch
+                    - rocks
+                    - tree
+                    - weed
+    Email__c: \${{ faker.internet.email() }}
+    Formula__c: Formula fields are calculated, not generated
+    MultiPicklist__c: \${{ (faker.helpers.arrayElements(['chorizo','pork','steak','tofu'])).join(';') }}
+    Number__c: |
+        \${{ faker.number.int({min: 0, max: 999999}) }}
+    Percent__c: |
+        \${{ faker.number.float({ min: 0, max: 99, precision: 0.01 }).toFixed(2) }}
+    Phone__c: \${{ faker.phone.number({style:'national'}) }}
+    RichTextAreaHtml__c: \${{ faker.lorem.text(1000) }}
+    TextAreaRich__c: \${{ faker.lorem.text(1000) }}
+    Text_Area_Long__c: \${{ faker.lorem.text(1000) }}
+    Text__c: \${{ faker.lorem.text(50) }}
+    Time__c: |
+        \${{ faker.date.between({ from: new Date('1970-01-01T00:00:00Z'), to: new Date('1970-01-01T23:59:59Z') }).toISOString().split('T')[1] }}
+    Url__c: \${{ faker.internet.url() }}
+`;
+
+        return fakeObjectMarkupForEverythingExample;
+
+    }
+
+
 }

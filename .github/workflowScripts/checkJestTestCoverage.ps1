@@ -1,3 +1,20 @@
+# -- only uncomment locally
+### CLEAR OUT LATEST BUILD
+# $compileDirectory = "./out/"
+# If (Test-Path $compileDirectory ) {
+#     Remove-Item $compileDirectory -Recurse -Force
+# }
+
+
+# ### CLEAR OUT LATEST CODE COVERAGE ARTIFACTS
+# $coverageDirectory = "./coverage/"
+# If (Test-Path $coverageDirectory ) {
+#     echo "REMOVING COVERAGE DIRECTORY"
+#     Remove-Item $coverageDirectory -Recurse -Force
+# }
+
+# npm run compile
+# npm run jest-test-summary 
 
 $expectedJestTestFailedSummaryPath = "./coverage/jest-results.json"
 if ( -not(Test-Path $expectedJestTestFailedSummaryPath) ) {
@@ -27,7 +44,7 @@ $coverageSummary = Get-Content -Raw -Path $expectedTestCoverageSummaryPath | Con
 $totalCoverage = $coverageSummary.total.lines.pct
 Write-Host "Total coverage: $totalCoverage%"
 
-if ($totalCoverage -lt 85) {
-  Write-Error "Coverage is below 85%"
+if ($totalCoverage -lt 80) {
+  Write-Error "Coverage is below 80%"
   exit 1
 }

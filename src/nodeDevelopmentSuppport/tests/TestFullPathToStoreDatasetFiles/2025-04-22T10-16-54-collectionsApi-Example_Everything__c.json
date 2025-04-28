@@ -1,0 +1,35 @@
+{
+  "allOrNone": true,
+  "records": [
+    {
+      "attributes": {
+        "type": "Example_Everything__c",
+        "referenceId": "Example_Everything__c_Reference_1"
+      },
+      "DateOne__c": "2023-01-10",
+      "DateTwo__c": "2025-04-22",
+      "DateTimeOne__c": "2025-04-22T16:42:05.932Z",
+      "DateTimeTwo__c": "2025-04-22T10:16:47.418Z"
+    },
+    {
+      "attributes": {
+        "type": "Example_Everything__c",
+        "referenceId": "Example_Everything__c_Reference_2"
+      },
+      "DateOne__c": "2023-01-10",
+      "DateTwo__c": "2025-04-22",
+      "DateTimeOne__c": "2025-04-22T16:42:05.932Z",
+      "DateTimeTwo__c": "2025-04-22T10:16:49.692Z"
+    },
+    {
+      "attributes": {
+        "type": "Example_Everything__c",
+        "referenceId": "Example_Everything__c_Reference_1"
+      },
+      "DateOne__c": "2023-06-07\n",
+      "DateTwo__c": "2025-04-24\n",
+      "DateTimeOne__c": "2025-04-25T03:53:12.019Z\n",
+      "DateTimeTwo__c": "2024-02-18T04:31:04.678Z\n"
+    }
+  ]
+}

@@ -1,15 +1,16 @@
-import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
+import { ConfigurationService, TreecipeConfigDetail } from "../ConfigurationService/ConfigurationService";
 import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
+import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
+import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
+import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
+
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { SnowfakeryIntegrationService } from "../SnowfakeryIntegrationService/SnowfakeryIntegrationService";
-import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import path = require("path");
-import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 
 export class ExtensionCommandService {
     
@@ -28,29 +29,44 @@ export class ExtensionCommandService {
 
     }
 
-    async runSnowfakeryGenerationByRecipeFile() {
+    async runFakerGenerationByRecipeFile() {
 
         try {
             
-            const selectedRecipeQuickPickItem = await SnowfakeryIntegrationService.selectSnowfakeryRecipeFileToProcess();
-            if (!selectedRecipeQuickPickItem) {
+            const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
+            const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
+            const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
+            if (!selectedRecipeFilePathNameQuickPickItem) {
                 return;
             }
-            const recipeFullFileNamePath = selectedRecipeQuickPickItem.detail;
+            const recipeFullFileNamePath = selectedRecipeFilePathNameQuickPickItem.detail;
             
-            const snowfakeryJsonResult = await SnowfakeryIntegrationService.runSnowfakeryFakeDataGenerationBySelectedRecipeFile(recipeFullFileNamePath);
+            let fakerRecipeProcessor:IFakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+
+            const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFullFileNamePath) as string;
 
             const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-            const uniqueTimeStampedFakeDataSetsFolderName = SnowfakeryIntegrationService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
-            const fullPathToUniqueTimeStampedFakeDataSetsFolder = SnowfakeryIntegrationService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
+            const uniqueTimeStampedFakeDataSetsFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName);
 
-            SnowfakeryIntegrationService.transformSnowfakeryJsonDataToCollectionApiFormattedFilesBySObject(snowfakeryJsonResult, fullPathToUniqueTimeStampedFakeDataSetsFolder);
+            const mappedSObjectApiToRecords = fakerRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJsonResult);
+
+            const directoryToStoreCollectionDatasetFiles = ConfigurationService.getDatasetFilesForCollectionsApiFolderName();
+            const fullPathToStoreDatasetFiles = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${directoryToStoreCollectionDatasetFiles}`;
+            fs.mkdirSync(fullPathToStoreDatasetFiles);
+
+            mappedSObjectApiToRecords.forEach((collectionsApiContent, sobjectApiName) => {
+                CollectionsApiService.createCollectionsApiFile(
+                    sobjectApiName, 
+                    collectionsApiContent, 
+                    fullPathToStoreDatasetFiles
+                );
+            });
             
             const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();
             const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
-
-            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeQuickPickItem.label}`);
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeFilePathNameQuickPickItem.label}`);
 
             /* 
                 The below lines get the timestamped parent recipe folder 
@@ -74,7 +90,7 @@ export class ExtensionCommandService {
 
         } catch(error) {
 
-            const commandName = 'runSnowfakeryGenerationByRecipeFile';
+            const commandName = 'runFakerGenerationByRecipeFile';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
@@ -100,10 +116,6 @@ export class ExtensionCommandService {
             } else {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
-          
-            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-            
-            const recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
 
             // ensure dedicated directory for generated recipes exists
             const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
@@ -112,7 +124,26 @@ export class ExtensionCommandService {
                 fs.mkdirSync(expectedGeneratedRecipesFolderPath);
             }
 
-            const timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
+            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+            let recipeFileName = '';
+            let timestampedRecipeGenerationFolder = '';
+            const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+            // THE BELOW CONDITIONAL ADJUSTS HOW RECIPE FILE GETS GENERATED TO INCLUDE A SPECIAL FAKERJS INDICATOR OF THE SELECTED FAKER SERVICE IS 'faker-js' 
+            // WITH THIS INDICATOR IN THE RECIPE FILE NAME, THIS WILL PREVENT A FAKER-JS TRYING TO BE PROCESSED
+            // WHEN THE SELECTED FAKER SERVICE IS CONFIGURED FOR 'snowfakery'
+            if (selectedDataFakerService === 'faker-js') {
+
+                const fakerjsRecipeIndicator = 'recipe-fakerjs';
+                recipeFileName = `${fakerjsRecipeIndicator}-${isoDateTimestamp}.yaml`;
+                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${fakerjsRecipeIndicator}-${isoDateTimestamp}`;
+
+            } else {
+
+                recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
+                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
+
+            }
+            
             fs.mkdirSync(timestampedRecipeGenerationFolder);
 
             const outputFilePath = `${timestampedRecipeGenerationFolder}/${recipeFileName}`;
@@ -176,10 +207,10 @@ export class ExtensionCommandService {
             const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
 
             await CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
-                                                                datasetChildFoldersToFilesMap, 
-                                                                recordTypeDetailFromOrg, 
-                                                                aliasAuthenticationConnection,
-                                                                allOrNoneSelection);
+                                                                    datasetChildFoldersToFilesMap, 
+                                                                    recordTypeDetailFromOrg, 
+                                                                    aliasAuthenticationConnection,
+                                                                    allOrNoneSelection);                  
 
         } catch(error) {
 
@@ -189,5 +220,27 @@ export class ExtensionCommandService {
         }
         
     }
+
+    async changeFakerImplementationService() {
+
+        try {
+
+            let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+            ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+            
+            const existingTreecipeConfigDetail:TreecipeConfigDetail = ConfigurationService.getTreecipeConfigurationDetail();
+            existingTreecipeConfigDetail.dataFakerService = selectedDataFakerService;
+            await ConfigurationService.updateTreecipeConfigFile(existingTreecipeConfigDetail);
+            
+        } catch(error) {
+
+            const commandName = 'changeFakerImplementationService';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+       
+
+	}
 
 }

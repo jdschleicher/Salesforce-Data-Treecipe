@@ -1,4 +1,6 @@
-import { SnowfakeryFakerService } from '../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
+import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
+import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
+import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ConfigurationService } from '../ConfigurationService';
 
@@ -64,10 +66,10 @@ describe('Shared ConfigurationService Tests', () => {
 
     describe('getFakerImplementationByExtensionConfigSelection', () => {
 
-        test('given expected setup of "selectedFakerService" extension config value, returns expecte IFakerService implementation', () => {
+        test('given expected setup of "selectedFakerService" extension config value, returns expecte IRecipeFakerService implementation', () => {
             
             const actualImplementationFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
-            expect(actualImplementationFakerService).toBeInstanceOf(SnowfakeryFakerService);
+            expect(actualImplementationFakerService).toBeInstanceOf(SnowfakeryRecipeFakerService);
 
         });
 
@@ -81,20 +83,23 @@ describe('Shared ConfigurationService Tests', () => {
         });
 
         test('given mocked functions for VSCodeWorkspaceService, fs, and path, the expected values are used as arguments', async () => {
-            // Setup mock values
+            
             const mockWorkspaceRoot = '/mock/workspace/root';
             const mockObjectsPath = '/mock/objects/path';
             const mockConfigFileName = 'treecipe.config.json';
             const mockTreecipeBaseDir = 'treecipe';
         
-            // Mock method implementations
             jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
         
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
             jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
                 return mockObjectsPath;
             });
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockImplementation(async () => {
+                return 'faker-js';
+            });
 
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation();
             
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
             jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
@@ -102,7 +107,6 @@ describe('Shared ConfigurationService Tests', () => {
 
             await ConfigurationService.createTreecipeJSONConfigurationFile();
         
-            // Assertions
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
             expect(VSCodeWorkspaceService.promptForObjectsPath).toHaveBeenCalledWith(mockWorkspaceRoot);
 
@@ -111,14 +115,14 @@ describe('Shared ConfigurationService Tests', () => {
 
             const expectedConfigJson = `{
     "salesforceObjectsPath": "/mock/objects/path",
-    "dataFakerService": "snowfakery"
+    "dataFakerService": "faker-js"
 }`;
             expect(fs.writeFileSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}/${mockConfigFileName}`, expectedConfigJson);
 
-          });
+        });
 
-          test('given mocked path value with windows backslashes in path, the expected path is set in treecipe configuration json file', async () => {
-            
+        test('given mocked path value with windows backslashes in path, the expected path is set in treecipe configuration json file', async () => {
+        
             const mockWorkspaceRoot = '/mock/workspace/root';
             const mockObjectsPath = '\\mock\\objects\\path';
             const mockConfigFileName = 'treecipe.config.json';
@@ -130,7 +134,11 @@ describe('Shared ConfigurationService Tests', () => {
             jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
                 return mockObjectsPath;
             });
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockImplementation(async () => {
+                return 'snowfakery';
+            });
 
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation();
             
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
             jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
@@ -151,7 +159,53 @@ describe('Shared ConfigurationService Tests', () => {
 }`;
             expect(fs.writeFileSync).toHaveBeenCalledWith(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}/${mockConfigFileName}`, expectedConfigJson);
 
-          });
+        });
+
+        test('given mocked empty return for VSCodeWorkspaceService.promptForObjectsPath to mimic no selection, prevents method from completing', async () => {
+            
+        
+            const noSelectionMimic = null;
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(noSelectionMimic);
+            jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
+                return noSelectionMimic;
+            });
+
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue');
+            jest.spyOn(ConfigurationService, 'createTreecipeConfigFile');
+
+        
+            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            
+            expect(ConfigurationService.setExtensionConfigValue).not.toHaveBeenCalled();
+            expect(ConfigurationService.createTreecipeConfigFile).not.toHaveBeenCalled();
+
+        });
+
+        test('given mocked empty return for VSCodeWorkspaceService.promptForFakerServiceImplementation to mimic no selection, prevents method from completing', async () => {
+            
+        
+            const mockWorkspaceRoot = '/mock/workspace/root';
+            const mockObjectsPath = '/mock/objects/path';
+                   
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'promptForObjectsPath').mockImplementation(async () => {
+                return mockObjectsPath;
+            });
+
+            const noSelectionMimic = null;
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockImplementation(async () => {
+                return noSelectionMimic;
+            });
+
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue');
+            jest.spyOn(ConfigurationService, 'createTreecipeConfigFile');
+
+            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            
+            expect(ConfigurationService.setExtensionConfigValue).not.toHaveBeenCalled();
+            expect(ConfigurationService.createTreecipeConfigFile).not.toHaveBeenCalled();
+
+        });
 
     });
 
@@ -274,6 +328,56 @@ describe('Shared ConfigurationService Tests', () => {
         });
 
     });
+
+    describe('getDatasetFilesForCollectionsApiFolderName', () => {
+
+        test('returns expected dataset collections api folder name', () => {
+
+            const expectedCollectionsApiFolderName = 'DatasetFilesForCollectionsApi';
+            const actualCollectionsApiFolderName = ConfigurationService.getDatasetFilesForCollectionsApiFolderName();
+
+            expect(actualCollectionsApiFolderName).toBe(expectedCollectionsApiFolderName);
+
+        });
+
+    });
+
+    describe('getFakerRecipeProcessorByExtensionConfigSelection', () => {
+      
+        test('returns SnowfakeryRecipeProcessor when config is "snowfakery"', () => {
+          
+            jest
+                .spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig')
+                .mockReturnValue('snowfakery');
+        
+            const processor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+            expect(processor).toBeInstanceOf(SnowfakeryRecipeProcessor);
+        
+        });
+      
+        test('returns FakerJSRecipeProcessor when config is "faker-js"', () => {
+          
+            jest
+                .spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig')
+                .mockReturnValue('faker-js');
+      
+            const processor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+            expect(processor).toBeInstanceOf(FakerJSRecipeProcessor);
+        
+        });
+      
+        test('throws an error when config is unknown', () => {
+          
+            jest
+                .spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig')
+                .mockReturnValue('unknown-option');
+        
+            expect(() =>
+                ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection()
+            ).toThrowError('Unknown Faker Recipe Processor selection: unknown-option');
+        
+        });
+      });
 
 });
 

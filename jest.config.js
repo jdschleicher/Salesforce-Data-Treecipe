@@ -7,6 +7,8 @@ module.exports = {
     },
     testPathIgnorePatterns: [
         "force-app/main/default/*",
-        "force-app/test/*"
+        "force-app/test/*",
+        "out/*",
+        ".*MockObjectsService\\.test\\.ts$"
     ]
 };

@@ -82,10 +82,20 @@ export class VSCodeWorkspaceService {
         const datasetEntries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
-        const datasetDirectoryNameFilter = 'dataset';
+        const selectedFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+        const expectedFakerJSDirectoryName = 'dataset-fakerjs';
+        const expectedSnowfakeryDirectoryName = 'dataset';
+        const isFakerJS = (selectedFakerService === 'faker-js');
+        const isSnowfakery = (selectedFakerService === 'snowfakery');
+
         for (const entry of datasetEntries) {
 
-            if ( entry.name.includes(datasetDirectoryNameFilter)) {
+            const isFakerJSDatasetWhenFakerJSSelected = (isFakerJS && entry.name.includes(expectedFakerJSDirectoryName));
+            const isSnowfakeryDatasetWhenSnowfakerySelected = (isSnowfakery 
+                                                                && entry.name.includes(expectedSnowfakeryDirectoryName)
+                                                                && !(entry.name.includes(expectedFakerJSDirectoryName)));
+
+            if ( isFakerJSDatasetWhenFakerJSSelected || isSnowfakeryDatasetWhenSnowfakerySelected ) {
 
                 const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot);
                 quickPickItems.push(quickPickDirectoryItem);
@@ -158,8 +168,6 @@ export class VSCodeWorkspaceService {
             // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
             return undefined; 
         } else {
-
-            ConfigurationService.setExtensionConfigValue('selectedFakerService', fakerServiceSelection.label);
             return fakerServiceSelection.label;
         }
 
@@ -193,11 +201,22 @@ export class VSCodeWorkspaceService {
 
     static async getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems: vscode.QuickPickItem[], folderPathToParse: string) {
 
+        const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+        const expectedFakerJSRecipeFileIndicator = 'recipe-fakerjs';
+
         const entries = await fs.promises.readdir(folderPathToParse, { withFileTypes: true });
         for (const entry of entries) {
   
             if (entry.isFile() && 
                 ( path.extname(entry.name) === '.yaml' || path.extname(entry.name) === '.yml' )) {
+
+                const isFakerJSFileWithSnowfakerySelectedAsFakerService = (selectedDataFakerService === 'snowfakery' && entry.name.includes(expectedFakerJSRecipeFileIndicator));
+                const isNotFakerJSFileWithFakerJSAsFakerService = (selectedDataFakerService === 'faker-js' && !entry.name.includes(expectedFakerJSRecipeFileIndicator));
+                if (isFakerJSFileWithSnowfakerySelectedAsFakerService || isNotFakerJSFileWithFakerJSAsFakerService) {
+                    // IF THERE IS A MISMATCH BETWEEN THE CURRENT SELECTED FAKER SERVICE AND THE DIRECTORY NAME THAT INDICATES WHAT FAKER SERVICE WAS USED TO GENERATE FAKER EXPRESSIONS 
+                    // THEN DO NOT INCLUDE THIS DIRECTORY IN THE RESULTING RECIPES TO PROCESS
+                    continue;
+                }
 
                 const quickpickLabel = `${entry.name}`; 
                 const fullFilePathName = path.join(entry.path, entry.name);
@@ -211,6 +230,15 @@ export class VSCodeWorkspaceService {
             } else if ( entry.isDirectory()) {
                 
                 const recipeDirectoryPathToParseUri = path.join(folderPathToParse, entry.name);
+
+                const isFakerJSDirectoryWithSnowfakerySelectedAsFakerService = (selectedDataFakerService === 'snowfakery' && recipeDirectoryPathToParseUri.includes(expectedFakerJSRecipeFileIndicator));
+                const isNotFakerJSDirectoryWithFakerJSAsFakerService = (selectedDataFakerService === 'faker-js' && !recipeDirectoryPathToParseUri.includes(expectedFakerJSRecipeFileIndicator));
+                if (isFakerJSDirectoryWithSnowfakerySelectedAsFakerService || isNotFakerJSDirectoryWithFakerJSAsFakerService) {
+                    // IF THERE IS A MISMATCH BETWEEN THE CURRENT SELECTED FAKER SERVICE AND THE DIRECTORY NAME THAT INDICATES WHAT FAKER SERVICE WAS USED TO GENERATE FAKER EXPRESSIONS 
+                    // THEN DO NOT INCLUDE THIS DIRECTORY IN THE RESULTING RECIPES TO PROCESS
+                    continue;
+                }
+                
                 const recipeFileVSCodeItems: vscode.QuickPickItem[] = await this.getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems, recipeDirectoryPathToParseUri);
                 if ( recipeFileVSCodeItems.length > 0 ) {
                     recipeFileQuickPickItems.concat(recipeFileVSCodeItems);
@@ -250,7 +278,6 @@ export class VSCodeWorkspaceService {
         ); 
     }
 
-
     static async getFilesInDirectory(directoryToGetFilesFrom: string): Promise<string[]> {
 
         const entries = await fs.promises.readdir(directoryToGetFilesFrom, { withFileTypes: true });
@@ -264,6 +291,37 @@ export class VSCodeWorkspaceService {
         }
 
         return filesFromDirectory;
+
+    }
+
+    static createUniqueTimeStampedFakeDataSetsFolderName(uniqueTimeStampedFakeDataSetsFolderName: string):string {
+
+        const fakeDataSetsFolderPath = ConfigurationService.getFakeDataSetsFolderPath();
+        const workspaceRoot = this.getWorkspaceRoot();
+        const expectedFakeDataSetsFolerPath = `${workspaceRoot}/${fakeDataSetsFolderPath}`;
+
+        if (!fs.existsSync(expectedFakeDataSetsFolerPath)) {
+            fs.mkdirSync(expectedFakeDataSetsFolerPath);
+        }
+
+        const fullPathToUniqueTimeStampedFakeDataSetsFolder = `${expectedFakeDataSetsFolerPath}/${uniqueTimeStampedFakeDataSetsFolderName}`;
+        fs.mkdirSync(`${fullPathToUniqueTimeStampedFakeDataSetsFolder}`);
+
+        return fullPathToUniqueTimeStampedFakeDataSetsFolder;
+
+    }
+
+    static createFakeDatasetsTimeStampedFolderName(isoDateTimestamp):string {
+        
+        let fakeDataSetsFolderName = '';
+        const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
+        if ( selectedDataFakerService === 'faker-js' ) {
+            fakeDataSetsFolderName = `dataset-fakerjs-${isoDateTimestamp}`;
+        } else {
+            fakeDataSetsFolderName = `dataset-${isoDateTimestamp}`;
+        }
+
+        return fakeDataSetsFolderName;
 
     }
     

@@ -1,5 +1,5 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
-import { MockDirectoryService } from "../../DirectoryProcessingService/tests/MockObjectsDirectory/MockDirectoryService";
+import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockObjectsDirectory/MockDirectoryService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 
@@ -219,12 +219,46 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
     });
 
     describe('getAvailableRecipeFileQuickPickItemsByDirectory', () => {
+       
+        const mockedDirents = [
+            // Top-level files
+            MockDirectoryService.createMockedDirent('recipe1.yaml', '/parent-path-mock/GeneratedRecipes', 'file'),
+            MockDirectoryService.createMockedDirent('recipe2.yaml', '/parent-path-mock/GeneratedRecipes', 'file'),
+          
+            // First Top-level fakerjs directory
+            MockDirectoryService.createMockedDirent('recipe-fakerjs-datetimestuff', '/parent-path-mock/GeneratedRecipes', 'dir'),
+          
+            // Nested files in First Top-Level expected fakerjs folder
+            MockDirectoryService.createMockedDirent('recipe-fakerjs-test.yaml', '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-datetimestuff', 'file'),
+            MockDirectoryService.createMockedDirent('recipe-fakerjs-nested-recipe.yaml', '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-datetimestuff', 'file'),
+            MockDirectoryService.createMockedDirent('nested-recipe.yaml', '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-datetimestuff', 'file'),
+          
+            //  nested folder that doesn't match faker-js indicator and would match for snowfakery
+            MockDirectoryService.createMockedDirent('recipe-snowfakery-timestampfolder', '/parent-path-mock/GeneratedRecipes', 'dir'),
+          
+            // Nested files for snowfakery 
+            MockDirectoryService.createMockedDirent('recipe-fakerjs-shouldntmatchsecond-test.yaml', '/parent-path-mock/GeneratedRecipes/rrecipe-snowfakery-timestampfolder', 'file'),
+            MockDirectoryService.createMockedDirent('recipe-snowmatch-1.yaml', '/parent-path-mock/GeneratedRecipes/recipe-snowfakery-timestampfolder', 'file'),
+            MockDirectoryService.createMockedDirent('recipe-snowmatch-2.yaml', '/parent-path-mock/GeneratedRecipes/recipe-snowfakery-timestampfolder', 'file'),
+            MockDirectoryService.createMockedDirent('recipe-snowfakery-3.yaml', '/parent-path-mock/GeneratedRecipes/recipe-snowfakery-timestampfolder', 'file'),
+
+            // Second Top-level fakerjs directory
+            MockDirectoryService.createMockedDirent('recipe-fakerjs-second', '/parent-path-mock/GeneratedRecipes', 'dir'),
+    
+            // Nested files in Second Top-Level expected fakerjs folder
+            MockDirectoryService.createMockedDirent('recipe-fakerjs-second-test.yaml', '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-second', 'file'),
+            MockDirectoryService.createMockedDirent('recipe-fakerjs-second-nested-recipe.yaml', '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-second', 'file'),
+            MockDirectoryService.createMockedDirent('nested-no-matchrecipe.yaml', '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-second', 'file')
+    
+        ];
 
         test('should return an empty array if no files are found', async () => {
 
             const expectedEmptyQuickPickItems = [];
             jest.spyOn(fs.promises, 'readdir').mockResolvedValue(expectedEmptyQuickPickItems);
-
+            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
+            
             let emptyQuickPickItems: vscode.QuickPickItem[] = [];
             const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/mock/generated-recipes');
             expect(actualQuickPickItems).toEqual(emptyQuickPickItems);
@@ -245,8 +279,11 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
                     path: '/mock/generated-recipes'
                 }),
             ];
-            jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
 
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
+            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
+            
             const expectedQuickPickItems:vscode.QuickPickItem[] = [
                 {
                     label: 'recipe1.yaml',
@@ -269,6 +306,105 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             console.log('Expected Keys:', Object.keys(expectedQuickPickItems));
 
             expect(actualQuickPickItems).toEqual(expectedQuickPickItems);
+
+        });
+
+
+        test('given faker-js as selected faker service and directories with both fakerjs recipes and snowfakery, should return expected QuickPickItems for each file found', async () => {
+                          
+            const readdirMockFunctionImplementation = MockDirectoryService.getReaddirMockImplBySetOfMockedDirents(mockedDirents);
+
+            jest.spyOn(fs.promises, 'readdir').mockImplementation(readdirMockFunctionImplementation);
+
+            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('faker-js');
+            
+            const expectedFakerJSOnlyQuickPickItems:vscode.QuickPickItem[] = [
+                {
+                    label: 'recipe-fakerjs-test.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-datetimestuff/recipe-fakerjs-test.yaml'
+                },
+                {
+                    label: 'recipe-fakerjs-nested-recipe.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-datetimestuff/recipe-fakerjs-nested-recipe.yaml'
+                },
+                {
+                    label: 'recipe-fakerjs-second-test.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-second/recipe-fakerjs-second-test.yaml'
+                },
+                {
+                    label: 'recipe-fakerjs-second-nested-recipe.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe-fakerjs-second/recipe-fakerjs-second-nested-recipe.yaml'
+                }
+            ];   
+
+            let emptyQuickPickItems: vscode.QuickPickItem[] = [];
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/parent-path-mock/GeneratedRecipes');
+
+            console.log('Actual Keys:', Object.keys(actualQuickPickItems));
+            console.log('Expected Keys:', Object.keys(expectedFakerJSOnlyQuickPickItems));
+
+            expect(actualQuickPickItems).toEqual(expectedFakerJSOnlyQuickPickItems);
+
+        });
+
+        test('given snowfakery as selected faker service and directories with both fakerjs recipes and snowfakery, should return expected QuickPickItems for each file found', async () => {
+     
+            const readdirMockFunctionImplementation = MockDirectoryService.getReaddirMockImplBySetOfMockedDirents(mockedDirents);
+
+            jest.spyOn(fs.promises, 'readdir').mockImplementation(readdirMockFunctionImplementation);
+
+            // this mock below doesn't drive behavior but the test will fail as the getExtensionConfigValue tries to pull value from users local settings which do not exist as part of stand alone unit tests
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
+            
+            const expectedSnowfakeryOnlyQuickPickItems:vscode.QuickPickItem[] = [
+                {
+                    label: 'recipe1.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe1.yaml'
+                },
+                {
+                    label: 'recipe2.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe2.yaml'
+                },
+                {
+                    label: 'recipe-snowmatch-1.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe-snowfakery-timestampfolder/recipe-snowmatch-1.yaml'
+                },
+                {
+                    label: 'recipe-snowmatch-2.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe-snowfakery-timestampfolder/recipe-snowmatch-2.yaml'
+                },
+                {
+                    label: 'recipe-snowfakery-3.yaml',
+                    description: 'File',
+                    iconPath:  new vscode.ThemeIcon('file'),
+                    detail: '/parent-path-mock/GeneratedRecipes/recipe-snowfakery-timestampfolder/recipe-snowfakery-3.yaml'
+                }
+            ];   
+
+            let emptyQuickPickItems: vscode.QuickPickItem[] = [];
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, '/parent-path-mock/GeneratedRecipes');
+
+            console.log('Actual Keys:', Object.keys(actualQuickPickItems));
+            console.log('Expected Keys:', Object.keys(expectedSnowfakeryOnlyQuickPickItems));
+
+            expect(actualQuickPickItems).toEqual(expectedSnowfakeryOnlyQuickPickItems);
 
         });
 
@@ -369,7 +505,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     describe('getDataSetDirectoryQuickPickItemsByStartingDirectoryPath', () => {
 
-        test('should return quick pick items for directories containing "dataset"', async () => {
+        test('given snowfakery mocked as faker service and expected "dataset-" and "dataset-fakerjs" named folders, should return quick pick items for directories containing "dataset-" only and no "dataset-fakerjs"', async () => {
 
             const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
             jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
@@ -382,6 +518,9 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
        
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';
+
+            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("snowfakery");
+
             const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
     
             expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
@@ -389,20 +528,72 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             
             const expectedQuickPickItems = [
                 {
-                    "label": "./andotherthings/dataset/rest-ofdirectoryname/",
+                    "label": "./andotherthings/dataset-foldernameone/rest-ofdirectoryname/",
                     "description": "Directory",
                     "iconPath": {
                     "id": "folder"
                     },
-                    "detail": "theworkspaceroot/andotherthings/dataset/rest-ofdirectoryname"
+                    "detail": "theworkspaceroot/andotherthings/dataset-foldernameone/rest-ofdirectoryname"
                 },
                 {
-                    "label": "./andotherthings/dataset/anotherone-rest-ofdirectoryname/",
+                    "label": "./andotherthings/dataset-abc/anotherone-rest-ofdirectoryname/",
                     "description": "Directory",
                     "iconPath": {
                     "id": "folder"
                     },
-                    "detail": "theworkspaceroot/andotherthings/dataset/anotherone-rest-ofdirectoryname"
+                    "detail": "theworkspaceroot/andotherthings/dataset-abc/anotherone-rest-ofdirectoryname"
+                },
+                {
+                    "label": "./andotherthings/dataset--fff-fakerjs/anotherone-rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset--fff-fakerjs/anotherone-rest-ofdirectoryname"
+                }
+            ];
+
+            expect(actualDataSetQuickPickItems).toEqual(expectedQuickPickItems);
+
+        });
+
+        test('given faker-js mocked as faker service and expected "dataset-" and "dataset-fakerjs" named folders, should return quick pick items for directories containing "dataset-fakerjs" only and no "dataset-"', async () => {
+
+            const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
+            jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
+    
+            const mockWorkspaceRoot = 'theworkspaceroot'; // "theworkspaceroot" is found in the "path" property of the expected mocked directories. The matching workspaceroot is needed to build out quickpickitems correctly
+            jest.spyOn(VSCodeWorkspaceService, "getWorkspaceRoot").mockReturnValue(mockWorkspaceRoot);
+
+            const mockIcon = new vscode.ThemeIcon('folder');
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
+       
+            const quickPickItems: vscode.QuickPickItem[] = [];
+            const directoryPath = '/mock/directory/path';
+
+            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("faker-js");
+
+            const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
+    
+            expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
+            expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
+            
+            const expectedQuickPickItems = [
+                {
+                    "label": "./andotherthings/dataset-fakerjs-test/anotherone-rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset-fakerjs-test/anotherone-rest-ofdirectoryname"
+                },
+                {
+                    "label": "./andotherthings/dataset-fakerjs-testtwo/anotherone-rest-ofdirectoryname/",
+                    "description": "Directory",
+                    "iconPath": {
+                    "id": "folder"
+                    },
+                    "detail": "theworkspaceroot/andotherthings/dataset-fakerjs-testtwo/anotherone-rest-ofdirectoryname"
                 }
             ];
 
@@ -420,10 +611,81 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
     
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';
+
+            //mocking faker service to avoid test run time failure
+            jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("faker-js");
+
             const result = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
     
             expect(result).toEqual([]); 
         
+        });
+
+    });
+
+    describe('createUniqueTimeStampedFakeDataSetsFolderName', () => {
+        
+        test('should create a unique timestamped folder for fake data sets', () => {
+
+            const uniqueTimeStampedFakeDataSetsFolderName = '2024-11-25T16-24-15';
+            const mockWorkspaceRoot = '/mock/workspace';
+            const mockFakeDataSetsFolderPath = 'treecipe/FakeDataSets';
+            const mockExpectedFolderPath = `${mockWorkspaceRoot}/${mockFakeDataSetsFolderPath}`;
+            const mockUniqueFolderName = `dataset-${uniqueTimeStampedFakeDataSetsFolderName}`;
+            const mockFullPathToUniqueFolder = `${mockExpectedFolderPath}/${mockUniqueFolderName}`;
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'createFakeDatasetsTimeStampedFolderName').mockReturnValue(mockUniqueFolderName);
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'mkdirSync').mockImplementation();
+
+            const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockUniqueFolderName);
+
+            expect(fs.existsSync).toHaveBeenCalledWith(mockExpectedFolderPath);
+            expect(fs.mkdirSync).toHaveBeenCalledWith(mockFullPathToUniqueFolder);
+            expect(result).toBe(mockFullPathToUniqueFolder);
+        
+        });
+
+    });
+
+    describe('createFakeDatasetsTimeStampedFolderName', () => {
+
+        test('given snowfakery selected as faker service, should create a unique timestamped folder name', () => {
+
+            const fakeTimestamp = '2024-11-25T16-24-15';
+            const mockDate = new Date('2024-11-25T16:24:15Z');
+            jest.spyOn(global, 'Date').mockReturnValue(mockDate);
+
+            jest.spyOn(global, 'Date').mockImplementation();
+            jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
+
+            const expectedFolderName = `dataset-${fakeTimestamp}`;
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('snowfakery');
+
+            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
+            expect(actualFolderName).toBe(expectedFolderName);
+
+        });
+
+        test('given fakerjs selected as faker service, should create a unique timestamped folder name with fakerjs included', () => {
+
+            const fakeTimestamp = '2024-11-25T16-24-15';
+            const mockDate = new Date('2024-11-25T16:24:15Z');
+            jest.spyOn(global, 'Date').mockReturnValue(mockDate);
+
+            jest.spyOn(global, 'Date').mockImplementation();
+            jest.spyOn(mockDate, 'toISOString').mockReturnValue('2024-11-25T16:24:15.000Z');
+
+            const expectedFolderName = `dataset-fakerjs-${fakeTimestamp}`;
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
+
+            const actualFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(fakeTimestamp);
+            expect(actualFolderName).toBe(expectedFolderName);
+
         });
 
     });

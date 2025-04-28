@@ -1,0 +1,166 @@
+
+- object: Account
+  nickname: Account_NickName
+  count: 1
+  fields:
+    ProductCode: "${{faker.commerce.product()}}-${{faker.string.alphanumeric(6)}}"
+    AccountNumber: "${{faker.string.numeric(8)}}.00"
+    Name: "${{faker.company.name()}}"
+    AnnualRevenue: "${{faker.string.numeric(7)}}"
+    BillingStreet: "${{faker.location.streetAddress()}}"
+    BillingCity: "${{faker.location.city()}}"
+    BillingState: "${{faker.location.state()}}"
+    BillingPostalCode: "${{faker.location.zipCode()}}"
+    BillingCountry: "${{faker.location.country()}}"
+    Description: "${{faker.company.catchPhrase()}}"
+    Industry: "${{faker.helpers.arrayElement(['Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education'])}}"
+    NumberOfEmployees: "${{faker.string.numeric(4)}}"
+    Phone: "${{faker.phone.number({style:'national'})}}"
+    Rating: "${{faker.helpers.arrayElement(['Hot', 'Warm', 'Cold'])}}"
+    ShippingStreet: "${{faker.location.streetAddress()}}"
+    ShippingCity: "${{faker.location.city()}}"
+    ShippingState: "${{faker.location.state()}}"
+    ShippingPostalCode: "${{faker.location.zipCode()}}"
+    ShippingCountry: "${{faker.location.country()}}"
+    Sic: "${{faker.string.numeric(4)}}"
+    Type: "${{faker.helpers.arrayElement(['Customer', 'Partner', 'Prospect'])}}"
+    Website: "${{faker.internet.domainName()}}"
+    Active__c: "${{ faker.helpers.arrayElement(['No','Yes']) }}"
+    CustomerPriority__c: "${{ faker.helpers.arrayElement(['High','Low','Medium']) }}"
+    Number_of_Contacts__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
+    SLAExpirationDate__c: "${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}"
+    SLASerialNumber__c: "${{ faker.lorem.text(50) }}"
+    SLA__c: "${{ faker.helpers.arrayElement(['Gold','Silver','Platinum','Bronze']) }}"
+    UpsellOpportunity__c: "${{ faker.helpers.arrayElement(['Maybe','No','Yes']) }}"
+
+- object: Case
+  nickname: Case_NickName
+  count: 1
+  fields:
+    Subject: "${{faker.company.catchPhrase()}}"
+    Description: "${{faker.lorem.paragraph()}}"
+    Status: "${{faker.helpers.arrayElement(['New', 'Working', 'Escalated', 'Closed'])}}"
+    Origin: "${{faker.helpers.arrayElement(['Email', 'Phone', 'Web', 'Social'])}}"
+    Priority: "${{faker.helpers.arrayElement(['High', 'Medium', 'Low'])}}"
+    Type: "${{faker.helpers.arrayElement(['Problem', 'Feature Request', 'Question'])}}"
+    Reason: "${{faker.helpers.arrayElement(['Installation', 'Equipment Complexity', 'Performance', 'Breakdown', 'Equipment Design', 'Feedback'])}}"
+    SuppliedName: "${{faker.person.fullName()}}"
+    SuppliedEmail: "${{faker.internet.email()}}"
+    SuppliedPhone: "${{faker.phone.number({style:'national'})}}"
+    SuppliedCompany: "${{faker.company.name()}}"
+    PotentialLiability__c: "${{ faker.helpers.arrayElement(['No','Yes']) }}"
+    Product__c: "${{ faker.helpers.arrayElement(['GC1040','GC1060','GC3020','GC3040','GC3060','GC5020','GC5040','GC5060','GC1020']) }}"
+    SLAViolation__c: "${{ faker.helpers.arrayElement(['No','Yes']) }}"
+
+- object: Example_Everything__c
+  nickname: Example_Everything__c_NickName
+  count: 1
+  fields:
+    RecordTypeId: Example_Everything__c.OneRecType
+    AccountLookup__c: Account_Reference_1
+    Checkbox__c: "${{ faker.datatype.boolean() }}"
+    Currency__c: "${{ faker.finance.amount(0, 999999, 2) }}"
+    DateTime__c: "${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}"
+    Date__c: "${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}"
+    Picklist__c: "${{ faker.helpers.arrayElement(['cle','eastlake']) }}"
+    DependentPicklist__c: 
+      if:
+        - choice:
+            when: "${{ Picklist__c == 'cle' }}"
+            pick:
+                random_choice:
+                    - mulch
+                    - rocks
+                    - tree
+                    - weed
+        - choice:
+            when: "${{ Picklist__c == 'eastlake' }}"
+            pick:
+                random_choice:
+                    - mulch
+                    - rocks
+                    - tree
+                    - weed
+    Email__c: "${{ faker.internet.email() }}"
+    Formula__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
+    MultiPicklist__c: "${{ (faker.helpers.arrayElements(['chorizo','pork','steak','tofu'])).join(';') }}"
+    Number__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
+    Percent__c: "${{ faker.number.float({ min: 0, max: 99, precision: 0.01 }).toFixed(2) }}"
+    Phone__c: "${{ faker.phone.number({style:'national'}) }}"
+    RichTextAreaHtml__c: "${{ faker.lorem.text(1000) }}"
+    TextAreaRich__c: "${{ faker.lorem.text(1000) }}"
+    Text_Area_Long__c: "${{ faker.lorem.text(1000) }}"
+    Text__c: "${{ faker.lorem.text(50) }}"
+    Time__c: "${{ faker.date.between({ from: new Date('1970-01-01T00:00:00Z'), to: new Date('1970-01-01T23:59:59Z') }).toISOString().split('T')[1] }}"
+    Url__c: "${{ faker.internet.url() }}"
+
+- object: Lead
+  nickname: Lead_NickName
+  count: 1
+  fields:
+    FirstName: "${{faker.person.firstName()}}"
+    LastName: "${{faker.person.lastName()}}"
+    Company: "${{faker.company.name()}}"
+    Title: "${{faker.job}}"
+    Email: "${{faker.internet.email()}}"
+    Phone: "${{faker.phone.number({style:'national'})}}"
+    MobilePhone: "${{faker.phone.number({style:'national'})}}"
+    Street: "${{faker.location.streetAddress()}}"
+    City: "${{faker.location.city()}}"
+    State: "${{faker.location.state()}}"
+    PostalCode: "${{faker.location.zipCode()}}"
+    Country: "${{faker.location.country()}}"
+    Industry: "${{faker.helpers.arrayElement(['Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education'])}}"
+    AnnualRevenue: "${{faker.string.numeric(7)}}"
+    Description: "${{faker.lorem.paragraph()}}"
+    LeadSource: "${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}"
+    Rating: "${{faker.helpers.arrayElement(['Hot', 'Warm', 'Cold'])}}"
+    Status: "${{faker.helpers.arrayElement(['Open - Not Contacted', 'Working - Contacted', 'Closed - Converted', 'Closed - Not Converted'])}}"
+    NumberOfEmployees: "${{faker.string.numeric(4)}}"
+    CurrentGenerators__c: "${{ faker.lorem.text(50) }}"
+    CustomLeadCheck__c: "${{ faker.datatype.boolean() }}"
+    NumberofLocations__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
+    Primary__c: "${{ faker.helpers.arrayElement(['No','Yes']) }}"
+    ProductInterest__c: "${{ faker.helpers.arrayElement(['GC1000 series','GC5000 series','GC3000 series']) }}"
+    SICCode__c: "${{ faker.lorem.text(50) }}"
+
+- object: Opportunity
+  nickname: Opportunity_NickName
+  count: 1
+  fields:
+    Name: "${{faker.company.catchPhrase()}}"
+    Amount: "${{ (faker.string.numeric(6)) }}"
+    CloseDate: "${{ faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) }) }}"
+    Description: "${{faker.lorem.paragraph()}}"
+    ExpectedRevenue: "${{ (faker.string.numeric(6)) }}"
+    LeadSource: "${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}"
+    NextStep: "${{faker.lorem.sentence()}}"
+    Probability: "${{ (faker.string.numeric(2)) }}"
+    StageName: "${{faker.helpers.arrayElement(['Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'])}}"
+    Type: "${{faker.helpers.arrayElement(['New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade'])}}"
+    ForecastCategory: "${{faker.helpers.arrayElement(['Pipeline', 'Best Case', 'Commit', 'Closed'])}}"
+    AccountId: Account_Reference_1
+    CurrentGenerators__c: "${{ faker.lorem.text(50) }}"
+    DeliveryInstallationStatus__c: "${{ faker.helpers.arrayElement(['In progress','Yet to begin','Completed']) }}"
+    MainCompetitors__c: "${{ faker.lorem.text(50) }}"
+    OrderNumber__c: "${{ faker.lorem.text(50) }}"
+    TrackingNumber__c: "${{ faker.lorem.text(50) }}"
+
+- object: Product2
+  nickname: Product2_NickName
+  count: 1
+  fields:
+    Name: "${{faker.commerce.productName()}}"
+    Description: "${{faker.lorem.paragraph()}}"
+    ProductCode: "${{faker.commerce.product()}}-${{faker.string.alphanumeric(6)}}"
+    IsActive: "${{faker.helpers.arrayElement(['true', 'false'])}}"
+    Family: "${{faker.helpers.arrayElement(['Hardware', 'Software', 'Services', 'Other'])}}"
+    QuantityUnitOfMeasure: "${{faker.helpers.arrayElement(['Each', 'Case', 'Box', 'Pallet'])}}"
+    DisplayUrl: "${{faker.internet.url()}}"
+    ExternalId: "${{faker.string.uuid()}}"
+    Cost__c: "${{ faker.finance.amount(0, 999999, 2) }}"
+    Current_Inventory__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
+    Lifespan_Months__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
+    Maintenance_Cycle__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
+    Replacement_Part__c: "${{ faker.datatype.boolean() }}"
+    Warehouse_SKU__c: "${{ faker.lorem.text(50) }}"
