@@ -4,7 +4,7 @@
 
 ---
 
-## Prerequisites
+## Optional Prerequisites for using [snowfakery](https://snowfakery.readthedocs.io/en/latest/) as Faker service instead of [faker-js](https://fakerjs.dev/). faker-js can be natively installed with VS Code extensions and does not require machine setup steps.
 
 1. [Install Snowfakery CLI](#install-snowfakery) 
    
@@ -47,11 +47,11 @@ This file is auto generated based on the field configurations detailed selection
 The end result treecipe.config.json file is expected to look like the below:
 
 - **salesforceObjectsPath** - will vary based on selected directory in your VS Code workspace
-- **dataFakerService** - this value must be 'snowfakery' - in a distant future release there is a chance the faker-js could be used as a value
+- **dataFakerService** - can be 'snowfakery' or 'faker-js'
 ```json
 {
     "salesforceObjectsPath": "./force-app/main/default/objects/",
-    "dataFakerService": "snowfakery"
+    "dataFakerService": "faker-js"
 }
 ```
 
@@ -98,7 +98,7 @@ https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#gen
 
 ---
 
- ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe) to create FakeDataSet**
+ ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Faker by Recipe**
  
 This command [prompts the user to select an existing recipe(Treecipe) file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file) to generate fake data from.
 
