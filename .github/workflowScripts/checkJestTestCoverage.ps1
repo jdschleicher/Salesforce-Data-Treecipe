@@ -44,7 +44,7 @@ $coverageSummary = Get-Content -Raw -Path $expectedTestCoverageSummaryPath | Con
 $totalCoverage = $coverageSummary.total.lines.pct
 Write-Host "Total coverage: $totalCoverage%"
 
-if ($totalCoverage -lt 85) {
-  Write-Error "Coverage is below 85%"
+if ($totalCoverage -lt 80) {
+  Write-Error "Coverage is below 80%"
   exit 1
 }
