@@ -1,9 +1,9 @@
 
 
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
-import { IFakerService } from "../IFakerService";
+import { IRecipeFakerService } from "../IRecipeFakerService";
 
-export class SnowfakeryFakerService implements IFakerService {
+export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
     openingRecipeSyntax:string = "${{";
     closingRecipeSyntax:string = "}}";
@@ -35,7 +35,7 @@ export class SnowfakeryFakerService implements IFakerService {
             'lookup': '### TODO -- REFERENCE ID REQUIRED',
             'masterdetail': '### TODO -- REFERENCE ID REQUIRED',
             'formula': '### TODO - REMOVE ME - Formula fields are calculated, not generated',
-            'location': '"### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445"'
+            'location': '### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445'
         };
     
         return salesforceFieldToSnowfakeryMap;

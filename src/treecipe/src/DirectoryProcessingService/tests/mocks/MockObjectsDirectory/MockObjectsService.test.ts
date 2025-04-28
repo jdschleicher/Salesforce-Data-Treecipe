@@ -24,7 +24,7 @@ describe('Confirm Mock Structure Consistent', () => {
 
     test('given expected directory of mock objects, returns expected folder structure', async() => {
     
-      let mockObjectsDirectoryPath = 'src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects';   
+      let mockObjectsDirectoryPath = 'src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects';   
   
       let expectedJSONMockDirectoriesStructure = MockDirectoryService.getExpectedMockDirectoryStructure();
 

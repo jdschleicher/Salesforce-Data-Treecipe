@@ -2,9 +2,9 @@ import { ConfigurationService } from "../../ConfigurationService/ConfigurationSe
 import { DirectoryProcessor } from "../DirectoryProcessor";
 
 import * as vscode from 'vscode';
-import { MockDirectoryService } from "./MockObjectsDirectory/MockDirectoryService";
+import { MockDirectoryService } from "./mocks/MockObjectsDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
-import { SnowfakeryFakerService } from "../../FakerService/SnowfakeryFakerService/SnowfakeryFakerService";
+import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
 
@@ -46,7 +46,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
   beforeEach(() => {
   
     jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
-      .mockImplementation(() => new SnowfakeryFakerService());
+      .mockImplementation(() => new SnowfakeryRecipeFakerService());
   
     directoryProcessor = new DirectoryProcessor();
   
@@ -95,7 +95,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
     test('given mocked text xml content, returns expected field info object', async() => {
 
-      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryFakerService());
+      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryRecipeFakerService());
 
       const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';

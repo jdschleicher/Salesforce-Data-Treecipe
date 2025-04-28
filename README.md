@@ -4,7 +4,7 @@
 
 ---
 
-## Prerequisites
+## Optional Prerequisites for using [snowfakery](https://snowfakery.readthedocs.io/en/latest/) as Faker service instead of [faker-js](https://fakerjs.dev/). faker-js can be natively installed with VS Code extensions and does not require machine setup steps.
 
 1. [Install Snowfakery CLI](#install-snowfakery) 
    
@@ -15,6 +15,12 @@
 1. Open **Visual Studio Code**.
 2. Go to the **Extensions** panel and search for **Salesforce-Data-Treecipe**.
 3. Click **Install**.
+
+---
+
+## "How To" YouTube Walkthroughs: 
+
+- [Salesforce Data Treecipe Initiation, Setup, and Simple Account and Contact Example in VS Code:](https://youtu.be/xCB7vcB4nqM?si=e3N2HmtI2Ca-U7m3)
 
 ---
 
@@ -30,7 +36,6 @@ Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palet
 ---
 
 
-
  ### <a name="command1"></a> 1. **Salesforce Treecipe: Initiate Configuration File**
  
 This [command initiates the creation of a configuration file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main#initiate-treecipe-configuration-with-expected-objects-directory) that is required before using other features of the extension.
@@ -42,11 +47,11 @@ This file is auto generated based on the field configurations detailed selection
 The end result treecipe.config.json file is expected to look like the below:
 
 - **salesforceObjectsPath** - will vary based on selected directory in your VS Code workspace
-- **dataFakerService** - this value must be 'snowfakery' - in a distant future release there is a chance the faker-js could be used as a value
+- **dataFakerService** - can be 'snowfakery' or 'faker-js'
 ```json
 {
     "salesforceObjectsPath": "./force-app/main/default/objects/",
-    "dataFakerService": "snowfakery"
+    "dataFakerService": "faker-js"
 }
 ```
 
@@ -93,7 +98,7 @@ https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#gen
 
 ---
 
- ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Snowfakery by Recipe(Treecipe) to create FakeDataSet**
+ ### <a name="command3"></a> 3. **Salesforce Treecipe: Run Faker by Recipe**
  
 This command [prompts the user to select an existing recipe(Treecipe) file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file) to generate fake data from.
 

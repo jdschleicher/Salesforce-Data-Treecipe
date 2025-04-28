@@ -15,13 +15,3 @@
 		],
 	}
 }
-
-// {
-//     "compilerOptions": {
-//         "target": "ES6",
-//         "module": "CommonJS",
-//         "sourceMap": true,
-//         "outDir": "out"
-//     }
-// }
-

@@ -1,17 +1,25 @@
 
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
-import { IFakerService } from '../FakerService/IFakerService';
-import { NPMFakerService } from '../FakerService/NPMFakerService/NPMFakerService';
-import { SnowfakeryFakerService } from '../FakerService/SnowfakeryFakerService/SnowfakeryFakerService';
+import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
+import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
+import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
+import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
+import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 
 import * as fs from 'fs';
 import path = require('path');
 import * as vscode from 'vscode';
+import { IFakerRecipeProcessor } from '../FakerRecipeProcessor/IFakerRecipeProcessor';
 
 export interface ExtensionConfig {
     selectedFakerService?: string;
     treecipeConfigurationPath?: string;
     useSnowfakeryAsDefault: boolean;
+}
+
+export interface TreecipeConfigDetail {
+    salesforceObjectsPath: string;
+    dataFakerService: string;
 }
 
 export class ConfigurationService {
@@ -77,51 +85,67 @@ export class ConfigurationService {
     static async createTreecipeJSONConfigurationFile() {
 
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-
         const expectedObjectsPath = await VSCodeWorkspaceService.promptForObjectsPath(workspaceRoot);
         if (!expectedObjectsPath) {
             // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
             return;
         };
 
+        let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
+        if (!selectedDataFakerService) {
+            // NO SELECTION MADE
+            return;
+        };
+        ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+
         const configurationDetail = {
             // REPLACE ALL BACKSLASHES WITH FORWARD SLASHES IN PATH SO THERE IS CONSISTENT VALUE AND READ DIRECTORY WORKS AS EXPECTED
             salesforceObjectsPath: `${expectedObjectsPath.replace(/\\/g, "/")}`,
-            dataFakerService: await this.getDataFakerService()
+            dataFakerService: selectedDataFakerService
         };
 
         const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
-        
         const expectedTreecipeDirectoryPath = path.join(workspaceRoot, treecipeBaseDirectory);
+
+        this.createTreecipeConfigFile(configurationDetail, expectedTreecipeDirectoryPath);
+
+    }
+
+    static async createTreecipeConfigFile(treecipeContrigurationDetail, expectedTreecipeDirectoryPath) {
 
         if (!fs.existsSync(expectedTreecipeDirectoryPath)) {
             fs.mkdirSync(expectedTreecipeDirectoryPath);
         }
 
-        const configurationJsonData = JSON.stringify(configurationDetail, null, 4);
+        const configurationJsonData = JSON.stringify(treecipeContrigurationDetail, null, 4);
 
         const configurationFileName = this.getTreecipeConfigurationFileName();
 
         const pathToCreateConfigurationFile = `${ expectedTreecipeDirectoryPath}/${configurationFileName }`;
         
         fs.writeFileSync(pathToCreateConfigurationFile, configurationJsonData);
-        
+
     }
 
-    static async getDataFakerService() {
+    static async updateTreecipeConfigFile(treecipeContrigurationDetail) {
 
-        let selectedDataFakerService = null;
-        if ( this.getExtensionConfigValue('useSnowfakeryAsDefault')) {
-            selectedDataFakerService = "snowfakery";
-        } else {
-            selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
-            if (!selectedDataFakerService) {
-                // NO SELECTION MADE
-                return;
-            };
-        }
+        const configurationFileName = this.getTreecipeConfigurationFileName();
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
+        const expectedTreecipeDirectoryPath = path.join(workspaceRoot, treecipeBaseDirectory);
 
-        return selectedDataFakerService;
+        const pathToCreateConfigurationFile = `${ expectedTreecipeDirectoryPath}/${configurationFileName }`;
+        
+        const configurationJsonData = JSON.stringify(treecipeContrigurationDetail, null, 4);
+        fs.writeFileSync(pathToCreateConfigurationFile, configurationJsonData);
+
+    }
+
+    static getSelectedDataFakerServiceConfig() {
+        const selectedFakerServiceKey = "selectedFakerService";
+        const fakerConfigurationSelection = this.getExtensionConfigValue(selectedFakerServiceKey);
+
+        return fakerConfigurationSelection;
     }
 
     static getDefaultTreecipeConfigurationFolderName() {
@@ -147,17 +171,30 @@ export class ConfigurationService {
         return configurationFileName;
     }
 
-    static getFakerImplementationByExtensionConfigSelection(): IFakerService {
+    static getFakerImplementationByExtensionConfigSelection(): IRecipeFakerService {
 
-        const selectedFakerServiceKey = "selectedFakerService";
-        const fakerConfigurationSelection = this.getExtensionConfigValue(selectedFakerServiceKey);
+        const fakerConfigurationSelection = this.getSelectedDataFakerServiceConfig();
         switch (fakerConfigurationSelection) {
             case 'snowfakery':
-              return new SnowfakeryFakerService();
+              return new SnowfakeryRecipeFakerService();
             case 'faker-js':
-              return new NPMFakerService();
+              return new FakerJSRecipeFakerService();
             default:
               throw new Error(`Unknown Faker Service selection: ${fakerConfigurationSelection}`);
+          }
+    
+    }
+
+    static getFakerRecipeProcessorByExtensionConfigSelection(): IFakerRecipeProcessor {
+
+        const fakerConfigurationSelection = this.getSelectedDataFakerServiceConfig();
+        switch (fakerConfigurationSelection) {
+            case 'snowfakery':
+              return new SnowfakeryRecipeProcessor();
+            case 'faker-js':
+              return new FakerJSRecipeProcessor();
+            default:
+              throw new Error(`Unknown Faker Recipe Processor selection: ${fakerConfigurationSelection}`);
           }
     
     }
@@ -190,6 +227,11 @@ export class ConfigurationService {
     static getDatasetCollectionApiFilesFolderName() {
         const collectionsApiFilesFolderName = 'DatasetFilesForCollectionsApi';
         return collectionsApiFilesFolderName;
+    }
+
+    static getDatasetFilesForCollectionsApiFolderName() {
+        const datasetFilesForCollectionsApiFolderName = 'DatasetFilesForCollectionsApi';
+        return datasetFilesForCollectionsApiFolderName;
     }
 
 

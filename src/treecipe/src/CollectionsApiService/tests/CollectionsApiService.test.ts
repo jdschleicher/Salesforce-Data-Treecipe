@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { CollectionsApiService } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { MockDirectoryService } from '../../DirectoryProcessingService/tests/MockObjectsDirectory/MockDirectoryService';
+import { MockDirectoryService } from '../../DirectoryProcessingService/tests/mocks/MockObjectsDirectory/MockDirectoryService';
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
@@ -38,7 +38,7 @@ describe('Shared tests for CollectionsApiService', () => {
             mocking out async module methods that would cause the test to fail if called as expected. However, the mocks that are included
             would be expected to be correct values
          */ 
-        test('given mocked modules and given expected quick pick item, should return expected selected QuickPickItem', async () => {
+        test('given mocked modules, expected quick pick item, and snowfakery selected as faker service, should return expected selected QuickPickItem', async () => {
         
             const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
             jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
@@ -53,6 +53,30 @@ describe('Shared tests for CollectionsApiService', () => {
             };
 
             (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(expectedQuickPickItem);
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('snowfakery');
+
+            const actualSelection = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
+            expect(actualSelection).toEqual(expectedQuickPickItem);
+    
+        });
+
+
+        test('given mocked modules, given expected quick pick item, and faker-js selected as faker service, should return expected selected QuickPickItem', async () => {
+        
+            const mockDirectoriesWithDataSetFolders = MockDirectoryService.getMockedDirectoriesWithDatSetItemsIncluded();
+            jest.spyOn(fs.promises, "readdir").mockReturnValue(Promise.resolve(mockDirectoriesWithDataSetFolders));
+    
+            const expectedQuickPickItem = {
+                "label": "./andotherthings/dataset/rest-ofdirectoryname/",
+                "description": "Directory",
+                "iconPath": {
+                    "id": "folder"
+                },
+                "detail": "theworkspaceroot/andotherthings/dataset/rest-ofdirectoryname"
+            };
+
+            (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(expectedQuickPickItem);
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
 
             const actualSelection = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
             expect(actualSelection).toEqual(expectedQuickPickItem);
@@ -712,6 +736,67 @@ describe('Shared tests for CollectionsApiService', () => {
             
         });
 
+    });
+
+
+    describe('createCollectionsApiFile', () => {
+
+        test('should create a collections API file with the correct content', () => {
+            
+            const mockCollectionsApiFormattedRecords = [
+                {
+                    attributes: {
+                        type: 'Account',
+                        referenceId: 'Account_Reference_1'
+                    },
+                    name: 'Test Account'
+                },
+                {
+                    attributes: {
+                        type: 'Account',
+                        referenceId: 'Account_Reference_2'
+                    },
+                    name: 'Test Account 2'
+                },
+            ];
+
+            const expectedObjectName = 'Account';
+            const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
+
+            jest.spyOn(fs, 'writeFile').mockReturnValue();
+            
+            CollectionsApiService.createCollectionsApiFile(
+                expectedObjectName,
+                mockCollectionsApiFormattedRecords,
+                mockUniqueTimeStampedFakeDataSetsFolderName
+            );
+
+            const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
+            const expectedFullPathWithFileName = `${mockUniqueTimeStampedFakeDataSetsFolderName}/${expectedFileName}`;
+
+            const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
+            expect(fs.writeFile).toHaveBeenCalledWith(
+                expectedFullPathWithFileName,
+                jsonMockCollectionsApiFormattedRecords,
+                expect.any(Function)
+            );
+
+        });
+
+    });
+
+    describe('buildCollectionsApiFileNameBySobjectName', () => {
+
+        test('should build the correct collections API file name based on the selected recipe file name', () => {
+            
+            const expectedObjectName = 'Account';
+            const expectedFileName = `collectionsApi-${expectedObjectName}.json`;
+
+            const actualBuiltFileName = CollectionsApiService.buildCollectionsApiFileNameBySobjectName(expectedObjectName);
+            expect(actualBuiltFileName).toBe(expectedFileName);
+
+        });
+        
     });
     
 });
