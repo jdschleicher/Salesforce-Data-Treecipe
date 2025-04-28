@@ -11,36 +11,36 @@ export async function activate(context: vscode.ExtensionContext) {
 	// below set config value of "useSnowfakeryAsDefault" will be used until an implementation is built fully for faker-js
 	ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', false);
 
-	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', () => {
+	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', async () => {
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.initiateTreecipeConfigurationSetup();
+		await extensionCommandService.initiateTreecipeConfigurationSetup();
 		
 	});
 
-	const generateTreecipe = vscode.commands.registerCommand('treecipe.generateTreecipe', () => {
+	const generateTreecipe = vscode.commands.registerCommand('treecipe.generateTreecipe', async () => {
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.generateRecipeFromConfigurationDetail();
+		await extensionCommandService.generateRecipeFromConfigurationDetail();
 
 	});
 
-	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', () => {
+	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', async () => {
 
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.runFakerGenerationByRecipeFile();
+		await extensionCommandService.runFakerGenerationByRecipeFile();
 
 	});
 
-	const insertDataSetBySelectedDirectory = vscode.commands.registerCommand('treecipe.insertDataSetBySelectedDirectory', () => {
+	const insertDataSetBySelectedDirectory = vscode.commands.registerCommand('treecipe.insertDataSetBySelectedDirectory', async () => {
 
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.insertDataSetBySelectedDirectory();
+		await extensionCommandService.insertDataSetBySelectedDirectory();
 
 	});
 
 
-	const changeFakerImplementationService = vscode.commands.registerCommand("treecipe.changeFakerImplementationService", () => {
+	const changeFakerImplementationService = vscode.commands.registerCommand("treecipe.changeFakerImplementationService", async() => {
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.changeFakerImplementationService();
+		await extensionCommandService.changeFakerImplementationService();
 
 	});
 
