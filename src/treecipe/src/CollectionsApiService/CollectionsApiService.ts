@@ -141,7 +141,8 @@ export class CollectionsApiService {
               for (let i = 0; i < totalFiles; i++) {
 
                 if (token.isCancellationRequested) {
-                  vscode.window.showWarningMessage("Import cancelled by user.");
+                  vscode.window.showWarningMessage("Import cancelled by user. Deleting any previously saved records...");
+                  await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
                   return;
                 }
           
@@ -192,8 +193,6 @@ export class CollectionsApiService {
                                                 fullPathToResultsFile,
                                                 token: vscode.CancellationToken): Promise<boolean> {
     
-        // for ( const collectionsApiFilePath of collectionApiFiles ) {
-
             let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
             collectionsApiJson = this.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
             collectionsApiJson = this.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
@@ -221,7 +220,6 @@ export class CollectionsApiService {
             objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
             return true;
 
-        // }
     
     }
 
