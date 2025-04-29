@@ -1,12 +1,20 @@
 # Change Log
 
-## [2.0.4] [PR#19](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/21) - Bug: Fix for extension error "Command Not Found" -- added "faker-js" into package.json dependencies instead of devDependencies configuriation
+## [2.0.4] [PR#19](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/21) - Bug: 2.0.0
 
-## [2.0.3] [PR#18](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/19) - Bug: Third attempt to fix issue with "Command Not Found"
+Fix for extension error "Command Not Found" -- added "faker-js" into package.json dependencies instead of devDependencies configuriation
 
-## [2.0.2] [PR#18](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/18) - Bug: Second attempt to fix issue with "Command Not Found"
+## [2.0.3] [PR#18](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/19) - Bug: 2.0.0
 
-## [2.0.1] [PR#17](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/17 - Bug: Attempting to fix issue with "Command Not Found"
+Third attempt to fix issue with "Command Not Found"
+
+## [2.0.2] [PR#18](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/18) - Bug: 2.0.0
+
+Second attempt to fix issue with "Command Not Found"
+
+## [2.0.1] [PR#17](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/17) - Bug: 2.0.0
+
+Attempting to fix issue with "Command Not Found"
 
 ## [2.0.0] [PR#16](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/16 )- Feature: Introducing "faker-js" as a native node module for generating fake values
 
