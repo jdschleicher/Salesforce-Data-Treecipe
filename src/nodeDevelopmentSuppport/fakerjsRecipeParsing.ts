@@ -1,7 +1,7 @@
 
 import { FakerJSRecipeProcessor } from '../treecipe/src/FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 
-const { faker } = require('@faker-js/faker');
+import { faker } from '@faker-js/faker';
 
 // const test  = faker.color.human();
 
