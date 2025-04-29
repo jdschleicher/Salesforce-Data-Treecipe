@@ -4,7 +4,9 @@
 
 ---
 
-## Optional Prerequisites for using [snowfakery](https://snowfakery.readthedocs.io/en/latest/) as Faker service instead of [faker-js](https://fakerjs.dev/). faker-js can be natively installed with VS Code extensions and does not require machine setup steps.
+## Optional Prerequisites for using [snowfakery](https://snowfakery.readthedocs.io/en/latest/) as Faker service instead of [faker-js](https://fakerjs.dev/). 
+
+"faker-js" can be natively installed with VS Code extensions and does not require machine setup steps.
 
 1. [Install Snowfakery CLI](#install-snowfakery) 
    
