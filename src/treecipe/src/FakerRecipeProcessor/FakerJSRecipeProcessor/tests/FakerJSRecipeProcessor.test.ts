@@ -1,4 +1,3 @@
-import { CollectionsApiService } from '../../../CollectionsApiService/CollectionsApiService';
 import { RecipeMockService } from '../../../RecipeService/tests/mocks/RecipeMockService';
 import { FakerJSRecipeProcessor } from '../FakerJSRecipeProcessor';
 import { FakerJSExpressionMocker } from './mocks/FakerJSExpressionMocker';
@@ -8,16 +7,6 @@ import * as yaml from 'js-yaml';
 
 
 import { faker } from '@faker-js/faker';
-
-// jest.mock('@faker-js/faker', () => ({
-
-//   faker: {
-//     helpers: {
-//       arrayElement: jest.fn()
-//     },
-//   }
-
-// }));
 
 describe('Shared FakerJSRecipeProcessor tests', () => {
 
