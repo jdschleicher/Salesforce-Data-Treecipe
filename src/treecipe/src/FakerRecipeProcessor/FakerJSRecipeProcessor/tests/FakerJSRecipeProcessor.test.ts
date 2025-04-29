@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
 
-const { faker } = require('@faker-js/faker');
+import { faker } from '@faker-js/faker';
 
 // jest.mock('@faker-js/faker', () => ({
 
