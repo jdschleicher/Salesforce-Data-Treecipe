@@ -324,5 +324,20 @@ export class VSCodeWorkspaceService {
         return fakeDataSetsFolderName;
 
     }
+
+    static async openFileInEditor(filePath: string) {
+
+        try {
+
+          const uri = vscode.Uri.file(filePath);
+          const document = await vscode.workspace.openTextDocument(uri); 
+          await vscode.window.showTextDocument(document);     
+
+        } catch (error) {
+
+          vscode.window.showErrorMessage(`Failed to open file: ${filePath} - ${error}`);
+          
+        }
+      }
     
 }

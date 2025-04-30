@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 export class ErrorHandlingService {
 
@@ -129,6 +132,41 @@ ${stackTrace}
             }
 
         });
+    }
+
+    static createGenerateRecipeErrorCaptureFile(customGenerateRecipeError: Error, executedCommand: string) {
+        
+        // ensure dedicated directory for generated recipes exists
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+
+        const errorsGenerationFolderName = this.getRecipeGenerationErrorsFolderName();
+        const expectedErrorsFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${errorsGenerationFolderName}`;
+        if (!fs.existsSync(expectedErrorsFolderPath)) {
+            fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
+        }
+        
+        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+        
+        let recipeErrorGenerationFileName = 'generateRecipeError_' + isoDateTimestamp + '.json';
+
+        const outputFilePath = `${expectedErrorsFolderPath}/${recipeErrorGenerationFileName}`;
+        
+        const jsonErrorDetail = JSON.stringify(customGenerateRecipeError, null, 2);
+        
+        fs.writeFile(outputFilePath, jsonErrorDetail, (error) => {
+            if (error) {
+                throw new Error(`an error occurred when creating file to capture xml parsing error for ${customGenerateRecipeError.message}.`);
+            } 
+        });
+
+        vscode.window.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName, );
+        VSCodeWorkspaceService.openFileInEditor(outputFilePath);
+    
+    }
+
+    static getRecipeGenerationErrorsFolderName() {
+        return 'RecipeGenerationErrors';
     }
 
 }

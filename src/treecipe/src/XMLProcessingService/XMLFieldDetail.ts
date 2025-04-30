@@ -7,4 +7,5 @@ export class XMLFieldDetail {
     public referenceTo?: string;
     public fieldLabel: string;
     public controllingField?: string;
+    public xmlMarkup: string;
 }
