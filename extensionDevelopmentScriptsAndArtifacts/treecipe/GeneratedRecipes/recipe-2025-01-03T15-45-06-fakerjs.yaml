@@ -29,7 +29,7 @@
     CustomerPriority__c: "${{ faker.helpers.arrayElement(['High','Low','Medium']) }}"
     Number_of_Contacts__c: "${{ faker.number.int({min: 0, max: 999999}) }}"
     SLAExpirationDate__c: "${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}"
-    SLASerialNumber__c: "${{ faker.lorem.text(50) }}"
+    SLASerialNumber__c: "${{ faker.lorem.text(5).substring(0, 255)  }}"
     SLA__c: "${{ faker.helpers.arrayElement(['Gold','Silver','Platinum','Bronze']) }}"
     UpsellOpportunity__c: "${{ faker.helpers.arrayElement(['Maybe','No','Yes']) }}"
 

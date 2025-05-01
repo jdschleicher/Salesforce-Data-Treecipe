@@ -243,10 +243,10 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     getMapSalesforceFieldToFakerValue():Record<string, string> {
 
         const salesforceFieldToNPMFakerMap: Record<string, string> = {
-            'text': `\${{ faker.lorem.text(50) }}`,
+            'text': `\${{ faker.lorem.text(5).substring(0, 255) }}`,
             'textarea': `\${{ faker.lorem.paragraph() }}`,
-            'longtextarea': `\${{ faker.lorem.text(1000) }}`,
-            'html': `\${{ faker.lorem.text(1000) }}`,
+            'longtextarea': `\${{ faker.lorem.text(100) }}`,
+            'html': `\${{ faker.string.alpha(10) }}`,
             'email': `\${{ faker.internet.email() }}`,
             'phone': `|
                 \${{ faker.phone.number({style:'national'}) }}`,
