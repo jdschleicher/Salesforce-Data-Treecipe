@@ -200,4 +200,39 @@ ${stackTrace}
         return 'RecipeGenerationErrors';
     }
 
+    static createFakerExpressionEvaluationErrorCaptureFile(customFakerExpressionEvaluationValueError: Error, executedCommand: string) {
+    
+        // ensure dedicated directory for generated recipes exists
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+
+        const errorsGenerationFolderName = this.getFakerJSExpressionErrorsFolderName();
+        const expectedErrorsFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${errorsGenerationFolderName}`;
+        if (!fs.existsSync(expectedErrorsFolderPath)) {
+            fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
+        }
+    
+        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+        
+        let recipeErrorGenerationFileName = 'fakerJSExpressionError' + isoDateTimestamp + '.json';
+
+        const outputFilePath = `${expectedErrorsFolderPath}/${recipeErrorGenerationFileName}`;
+        
+        const jsonErrorDetail = JSON.stringify(customFakerExpressionEvaluationValueError, null, 2);
+        
+        fs.writeFile(outputFilePath, jsonErrorDetail, (error) => {
+            if (error) {
+                throw new Error(`an error occurred when creating file to capture faker-js evaluation for ${customFakerExpressionEvaluationValueError.message}.`);
+            } 
+        });
+
+        vscode.window.showWarningMessage('faker-js expression error captured in: ' + executedCommand );
+        VSCodeWorkspaceService.openFileInEditor(outputFilePath);
+
+    }
+
+    static getFakerJSExpressionErrorsFolderName() {
+        return 'FakerJSExpressionErrors';
+    }
+
 }
