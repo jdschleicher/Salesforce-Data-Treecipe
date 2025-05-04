@@ -86,16 +86,6 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
               
           const transformed: Map<string, CollectionsApiJsonStructure>  = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(result);
 
-          // transformed.forEach((collectionsApiContent, sobjectApiName) => {
-
-          //     CollectionsApiService.createCollectionsApiFile(
-          //         sobjectApiName, 
-          //         collectionsApiContent, 
-          //         'fullPathToStoreDatasetFiles'
-          //     );
-              
-          // });
-
           expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
 
           // below expect assert will not work without spy
@@ -104,10 +94,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
           const parsedResult = JSON.parse(result);
 
           expect(parsedResult.length).toBe(2);
-          // expect(parsedResult[0].object).toBe('Account');
-          // expect(parsedResult[0].nickname).toBe('standard_account');
-          // expect(parsedResult[0].fields.Name).toBe('Acme Corp');
-          // expect(parsedResult[0].fields.Description).toBe('Innovative solutions');
+         
 
       });
 

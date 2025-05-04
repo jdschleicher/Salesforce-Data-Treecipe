@@ -475,7 +475,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "DateTime",
             apiName: "DateTime__c",
-            fieldLabel: "DateTime"
+            fieldLabel: "DateTime",
+            xmlMarkup: this.getDateTimeFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -503,7 +504,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Date",
             apiName: "Date__c",
-            fieldLabel: "Date"
+            fieldLabel: "Date",
+            xmlMarkup: this.getDateFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -531,7 +533,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Currency",
             apiName: "Currency__c",
-            fieldLabel: "Currency"
+            fieldLabel: "Currency",
+            xmlMarkup: this.getCurrencyFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -562,7 +565,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Checkbox",
             apiName: "Checkbox__c",
-            fieldLabel: "Checkbox"
+            fieldLabel: "Checkbox",
+            xmlMarkup: this.getCheckboxFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -592,7 +596,8 @@ export class XMLMarkupMockService {
             fieldType: "MultiselectPicklist",
             apiName: "MultiPicklist__c",
             picklistValues: mockedMultiSelectPicklistValues,
-            fieldLabel: "MultiPicklistTest"
+            fieldLabel: "MultiPicklistTest",
+            xmlMarkup: this.getMultiSelectPicklistFieldTypeXMLMarkup()
         };
 
         return multiSelectPicklistXMLField;    
@@ -716,7 +721,8 @@ export class XMLMarkupMockService {
             fieldType: "Picklist",
             apiName: "Picklist__c",
             picklistValues: mockedPicklistValues,
-            fieldLabel: "Picklist"
+            fieldLabel: "Picklist",
+            xmlMarkup: this.getPicklistFieldTypeXMLMarkup()
         };
 
         return picklistXMLField;
@@ -829,7 +835,8 @@ export class XMLMarkupMockService {
         let textXMLFieldDetail: XMLFieldDetail = {
             fieldType: "Text",
             apiName: "Text__c",
-            fieldLabel: "Text"
+            fieldLabel: "Text",
+            xmlMarkup: this.getTextFieldTypeXMLMarkup()
         };
 
         return textXMLFieldDetail;

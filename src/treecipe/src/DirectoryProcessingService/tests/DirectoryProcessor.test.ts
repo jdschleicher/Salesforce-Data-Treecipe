@@ -100,7 +100,8 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
       const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';
       const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName, recordTypeNameByRecordTypeNameToXMLMarkup);
+      const fakeFieldApiName = 'fakeField';
+      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName, recordTypeNameByRecordTypeNameToXMLMarkup, fakeFieldApiName);
 
       const expectedFieldInfo = XMLMarkupMockService.getTextXMLFieldDetail();
     
