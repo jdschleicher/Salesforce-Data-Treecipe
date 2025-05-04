@@ -39,15 +39,15 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     } catch (error) {
                         
                         const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
-                        const customErrorMessage = `Error evaluating faker-js expression syntax: [[ ${fieldName} - ${ fieldExpression } ]] - ${error.message}`;
+                        const customErrorMessage = `Error evaluating faker-js expression syntax << ${fieldName} - ${ fieldExpression } >> - ${error.message}`;
                         
                         const customFakerJSEvaluationError = new Error();
                         customFakerJSEvaluationError.message = customErrorMessage;
                 
-                        customFakerJSEvaluationError.name = "GenerateFakerJSValueError";
+                        customFakerJSEvaluationError.name = "FakerJSExpressionEvaluationError";
                         customFakerJSEvaluationError.stack = error.stack;
                 
-                        customFakerJSEvaluationError.cause = fieldExpression;
+                        customFakerJSEvaluationError.cause = error.message;
                 
                         ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile(customFakerJSEvaluationError, executedCommand);
                         
@@ -63,7 +63,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     nickname: nickname,
                     fields: fieldApiNameByFakerJSEvaluations,
                 });
-                
+
             }
 
         };
