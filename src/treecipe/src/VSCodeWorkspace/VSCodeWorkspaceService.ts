@@ -338,6 +338,12 @@ export class VSCodeWorkspaceService {
           vscode.window.showErrorMessage(`Failed to open file: ${filePath} - ${error}`);
           
         }
-      }
+    }
+
+    static showWarningMessage(message: string) {
+
+        vscode.window.showWarningMessage(message);
+
+    }
     
 }

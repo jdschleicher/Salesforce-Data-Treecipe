@@ -160,7 +160,7 @@ ${stackTrace}
             } 
         });
 
-        vscode.window.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName, );
+        VSCodeWorkspaceService.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName, );
         VSCodeWorkspaceService.openFileInEditor(outputFilePath);
     
     }
@@ -191,7 +191,7 @@ ${stackTrace}
             } 
         });
 
-        vscode.window.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName, );
+        VSCodeWorkspaceService.showWarningMessage('XMLFileProcessor error captured in file: ' + recipeErrorGenerationFileName, );
         VSCodeWorkspaceService.openFileInEditor(outputFilePath);
 
     }
@@ -226,7 +226,7 @@ ${stackTrace}
             } 
         });
 
-        vscode.window.showWarningMessage('faker-js expression error captured in: ' + executedCommand );
+        VSCodeWorkspaceService.showWarningMessage('faker-js expression error captured in: ' + executedCommand );
         VSCodeWorkspaceService.openFileInEditor(outputFilePath);
 
     }
