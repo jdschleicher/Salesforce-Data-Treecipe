@@ -13,7 +13,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         const seeOnePagerPlaceholder = '### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445';
 
         test('Text field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['text']).toBe('${{ faker.lorem.text(50) }}');
+            expect(fieldTypeToNPMFakerMappings['text']).toBe('${{ faker.lorem.text(5).substring(0, 255) }}');
         });
 
         test('TextArea field returns correct npm faker expression', () => {
@@ -25,11 +25,11 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
         test('LongTextArea field returns correct npm faker expression', () => {
             const longTextAreaExpression = fieldTypeToNPMFakerMappings['longtextarea'];
-            expect(longTextAreaExpression).toBe('${{ faker.lorem.text(1000) }}');
+            expect(longTextAreaExpression).toBe('${{ faker.lorem.text(100) }}');
         });
 
         test('RichTextArea Html field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['html']).toBe('${{ faker.lorem.text(1000) }}');
+            expect(fieldTypeToNPMFakerMappings['html']).toBe('${{ faker.string.alpha(10) }}');
         });
 
         test('Email field returns correct npm faker expression', () => {

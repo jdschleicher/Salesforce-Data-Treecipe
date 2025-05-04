@@ -292,11 +292,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             matchingCustomFunctionRegex
         } = this.getExpectedDateRegExPatterns();
 
-        // const isCustomDateFunction = (originalCode: string) => matchingCustomFunctionRegex.test(originalCode);
         let modifiedCode = originalCode;
-        // if ( isCustomDateFunction ) {
-        //     modifiedCode = modifiedCode.replaceAll(" ", ""); // Remove all whitespace to avoid any scenarios where expected regex matches wouldn't work
-        // }
 
         // Replace date_between
         modifiedCode = modifiedCode.replace(dateBetweenRegex, (match, fromValue, toValue) => {
