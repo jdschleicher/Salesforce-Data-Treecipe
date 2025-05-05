@@ -9,7 +9,8 @@ export class XMLMarkupMockService {
             fieldType: "MasterDetail",
             apiName: "MD_MegaMapMadness__c",
             fieldLabel: "MD MegaMapMadness",
-            referenceTo: "MegaMapMadness__c"
+            referenceTo: "MegaMapMadness__c",
+            xmlMarkup: this.getMasterDetailFieldTypeXMLMarkup()
         };
 
         return masterDetailXMLField;   
@@ -43,7 +44,8 @@ export class XMLMarkupMockService {
         const urlXMLField: XMLFieldDetail = {
             fieldType: "Url",
             apiName: "Url__c",
-            fieldLabel: "Url"
+            fieldLabel: "Url",
+            xmlMarkup: this.getUrlFieldTypeXMLMarkup()
         };
 
         return urlXMLField;         
@@ -71,7 +73,8 @@ export class XMLMarkupMockService {
         const timeXMLField: XMLFieldDetail = {
             fieldType: "Time",
             apiName: "Time__c",
-            fieldLabel: "Time"
+            fieldLabel: "Time",
+            xmlMarkup: this.getTimeFieldTypeXMLMarkup()
         };
 
         return timeXMLField;     
@@ -100,7 +103,8 @@ export class XMLMarkupMockService {
         const richTextAreaXMLField: XMLFieldDetail = {
             fieldType: "Html",
             apiName: "TextAreaRich__c",
-            fieldLabel: "TextAreaRich"
+            fieldLabel: "TextAreaRich",
+            xmlMarkup: this.getRichTextAreaFieldTypeXMLMarkup()
         };
 
         return richTextAreaXMLField;     
@@ -129,7 +133,8 @@ export class XMLMarkupMockService {
         const longTextAreaXMLField: XMLFieldDetail = {
             fieldType: "LongTextArea",
             apiName: "Text_Area_Long__c",
-            fieldLabel: "Text Area Long"
+            fieldLabel: "Text Area Long",
+            xmlMarkup: this.getLongTextAreaFieldTypeXMLMarkup()
         };
 
         return longTextAreaXMLField;     
@@ -159,7 +164,8 @@ export class XMLMarkupMockService {
         const phoneXMLField: XMLFieldDetail = {
             fieldType: "Phone",
             apiName: "Phone__c",
-            fieldLabel: "Phone"
+            fieldLabel: "Phone",
+            xmlMarkup: this.getPhoneFieldTypeXMLMarkup()
         };
 
         return phoneXMLField;       
@@ -188,7 +194,8 @@ export class XMLMarkupMockService {
         const numberXMLField: XMLFieldDetail = {
             fieldType: "Number",
             apiName: "Number__c",
-            fieldLabel: "Number"
+            fieldLabel: "Number",
+            xmlMarkup: this.getNumberFieldTypeXMLMarkup()
         };
 
         return numberXMLField;    
@@ -217,7 +224,8 @@ export class XMLMarkupMockService {
         const locationXMLField: XMLFieldDetail = {
             fieldType: "Location",
             apiName: "Geolocation__c",
-            fieldLabel: "Geolocation"
+            fieldLabel: "Geolocation",
+            xmlMarkup: this.getGeolocationFieldTypeXMLMarkup()
         };
 
         return locationXMLField;
@@ -246,7 +254,8 @@ export class XMLMarkupMockService {
         const formulaXMLField: XMLFieldDetail = {
             fieldType: "Number",
             apiName: "Formula__c",
-            fieldLabel: "Formula"
+            fieldLabel: "Formula",
+            xmlMarkup: this.getFormulaFieldTypeXMLMarkup()
         };
 
         return formulaXMLField;      
@@ -280,7 +289,8 @@ export class XMLMarkupMockService {
             fieldType: "Lookup",
             apiName: "Example_Everything_Lookup__c",
             fieldLabel: "Example Everything Lookup",
-            referenceTo: "Example_Everything__c"
+            referenceTo: "Example_Everything__c",
+            xmlMarkup: this.getLookupFieldTypeXMLMarkup()
         };
 
         return lookupXMLField;        
@@ -315,7 +325,8 @@ export class XMLMarkupMockService {
             apiName: "DependentPicklist__c",
             picklistValues: mockedMultiSelectPicklistValues,
             fieldLabel: "DependentPicklist",
-            controllingField: "Picklist__c"
+            controllingField: "Picklist__c",
+            xmlMarkup: this.getDependentPicklistFieldTypeXMLMarkup()
         };
 
         return dependentPicklistXMLField;      
@@ -446,7 +457,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Email",
             apiName: "Email__c",
-            fieldLabel: "Email"
+            fieldLabel: "Email",
+            xmlMarkup: this.getEmailFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;    
