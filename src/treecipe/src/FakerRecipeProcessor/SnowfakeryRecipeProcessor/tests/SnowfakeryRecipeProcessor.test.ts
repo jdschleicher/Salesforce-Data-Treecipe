@@ -2,23 +2,32 @@ import { ChildProcess, exec } from 'child_process';
 
 import { SnowfakeryRecipeProcessor } from '../SnowfakeryRecipeProcessor';
 
-jest.mock('vscode', () => ({
 
-  window: {
-    showInformationMessage: jest.fn()
-  }
-
-}), { virtual: true });
 
 jest.mock('child_process', () => ({
     exec: jest.fn()
 }));
 
+// import * as vscode from 'vscode';
+import * as fs from 'fs';
+
+import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
+
+jest.mock('vscode', () => ({
+
+    window: {
+      showInformationMessage: jest.fn()
+    },
+    workspace: {
+      workspaceFolders: jest.fn()
+    }
+  
+  }), { virtual: true });
+
+
 describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
     const snowfakeryRecipeProcessor = new SnowfakeryRecipeProcessor();
-    const expectedBaseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
-
     describe('isRecipeProcessorSetup', () => {
 
         /* 
@@ -27,8 +36,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
         */
         const mockedExecChildProcessCommand = jest.mocked(exec);
 
-        test('should return true when Snowfakery is installed', async () => {
-       
+        test('should return true when Snowfakery is installed', async () => {            
             /*
               the below cliErrorMock set to null is what is needed to simulate a successful execution
               with this cliErroMock arg as null, the logic will result in truthy 
@@ -65,6 +73,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
             mockedExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
 
+            const expectedBaseSnowfakeryInstallationErrorMessage = 'An error occurred in checking for snowfakery installation';
             await expect(snowfakeryRecipeProcessor.isRecipeProcessorSetup()).rejects.toThrow(
                 `${ expectedBaseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
             );
@@ -109,11 +118,17 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
         test('should throw expected error message when Snowfakery command cli is not found', async () => {
             
+            jest.spyOn(fs, 'writeFile').mockReturnValue();
+
+            const mockWorkspaceRoot = 'rootMock/mock';
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockReturnValue();
+            jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockImplementation();
+
             const expectedCliErrorMessage = 'Command failed';
             const cliErrorMock = new Error(expectedCliErrorMessage);
             const expectedFailureStdOut = 'command not found: snowfakery';
             const mockedMaxBuffer = {maxBuffer:  10485760};
-
             const execChildProcessMockImplementation = (cliCommand, mockedMaxBuffer, handleCliCommandCallback) => {
                 handleCliCommandCallback(cliErrorMock, expectedFailureStdOut);
                 return {} as ChildProcess;
@@ -121,8 +136,10 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
             mockedRunSnowfakeryExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
             const mockRecipeFilePath = 'path/to/recipe.yml';
+            const expectedCustomSnowfakeryErrorName:string  = 'SnowfakeryEvaluationError';
+
             await expect(snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile(mockRecipeFilePath)).rejects.toThrow(
-                `${ expectedBaseSnowfakeryInstallationErrorMessage }: ${ expectedCliErrorMessage }`
+                `${ expectedCliErrorMessage }`
             );
 
         });
