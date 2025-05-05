@@ -36,7 +36,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
             let fakeXMLFieldDetail: XMLFieldDetail = {
                 fieldType: fakeFieldTypeValue,
                 apiName: "Fake__c",
-                fieldLabel: "Fake"
+                fieldLabel: "Fake",
+                xmlMarkup: 'not a real xml markup'
             };
             const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
@@ -297,7 +298,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup: XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
  
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
@@ -350,7 +352,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup : XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
 
             const expectedDependentPicklistRecipeValue = recipeServiceWithSnow.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
@@ -398,7 +401,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
             let fakeXMLFieldDetail: XMLFieldDetail = {
                 fieldType: fakeFieldTypeValue,
                 apiName: "Fake__c",
-                fieldLabel: "Fake"
+                fieldLabel: "Fake",
+                xmlMarkup: "<xml></xml>"
             };
             const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
@@ -663,7 +667,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup: XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
  
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
@@ -716,7 +721,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup : XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
 
             const expectedDependentPicklistRecipeValue = recipeServiceWithFakerJS.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
