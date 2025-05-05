@@ -5,8 +5,12 @@ import { FakerJSExpressionMocker } from './mocks/FakerJSExpressionMocker';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
-
 import { faker } from '@faker-js/faker';
+
+
+// the below mock is required to prevent missing vscode module error when FakerJSRecipeProcessor references service layers that have vscode as a required library
+jest.mock('vscode', () => ({}), { virtual: true });
+
 
 describe('Shared FakerJSRecipeProcessor tests', () => {
 
@@ -63,40 +67,28 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         test('should process complex YAML file and generate fake data', async () => {
 
-          const mockYamlContent = RecipeMockService.getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup();
+            const mockYamlContent = RecipeMockService.getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup();
+            
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(mockYamlContent);
+            
+            // creating yaml.load "spy" to check what is being passed into the load argument
+            // this argument should be mockYamlContent as its the mock value used for fs.readFileSync
+            jest.spyOn(yaml, 'load');
+    
+            const fakeTestFile = 'test.yaml';                        
+            const result = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile(fakeTestFile);
+
+            expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
+
+            // below assert will not work without yaml spy
+            expect(yaml.load).toHaveBeenCalledWith(mockYamlContent);
+
+            const parsedResult = JSON.parse(result);
+
+            expect(parsedResult.length).toBe(2);
           
-          jest.spyOn(fs, 'readFileSync').mockReturnValue(mockYamlContent);
-          
-          // creating yaml.load "spy" to check what is being passed into the load argument
-          // this argument should be mockYamlContent as its the mock value used for fs.readFileSync
-          jest.spyOn(yaml, 'load');
 
-          // Mock the evaluateFakerJSExpression method
-          // const expressionEvalSpy = jest.spyOn(fakerJSRecipeProcessor, 'evaluateFakerJSExpression')
-          //                             .mockImplementation(async (fakerJSExpression) => {
-          //                                 const mockedExpressionEval = FakerJSExpressionMocker.getMockValue(fakerJSExpression);
-          //                                 return mockedExpressionEval;
-          //                             }
-          //                         );
-  
-          const fakeTestFile = 'test.yaml';                        
-          const result = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile(fakeTestFile);
-
-
-              
-          const transformed: Map<string, CollectionsApiJsonStructure>  = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(result);
-
-          expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
-
-          // below expect assert will not work without spy
-          expect(yaml.load).toHaveBeenCalledWith(mockYamlContent);
-
-          const parsedResult = JSON.parse(result);
-
-          expect(parsedResult.length).toBe(2);
-         
-
-      });
+        });
 
     });
 
@@ -132,7 +124,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         test('should evaluate simple faker expression', async () => {
 
-          const getFakeValueSpy = jest.spyOn(fakerJSRecipeProcessor, 'getFakeValueFromFakerJSExpression')
+          const getFakeValueSpy = jest.spyOn(fakerJSRecipeProcessor, 'getFakeValueFromFakerJSExpression');
           const result = await fakerJSRecipeProcessor.evaluateFakerJSExpression(
             "${{ faker.company.name() }}", 
             {}, 
