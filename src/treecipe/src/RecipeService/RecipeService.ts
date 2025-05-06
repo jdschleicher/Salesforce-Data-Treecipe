@@ -62,7 +62,7 @@ export class RecipeService {
                             const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ random_choice('apple', 'orange', 'banana') }}`;
                             return emptyPicklistXMLDetailRecipePlaceholder;
                         }
-                        const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
+                        const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
                         fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
                                                                                                     recordTypeApiToRecordTypeWrapperMap,
                                                                                                     xmlFieldDetail.apiName);  
@@ -77,7 +77,7 @@ export class RecipeService {
                         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
                         return emptyMultiSelectXMLDetailPlaceholder;
                     }
-                    const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
+                    const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
                     fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
                                                                                                             recordTypeApiToRecordTypeWrapperMap,
                                                                                                             xmlFieldDetail.apiName
@@ -149,13 +149,13 @@ export class RecipeService {
         }
         xmlFieldDetail.picklistValues.forEach(picklistOption => {
             
-            if ( !(picklistOption.availableForControllingValues) ) {
+            if ( !(picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection) ) {
                 return '';
             }
-            picklistOption.availableForControllingValues.forEach((controllingValue) => {
+            picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection.forEach((controllingValue) => {
 
                 if ( controllingValue in controllingValueToPicklistOptions ) {
-                    controllingValueToPicklistOptions[controllingValue].push(picklistOption.fullName);
+                    controllingValueToPicklistOptions[controllingValue].push(picklistOption.picklistOptionApiName);
                 } else {
                     controllingValueToPicklistOptions[controllingValue] = [ picklistOption.fullName ];
                 }
