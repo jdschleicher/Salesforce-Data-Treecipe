@@ -93,7 +93,13 @@ export class XmlFileProcessor {
     let picklistValues = picklistValueSetMarkup.valueSetDefinition[0].value;
     picklistValues.forEach(valueSetDefinitionElement => {
       
-      const picklistDetail = this.extractPicklistDetailFromValueSetDefinition(picklistValueSetMarkup, valueSetDefinitionElement);
+      const picklistDetail = this.extractPicklistDetailFromValueSetDefinition(valueSetDefinitionElement);
+      const dependentPicklistConfigurationExists = picklistValueSetMarkup.controllingField;
+      // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST CONFIGURATION
+      if (dependentPicklistConfigurationExists) {
+          const dependentPicklistConfigurationDetail = this.getDependentPicklistConfigurationDetailByPicklistDetail(picklistDetail.picklistOptionApiName, picklistValueSetMarkup);
+          picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection = dependentPicklistConfigurationDetail;
+      }
       picklistFieldDetails.push(picklistDetail);
       
   
@@ -103,39 +109,69 @@ export class XmlFileProcessor {
 
   }
 
-  static extractPicklistDetailFromValueSetDefinition(picklistValueSetMarkup: any, valueSetDefinitionElement: any):IPicklistValue {
+  static extractPicklistDetailFromValueSetDefinition(valueSetDefinitionElement: any):IPicklistValue {
 
-    const picklistApiFullName:string = valueSetDefinitionElement.fullName[0];
+    const picklistOptionApiName:string = valueSetDefinitionElement.fullName[0];
     const picklistLabel:string = valueSetDefinitionElement.label[0];
     const picklistDefault:any = valueSetDefinitionElement.default ? valueSetDefinitionElement.default[0] : null;
     const isPickListDefault:boolean = Boolean(picklistDefault === 'true' || picklistDefault === true);
 
     let picklistDetail: IPicklistValue = {
-      fullName: picklistApiFullName,
+      picklistOptionApiName: picklistOptionApiName,
       label: picklistLabel,
       default: isPickListDefault
     };
 
-    if ( picklistValueSetMarkup.controllingField ) {
-      // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST
-      // THERE CAN BE INSTANCES WHERE CONTROLLING FIELD IS SELECTED BUT NO VALUE SETTINGS ARE MADE AND SO WE NEED TO MANAGE FOR BOTH
-      let availableForControllingValuesForPicklistOption = picklistValueSetMarkup.valueSettings?.filter( 
-        (dependentPicklistSetting) => dependentPicklistSetting.valueName[0] === picklistApiFullName
+    return picklistDetail;
+
+  }
+
+  static getDependentPicklistConfigurationDetailByPicklistDetail(picklistOptionApiName: string, picklistValueSetMarkup: any): string[] {
+
+
+      /* 
+
+        IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST CONFIGURATION
+        
+        THERE CAN BE INSTANCES WHERE:
+        1.) POTENTIAL CONTROLLING FIELD IS SELECTED BUT NO VALUE SETTINGS ARE MADE AND SO WE NEED TO MANAGE FOR BOTH
+        2.) PICKLIST VALUE OF DEPENDENT PICKLIST IS INACTIVE OR HAS NO CONFIGURATION OF CONTROLLING FIELDS
+
+      */
+      let controllingValuesFromParentPicklistThatAllowThisPicklistValue = picklistValueSetMarkup.valueSettings?.filter( 
+        /*
+          there could be multiple <valueSetting></valueSetting> configurations. 
+          This filter will capture those controllingField values based on the picklist's value api name
+          <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <controllingFieldValue>madison</controllingFieldValue>
+            <controllingFieldValue>willoughby</controllingFieldValue>
+            <valueName>tree</valueName>
+        </valueSettings>
+        */
+        (dependentPicklistSetting) => dependentPicklistSetting.valueName[0] === picklistOptionApiName
       );
-      if (availableForControllingValuesForPicklistOption) {
-        if ( !availableForControllingValuesForPicklistOption[0]?.controllingFieldValue ) {
+
+
+      let controlllingValuesDependentPicklistIndividualValueIsAvailableFor:string[] = null;
+      if (controllingValuesFromParentPicklistThatAllowThisPicklistValue && controllingValuesFromParentPicklistThatAllowThisPicklistValue.length > 0) { {
+
+        if ( !controllingValuesFromParentPicklistThatAllowThisPicklistValue[0]?.controllingFieldValue ) {
           // IF THERE IS A CONTROLLING FIELD VALUE THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST
           // THERE CAN BE INSTANCES WHERE CONTROLLING FIELD IS SELECTED BUT NO VALUE SETTINGS ARE MADE AND SO WE NEED TO MANAGE FOR BOTH
-          console.log(availableForControllingValuesForPicklistOption);
+          console.log(controllingValuesFromParentPicklistThatAllowThisPicklistValue);
         }
-        let availableForControllingValuesettings:string[] = availableForControllingValuesForPicklistOption[0].controllingFieldValue;
-        picklistDetail.availableForControllingValues = availableForControllingValuesettings;
+
+        controlllingValuesDependentPicklistIndividualValueIsAvailableFor = controllingValuesFromParentPicklistThatAllowThisPicklistValue[0].controllingFieldValue;
+        // picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection = availableForControllingValuesettings;
+        
       }
 
     }
 
-    return picklistDetail;
-
+    return controlllingValuesDependentPicklistIndividualValueIsAvailableFor;
+    
   }
 
   static isXMLFileType(fileName: string, directoryItemTypeEnum: number ): boolean {

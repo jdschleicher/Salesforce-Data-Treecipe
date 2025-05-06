@@ -157,7 +157,7 @@ export class RecipeService {
                 if ( controllingValue in controllingValueToPicklistOptions ) {
                     controllingValueToPicklistOptions[controllingValue].push(picklistOption.picklistOptionApiName);
                 } else {
-                    controllingValueToPicklistOptions[controllingValue] = [ picklistOption.fullName ];
+                    controllingValueToPicklistOptions[controllingValue] = [ picklistOption.picklistOptionApiName ];
                 }
 
             });

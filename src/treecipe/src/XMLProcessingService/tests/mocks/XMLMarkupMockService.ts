@@ -412,44 +412,166 @@ export class XMLMarkupMockService {
     
     }
 
+    static getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup() {
+        const xmlMarkup = `
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>DependentPicklist__c</fullName>
+    <label>DependentPicklist</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>Picklist__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>tree</fullName>
+                <default>false</default>
+                <label>tree</label>
+            </value>
+            <value>
+                <fullName>plant</fullName>
+                <default>false</default>
+                <label>plant</label>
+            </value>
+            <value>
+                <fullName>fancystone</fullName>
+                <default>false</default>
+                <isActive>hedges</isActive>
+                <label>fancystone</label>
+            </value>
+            <value>
+                <fullName>weed</fullName>
+                <default>false</default>
+                <label>weed</label>
+            </value>
+            <value>
+                <fullName>mulch</fullName>
+                <default>false</default>
+                <label>mulch</label>
+            </value>
+            <value>
+                <fullName>rocks</fullName>
+                <default>false</default>
+                <label>rocks</label>
+            </value>
+            <value>
+                <fullName>moss</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>moss</label>
+            </value>
+            <value>
+                <fullName>hedges</fullName>
+                <default>false</default>
+                <isActive>hedges</isActive>
+                <label>hedges</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <controllingFieldValue>madison</controllingFieldValue>
+            <controllingFieldValue>willoughby</controllingFieldValue>
+            <valueName>tree</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <controllingFieldValue>madison</controllingFieldValue>
+            <controllingFieldValue>mentor</controllingFieldValue>
+            <controllingFieldValue>wickliffe</controllingFieldValue>
+            <controllingFieldValue>willoughby</controllingFieldValue>
+            <valueName>weed</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <controllingFieldValue>willoughby</controllingFieldValue>
+            <valueName>mulch</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>wickliffe</controllingFieldValue>
+            <valueName>rocks</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>madison</controllingFieldValue>
+            <controllingFieldValue>mentor</controllingFieldValue>
+            <valueName>plant</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>
+`;
+
+        return xmlMarkup;   
+    
+    }
+
+   
+
     static getIPicklistValuesForDependentPickllist__c(): IPicklistValue[] {
         
         const expectedPicklistFieldDetails:IPicklistValue[] = [
             {
-                fullName: 'tree',
+                picklistOptionApiName: 'tree',
                 label: 'tree',
                 default: false,
-                availableForControllingValues: ['cle', 'eastlake', 'madison', 'willoughby']
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
             },
             {
-                fullName: 'plant',
+                picklistOptionApiName: 'plant',
                 label: 'plant',
                 default: false,
-                availableForControllingValues: ['madison', 'mentor']
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
             },
             {
-                fullName: 'weed',
+                picklistOptionApiName: 'weed',
                 label: 'weed',
                 default: false,
-                availableForControllingValues: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
             },
             {
-                fullName: 'mulch',
+                picklistOptionApiName: 'mulch',
                 label: 'mulch',
                 default: false,
-                availableForControllingValues: ['cle', 'eastlake', 'willoughby']
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
             },
             {
-                fullName: 'rocks',
+                picklistOptionApiName: 'rocks',
                 label: 'rocks',
                 default: false,
-                availableForControllingValues: ['cle',  'wickliffe']
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle',  'wickliffe']
             }
        
         ];
 
         return expectedPicklistFieldDetails;
     
+    }
+
+    static getGlobalValueSetXMLMarkup() {
+
+        const xmlMarkup = `                     
+        <?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ValueSetPicklist</fullName>
+    <label>Value Set Picklist</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetName>Value_Set_Picklist_VS</valueSetName>
+    </valueSet>
+</CustomField>
+`;
+
+        return xmlMarkup;
     }
 
     static getEmailXMLFieldDetail() {
@@ -745,32 +867,32 @@ export class XMLMarkupMockService {
         
         const expectedPicklistFieldDetails:IPicklistValue[] = [
             {
-                fullName: 'cle',
+                picklistOptionApiName: 'cle',
                 label: 'cle',
                 default: false
             },
             {
-                fullName: 'eastlake',
+                picklistOptionApiName: 'eastlake',
                 label: 'eastlake',
                 default: false
             },
             {
-                fullName: 'madison',
+                picklistOptionApiName: 'madison',
                 label: 'madison',
                 default: false
             },
             {
-                fullName: 'mentor',
+                picklistOptionApiName: 'mentor',
                 label: 'mentor',
                 default: false
             },
             {
-                fullName: 'wickliffe',
+                picklistOptionApiName: 'wickliffe',
                 label: 'wickliffe',
                 default: false
             },
             {
-                fullName: 'willoughby',
+                picklistOptionApiName: 'willoughby',
                 label: 'willoughby',
                 default: false
             }
@@ -784,37 +906,37 @@ export class XMLMarkupMockService {
         
         const expectedPicklistFieldDetails:IPicklistValue[] = [
             {
-                fullName: 'chicken',
+                picklistOptionApiName: 'chicken',
                 label: 'chicken',
                 default: false
             },
             {
-                fullName: 'chorizo',
+                picklistOptionApiName: 'chorizo',
                 label: 'chorizo',
                 default: false
             },
             {
-                fullName: 'egg',
+                picklistOptionApiName: 'egg',
                 label: 'egg',
                 default: false
             },
             {
-                fullName: 'fish',
+                picklistOptionApiName: 'fish',
                 label: 'fish',
                 default: false
             },
             {
-                fullName: 'pork',
+                picklistOptionApiName: 'pork',
                 label: 'pork',
                 default: false
             },
             {
-                fullName: 'steak',
+                picklistOptionApiName: 'steak',
                 label: 'steak',
                 default: false
             },
             {
-                fullName: 'tofu',
+                picklistOptionApiName: 'tofu',
                 label: 'tofu',
                 default: false
             }

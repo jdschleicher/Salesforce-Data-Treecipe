@@ -26,12 +26,59 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
 
         const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
         const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
+        const expectedPicklistOptionDetails = XMLMarkupMockService.getIPicklistValuesForPickllist__c();
+
+        expect(actualPicklistDetail.length).toBe(expectedPicklistOptionDetails.length);
+        actualPicklistDetail.forEach((picklistOption, index) => {
+            expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistOptionDetails[index].picklistOptionApiName); 
+        });
+    });
+
+    test('given test expected picklist xml markup, returns expected IPickList array', async () => {
+
+        // const xmlPicklistMarkup = XMLMarkupMockService.getTestdependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+        const xmlPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+
+        let expectedPicklistFieldXML: any;
+        const parseString = xml2js.parseString;
+        parseString(xmlPicklistMarkup, function (err, result) {
+            console.dir(result);
+            expectedPicklistFieldXML = result;
+        });
+
+        const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
+        const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
+        
         const expectedPicklistFieldDetails = XMLMarkupMockService.getIPicklistValuesForPickllist__c();
 
         expect(actualPicklistDetail.length).toBe(expectedPicklistFieldDetails.length);
-        actualPicklistDetail.forEach((item, index) => {
-            expect(item.fullName).toBe(expectedPicklistFieldDetails[index].fullName); 
+        actualPicklistDetail.forEach((picklistOption, index) => {
+            expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistFieldDetails[index].picklistOptionApiName); 
         });
+        
+    });
+
+    test('given global value set picklist xml markup, returns expected IPickList array', async () => {
+
+        const xmlPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
+
+        let expectedPicklistFieldXML: any;
+        const parseString = xml2js.parseString;
+        parseString(xmlPicklistMarkup, function (err, result) {
+            console.dir(result);
+            expectedPicklistFieldXML = result;
+        });
+
+        const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
+        const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
+        
+        const expectedPicklistOptionFieldDetails = XMLMarkupMockService.getIPicklistValuesForPickllist__c();
+
+        expect(actualPicklistDetail.length).toBe(expectedPicklistOptionFieldDetails.length);
+        actualPicklistDetail.forEach((picklistOption, index) => {
+            expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistOptionFieldDetails[index].picklistOptionApiName); 
+        });
+        
     });
 
 });
