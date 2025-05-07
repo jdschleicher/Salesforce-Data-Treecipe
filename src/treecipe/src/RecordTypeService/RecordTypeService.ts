@@ -20,7 +20,7 @@ export class RecordTypeService {
         if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
 
           const recordTypeXMLObjectDetail:any = await this.getRecordTypeDetailFromRecordTypeFile(fileName, expectedRecordTypesPath);
-          const recordTypeApiName = recordTypeXMLObjectDetail.picklistOptionApiName[0];
+          const recordTypeApiName = recordTypeXMLObjectDetail.fullName[0];
           const recordTypeWrapper = this.initiateRecordTypeWrapperByXMLDetail(recordTypeXMLObjectDetail, recordTypeApiName);
           recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
 
