@@ -26,7 +26,7 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
 
         const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
         const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
-        const expectedPicklistOptionDetails = XMLMarkupMockService.getIPicklistValuesForPickllist__c();
+        const expectedPicklistOptionDetails = XMLMarkupMockService.getIPicklistValuesForPicklist__c();
 
         expect(actualPicklistDetail.length).toBe(expectedPicklistOptionDetails.length);
         actualPicklistDetail.forEach((picklistOption, index) => {
@@ -36,22 +36,20 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
 
     test('given test expected picklist xml markup, returns expected IPickList array', async () => {
 
-        // const xmlPicklistMarkup = XMLMarkupMockService.getTestdependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
         const xmlPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
 
         let expectedPicklistFieldXML: any;
         const parseString = xml2js.parseString;
         parseString(xmlPicklistMarkup, function (err, result) {
-            console.dir(result);
             expectedPicklistFieldXML = result;
         });
 
         const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
         const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
         
-        const expectedPicklistFieldDetails = XMLMarkupMockService.getIPicklistValuesForPickllist__c();
-
+        const expectedPicklistFieldDetails = XMLMarkupMockService.getIPicklistValuesForDependentPickllist__c();
         expect(actualPicklistDetail.length).toBe(expectedPicklistFieldDetails.length);
+
         actualPicklistDetail.forEach((picklistOption, index) => {
             expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistFieldDetails[index].picklistOptionApiName); 
         });
@@ -72,7 +70,7 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
         const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
         const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
         
-        const expectedPicklistOptionFieldDetails = XMLMarkupMockService.getIPicklistValuesForPickllist__c();
+        const expectedPicklistOptionFieldDetails = XMLMarkupMockService.getIPicklistValuesForPicklist__c();
 
         expect(actualPicklistDetail.length).toBe(expectedPicklistOptionFieldDetails.length);
         actualPicklistDetail.forEach((picklistOption, index) => {

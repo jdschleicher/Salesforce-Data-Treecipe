@@ -466,7 +466,7 @@ export class XMLMarkupMockService {
             <value>
                 <fullName>hedges</fullName>
                 <default>false</default>
-                <isActive>hedges</isActive>
+                <isActive>true</isActive>
                 <label>hedges</label>
             </value>
         </valueSetDefinition>
@@ -850,7 +850,7 @@ export class XMLMarkupMockService {
 
     static getPicklistXMLFieldDetail(): XMLFieldDetail {
 
-        const mockedPicklistValues = this.getIPicklistValuesForPickllist__c();
+        const mockedPicklistValues = this.getIPicklistValuesForPicklist__c();
         let picklistXMLField: XMLFieldDetail = {
             fieldType: "Picklist",
             apiName: "Picklist__c",
@@ -863,7 +863,7 @@ export class XMLMarkupMockService {
         
     }
 
-    static getIPicklistValuesForPickllist__c(): IPicklistValue[] {
+    static getIPicklistValuesForPicklist__c(): IPicklistValue[] {
         
         const expectedPicklistFieldDetails:IPicklistValue[] = [
             {
@@ -896,6 +896,8 @@ export class XMLMarkupMockService {
                 label: 'willoughby',
                 default: false
             }
+            
+
         ];
 
         return expectedPicklistFieldDetails;

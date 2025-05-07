@@ -94,7 +94,7 @@ export class XmlFileProcessor {
     picklistValues.forEach(valueSetDefinitionElement => {
       
       const picklistDetail = this.extractPicklistDetailFromValueSetDefinition(valueSetDefinitionElement);
-      const dependentPicklistConfigurationExists = picklistValueSetMarkup.controllingField;
+      const dependentPicklistConfigurationExists = ( picklistValueSetMarkup?.controllingField.length === 1 );
       // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST CONFIGURATION
       if (dependentPicklistConfigurationExists) {
           const dependentPicklistConfigurationDetail = this.getDependentPicklistConfigurationDetailByPicklistDetail(picklistDetail.picklistOptionApiName, picklistValueSetMarkup);
