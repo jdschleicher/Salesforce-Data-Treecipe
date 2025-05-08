@@ -90,20 +90,24 @@ export class XmlFileProcessor {
     // NOTE: THE INDEX OF ZERO "[0]" USED IN SEVERAL LOCATIONS IS REQUIRED DUE TO HOW THE XML ARE PARSED AS THERE COULD BE 1 OR MANY OF THE SAME ELEMENT NODE
     let picklistFieldDetails:IPicklistValue[] = [];
   
-    let picklistValues = picklistValueSetMarkup.valueSetDefinition[0].value;
-    picklistValues.forEach(valueSetDefinitionElement => {
+    // IF picklistValueSetMarkup.valueSetDefinition IS undefined THIS IS AN INDICATOR THAT THE PICKLIST IS A GLOBAL PICKLIST
+    if (picklistValueSetMarkup.valueSetDefinition !== undefined) {
       
-      const picklistDetail = this.extractPicklistDetailFromValueSetDefinition(valueSetDefinitionElement);
-      const dependentPicklistConfigurationExists = ( picklistValueSetMarkup?.controllingField.length === 1 );
-      // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST CONFIGURATION
-      if (dependentPicklistConfigurationExists) {
-          const dependentPicklistConfigurationDetail = this.getDependentPicklistConfigurationDetailByPicklistDetail(picklistDetail.picklistOptionApiName, picklistValueSetMarkup);
-          picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection = dependentPicklistConfigurationDetail;
-      }
-      picklistFieldDetails.push(picklistDetail);
-      
-  
-    });
+      let picklistValues = picklistValueSetMarkup.valueSetDefinition[0].value;
+      picklistValues.forEach(valueSetDefinitionElement => {
+        
+        const picklistDetail = this.extractPicklistDetailFromValueSetDefinition(valueSetDefinitionElement);
+        const dependentPicklistConfigurationExists = ( picklistValueSetMarkup?.controllingField?.length === 1 );
+        // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST CONFIGURATION
+        if (dependentPicklistConfigurationExists) {
+            const dependentPicklistConfigurationDetail = this.getDependentPicklistConfigurationDetailByPicklistDetail(picklistDetail.picklistOptionApiName, picklistValueSetMarkup);
+            picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection = dependentPicklistConfigurationDetail;
+        }
+        picklistFieldDetails.push(picklistDetail);
+        
+      });
+
+    } 
 
     return picklistFieldDetails;
 

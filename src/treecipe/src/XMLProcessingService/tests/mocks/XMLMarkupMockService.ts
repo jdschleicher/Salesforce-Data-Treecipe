@@ -332,6 +332,21 @@ export class XMLMarkupMockService {
         return dependentPicklistXMLField;      
     }
 
+    static getDependentPicklistWithIsActiveXMLFieldDetail() {
+
+        const mockedMultiSelectPicklistValues = this.getIPicklistValuesWithIsActiveConfigDependentPickllist__c();
+        const dependentPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "DependentPicklist__c",
+            picklistValues: mockedMultiSelectPicklistValues,
+            fieldLabel: "DependentPicklist",
+            controllingField: "Picklist__c",
+            xmlMarkup: this.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup()
+        };
+
+        return dependentPicklistXMLField;      
+    }
+
     static getDependentPicklistFieldTypeXMLMarkup() {
         const xmlMarkup = `
 <?xml version="1.0" encoding="UTF-8"?>
@@ -439,7 +454,7 @@ export class XMLMarkupMockService {
             <value>
                 <fullName>fancystone</fullName>
                 <default>false</default>
-                <isActive>hedges</isActive>
+                <isActive>false</isActive>
                 <label>fancystone</label>
             </value>
             <value>
@@ -545,6 +560,67 @@ export class XMLMarkupMockService {
                 default: false,
                 controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle',  'wickliffe']
             }
+       
+        ];
+
+        return expectedPicklistFieldDetails;
+    
+    }
+
+    static getIPicklistValuesWithIsActiveConfigDependentPickllist__c(): IPicklistValue[] {
+        
+        const expectedPicklistFieldDetails:IPicklistValue[] = [
+            {
+                picklistOptionApiName: 'tree',
+                label: 'tree',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
+            },
+            {
+                picklistOptionApiName: 'plant',
+                label: 'plant',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
+            },
+            {
+                picklistOptionApiName: 'fancystone',
+                label: 'fancystone',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: null,
+                isActive: false
+            },
+            {
+                picklistOptionApiName: 'weed',
+                label: 'weed',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+            },
+            {
+                picklistOptionApiName: 'mulch',
+                label: 'mulch',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
+            },
+            {
+                picklistOptionApiName: 'rocks',
+                label: 'rocks',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle',  'wickliffe']
+            },
+            {
+                picklistOptionApiName: 'moss',
+                label: 'moss',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: null,
+                isActive: false
+            },
+            {
+                picklistOptionApiName: 'hedges',
+                label: 'hedges',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: null,
+                isActive: true
+            },
        
         ];
 
