@@ -23,6 +23,29 @@
         </values>
     </picklistValues>
     <picklistValues>
+        <picklist>GlobalValuePicklist__c</picklist>
+        <values>
+            <fullName>browns%2C</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>cavs%2C</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>crunch</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>guardians%2C</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>monsters%2C</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
         <picklist>MultiPicklist__c</picklist>
         <values>
             <fullName>chorizo</fullName>
