@@ -35,9 +35,9 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
 
     });
 
-    test('given test expected picklist xml markup, returns expected IPickList array', async () => {
+    test('given expected dependent picklist xml markup, returns expected IPickList array', async () => {
 
-        const xmlPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+        const xmlPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup();
 
         let expectedPicklistFieldXML: any;
         const parseString = xml2js.parseString;
@@ -59,9 +59,45 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
         let countOfNullControllingPicklistOptions = expectedPicklistFieldDetails?.filter( 
             (picklistOptionDetail) => picklistOptionDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection === null
         );
-        const expectedHardCodedCountOfNullControllingPicklistOptions = 3;
+        const expectedHardCodedCountOfNullControllingPicklistOptions = 0;
         expect(countOfNullControllingPicklistOptions.length).toBe(expectedHardCodedCountOfNullControllingPicklistOptions);
 
+
+        let countOfIsNotActivePicklistOptions = expectedPicklistFieldDetails?.filter( 
+            (picklistOptionDetail) => picklistOptionDetail.isActive === false
+        );
+        const expectedHardCodedCountOfIsNotActiveOptions = 0;
+        expect(countOfIsNotActivePicklistOptions.length).toBe(expectedHardCodedCountOfIsNotActiveOptions);
+
+        
+    });
+
+    test('given expected dependent picklist with isActive xml markup, returns expected IPickList array', async () => {
+
+        const xmlPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+
+        let expectedPicklistFieldXML: any;
+        const parseString = xml2js.parseString;
+        parseString(xmlPicklistMarkup, function (err, result) {
+            expectedPicklistFieldXML = result;
+        });
+
+        const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
+        const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
+        
+        const expectedPicklistFieldDetails = XMLMarkupMockService.getIPicklistValuesWithIsActiveConfigDependentPickllist__c();
+        expect(actualPicklistDetail.length).toBe(expectedPicklistFieldDetails.length);
+
+        actualPicklistDetail.forEach((picklistOption, index) => {
+            expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistFieldDetails[index].picklistOptionApiName); 
+        });
+
+        // THE BELOW ASSERTS ARE USED TO ENSURE THE PICKLIST DETAIL CAPTURES MARKUP LIKLE "isActive" AND SCENARIOS WHERE PICKLIST VALUE OPTIONS HAVE ZERO CONTROLLING FIELD CONFIGURATIONS FROM THE EXPECTED PARENT PICKLIST
+        let countOfNullControllingPicklistOptions = expectedPicklistFieldDetails?.filter( 
+            (picklistOptionDetail) => picklistOptionDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection === null
+        );
+        const expectedHardCodedCountOfNullControllingPicklistOptions = 2;
+        expect(countOfNullControllingPicklistOptions.length).toBe(expectedHardCodedCountOfNullControllingPicklistOptions);
 
         let countOfIsNotActivePicklistOptions = expectedPicklistFieldDetails?.filter( 
             (picklistOptionDetail) => picklistOptionDetail.isActive === false
@@ -71,6 +107,7 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
 
         
     });
+
 
     test('given global value set picklist xml markup, returns expected IPickList array', async () => {
 
@@ -131,19 +168,38 @@ describe('processXmlFieldContent', () => {
 
     test('given expected Dependent Picklist with isActive tags in xml markup, returns expected Dependent picklist XMLFieldDetail', async () => {
 
-        const xmlDependentPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+        const xmlExpectedDependentPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
         const fakeFieldName = 'DependentPicklist__c.field-meta.xml';
-        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlDependentPicklistMarkup, fakeFieldName);
-        const expectedXMLDependentPicklistXMLFieldDetail = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlExpectedDependentPicklistMarkup, fakeFieldName);
+        const expectedXMLDependentPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedIsActiveDependentPicklistXMLDetail();
 
-        expect(expectedXMLDependentPicklistXMLFieldDetail).toEqual(actualDependentPicklistDetail);
-
+        expect(actualDependentPicklistDetail).toEqual(expectedXMLDependentPicklistXMLFieldDetail);
     });
+
+
+
+
 
     test('given expected Global Value Set xml markup, returns expected picklist XMLFieldDetail', async () => {
 
-        const xmlDependentPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
-        const fakeFieldName = 'DependentPicklist__c.field-meta.xml';
+        const xmlGlobalPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
+        const fakeFieldName = 'GlobalPicklist__c.field-meta.xml';
+        const actualGlobalPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlGlobalPicklistMarkup, fakeFieldName);
+        const expectedGlobalPicklistDetail = XMLMarkupMockService.getPicklistFieldSetToGlobalPicklistXMLFieldDetail();
+        expect(actualGlobalPicklistDetail).toEqual(expectedGlobalPicklistDetail);
+
+    });
+
+
+
+
+
+
+
+    test('given expected Standard Value Set xml markup, returns expected picklist XMLFieldDetail', async () => {
+
+        const xmlDependentPicklistMarkup = XMLMarkupMockService.getStandardValueSetLeadSourceXMLMarkup();
+        const fakeFieldName = 'LeadSource.field-meta.xml';
         const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlDependentPicklistMarkup, fakeFieldName);
         const expectedXMLDependentPicklistXMLFieldDetail = XMLMarkupMockService.getDependentPicklistXMLFieldDetail();
 

@@ -115,15 +115,24 @@ export class XmlFileProcessor {
 
   static extractPicklistDetailFromValueSetDefinition(valueSetDefinitionElement: any):IPicklistValue {
 
+    // FOR ALL USES OF "0" AS INDEX, THE XML PARSER IS LOOKING FOR 1 OR MANY TAGS SO WE ARE ONLY EXPECTED ONE BUT IT IS RETURNING AN ARRAY SO WE NEED TO GET THE FIRST INDEX OF '0'
     const picklistOptionApiName:string = valueSetDefinitionElement.fullName[0];
     const picklistLabel:string = valueSetDefinitionElement.label[0];
-    const picklistDefault:any = valueSetDefinitionElement.default ? valueSetDefinitionElement.default[0] : null;
-    const isPickListDefault:boolean = Boolean(picklistDefault === 'true' || picklistDefault === true);
+
+    // for below string to boolean conversions, stopped trying for the moment to get explicit conversion to work after tests continued to return string values
+
+    // "is picklist active" defaults to true if there is no <isActive> xml makrup that indicates false or true
+    const isPicklistActiveStringValue:any = valueSetDefinitionElement?.isActive ? valueSetDefinitionElement.isActive[0] : true;
+    const isPickListActive:boolean = Boolean(isPicklistActiveStringValue === 'true' || isPicklistActiveStringValue === true );
+    
+    const isPicklistDefaultStringValue:any = valueSetDefinitionElement.default ? valueSetDefinitionElement.default[0] : null;
+    const isPickListDefault:boolean = Boolean(isPicklistDefaultStringValue === 'true' || isPicklistDefaultStringValue === true);
 
     let picklistDetail: IPicklistValue = {
       picklistOptionApiName: picklistOptionApiName,
       label: picklistLabel,
-      default: isPickListDefault
+      default: isPickListDefault,
+      isActive: isPickListActive
     };
 
     return picklistDetail;
@@ -161,14 +170,7 @@ export class XmlFileProcessor {
       let controlllingValuesDependentPicklistIndividualValueIsAvailableFor:string[] = null;
       if (controllingValuesFromParentPicklistThatAllowThisPicklistValue && controllingValuesFromParentPicklistThatAllowThisPicklistValue.length > 0) { {
 
-        if ( !controllingValuesFromParentPicklistThatAllowThisPicklistValue[0]?.controllingFieldValue ) {
-          // IF THERE IS A CONTROLLING FIELD VALUE THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST
-          // THERE CAN BE INSTANCES WHERE CONTROLLING FIELD IS SELECTED BUT NO VALUE SETTINGS ARE MADE AND SO WE NEED TO MANAGE FOR BOTH
-          console.log(controllingValuesFromParentPicklistThatAllowThisPicklistValue);
-        }
-
         controlllingValuesDependentPicklistIndividualValueIsAvailableFor = controllingValuesFromParentPicklistThatAllowThisPicklistValue[0].controllingFieldValue;
-        // picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection = availableForControllingValuesettings;
         
       }
 
