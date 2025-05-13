@@ -659,16 +659,15 @@ export class XMLMarkupMockService {
 
     static getPicklistFieldSetToGlobalPicklistXMLFieldDetail() {
 
-        const dependentPicklistXMLField: XMLFieldDetail = {
+        const globalPicklistXMLField: XMLFieldDetail = {
             fieldType: "Picklist",
             apiName: "ValueSetPicklist",
             globalValueSetName: 'Value_Set_Picklist_VS',
-            picklistValues: [],
             fieldLabel: "Value Set Picklist",
             xmlMarkup: this.getGlobalValueSetXMLMarkup()
         };
 
-        return dependentPicklistXMLField;      
+        return globalPicklistXMLField;      
     }
 
     static getGlobalValueSetXMLMarkup() {
@@ -691,6 +690,19 @@ export class XMLMarkupMockService {
 `;
 
         return xmlMarkup;
+    }
+
+     static getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail() {
+
+        const standardValueSetPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "LeadSource",
+            isStandardValueSet: true,
+            fieldLabel: "LeadSource",
+            xmlMarkup: this.getStandardValueSetLeadSourceXMLMarkup()
+        };
+
+        return standardValueSetPicklistXMLField;      
     }
 
     static getStandardValueSetLeadSourceXMLMarkup() {

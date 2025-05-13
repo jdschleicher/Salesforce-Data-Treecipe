@@ -42,17 +42,38 @@ export class XmlFileProcessor {
         let picklistValueSetMarkup = fieldXML.CustomField.valueSet?.[0];
 
         if (picklistValueSetMarkup) {
-          xmlFieldDetail.picklistValues = this.extractPickListDetailsFromXMLValueTag(picklistValueSetMarkup);
 
-          const controllingFieldApiName = picklistValueSetMarkup.controllingField ? picklistValueSetMarkup.controllingField[0]: null;
-          if (controllingFieldApiName) {
-            xmlFieldDetail.controllingField = controllingFieldApiName;
-          }
+            // IF picklistValueSetMarkup.valueSetDefinition IS undefined THIS IS AN INDICATOR THAT THE PICKLIST IS A GLOBAL PICKLIST
+            if (picklistValueSetMarkup.valueSetDefinition !== undefined) {
+        
+              xmlFieldDetail.picklistValues = this.extractPickListDetailsFromXMLValueTag(picklistValueSetMarkup);
+
+              const controllingFieldApiName = picklistValueSetMarkup.controllingField ? picklistValueSetMarkup.controllingField[0]: null;
+              if (controllingFieldApiName) {
+                xmlFieldDetail.controllingField = controllingFieldApiName;
+              }     
+        
+            } else if ( picklistValueSetMarkup?.valueSetName !== undefined ) {
+
+              // Index of "0" used to convert xml tag array to single value
+              xmlFieldDetail.globalValueSetName = picklistValueSetMarkup.valueSetName[0];
+
+            } 
 
         } else {
-          // TODO: handle possible global picklist scenario
+
+          /*
+          
+            if no <valueSet> tag on xml markup that is set to "Picklist" then the field is a "Standard Value Set"
+
+            if the fieldLabel was null and set to "AUTO_GENERATED" , we will update the label to be the standard value set api name
+
+          */
+
+            xmlFieldDetail.isStandardValueSet = true;
+            xmlFieldDetail.fieldLabel = xmlFieldDetail.apiName;
+
         }
-        
         
       } else if ( typeValue === "Lookup" || typeValue === "MasterDetail" ) {
         
@@ -90,7 +111,12 @@ export class XmlFileProcessor {
     // NOTE: THE INDEX OF ZERO "[0]" USED IN SEVERAL LOCATIONS IS REQUIRED DUE TO HOW THE XML ARE PARSED AS THERE COULD BE 1 OR MANY OF THE SAME ELEMENT NODE
     let picklistFieldDetails:IPicklistValue[] = [];
   
-    // IF picklistValueSetMarkup.valueSetDefinition IS undefined THIS IS AN INDICATOR THAT THE PICKLIST IS A GLOBAL PICKLIST
+    /* 
+      IF picklistValueSetMarkup.valueSetDefinition IS undefined 
+      THIS IS AN INDICATOR THAT THE PICKLIST IS A GLOBAL PICKLIST.
+      This scenario is handled further upstream but to prevent unexpected errors 
+      for xml not needed we will do a null/undefined check 
+    */
     if (picklistValueSetMarkup.valueSetDefinition !== undefined) {
       
       let picklistValues = picklistValueSetMarkup.valueSetDefinition[0].value;
@@ -107,7 +133,7 @@ export class XmlFileProcessor {
         
       });
 
-    } 
+    }
 
     return picklistFieldDetails;
 

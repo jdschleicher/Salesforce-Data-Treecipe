@@ -9,4 +9,5 @@ export class XMLFieldDetail {
     public fieldLabel: string;
     public controllingField?: string;
     public xmlMarkup: string;
+    public isStandardValueSet?: boolean;
 }

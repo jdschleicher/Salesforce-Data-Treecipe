@@ -177,31 +177,23 @@ describe('processXmlFieldContent', () => {
     });
 
 
-
-
-
     test('given expected Global Value Set xml markup, returns expected picklist XMLFieldDetail', async () => {
 
         const xmlGlobalPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
         const fakeFieldName = 'GlobalPicklist__c.field-meta.xml';
         const actualGlobalPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlGlobalPicklistMarkup, fakeFieldName);
         const expectedGlobalPicklistDetail = XMLMarkupMockService.getPicklistFieldSetToGlobalPicklistXMLFieldDetail();
+
         expect(actualGlobalPicklistDetail).toEqual(expectedGlobalPicklistDetail);
 
     });
 
-
-
-
-
-
-
     test('given expected Standard Value Set xml markup, returns expected picklist XMLFieldDetail', async () => {
 
-        const xmlDependentPicklistMarkup = XMLMarkupMockService.getStandardValueSetLeadSourceXMLMarkup();
+        const xmlStandardValueSetMarkup = XMLMarkupMockService.getStandardValueSetLeadSourceXMLMarkup();
         const fakeFieldName = 'LeadSource.field-meta.xml';
-        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlDependentPicklistMarkup, fakeFieldName);
-        const expectedXMLDependentPicklistXMLFieldDetail = XMLMarkupMockService.getDependentPicklistXMLFieldDetail();
+        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlStandardValueSetMarkup, fakeFieldName);
+        const expectedXMLDependentPicklistXMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
 
         expect(expectedXMLDependentPicklistXMLFieldDetail).toEqual(actualDependentPicklistDetail);
 
