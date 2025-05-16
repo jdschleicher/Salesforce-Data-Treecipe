@@ -8,7 +8,6 @@ jest.mock('child_process', () => ({
     exec: jest.fn()
 }));
 
-// import * as vscode from 'vscode';
 import * as fs from 'fs';
 
 import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -22,7 +21,7 @@ jest.mock('vscode', () => ({
       workspaceFolders: jest.fn()
     }
   
-  }), { virtual: true });
+}), { virtual: true });
 
 
 describe('Shared SnowfakeryRecipeProcessor tests', () => {
