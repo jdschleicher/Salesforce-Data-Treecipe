@@ -486,4 +486,19 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     
     }
 
+    getStandardAndGlobalValueSetTODOPlaceholderWithExample():string {
+
+        const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ faker.helpers.arrayElement(['banana', 'orange', 'apple']) }}`;
+        return emptyPicklistXMLDetailRecipePlaceholder;
+
+    }
+
+    getMultipicklistTODOPlaceholderWithExample():string {
+
+        const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (faker.helpers.arrayElements(['apple', 'orange', 'banana']) ).join(';') }}`;
+        return emptyMultiSelectXMLDetailPlaceholder;    
+
+
+    }
+
 }

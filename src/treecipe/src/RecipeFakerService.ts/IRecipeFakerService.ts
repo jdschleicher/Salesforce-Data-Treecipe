@@ -26,4 +26,6 @@ export interface IRecipeFakerService {
         dependentFieldApiName: string,
         controllingFieldApiName: string,
         controllingValue: string): string
+    getMultipicklistTODOPlaceholderWithExample(): string
+    getStandardAndGlobalValueSetTODOPlaceholderWithExample(): string
 }

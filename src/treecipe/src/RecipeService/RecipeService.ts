@@ -59,7 +59,7 @@ export class RecipeService {
     
                         if ( !(xmlFieldDetail.picklistValues) ) {
                             // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
-                            const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ random_choice('apple', 'orange', 'banana') }}`;
+                            const emptyPicklistXMLDetailRecipePlaceholder = this.fakerService.getStandardAndGlobalValueSetTODOPlaceholderWithExample();
                             return emptyPicklistXMLDetailRecipePlaceholder;
                         }
                         const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
@@ -74,7 +74,7 @@ export class RecipeService {
     
                     if ( !(xmlFieldDetail.picklistValues) ) {
                         // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
-                        const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
+                        const emptyMultiSelectXMLDetailPlaceholder = this.fakerService.getMultipicklistTODOPlaceholderWithExample();
                         return emptyMultiSelectXMLDetailPlaceholder;
                     }
                     const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
