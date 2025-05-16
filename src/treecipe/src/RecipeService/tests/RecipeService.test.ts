@@ -36,7 +36,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
             let fakeXMLFieldDetail: XMLFieldDetail = {
                 fieldType: fakeFieldTypeValue,
                 apiName: "Fake__c",
-                fieldLabel: "Fake"
+                fieldLabel: "Fake",
+                xmlMarkup: 'not a real xml markup'
             };
             const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
@@ -259,34 +260,34 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
         
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
-                    fullName: 'tree',
+                    picklistOptionApiName: 'tree',
                     label: 'tree',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'willoughby']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
                 },
                 {
-                    fullName: 'weed',
+                    picklistOptionApiName: 'weed',
                     label: 'weed',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
                 },
                 {
-                    fullName: 'mulch',
+                    picklistOptionApiName: 'mulch',
                     label: 'mulch',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'willoughby']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
                 },
                 {
-                    fullName: 'rocks',
+                    picklistOptionApiName: 'rocks',
                     label: 'rocks',
                     default: false,
-                    availableForControllingValues: ['cle', 'wickliffe']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'wickliffe']
                 },
                 {
-                    fullName: 'plant',
+                    picklistOptionApiName: 'plant',
                     label: 'plant',
                     default: false,
-                    availableForControllingValues: ['madison', 'mentor']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
                 }
                
             ];
@@ -297,7 +298,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup: XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
  
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
@@ -315,31 +317,31 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
-                    fullName: 'tree',
+                    picklistOptionApiName: 'tree',
                     label: 'tree',
                     default: false
                 },
                 {
-                    fullName: 'weed',
+                    picklistOptionApiName: 'weed',
                     label: 'weed',
                     default: false,
-                    availableForControllingValues: []
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: []
                 },
                 {
-                    fullName: 'mulch',
+                    picklistOptionApiName: 'mulch',
                     label: 'mulch',
                     default: false,
                 },
                 {
-                    fullName: 'rocks',
+                    picklistOptionApiName: 'rocks',
                     label: 'rocks',
                     default: false                
                 },
                 {
-                    fullName: 'plant',
+                    picklistOptionApiName: 'plant',
                     label: 'plant',
                     default: false,
-                    availableForControllingValues: []
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: []
                 }
                
             ];
@@ -350,7 +352,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup : XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
 
             const expectedDependentPicklistRecipeValue = recipeServiceWithSnow.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
@@ -398,7 +401,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
             let fakeXMLFieldDetail: XMLFieldDetail = {
                 fieldType: fakeFieldTypeValue,
                 apiName: "Fake__c",
-                fieldLabel: "Fake"
+                fieldLabel: "Fake",
+                xmlMarkup: "<xml></xml>"
             };
             const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
@@ -431,7 +435,6 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected datetime XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedDatetimeXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
-            // const expectedDatetimeSnowfakeryValue = '${{ (fake.date_time_between(start_date="-1y", end_date="now")).strftime("%Y-%m-%dT%H:%M:%S.000+0000") }}';
             const expectedDatetimeFakerJSExpression = `|
                 \${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
@@ -625,34 +628,34 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
-                    fullName: 'tree',
+                    picklistOptionApiName: 'tree',
                     label: 'tree',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'willoughby']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
                 },
                 {
-                    fullName: 'weed',
+                    picklistOptionApiName: 'weed',
                     label: 'weed',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
                 },
                 {
-                    fullName: 'mulch',
+                    picklistOptionApiName: 'mulch',
                     label: 'mulch',
                     default: false,
-                    availableForControllingValues: ['cle', 'eastlake', 'willoughby']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
                 },
                 {
-                    fullName: 'rocks',
+                    picklistOptionApiName: 'rocks',
                     label: 'rocks',
                     default: false,
-                    availableForControllingValues: ['cle', 'wickliffe']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'wickliffe']
                 },
                 {
-                    fullName: 'plant',
+                    picklistOptionApiName: 'plant',
                     label: 'plant',
                     default: false,
-                    availableForControllingValues: ['madison', 'mentor']
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
                 }
                
             ];
@@ -663,7 +666,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup: XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
  
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
@@ -681,31 +685,31 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
-                    fullName: 'tree',
+                    picklistOptionApiName: 'tree',
                     label: 'tree',
                     default: false
                 },
                 {
-                    fullName: 'weed',
+                    picklistOptionApiName: 'weed',
                     label: 'weed',
                     default: false,
-                    availableForControllingValues: []
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: []
                 },
                 {
-                    fullName: 'mulch',
+                    picklistOptionApiName: 'mulch',
                     label: 'mulch',
                     default: false,
                 },
                 {
-                    fullName: 'rocks',
+                    picklistOptionApiName: 'rocks',
                     label: 'rocks',
                     default: false                
                 },
                 {
-                    fullName: 'plant',
+                    picklistOptionApiName: 'plant',
                     label: 'plant',
                     default: false,
-                    availableForControllingValues: []
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: []
                 }
                
             ];
@@ -716,7 +720,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 picklistValues : expectedPicklistFieldDetails,
                 referenceTo : "",
                 fieldLabel : "Dependent Picklist",
-                controllingField : "Picklist__c"
+                controllingField : "Picklist__c",
+                xmlMarkup : XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
 
             const expectedDependentPicklistRecipeValue = recipeServiceWithFakerJS.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
@@ -730,6 +735,65 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
             expect(actualFakerValue).toBe(expectedDependentPicklistRecipeValue);
 
         });
+
+        test('given expected XMLDetail with isActive options set to false and active, expected controllingvalue to options are built and correct snowfakery fake value is returned', () => {
+        
+            const expectedPicklistFieldDetails:IPicklistValue[] = [
+                {
+                    picklistOptionApiName: 'tree',
+                    label: 'tree',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
+                },
+                {
+                    picklistOptionApiName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                },
+                {
+                    picklistOptionApiName: 'mulch',
+                    label: 'mulch',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
+                },
+                {
+                    picklistOptionApiName: 'rocks',
+                    label: 'rocks',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'wickliffe']
+                },
+                {
+                    picklistOptionApiName: 'plant',
+                    label: 'plant',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
+                }
+               
+            ];
+         
+            const expectedXMLFieldDetail:XMLFieldDetail = {
+                fieldType : "picklist",
+                apiName : "DependentPicklist__c",
+                picklistValues : expectedPicklistFieldDetails,
+                referenceTo : "",
+                fieldLabel : "Dependent Picklist",
+                controllingField : "Picklist__c",
+                xmlMarkup: XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup()
+            };
+ 
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const expectedDependentListFakeValue = RecipeMockService.getMockFakerJSDependentPicklistRecipeValueWithoutRecordTypeDetail();
+            const actualRecipeValue = recipeServiceWithFakerJS.getDependentPicklistRecipeFakerValue(
+                expectedXMLFieldDetail, 
+                recordTypeNameByRecordTypeNameToXMLMarkup
+            );
+
+            expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
+
+        });
+
+
 
     });
 

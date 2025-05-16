@@ -9,7 +9,8 @@ export class XMLMarkupMockService {
             fieldType: "MasterDetail",
             apiName: "MD_MegaMapMadness__c",
             fieldLabel: "MD MegaMapMadness",
-            referenceTo: "MegaMapMadness__c"
+            referenceTo: "MegaMapMadness__c",
+            xmlMarkup: this.getMasterDetailFieldTypeXMLMarkup()
         };
 
         return masterDetailXMLField;   
@@ -43,7 +44,8 @@ export class XMLMarkupMockService {
         const urlXMLField: XMLFieldDetail = {
             fieldType: "Url",
             apiName: "Url__c",
-            fieldLabel: "Url"
+            fieldLabel: "Url",
+            xmlMarkup: this.getUrlFieldTypeXMLMarkup()
         };
 
         return urlXMLField;         
@@ -71,7 +73,8 @@ export class XMLMarkupMockService {
         const timeXMLField: XMLFieldDetail = {
             fieldType: "Time",
             apiName: "Time__c",
-            fieldLabel: "Time"
+            fieldLabel: "Time",
+            xmlMarkup: this.getTimeFieldTypeXMLMarkup()
         };
 
         return timeXMLField;     
@@ -100,7 +103,8 @@ export class XMLMarkupMockService {
         const richTextAreaXMLField: XMLFieldDetail = {
             fieldType: "Html",
             apiName: "TextAreaRich__c",
-            fieldLabel: "TextAreaRich"
+            fieldLabel: "TextAreaRich",
+            xmlMarkup: this.getRichTextAreaFieldTypeXMLMarkup()
         };
 
         return richTextAreaXMLField;     
@@ -129,7 +133,8 @@ export class XMLMarkupMockService {
         const longTextAreaXMLField: XMLFieldDetail = {
             fieldType: "LongTextArea",
             apiName: "Text_Area_Long__c",
-            fieldLabel: "Text Area Long"
+            fieldLabel: "Text Area Long",
+            xmlMarkup: this.getLongTextAreaFieldTypeXMLMarkup()
         };
 
         return longTextAreaXMLField;     
@@ -159,7 +164,8 @@ export class XMLMarkupMockService {
         const phoneXMLField: XMLFieldDetail = {
             fieldType: "Phone",
             apiName: "Phone__c",
-            fieldLabel: "Phone"
+            fieldLabel: "Phone",
+            xmlMarkup: this.getPhoneFieldTypeXMLMarkup()
         };
 
         return phoneXMLField;       
@@ -188,7 +194,8 @@ export class XMLMarkupMockService {
         const numberXMLField: XMLFieldDetail = {
             fieldType: "Number",
             apiName: "Number__c",
-            fieldLabel: "Number"
+            fieldLabel: "Number",
+            xmlMarkup: this.getNumberFieldTypeXMLMarkup()
         };
 
         return numberXMLField;    
@@ -217,7 +224,8 @@ export class XMLMarkupMockService {
         const locationXMLField: XMLFieldDetail = {
             fieldType: "Location",
             apiName: "Geolocation__c",
-            fieldLabel: "Geolocation"
+            fieldLabel: "Geolocation",
+            xmlMarkup: this.getGeolocationFieldTypeXMLMarkup()
         };
 
         return locationXMLField;
@@ -246,7 +254,8 @@ export class XMLMarkupMockService {
         const formulaXMLField: XMLFieldDetail = {
             fieldType: "Number",
             apiName: "Formula__c",
-            fieldLabel: "Formula"
+            fieldLabel: "Formula",
+            xmlMarkup: this.getFormulaFieldTypeXMLMarkup()
         };
 
         return formulaXMLField;      
@@ -280,7 +289,8 @@ export class XMLMarkupMockService {
             fieldType: "Lookup",
             apiName: "Example_Everything_Lookup__c",
             fieldLabel: "Example Everything Lookup",
-            referenceTo: "Example_Everything__c"
+            referenceTo: "Example_Everything__c",
+            xmlMarkup: this.getLookupFieldTypeXMLMarkup()
         };
 
         return lookupXMLField;        
@@ -315,7 +325,23 @@ export class XMLMarkupMockService {
             apiName: "DependentPicklist__c",
             picklistValues: mockedMultiSelectPicklistValues,
             fieldLabel: "DependentPicklist",
-            controllingField: "Picklist__c"
+            controllingField: "Picklist__c",
+            xmlMarkup: this.getDependentPicklistFieldTypeXMLMarkup()
+        };
+
+        return dependentPicklistXMLField;      
+    }
+
+    static getDependentPicklistWithIsActiveXMLFieldDetail() {
+
+        const mockedMultiSelectPicklistValues = this.getIPicklistValuesWithIsActiveConfigDependentPickllist__c();
+        const dependentPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "DependentPicklist__c",
+            picklistValues: mockedMultiSelectPicklistValues,
+            fieldLabel: "DependentPicklist",
+            controllingField: "Picklist__c",
+            xmlMarkup: this.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup()
         };
 
         return dependentPicklistXMLField;      
@@ -401,38 +427,162 @@ export class XMLMarkupMockService {
     
     }
 
+    static getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup() {
+        const xmlMarkup = `
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>DependentPicklist__c</fullName>
+    <label>DependentPicklist</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>Picklist__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>tree</fullName>
+                <default>false</default>
+                <label>tree</label>
+            </value>
+            <value>
+                <fullName>plant</fullName>
+                <default>false</default>
+                <label>plant</label>
+            </value>
+            <value>
+                <fullName>fancystone</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>fancystone</label>
+            </value>
+            <value>
+                <fullName>weed</fullName>
+                <default>false</default>
+                <label>weed</label>
+            </value>
+            <value>
+                <fullName>mulch</fullName>
+                <default>false</default>
+                <label>mulch</label>
+            </value>
+            <value>
+                <fullName>rocks</fullName>
+                <default>false</default>
+                <label>rocks</label>
+            </value>
+            <value>
+                <fullName>moss</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>moss</label>
+            </value>
+            <value>
+                <fullName>hedges</fullName>
+                <default>false</default>
+                <isActive>true</isActive>
+                <label>hedges</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <controllingFieldValue>madison</controllingFieldValue>
+            <controllingFieldValue>willoughby</controllingFieldValue>
+            <valueName>tree</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <controllingFieldValue>madison</controllingFieldValue>
+            <controllingFieldValue>mentor</controllingFieldValue>
+            <controllingFieldValue>wickliffe</controllingFieldValue>
+            <controllingFieldValue>willoughby</controllingFieldValue>
+            <valueName>weed</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <controllingFieldValue>willoughby</controllingFieldValue>
+            <valueName>mulch</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>wickliffe</controllingFieldValue>
+            <valueName>rocks</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>madison</controllingFieldValue>
+            <controllingFieldValue>mentor</controllingFieldValue>
+            <valueName>plant</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <valueName>hedges</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>
+`;
+
+        return xmlMarkup;   
+    
+    }
+
+    static getExpectedIsActiveDependentPicklistXMLDetail():XMLFieldDetail {
+        
+        const mockedMultiSelectPicklistValues = this.getIPicklistValuesWithIsActiveConfigDependentPickllist__c();
+        const dependentPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "DependentPicklist__c",
+            picklistValues: mockedMultiSelectPicklistValues,
+            fieldLabel: "DependentPicklist",
+            controllingField: "Picklist__c",
+            xmlMarkup: this.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup()
+        };
+
+        return dependentPicklistXMLField;         
+    
+    }
+
     static getIPicklistValuesForDependentPickllist__c(): IPicklistValue[] {
         
         const expectedPicklistFieldDetails:IPicklistValue[] = [
             {
-                fullName: 'tree',
+                picklistOptionApiName: 'tree',
                 label: 'tree',
                 default: false,
-                availableForControllingValues: ['cle', 'eastlake', 'madison', 'willoughby']
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
             },
             {
-                fullName: 'plant',
+                picklistOptionApiName: 'plant',
                 label: 'plant',
                 default: false,
-                availableForControllingValues: ['madison', 'mentor']
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
             },
             {
-                fullName: 'weed',
+                picklistOptionApiName: 'weed',
                 label: 'weed',
                 default: false,
-                availableForControllingValues: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
             },
             {
-                fullName: 'mulch',
+                picklistOptionApiName: 'mulch',
                 label: 'mulch',
                 default: false,
-                availableForControllingValues: ['cle', 'eastlake', 'willoughby']
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
             },
             {
-                fullName: 'rocks',
+                picklistOptionApiName: 'rocks',
                 label: 'rocks',
                 default: false,
-                availableForControllingValues: ['cle',  'wickliffe']
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle',  'wickliffe']
             }
        
         ];
@@ -441,12 +591,142 @@ export class XMLMarkupMockService {
     
     }
 
+    static getIPicklistValuesWithIsActiveConfigDependentPickllist__c(): IPicklistValue[] {
+        
+        const expectedPicklistFieldDetails:IPicklistValue[] = [
+            {
+                picklistOptionApiName: 'tree',
+                label: 'tree',
+                default: false,
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
+            },
+            {
+                picklistOptionApiName: 'plant',
+                label: 'plant',
+                default: false,
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
+            },
+            {
+                picklistOptionApiName: 'fancystone',
+                label: 'fancystone',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: null,
+                isActive: false
+            },
+            {
+                picklistOptionApiName: 'weed',
+                label: 'weed',
+                default: false,
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+            },
+            {
+                picklistOptionApiName: 'mulch',
+                label: 'mulch',
+                default: false,
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
+            },
+            {
+                picklistOptionApiName: 'rocks',
+                label: 'rocks',
+                default: false,
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle',  'wickliffe']
+            },
+            {
+                picklistOptionApiName: 'moss',
+                label: 'moss',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: null,
+                isActive: false
+            },
+            {
+                picklistOptionApiName: 'hedges',
+                label: 'hedges',
+                default: false,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake'],
+                isActive: true
+            }
+       
+        ];
+
+        return expectedPicklistFieldDetails;
+    
+    }
+
+    static getPicklistFieldSetToGlobalPicklistXMLFieldDetail() {
+
+        const globalPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "ValueSetPicklist",
+            globalValueSetName: 'Value_Set_Picklist_VS',
+            fieldLabel: "Value Set Picklist",
+            xmlMarkup: this.getGlobalValueSetXMLMarkup()
+        };
+
+        return globalPicklistXMLField;      
+    }
+
+    static getGlobalValueSetXMLMarkup() {
+
+        const xmlMarkup = `                     
+        <?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ValueSetPicklist</fullName>
+    <label>Value Set Picklist</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetName>Value_Set_Picklist_VS</valueSetName>
+    </valueSet>
+</CustomField>
+`;
+
+        return xmlMarkup;
+    }
+
+     static getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail() {
+
+        const standardValueSetPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "LeadSource",
+            isStandardValueSet: true,
+            fieldLabel: "LeadSource",
+            xmlMarkup: this.getStandardValueSetLeadSourceXMLMarkup()
+        };
+
+        return standardValueSetPicklistXMLField;      
+    }
+
+    static getStandardValueSetLeadSourceXMLMarkup() {
+
+        const xmlMarkup = `                     
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>LeadSource</fullName>
+    <trackFeedHistory>false</trackFeedHistory>
+    <type>Picklist</type>
+</CustomField>
+`;
+
+        return xmlMarkup;
+    }
+
+
     static getEmailXMLFieldDetail() {
         
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Email",
             apiName: "Email__c",
-            fieldLabel: "Email"
+            fieldLabel: "Email",
+            xmlMarkup: this.getEmailFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;    
@@ -475,7 +755,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "DateTime",
             apiName: "DateTime__c",
-            fieldLabel: "DateTime"
+            fieldLabel: "DateTime",
+            xmlMarkup: this.getDateTimeFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -503,7 +784,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Date",
             apiName: "Date__c",
-            fieldLabel: "Date"
+            fieldLabel: "Date",
+            xmlMarkup: this.getDateFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -531,7 +813,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Currency",
             apiName: "Currency__c",
-            fieldLabel: "Currency"
+            fieldLabel: "Currency",
+            xmlMarkup: this.getCurrencyFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -562,7 +845,8 @@ export class XMLMarkupMockService {
         let xmlFieldDetail: XMLFieldDetail = {
             fieldType: "Checkbox",
             apiName: "Checkbox__c",
-            fieldLabel: "Checkbox"
+            fieldLabel: "Checkbox",
+            xmlMarkup: this.getCheckboxFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
@@ -592,7 +876,8 @@ export class XMLMarkupMockService {
             fieldType: "MultiselectPicklist",
             apiName: "MultiPicklist__c",
             picklistValues: mockedMultiSelectPicklistValues,
-            fieldLabel: "MultiPicklistTest"
+            fieldLabel: "MultiPicklistTest",
+            xmlMarkup: this.getMultiSelectPicklistFieldTypeXMLMarkup()
         };
 
         return multiSelectPicklistXMLField;    
@@ -711,51 +996,60 @@ export class XMLMarkupMockService {
 
     static getPicklistXMLFieldDetail(): XMLFieldDetail {
 
-        const mockedPicklistValues = this.getIPicklistValuesForPickllist__c();
+        const mockedPicklistValues = this.getIPicklistValuesForPicklist__c();
         let picklistXMLField: XMLFieldDetail = {
             fieldType: "Picklist",
             apiName: "Picklist__c",
             picklistValues: mockedPicklistValues,
-            fieldLabel: "Picklist"
+            fieldLabel: "Picklist",
+            xmlMarkup: this.getPicklistFieldTypeXMLMarkup()
         };
 
         return picklistXMLField;
         
     }
 
-    static getIPicklistValuesForPickllist__c(): IPicklistValue[] {
+    static getIPicklistValuesForPicklist__c(): IPicklistValue[] {
         
         const expectedPicklistFieldDetails:IPicklistValue[] = [
             {
-                fullName: 'cle',
+                picklistOptionApiName: 'cle',
                 label: 'cle',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'eastlake',
+                picklistOptionApiName: 'eastlake',
                 label: 'eastlake',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'madison',
+                picklistOptionApiName: 'madison',
                 label: 'madison',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'mentor',
+                picklistOptionApiName: 'mentor',
                 label: 'mentor',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'wickliffe',
+                picklistOptionApiName: 'wickliffe',
                 label: 'wickliffe',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'willoughby',
+                picklistOptionApiName: 'willoughby',
                 label: 'willoughby',
-                default: false
+                default: false,
+                isActive: true
             }
+            
+
         ];
 
         return expectedPicklistFieldDetails;
@@ -766,39 +1060,46 @@ export class XMLMarkupMockService {
         
         const expectedPicklistFieldDetails:IPicklistValue[] = [
             {
-                fullName: 'chicken',
+                picklistOptionApiName: 'chicken',
                 label: 'chicken',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'chorizo',
+                picklistOptionApiName: 'chorizo',
                 label: 'chorizo',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'egg',
+                picklistOptionApiName: 'egg',
                 label: 'egg',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'fish',
+                picklistOptionApiName: 'fish',
                 label: 'fish',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'pork',
+                picklistOptionApiName: 'pork',
                 label: 'pork',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'steak',
+                picklistOptionApiName: 'steak',
                 label: 'steak',
-                default: false
+                default: false,
+                isActive: true
             },
             {
-                fullName: 'tofu',
+                picklistOptionApiName: 'tofu',
                 label: 'tofu',
-                default: false
+                default: false,
+                isActive: true
             }
         ];
 
@@ -829,7 +1130,8 @@ export class XMLMarkupMockService {
         let textXMLFieldDetail: XMLFieldDetail = {
             fieldType: "Text",
             apiName: "Text__c",
-            fieldLabel: "Text"
+            fieldLabel: "Text",
+            xmlMarkup: this.getTextFieldTypeXMLMarkup()
         };
 
         return textXMLFieldDetail;

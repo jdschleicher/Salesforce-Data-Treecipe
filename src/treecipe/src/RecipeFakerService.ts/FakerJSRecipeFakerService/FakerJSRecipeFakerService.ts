@@ -243,10 +243,10 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     getMapSalesforceFieldToFakerValue():Record<string, string> {
 
         const salesforceFieldToNPMFakerMap: Record<string, string> = {
-            'text': `\${{ faker.lorem.text(50) }}`,
+            'text': `\${{ faker.lorem.text(5).substring(0, 255) }}`,
             'textarea': `\${{ faker.lorem.paragraph() }}`,
-            'longtextarea': `\${{ faker.lorem.text(1000) }}`,
-            'html': `\${{ faker.lorem.text(1000) }}`,
+            'longtextarea': `\${{ faker.lorem.text(100) }}`,
+            'html': `\${{ faker.string.alpha(10) }}`,
             'email': `\${{ faker.internet.email() }}`,
             'phone': `|
                 \${{ faker.phone.number({style:'national'}) }}`,
@@ -484,6 +484,21 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     
         return salesforceFakerMappings;
     
+    }
+
+    getStandardAndGlobalValueSetTODOPlaceholderWithExample():string {
+
+        const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ faker.helpers.arrayElement(['banana', 'orange', 'apple']) }}`;
+        return emptyPicklistXMLDetailRecipePlaceholder;
+
+    }
+
+    getMultipicklistTODOPlaceholderWithExample():string {
+
+        const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (faker.helpers.arrayElements(['apple', 'orange', 'banana']) ).join(';') }}`;
+        return emptyMultiSelectXMLDetailPlaceholder;    
+
+
     }
 
 }

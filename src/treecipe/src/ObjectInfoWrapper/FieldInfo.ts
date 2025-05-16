@@ -52,9 +52,10 @@ export class FieldInfo {
 }
 
 export interface IPicklistValue {
-  fullName: string;
+  picklistOptionApiName: string;
   label: string;
   default?: boolean;
-  availableForControllingValues?: string[];
+  controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection?: string[];
+  isActive?: boolean;
 }
 

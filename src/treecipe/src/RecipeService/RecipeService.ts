@@ -1,3 +1,4 @@
+import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
@@ -44,59 +45,82 @@ export class RecipeService {
         
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
-        switch (fieldType) {
-            
-            case 'picklist':
-                
-                if (xmlFieldDetail.controllingField) {
-                    // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
-                    fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
-                } else {
 
+        try {
+            
+            switch (fieldType) {
+            
+                case 'picklist':
+                    
+                    if (xmlFieldDetail.controllingField) {
+                        // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
+                        fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
+                    } else {
+    
+                        if ( !(xmlFieldDetail.picklistValues) ) {
+                            // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
+                            const emptyPicklistXMLDetailRecipePlaceholder = this.fakerService.getStandardAndGlobalValueSetTODOPlaceholderWithExample();
+                            return emptyPicklistXMLDetailRecipePlaceholder;
+                        }
+                        const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
+                        fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
+                                                                                                    recordTypeApiToRecordTypeWrapperMap,
+                                                                                                    xmlFieldDetail.apiName);  
+                    }
+    
+                    return fakeRecipeValue;
+                    
+                case 'multiselectpicklist':
+    
                     if ( !(xmlFieldDetail.picklistValues) ) {
                         // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
-                        const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ random_choice('apple', 'orange', 'banana') }}`;
-                        return emptyPicklistXMLDetailRecipePlaceholder;
+                        const emptyMultiSelectXMLDetailPlaceholder = this.fakerService.getMultipicklistTODOPlaceholderWithExample();
+                        return emptyMultiSelectXMLDetailPlaceholder;
                     }
-                    const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
-                    fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
-                                                                                                recordTypeApiToRecordTypeWrapperMap,
-                                                                                                xmlFieldDetail.apiName);  
-                }
+                    const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
+                    fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
+                                                                                                            recordTypeApiToRecordTypeWrapperMap,
+                                                                                                            xmlFieldDetail.apiName
+                                                                                                        );
+            
+                    return fakeRecipeValue;
+                    
+                // case 'masterdetail':
+                    
+                //     return {
+                //         type: 'lookup'
+                //     };
+    
+                // case 'lookup':
+    
+                //     return 'test';
+                    
+                default: 
+    
+                    fakeRecipeValue = this.getFakeValueIfExpectedSalesforceFieldType(fieldType);
+                    return fakeRecipeValue;
+    
+            }
 
-                return fakeRecipeValue;
-                
-            case 'multiselectpicklist':
-
-                if ( !(xmlFieldDetail.picklistValues) ) {
-                    // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
-                    const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
-                    return emptyMultiSelectXMLDetailPlaceholder;
-                }
-                const availablePicklistChoices = xmlFieldDetail.picklistValues.map(detail => detail.fullName);
-                fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
-                                                                                                        recordTypeApiToRecordTypeWrapperMap,
-                                                                                                        xmlFieldDetail.apiName
-                                                                                                    );
-        
-                return fakeRecipeValue;
-                
-            // case 'masterdetail':
-                
-            //     return {
-            //         type: 'lookup'
-            //     };
-
-            // case 'lookup':
-
-            //     return 'test';
-                
-            default: 
-
-                fakeRecipeValue = this.getFakeValueIfExpectedSalesforceFieldType(fieldType);
-                return fakeRecipeValue;
+        } catch (error) {
+            
+            const executedCommand = "XMLFileProcessor.getRecipeFakeValueByXMLFieldDetail";
+            const customErrorMessage = `Error generating fake value: ${xmlFieldDetail.apiName} - ${error.message}`;
+            
+            const customGenerateFakerJSValueError = new Error();
+            customGenerateFakerJSValueError.message = customErrorMessage;
+    
+            customGenerateFakerJSValueError.name = "GenerateFakerJSValueError";
+            customGenerateFakerJSValueError.stack = error.stack;
+    
+            customGenerateFakerJSValueError.cause = xmlFieldDetail;
+    
+            ErrorHandlingService.createGetRecipeFakerErrorCaptureFile(customGenerateFakerJSValueError, executedCommand);
+            
+            throw customGenerateFakerJSValueError;
 
         }
+    
 
     }
     
@@ -125,15 +149,15 @@ export class RecipeService {
         }
         xmlFieldDetail.picklistValues.forEach(picklistOption => {
             
-            if ( !(picklistOption.availableForControllingValues) ) {
+            if ( !(picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection) ) {
                 return '';
             }
-            picklistOption.availableForControllingValues.forEach((controllingValue) => {
+            picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection.forEach((controllingValue) => {
 
                 if ( controllingValue in controllingValueToPicklistOptions ) {
-                    controllingValueToPicklistOptions[controllingValue].push(picklistOption.fullName);
+                    controllingValueToPicklistOptions[controllingValue].push(picklistOption.picklistOptionApiName);
                 } else {
-                    controllingValueToPicklistOptions[controllingValue] = [ picklistOption.fullName ];
+                    controllingValueToPicklistOptions[controllingValue] = [ picklistOption.picklistOptionApiName ];
                 }
 
             });

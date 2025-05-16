@@ -4,6 +4,7 @@ import * as yaml from 'js-yaml';
 import { faker } from '@faker-js/faker';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
+import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
 export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
@@ -29,9 +30,31 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 let fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
                 for (const [fieldName, fieldExpression] of Object.entries(fieldsTemplate)) {
 
-                    fieldApiNameByFakerJSEvaluations[fieldName] = await this.evaluateFakerJSExpression(fieldExpression, 
-                                                                                                        fieldApiNameByFakerJSEvaluations, 
-                                                                                                        fieldName);
+                    try {
+
+                        fieldApiNameByFakerJSEvaluations[fieldName] = await this.evaluateFakerJSExpression(fieldExpression, 
+                                                                                                            fieldApiNameByFakerJSEvaluations, 
+                                                                                                            fieldName);
+
+                    } catch (error) {
+                        
+                        const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
+                        const customErrorMessage = `Error evaluating faker-js expression syntax << ${fieldName} - ${ fieldExpression } >> - ${error.message}`;
+                        
+                        const customFakerJSEvaluationError = new Error();
+                        customFakerJSEvaluationError.message = customErrorMessage;
+                
+                        customFakerJSEvaluationError.name = "FakerJSExpressionEvaluationError";
+                        customFakerJSEvaluationError.stack = error.stack;
+                
+                        customFakerJSEvaluationError.cause = error.message;
+                
+                        ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile(customFakerJSEvaluationError, executedCommand);
+                        
+                        throw customFakerJSEvaluationError;
+                                    
+                    }
+                   
                 }
     
                 generatedData.push({
@@ -40,6 +63,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     nickname: nickname,
                     fields: fieldApiNameByFakerJSEvaluations,
                 });
+
             }
 
         };
@@ -268,11 +292,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             matchingCustomFunctionRegex
         } = this.getExpectedDateRegExPatterns();
 
-        // const isCustomDateFunction = (originalCode: string) => matchingCustomFunctionRegex.test(originalCode);
         let modifiedCode = originalCode;
-        // if ( isCustomDateFunction ) {
-        //     modifiedCode = modifiedCode.replaceAll(" ", ""); // Remove all whitespace to avoid any scenarios where expected regex matches wouldn't work
-        // }
 
         // Replace date_between
         modifiedCode = modifiedCode.replace(dateBetweenRegex, (match, fromValue, toValue) => {

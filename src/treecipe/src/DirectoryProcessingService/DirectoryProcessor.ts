@@ -113,7 +113,9 @@ export class DirectoryProcessor {
 
         let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, 
                                                               associatedObjectName, 
-                                                              recordTypeApiToRecordTypeWrapperMap);
+                                                              recordTypeApiToRecordTypeWrapperMap,
+                                                              fileName
+                                                            );
         fieldInfoDetails.push(fieldInfo);
 
       }
@@ -126,10 +128,11 @@ export class DirectoryProcessor {
 
   async buildFieldInfoByXMLContent(xmlContent: string, 
                                     associatedObjectName: string,
-                                    recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>
+                                    recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                                    xmlFieldFileName: string
                                   ):Promise<FieldInfo> {
 
-    let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent);
+    let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
     let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap);                                                        
 
     let fieldInfo = FieldInfo.create(

@@ -2,10 +2,9 @@ import { exec } from 'child_process';
 import * as vscode from 'vscode';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
+import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
 export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
-
-    private baseSnowfakeryInstallationErrorMessage:string  = 'An error occurred in checking for snowfakery installation';
 
     async isRecipeProcessorSetup(): Promise<boolean> {
 
@@ -15,7 +14,7 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
             const handleSnowfakeryVersionCheckCallback = (cliCommandError, cliCommandStandardOut) => {
 
                 if (cliCommandError) {
-                    reject(new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`));
+                    reject(new Error(`An error occurred in checking for snowfakery installation: ${cliCommandError.message}`));
                 } else {
 
                     /*
@@ -45,8 +44,18 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
                 if (cliCommandError) {
                     
-                    const snowfakeryError = new Error(`${this.baseSnowfakeryInstallationErrorMessage}: ${cliCommandError.message}`);
-                    reject(snowfakeryError);
+                    const executedCommand = "SnowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile";
+                    
+                    const customFakerEvaluationError = new Error();
+                    customFakerEvaluationError.message = cliCommandError.message;
+            
+                    customFakerEvaluationError.name = "SnowfakeryEvaluationError";
+                    customFakerEvaluationError.stack = cliCommandError.stack;
+            
+                    customFakerEvaluationError.cause = cliCommandError.message;
+            
+                    ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile(customFakerEvaluationError, executedCommand);
+                    reject(customFakerEvaluationError);
 
                 } else {
 

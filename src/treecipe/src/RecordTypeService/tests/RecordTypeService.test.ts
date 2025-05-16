@@ -49,7 +49,7 @@ describe('RecordTypeService Shared Instance Tests', () => {
     
         });
   
-        test('given mocked record type detail with expected picklist, fullname, and developern name structures, returns expected record type api to record type wrapper map', async () => {
+        test('given mocked record type detail with expected picklist, fullname, and developer name structures, returns expected record type api to record type wrapper map', async () => {
   
             const expectedRecordTypeXMLDetail = MockRecordTypeService.getRecordTypeMockOneRecTypeAsObject();
             jest.spyOn(RecordTypeService, 'getRecordTypeDetailFromRecordTypeFile').mockResolvedValue(expectedRecordTypeXMLDetail.RecordType);

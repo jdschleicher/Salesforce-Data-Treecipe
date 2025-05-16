@@ -26,12 +26,107 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
 
         const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
         const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
-        const expectedPicklistFieldDetails = XMLMarkupMockService.getIPicklistValuesForPickllist__c();
+        const expectedPicklistOptionDetails = XMLMarkupMockService.getIPicklistValuesForPicklist__c();
 
-        expect(actualPicklistDetail.length).toBe(expectedPicklistFieldDetails.length);
-        actualPicklistDetail.forEach((item, index) => {
-            expect(item.fullName).toBe(expectedPicklistFieldDetails[index].fullName); 
+        expect(actualPicklistDetail.length).toBe(expectedPicklistOptionDetails.length);
+        actualPicklistDetail.forEach((picklistOption, index) => {
+            expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistOptionDetails[index].picklistOptionApiName); 
         });
+
+    });
+
+    test('given expected dependent picklist xml markup, returns expected IPickList array', async () => {
+
+        const xmlPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup();
+
+        let expectedPicklistFieldXML: any;
+        const parseString = xml2js.parseString;
+        parseString(xmlPicklistMarkup, function (err, result) {
+            expectedPicklistFieldXML = result;
+        });
+
+        const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
+        const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
+        
+        const expectedPicklistFieldDetails = XMLMarkupMockService.getIPicklistValuesForDependentPickllist__c();
+        expect(actualPicklistDetail.length).toBe(expectedPicklistFieldDetails.length);
+
+        actualPicklistDetail.forEach((picklistOption, index) => {
+            expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistFieldDetails[index].picklistOptionApiName); 
+        });
+
+        // THE BELOW ASSERTS ARE USED TO ENSURE THE PICKLIST DETAIL CAPTURES MARKUP LIKLE "isActive" AND SCENARIOS WHERE PICKLIST VALUE OPTIONS HAVE ZERO CONTROLLING FIELD CONFIGURATIONS FROM THE EXPECTED PARENT PICKLIST
+        let countOfNullControllingPicklistOptions = expectedPicklistFieldDetails?.filter( 
+            (picklistOptionDetail) => picklistOptionDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection === null
+        );
+        const expectedHardCodedCountOfNullControllingPicklistOptions = 0;
+        expect(countOfNullControllingPicklistOptions.length).toBe(expectedHardCodedCountOfNullControllingPicklistOptions);
+
+
+        let countOfIsNotActivePicklistOptions = expectedPicklistFieldDetails?.filter( 
+            (picklistOptionDetail) => picklistOptionDetail.isActive === false
+        );
+        const expectedHardCodedCountOfIsNotActiveOptions = 0;
+        expect(countOfIsNotActivePicklistOptions.length).toBe(expectedHardCodedCountOfIsNotActiveOptions);
+
+        
+    });
+
+    test('given expected dependent picklist with isActive xml markup, returns expected IPickList array', async () => {
+
+        const xmlPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+
+        let expectedPicklistFieldXML: any;
+        const parseString = xml2js.parseString;
+        parseString(xmlPicklistMarkup, function (err, result) {
+            expectedPicklistFieldXML = result;
+        });
+
+        const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
+        const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
+        
+        const expectedPicklistFieldDetails = XMLMarkupMockService.getIPicklistValuesWithIsActiveConfigDependentPickllist__c();
+        expect(actualPicklistDetail.length).toBe(expectedPicklistFieldDetails.length);
+
+        actualPicklistDetail.forEach((picklistOption, index) => {
+            expect(picklistOption.picklistOptionApiName).toBe(expectedPicklistFieldDetails[index].picklistOptionApiName); 
+        });
+
+        // THE BELOW ASSERTS ARE USED TO ENSURE THE PICKLIST DETAIL CAPTURES MARKUP LIKLE "isActive" AND SCENARIOS WHERE PICKLIST VALUE OPTIONS HAVE ZERO CONTROLLING FIELD CONFIGURATIONS FROM THE EXPECTED PARENT PICKLIST
+        let countOfNullControllingPicklistOptions = expectedPicklistFieldDetails?.filter( 
+            (picklistOptionDetail) => picklistOptionDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection === null
+        );
+        const expectedHardCodedCountOfNullControllingPicklistOptions = 2;
+        expect(countOfNullControllingPicklistOptions.length).toBe(expectedHardCodedCountOfNullControllingPicklistOptions);
+
+        let countOfIsNotActivePicklistOptions = expectedPicklistFieldDetails?.filter( 
+            (picklistOptionDetail) => picklistOptionDetail.isActive === false
+        );
+        const expectedHardCodedCountOfIsNotActiveOptions = 2;
+        expect(countOfIsNotActivePicklistOptions.length).toBe(expectedHardCodedCountOfIsNotActiveOptions);
+
+        
+    });
+
+
+    test('given global value set picklist xml markup, returns expected IPickList array', async () => {
+
+        const xmlPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
+
+        let expectedPicklistFieldXML: any;
+        const parseString = xml2js.parseString;
+        parseString(xmlPicklistMarkup, function (err, result) {
+            console.dir(result);
+            expectedPicklistFieldXML = result;
+        });
+
+        const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
+        const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
+        
+        // THERE SHOULD BE NO PICKLIST DETAILS COMING FROM XML MARKUP SET TO GLOVAL VALUE SET
+        const hardCodedLengthOfPicklistDetails = 0;
+        expect(actualPicklistDetail.length).toBe(hardCodedLengthOfPicklistDetails);
+        
     });
 
 });
@@ -41,7 +136,8 @@ describe('processXmlFieldContent', () => {
     test('given expected Picklist xml markup, returns expected picklist XMLFieldDetail', async () => {
 
         const xmlPicklistMarkup = XMLMarkupMockService.getPicklistFieldTypeXMLMarkup();
-        const actualPicklistXMLFieldDetail:XMLFieldDetail = await await XmlFileProcessor.processXmlFieldContent(xmlPicklistMarkup);
+        const fakeFieldName = 'Picklist__c.field-meta.xml';
+        const actualPicklistXMLFieldDetail:XMLFieldDetail = await await XmlFileProcessor.processXmlFieldContent(xmlPicklistMarkup, fakeFieldName);
         const expectedXMLPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
 
         expect(actualPicklistXMLFieldDetail).toEqual(expectedXMLPicklistXMLFieldDetail);
@@ -51,7 +147,8 @@ describe('processXmlFieldContent', () => {
     test('given expected Multi-Select Picklist xml markup, returns expected picklist XMLFieldDetail', async () => {
 
         const xmlMultiSelectPicklistMarkup = XMLMarkupMockService.getMultiSelectPicklistFieldTypeXMLMarkup();
-        const actualMultiSelectPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlMultiSelectPicklistMarkup);
+        const fakeFieldName = 'MultiSelectPicklist__c.field-meta.xml';
+        const actualMultiSelectPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlMultiSelectPicklistMarkup, fakeFieldName);
         const expectedXMLMultiSelectPicklistXMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
 
         expect(actualMultiSelectPicklistDetail).toEqual(expectedXMLMultiSelectPicklistXMLFieldDetail);
@@ -61,8 +158,42 @@ describe('processXmlFieldContent', () => {
     test('given expected Dependent Picklist xml markup, returns expected Dependent picklist XMLFieldDetail', async () => {
 
         const xmlDependentPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup();
-        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlDependentPicklistMarkup);
+        const fakeFieldName = 'DependentPicklist__c.field-meta.xml';
+        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlDependentPicklistMarkup, fakeFieldName);
         const expectedXMLDependentPicklistXMLFieldDetail = XMLMarkupMockService.getDependentPicklistXMLFieldDetail();
+
+        expect(expectedXMLDependentPicklistXMLFieldDetail).toEqual(actualDependentPicklistDetail);
+
+    });
+
+    test('given expected Dependent Picklist with isActive tags in xml markup, returns expected Dependent picklist XMLFieldDetail', async () => {
+
+        const xmlExpectedDependentPicklistMarkup = XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup();
+        const fakeFieldName = 'DependentPicklist__c.field-meta.xml';
+        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlExpectedDependentPicklistMarkup, fakeFieldName);
+        const expectedXMLDependentPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedIsActiveDependentPicklistXMLDetail();
+
+        expect(actualDependentPicklistDetail).toEqual(expectedXMLDependentPicklistXMLFieldDetail);
+    });
+
+
+    test('given expected Global Value Set xml markup, returns expected picklist XMLFieldDetail', async () => {
+
+        const xmlGlobalPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
+        const fakeFieldName = 'GlobalPicklist__c.field-meta.xml';
+        const actualGlobalPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlGlobalPicklistMarkup, fakeFieldName);
+        const expectedGlobalPicklistDetail = XMLMarkupMockService.getPicklistFieldSetToGlobalPicklistXMLFieldDetail();
+
+        expect(actualGlobalPicklistDetail).toEqual(expectedGlobalPicklistDetail);
+
+    });
+
+    test('given expected Standard Value Set xml markup, returns expected picklist XMLFieldDetail', async () => {
+
+        const xmlStandardValueSetMarkup = XMLMarkupMockService.getStandardValueSetLeadSourceXMLMarkup();
+        const fakeFieldName = 'LeadSource.field-meta.xml';
+        const actualDependentPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlStandardValueSetMarkup, fakeFieldName);
+        const expectedXMLDependentPicklistXMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
 
         expect(expectedXMLDependentPicklistXMLFieldDetail).toEqual(actualDependentPicklistDetail);
 
@@ -71,7 +202,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Text" field type xml markup, returns expected text XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
-        const actualTextDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Text__c.field-meta.xml';
+        const actualTextDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLFieldXMLFieldDetail = XMLMarkupMockService.getTextXMLFieldDetail();
 
         expect(actualTextDetail).toEqual(expectedXMLFieldXMLFieldDetail);
@@ -81,7 +213,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Checkbox" field type xml markup, returns expected Checkbox XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getCheckboxFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Checkbox.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLCheckboxFieldXMLFieldDetail = XMLMarkupMockService.getCheckboxFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLCheckboxFieldXMLFieldDetail);
@@ -91,7 +224,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Currency" field type xml markup, returns expected Currency XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getCurrencyFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Currency__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLCurrencyFieldXMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLCurrencyFieldXMLFieldDetail);
@@ -101,7 +235,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Date" field type xml markup, returns expected Date XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getDateFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Date__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLDateFieldXMLFieldDetail = XMLMarkupMockService.getDateFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLDateFieldXMLFieldDetail);
@@ -111,7 +246,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "DateTime" field type xml markup, returns expected DateTime XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getDateTimeFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'DateTime__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLDateTimeFieldXMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLDateTimeFieldXMLFieldDetail);
@@ -121,7 +257,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Email" field type xml markup, returns expected Email XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getEmailFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Email__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLEmailFieldXMLFieldDetail = XMLMarkupMockService.getEmailXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLEmailFieldXMLFieldDetail);
@@ -131,7 +268,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Lookup" field type xml markup, returns expected Lookup XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getLookupFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Lookup__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLLookupFieldXMLFieldDetail = XMLMarkupMockService.getLookupXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLLookupFieldXMLFieldDetail);
@@ -141,7 +279,8 @@ describe('processXmlFieldContent', () => {
     test('given expected Formula field with "Number" field type xml markup, returns expected Formula XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getFormulaFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Formula__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLFormulaFieldXMLFieldDetail = XMLMarkupMockService.getFormulaXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLFormulaFieldXMLFieldDetail);
@@ -152,7 +291,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Geolocation" field type xml markup, returns expected Geolocation XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getGeolocationFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Geolocation__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLGeolocationFieldXMLFieldDetail = XMLMarkupMockService.getGeolocationXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLGeolocationFieldXMLFieldDetail);
@@ -162,7 +302,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Number" field type xml markup, returns expected Number XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getNumberFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Number__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLNumberFieldXMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLNumberFieldXMLFieldDetail);
@@ -172,7 +313,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Phone" field type xml markup, returns expected Phone XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getPhoneFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Phone__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLPhoneFieldXMLFieldDetail = XMLMarkupMockService.getPhoneXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLPhoneFieldXMLFieldDetail);
@@ -182,7 +324,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Phone" field type xml markup, returns expected Phone XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getPhoneFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Phone__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLPhoneFieldXMLFieldDetail = XMLMarkupMockService.getPhoneXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLPhoneFieldXMLFieldDetail);
@@ -192,7 +335,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "LongTextArea" field type xml markup, returns expected LongTextArea XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getLongTextAreaFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'LongTextArea__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLLongTextAreaFieldXMLFieldDetail = XMLMarkupMockService.getLongTextAreaXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLLongTextAreaFieldXMLFieldDetail);
@@ -202,7 +346,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "RichTextArea" html field type xml markup, returns expected RichTextArea XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getRichTextAreaFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'RichTextArea__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLRichTextAreaFieldXMLFieldDetail = XMLMarkupMockService.getRichTextAreaXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLRichTextAreaFieldXMLFieldDetail);
@@ -212,7 +357,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Time" field type xml markup, returns expected Time XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getTimeFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Time__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLTimeFieldXMLFieldDetail = XMLMarkupMockService.getTimeXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLTimeFieldXMLFieldDetail);
@@ -223,7 +369,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "Url" field type xml markup, returns expected Url XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getUrlFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'Url__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLUrlFieldXMLFieldDetail = XMLMarkupMockService.getUrlXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLUrlFieldXMLFieldDetail);
@@ -233,7 +380,8 @@ describe('processXmlFieldContent', () => {
     test('given expected "MasterDetail" field type xml markup, returns expected MasterDetail XMLFieldDetail', async () => {
 
         const xmlFieldMarkup = XMLMarkupMockService.getMasterDetailFieldTypeXMLMarkup();
-        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup);
+        const fakeFieldName = 'MasterDetail__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
         const expectedXMLMasterDetailFieldXMLFieldDetail = XMLMarkupMockService.getMasterDetailXMLFieldDetail();
 
         expect(actualFieldDetail).toEqual(expectedXMLMasterDetailFieldXMLFieldDetail);
