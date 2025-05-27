@@ -365,5 +365,38 @@ return fakeRecordTypeRecipe;
 
     }
 
+    static getFakerJSVariableExpressionMarkup():string {
+        
+        const variableExpressionYaml = `
+- var: dogName
+  value: frank
+
+- var: dinoName 
+  value: "indominous"
+
+- var: animatedHero 
+  value: batman
+
+- var: randomDate
+  value: |
+    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+
+- var: multiPicklistVar
+  value: \${{ (faker.helpers.arrayElements(['chorizo','pork','steak','tofu'])).join(';') }} 
+
+- object: VariableAccount
+  count: 1
+  nickname: VariableAccountOne
+  fields:
+    VarDate__c: \${{ var.randomDate }}    
+    VarAnimatedHero__c: \${{ var.animatedHero }}
+    VarDogName__c: \${{ var.dogName }}  
+    VarDinoName__c: \${{ var.dinoName }} 
+`;
+
+        return variableExpressionYaml;
+
+    }
+
 
 }
