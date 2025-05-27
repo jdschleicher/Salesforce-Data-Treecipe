@@ -365,7 +365,7 @@ return fakeRecordTypeRecipe;
 
     }
 
-    static getFakerJSVariableExpressionMarkup():string {
+    static getFakerJSMockVariableExpressionMarkup():string {
         
         const variableExpressionYaml = `
 - var: dogName
@@ -379,7 +379,7 @@ return fakeRecordTypeRecipe;
 
 - var: randomDate
   value: |
-    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date('2023-02-01') }).toISOString().split('T')[0] }}
 
 - var: multiPicklistVar
   value: \${{ (faker.helpers.arrayElements(['chorizo','pork','steak','tofu'])).join(';') }} 

@@ -21,55 +21,110 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         for (const entry of parsedData) {
 
             const objectType = entry.object;
-            const nickname = entry.nickname;
-            const count = entry.count || 1; // Default to 1 if count isn't provided
-            const fieldsTemplate = entry.fields;
-    
-            for (let i = 0; i < count; i++) {
+            const variableName = entry.var;
+            
+            if (objectType !== undefined && variableName === undefined  ) {
+                // handle object type declaration 
+                generatedData = await this.processObjectDeclarationForYamlDocumentItem(objectType, entry, generatedData);
 
-                let fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
-                for (const [fieldName, fieldExpression] of Object.entries(fieldsTemplate)) {
+            } else if ( variableName !== undefined && objectType === undefined ) {
 
-                    try {
+                // handle variable type declaraition
+                generatedData = await this.processVariableDeclarationForYamlDocumentItem(objectType, entry, generatedData);
 
-                        fieldApiNameByFakerJSEvaluations[fieldName] = await this.evaluateFakerJSExpression(fieldExpression, 
-                                                                                                            fieldApiNameByFakerJSEvaluations, 
-                                                                                                            fieldName);
-
-                    } catch (error) {
-                        
-                        const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
-                        const customErrorMessage = `Error evaluating faker-js expression syntax << ${fieldName} - ${ fieldExpression } >> - ${error.message}`;
-                        
-                        const customFakerJSEvaluationError = new Error();
-                        customFakerJSEvaluationError.message = customErrorMessage;
-                
-                        customFakerJSEvaluationError.name = "FakerJSExpressionEvaluationError";
-                        customFakerJSEvaluationError.stack = error.stack;
-                
-                        customFakerJSEvaluationError.cause = error.message;
-                
-                        ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile(customFakerJSEvaluationError, executedCommand);
-                        
-                        throw customFakerJSEvaluationError;
-                                    
-                    }
-                   
-                }
-    
-                generatedData.push({
-                    id: (i+1),
-                    object: objectType,
-                    nickname: nickname,
-                    fields: fieldApiNameByFakerJSEvaluations,
-                });
-
+            } else if ( objectType !== undefined || variableName !== undefined ) {
+                // throw error statiing top loevel declarations miust have "var" or "object" declaration i nthe yaml document item
             }
 
         };
     
         const jsonGeneratedData = JSON.stringify(generatedData, null, 2);
         return jsonGeneratedData;
+    }
+
+    async processObjectDeclarationForYamlDocumentItem(objectType: string, objectYamlEntry: any, generatedData: any) {
+        
+        const nickname = objectYamlEntry.nickname;
+        const count = objectYamlEntry.count || 1; // Default to 1 if count isn't provided
+        const fieldsTemplate = objectYamlEntry.fields;
+
+        for (let i = 0; i < count; i++) {
+
+            let fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
+            for (const [fieldName, fieldExpression] of Object.entries(fieldsTemplate)) {
+
+                try {
+
+                    fieldApiNameByFakerJSEvaluations[fieldName] = await this.evaluateFakerJSExpression(fieldExpression, 
+                                                                                                        fieldApiNameByFakerJSEvaluations, 
+                                                                                                        fieldName);
+
+                } catch (error) {
+                    
+                    const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
+                    const customErrorMessage = `Error evaluating faker-js expression syntax << ${fieldName} - ${ fieldExpression } >> - ${error.message}`;
+                    
+                    const customFakerJSEvaluationError = new Error();
+                    customFakerJSEvaluationError.message = customErrorMessage;
+            
+                    customFakerJSEvaluationError.name = "FakerJSExpressionEvaluationError";
+                    customFakerJSEvaluationError.stack = error.stack;
+            
+                    customFakerJSEvaluationError.cause = error.message;
+            
+                    ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile(customFakerJSEvaluationError, executedCommand);
+                    
+                    throw customFakerJSEvaluationError;
+                                
+                }
+                
+            }
+
+            generatedData.push({
+                id: (i+1),
+                object: objectType,
+                nickname: nickname,
+                fields: fieldApiNameByFakerJSEvaluations,
+            });
+
+        }
+
+        return generatedData;
+    }
+
+    async processVariableDeclarationForYamlDocumentItem(variableName: string, variableExpression: string, generatedData: any) {
+        
+        let fakerJSVariableEvaluation:any;
+    
+        try {
+
+            fakerJSVariableEvaluation = await this.getFakeValueFromFakerJSExpression(variableExpression);
+
+        } catch (error) {
+            
+            const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
+            const customErrorMessage = `Error evaluating faker-js expression syntax << ${variableName} - ${ variableExpression } >> - ${error.message}`;
+            
+            const customFakerJSEvaluationError = new Error();
+            customFakerJSEvaluationError.message = customErrorMessage;
+    
+            customFakerJSEvaluationError.name = "FakerJSExpressionEvaluationError";
+            customFakerJSEvaluationError.stack = error.stack;
+    
+            customFakerJSEvaluationError.cause = error.message;
+    
+            ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile(customFakerJSEvaluationError, executedCommand);
+            
+            throw customFakerJSEvaluationError;
+                        
+        }
+
+        generatedData.push({
+            variableName: variableName,
+            value: fakerJSVariableEvaluation,
+        });
+
+        return generatedData;
     }
 
     transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerContent: string): Map<string, CollectionsApiJsonStructure> {

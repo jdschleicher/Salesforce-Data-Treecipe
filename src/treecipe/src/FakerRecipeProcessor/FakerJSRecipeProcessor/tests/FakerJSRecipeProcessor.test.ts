@@ -90,6 +90,31 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         });
 
+        test('should process variable expression syntax in YAML file and generate fake data', async () => {
+
+            const mockVariableYamlContent = RecipeMockService.getFakerJSMockVariableExpressionMarkup();
+            
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(mockVariableYamlContent);
+            
+            // creating yaml.load "spy" to check what is being passed into the load argument
+            // this argument should be mockYamlContent as its the mock value used for fs.readFileSync
+            jest.spyOn(yaml, 'load');
+    
+            const fakeTestFile = 'test.yaml';                        
+            const result = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile(fakeTestFile);
+
+            expect(fs.readFileSync).toHaveBeenCalledWith(fakeTestFile, 'utf8');
+
+            // below assert will not work without yaml spy
+            expect(yaml.load).toHaveBeenCalledWith(mockVariableYamlContent);
+
+            const parsedResult = JSON.parse(result);
+
+            expect(parsedResult.length).toBe(2);
+          
+
+        });
+
     });
 
     describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
