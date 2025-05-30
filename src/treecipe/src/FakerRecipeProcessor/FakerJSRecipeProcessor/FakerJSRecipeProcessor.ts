@@ -23,14 +23,20 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             const objectType = entry.object;
             const variableName = entry.var;
             
-            if (objectType !== undefined && variableName === undefined  ) {
+            if ( objectType !== undefined && variableName === undefined ) {
                 // handle object type declaration 
+                // this function evaluates directly to generated data because it loops over fieleds that get pushed to generated data - could be refactored
                 generatedData = await this.processObjectDeclarationForYamlDocumentItem(objectType, entry, generatedData);
 
             } else if ( variableName !== undefined && objectType === undefined ) {
 
                 // handle variable type declaraition
-                generatedData = await this.processVariableDeclarationForYamlDocumentItem(objectType, entry, generatedData);
+                const variableFakerJSVariableEvaluation = await this.processVariableDeclarationForYamlDocumentItem(entry);
+
+                generatedData.push({
+                    variableName: variableName,
+                    value: variableFakerJSVariableEvaluation,
+                });
 
             } else if ( objectType !== undefined || variableName !== undefined ) {
                 // throw error statiing top loevel declarations miust have "var" or "object" declaration i nthe yaml document item
@@ -55,6 +61,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
                 try {
 
+                    // if fieldexpression is variable syntax then look for existing generated value in generatedData by key
                     fieldApiNameByFakerJSEvaluations[fieldName] = await this.evaluateFakerJSExpression(fieldExpression, 
                                                                                                         fieldApiNameByFakerJSEvaluations, 
                                                                                                         fieldName);
@@ -92,18 +99,18 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         return generatedData;
     }
 
-    async processVariableDeclarationForYamlDocumentItem(variableName: string, variableExpression: string, generatedData: any) {
+    async processVariableDeclarationForYamlDocumentItem(varYamlEntry: any) {
         
         let fakerJSVariableEvaluation:any;
     
         try {
 
-            fakerJSVariableEvaluation = await this.getFakeValueFromFakerJSExpression(variableExpression);
+            fakerJSVariableEvaluation = await this.getFakeValueFromFakerJSExpression(varYamlEntry.value);
 
         } catch (error) {
             
-            const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
-            const customErrorMessage = `Error evaluating faker-js expression syntax << ${variableName} - ${ variableExpression } >> - ${error.message}`;
+            const executedCommand = "FakerJSRecipeProcessor.processVariableDeclarationForYamlDocumentItem";
+            const customErrorMessage = `Error evaluating faker-js expression syntax << ${varYamlEntry.var} - ${ varYamlEntry.value } >> - ${error.message}`;
             
             const customFakerJSEvaluationError = new Error();
             customFakerJSEvaluationError.message = customErrorMessage;
@@ -119,12 +126,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                         
         }
 
-        generatedData.push({
-            variableName: variableName,
-            value: fakerJSVariableEvaluation,
-        });
+        return fakerJSVariableEvaluation;
 
-        return generatedData;
     }
 
     transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerContent: string): Map<string, CollectionsApiJsonStructure> {
