@@ -398,5 +398,48 @@ return fakeRecordTypeRecipe;
 
     }
 
+     static getSmallFakerJSMockVariableExpressionMarkup():string {
+        
+        const variableExpressionYaml = `
+- var: randomDate
+  value: |
+    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date('2023-02-01') }).toISOString().split('T')[0] }}
+
+- object: VariableAccount
+  count: 1
+  nickname: VariableAccountOne
+  fields:
+    SomeField: "tessst"    
+    VarDate__c: \${{ var.randomDate }}    
+`;
+
+        return variableExpressionYaml;
+
+    }
+
+     static getDoubleExpressionSmallFakerJSMockVariableExpressionMarkup():string {
+        
+        const variableExpressionYaml = `
+- var: randomDate
+  value: |
+    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date('2023-02-01') }).toISOString().split('T')[0] }}
+
+- var: birthdayPerson
+  value: |
+    \${{ "Steven" }}
+
+
+- object: VariableAccount
+  count: 1
+  nickname: VariableAccountOne
+  fields:
+    SomeField: "tessst"    
+    VarWild: So much craziness getting prepared for \${{ var.birthdayPerson}} birthday on \${{ var.randomDate }}. I need to be sure to send out email to \${{ faker.internet.email() }}.    
+`;
+
+        return variableExpressionYaml;
+
+    }
+
 
 }

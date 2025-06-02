@@ -5,6 +5,7 @@ import { faker } from '@faker-js/faker';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { ProcessedYamlWrapper } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
 
 export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
@@ -16,7 +17,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const yamlContent = fs.readFileSync(fullRecipeFileNamePath, 'utf8'); // Read the YAML file
         const parsedData = yaml.load(yamlContent) as any[]; 
     
-        let generatedData: any[] = [];
+        let processedYamlWrapper:ProcessedYamlWrapper = {
+            ObjectPropertyToExistingProcessedYaml: {},
+            VariablePropertyToExistingProcessedYaml: {}
+        };
     
         for (const entry of parsedData) {
 
@@ -26,17 +30,13 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             if ( objectType !== undefined && variableName === undefined ) {
                 // handle object type declaration 
                 // this function evaluates directly to generated data because it loops over fieleds that get pushed to generated data - could be refactored
-                generatedData = await this.processObjectDeclarationForYamlDocumentItem(objectType, entry, generatedData);
+                processedYamlWrapper.ObjectPropertyToExistingProcessedYaml = await this.processObjectDeclarationForYamlDocumentItem(objectType, entry, processedYamlWrapper);
 
             } else if ( variableName !== undefined && objectType === undefined ) {
 
                 // handle variable type declaraition
-                const variableFakerJSVariableEvaluation = await this.processVariableDeclarationForYamlDocumentItem(entry);
-
-                generatedData.push({
-                    variableName: variableName,
-                    value: variableFakerJSVariableEvaluation,
-                });
+                const variableFakerJSVariableEvaluation = await this.processVariableDeclarationForYamlDocumentItem(entry, processedYamlWrapper);
+                processedYamlWrapper.VariablePropertyToExistingProcessedYaml[variableName] = variableFakerJSVariableEvaluation;
 
             } else if ( objectType !== undefined || variableName !== undefined ) {
                 // throw error statiing top loevel declarations miust have "var" or "object" declaration i nthe yaml document item
@@ -44,11 +44,13 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         };
     
-        const jsonGeneratedData = JSON.stringify(generatedData, null, 2);
+        const jsonGeneratedData = JSON.stringify(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml, null, 2);
         return jsonGeneratedData;
     }
 
-    async processObjectDeclarationForYamlDocumentItem(objectType: string, objectYamlEntry: any, generatedData: any) {
+    async processObjectDeclarationForYamlDocumentItem(objectType: string, 
+                                                        objectYamlEntry: any, 
+                                                        processedYamlWrapper: ProcessedYamlWrapper) {
         
         const nickname = objectYamlEntry.nickname;
         const count = objectYamlEntry.count || 1; // Default to 1 if count isn't provided
@@ -57,19 +59,19 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         for (let i = 0; i < count; i++) {
 
             let fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
-            for (const [fieldName, fieldExpression] of Object.entries(fieldsTemplate)) {
+            for (const [yamlFieldName, yamlFieldValue] of Object.entries(fieldsTemplate)) {
 
                 try {
 
-                    // if fieldexpression is variable syntax then look for existing generated value in generatedData by key
-                    fieldApiNameByFakerJSEvaluations[fieldName] = await this.evaluateFakerJSExpression(fieldExpression, 
-                                                                                                        fieldApiNameByFakerJSEvaluations, 
-                                                                                                        fieldName);
-
+                    fieldApiNameByFakerJSEvaluations[yamlFieldName] = await this.evaluateProvidedYamlPropertyValue(yamlFieldValue, 
+                                                                                                                    fieldApiNameByFakerJSEvaluations, 
+                                                                                                                    yamlFieldName,
+                                                                                                                    processedYamlWrapper);
+                
                 } catch (error) {
                     
                     const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
-                    const customErrorMessage = `Error evaluating faker-js expression syntax << ${fieldName} - ${ fieldExpression } >> - ${error.message}`;
+                    const customErrorMessage = `Error evaluating faker-js expression syntax << ${yamlFieldName} - ${ yamlFieldValue } >> - ${error.message}`;
                     
                     const customFakerJSEvaluationError = new Error();
                     customFakerJSEvaluationError.message = customErrorMessage;
@@ -87,7 +89,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 
             }
 
-            generatedData.push({
+            processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType].push({
                 id: (i+1),
                 object: objectType,
                 nickname: nickname,
@@ -96,16 +98,20 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         }
 
-        return generatedData;
+        return processedYamlWrapper;
     }
 
-    async processVariableDeclarationForYamlDocumentItem(varYamlEntry: any) {
+    async processVariableDeclarationForYamlDocumentItem(varYamlEntry: any, processedYamlData: any) {
         
         let fakerJSVariableEvaluation:any;
     
         try {
 
-            fakerJSVariableEvaluation = await this.getFakeValueFromFakerJSExpression(varYamlEntry.value);
+            let emptyFieldToPropertyEvaluations:Record<string, string> = null;
+            fakerJSVariableEvaluation = await this.evaluateProvidedYamlPropertyValue(varYamlEntry.value, 
+                                                                                        emptyFieldToPropertyEvaluations, 
+                                                                                        varYamlEntry.name,
+                                                                                        processedYamlData);
 
         } catch (error) {
             
@@ -173,24 +179,87 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     
     }
 
-    async evaluateFakerJSExpression(fakerJSExpression: any, 
+    async evaluateProvidedYamlPropertyValue(providedYamlPropertyValue: any, 
                                     fieldApiNameByFakerJSEvaluations: Record<string, string>,
-                                    fieldApiNameToEvaluate: string): Promise<string> {
+                                    yamlPropertyFieldApiNameToEvaluate: string,
+                                    alreadyProcessedYamlWrapper: ProcessedYamlWrapper): Promise<string> {
 
-    
-        const dependentPicklistKeyIndicator = "if";
-        if ( (typeof fakerJSExpression !== 'string') 
-                && (dependentPicklistKeyIndicator in fakerJSExpression) 
-                && Object.keys(fakerJSExpression).length === 1 ) {
-    
-                const evaluatedRandomChoiceFromAvailablePicklistDependencyOptions = this.evaluateDependentPicklistFakerJSExpression(fakerJSExpression, fieldApiNameByFakerJSEvaluations, fieldApiNameToEvaluate);
-                return evaluatedRandomChoiceFromAvailablePicklistDependencyOptions;
+        
+        let processedYamlPropertyValue = null;
 
+        const fakerJSExpressionStartIndicator = "${{";
+        const fakerJSExpressionStopIndicator = "${{";
+        const containsExpressionSyntax = (typeof providedYamlPropertyValue === 'string' 
+                                        && providedYamlPropertyValue.includes(fakerJSExpressionStartIndicator) 
+                                        && providedYamlPropertyValue.includes(fakerJSExpressionStopIndicator) );
+
+        if ( containsExpressionSyntax ) {
+            
+            processedYamlPropertyValue = await this.getFakeValueFromFakerJSExpression(providedYamlPropertyValue, alreadyProcessedYamlWrapper.VariablePropertyToExistingProcessedYaml);
+
+        } else {
+
+            processedYamlPropertyValue = this.handleNonFakerJSExpressionSyntaxValueScenarios(providedYamlPropertyValue, 
+                                                                                                fieldApiNameByFakerJSEvaluations, 
+                                                                                                yamlPropertyFieldApiNameToEvaluate);
+        
         }
-    
-        const generatedFakerJSExpressionToFakeValue = await this.getFakeValueFromFakerJSExpression(fakerJSExpression);
 
-        return generatedFakerJSExpressionToFakeValue;
+        return processedYamlPropertyValue;
+
+    }
+
+    getVariableValueFromExistingProcessedYamlProperties(variableToAlreadyEvaluatedValueReferenceMap: Record<string, any>, variableNameFromExpression) {
+
+        let yamlValueFromVariable = null;
+
+        const fromPreviousGenerated = variableToAlreadyEvaluatedValueReferenceMap[variableNameFromExpression];
+        if ( fromPreviousGenerated !== undefined ) {
+            yamlValueFromVariable = fromPreviousGenerated;
+        } else {
+            const missingVariableKeyReferenceTodoMessage = "### TODO : THIS VARIABLE SETTING IS MADE BEFORE THE ACTUAL VARIABLE OBJECT. MOVE THE VARIABLE DELCARATION '- var: vaiable name ' ABOVE THIS SECTION OF THE RECIPE";
+            yamlValueFromVariable = missingVariableKeyReferenceTodoMessage;
+        }
+
+        return yamlValueFromVariable;
+
+    }
+
+    extractVariableNameFromExpressionSyntax(input: string): string {
+        const pattern = /\b(var\.[a-zA-Z_][a-zA-Z0-9_]*)\b/;
+        const match = input.match(pattern);
+        return match ? match[1] : null;
+
+    }
+
+
+    handleNonFakerJSExpressionSyntaxValueScenarios(providedYamlPropertyValue: any,
+                                                    fieldApiNameByFakerJSEvaluations,
+                                                    yamlPropertyFieldApiNameToEvaluate): any {
+
+        let evaluatedYamlPropertyValue = null;
+        const dependentPicklistKeyIndicator = "if";
+        if ( (typeof providedYamlPropertyValue !== 'string') 
+                && (dependentPicklistKeyIndicator in providedYamlPropertyValue) 
+                && Object.keys(providedYamlPropertyValue).length === 1 ) {
+    
+                const evaluatedRandomChoiceFromAvailablePicklistDependencyOptions = this.evaluateDependentPicklistFakerJSExpression(providedYamlPropertyValue, 
+                                                                                                                                    fieldApiNameByFakerJSEvaluations, 
+                                                                                                                                    yamlPropertyFieldApiNameToEvaluate);
+                evaluatedYamlPropertyValue = evaluatedRandomChoiceFromAvailablePicklistDependencyOptions;
+
+        } else {
+
+            /*
+                if no expected faker-js expression syntax, 
+                field value may be hard coded string or special value 
+                like object nickname or record type api name
+             */
+
+            evaluatedYamlPropertyValue = providedYamlPropertyValue;
+        }
+
+        return evaluatedYamlPropertyValue;
 
     }
 
@@ -278,16 +347,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }   
 
-    async getFakeValueFromFakerJSExpression(fakerJSExpression: string): Promise<string> {
+    async getFakeValueFromFakerJSExpression(fakerJSExpression: string, variableToEvaluatedValueReferenceMap): Promise<string> {
 
         const regexExpressionForFakerSyntaxBookEnds = FakerJSRecipeProcessor.regExpressionForSurroundingFakerJSSyntax;
-
         const expressionSyntaxMatches = [...fakerJSExpression.matchAll(regexExpressionForFakerSyntaxBookEnds)];
-
-        if (expressionSyntaxMatches.length === 0) {
-            // if no expected faker-js expression syntax, field value may be hard coded string or special value like object nickname or record type api name
-            return fakerJSExpression;
-        }
 
         let originalExpressionCopyForFakerEvalReplacements = fakerJSExpression;
 
@@ -299,11 +362,23 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             const matchIndex = expressionMatch.index; 
             const matchCharactersLength = fullIndexMatch.length;
             const trimmedFakerJSCode = fakerJSCode.trim();
+
+            let processedYamlPropertyValueFromExpression = null;
+            const variableNameFromExpressionSyntax = this.extractVariableNameFromExpressionSyntax(trimmedFakerJSCode);
+            if ( variableNameFromExpressionSyntax !== null ) {
+
+                processedYamlPropertyValueFromExpression = this.getVariableValueFromExistingProcessedYamlProperties(variableToEvaluatedValueReferenceMap, variableNameFromExpressionSyntax);
+
+            } else {
+
+                processedYamlPropertyValueFromExpression = this.getFakerJSExpressionEvaluation(trimmedFakerJSCode);
+
+            }         
+
             
-            const fakerEvalExpressionResult = this.getFakerJSExpressionEvaluation(trimmedFakerJSCode);
             
             originalExpressionCopyForFakerEvalReplacements = originalExpressionCopyForFakerEvalReplacements.substring(0, matchIndex) + 
-                                                                fakerEvalExpressionResult + 
+                                                                processedYamlPropertyValueFromExpression + 
                                                                 originalExpressionCopyForFakerEvalReplacements.substring(matchIndex + matchCharactersLength);
         
         }
@@ -601,6 +676,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     }
 
 }
+
+
 
 
 
