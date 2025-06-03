@@ -428,7 +428,6 @@ return fakeRecordTypeRecipe;
   value: |
     \${{ "Steven" }}
 
-
 - object: VariableAccount
   count: 1
   nickname: VariableAccountOne

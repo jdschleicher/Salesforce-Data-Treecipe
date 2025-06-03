@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
 import { faker } from '@faker-js/faker';
+import { ProcessedYamlWrapper } from '../../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
 
 
 // the below mock is required to prevent missing vscode module error when FakerJSRecipeProcessor references service layers that have vscode as a required library
@@ -110,7 +111,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
             const parsedResult = JSON.parse(result);
 
-            expect(parsedResult.length).toBe(2);
+            expect(parsedResult.length).toBe(1);
 
         });
 
@@ -148,15 +149,30 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         test('should evaluate simple faker expression', async () => {
 
+          const testPopulatedVariableToExistingReferenceMapThatShouldNotImpactEvaluatedExpression = {
+              Fruit: "Banana",
+              Instrument: "Piano"
+          };
+
+          const mockedYamlToExistingProcessYaml = FakerJSExpressionMocker. getFakeAccountYamlRecipeObjectStructure();
+
+          const mockAlreadyProcessedYaml:ProcessedYamlWrapper = {
+              ObjectPropertyToExistingProcessedYaml: mockedYamlToExistingProcessYaml,
+              VariablePropertyToExistingProcessedYaml: testPopulatedVariableToExistingReferenceMapThatShouldNotImpactEvaluatedExpression
+          };
+
           const getFakeValueSpy = jest.spyOn(fakerJSRecipeProcessor, 'getFakeValueFromFakerJSExpression');
           const result = await fakerJSRecipeProcessor.evaluateProvidedYamlPropertyValue(
             "${{ faker.company.name() }}", 
             {}, 
             'Name',
-            null
+            mockAlreadyProcessedYaml
           );
       
-            expect(getFakeValueSpy).toHaveBeenCalledWith("${{ faker.company.name() }}");
+            expect(getFakeValueSpy).toHaveBeenCalledWith(
+              "${{ faker.company.name() }}",
+              testPopulatedVariableToExistingReferenceMapThatShouldNotImpactEvaluatedExpression
+            );
 
         });
     
@@ -338,7 +354,11 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
             
             jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockImplementation(mockImplementation);
             
-            const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Outer ${{faker.person.firstName()}} with ${{faker.random.number()}}', emptyVariableToExistingReferencesMap);
+            const testPopulatedVariableToExistingReferenceMapThatShouldNotImpactEvaluatedExpression = {
+              Fruit: "Banana",
+              Instrument: "Piano"
+            };
+            const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Outer ${{faker.person.firstName()}} with ${{faker.random.number()}}', testPopulatedVariableToExistingReferenceMapThatShouldNotImpactEvaluatedExpression);
             
             expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
             expect(result).toBe('Outer John with 42');
@@ -360,33 +380,41 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
             jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockReturnValue('John');
             
-            const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Name: ${{ var.DogName  }}', emptyVariableToExistingReferencesMap);
+            const expectedVariableKeyToVariableValueMap:Record<string, any> =  {
+                DogName: "Rover"
+            };
+            const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Gonna be some kind of value at the end here:: ${{ var.DogName  }}', expectedVariableKeyToVariableValueMap);
             
-            expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledWith('var.DogName');
-            expect(result).toBe('Name: John');
+            expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(0);
+            expect(result).toBe('Gonna be some kind of value at the end here:: Rover');
 
         });
 
-        // test('Should handle variable expression and process nested expressions in correct order', async () => {
+        test('Should handle variable expression and process nested expressions in correct order', async () => {
 
-        //     const mockImplementation = (code) => {
-        //       if (code === 'faker.person.firstName()') {
-        //         return 'Steve';
-        //       }
-        //       if (code === 'faker.random.number()') {
-        //         return '42';
-        //       }
-        //       return '';
-        //     };
+            const mockImplementation = (code) => {
+              if (code === 'faker.person.firstName()') {
+                return 'Steve';
+              }
+              if (code === 'faker.random.number()') {
+                return '42';
+              }
+              return '';
+            };
             
-        //     jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockImplementation(mockImplementation);
+            const expectedVariableKeyToVariableValueMap:Record<string, any> =  {
+                Car: "Toyota",
+                Speed: "Fast"
+            };
+
+            jest.spyOn(fakerJSRecipeProcessor, 'getFakerJSExpressionEvaluation').mockImplementation(mockImplementation);
             
-        //     const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Outer ${{faker.person.firstName()}} with ${{faker.random.number()}}');
+            const result = await fakerJSRecipeProcessor.getFakeValueFromFakerJSExpression('Sweet ${{faker.person.firstName()}} has a ${{ var.Speed }} car. ${{faker.random.number()}} competitors have been defeated by his ${{ var.Car }}', expectedVariableKeyToVariableValueMap);
             
-        //     expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
-        //     expect(result).toBe('Outer John with 42');
+            expect(fakerJSRecipeProcessor.getFakerJSExpressionEvaluation).toHaveBeenCalledTimes(2);
+            expect(result).toBe('Sweet Steve has a Fast car. 42 competitors have been defeated by his Toyota');
           
-        // }); 
+        }); 
 
     });
 

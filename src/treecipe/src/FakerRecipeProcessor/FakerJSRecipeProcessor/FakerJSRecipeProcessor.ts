@@ -30,7 +30,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             if ( objectType !== undefined && variableName === undefined ) {
                 // handle object type declaration 
                 // this function evaluates directly to generated data because it loops over fieleds that get pushed to generated data - could be refactored
-                processedYamlWrapper.ObjectPropertyToExistingProcessedYaml = await this.processObjectDeclarationForYamlDocumentItem(objectType, entry, processedYamlWrapper);
+                processedYamlWrapper = await this.processObjectDeclarationForYamlDocumentItem(objectType, entry, processedYamlWrapper);
 
             } else if ( variableName !== undefined && objectType === undefined ) {
 
@@ -38,14 +38,18 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 const variableFakerJSVariableEvaluation = await this.processVariableDeclarationForYamlDocumentItem(entry, processedYamlWrapper);
                 processedYamlWrapper.VariablePropertyToExistingProcessedYaml[variableName] = variableFakerJSVariableEvaluation;
 
-            } else if ( objectType !== undefined || variableName !== undefined ) {
-                // throw error statiing top loevel declarations miust have "var" or "object" declaration i nthe yaml document item
+            } else {
+
+                // do nothing as there could be yaml used for somethign else like adding context to the recipe file
+
             }
 
         };
     
-        const jsonGeneratedData = JSON.stringify(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml, null, 2);
+        const parsedObjectValuesOnly = Object.values(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml).flat();
+        const jsonGeneratedData = JSON.stringify(parsedObjectValuesOnly, null, 2);
         return jsonGeneratedData;
+
     }
 
     async processObjectDeclarationForYamlDocumentItem(objectType: string, 
@@ -89,12 +93,24 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 
             }
 
-            processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType].push({
+            const newFieldConfigurationToObject = {
                 id: (i+1),
                 object: objectType,
                 nickname: nickname,
                 fields: fieldApiNameByFakerJSEvaluations,
-            });
+            };
+
+            if ( processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType] === undefined ) {
+            
+                processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType] = [ newFieldConfigurationToObject ];
+
+            } else {
+                
+                processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType].push(newFieldConfigurationToObject);
+            
+            }
+
+         
 
         }
 
@@ -226,7 +242,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     }
 
     extractVariableNameFromExpressionSyntax(input: string): string {
-        const pattern = /\b(var\.[a-zA-Z_][a-zA-Z0-9_]*)\b/;
+        const pattern = /\bvar\.([a-zA-Z_][a-zA-Z0-9_]*)\b/;
         const match = input.match(pattern);
         return match ? match[1] : null;
 
