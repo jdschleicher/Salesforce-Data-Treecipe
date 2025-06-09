@@ -432,7 +432,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             "Product2": {
                 "Name": `\${{faker.commerce.productName()}}`,
                 "Description": `\${{faker.lorem.paragraph()}}`,
-                "ProductCode": `\${{faker.commerce.product()}}-{{faker.string.alphanumeric(6)}}`,
+                "ProductCode": `\${{faker.commerce.product()}}-\${{faker.string.alphanumeric(6)}}`,
                 "IsActive": `\${{faker.helpers.arrayElement(['true', 'false'])}}`,
                 "Family": `\${{faker.helpers.arrayElement(['Hardware', 'Software', 'Services', 'Other'])}}`,
                 "QuantityUnitOfMeasure": `\${{faker.helpers.arrayElement(['Each', 'Case', 'Box', 'Pallet'])}}`,
