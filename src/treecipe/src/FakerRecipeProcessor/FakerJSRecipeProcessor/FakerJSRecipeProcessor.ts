@@ -38,11 +38,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 const variableFakerJSVariableEvaluation = await this.processVariableDeclarationForYamlDocumentItem(entry, processedYamlWrapper);
                 processedYamlWrapper.VariablePropertyToExistingProcessedYaml[variableName] = variableFakerJSVariableEvaluation;
 
-            } else {
-
-                // do nothing as there could be yaml used for somethign else like adding context to the recipe file
-
-            }
+            } 
 
         };
     
@@ -110,11 +106,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             
             }
 
-         
-
         }
 
         return processedYamlWrapper;
+
     }
 
     async processVariableDeclarationForYamlDocumentItem(varYamlEntry: any, processedYamlData: any) {
