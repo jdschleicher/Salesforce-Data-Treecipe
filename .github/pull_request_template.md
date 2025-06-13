@@ -31,8 +31,5 @@
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
 
-### Additional Notes
-[Add any other context, screenshots, or relevant information about the PR here]
-
 ### Reviewers
 @mention-team-members-or-specific-reviewers
