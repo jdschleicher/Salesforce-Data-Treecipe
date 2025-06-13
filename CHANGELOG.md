@@ -1,5 +1,39 @@
 # Change Log
 
+## [2.2.0] [PR#25](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/26) - Feature : 2.2.0
+
+Feature: Variable syntax capabilities using faker-js recipes
+
+A great feature to snowfakery is [leveraging variable definitions](https://snowfakery.readthedocs.io/en/latest/index.html#define-variables). When generating fake data is the ability to reuse previously generated values, constants or hardcoded variable names. With this update, faker-js based recipes can leverage variable syntax as well.
+
+This functionality introduces a way for specific variable syntax to be leveraged in fake data recipe generation.
+
+'''yaml
+
+- var: dinoName 
+  value: "indominous"
+
+- var: animatedHero 
+  value: batman
+
+- var: randomDate
+  value: |
+    ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date('2023-02-01') }).toISOString().split('T')[0] }}
+
+- var: multipicklistFood
+  value: ${{ (faker.helpers.arrayElements(['chorizo','pork','steak','tofu'])).join(';') }} 
+
+- object: Account
+  count: 1
+  nickname: AccountWithCustomFieldsSetByVariables
+  fields:
+    VarDate__c: ${{ var.randomDate }}    
+    VarAnimatedHero__c: ${{ var.animatedHero }}
+    VarDinoName__c: ${{ var.dinoName }} 
+    VarFood__c: ${{ var.multipicklistFood }}
+
+'''
+
 ## [2.1.0] [PR#25](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/25) - Feature and Bug Fix: 2.1.0
 
 When generating recipes error handling was not granular and provided no specific detail into what Salesforce field in the local project base was causing an issue. This functionality wraps the field processing service in a try/catch and generates a error details page for self-service troubleshooting.
