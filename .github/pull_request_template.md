@@ -1,8 +1,8 @@
 ### Motivation and Context
 [Why is this change required? What problem does it solve? If it fixes an open issue, please link to the issue here]
 
-### What does this PR do?
-[Provide a clear and concise description of the changes in this PR]
+### Any Technical Decisions to Note??
+[Are there any adjustments or introductions, beyond simple, that enables this functionality or could even introduce challenges going forward]
 
 
 ### Type of Change
@@ -30,9 +30,6 @@
 - [ ] My changes generate no new warnings
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
-
-### Additional Notes
-[Add any other context, screenshots, or relevant information about the PR here]
 
 ### Reviewers
 @mention-team-members-or-specific-reviewers

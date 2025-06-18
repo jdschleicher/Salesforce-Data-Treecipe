@@ -365,5 +365,80 @@ return fakeRecordTypeRecipe;
 
     }
 
+    static getFakerJSMockVariableExpressionMarkup():string {
+        
+        const variableExpressionYaml = `
+- var: dogName
+  value: frank
+
+- var: dinoName 
+  value: "indominous"
+
+- var: animatedHero 
+  value: batman
+
+- var: randomDate
+  value: |
+    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date('2023-02-01') }).toISOString().split('T')[0] }}
+
+- var: multiPicklistVar
+  value: \${{ (faker.helpers.arrayElements(['chorizo','pork','steak','tofu'])).join(';') }} 
+
+- object: VariableAccount
+  count: 1
+  nickname: VariableAccountOne
+  fields:
+    VarDate__c: \${{ var.randomDate }}    
+    VarAnimatedHero__c: \${{ var.animatedHero }}
+    VarDogName__c: \${{ var.dogName }}  
+    VarDinoName__c: \${{ var.dinoName }} 
+`;
+
+        return variableExpressionYaml;
+
+    }
+
+     static getSmallFakerJSMockVariableExpressionMarkup():string {
+        
+        const variableExpressionYaml = `
+- var: randomDate
+  value: |
+    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date('2023-02-01') }).toISOString().split('T')[0] }}
+
+- object: VariableAccount
+  count: 1
+  nickname: VariableAccountOne
+  fields:
+    SomeField: "tessst"    
+    VarDate__c: \${{ var.randomDate }}    
+`;
+
+        return variableExpressionYaml;
+
+    }
+
+     static getDoubleExpressionSmallFakerJSMockVariableExpressionMarkup():string {
+        
+        const variableExpressionYaml = `
+- var: randomDate
+  value: |
+    \${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date('2023-02-01') }).toISOString().split('T')[0] }}
+
+- var: birthdayPerson
+  value: |
+    \${{ "Steven" }}
+
+- object: VariableAccount
+  count: 1
+  nickname: VariableAccountOne
+  fields:
+    SomeField: "tessst"    
+    VarWild: So much craziness getting prepared for \${{ var.birthdayPerson}} birthday on \${{ var.randomDate }}. I need to be sure to send out email to \${{ faker.internet.email() }}.    
+`;
+
+        return variableExpressionYaml;
+
+    }
+
 
 }
