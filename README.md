@@ -15,10 +15,7 @@ Users have two choices of "Fake Data" implementations:
 
 ## Table of Contents
 
-- [Salesforce-Data-Treecipe](#salesforce-data-treecipe)
-  - [Table of Contents](#table-of-contents)
   - [Prerequisites for Snowfakery](#prerequisites-for-snowfakery)
-    - [If using snowfakery as Faker service instead of faker-js.](#if-using-snowfakery-as-faker-service-instead-of-faker-js)
   - [VS Code Extension Installation](#vs-code-extension-installation)
   - ["How To" YouTube Walkthroughs:](#how-to-youtube-walkthroughs)
   - [Get started by walking through the below commands](#get-started-by-walking-through-the-below-commands)
