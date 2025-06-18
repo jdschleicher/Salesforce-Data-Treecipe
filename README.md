@@ -1,10 +1,21 @@
 # Salesforce-Data-Treecipe
 
-**Salesforce-Data-Treecipe** is a Visual Studio Code extension designed to streamline the process of generating production-like data during development in order to support building Quality in. This extension auto-generates a recipe yaml file based on what is already in the source object metadata xml of your project.
+**Salesforce-Data-Treecipe** is a Visual Studio Code extension designed to streamline the process of generating production-like data during development in order to support building Quality in. 
+
+This extension auto-generates a recipe yaml file based on the running, local project structure. Said differently, what is already in the "source" for the project.
+
+From the generated "Fake-Data Generating YAML Files", additional commands can be used following the recipe generation to build Collections API datasets that can be committed and reused as needed.
+
+Users have two choices of "Fake Data" implentations:
+
+[faker-js](https://fakerjs.dev/) - Can handle simple to complicated data generation and uploads
+[snowfakery](https://snowfakery.readthedocs.io/en/latest/) - All of the above and way more for adnvanced data generation scenarios
 
 ---
 
-## Optional Prerequisites for using [snowfakery](https://snowfakery.readthedocs.io/en/latest/) as Faker service instead of [faker-js](https://fakerjs.dev/). 
+## Prerequisites for Snowfakery
+
+### If using [snowfakery](https://snowfakery.readthedocs.io/en/latest/) as Faker service instead of [faker-js](https://fakerjs.dev/). 
 
 "faker-js" can be natively installed with VS Code extensions and does not require machine setup steps.
 
