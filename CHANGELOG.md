@@ -4,6 +4,8 @@
 
 Feature: Variable syntax capabilities using faker-js recipes
 
+[Quick YouTube Walkthrough to reuse generated Date field](https://youtu.be/qiO35RUnq8U)
+
 A great feature to snowfakery is [leveraging variable definitions](https://snowfakery.readthedocs.io/en/latest/index.html#define-variables). When generating fake data is the ability to reuse previously generated values, constants or hardcoded variable names. With this update, faker-js based recipes can leverage variable syntax as well.
 
 This functionality introduces a way for specific variable syntax to be leveraged in fake data recipe generation.
