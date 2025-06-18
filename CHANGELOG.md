@@ -10,7 +10,7 @@ A great feature to snowfakery is [leveraging variable definitions](https://snowf
 
 This functionality introduces a way for specific variable syntax to be leveraged in fake data recipe generation.
 
-'''yaml
+```yaml
 
 - var: dinoName 
   value: "indominous"
@@ -34,7 +34,7 @@ This functionality introduces a way for specific variable syntax to be leveraged
     VarDinoName__c: ${{ var.dinoName }} 
     VarFood__c: ${{ var.multipicklistFood }}
 
-'''
+```
 
 ## [2.1.0] [PR#25](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/25) - Feature and Bug Fix: 2.1.0
 
