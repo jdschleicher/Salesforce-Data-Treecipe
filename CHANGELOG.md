@@ -4,7 +4,22 @@
 
 Feature: Leverage nickname property from yaml object recipe that can combine with unique "record reference key" to allow for lookup reference replacements. 
 
+With this update we can now leverage the yaml property "nickname" on a parent object.  When a child object needs to reference a parent to populate for a lookup or masterdetail field, it can provide the nickname as its value:
 
+```yaml
+
+- object: Account
+  nickname: ParentAccountNickname
+  fields:
+    Name: ${{ faker.company.name() }} 
+
+- object: Contact
+  fields:
+    FirstName: ${{ ... }}
+    LastName: ${{ ... }}
+    AccountId: ParentAccountNickname
+
+```
 
 ## [2.2.0] [PR#26](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/26) - Feature : 2.2.0
 
