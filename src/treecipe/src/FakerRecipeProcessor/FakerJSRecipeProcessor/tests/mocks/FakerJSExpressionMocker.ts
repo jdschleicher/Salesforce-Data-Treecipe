@@ -70,7 +70,7 @@ export class FakerJSExpressionMocker {
             {
                 id: 2,
                 object: 'Account',
-                nickname: 'standard_account',
+                nickname: 'coolNickname',
                 fields: {
                     Name: 'Widget Inc',
                     Description: 'Quality products'

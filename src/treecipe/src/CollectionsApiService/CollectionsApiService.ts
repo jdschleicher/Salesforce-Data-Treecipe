@@ -468,10 +468,20 @@ export class CollectionsApiService {
 
     static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
 
+        const expectedDoubleUnderscoreForObjectRecipesThatIncludedNickname = "__";
         for (const [referenceIdKey, referenceIdAssociatedRecordIdValue ] of  Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
 
-            collectionsApiJson = collectionsApiJson.replaceAll(referenceIdKey, `${referenceIdAssociatedRecordIdValue}`);
-        
+            const splitReferenceIdentifiers = referenceIdKey.split(expectedDoubleUnderscoreForObjectRecipesThatIncludedNickname);
+
+            const incrementalObjectReferenceValue = splitReferenceIdentifiers[0];
+            collectionsApiJson = collectionsApiJson.replaceAll(incrementalObjectReferenceValue, `${referenceIdAssociatedRecordIdValue}`);
+
+            const nicknameValue = splitReferenceIdentifiers[1];
+            if ( nicknameValue ) {
+                // Not every object and associated could have a "nickname" property so the reference key would not include the double underscore split
+                collectionsApiJson = collectionsApiJson.replaceAll(nicknameValue, `${referenceIdAssociatedRecordIdValue}`);
+            }
+
         }
 
         return collectionsApiJson;

@@ -87,7 +87,10 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
         snowfakeryRecords.forEach(record => {
 
             const objectApiName = record._table; // snowfakery captures the object api name value in _table property
-            const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
+            const recordTrackingReferenceId = this.createCombinedNickNameReferenceForRecord(
+                objectApiName,
+                record
+            );
             const sobjectGeneratedDetail = {
                 attributes: {
                     type: objectApiName,
@@ -98,6 +101,7 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
           
             // remove snowfakery properties not needed for collections api 
             delete sobjectGeneratedDetail.id;
+            delete sobjectGeneratedDetail.nickname;
             delete sobjectGeneratedDetail._table;
 
             if (objectApiToGeneratedRecords.has(objectApiName)) {
@@ -120,6 +124,17 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
         return objectApiToGeneratedRecords;
 
     
+    }
+
+    createCombinedNickNameReferenceForRecord(objectApiName:string, recordDetail: any):string {
+
+        let referenceTrackingId = `${objectApiName}_Reference_${recordDetail.id}`;
+        if ( recordDetail.nickname ) {
+            referenceTrackingId = `${referenceTrackingId}__${recordDetail.nickname}`;
+        }
+
+        return referenceTrackingId;
+
     }
     
 }
