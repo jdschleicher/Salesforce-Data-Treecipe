@@ -418,15 +418,30 @@ describe('Shared tests for CollectionsApiService', () => {
     describe('updateLookupReferencesInCollectionApiJson', () => {
     
         test('should replace reference IDs with corresponding record IDs', () => {
+
             const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"ref2"}]}';
             const objectReferenceIdToOrgCreatedRecordIdMap = {
-                ref1: '001ABC',
+                ref1__sweetNickname: '001ABC',
                 ref2: '002DEF',
             };
 
             const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
 
             expect(result).toBe('{"records":[{"Id":"001ABC"},{"Id":"002DEF"}]}');
+
+        });
+
+        test('nickname or associated reference value will operate as reference id that will get assigned Id value', () => {
+
+            const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"Nickname"}]}';
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                ref1__Nickname: '001ABC',
+            };
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(result).toBe('{"records":[{"Id":"001ABC"},{"Id":"001ABC"}]}');
+
         });
 
         test('should replace multiple occurrences of the same reference ID', () => {
