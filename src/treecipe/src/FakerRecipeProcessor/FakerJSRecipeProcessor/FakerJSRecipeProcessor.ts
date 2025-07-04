@@ -155,7 +155,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         fakerJSRecords.forEach(record => {
 
             const objectApiName = record.object;
-            const recordTrackingReferenceId = `${objectApiName}_Reference_${record.id}`;
+            const recordTrackingReferenceId = this.createCombinedNickNameReferenceForRecord(
+                objectApiName,
+                record
+            );
             const sobjectGeneratedDetail = {
                 attributes: {
                     type: objectApiName,
@@ -188,6 +191,17 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         return objectApiToGeneratedRecords;
     
+    }
+
+    createCombinedNickNameReferenceForRecord(objectApiName:string, recordDetail: any):string {
+
+        let referenceTrackingId = `${objectApiName}_Reference_${recordDetail.id}`;
+        if ( recordDetail.nickname ) {
+            referenceTrackingId = `${referenceTrackingId}__${recordDetail.nickname}`;
+        }
+
+        return referenceTrackingId;
+
     }
 
     async evaluateProvidedYamlPropertyValue(providedYamlPropertyValue: any, 

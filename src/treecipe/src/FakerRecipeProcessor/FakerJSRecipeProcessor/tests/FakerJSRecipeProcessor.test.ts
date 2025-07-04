@@ -132,7 +132,9 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
             expect(accountData).toBeDefined();
             expect(accountData.records.length).toBe(2);
             expect(accountData.records[0].attributes.type).toBe('Account');
-            expect(accountData.records[0].attributes.referenceId).toBe('Account_Reference_1');
+            expect(accountData.records[0].attributes.referenceId).toBe('Account_Reference_1__standard_account');
+            expect(accountData.records[1].attributes.referenceId).toBe('Account_Reference_2__coolNickname');
+
             expect(accountData.records[0].Name).toBe('Acme Corp');
             
             const contactData = actualMappedSObjectApiToRecords.get('Contact');

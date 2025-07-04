@@ -150,7 +150,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
         test('given two different objects from snowfakery generation, calls createCollectionsApiFile twice', () => {
             
             const snowfakeryJsonFileContent = JSON.stringify([
-                { id: 1, _table: 'Account', name: 'Test Account' },
+                { id: 1, _table: 'Account', name: 'Test Account', nickname: 'coolCompanyNickname' },
                 { id: 2, _table: 'Contact', firstName: 'John', lastName: 'Doe' }
             ]);
 
@@ -163,7 +163,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
                                 {
                                     attributes: {
                                     type: 'Account',
-                                    referenceId: 'Account_Reference_1'
+                                    referenceId: 'Account_Reference_1__coolCompanyNickname'
                                 },
                                 name: 'Test Account'
                             }
