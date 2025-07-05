@@ -24,6 +24,8 @@
 [Describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. Please also list any relevant details for your test configuration]
 
 ### Checklist
+- [ ] Pull Request title captures expected version update 
+- [ ] package.json version number updated
 - [ ] I have performed a self-review of my own code
 - [ ] I have commented my code, particularly in hard-to-understand areas
 - [ ] I have made corresponding changes to the documentation
