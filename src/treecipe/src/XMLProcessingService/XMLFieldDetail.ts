@@ -10,4 +10,5 @@ export class XMLFieldDetail {
     public controllingField?: string;
     public xmlMarkup: string;
     public isStandardValueSet?: boolean;
+    public objectName: string;
 }

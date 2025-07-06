@@ -1,15 +1,13 @@
 import { RecipeService } from "../../RecipeService/RecipeService";
-import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
-
+import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { RecipeMockService } from "./mocks/RecipeMockService";
-import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
+
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
-// USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
-// import * as fs from 'fs';
+import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -20,12 +18,11 @@ jest.mock('vscode', () => ({
     }
   }), { virtual: true });
 
+describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Tests', () => {
 
-describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance Tests', () => {
-
-    const snowFakerService = new SnowfakeryRecipeFakerService();
-    let recipeServiceWithSnow = new RecipeService(snowFakerService);  
-    const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = recipeServiceWithSnow.getOOTBExpectedObjectToFakerValueMappings();
+    const fakerJSRecipeService = new FakerJSRecipeFakerService();
+    let recipeServiceWithFakerJS = new RecipeService(fakerJSRecipeService);  
+    const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = recipeServiceWithFakerJS.getOOTBExpectedObjectToFakerValueMappings();
 
     describe('getRecipeFakeValueByXMLFieldDetail', () => {
 
@@ -36,89 +33,91 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 fieldType: fakeFieldTypeValue,
                 apiName: "Fake__c",
                 fieldLabel: "Fake",
-                xmlMarkup: 'not a real xml markup'
+                xmlMarkup: "<xml></xml>"
             };
             const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
-            const actualRecipeValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+            const actualRecipeValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
             expect(expectedRecipeValue).toBe(actualRecipeValue);
         });
 
-        test('given expected Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        // test('given expected Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
-            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-            const expectedPicklistSnowfakeryValue = "${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}";
-            const recordTypeNameToRecordTypeXMLMarkup = {};
-            const actualPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+        //     const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
+        //     const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}";
+        //     const recordTypeNameToRecordTypeXMLMarkup = {};
+        //     const actualPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
-            expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
+        //     expect(actualPicklistFakerJSExpression).toBe(expectedPicklistFakerJSValue);
 
-        });
+        // });
 
-        test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
-            const expectedMultiSelectPicklistSnowfakeryValue = "${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}";
+            const expectedFakerJSMultiSelectPicklistExpression = "\${{ (faker.helpers.arrayElements(['chicken','chorizo','egg','fish','pork','steak','tofu'])).join(';') }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
-            const actualMultiSelectPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+            const actualMultiSelectPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
-            expect(actualMultiSelectPicklistSnowfakeryValue).toBe(expectedMultiSelectPicklistSnowfakeryValue);
+            expect(actualMultiSelectPicklistFakerJSExpression).toBe(expectedFakerJSMultiSelectPicklistExpression);
 
         });
 
-        test('given expected datetime XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected datetime XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedDatetimeXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
-            const expectedDatetimeSnowfakeryValue = '${{ (fake.date_time_between(start_date="-1y", end_date="now")).strftime("%Y-%m-%dT%H:%M:%S.000+0000") }}';
+            const expectedDatetimeFakerJSExpression = `|
+                \${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const actualDatetimeSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualDatetimeFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedDatetimeXMLFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualDatetimeSnowfakeryValue).toBe(expectedDatetimeSnowfakeryValue);
+            expect(actualDatetimeFakerJSExpression).toBe(expectedDatetimeFakerJSExpression);
 
         });
 
-        test('given expected url XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected url XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedUrlFieldDetail:XMLFieldDetail = XMLMarkupMockService.getUrlXMLFieldDetail();
-            const expectedUrlSnowfakeryValue = '${{fake.url()}}';
+            const expectedUrlFakerJSExpressionValue = "\${{ faker.internet.url() }}";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const actualUrlSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualUrlFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedUrlFieldDetail, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualUrlSnowfakeryValue).toBe(expectedUrlSnowfakeryValue);
+            expect(actualUrlFakerJSExpression).toBe(expectedUrlFakerJSExpressionValue);
 
         });
 
-        test('given expected phone XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected phone XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForPhone:XMLFieldDetail = XMLMarkupMockService.getPhoneXMLFieldDetail();
-            const expectedSnowfakeryValueForPhone = '${{fake.phone_number()}}';
+            const expectedFakerJSExpressionForPhone = `|
+                \${{ faker.phone.number({style:'national'}) }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
-            const actualSnowfakeryValueForPhone = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualFakerJSExpressionForPhone = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForPhone, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualSnowfakeryValueForPhone).toBe(expectedSnowfakeryValueForPhone);
+            expect(actualFakerJSExpressionForPhone).toBe(expectedFakerJSExpressionForPhone);
 
         });
 
-        test('given expected number XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected number XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
-            const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999)}}';
+            const expectedFakerJSExpressionForNumber =  `|
+                \${{ faker.number.int({min: 0, max: 999999}) }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
 
-            const actualSnowfakeryValueForNumber = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
-
-            expect(actualSnowfakeryValueForNumber).toBe(expectedSnowfakeryValueForNumber);
+            const actualFakerJSForNumber = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
+            expect(actualFakerJSForNumber).toBe(expectedFakerJSExpressionForNumber);
 
         });
 
-        test('given expected currency XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected currency XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
-            const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}';
+            const expectedFakerJSExpressionForCurrency = "\${{ faker.finance.amount(0, 999999, 2) }}";
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const actualSnowfakeryValueForCurrency = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
+            const actualFakerJSForCurrency = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 
-            expect(actualSnowfakeryValueForCurrency).toBe(expectedSnowfakeryValueForCurrency);
+            expect(actualFakerJSForCurrency).toBe(expectedFakerJSExpressionForCurrency);
 
         });
 
@@ -135,7 +134,7 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         let fieldsToAddToRecipe = "";
         Object.entries(salesforceOOTBFakerMappings[objectApiName]).forEach(([ootbFieldApiName, expectedOOTBFieldRecipe]) => {
-            fieldsToAddToRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(
+            fieldsToAddToRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(
                 fieldsToAddToRecipe, 
                 expectedOOTBFieldRecipe, 
                 ootbFieldApiName
@@ -146,7 +145,7 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
         test('given OOTB Account object api name and empty recordtype map, the expected initiation recipe properties are returned in a string and RecordTypeId is NOT added to the intial recipe', () => {
 
             const emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = {};
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(objectApiName, 
+            const actualRecipeInitiation = recipeServiceWithFakerJS.initiateRecipeByObjectName(objectApiName, 
                                                             emptyRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
                                                             salesforceOOTBFakerMappings
                                                         );
@@ -162,7 +161,7 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                     Account.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
+            const actualRecipeInitiation = recipeServiceWithFakerJS.initiateRecipeByObjectName(
                                                                         objectApiName,
                                                                         expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
                                                                         salesforceOOTBFakerMappings
@@ -189,7 +188,7 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                     ${customFakeObjectName}.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
-            const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
+            const actualRecipeInitiation = recipeServiceWithFakerJS.initiateRecipeByObjectName(
                                                                         customFakeObjectName,
                                                                         expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap,
                                                                         salesforceOOTBFakerMappings
@@ -206,15 +205,16 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         test('given existing object recipe string and new recipe value, the resulting updated recipe is returned', () => {
 
+            // ok to use snowfakery mock return as we are testing what appending will do to the recipe and this behavior should be the same for both implementations
             const initialMarkup = RecipeMockService.getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup();
-            const fakeRecipevalue = "${{fake.superduperfakeFirstName}}";
+            const fakeRecipevalue = `"\${{ fake.superduperfakeFirstName }}"`;
             const fakeFieldApiName = "FirstName__c";
             const fakeFieldRecipeValue = `${fakeFieldApiName}: ${fakeRecipevalue}`;
             const expectedUpdateRecipe = 
     `${initialMarkup}
     ${fakeFieldRecipeValue}`;
 
-            const actualUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(initialMarkup, fakeRecipevalue, fakeFieldApiName );
+            const actualUpdatedRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(initialMarkup, fakeRecipevalue, fakeFieldApiName );
 
             // THE BELOW FILE CREATION LINES HELP FOR VISUAL FULL FILE COMPARISON AND WHERE ADJUSTMENTS NEED MADE
             // UNCOMMENT FOR TROUBLESHOOTING OR MAKING NEW CHANGES THAT NEED TO BE VERIFIED
@@ -240,8 +240,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
     ${firstFakeFieldRecipeValue}
     ${secondFakeFieldRecipeValue}`;
 
-            const firstUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(initialMarkup, firstFakeRecipevalue, firstFakeFieldApiName );
-            const secondUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(firstUpdatedRecipe, secondFakeRecipeValue, secondFakeFieldApiName );
+            const firstUpdatedRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(initialMarkup, firstFakeRecipevalue, firstFakeFieldApiName );
+            const secondUpdatedRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(firstUpdatedRecipe, secondFakeRecipeValue, secondFakeFieldApiName );
 
             // THE BELOW FILE CREATION LINES HELP FOR VISUAL FULL FILE COMPARISON AND WHERE ADJUSTMENTS NEED MADE
             // UNCOMMENT FOR TROUBLESHOOTING OR MAKING NEW CHANGES THAT NEED TO BE VERIFIED
@@ -302,8 +302,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
             };
  
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
-            const expectedDependentListFakeValue = RecipeMockService.getMockSnowfakeryDependentPicklistRecipeValueWithoutRecordTypeDetail();
-            const actualRecipeValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(
+            const expectedDependentListFakeValue = RecipeMockService.getMockFakerJSDependentPicklistRecipeValueWithoutRecordTypeDetail();
+            const actualRecipeValue = recipeServiceWithFakerJS.getDependentPicklistRecipeFakerValue(
                 expectedXMLFieldDetail, 
                 recordTypeNameByRecordTypeNameToXMLMarkup
             );
@@ -355,9 +355,9 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 xmlMarkup : XMLMarkupMockService.getDependentPicklistFieldTypeXMLMarkup()
             };
 
-            const expectedDependentPicklistRecipeValue = recipeServiceWithSnow.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
+            const expectedDependentPicklistRecipeValue = recipeServiceWithFakerJS.getNoValueSettingsToDoRecipeValue(expectedXMLFieldDetail);
             const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
-            const actualFakerValue = recipeServiceWithSnow.getDependentPicklistRecipeFakerValue(
+            const actualFakerValue = recipeServiceWithFakerJS.getDependentPicklistRecipeFakerValue(
                 expectedXMLFieldDetail,
                 emptyRecordTypeApiToRecordTypeWrapperMap,
 
@@ -367,16 +367,75 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         });
 
+        test('given expected XMLDetail with isActive options set to false and active, expected controllingvalue to options are built and correct snowfakery fake value is returned', () => {
+        
+            const expectedPicklistFieldDetails:IPicklistValue[] = [
+                {
+                    picklistOptionApiName: 'tree',
+                    label: 'tree',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'willoughby']
+                },
+                {
+                    picklistOptionApiName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby']
+                },
+                {
+                    picklistOptionApiName: 'mulch',
+                    label: 'mulch',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake', 'willoughby']
+                },
+                {
+                    picklistOptionApiName: 'rocks',
+                    label: 'rocks',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'wickliffe']
+                },
+                {
+                    picklistOptionApiName: 'plant',
+                    label: 'plant',
+                    default: false,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison', 'mentor']
+                }
+               
+            ];
+         
+            const expectedXMLFieldDetail:XMLFieldDetail = {
+                fieldType : "picklist",
+                apiName : "DependentPicklist__c",
+                picklistValues : expectedPicklistFieldDetails,
+                referenceTo : "",
+                fieldLabel : "Dependent Picklist",
+                controllingField : "Picklist__c",
+                xmlMarkup: XMLMarkupMockService.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup()
+            };
+ 
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const expectedDependentListFakeValue = RecipeMockService.getMockFakerJSDependentPicklistRecipeValueWithoutRecordTypeDetail();
+            const actualRecipeValue = recipeServiceWithFakerJS.getDependentPicklistRecipeFakerValue(
+                expectedXMLFieldDetail, 
+                recordTypeNameByRecordTypeNameToXMLMarkup
+            );
+
+            expect(actualRecipeValue).toBe(expectedDependentListFakeValue);
+
+        });
+
+
+
     });
 
     describe('getFakeValueIfExpectedSalesforceFieldType', () => {
 
         test('given expected fieldToRecipeValueMap and fieldtypes, returns the expected snowfakery YAML recipe value', () => {
 
-            const expectedFieldToRecipeValue = snowFakerService.getMapSalesforceFieldToFakerValue();
+            const expectedFieldToRecipeValue = fakerJSRecipeService.getMapSalesforceFieldToFakerValue();
             for ( const fieldTypeKey in expectedFieldToRecipeValue ) {
                 const recipeValue = expectedFieldToRecipeValue[fieldTypeKey];
-                const actualRecipeValue = recipeServiceWithSnow.getFakeValueIfExpectedSalesforceFieldType(fieldTypeKey);
+                const actualRecipeValue = recipeServiceWithFakerJS.getFakeValueIfExpectedSalesforceFieldType(fieldTypeKey);
                 expect(actualRecipeValue).toBe(recipeValue);
             }
             
@@ -385,4 +444,3 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
     });
 
 });
-

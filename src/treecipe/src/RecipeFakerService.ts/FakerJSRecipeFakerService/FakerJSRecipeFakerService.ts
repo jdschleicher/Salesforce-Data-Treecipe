@@ -1,4 +1,5 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
+import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 
 export class FakerJSRecipeFakerService implements IRecipeFakerService {
@@ -126,14 +127,23 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
-                                                recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
-                                                associatedFieldApiName): string {
+    buildPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, 
+                                                recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>): string {
+
+        let fakeRecipeValue = '';
+        if ( !(xmlFieldDetail.picklistValues) ) {
+            // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
+            const emptyPicklistXMLDetailRecipePlaceholder = this.buildFakerExpressionForStandardValueSetPicklist(xmlFieldDetail ,xmlFieldDetail.apiName);
+            return emptyPicklistXMLDetailRecipePlaceholder;
+
+        }
+
+        const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
          
         const fakerJoinedChoicesSyntax = this.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices);
-        let fakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
+        fakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
 
-        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, xmlFieldDetail.apiName);
         if ( recordTypeBasedRecipeValues) {
             fakeRecipeValue += `\n${recordTypeBasedRecipeValues}`;
         }
@@ -486,19 +496,225 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     
     }
 
-    getStandardAndGlobalValueSetTODOPlaceholderWithExample():string {
-
-        const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ faker.helpers.arrayElement(['banana', 'orange', 'apple']) }}`;
-        return emptyPicklistXMLDetailRecipePlaceholder;
-
-    }
-
     getMultipicklistTODOPlaceholderWithExample():string {
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (faker.helpers.arrayElements(['apple', 'orange', 'banana']) ).join(';') }}`;
         return emptyMultiSelectXMLDetailPlaceholder;    
 
+    }
+
+    buildFakerExpressionForStandardValueSetPicklist(objectName:string, picklistApiName: string ) :string {
+
+          const ootbObjectsToStandardValueSetFakers: Record<string, Record<string, string>> = {
+            
+            "Account": {
+                "Name": `\${{faker.company.name()}}`,
+                "AccountNumber": `\${{faker.string.numeric(8)}}`,
+                "AnnualRevenue": `\${{faker.string.numeric(7)}}`,
+                "BillingStreet": `\${{faker.location.streetAddress()}}`,
+                "BillingCity": `\${{faker.location.city()}}`,
+                "BillingState": `\${{faker.location.state()}}`,
+                "BillingPostalCode": `\${{faker.location.zipCode()}}`,
+                "BillingCountry": `\${{faker.location.country()}}`,
+                "Description": `\${{faker.company.catchPhrase()}}`,
+                "Industry": `\${{faker.helpers.arrayElement(['Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education'])}}`,
+                "NumberOfEmployees": `\${{faker.string.numeric(4)}}`,
+                "Phone": `|
+                    \${{faker.phone.number({style:'national'})}}`,
+                "Rating": `\${{faker.helpers.arrayElement(['Hot', 'Warm', 'Cold'])}}`,
+                "ShippingStreet": `\${{faker.location.streetAddress()}}`,
+                "ShippingCity": `\${{faker.location.city()}}`,
+                "ShippingState": `\${{faker.location.state()}}`,
+                "ShippingPostalCode": `\${{faker.location.zipCode()}}`,
+                "ShippingCountry": `\${{faker.location.country()}}`,
+                "Sic": `\${{faker.string.numeric(4)}}`,
+                "Type": `\${{faker.helpers.arrayElement(['Customer', 'Partner', 'Prospect'])}}`,
+                "Website": `\${{faker.internet.domainName()}}`
+            },
+                
+            "Contact": {
+                "FirstName": `\${{faker.person.firstName()}}`,
+                "LastName": `\${{faker.person.lastName()}}`,
+                "Email": `\${{faker.internet.email()}}`,
+                "Phone": `|
+                    \${{faker.phone.number({style:'national'})}}`,
+                "MobilePhone": `|
+                    \${{faker.phone.number({style:'national'})}}`,
+                "Title": `\${{faker.job}}`,
+                "Department": `\${{faker.helpers.arrayElement(['Sales', 'Marketing', 'IT', 'Finance', 'HR', 'Operations'])}}`,
+                "Birthdate": `\${{faker.date.birthdate()}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "MailingStreet": `\${{faker.location.streetAddress()}}`,
+                "MailingCity": `\${{faker.location.city()}}`,
+                "MailingState": `\${{faker.location.state()}}`,
+                "MailingPostalCode": `\${{faker.location.zipCode()}}`,
+                "MailingCountry": `\${{faker.location.country()}}`,
+                "OtherStreet": `\${{faker.location.streetAddress()}}`,
+                "OtherCity": `\${{faker.location.city()}}`,
+                "OtherState": `\${{faker.location.state()}}`,
+                "OtherPostalCode": `\${{faker.location.zipCode()}}`,
+                "OtherCountry": `\${{faker.location.country()}}`,
+                "LeadSource": `\${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}`,
+                "Salutation": `\${{faker.helpers.arrayElement(['Mr.', 'Ms.', 'Mrs.', 'Dr.'])}}`,
+                "AssistantName": `\${{faker.person.fullName()}}`,
+                "AssistantPhone": `|
+                    \${{faker.phone.number({style:'national'})}}`
+            },
+                
+            "Opportunity": {
+                "Name": `\${{faker.company.catchPhrase()}}`,
+                "Amount": `\${{ (faker.string.numeric(6)) }}.00`,
+                "CloseDate": `|
+                    \${{ faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) }) }}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "ExpectedRevenue": `\${{ (faker.string.numeric(6)) }}.00`,
+                "LeadSource": `\${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}`,
+                "NextStep": `\${{faker.lorem.sentence()}}`,
+                "Probability": `\${{ (faker.string.numeric(2))}}.0 `,
+                "StageName": `\${{faker.helpers.arrayElement(['Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'])}}`,
+                "Type": `\${{faker.helpers.arrayElement(['New Customer', 'Existing Customer - Upgrade', 'Existing Customer - Replacement', 'Existing Customer - Downgrade'])}}`,
+                "ForecastCategory": `\${{faker.helpers.arrayElement(['Pipeline', 'Best Case', 'Commit', 'Closed'])}}`
+            },
+                
+            "Lead": {
+                "FirstName": `\${{faker.person.firstName()}}`,
+                "LastName": `\${{faker.person.lastName()}}`,
+                "Company": `\${{faker.company.name()}}`,
+                "Title": `\${{faker.job}}`,
+                "Email": `\${{faker.internet.email()}}`,
+                "Phone": `|
+                    \${{faker.phone.number({style:'national'})}}`,
+                "MobilePhone": `|
+                    \${{faker.phone.number({style:'national'})}}`,
+                "Street": `\${{faker.location.streetAddress()}}`,
+                "City": `\${{faker.location.city()}}`,
+                "State": `\${{faker.location.state()}}`,
+                "PostalCode": `\${{faker.location.zipCode()}}`,
+                "Country": `\${{faker.location.country()}}`,
+                "Industry": `\${{faker.helpers.arrayElement(['Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education'])}}`,
+                "AnnualRevenue": `\${{faker.string.numeric(7)}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "LeadSource": `\${{faker.helpers.arrayElement(['Web', 'Phone Inquiry', 'Partner', 'Purchased List', 'Other'])}}`,
+                "Rating": `\${{faker.helpers.arrayElement(['Hot', 'Warm', 'Cold'])}}`,
+                "Status": `\${{faker.helpers.arrayElement(['Open - Not Contacted', 'Working - Contacted', 'Closed - Converted', 'Closed - Not Converted'])}}`,
+                "NumberOfEmployees": `\${{faker.string.numeric(4)}}`
+            },
+                
+            "Case": {
+                "Subject": `\${{faker.company.catchPhrase()}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "Status": `\${{faker.helpers.arrayElement(['New', 'Working', 'Escalated', 'Closed'])}}`,
+                "Origin": `\${{faker.helpers.arrayElement(['Email', 'Phone', 'Web', 'Social'])}}`,
+                "Priority": `\${{faker.helpers.arrayElement(['High', 'Medium', 'Low'])}}`,
+                "Type": `\${{faker.helpers.arrayElement(['Problem', 'Feature Request', 'Question'])}}`,
+                "Reason": `\${{faker.helpers.arrayElement(['Installation', 'Equipment Complexity', 'Performance', 'Breakdown', 'Equipment Design', 'Feedback'])}}`,
+                "SuppliedName": `\${{faker.person.fullName()}}`,
+                "SuppliedEmail": `\${{faker.internet.email()}}`,
+                "SuppliedPhone": `|
+                    \${{faker.phone.number({style:'national'})}}`,
+                "SuppliedCompany": `\${{faker.company.name()}}`
+            },
+                
+            "Campaign": {
+                "Name": `\${{faker.company.bs()}}`,
+                "Type": `\${{faker.helpers.arrayElement(['Email', 'Webinar', 'Conference', 'Direct Mail', 'Advertisement'])}}`,
+                "Status": `\${{faker.helpers.arrayElement(['Planned', 'In Progress', 'Completed', 'Aborted'])}}`,
+                "StartDate": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) })}}`,
+                "EndDate": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 91)), to: (new Date().setDate(new Date().getDate() + 180)) })}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "BudgetedCost": `"\{{ (faker.string.numeric(5)) }}.00`,
+                "ActualCost": `"\{{ (faker.string.numeric(5)) }}.00`,
+                "ExpectedRevenue": `"\{{ (faker.string.numeric(6)) }}.00`,
+                "ExpectedResponse": `"\{{ (faker.string.numeric(2)) }}.0`,
+                "NumberOfContacts": `\${{faker.string.numeric(3)}}`,
+                "NumberOfLeads": `\${{faker.string.numeric(3)}}`,
+                "NumberOfOpportunities": `\${{faker.string.numeric(2)}}`,
+                "NumberOfResponses": `\${{faker.string.numeric(3)}}`
+            },
+                
+            "Task": {
+                "Subject": `\${{faker.company.catchPhrase()}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "Status": `\${{faker.helpers.arrayElement(['Not Started', 'In Progress', 'Completed', 'Waiting on someone else', 'Deferred'])}}`,
+                "Priority": `\${{faker.helpers.arrayElement(['High', 'Normal', 'Low'])}}`,
+                "ActivityDate": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 7)), to: (new Date().setDate(new Date().getDate() + 30)) })}}`,
+                "Type": `\${{faker.helpers.arrayElement(['Call', 'Meeting', 'Other'])}}`,
+                "CallType": `\${{faker.helpers.arrayElement(['Inbound', 'Outbound'])}}`
+            },
+                
+            "Event": {
+                "Subject": `\${{faker.company.catchPhrase()}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "StartDateTime": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 7)), to: (new Date().setDate(new Date().getDate() + 30)) })}}`,
+                "EndDateTime": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() + 31)), to: (new Date().setDate(new Date().getDate() + 38)) })}}`,
+                "Location": `\${{faker.location.streetAddress()}}, {{faker.location.city()}}, {{faker.location.state()}} {{faker.location.zipCode()}}`,
+                "ShowAs": `\${{faker.helpers.arrayElement(['Busy', 'Free', 'OutOfOffice', 'Working'])}}`,
+                "Type": `\${{faker.helpers.arrayElement(['Meeting', 'Call', 'Other'])}}`,
+                "IsAllDayEvent": `\${{faker.helpers.arrayElement(['true', 'false'])}}`
+            },
+                
+            "Product2": {
+                "Name": `\${{faker.commerce.productName()}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "ProductCode": `\${{faker.commerce.product()}}-\${{faker.string.alphanumeric(6)}}`,
+                "IsActive": `\${{faker.helpers.arrayElement(['true', 'false'])}}`,
+                "Family": `\${{faker.helpers.arrayElement(['Hardware', 'Software', 'Services', 'Other'])}}`,
+                "QuantityUnitOfMeasure": `\${{faker.helpers.arrayElement(['Each', 'Case', 'Box', 'Pallet'])}}`,
+                "DisplayUrl": `\${{faker.internet.url()}}`,
+                "ExternalId": `\${{faker.string.uuid()}}`
+            },
+                
+            "PriceBook2": {
+                "Name": `\${{ (faker.company.bs()) Price Book }} "`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "IsActive": `\${{faker.helpers.arrayElement(['true', 'false'])}}`
+            },
+                
+            "Asset": {
+                "Name": `\${{faker.commerce.productName()}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "InstallDate": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 365)), to: (new Date()) })}}`,
+                "PurchaseDate": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 730)), to: (new Date().setDate(new Date().getDate() - 366)) })}}`,
+                "SerialNumber": `\${{faker.string.alphanumeric(10)}}-{{faker.string.numeric(6)}}`,
+                "Status": `\${{faker.helpers.arrayElement(['Purchased', 'Shipped', 'Installed', 'Registered'])}}`,
+                "Price": `\${{ (faker.string.numeric(5)) }}.00`,
+                "Quantity": `\${{faker.string.numeric(2)}}`
+            },
+                
+            "Contract": {
+                "Status": `\${{faker.helpers.arrayElement(['Draft', 'In Approval Process', 'Activated', 'Terminated'])}}`,
+                "StartDate": `|
+                    \${{faker.date.between({from: (new Date().setDate(new Date().getDate() - 30)), to: (new Date().setDate(new Date().getDate() + 90)) })}}`,
+                "ContractTerm": `\${{faker.string.numeric(2)}}`,
+                "OwnerExpirationNotice": `\${{faker.helpers.arrayElement(['15', '30', '45', '60', '90'])}}`,
+                "Description": `\${{faker.lorem.paragraph()}}`,
+                "BillingStreet": `\${{faker.location.streetAddress()}}`,
+                "BillingCity": `\${{faker.location.city()}}`,
+                "BillingState": `\${{faker.location.state()}}`,
+                "BillingPostalCode": `\${{faker.location.zipCode()}}`,
+                "BillingCountry": `\${{faker.location.country()}}`,
+                "ShippingStreet": `\${{faker.location.streetAddress()}}`,
+                "ShippingCity": `\${{faker.location.city()}}`,
+                "ShippingState": `\${{faker.location.state()}}`,
+                "ShippingPostalCode": `\${{faker.location.zipCode()}}`,
+                "ShippingCountry": `\${{faker.location.country()}}`,
+                "SpecialTerms": `\${{faker.lorem.paragraph()}}`
+            }
+            
+        };
+    
+    
+        return ootbObjectsToStandardValueSetFakers;
 
     }
+
+    
 
 }

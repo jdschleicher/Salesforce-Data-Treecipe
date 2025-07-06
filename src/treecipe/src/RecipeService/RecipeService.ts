@@ -56,16 +56,9 @@ export class RecipeService {
                         // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
                         fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
                     } else {
-    
-                        if ( !(xmlFieldDetail.picklistValues) ) {
-                            // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
-                            const emptyPicklistXMLDetailRecipePlaceholder = this.fakerService.getStandardAndGlobalValueSetTODOPlaceholderWithExample();
-                            return emptyPicklistXMLDetailRecipePlaceholder;
-                        }
-                        const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
-                        fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
-                                                                                                    recordTypeApiToRecordTypeWrapperMap,
-                                                                                                    xmlFieldDetail.apiName);  
+                        
+                        fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap );  
+                    
                     }
     
                     return fakeRecipeValue;

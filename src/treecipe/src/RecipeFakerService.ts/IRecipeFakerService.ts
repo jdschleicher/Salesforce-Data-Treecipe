@@ -1,4 +1,5 @@
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 
 export interface IRecipeFakerService {
 
@@ -10,9 +11,8 @@ export interface IRecipeFakerService {
         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
         controllingField: string,
         fieldApiName): string;
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
-        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
-        fieldApiName): string;
+    buildPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, 
+        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string;
     generateTabs(tabCount: number): string;
     getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>>;
     buildRecordTypeBasedPicklistRecipeValue(
@@ -27,5 +27,5 @@ export interface IRecipeFakerService {
         controllingFieldApiName: string,
         controllingValue: string): string
     getMultipicklistTODOPlaceholderWithExample(): string
-    getStandardAndGlobalValueSetTODOPlaceholderWithExample(): string
+    buildFakerExpressionForStandardValueSetPicklist(picklistApiName): string    
 }
