@@ -133,7 +133,6 @@ export class DirectoryProcessor {
                                   ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
-    fieldXMLDetail.objectName = associatedObjectName;
     let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap);                                                        
 
     let fieldInfo = FieldInfo.create(
