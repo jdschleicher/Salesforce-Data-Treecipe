@@ -387,9 +387,5 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         
     }
 
-    buildFakerExpressionForStandardValueSetPicklist(picklistApiName: string): string {
-        return '';
-    }   
-
 
 }
