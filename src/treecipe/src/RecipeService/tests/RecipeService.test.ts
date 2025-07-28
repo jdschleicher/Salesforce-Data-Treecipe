@@ -55,6 +55,17 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         });
 
+        test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
+            const expectedPicklistSnowfakeryValue = "${{ random_choice('Web', 'Phone Inquiry', 'Partner Referral', 'Purchased List', 'Other') }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistSnowfakeryValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+
+            expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
+
+        });
+
         test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();

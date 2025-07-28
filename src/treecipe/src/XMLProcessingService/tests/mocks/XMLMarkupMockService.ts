@@ -10,8 +10,7 @@ export class XMLMarkupMockService {
             apiName: "MD_MegaMapMadness__c",
             fieldLabel: "MD MegaMapMadness",
             referenceTo: "MegaMapMadness__c",
-            xmlMarkup: this.getMasterDetailFieldTypeXMLMarkup(),
-            objectName: "testObect__c"
+            xmlMarkup: this.getMasterDetailFieldTypeXMLMarkup()
         };
 
         return masterDetailXMLField;   
@@ -46,9 +45,7 @@ export class XMLMarkupMockService {
             fieldType: "Url",
             apiName: "Url__c",
             fieldLabel: "Url",
-            xmlMarkup: this.getUrlFieldTypeXMLMarkup(),
-            objectName: "UrlObject__c"
-        };
+            xmlMarkup: this.getUrlFieldTypeXMLMarkup()        };
 
         return urlXMLField;         
     
@@ -76,9 +73,7 @@ export class XMLMarkupMockService {
             fieldType: "Time",
             apiName: "Time__c",
             fieldLabel: "Time",
-            xmlMarkup: this.getTimeFieldTypeXMLMarkup(),
-            objectName: "TimeObject__c"
-        };
+            xmlMarkup: this.getTimeFieldTypeXMLMarkup()        };
 
         return timeXMLField;     
     
@@ -107,9 +102,7 @@ export class XMLMarkupMockService {
             fieldType: "Html",
             apiName: "TextAreaRich__c",
             fieldLabel: "TextAreaRich",
-            xmlMarkup: this.getRichTextAreaFieldTypeXMLMarkup(),
-            objectName: "HtlmObject__c"
-        };
+            xmlMarkup: this.getRichTextAreaFieldTypeXMLMarkup()        };
 
         return richTextAreaXMLField;     
     }
@@ -138,9 +131,7 @@ export class XMLMarkupMockService {
             fieldType: "LongTextArea",
             apiName: "Text_Area_Long__c",
             fieldLabel: "Text Area Long",
-            xmlMarkup: this.getLongTextAreaFieldTypeXMLMarkup(),
-            objectName: "LontTextObject__c"
-        };
+            xmlMarkup: this.getLongTextAreaFieldTypeXMLMarkup()        };
 
         return longTextAreaXMLField;     
     
@@ -170,9 +161,7 @@ export class XMLMarkupMockService {
             fieldType: "Phone",
             apiName: "Phone__c",
             fieldLabel: "Phone",
-            xmlMarkup: this.getPhoneFieldTypeXMLMarkup(),
-            objectName: "PhoneObject__c"
-        };
+            xmlMarkup: this.getPhoneFieldTypeXMLMarkup()        };
 
         return phoneXMLField;       
     
@@ -201,9 +190,7 @@ export class XMLMarkupMockService {
             fieldType: "Number",
             apiName: "Number__c",
             fieldLabel: "Number",
-            xmlMarkup: this.getNumberFieldTypeXMLMarkup(),
-            objectName: "NumberObject__c"
-        };
+            xmlMarkup: this.getNumberFieldTypeXMLMarkup()        };
 
         return numberXMLField;    
     
@@ -232,9 +219,7 @@ export class XMLMarkupMockService {
             fieldType: "Location",
             apiName: "Geolocation__c",
             fieldLabel: "Geolocation",
-            xmlMarkup: this.getGeolocationFieldTypeXMLMarkup(),
-            objectName: "LocationObject__c"
-        };
+            xmlMarkup: this.getGeolocationFieldTypeXMLMarkup()        };
 
         return locationXMLField;
 
@@ -263,9 +248,7 @@ export class XMLMarkupMockService {
             fieldType: "Number",
             apiName: "Formula__c",
             fieldLabel: "Formula",
-            xmlMarkup: this.getFormulaFieldTypeXMLMarkup(),
-            objectName: "FormulaObject__c"
-        };
+            xmlMarkup: this.getFormulaFieldTypeXMLMarkup()        };
 
         return formulaXMLField;      
 
@@ -299,9 +282,7 @@ export class XMLMarkupMockService {
             apiName: "Example_Everything_Lookup__c",
             fieldLabel: "Example Everything Lookup",
             referenceTo: "Example_Everything__c",
-            xmlMarkup: this.getLookupFieldTypeXMLMarkup(),
-            objectName: "LookupObject__c"
-        };
+            xmlMarkup: this.getLookupFieldTypeXMLMarkup()        };
 
         return lookupXMLField;        
     
@@ -336,9 +317,7 @@ export class XMLMarkupMockService {
             picklistValues: mockedMultiSelectPicklistValues,
             fieldLabel: "DependentPicklist",
             controllingField: "Picklist__c",
-            xmlMarkup: this.getDependentPicklistFieldTypeXMLMarkup(),
-            objectName: "DependentPicklistObject__c"
-        };
+            xmlMarkup: this.getDependentPicklistFieldTypeXMLMarkup()        };
 
         return dependentPicklistXMLField;      
     }
@@ -352,9 +331,7 @@ export class XMLMarkupMockService {
             picklistValues: mockedMultiSelectPicklistValues,
             fieldLabel: "DependentPicklist",
             controllingField: "Picklist__c",
-            xmlMarkup: this.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup(),
-            objectName: "DependentPicklistObject__c"
-        };
+            xmlMarkup: this.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup()        };
 
         return dependentPicklistXMLField;      
     }
@@ -551,9 +528,7 @@ export class XMLMarkupMockService {
             picklistValues: mockedMultiSelectPicklistValues,
             fieldLabel: "DependentPicklist",
             controllingField: "Picklist__c",
-            xmlMarkup: this.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup(),
-            objectName: "DependentPicklistObject__c"
-        };
+            xmlMarkup: this.getDependentPicklistFieldTypeWithIsActiveTagsXMLMarkup()        };
 
         return dependentPicklistXMLField;         
     
@@ -677,9 +652,7 @@ export class XMLMarkupMockService {
             apiName: "ValueSetPicklist",
             globalValueSetName: 'Value_Set_Picklist_VS',
             fieldLabel: "Value Set Picklist",
-            xmlMarkup: this.getGlobalValueSetXMLMarkup(),
-            objectName: "GlobalPicklistObject__c"
-        };
+            xmlMarkup: this.getGlobalValueSetXMLMarkup()        };
 
         return globalPicklistXMLField;      
     }

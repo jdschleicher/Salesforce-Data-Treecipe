@@ -48,7 +48,6 @@ export class ValueSetService {
             'Web',
           ],
         
-          // PartnerRole
           'PartnerRole': [
             'System Integrator',
             'Agency',

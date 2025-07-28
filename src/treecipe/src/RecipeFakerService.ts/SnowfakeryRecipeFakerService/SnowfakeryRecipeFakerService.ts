@@ -1,7 +1,6 @@
 
 
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
-import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 
 export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
@@ -127,14 +126,21 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildPicklistRecipeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, 
-                                                recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>): string {
+      buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+                                                recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
+                                                fieldApiName: string): string {
 
-        const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
+        let fakeRecipeValue = '';
+
+        if ( !(availablePicklistChoices) ) {
+            // indicates no svs or picklistvlaues
+            return "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
+        } 
+
         const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
-        let fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
+        fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
 
-        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, xmlFieldDetail.apiName);
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, fieldApiName);
         if ( recordTypeBasedRecipeValues) {
             fakeRecipeValue += `\n${recordTypeBasedRecipeValues}`;
         }
@@ -380,12 +386,18 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
+     getStandardAndGlobalValueSetTODOPlaceholderWithExample():string {
+
+        const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ random_choice('apple', 'orange', 'banana') }}`;
+        return emptyPicklistXMLDetailRecipePlaceholder;
+
+    }
+
     getMultipicklistTODOPlaceholderWithExample():string {
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
         return emptyMultiSelectXMLDetailPlaceholder;
         
     }
-
 
 }
