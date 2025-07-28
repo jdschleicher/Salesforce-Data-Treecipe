@@ -1,5 +1,4 @@
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
-import { XMLMarkupMockService } from "../../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { FakerJSRecipeFakerService } from "../FakerJSRecipeFakerService";
 
 describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
@@ -212,33 +211,30 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
     describe('buildPicklistRecipeValueByXMLFieldDetail', () => {
 
-        test('given expected list of choices, returns expected picklist faker value', () => {
+        test('given expected list of choices, returns expected  picklist faker value', () => {
 
+            const possibleChoices: string[] = ['apple', 'orange', 'banana'];
+            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}`;
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
-
-            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}`;
-
-            const mockXmlFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-            const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(mockXmlFieldDetail, 
-                                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap);
+            const fakeFieldApiName = "Fruit__c";
+            const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
+                                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
+                                                                        fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
-
         });
 
-        test('given expected standard value set, returns expected picklist faker value', () => {
+            test('given expected list of choices, returns expected  picklist faker value', () => {
 
+            const possibleChoices: string[] = ['apple', 'orange', 'banana'];
+            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}`;
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
-
-            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}`;
-
-            const mockXmlFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
-            
-            const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(mockXmlFieldDetail, 
-                                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap);
+            const fakeFieldApiName = "Fruit__c";
+            const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
+                                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
+                                                                        fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
-
         });
 
     });

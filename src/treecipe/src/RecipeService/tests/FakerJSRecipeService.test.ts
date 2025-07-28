@@ -41,16 +41,27 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
             expect(expectedRecipeValue).toBe(actualRecipeValue);
         });
 
-        // test('given expected Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
+        test('given expected Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
-        //     const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-        //     const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}";
-        //     const recordTypeNameToRecordTypeXMLMarkup = {};
-        //     const actualPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
-        //     expect(actualPicklistFakerJSExpression).toBe(expectedPicklistFakerJSValue);
+            expect(actualPicklistFakerJSExpression).toBe(expectedPicklistFakerJSValue);
 
-        // });
+        });
+
+        test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
+            const expectedPicklistSnowfakeryValue = "\${{ faker.helpers.arrayElement(['Web','Phone Inquiry','Partner Referral','Purchased List','Other']) }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistSnowfakeryValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+
+            expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
+
+        });
 
         test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
