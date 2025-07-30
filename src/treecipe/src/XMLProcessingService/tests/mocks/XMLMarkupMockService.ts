@@ -706,6 +706,33 @@ export class XMLMarkupMockService {
         return xmlMarkup;
     }
 
+    static getExpectedStandardValueSetPicklistXMLFieldDetailThatIsntTrackedInValueSetMap() {
+
+        const standardValueSetPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "NoStandardValuesetPreconfigured",
+            isStandardValueSet: true,
+            fieldLabel: "NoStandardValuesetPreconfigured",
+            xmlMarkup: this.getNoStandardValuesetPreconfiguredXMLMarkup()
+        };
+
+        return standardValueSetPicklistXMLField;      
+    }
+
+    static getNoStandardValuesetPreconfiguredXMLMarkup() {
+
+        const xmlMarkup = `                     
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>NoStandardValuesetPreconfigured</fullName>
+    <trackFeedHistory>false</trackFeedHistory>
+    <type>Picklist</type>
+</CustomField>
+`;
+
+        return xmlMarkup;
+    }
+
 
     static getEmailXMLFieldDetail() {
         

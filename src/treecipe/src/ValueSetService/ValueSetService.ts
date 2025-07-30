@@ -272,6 +272,15 @@ export class ValueSetService {
             'Purchased List',
             'Other',
           ],
+
+          // AccountSource and LeadSource use the same StandardValueSet 'LeadSource'
+          'AccountSource': [
+            'Web',
+            'Phone Inquiry',
+            'Partner Referral',
+            'Purchased List',
+            'Other',
+          ],
         
           'QuickTextCategory': [
             'Greetings',

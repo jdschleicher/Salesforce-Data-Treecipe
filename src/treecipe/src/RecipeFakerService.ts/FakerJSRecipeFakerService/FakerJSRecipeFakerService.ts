@@ -132,7 +132,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         let fakeRecipeValue = '';
 
-        if ( !(availablePicklistChoices) ) {
+        if ( !(availablePicklistChoices) || availablePicklistChoices.length === 0 ) {
             // indicates no svs or picklistvlaues
             return "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
 

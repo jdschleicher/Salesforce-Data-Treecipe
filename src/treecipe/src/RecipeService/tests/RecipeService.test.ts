@@ -55,6 +55,17 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         });
 
+         test('given expected Picklist XMLFieldDetail that doesnt have a preset map to picklist values, returns the expected TODO', () => {
+
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetPicklistXMLFieldDetailThatIsntTrackedInValueSetMap();
+            const expectedTODOStatement = "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistFakerJSExpression = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+
+            expect(actualPicklistFakerJSExpression).toBe(expectedTODOStatement);
+
+        });
+
         test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
