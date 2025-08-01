@@ -126,14 +126,21 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+      buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
                                                 recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
-                                                associatedFieldApiName): string {
+                                                fieldApiName: string): string {
+
+        let fakeRecipeValue = '';
+
+        if ( !(availablePicklistChoices) || availablePicklistChoices.length === 0 ) {
+            // indicates no svs or picklistvlaues
+            return "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
+        } 
 
         const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
-        let fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
+        fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
 
-        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, fieldApiName);
         if ( recordTypeBasedRecipeValues) {
             fakeRecipeValue += `\n${recordTypeBasedRecipeValues}`;
         }

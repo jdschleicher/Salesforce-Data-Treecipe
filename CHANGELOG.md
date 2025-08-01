@@ -1,5 +1,15 @@
 # Change Log
 
+## [2.4.0] [PR#29](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/29) - Feature : 2.4.0
+
+### Standard Value Set Map for avoiding additional TODO's when generating recipes from code base
+
+When generating recipes based on source code, there tends to be references to standardValueSets that require extra efforts to get their associated picklist values in a faker function because the OOTB standard value sets are picklists WITHOUT any necessary xml markup capturing what values make up the picklist.
+
+This feature created a dedicated field api name to picklist values to allow for local management of OOTB standardPicklistValues.
+
+It's not an exhaustive list but is a start and can be easily added on to.
+
 ## [2.3.0] [PR#27](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/27) - Feature : 2.3.0
 
 Feature: Leverage nickname property from yaml object recipe that can combine with unique "record reference key" to allow for lookup reference replacements. 

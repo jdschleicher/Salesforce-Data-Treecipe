@@ -224,6 +224,19 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             expect(actualFakerValue).toBe(expectedRecipeValue);
         });
 
+            test('given expected list of choices, returns expected  picklist faker value', () => {
+
+            const possibleChoices: string[] = ['apple', 'orange', 'banana'];
+            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}`;
+            const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
+            const fakeFieldApiName = "Fruit__c";
+            const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
+                                                                        emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap, 
+                                                                        fakeFieldApiName);
+
+            expect(actualFakerValue).toBe(expectedRecipeValue);
+        });
+
     });
 
     describe('getOOTBExpectedObjectToFakerValueMappings', () => { 

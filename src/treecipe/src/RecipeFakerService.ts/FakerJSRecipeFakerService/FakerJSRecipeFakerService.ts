@@ -126,14 +126,22 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
                                                 recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
-                                                associatedFieldApiName): string {
+                                                fieldApiName: string): string {
+
+        let fakeRecipeValue = '';
+
+        if ( !(availablePicklistChoices) || availablePicklistChoices.length === 0 ) {
+            // indicates no svs or picklistvlaues
+            return "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
+
+        } 
          
         const fakerJoinedChoicesSyntax = this.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices);
-        let fakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
+        fakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
 
-        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
+        const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, fieldApiName);
         if ( recordTypeBasedRecipeValues) {
             fakeRecipeValue += `\n${recordTypeBasedRecipeValues}`;
         }
@@ -497,7 +505,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (faker.helpers.arrayElements(['apple', 'orange', 'banana']) ).join(';') }}`;
         return emptyMultiSelectXMLDetailPlaceholder;    
-
 
     }
 

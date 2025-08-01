@@ -1,6 +1,7 @@
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 
 export class RecipeService {
@@ -56,16 +57,25 @@ export class RecipeService {
                         // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
                         fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
                     } else {
-    
+                        
+                        let availablePicklistValueOptions: string[] = [];
                         if ( !(xmlFieldDetail.picklistValues) ) {
-                            // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
-                            const emptyPicklistXMLDetailRecipePlaceholder = this.fakerService.getStandardAndGlobalValueSetTODOPlaceholderWithExample();
-                            return emptyPicklistXMLDetailRecipePlaceholder;
+
+                            // IF THE FIELD TYPE IS 'picklist' BUT!!! THERE IS NO <picklistValues> XML MARKUP, THEN WE TRY
+                            // TO GET PICKLIST VALUES WITH THE POSSIBILITY THEY ARE A DEFAULT STANDARD VALUE SET (OR GLOBAL VALUE SET IN A FUTURE FEATURE)
+                            const existingOOTBStandardValueSetPicklistValuesByApiName = ValueSetService.getOOTBValueOptionsByStandardValueSetName(xmlFieldDetail.apiName);
+                            if ( existingOOTBStandardValueSetPicklistValuesByApiName ) {
+                                availablePicklistValueOptions = existingOOTBStandardValueSetPicklistValuesByApiName;
+                            } 
+
+                        } else {
+                            
+                            availablePicklistValueOptions = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
+                            
                         }
-                        const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
-                        fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
-                                                                                                    recordTypeApiToRecordTypeWrapperMap,
-                                                                                                    xmlFieldDetail.apiName);  
+
+                        fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistValueOptions, recordTypeApiToRecordTypeWrapperMap, xmlFieldDetail.apiName );  
+                    
                     }
     
                     return fakeRecipeValue;

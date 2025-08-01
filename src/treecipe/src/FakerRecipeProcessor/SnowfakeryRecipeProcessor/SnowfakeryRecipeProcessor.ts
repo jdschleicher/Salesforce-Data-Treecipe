@@ -136,5 +136,13 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
         return referenceTrackingId;
 
     }
+
+    getStandardAndGlobalValueSetTODOPlaceholderWithExample():string {
+
+        const emptyPicklistXMLDetailRecipePlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS PICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPALCE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ random_choice('apple', 'orange', 'banana') }}`;
+        return emptyPicklistXMLDetailRecipePlaceholder;
+
+    }
+    
     
 }
