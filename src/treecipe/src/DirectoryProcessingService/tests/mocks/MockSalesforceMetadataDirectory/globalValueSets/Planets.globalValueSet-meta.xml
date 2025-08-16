@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>world</fullName>
+        <default>false</default>
+        <label>world</label>
+    </customValue>
+    <customValue>
+        <fullName>earth</fullName>
+        <default>false</default>
+        <label>earth</label>
+    </customValue>
+    <customValue>
+        <fullName>planet</fullName>
+        <default>false</default>
+        <label>planet</label>
+    </customValue>
+    <customValue>
+        <fullName>mars</fullName>
+        <default>false</default>
+        <label>mars</label>
+    </customValue>
+    <customValue>
+        <fullName>venus</fullName>
+        <default>false</default>
+        <label>venus</label>
+    </customValue>
+    <customValue>
+        <fullName>neptune</fullName>
+        <default>false</default>
+        <label>neptune</label>
+    </customValue>
+    <customValue>
+        <fullName>saturn</fullName>
+        <default>false</default>
+        <label>saturn</label>
+    </customValue>
+    <description>the planets of the milky way</description>
+    <masterLabel>Planets</masterLabel>
+    <sorted>false</sorted>
+</GlobalValueSet>

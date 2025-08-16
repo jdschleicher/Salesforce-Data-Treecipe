@@ -6,17 +6,19 @@ export class MockDirectoryService {
   static getExpectedMockSalesforceMetadataTypesDirectory() {
     
     const expectedSalesforceMetadataDirectories = `[
-      {
-        "name": "objects",
-        "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
-        "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
-      },
-      {
-        "name": "globalValueSets",
-        "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
-        "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
-      }
-      ]`;
+        {
+          "name": "objects",
+          "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+          "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
+        },
+        {
+          "name": "globalValueSets",
+          "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+          "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
+        }
+    ]`;
+
+    return expectedSalesforceMetadataDirectories;
 
   }
 
@@ -73,8 +75,7 @@ export class MockDirectoryService {
   }
 ]`;
       
-      
-      return expectedMockDirectories;
+    return expectedMockDirectories;
     
   }
 
