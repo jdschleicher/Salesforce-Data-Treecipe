@@ -39,16 +39,16 @@ export class DirectoryProcessor {
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
             objectInfoWrapper.addKeyToObjectInfoMap(objectName);
   
+            const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
+            const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
+
             if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe)) {
               /// if initial yaml recipe structure ( - object: Account ) doesn't exist yet for this object, 
               // make it, so processed fields can be added on
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings);
             }
 
-            const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
-            const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
-            
-            // beging globalvaluesetretrieval?
+         
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, 
                                                                               objectName, 
                                                                               recordTypeApiToRecordTypeWrapperMap,
