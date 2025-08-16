@@ -106,9 +106,13 @@ export class ExtensionCommandService {
 
             if (workspaceRoot) {
 
+            
               const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
               const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
               const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+              
+              // initialize globalvaluesets singleton
+
               const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
               const directoryProcessor = new DirectoryProcessor();
               objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);

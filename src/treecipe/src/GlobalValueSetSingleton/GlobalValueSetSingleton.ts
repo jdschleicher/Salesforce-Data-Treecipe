@@ -13,7 +13,7 @@ export class GlobalValueSetSingleton {
             return;
         }
 
-        this.globalValueSets =  [];
+        this.globalValueSets =  []; // get the stuff
 
         this.isInitialized = true;
 
