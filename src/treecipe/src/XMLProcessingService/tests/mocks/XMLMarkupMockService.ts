@@ -706,6 +706,43 @@ export class XMLMarkupMockService {
         return xmlMarkup;
     }
 
+    static getExpectedGlobalValueSetLeadSourcePicklistXMLFieldDetail() {
+
+        const globalValueSetPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "CustomGlobalValueSet",
+            isStandardValueSet: true,
+            fieldLabel: "CustomGlobalValueSet",
+            xmlMarkup: this.getGlobalValueSetCustomGlobalValueSetXMLMarkup()
+        };
+
+        return globalValueSetPicklistXMLField;      
+    }
+
+      static getGlobalValueSetCustomGlobalValueSetXMLMarkup() {
+
+        const xmlMarkup = `                     
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>GlobalValuePicklist__c</fullName>
+    <description>the world</description>
+    <externalId>false</externalId>
+    <inlineHelpText>the world</inlineHelpText>
+    <label>GlobalValuePicklist</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetName>CLEGlobal</valueSetName>
+    </valueSet>
+</CustomField>
+`;
+
+        return xmlMarkup;
+
+    }
+
     static getExpectedStandardValueSetPicklistXMLFieldDetailThatIsntTrackedInValueSetMap() {
 
         const standardValueSetPicklistXMLField: XMLFieldDetail = {

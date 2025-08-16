@@ -63,14 +63,25 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
-        test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
-            const expectedPicklistSnowfakeryValue = "\${{ faker.helpers.arrayElement(['Web','Phone Inquiry','Partner Referral','Purchased List','Other']) }}";
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['Web','Phone Inquiry','Partner Referral','Purchased List','Other']) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
-            const actualPicklistSnowfakeryValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+            const actualPicklistFakerJSValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
-            expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
+            expect(actualPicklistFakerJSValue).toBe(expectedPicklistFakerJSValue);
+
+        });
+
+          test('given expected GLOBAL Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', () => {
+
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedGlobalValueSetLeadSourcePicklistXMLFieldDetail();
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['guardians','cavs','browns','monsters','crunch']) }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistFakerJSValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+
+            expect(actualPicklistFakerJSValue).toBe(expectedPicklistFakerJSValue);
 
         });
 
@@ -227,8 +238,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         test('given existing object recipe string and new recipe value, the resulting updated recipe is returned', () => {
 
-            // ok to use snowfakery mock return as we are testing what appending will do to the recipe and this behavior should be the same for both implementations
-            const initialMarkup = RecipeMockService.getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup();
+            // ok to use fakerjs mock return as we are testing what appending will do to the recipe and this behavior should be the same for both implementations
+            const initialMarkup = RecipeMockService.getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup();
             const fakeRecipevalue = `"\${{ fake.superduperfakeFirstName }}"`;
             const fakeFieldApiName = "FirstName__c";
             const fakeFieldRecipeValue = `${fakeFieldApiName}: ${fakeRecipevalue}`;
@@ -277,7 +288,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     describe('getDependentPicklistRecipeFakerValue', () => {
 
-        test('given expected XMLDetail expected controllingvalue to options are built and correct snowfakery fake value is returned', () => {
+        test('given expected XMLDetail expected controllingvalue to options are built and correct fakerjs fake value is returned', () => {
         
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
@@ -389,7 +400,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
-        test('given expected XMLDetail with isActive options set to false and active, expected controllingvalue to options are built and correct snowfakery fake value is returned', () => {
+        test('given expected XMLDetail with isActive options set to false and active, expected controllingvalue to options are built and correct fakerjs fake value is returned', () => {
         
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
@@ -452,7 +463,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     describe('getFakeValueIfExpectedSalesforceFieldType', () => {
 
-        test('given expected fieldToRecipeValueMap and fieldtypes, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected fieldToRecipeValueMap and fieldtypes, returns the expected fakerjs YAML recipe value', () => {
 
             const expectedFieldToRecipeValue = fakerJSRecipeService.getMapSalesforceFieldToFakerValue();
             for ( const fieldTypeKey in expectedFieldToRecipeValue ) {
