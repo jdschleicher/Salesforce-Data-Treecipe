@@ -2,7 +2,7 @@ import { ConfigurationService } from "../../ConfigurationService/ConfigurationSe
 import { DirectoryProcessor } from "../DirectoryProcessor";
 
 import * as vscode from 'vscode';
-import { MockDirectoryService } from "./mocks/MockObjectsDirectory/MockDirectoryService";
+import { MockDirectoryService } from "./mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
@@ -57,7 +57,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
     test('given expected directory path segments, returns expected api name at end of path', () => {
       
       const expectedObjectApiName = 'objectApiName';
-      let mockObjectsDirectoryPath = `src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects/${expectedObjectApiName}`;   
+      let mockObjectsDirectoryPath = `src/treecipe/src/DirectoryProcessingService/tests/MockSalesforceMetadataDirectory/objects/${expectedObjectApiName}`;   
       
       let actualLastPathSegmentValue = directoryProcessor.getLastSegmentFromPath(mockObjectsDirectoryPath);
       

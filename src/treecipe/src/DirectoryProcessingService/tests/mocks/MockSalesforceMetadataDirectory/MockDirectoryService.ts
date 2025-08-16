@@ -3,8 +3,24 @@ import * as fs from 'fs';
 
 export class MockDirectoryService {
 
+  static getExpectedMockSalesforceMetadataTypesDirectory() {
+    
+    const expectedSalesforceMetadataDirectories = `[
+      {
+        "name": "objects",
+        "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+        "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
+      },
+      {
+        "name": "globalValueSets",
+        "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+        "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
+      }
+      ]`;
 
-  static getExpectedMockDirectoryStructure() {
+  }
+
+  static getExpectedMockObjectDirectoryStructure() {
 
         // THE FORMATTING OF THIS EXPECTED DIRECTORIES IS AN EXACT MATCH TO HOW JSON.stringify WILL OUTPUT A DIRECTORY
         // IT MAY BE AN ISSUE IN FUTURE ITERATIONS AND MAY MAKE SENSE TO USE THIS AND PERFORM WHITE SPACE REMOVAL TO FOCUS ON MATCHING 
@@ -12,59 +28,59 @@ export class MockDirectoryService {
         const expectedMockDirectories = `[
   {
     "name": "Case",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "Example_Everything__c",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "Manufacturing_Event__e",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "MasterDetailMadness__c",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "MegaMapMadness__c",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "Order_Item__c",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "Order__c",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "Product_Family__c",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   },
   {
     "name": "Product__c",
-    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects",
-    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockObjectsDirectory/objects"
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects"
   }
 ]`;
       
       
       return expectedMockDirectories;
     
-    }
+  }
 
   static getVSCodeFileTypeMockedDirectories() {
 
-      const rawData = JSON.parse(this.getExpectedMockDirectoryStructure());
+      const rawData = JSON.parse(this.getExpectedMockObjectDirectoryStructure());
       const mockFileDirectories = rawData.map(entry => [
           entry.name,
           vscode.FileType.Directory
@@ -99,6 +115,7 @@ export class MockDirectoryService {
       ["README.md", vscode.FileType.File],
     ];
     return mockedFiles;
+
   }
 
   static getMockedDirectoriesWithDatSetItemsIncluded() {
