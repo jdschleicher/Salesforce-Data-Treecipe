@@ -1,19 +1,20 @@
+import { IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
 export class GlobalValueSetSingleton {
 
     private static instance: GlobalValueSetSingleton | null = null;
-    private static globalValueSets: any[];
-    private static isInitialized: any;
+    private globalValueSets: Record<string, IPicklistValue[]>;
+    private isInitialized: any;
 
     private constructor() {}
 
-    static async initialize(): Promise<void> {
+    async initialize(): Promise<void> {
 
         if ( this.isInitialized ) {
             return;
         }
 
-        this.globalValueSets =  []; // get the stuff
+        this.globalValueSets = await this.getPicklistValueMapsFromLocalProjectGlobalValueSetDirectory();  // get the stuff
 
         this.isInitialized = true;
 
@@ -27,6 +28,17 @@ export class GlobalValueSetSingleton {
 
         return GlobalValueSetSingleton.instance;
 
+    }
+
+    private async getPicklistValueMapsFromLocalProjectGlobalValueSetDirectory():Promise<Record<string, IPicklistValue[]>> {
+
+        const picklistApiNamesByPicklistValues: Record<string, IPicklistValue[]> = {};
+        return await picklistApiNamesByPicklistValues;
+
+    }
+
+    getPicklistValueMaps() {
+        return this.globalValueSets;
     }
 
 

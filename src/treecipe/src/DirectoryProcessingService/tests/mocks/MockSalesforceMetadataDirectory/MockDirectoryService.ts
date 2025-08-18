@@ -88,6 +88,17 @@ export class MockDirectoryService {
       ]);
       return mockFileDirectories;
   }
+
+  static getVSCodeFileTypeMockedSalesforceMetadataTypeDirectories() {
+
+      const rawData = JSON.parse(this.getExpectedMockSalesforceMetadataTypesDirectory());
+      const mockMetadataTypeDirectories = rawData.map(entry => [
+          entry.name,
+          vscode.FileType.Directory
+      ]);
+      return mockMetadataTypeDirectories;
+      
+  }
   
   static getMockedReadDirectorWithExpectedFoldersAndInvalidXMLFileExtensions() {
     
