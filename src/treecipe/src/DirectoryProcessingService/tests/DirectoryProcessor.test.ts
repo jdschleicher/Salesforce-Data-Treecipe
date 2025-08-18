@@ -71,7 +71,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
     test('given mocked directory structure with expected count of 10 fake paths, recursive function gets called 10 times', async () => {
 
-      const jsonMockedDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedDirectories();
+      const jsonMockedDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedObjectDirectories();
 
       const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedDirectoryStructure);
   

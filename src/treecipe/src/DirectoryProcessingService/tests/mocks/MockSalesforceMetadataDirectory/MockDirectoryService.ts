@@ -79,7 +79,7 @@ export class MockDirectoryService {
     
   }
 
-  static getVSCodeFileTypeMockedDirectories() {
+  static getVSCodeFileTypeMockedObjectDirectories() {
 
       const rawData = JSON.parse(this.getExpectedMockObjectDirectoryStructure());
       const mockFileDirectories = rawData.map(entry => [
