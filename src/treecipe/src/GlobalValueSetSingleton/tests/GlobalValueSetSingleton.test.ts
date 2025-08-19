@@ -12,12 +12,12 @@ jest.mock('vscode', () => ({
 //           readFile: jest.fn()
 //       }
 //   },
-//   Uri: {
-//       file: (path: string) => ({ fsPath: path }),
-//       joinPath: jest.fn().mockImplementation((baseUri, ...pathSegments) => ({
-//         fsPath: `${baseUri.fsPath}/${pathSegments.join('/')}`.replace(/\/+/g, '/'), // Ensure no double slashes
-//       }))
-//   },
+  Uri: {
+      file: (path: string) => ({ fsPath: path }),
+      joinPath: jest.fn().mockImplementation((baseUri, ...pathSegments) => ({
+        fsPath: `${baseUri.fsPath}/${pathSegments.join('/')}`.replace(/\/+/g, '/'), // Ensure no double slashes
+      }))
+  },
 //   window: {
 //       showWarningMessage: jest.fn(),
 //       showQuickPick: jest.fn()
@@ -43,12 +43,21 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             const jsonMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedSalesforceMetadataTypeDirectories();
             const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedSalesforceMetadataDirectoryStructure);
         
-           
-            const gvsSingleton = GlobalValueSetSingleton.getInstance();
-            gvsSingleton.initialize();
+            // jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+            // jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
+    
+            // let objectInfoWrapper = new ObjectInfoWrapper();
+            const uri = vscode.Uri.file('/fake/path');
+    // 
+            // const result = await directoryProcessor.processDirectory(uri, objectInfoWrapper);
+               
 
-            const picklistApiNameToValues = gvsSingleton.getPicklistValueMaps();
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+            globalValueSetSingleton.initialize(uri);
+
+            const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
             expect(picklistApiNameToValues.length).toBe(2);
+
             
         });
 

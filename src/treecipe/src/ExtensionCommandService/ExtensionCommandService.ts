@@ -6,6 +6,7 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
+import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 
 
 import * as fs from 'fs';
@@ -111,11 +112,16 @@ export class ExtensionCommandService {
               const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
               const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
               
-              // initialize globalvaluesets singleton
-
-              const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
               const directoryProcessor = new DirectoryProcessor();
-              objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
+
+
+              // initialize globalvaluesets singleton
+              const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+              let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+              globalValueSetSingleton.initialize(directoryProcessor, pathToSalesforceMetadataParentDirectory);
+
+            //   const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+            //   objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
             
             } else {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
