@@ -1,20 +1,20 @@
-import { FieldInfo, IPicklistValue } from "../ObjectInfoWrapper/FieldInfo";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
-import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import { XmlFileProcessor } from "../XMLProcessingService/XmlFileProcessor";
+
+import * as xml2js from 'xml2js';
+
 
 export class GlobalValueSetSingleton {
 
     private static instance: GlobalValueSetSingleton | null = null;
-    private globalValueSets: Record<string, IPicklistValue[]>;
+    private globalValueSets: Record<string, string[]>;
     private isInitialized: any;
 
     private constructor() {}
 
-    async initialize(directoryProcessor, salesforceMetadataParentPath): Promise<void> {
+    async initialize(salesforceMetadataParentPath): Promise<void> {
 
         if ( this.isInitialized ) {
             return;
@@ -33,29 +33,111 @@ export class GlobalValueSetSingleton {
         }
         
         const globalValueSetsTargetUri = vscode.Uri.file(expectedGlobalValueSetDirectoriesPath);
-        const globalValueSetDirectoryEntries = await vscode.workspace.fs.readDirectory(globalValueSetsTargetUri);
+        const globalValueSetDirectoryEntryTuples = await vscode.workspace.fs.readDirectory(globalValueSetsTargetUri);
 
-
-        //    for (const [entryName, entryType] of globalValueSetDirectoryEntries) {
+        for (const [fileName, directoryItemTypeEnum] of globalValueSetDirectoryEntryTuples) {
+    
+            if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
         
-                // const fullPath = vscode.Uri.joinPath(globalValueSetsTargetUri, entryName);
-                const notNeededObjectName = 'null';
-                let fieldsInfo: FieldInfo[] = await directoryProcessor.processFieldsDirectory(globalValueSetsTargetUri, 
-                                                                                        notNeededObjectName, 
-                                                                                        null,
-                                                                                        null
-                                                                                    );
-
-                this.globalValueSets["test"] = fieldsInfo[0].picklistValues;
+                const fieldUri = vscode.Uri.joinPath(globalValueSetsTargetUri, fileName);
+                const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
+                const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
         
-        //    }
+                // let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(fieldXmlContent, fileName);
+                // console.log(fieldXMLDetail);
+
+                
+            }
+
+        }
 
             
         this.isInitialized = true;
 
     }
 
-    static addItemToRecordMap(recordMap: Record<string, any[]>, key: string, item: any) {
+    extractGlobalValueSetPicklistValuesFromXMLFileContent(xmlFileContent: string):string[] {
+
+        let picklistValuesFinal:string[] = [];
+      
+
+        let fieldXML: any;
+        let parseString = xml2js.parseString;
+        parseString(xmlFileContent, function (error, result) {
+
+            if (error) { 
+                throw new Error(`Error processing xmlContent ${xmlFileContent}:` + error);
+            }
+    
+            fieldXML = result;
+
+        });
+
+          
+          if ( !(fieldXML.GlobalValueSet)) {
+            return;
+          }
+          let globalValueSet = fieldXML.GlobalValueSet;
+          globalValueSet.customValue.forEach(customValueDefinitionElement => {
+            
+        //     const dependentPicklistConfigurationExists = ( picklistValueSetMarkup?.controllingField?.length === 1 );
+        //     // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST CONFIGURATION
+        //     if (dependentPicklistConfigurationExists) {
+        //         const dependentPicklistConfigurationDetail = this.getDependentPicklistConfigurationDetailByPicklistDetail(picklistDetail.picklistOptionApiName, picklistValueSetMarkup);
+        //         picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection = dependentPicklistConfigurationDetail;
+        //     }
+        //     picklistFieldDetails.push(picklistDetail);
+
+            const picklistOptionApiName:string = customValueDefinitionElement.fullName[0];
+            const picklistLabel:string = customValueDefinitionElement.label[0];
+        
+
+            picklistValuesFinal.push(picklistOptionApiName);
+        
+            
+          });
+
+        return picklistValuesFinal;
+    
+    }
+    
+
+
+
+//     // '<?xml version="1.0" encoding="UTF-8"?>
+// <GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+//     <customValue>
+//         <fullName>guardians</fullName>
+//         <default>false</default>
+//         <label>guardians</label>
+//     </customValue>
+//     <customValue>
+//         <fullName>cavs</fullName>
+//         <default>false</default>
+//         <label>cavs</label>
+//     </customValue>
+//     <customValue>
+//         <fullName>browns</fullName>
+//         <default>false</default>
+//         <label>browns</label>
+//     </customValue>
+//     <customValue>
+//         <fullName>monsters</fullName>
+//         <default>false</default>
+//         <label>monsters</label>
+//     </customValue>
+//     <customValue>
+//         <fullName>crunch</fullName>
+//         <default>false</default>
+//         <label>crunch</label>
+//     </customValue>
+//     <masterLabel>CLEGlobal</masterLabel>
+//     <sorted>false</sorted>
+// </GlobalValueSet>
+// // 
+
+
+    addItemToRecordMap(recordMap: Record<string, any[]>, key: string, item: any) {
     
         if (key in recordMap) {
             recordMap[key].push(item);
@@ -74,13 +156,6 @@ export class GlobalValueSetSingleton {
         }
 
         return GlobalValueSetSingleton.instance;
-
-    }
-
-    private async getPicklistValueMapsFromLocalProjectGlobalValueSetDirectory():Promise<Record<string, IPicklistValue[]>> {
-
-        const picklistApiNamesByPicklistValues: Record<string, IPicklistValue[]> = {};
-        return await picklistApiNamesByPicklistValues;
 
     }
 

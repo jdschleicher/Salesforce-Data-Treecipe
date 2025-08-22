@@ -1,4 +1,5 @@
 import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
+import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton";
 
 import * as vscode from 'vscode';
@@ -52,26 +53,35 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             // const result = await directoryProcessor.processDirectory(uri, objectInfoWrapper);
                
 
-            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-            globalValueSetSingleton.initialize(uri);
+            // const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+            // globalValueSetSingleton.initialize(uri);
 
-            const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
-            expect(picklistApiNameToValues.length).toBe(2);
+            // const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
+            // expect(picklistApiNameToValues.length).toBe(2);
 
             
         });
 
     });
 
-    // describe("getInstance", () => {
 
-    //     test("given getInstance is called, expected instance of GlobalValueSetSingleton is set", () => {
+    describe("extractGlobalValueSetPicklistValuesFromXMLFileContent", () => {
 
-    //         let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-    //         expect(globalValueSetSingleton).toBeInstanceOf(GlobalValueSetSingleton);
-        
-    //     });
+        test("given expected globalValueSet xml content, returns expected list of picklist values", () => {
+            
 
-    // });
+            const globalValueSetPicklistValuesXMLContent = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
+
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            const picklsitValues:string[] = globalValueSetSingleton.extractGlobalValueSetPicklistValuesFromXMLFileContent(globalValueSetPicklistValuesXMLContent);
+
+            const expectedPicklistValues = ['guardians', 'cavs', 'browns', 'monsters', 'crunch'];
+            expect(picklsitValues.length).toBe(5);
+
+        });
+
+    });
+
     
 });

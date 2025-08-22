@@ -652,12 +652,12 @@ export class XMLMarkupMockService {
             apiName: "ValueSetPicklist",
             globalValueSetName: 'Value_Set_Picklist_VS',
             fieldLabel: "Value Set Picklist",
-            xmlMarkup: this.getGlobalValueSetXMLMarkup()        };
+            xmlMarkup: this.getGlobalValueSetFieldXMLMarkup()        };
 
         return globalPicklistXMLField;      
     }
 
-    static getGlobalValueSetXMLMarkup() {
+    static getGlobalValueSetFieldXMLMarkup() {
 
         const xmlMarkup = `                     
         <?xml version="1.0" encoding="UTF-8"?>
@@ -711,15 +711,15 @@ export class XMLMarkupMockService {
         const globalValueSetPicklistXMLField: XMLFieldDetail = {
             fieldType: "Picklist",
             apiName: "CustomGlobalValueSet",
-            isStandardValueSet: true,
+            isStandardValueSet: false,
             fieldLabel: "CustomGlobalValueSet",
-            xmlMarkup: this.getGlobalValueSetCustomGlobalValueSetXMLMarkup()
+            xmlMarkup: this.getFieldGlobalValueSetCustomGlobalValueSetXMLMarkup()
         };
 
         return globalValueSetPicklistXMLField;      
     }
 
-      static getGlobalValueSetCustomGlobalValueSetXMLMarkup() {
+      static getFieldGlobalValueSetCustomGlobalValueSetXMLMarkup() {
 
         const xmlMarkup = `                     
 <?xml version="1.0" encoding="UTF-8"?>
@@ -740,6 +740,44 @@ export class XMLMarkupMockService {
 `;
 
         return xmlMarkup;
+
+    }
+
+    static getGlobalValueSetXMLMarkup() {
+
+        const globalValueSetMarkup = `<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>guardians</fullName>
+        <default>false</default>
+        <label>guardians</label>
+    </customValue>
+    <customValue>
+        <fullName>cavs</fullName>
+        <default>false</default>
+        <label>cavs</label>
+    </customValue>
+    <customValue>
+        <fullName>browns</fullName>
+        <default>false</default>
+        <label>browns</label>
+    </customValue>
+    <customValue>
+        <fullName>monsters</fullName>
+        <default>false</default>
+        <label>monsters</label>
+    </customValue>
+    <customValue>
+        <fullName>crunch</fullName>
+        <default>false</default>
+        <label>crunch</label>
+    </customValue>
+    <masterLabel>CLEGlobal</masterLabel>
+    <sorted>false</sorted>
+</GlobalValueSet>
+`;
+
+        return globalValueSetMarkup;
 
     }
 
