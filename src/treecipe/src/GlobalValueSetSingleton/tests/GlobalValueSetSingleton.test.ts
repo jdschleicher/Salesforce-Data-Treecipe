@@ -74,10 +74,11 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
 
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
-            const picklsitValues:string[] = globalValueSetSingleton.extractGlobalValueSetPicklistValuesFromXMLFileContent(globalValueSetPicklistValuesXMLContent);
+            const picklistValules:string[] = globalValueSetSingleton.extractGlobalValueSetPicklistValuesFromXMLFileContent(globalValueSetPicklistValuesXMLContent);
 
-            const expectedPicklistValues = ['guardians', 'cavs', 'browns', 'monsters', 'crunch'];
-            expect(picklsitValues.length).toBe(5);
+            const expectedPicklistValues = ["guardians", "cavs", "browns", "monsters", "crunch"];
+            expect(picklistValules.length).toBe(expectedPicklistValues.length);
+            expect(picklistValules).toEqual(expectedPicklistValues);
 
         });
 
