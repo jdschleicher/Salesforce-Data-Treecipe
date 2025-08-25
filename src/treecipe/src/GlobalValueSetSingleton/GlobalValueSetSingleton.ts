@@ -43,9 +43,11 @@ export class GlobalValueSetSingleton {
                 const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
                 const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
         
-                // let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(fieldXmlContent, fileName);
-                // console.log(fieldXMLDetail);
+                const picklistValues = this.extractGlobalValueSetPicklistValuesFromXMLFileContent(fieldXmlContent);
+                if ( picklistValues ) {
+                    this.globalValueSets[fileName] = picklistValues;
 
+                }
                 
             }
 
@@ -59,7 +61,6 @@ export class GlobalValueSetSingleton {
     extractGlobalValueSetPicklistValuesFromXMLFileContent(xmlFileContent: string):string[] {
 
         let picklistValuesFinal:string[] = [];
-      
 
         let fieldXML: any;
         let parseString = xml2js.parseString;
@@ -74,35 +75,28 @@ export class GlobalValueSetSingleton {
         });
 
           
-          if ( !(fieldXML.GlobalValueSet)) {
+        if ( !(fieldXML?.GlobalValueSet) ) {
+            /* 
+                IF THERE ARE FILES IN THE GLOBAL VALUE SET DIRECTORY THAT ARE NOT ACTUAL GLOBAL
+                VALUE SET FILES THEY WILL NOT HAVE THE EXPECTED GLOBALVALUESET OPENING XML TAG
+                OF "GlobalValueSet"
+            */
             return;
-          }
-          let globalValueSet = fieldXML.GlobalValueSet;
-          globalValueSet.customValue.forEach(customValueDefinitionElement => {
+        }
+
+        let globalValueSet = fieldXML.GlobalValueSet;
+        globalValueSet.customValue.forEach(customValueDefinitionElement => {
             
-        //     const dependentPicklistConfigurationExists = ( picklistValueSetMarkup?.controllingField?.length === 1 );
-        //     // IF THERE IS A CONTROLLING FIELD THEN WE CAN EXPECT THERE TO BE A DEPENDENT PICKLIST CONFIGURATION
-        //     if (dependentPicklistConfigurationExists) {
-        //         const dependentPicklistConfigurationDetail = this.getDependentPicklistConfigurationDetailByPicklistDetail(picklistDetail.picklistOptionApiName, picklistValueSetMarkup);
-        //         picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection = dependentPicklistConfigurationDetail;
-        //     }
-        //     picklistFieldDetails.push(picklistDetail);
-
             const picklistOptionApiName:string = customValueDefinitionElement.fullName[0];
-            const picklistLabel:string = customValueDefinitionElement.label[0];
-        
-
             picklistValuesFinal.push(picklistOptionApiName);
         
             
-          });
+        });
 
         return picklistValuesFinal;
     
     }
     
-
-
 
 //     // '<?xml version="1.0" encoding="UTF-8"?>
 // <GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">

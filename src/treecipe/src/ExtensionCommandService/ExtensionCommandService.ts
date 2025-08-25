@@ -114,7 +114,7 @@ export class ExtensionCommandService {
                 // initialize globalvaluesets singleton
                 const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
                 let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-                globalValueSetSingleton.initialize( pathToSalesforceMetadataParentDirectory);
+                globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory);
 
                 const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);

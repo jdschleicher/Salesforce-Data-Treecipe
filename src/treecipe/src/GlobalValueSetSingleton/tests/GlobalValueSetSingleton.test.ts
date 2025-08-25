@@ -6,13 +6,13 @@ import * as vscode from 'vscode';
 
 
 jest.mock('vscode', () => ({
-//   workspace: {
-//       workspaceFolders: undefined,
-//       fs: { 
-//           readDirectory: jest.fn(),
-//           readFile: jest.fn()
-//       }
-//   },
+  // workspace: {
+  //     workspaceFolders: undefined,
+  //     fs: { 
+  //         readDirectory: jest.fn(),
+  //         readFile: jest.fn()
+  //     }
+  // },
   Uri: {
       file: (path: string) => ({ fsPath: path }),
       joinPath: jest.fn().mockImplementation((baseUri, ...pathSegments) => ({
@@ -47,17 +47,14 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             // jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
             // jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
     
-            // let objectInfoWrapper = new ObjectInfoWrapper();
             const uri = vscode.Uri.file('/fake/path');
-    // 
-            // const result = await directoryProcessor.processDirectory(uri, objectInfoWrapper);
                
 
-            // const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-            // globalValueSetSingleton.initialize(uri);
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+            globalValueSetSingleton.initialize(uri);
 
-            // const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
-            // expect(picklistApiNameToValues.length).toBe(2);
+            const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
+            expect(picklistApiNameToValues.length).toBe(2);
 
             
         });
