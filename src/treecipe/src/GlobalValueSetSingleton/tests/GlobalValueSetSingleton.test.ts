@@ -3,16 +3,16 @@ import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XML
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton";
 
 import * as vscode from 'vscode';
-
+import * as fs from 'fs';
 
 jest.mock('vscode', () => ({
-  // workspace: {
-  //     workspaceFolders: undefined,
-  //     fs: { 
-  //         readDirectory: jest.fn(),
-  //         readFile: jest.fn()
-  //     }
-  // },
+  workspace: {
+      workspaceFolders: undefined,
+      fs: { 
+          readDirectory: jest.fn(),
+          readFile: jest.fn()
+      }
+  },
   Uri: {
       file: (path: string) => ({ fsPath: path }),
       joinPath: jest.fn().mockImplementation((baseUri, ...pathSegments) => ({
@@ -38,37 +38,45 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
 
     describe("initialize", () => {
 
-        test("given expected 'globalValueSets' directory with expected globalValueSet markup files, sets expected globalValueSet initialization values and 'isInitialized' property is set to true", () => {
+        test("given expected 'globalValueSets' directory with expected globalValueSet markup files, sets expected globalValueSet initialization values and 'isInitialized' property is set to true", async() => {
 
-
-            const jsonMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedSalesforceMetadataTypeDirectories();
+            const jsonMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedGlobalValueSetFiles();
             const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedSalesforceMetadataDirectoryStructure);
-        
-            // jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
-            // jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
-    
-            const uri = vscode.Uri.file('/fake/path');
-               
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
 
+            const expectedValueSetMap = {
+                'CLEGlobal': Promise.resolve(
+                    ["guardians", "cavs", "browns", "monsters", "crunch"]
+                ),
+                'Planets': Promise.resolve(
+                    ["world", "earth", "planet", "mars", "venus", "neptune", "saturn"]
+                )
+            };
+     
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-            globalValueSetSingleton.initialize(uri);
+
+            jest.spyOn(globalValueSetSingleton, 'getPicklistValuesFromGlobalValueSetXML')
+                .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
+            
+                return expectedValueSetMap[globalValueSetFileName] || Promise.resolve(null);
+            });
+
+            const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
+            await globalValueSetSingleton.initialize(uri.fsPath);
 
             const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
-            expect(picklistApiNameToValues.length).toBe(2);
-
+            expect(Object.keys(picklistApiNameToValues).length).toBe(2);
             
         });
 
     });
 
-
     describe("extractGlobalValueSetPicklistValuesFromXMLFileContent", () => {
 
         test("given expected globalValueSet xml content, returns expected list of picklist values", () => {
             
-
             const globalValueSetPicklistValuesXMLContent = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
-
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
             const picklistValules:string[] = globalValueSetSingleton.extractGlobalValueSetPicklistValuesFromXMLFileContent(globalValueSetPicklistValuesXMLContent);
@@ -80,6 +88,5 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
         });
 
     });
-
     
 });

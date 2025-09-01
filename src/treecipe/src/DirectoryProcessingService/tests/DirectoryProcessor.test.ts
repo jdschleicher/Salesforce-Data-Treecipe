@@ -95,8 +95,6 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
     test('given mocked text xml content, returns expected field info object', async() => {
 
-      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryRecipeFakerService());
-
       const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';
       const recordTypeNameByRecordTypeNameToXMLMarkup = {};
@@ -131,10 +129,6 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         
         const mockedUri:vscode.Uri = MockVSCodeWorkspaceService.getFakeVSCodeUri();
         jest.spyOn(vscode.Uri, "joinPath").mockReturnValue(mockedUri);
-
-        jest.spyOn(vscode.workspace.fs, 'readFile').mockReturnValue(
-          Promise.resolve(Buffer.from('fake xml markup'))
-        );
 
         jest.spyOn(vscode.workspace.fs, 'readFile').mockReturnValue(
           Promise.resolve(Buffer.from('fake xml markup'))

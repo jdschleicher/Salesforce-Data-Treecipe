@@ -79,6 +79,28 @@ export class MockDirectoryService {
     
   }
 
+  static getExpectedMockGlobalValueSetsDirectoryStructure() {
+
+        // THE FORMATTING OF THIS EXPECTED DIRECTORIES IS AN EXACT MATCH TO HOW JSON.stringify WILL OUTPUT A DIRECTORY
+        // IT MAY BE AN ISSUE IN FUTURE ITERATIONS AND MAY MAKE SENSE TO USE THIS AND PERFORM WHITE SPACE REMOVAL TO FOCUS ON MATCHING 
+        // THE CONTENT ONLY
+        const expectedGlobalValueSetMockDirectories = `[
+  {
+    "name": "CLEGlobal.globalValueSet-meta.xml",
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/globalValueSets/GLEGlobal.globalValueSet-meta.xml",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/globalValueSets"
+  },
+  {
+    "name": "Planets.globalValueSet-meta.xml",
+    "parentPath": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/globalValueSets/Planets.globalValueSet-meta.xml",
+    "path": "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/globalValueSets"
+  }
+]`;
+      
+    return expectedGlobalValueSetMockDirectories;
+    
+  }
+
   static getVSCodeFileTypeMockedObjectDirectories() {
 
       const rawData = JSON.parse(this.getExpectedMockObjectDirectoryStructure());
@@ -87,6 +109,16 @@ export class MockDirectoryService {
           vscode.FileType.Directory
       ]);
       return mockFileDirectories;
+  }
+
+  static getVSCodeFileTypeMockedGlobalValueSetFiles() {
+
+      const rawData = JSON.parse(this.getExpectedMockGlobalValueSetsDirectoryStructure());
+      const mockGVSFiles = rawData.map(entry => [
+          entry.name,
+          vscode.FileType.File
+      ]);
+      return mockGVSFiles;
   }
 
   static getVSCodeFileTypeMockedSalesforceMetadataTypeDirectories() {

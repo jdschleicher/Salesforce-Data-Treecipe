@@ -8,15 +8,33 @@ import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordT
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
+import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
+
+import * as fs from 'fs';
+import * as vscode from 'vscode';
+import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
 
 jest.mock('vscode', () => ({
-    workspace: {
-        workspaceFolders: undefined
-    },
-    Uri: {
-        file: (path: string) => ({ fsPath: path })
-    }
-  }), { virtual: true });
+  workspace: {
+      workspaceFolders: undefined,
+      fs: { 
+          readDirectory: jest.fn(),
+          readFile: jest.fn()
+      }
+  },
+  Uri: {
+      file: (path: string) => ({ fsPath: path }),
+      joinPath: jest.fn().mockImplementation((baseUri, ...pathSegments) => ({
+        fsPath: `${baseUri.fsPath}/${pathSegments.join('/')}`.replace(/\/+/g, '/'), // Ensure no double slashes
+      }))
+  },
+  FileType: {
+      Directory: 2,
+      File: 1,
+      SymbolicLink: 64
+  }
+
+}), { virtual: true });
 
 describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Tests', () => {
 
@@ -74,7 +92,32 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
-          test('given expected GLOBAL Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', () => {
+          test('given expected GLOBAL Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', async() => {
+
+            const jsonMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedGlobalValueSetFiles();
+            const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedSalesforceMetadataDirectoryStructure);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+              const expectedValueSetMap = {
+                    'CLEGlobal': Promise.resolve(
+                        ["guardians", "cavs", "browns", "monsters", "crunch"]
+                    ),
+                    'Planets': Promise.resolve(
+                        ["world", "earth", "planet", "mars", "venus", "neptune", "saturn"]
+                    )
+                };
+            
+                const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+    
+                jest.spyOn(globalValueSetSingleton, 'getPicklistValuesFromGlobalValueSetXML')
+                    .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
+                
+                    return expectedValueSetMap[globalValueSetFileName] || Promise.resolve(null);
+                });
+    
+            const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
+            await globalValueSetSingleton.initialize(uri.fsPath);
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedGlobalValueSetLeadSourcePicklistXMLFieldDetail();
             const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['guardians','cavs','browns','monsters','crunch']) }}";
