@@ -5,7 +5,6 @@ import { XmlFileProcessor } from "../XMLProcessingService/XmlFileProcessor";
 
 import * as xml2js from 'xml2js';
 
-
 export class GlobalValueSetSingleton {
 
     private static instance: GlobalValueSetSingleton | null = null;
@@ -35,15 +34,32 @@ export class GlobalValueSetSingleton {
         const globalValueSetFileEntryTuples = await vscode.workspace.fs.readDirectory(globalValueSetsTargetUri);
 
         this.globalValueSets = {};
+
         for (const [fileName, fileTypeEnum] of globalValueSetFileEntryTuples) {
 
             if ( XmlFileProcessor.isXMLFileType(fileName, fileTypeEnum) ) {
 
-                const gvsApiName = fileName.split(".globalValueSet-meta.xml")[0];
-                const picklistValues =  await this.getPicklistValuesFromGlobalValueSetXML(globalValueSetsTargetUri, gvsApiName);
+                const globalValueSetXMLFileContent =  await this.getGlobalValueSetPicklistXMLFileContent(globalValueSetsTargetUri, fileName);
                 
-                if ( picklistValues ) {
-                    this.globalValueSets[gvsApiName] = picklistValues;
+                let fileXML: any;
+                let parseString = xml2js.parseString;
+                parseString(globalValueSetXMLFileContent, function (error, result) {
+
+                    if (error) { 
+                        throw new Error(`Error processing xmlContent ${globalValueSetXMLFileContent}:` + error);
+                    }
+            
+                    fileXML = result;
+
+                });
+                
+                const picklistValuesFromGlobalValueSet = this.extractGlobalValueSetPicklistValuesFromXMLFileContent(fileXML);
+
+                if ( picklistValuesFromGlobalValueSet ) {
+
+                    const gvsApiName = fileXML.GlobalValueSet.masterLabel;
+
+                    this.globalValueSets[gvsApiName] = picklistValuesFromGlobalValueSet;
                 }
                 
             }
@@ -54,34 +70,21 @@ export class GlobalValueSetSingleton {
 
     }
 
-    async getPicklistValuesFromGlobalValueSetXML(globalValueSetsTargetUri, globalValueSetFileName ) {
+    async getGlobalValueSetPicklistXMLFileContent(globalValueSetsTargetUri, globalValueSetFileName ) {
 
-        const fieldUri = vscode.Uri.joinPath(globalValueSetsTargetUri, globalValueSetFileName);
-        const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
-        const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
-        const picklistValuesFromGlobalValueSet = this.extractGlobalValueSetPicklistValuesFromXMLFileContent(fieldXmlContent);
+        const globalValueSetFileUri = vscode.Uri.joinPath(globalValueSetsTargetUri, globalValueSetFileName);
+        const globalValueSetXmlContentUriData = await vscode.workspace.fs.readFile(globalValueSetFileUri);
+        const globalValueSetXmlContent = Buffer.from(globalValueSetXmlContentUriData).toString('utf8');
 
-        return picklistValuesFromGlobalValueSet;
+        return globalValueSetXmlContent;
 
     }
 
-    extractGlobalValueSetPicklistValuesFromXMLFileContent(xmlFileContent: string):string[] {
+    extractGlobalValueSetPicklistValuesFromXMLFileContent(fileXML):string[] {
 
         let picklistValuesFinal:string[] = [];
 
-        let fieldXML: any;
-        let parseString = xml2js.parseString;
-        parseString(xmlFileContent, function (error, result) {
-
-            if (error) { 
-                throw new Error(`Error processing xmlContent ${xmlFileContent}:` + error);
-            }
-    
-            fieldXML = result;
-
-        });
-
-        if ( !(fieldXML?.GlobalValueSet) ) {
+        if ( !(fileXML?.GlobalValueSet) ) {
             /* 
                 IF THERE ARE FILES IN THE GLOBAL VALUE SET DIRECTORY THAT ARE NOT ACTUAL GLOBAL
                 VALUE SET FILES THEY WILL NOT HAVE THE EXPECTED GLOBALVALUESET OPENING XML TAG
@@ -90,12 +93,11 @@ export class GlobalValueSetSingleton {
             return;
         }
 
-        let globalValueSet = fieldXML.GlobalValueSet;
+        let globalValueSet = fileXML.GlobalValueSet;
         globalValueSet.customValue.forEach(customValueDefinitionElement => {
             
             const picklistOptionApiName:string = customValueDefinitionElement.fullName[0];
             picklistValuesFinal.push(picklistOptionApiName);
-        
             
         });
 

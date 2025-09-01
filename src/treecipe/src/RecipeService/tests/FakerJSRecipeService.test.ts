@@ -92,34 +92,35 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
-          test('given expected GLOBAL Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', async() => {
+        test('given expected GLOBAL Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', async() => {
 
             const jsonMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedGlobalValueSetFiles();
             const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedSalesforceMetadataDirectoryStructure);
             jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
 
-              const expectedValueSetMap = {
-                    'CLEGlobal': Promise.resolve(
-                        ["guardians", "cavs", "browns", "monsters", "crunch"]
-                    ),
-                    'Planets': Promise.resolve(
-                        ["world", "earth", "planet", "mars", "venus", "neptune", "saturn"]
-                    )
-                };
-            
-                const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-    
-                jest.spyOn(globalValueSetSingleton, 'getPicklistValuesFromGlobalValueSetXML')
-                    .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
-                
-                    return expectedValueSetMap[globalValueSetFileName] || Promise.resolve(null);
-                });
+            const cleGlobalValueSetXMLContent = XMLMarkupMockService.getCLEGlobalValueSetXMLMarkup();
+            const planetsGlobalValueSetXMLContent = XMLMarkupMockService.getPlanetsGlobalValueSetXMLFileContent();
+            const expectedGlobalValueSetFileNameToPicklistValuesSetMap = {
+                'CLEGlobal.globalValueSet-meta.xml': Promise.resolve(
+                    cleGlobalValueSetXMLContent
+                ),
+                'Planets.globalValueSet-meta.xml': Promise.resolve(
+                    planetsGlobalValueSetXMLContent
+                )
+            };
+        
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
+                return expectedGlobalValueSetFileNameToPicklistValuesSetMap[globalValueSetFileName] || Promise.resolve(null);
+            });
     
             const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
             await globalValueSetSingleton.initialize(uri.fsPath);
 
-            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedGlobalValueSetLeadSourcePicklistXMLFieldDetail();
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedGlobalValueSetCLEGlobalPicklistXMLFieldDetail();
             const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['guardians','cavs','browns','monsters','crunch']) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualPicklistFakerJSValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);

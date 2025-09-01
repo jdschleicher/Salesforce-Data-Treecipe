@@ -71,11 +71,15 @@ export class RecipeService {
 
                                 const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
                                 const gvsPicklistByPicklistValues:Record<string, string[]> = globalValueSetSingleton.getPicklistValueMaps();
-                                const picklistValuesByGlobalValueSetName = gvsPicklistByPicklistValues[xmlFieldDetail.globalValueSetName];
-                                
-                                if ( picklistValuesByGlobalValueSetName ) {
-                                    availablePicklistValueOptions = picklistValuesByGlobalValueSetName;
+                                if ( gvsPicklistByPicklistValues ) {
+
+                                    const picklistValuesByGlobalValueSetName = gvsPicklistByPicklistValues[xmlFieldDetail.globalValueSetName];
+                                    if ( picklistValuesByGlobalValueSetName ) {
+                                        availablePicklistValueOptions = picklistValuesByGlobalValueSetName;
+                                     }
+
                                 }
+                              
                             }
 
                         } else {

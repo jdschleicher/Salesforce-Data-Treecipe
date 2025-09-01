@@ -45,21 +45,24 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
 
-            const expectedValueSetMap = {
-                'CLEGlobal': Promise.resolve(
-                    ["guardians", "cavs", "browns", "monsters", "crunch"]
+            const cleGlobalValueSetXMLContent = XMLMarkupMockService.getCLEGlobalValueSetXMLMarkup();
+            const planetsGlobalValueSetXMLContent = XMLMarkupMockService.getPlanetsGlobalValueSetXMLFileContent();
+
+            const expectedGlobalValueSetFileNameToPicklistValuesSetMap = {
+                'CLEGlobal.globalValueSet-meta.xml': Promise.resolve(
+                    cleGlobalValueSetXMLContent
                 ),
-                'Planets': Promise.resolve(
-                    ["world", "earth", "planet", "mars", "venus", "neptune", "saturn"]
+                'Planets.globalValueSet-meta.xml': Promise.resolve(
+                    planetsGlobalValueSetXMLContent
                 )
             };
      
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
-            jest.spyOn(globalValueSetSingleton, 'getPicklistValuesFromGlobalValueSetXML')
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
                 .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
             
-                return expectedValueSetMap[globalValueSetFileName] || Promise.resolve(null);
+                return expectedGlobalValueSetFileNameToPicklistValuesSetMap[globalValueSetFileName] || Promise.resolve(null);
             });
 
             const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
@@ -76,14 +79,14 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
 
         test("given expected globalValueSet xml content, returns expected list of picklist values", () => {
             
-            const globalValueSetPicklistValuesXMLContent = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
+            const mockedParseCLEGlobalValueSet = XMLMarkupMockService.getParseStringCLEGlobalValueSetMock();
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
-            const picklistValules:string[] = globalValueSetSingleton.extractGlobalValueSetPicklistValuesFromXMLFileContent(globalValueSetPicklistValuesXMLContent);
+            const picklistValues:string[] = globalValueSetSingleton.extractGlobalValueSetPicklistValuesFromXMLFileContent(mockedParseCLEGlobalValueSet);
 
             const expectedPicklistValues = ["guardians", "cavs", "browns", "monsters", "crunch"];
-            expect(picklistValules.length).toBe(expectedPicklistValues.length);
-            expect(picklistValules).toEqual(expectedPicklistValues);
+            expect(picklistValues.length).toBe(expectedPicklistValues.length);
+            expect(picklistValues).toEqual(expectedPicklistValues);
 
         });
 
