@@ -706,13 +706,14 @@ export class XMLMarkupMockService {
         return xmlMarkup;
     }
 
-    static getExpectedGlobalValueSetLeadSourcePicklistXMLFieldDetail() {
+    static getExpectedGlobalValueSetCLEGlobalPicklistXMLFieldDetail() {
 
         const globalValueSetPicklistXMLField: XMLFieldDetail = {
             fieldType: "Picklist",
             apiName: "CustomGlobalValueSet",
             isStandardValueSet: false,
             fieldLabel: "CustomGlobalValueSet",
+            globalValueSetName: "CLEGlobal",
             xmlMarkup: this.getFieldGlobalValueSetCustomGlobalValueSetXMLMarkup()
         };
 
