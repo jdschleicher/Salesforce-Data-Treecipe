@@ -8,15 +8,33 @@ import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordT
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
+import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
+
+import * as fs from 'fs';
+import * as vscode from 'vscode';
+import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
 
 jest.mock('vscode', () => ({
-    workspace: {
-        workspaceFolders: undefined
-    },
-    Uri: {
-        file: (path: string) => ({ fsPath: path })
-    }
-  }), { virtual: true });
+  workspace: {
+      workspaceFolders: undefined,
+      fs: { 
+          readDirectory: jest.fn(),
+          readFile: jest.fn()
+      }
+  },
+  Uri: {
+      file: (path: string) => ({ fsPath: path }),
+      joinPath: jest.fn().mockImplementation((baseUri, ...pathSegments) => ({
+        fsPath: `${baseUri.fsPath}/${pathSegments.join('/')}`.replace(/\/+/g, '/'), // Ensure no double slashes
+      }))
+  },
+  FileType: {
+      Directory: 2,
+      File: 1,
+      SymbolicLink: 64
+  }
+
+}), { virtual: true });
 
 describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Tests', () => {
 
@@ -63,14 +81,51 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
-        test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
-            const expectedPicklistSnowfakeryValue = "\${{ faker.helpers.arrayElement(['Web','Phone Inquiry','Partner Referral','Purchased List','Other']) }}";
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['Web','Phone Inquiry','Partner Referral','Purchased List','Other']) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
-            const actualPicklistSnowfakeryValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+            const actualPicklistFakerJSValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
-            expect(actualPicklistSnowfakeryValue).toBe(expectedPicklistSnowfakeryValue);
+            expect(actualPicklistFakerJSValue).toBe(expectedPicklistFakerJSValue);
+
+        });
+
+        test('given expected GLOBAL Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', async() => {
+
+            const jsonMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedGlobalValueSetFiles();
+            const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedSalesforceMetadataDirectoryStructure);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+            const cleGlobalValueSetXMLContent = XMLMarkupMockService.getCLEGlobalValueSetXMLMarkup();
+            const planetsGlobalValueSetXMLContent = XMLMarkupMockService.getPlanetsGlobalValueSetXMLFileContent();
+            const expectedGlobalValueSetFileNameToPicklistValuesSetMap = {
+                'CLEGlobal.globalValueSet-meta.xml': Promise.resolve(
+                    cleGlobalValueSetXMLContent
+                ),
+                'Planets.globalValueSet-meta.xml': Promise.resolve(
+                    planetsGlobalValueSetXMLContent
+                )
+            };
+        
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
+                return expectedGlobalValueSetFileNameToPicklistValuesSetMap[globalValueSetFileName] || Promise.resolve(null);
+            });
+    
+            const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
+            await globalValueSetSingleton.initialize(uri.fsPath);
+
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedGlobalValueSetCLEGlobalPicklistXMLFieldDetail();
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['guardians','cavs','browns','monsters','crunch']) }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistFakerJSValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+
+            expect(actualPicklistFakerJSValue).toBe(expectedPicklistFakerJSValue);
 
         });
 
@@ -227,8 +282,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         test('given existing object recipe string and new recipe value, the resulting updated recipe is returned', () => {
 
-            // ok to use snowfakery mock return as we are testing what appending will do to the recipe and this behavior should be the same for both implementations
-            const initialMarkup = RecipeMockService.getSnowfakeryExpectedEvertyingExampleFullObjectRecipeMarkup();
+            // ok to use fakerjs mock return as we are testing what appending will do to the recipe and this behavior should be the same for both implementations
+            const initialMarkup = RecipeMockService.getFakerJSExpectedEvertyingExampleFullObjectRecipeMarkup();
             const fakeRecipevalue = `"\${{ fake.superduperfakeFirstName }}"`;
             const fakeFieldApiName = "FirstName__c";
             const fakeFieldRecipeValue = `${fakeFieldApiName}: ${fakeRecipevalue}`;
@@ -277,7 +332,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     describe('getDependentPicklistRecipeFakerValue', () => {
 
-        test('given expected XMLDetail expected controllingvalue to options are built and correct snowfakery fake value is returned', () => {
+        test('given expected XMLDetail expected controllingvalue to options are built and correct fakerjs fake value is returned', () => {
         
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
@@ -389,7 +444,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
-        test('given expected XMLDetail with isActive options set to false and active, expected controllingvalue to options are built and correct snowfakery fake value is returned', () => {
+        test('given expected XMLDetail with isActive options set to false and active, expected controllingvalue to options are built and correct fakerjs fake value is returned', () => {
         
             const expectedPicklistFieldDetails:IPicklistValue[] = [
                 {
@@ -452,7 +507,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     describe('getFakeValueIfExpectedSalesforceFieldType', () => {
 
-        test('given expected fieldToRecipeValueMap and fieldtypes, returns the expected snowfakery YAML recipe value', () => {
+        test('given expected fieldToRecipeValueMap and fieldtypes, returns the expected fakerjs YAML recipe value', () => {
 
             const expectedFieldToRecipeValue = fakerJSRecipeService.getMapSalesforceFieldToFakerValue();
             for ( const fieldTypeKey in expectedFieldToRecipeValue ) {

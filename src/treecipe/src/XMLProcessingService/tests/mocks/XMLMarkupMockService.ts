@@ -652,12 +652,12 @@ export class XMLMarkupMockService {
             apiName: "ValueSetPicklist",
             globalValueSetName: 'Value_Set_Picklist_VS',
             fieldLabel: "Value Set Picklist",
-            xmlMarkup: this.getGlobalValueSetXMLMarkup()        };
+            xmlMarkup: this.getGlobalValueSetFieldXMLMarkup()        };
 
         return globalPicklistXMLField;      
     }
 
-    static getGlobalValueSetXMLMarkup() {
+    static getGlobalValueSetFieldXMLMarkup() {
 
         const xmlMarkup = `                     
         <?xml version="1.0" encoding="UTF-8"?>
@@ -704,6 +704,130 @@ export class XMLMarkupMockService {
 `;
 
         return xmlMarkup;
+    }
+
+    static getExpectedGlobalValueSetCLEGlobalPicklistXMLFieldDetail() {
+
+        const globalValueSetPicklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "CustomGlobalValueSet",
+            isStandardValueSet: false,
+            fieldLabel: "CustomGlobalValueSet",
+            globalValueSetName: "CLEGlobal",
+            xmlMarkup: this.getFieldGlobalValueSetCustomGlobalValueSetXMLMarkup()
+        };
+
+        return globalValueSetPicklistXMLField;      
+    }
+
+      static getFieldGlobalValueSetCustomGlobalValueSetXMLMarkup() {
+
+        const xmlMarkup = `                     
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>GlobalValuePicklist__c</fullName>
+    <description>the world</description>
+    <externalId>false</externalId>
+    <inlineHelpText>the world</inlineHelpText>
+    <label>GlobalValuePicklist</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetName>CLEGlobal</valueSetName>
+    </valueSet>
+</CustomField>
+`;
+
+        return xmlMarkup;
+
+    }
+
+    static getCLEGlobalValueSetXMLMarkup() {
+
+        const globalValueSetMarkup = `<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>guardians</fullName>
+        <default>false</default>
+        <label>guardians</label>
+    </customValue>
+    <customValue>
+        <fullName>cavs</fullName>
+        <default>false</default>
+        <label>cavs</label>
+    </customValue>
+    <customValue>
+        <fullName>browns</fullName>
+        <default>false</default>
+        <label>browns</label>
+    </customValue>
+    <customValue>
+        <fullName>monsters</fullName>
+        <default>false</default>
+        <label>monsters</label>
+    </customValue>
+    <customValue>
+        <fullName>crunch</fullName>
+        <default>false</default>
+        <label>crunch</label>
+    </customValue>
+    <masterLabel>CLEGlobal</masterLabel>
+    <sorted>false</sorted>
+</GlobalValueSet>
+`;
+
+        return globalValueSetMarkup;
+
+    }
+
+    static getPlanetsGlobalValueSetXMLFileContent() {
+        
+        const planetsXmlFileContent = `<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>world</fullName>
+        <default>false</default>
+        <label>world</label>
+    </customValue>
+    <customValue>
+        <fullName>earth</fullName>
+        <default>false</default>
+        <label>earth</label>
+    </customValue>
+    <customValue>
+        <fullName>planet</fullName>
+        <default>false</default>
+        <label>planet</label>
+    </customValue>
+    <customValue>
+        <fullName>mars</fullName>
+        <default>false</default>
+        <label>mars</label>
+    </customValue>
+    <customValue>
+        <fullName>venus</fullName>
+        <default>false</default>
+        <label>venus</label>
+    </customValue>
+    <customValue>
+        <fullName>neptune</fullName>
+        <default>false</default>
+        <label>neptune</label>
+    </customValue>
+    <customValue>
+        <fullName>saturn</fullName>
+        <default>false</default>
+        <label>saturn</label>
+    </customValue>
+    <description>the planets of the milky way</description>
+    <masterLabel>Planets</masterLabel>
+    <sorted>false</sorted>
+</GlobalValueSet>`;
+
+        return planetsXmlFileContent;
+
     }
 
     static getExpectedStandardValueSetPicklistXMLFieldDetailThatIsntTrackedInValueSetMap() {
@@ -1149,6 +1273,43 @@ export class XMLMarkupMockService {
         };
 
         return textXMLFieldDetail;
+    }
+
+    static getParseStringCLEGlobalValueSetMock() {
+        const parseCLEGlobalAny = {
+            GlobalValueSet: {
+                customValue: [
+                    {
+                        fullName: [
+                            'guardians'
+                        ]
+                    },
+                    {
+                         fullName: [
+                            'cavs'
+                        ]
+                    },
+                    {
+                        fullName: [
+                            'browns'
+                        ]
+                    },
+                    {
+                        fullName: [
+                            'monsters'
+                        ]
+                    },
+                    {
+                        fullName: [
+                            'crunch'
+                        ]
+                    }
+                ],
+                masterLabel: "CLEGlobal"
+            }
+        };
+
+        return parseCLEGlobalAny;
     }
 
 

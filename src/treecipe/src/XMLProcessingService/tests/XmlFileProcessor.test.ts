@@ -108,27 +108,6 @@ describe('extractPickListDetailsFromXMLValueTag',() => {
         
     });
 
-
-    test('given global value set picklist xml markup, returns expected IPickList array', async () => {
-
-        const xmlPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
-
-        let expectedPicklistFieldXML: any;
-        const parseString = xml2js.parseString;
-        parseString(xmlPicklistMarkup, function (err, result) {
-            console.dir(result);
-            expectedPicklistFieldXML = result;
-        });
-
-        const xmlPicklistValueSet: any[] = expectedPicklistFieldXML.CustomField.valueSet[0];
-        const actualPicklistDetail = XmlFileProcessor.extractPickListDetailsFromXMLValueTag(xmlPicklistValueSet);
-        
-        // THERE SHOULD BE NO PICKLIST DETAILS COMING FROM XML MARKUP SET TO GLOVAL VALUE SET
-        const hardCodedLengthOfPicklistDetails = 0;
-        expect(actualPicklistDetail.length).toBe(hardCodedLengthOfPicklistDetails);
-        
-    });
-
 });
 
 describe('processXmlFieldContent', () => {
@@ -179,7 +158,7 @@ describe('processXmlFieldContent', () => {
 
     test('given expected Global Value Set xml markup, returns expected picklist XMLFieldDetail', async () => {
 
-        const xmlGlobalPicklistMarkup = XMLMarkupMockService.getGlobalValueSetXMLMarkup();
+        const xmlGlobalPicklistMarkup = XMLMarkupMockService.getGlobalValueSetFieldXMLMarkup();
         const fakeFieldName = 'GlobalPicklist__c.field-meta.xml';
         const actualGlobalPicklistDetail = await XmlFileProcessor.processXmlFieldContent(xmlGlobalPicklistMarkup, fakeFieldName);
         const expectedGlobalPicklistDetail = XMLMarkupMockService.getPicklistFieldSetToGlobalPicklistXMLFieldDetail();

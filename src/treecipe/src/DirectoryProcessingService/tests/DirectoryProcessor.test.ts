@@ -2,7 +2,7 @@ import { ConfigurationService } from "../../ConfigurationService/ConfigurationSe
 import { DirectoryProcessor } from "../DirectoryProcessor";
 
 import * as vscode from 'vscode';
-import { MockDirectoryService } from "./mocks/MockObjectsDirectory/MockDirectoryService";
+import { MockDirectoryService } from "./mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
@@ -57,7 +57,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
     test('given expected directory path segments, returns expected api name at end of path', () => {
       
       const expectedObjectApiName = 'objectApiName';
-      let mockObjectsDirectoryPath = `src/treecipe/src/DirectoryProcessingService/tests/MockObjectsDirectory/objects/${expectedObjectApiName}`;   
+      let mockObjectsDirectoryPath = `src/treecipe/src/DirectoryProcessingService/tests/MockSalesforceMetadataDirectory/objects/${expectedObjectApiName}`;   
       
       let actualLastPathSegmentValue = directoryProcessor.getLastSegmentFromPath(mockObjectsDirectoryPath);
       
@@ -71,7 +71,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
     test('given mocked directory structure with expected count of 10 fake paths, recursive function gets called 10 times', async () => {
 
-      const jsonMockedDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedDirectories();
+      const jsonMockedDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedObjectDirectories();
 
       const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedDirectoryStructure);
   
@@ -94,8 +94,6 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
   describe('buildFieldInfoByXMLContent', () => {                  
 
     test('given mocked text xml content, returns expected field info object', async() => {
-
-      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new SnowfakeryRecipeFakerService());
 
       const textXMLContent = XMLMarkupMockService.getTextFieldTypeXMLMarkup();
       const fakeObjectApiName = 'Demming';
@@ -131,10 +129,6 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         
         const mockedUri:vscode.Uri = MockVSCodeWorkspaceService.getFakeVSCodeUri();
         jest.spyOn(vscode.Uri, "joinPath").mockReturnValue(mockedUri);
-
-        jest.spyOn(vscode.workspace.fs, 'readFile').mockReturnValue(
-          Promise.resolve(Buffer.from('fake xml markup'))
-        );
 
         jest.spyOn(vscode.workspace.fs, 'readFile').mockReturnValue(
           Promise.resolve(Buffer.from('fake xml markup'))

@@ -43,9 +43,12 @@ export class DirectoryProcessor {
             const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
 
             if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe)) {
+              /// if initial yaml recipe structure ( - object: Account ) doesn't exist yet for this object, 
+              // make it, so processed fields can be added on
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings);
             }
-            
+
+         
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, 
                                                                               objectName, 
                                                                               recordTypeApiToRecordTypeWrapperMap,

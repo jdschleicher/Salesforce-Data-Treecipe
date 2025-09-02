@@ -1,4 +1,5 @@
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
+import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
@@ -66,7 +67,20 @@ export class RecipeService {
                             const existingOOTBStandardValueSetPicklistValuesByApiName = ValueSetService.getOOTBValueOptionsByStandardValueSetName(xmlFieldDetail.apiName);
                             if ( existingOOTBStandardValueSetPicklistValuesByApiName ) {
                                 availablePicklistValueOptions = existingOOTBStandardValueSetPicklistValuesByApiName;
-                            } 
+                            } else {
+
+                                const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+                                const gvsPicklistByPicklistValues:Record<string, string[]> = globalValueSetSingleton.getPicklistValueMaps();
+                                if ( gvsPicklistByPicklistValues ) {
+
+                                    const picklistValuesByGlobalValueSetName = gvsPicklistByPicklistValues[xmlFieldDetail.globalValueSetName];
+                                    if ( picklistValuesByGlobalValueSetName ) {
+                                        availablePicklistValueOptions = picklistValuesByGlobalValueSetName;
+                                     }
+
+                                }
+                              
+                            }
 
                         } else {
                             

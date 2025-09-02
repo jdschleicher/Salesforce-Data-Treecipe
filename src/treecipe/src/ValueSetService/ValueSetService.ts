@@ -1,7 +1,7 @@
 
 export class ValueSetService {
 
-      static getOOTBValueOptionsByStandardValueSetName(standardValueSetName: string ) : string[] {
+    static getOOTBValueOptionsByStandardValueSetName(standardValueSetName: string ) : string[] {
 
         const standardValueSetNameByValues = {
           'EventType': [

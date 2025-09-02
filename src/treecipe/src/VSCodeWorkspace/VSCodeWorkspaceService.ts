@@ -345,5 +345,17 @@ export class VSCodeWorkspaceService {
         vscode.window.showWarningMessage(message);
 
     }
+
+    static getParentPath(pathToRemoveLastSegmentFrom: string): string {
+
+        // IF THERE IS A FORWARD SLASH AT THE END OF THE PATH STRING , REMOVE IT
+        const pathWithoutTrailingForwardSlash = pathToRemoveLastSegmentFrom.replace(/\/$/, '');
+
+        const parentDirectoryPathSlashIndex = pathWithoutTrailingForwardSlash.lastIndexOf('/');
+        const parentDirectoryPath = parentDirectoryPathSlashIndex > 0 ? pathWithoutTrailingForwardSlash.substring(0, parentDirectoryPathSlashIndex) : '';
+        
+        return parentDirectoryPath;
+    
+    }
     
 }
