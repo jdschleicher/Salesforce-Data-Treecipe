@@ -1,5 +1,16 @@
 # Change Log
 
+## [2.5.0] [PR#29](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/32) - Feature : 2.5.0
+
+### Global Value Set Map for avoiding additional TODO's when generating recipes from code base
+
+To round out the remaining drivers of scenarios that drive the generation of picklist values, we have added GlobalValueSets.
+
+This functionality is dependent upon there being a dedicated directory named "globalValueSets" that contain files with expected GlobalValueSet XML markup.  
+
+This functionality relies on a singleton to initiate the a map of GlobalValueSets to associated available picklist values which mapps out to expected faker expressions for picklist fields.
+
+
 ## [2.4.0] [PR#29](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/29) - Feature : 2.4.0
 
 ### Standard Value Set Map for avoiding additional TODO's when generating recipes from code base
