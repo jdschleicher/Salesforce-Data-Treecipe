@@ -19,13 +19,6 @@ jest.mock('vscode', () => ({
         fsPath: `${baseUri.fsPath}/${pathSegments.join('/')}`.replace(/\/+/g, '/'), // Ensure no double slashes
       }))
   },
-//   window: {
-//       showWarningMessage: jest.fn(),
-//       showQuickPick: jest.fn()
-//   },
-//   ThemeIcon: jest.fn().mockImplementation(
-//       (name) => ({ id: name })
-//   ),
   FileType: {
       Directory: 2,
       File: 1,
