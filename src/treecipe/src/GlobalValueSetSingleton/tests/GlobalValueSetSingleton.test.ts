@@ -63,7 +63,31 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
 
             const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
             expect(Object.keys(picklistApiNameToValues).length).toBe(2);
+
+            const extraUpdatedCLEGlobalValueSetXMLContent = XMLMarkupMockService.getOneEXTRACLEGlobalValueSetXMLMarkup();
+            const updatedExpectedGlobalValueSetFileNameToPicklistValuesSetMap = {
+                'CLEGlobal.globalValueSet-meta.xml': Promise.resolve(
+                    cleGlobalValueSetXMLContent
+                ),
+                'Planets.globalValueSet-meta.xml': Promise.resolve(
+                    planetsGlobalValueSetXMLContent
+                ),
+                'ExtraUpdatedCaptainsCLEGlobal.globalValueSet-meta.xml': Promise.resolve(
+                    extraUpdatedCLEGlobalValueSetXMLContent
+                )
+            };
+
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
             
+                return updatedExpectedGlobalValueSetFileNameToPicklistValuesSetMap[globalValueSetFileName] || Promise.resolve(null);
+            });
+
+            await globalValueSetSingleton.initialize(uri.fsPath);
+
+            const updatedPicklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
+            expect(Object.keys(updatedPicklistApiNameToValues).length).toBe(3);
+
         });
 
     });

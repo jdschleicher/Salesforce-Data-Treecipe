@@ -9,13 +9,12 @@ export class GlobalValueSetSingleton {
 
     private static instance: GlobalValueSetSingleton | null = null;
     private globalValueSets: Record<string, string[]>;
-    private isInitialized: any;
 
     private constructor() {}
 
-    async initialize(salesforceMetadataParentPath: string): Promise<void> {
+    async initialize(salesforceMetadataParentPath: string, isGlobalValuesInitializedOnExtensionStartUp: boolean): Promise<void> {
 
-        if ( this.isInitialized ) {
+        if ( !(isGlobalValuesInitializedOnExtensionStartUp) ) {
             return;
         }
 
@@ -24,7 +23,6 @@ export class GlobalValueSetSingleton {
          
         // IF THERE IS NO "globalValueSets" directory, stop processing
         if (!fs.existsSync(expectedGlobalValueSetDirectoriesPath)) {
-            this.isInitialized = true;
             this.globalValueSets = null;
             vscode.window.showWarningMessage('No GlobalValueSets found in directory: ' + expectedGlobalValueSetDirectoriesPath);
             return;
@@ -65,8 +63,6 @@ export class GlobalValueSetSingleton {
             }
 
         }
-            
-        this.isInitialized = true;
 
     }
 
