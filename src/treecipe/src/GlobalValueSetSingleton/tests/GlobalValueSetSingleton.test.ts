@@ -36,6 +36,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             const jsonMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeMockedGlobalValueSetFiles();
             const mockReadDirectory = jest.fn().mockResolvedValueOnce(jsonMockedSalesforceMetadataDirectoryStructure);
             jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
 
             const cleGlobalValueSetXMLContent = XMLMarkupMockService.getCLEGlobalValueSetXMLMarkup();
@@ -59,7 +60,8 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             });
 
             const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
-            await globalValueSetSingleton.initialize(uri.fsPath);
+            const mimicIsCalledFromExtensionCommandOfGenerateRecipe = true;
+            await globalValueSetSingleton.initialize(uri.fsPath, mimicIsCalledFromExtensionCommandOfGenerateRecipe);
 
             const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
             expect(Object.keys(picklistApiNameToValues).length).toBe(2);
@@ -83,9 +85,15 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
                 return updatedExpectedGlobalValueSetFileNameToPicklistValuesSetMap[globalValueSetFileName] || Promise.resolve(null);
             });
 
-            await globalValueSetSingleton.initialize(uri.fsPath);
+            const jsonUpdatedMockedSalesforceMetadataDirectoryStructure = MockDirectoryService.getVSCodeFileTypeUpdatedMockedGlobalValueSetFiles();
+            const updatedMockReadDirectory = jest.fn().mockResolvedValueOnce(jsonUpdatedMockedSalesforceMetadataDirectoryStructure);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(updatedMockReadDirectory);
+
+
+            await globalValueSetSingleton.initialize(uri.fsPath, mimicIsCalledFromExtensionCommandOfGenerateRecipe);
 
             const updatedPicklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
+
             expect(Object.keys(updatedPicklistApiNameToValues).length).toBe(3);
 
         });
