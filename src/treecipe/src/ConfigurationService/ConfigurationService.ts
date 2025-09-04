@@ -15,7 +15,6 @@ export interface ExtensionConfig {
     selectedFakerService?: string;
     treecipeConfigurationPath?: string;
     useSnowfakeryAsDefault: boolean;
-    isGlobalValuesInitializedOnExtensionStartUp: boolean;
 }
 
 export interface TreecipeConfigDetail {
