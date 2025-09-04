@@ -111,10 +111,15 @@ export class ExtensionCommandService {
                 const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
                 const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
                 
-                // initialize globalvaluesets singleton
+                /* 
+                -- initialize globalvaluesets singleton --
+                 at this point in the extension commands, where a command is entered to generate a reciipe, we should retrieve the globalvaluesets 
+                 as there could be changes that have taken place throughout the vscode instance of the user
+                */
+                const isGlobalValuesInitializedOnExtensionStartUpOverride = false;
                 const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
                 let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-                globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory);
+                globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isGlobalValuesInitializedOnExtensionStartUpOverride);
 
                 const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
