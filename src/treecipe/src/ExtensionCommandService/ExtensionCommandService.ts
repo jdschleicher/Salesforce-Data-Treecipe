@@ -123,8 +123,24 @@ export class ExtensionCommandService {
 
                 const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-                objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
+                // objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
             
+                const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
+
+                // Get properly ordered recipes instead of your current CombinedRecipes
+                const orderedCombinedRecipes = directoryProcessor.getCombinedRecipesInOrder(result);
+
+                // Save separate recipe files
+                await directoryProcessor.saveRecipeFiles(result, objectsTargetUri);
+
+                // Access specific relationship tree recipes
+                // result.RecipeFiles?.forEach(file => {
+                //     console.log(`${file.fileName} contains: ${file.objects.join(', ')}`);
+                // });
+
+                await directoryProcessor.createRecipeFilesInSubdirectory(result, objectsTargetUri);
+
+
             } else {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }

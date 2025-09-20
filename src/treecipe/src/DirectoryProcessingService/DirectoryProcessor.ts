@@ -9,7 +9,7 @@ import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
-import { RelationshipService } from '../RelationshipService/RelationshipService';
+import { RecipeFileOutput, RelationshipService } from '../RelationshipService/RelationshipService';
 
 export class DirectoryProcessor {
 
@@ -54,7 +54,7 @@ export class DirectoryProcessor {
 
             if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail)) {
 
-              objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail();
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(objectName);
 
             }
 
@@ -74,21 +74,6 @@ export class DirectoryProcessor {
                 fieldDetail.fieldName
               );
 
-              
-              // add relationsjhip of referenced object if it doesn't yet exist
-              if (fieldDetail.type === 'lookup' || fieldDetail.type === 'masterdeail') 
-              {
-
-                  // if refereneceto relationship exits then do something, else, initialize new releaionship detial
-                  // if ( objectInfoWrapper.ObjectToObjectInfoMap[fieldDetail.referenceTo].RelationshipDetail 
-
-                
-                objectInfoWrapper.ObjectToObjectInfoMap[fieldDetail.referenceTo].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail();
-
-              }
-
-
-  
             });
   
             objectInfoWrapper.CombinedRecipes += objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe;
@@ -207,6 +192,109 @@ export class DirectoryProcessor {
     return parsedSalesforceFieldFileNameInOOTBMappings;
 
   }
+
+  // NEW: Method to call after all objects have been processed
+  async processAllObjectsAndRelationships(directoryPathUri: vscode.Uri): Promise<ObjectInfoWrapper> {
+    // Initialize the wrapper
+    const objectInfoWrapper = new ObjectInfoWrapper(); // Assuming this exists
+    
+    // Process all directories and objects first
+    await this.processDirectory(directoryPathUri, objectInfoWrapper);
+    
+    // Now process all relationships in one comprehensive pass
+    this.relationshipService.processAllRelationships(objectInfoWrapper);
+    
+    // Generate ordered recipe structure for Snowfakery
+    const orderedRecipes = this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
+    
+    // Print relationship hierarchy for debugging
+    console.log('Recipe Generation Order:');
+    console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
+    
+    // Generate separate recipe files for each relationship tree
+    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+    
+    console.log(`Generated ${recipeFiles.length} separate recipe files:`);
+    recipeFiles.forEach(file => {
+      console.log(`  - ${file.fileName} (${file.objectCount} objects, max level: ${file.maxLevel})`);
+    });
+    
+    // Store ordered recipes in the wrapper for later use
+    objectInfoWrapper.OrderedRecipes = orderedRecipes;
+    objectInfoWrapper.RecipeFiles = recipeFiles;
+    
+    return objectInfoWrapper;
+  }
+
+  // NEW: Generate and save recipe files to disk
+  async saveRecipeFiles(objectInfoWrapper: ObjectInfoWrapper, outputDirectory: vscode.Uri): Promise<void> {
+    const recipeFiles = objectInfoWrapper.RecipeFiles || 
+      this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+
+    for (const recipeFile of recipeFiles) {
+      const filePath = vscode.Uri.joinPath(outputDirectory, recipeFile.fileName);
+      const fileContent = Buffer.from(recipeFile.content, 'utf8');
+      
+      try {
+        await vscode.workspace.fs.writeFile(filePath, fileContent);
+        console.log(`Saved recipe file: ${recipeFile.fileName}`);
+      } catch (error) {
+        console.error(`Failed to save recipe file ${recipeFile.fileName}:`, error);
+      }
+    }
+  }
+
+  // NEW: Get properly ordered combined recipes (replaces your current CombinedRecipes)
+  getCombinedRecipesInOrder(objectInfoWrapper: ObjectInfoWrapper): string {
+    const orderedRecipes = objectInfoWrapper.OrderedRecipes || 
+      this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
+
+    return orderedRecipes.relationshipTrees
+      .map(tree => tree.combinedRecipe)
+      .join('\n' + '='.repeat(80) + '\n\n');
+  }
+
+  async createRecipeFiles(recipeFiles: RecipeFileOutput[], outputDirectory: vscode.Uri): Promise<void> {
+  console.log(`Creating ${recipeFiles.length} recipe.yaml files...`);
+  
+  for (const recipeFile of recipeFiles) {
+    const filePath = vscode.Uri.joinPath(outputDirectory, recipeFile.fileName);
+    const fileContent = Buffer.from(recipeFile.content, 'utf8');
+    
+    try {
+      await vscode.workspace.fs.writeFile(filePath, fileContent);
+      vscode.window.showInformationMessage(`Created recipe file: ${recipeFile.fileName}`);
+      console.log(`✓ Created ${recipeFile.fileName} with ${recipeFile.objectCount} objects (${recipeFile.objects.join(', ')})`);
+    } catch (error) {
+      console.error(`✗ Failed to create recipe file ${recipeFile.fileName}:`, error);
+      vscode.window.showErrorMessage(`Failed to create recipe file: ${recipeFile.fileName}`);
+    }
+  }
+
+  // Show summary
+  const totalObjects = recipeFiles.reduce((sum, file) => sum + file.objectCount, 0);
+  const summaryMessage = `Successfully created ${recipeFiles.length} recipe files with ${totalObjects} total objects`;
+  vscode.window.showInformationMessage(summaryMessage);
+  console.log(`\n${summaryMessage}`);
+}
+
+// NEW: Alternative method to create files in a recipes subdirectory
+async createRecipeFilesInSubdirectory(objectInfoWrapper: ObjectInfoWrapper, baseOutputDirectory: vscode.Uri): Promise<void> {
+  // Create a 'recipes' subdirectory
+  const recipesDirectory = vscode.Uri.joinPath(baseOutputDirectory, 'recipes');
+  
+  try {
+    await vscode.workspace.fs.createDirectory(recipesDirectory);
+  } catch (error) {
+    // Directory might already exist, that's OK
+  }
+
+  const recipeFiles = objectInfoWrapper.RecipeFiles || 
+    this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+
+  await this.createRecipeFiles(recipeFiles, recipesDirectory);
+}
+
 
 }
 
