@@ -1,11 +1,11 @@
+import { RelationshipService } from "../RelationshipService/RelationshipService";
+import { FieldInfo } from "./FieldInfo";
 import { ObjectInfo } from "./ObjectInfo";
 
 export class ObjectInfoWrapper {
   
-
   ObjectToObjectInfoMap:Record<string, ObjectInfo> = {};
   CombinedRecipes:string = "";
-
 
   public addKeyToObjectInfoMap(objectApiName: string) {
 
@@ -16,38 +16,39 @@ export class ObjectInfoWrapper {
     }
 
   }
-  // public addRelationshipByFieldInfo(fieldInfo: FieldInfo) {
 
-  //   let relationshipService = new RelationshipService();
-  //   let objectRelationshipDetail = this.objects.get(fieldInfo.objectName).relationshipDetail;
-  //   if ( !objectRelationshipDetail ) {
-  //     // ADD OBJECT TO RELATIONSHIP TRACKER IF NOT YET BEING TRACKED
-  //     objectRelationshipDetail = relationshipService.buildNewRelationshipDetail();
-  //     this.objects.get(fieldInfo.objectName).relationshipDetail = objectRelationshipDetail;
-  //   }
+  public addRelationshipByFieldInfo(fieldInfo: FieldInfo) {
 
-  //   if ( fieldInfo.type === 'Lookup' || fieldInfo.type === 'MasterDetail') {
-  //     // get child object reference lookup count for maxtotal
-  //     // 
+    let relationshipService = new RelationshipService();
+    let objectRelationshipDetail = this.ObjectToObjectInfoMap[fieldInfo.objectName].RelationshipDetail;
+    if ( !objectRelationshipDetail ) {
+      // ADD OBJECT TO RELATIONSHIP TRACKER IF NOT YET BEING TRACKED
+      objectRelationshipDetail = relationshipService.buildNewRelationshipDetail();
+      this.ObjectToObjectInfoMap[fieldInfo.objectName].RelationshipDetail = objectRelationshipDetail;
+    }
+
+    if ( fieldInfo.type === 'Lookup' || fieldInfo.type === 'MasterDetail') {
+      // get child object reference lookup count for maxtotal
+      // 
     
-  //     if (this.objects.has(fieldInfo.referenceTo)) {
+      if (this.ObjectToObjectInfoMap[fieldInfo.referenceTo]) {
 
-  //       this.objects.get(fieldInfo.referenceTo).relationshipDetail = relationshipService.updateRelationshipDetail();
+        this.ObjectToObjectInfoMap[fieldInfo.referenceTo].RelationshipDetail = relationshipService.updateRelationshipDetail();
 
-  //     } else {
-  //       // add new relationshiptracker
-  //       // add new child breakdown
-  //       this.objects[fieldInfo.referenceTo] = this.addObject(fieldInfo.referenceTo);
-  //       this.objects.get(fieldInfo.referenceTo).relationshipDetail = relationshipService.buildNewRelationshipDetail();
+      } else {
+        // add new relationshiptracker
+        // add new child breakdown
+        this.ObjectToObjectInfoMap[fieldInfo.referenceTo] = this.addObject(fieldInfo.referenceTo);
+        this.ObjectToObjectInfoMap[fieldInfo.referenceTo].RelationshipDetail = relationshipService.buildNewRelationshipDetail();
 
-  //       let relationshipDetail = relationshipService.updateRelationshipDetail();
-  //       // or new relationshiipDetailByChildObjectInfo
-  //     }
+        let relationshipDetail = relationshipService.updateRelationshipDetail();
+        // or new relationshiipDetailByChildObjectInfo
+      }
   
 
-  //   }
+    }
 
-  // }
+  }
 
   
 }

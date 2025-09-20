@@ -9,13 +9,17 @@ import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
+import { RelationshipService } from '../RelationshipService/RelationshipService';
 
 export class DirectoryProcessor {
 
   private recipeService: RecipeService;
+  private relationshipService: RelationshipService;
   constructor() {
     const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
     this.recipeService = new RecipeService(selectedDataFakerService);
+
+    this.relationshipService = new RelationshipService();
   }
 
   async processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
@@ -48,6 +52,12 @@ export class DirectoryProcessor {
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings);
             }
 
+            if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail)) {
+
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail();
+
+            }
+
          
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, 
                                                                               objectName, 
@@ -63,6 +73,21 @@ export class DirectoryProcessor {
                 fieldDetail.recipeValue,
                 fieldDetail.fieldName
               );
+
+              
+              // add relationsjhip of referenced object if it doesn't yet exist
+              if (fieldDetail.type === 'lookup' || fieldDetail.type === 'masterdeail') 
+              {
+
+                  // if refereneceto relationship exits then do something, else, initialize new releaionship detial
+                  // if ( objectInfoWrapper.ObjectToObjectInfoMap[fieldDetail.referenceTo].RelationshipDetail 
+
+                
+                objectInfoWrapper.ObjectToObjectInfoMap[fieldDetail.referenceTo].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail();
+
+              }
+
+
   
             });
   
