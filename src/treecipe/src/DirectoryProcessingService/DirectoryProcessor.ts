@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 import { RecipeFileOutput, RelationshipService } from '../RelationshipService/RelationshipService';
+import { writeFileSync } from 'fs';
 
 export class DirectoryProcessor {
 
@@ -204,24 +205,31 @@ export class DirectoryProcessor {
     // Now process all relationships in one comprehensive pass
     this.relationshipService.processAllRelationships(objectInfoWrapper);
     
+    const json = JSON.stringify(objectInfoWrapper, null, 2);
+    const filePath = "./wrappers.json";
+
+    writeFileSync(filePath, json, "utf-8");
+
+    console.log(`Wrappers exported to ${filePath}`);
+
     // Generate ordered recipe structure for Snowfakery
-    const orderedRecipes = this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
+    // const orderedRecipes = this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
     
-    // Print relationship hierarchy for debugging
-    console.log('Recipe Generation Order:');
-    console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
+    // // Print relationship hierarchy for debugging
+    // console.log('Recipe Generation Order:');
+    // console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
     
-    // Generate separate recipe files for each relationship tree
-    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+    // // Generate separate recipe files for each relationship tree
+    // const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
     
-    console.log(`Generated ${recipeFiles.length} separate recipe files:`);
-    recipeFiles.forEach(file => {
-      console.log(`  - ${file.fileName} (${file.objectCount} objects, max level: ${file.maxLevel})`);
-    });
+    // console.log(`Generated ${recipeFiles.length} separate recipe files:`);
+    // recipeFiles.forEach(file => {
+    //   console.log(`  - ${file.fileName} (${file.objectCount} objects, max level: ${file.maxLevel})`);
+    // });
     
-    // Store ordered recipes in the wrapper for later use
-    objectInfoWrapper.OrderedRecipes = orderedRecipes;
-    objectInfoWrapper.RecipeFiles = recipeFiles;
+    // // Store ordered recipes in the wrapper for later use
+    // objectInfoWrapper.OrderedRecipes = orderedRecipes;
+    // objectInfoWrapper.RecipeFiles = recipeFiles;
     
     return objectInfoWrapper;
   }

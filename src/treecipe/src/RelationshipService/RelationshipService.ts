@@ -1,6 +1,5 @@
 import { FieldInfo } from "../ObjectInfoWrapper/FieldInfo";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
-// import { LookupFieldDetail, RelationshipDetail, RelationshipTree } from "./RelationshipDetail";
 
 export class RelationshipService {
 
@@ -34,19 +33,23 @@ export class RelationshipService {
    * Build bidirectional relationship connections between objects
    */
   private buildRelationshipConnections(objectInfoWrapper: ObjectInfoWrapper): void {
+
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
+
       if (!objectInfo.RelationshipDetail) {
         objectInfo.RelationshipDetail = this.buildNewRelationshipDetail(objectName);
       }
       
       objectInfo.RelationshipDetail.objectApiName = objectName;
       
-      // Process each field to find lookup/master-detail relationships
       if (objectInfo.Fields) {
+
         objectInfo.Fields.forEach((field) => {
-          if (field.type === 'lookup' || field.type === 'masterdetail') {
+
+          if (field.type === 'Lookup' || field.type === 'MasterDetail' || field.type === 'Hiearchy') {
             this.addRelationshipConnection(objectInfoWrapper, objectName, field);
           }
+
         });
       }
     }
@@ -66,6 +69,7 @@ export class RelationshipService {
     if (!objectInfoWrapper.ObjectToObjectInfoMap[targetObject]) {
       objectInfoWrapper.addKeyToObjectInfoMap(targetObject);
     }
+
     if (!objectInfoWrapper.ObjectToObjectInfoMap[targetObject].RelationshipDetail) {
       objectInfoWrapper.ObjectToObjectInfoMap[targetObject].RelationshipDetail = 
         this.buildNewRelationshipDetail(targetObject);
@@ -75,13 +79,15 @@ export class RelationshipService {
     const sourceRelDetail = objectInfoWrapper.ObjectToObjectInfoMap[sourceObject].RelationshipDetail!;
     const lookupDetail: LookupFieldDetail = {
       fieldName: field.fieldName,
-      fieldType: field.type as 'lookup' | 'masterdetail',
+      fieldType: field.type as 'Lookup' | 'MasterDetail' | 'Hiearchy',
       referenceTo: targetObject
     };
     
     if (!sourceRelDetail.lookupFields.some(lf => 
-      lf.fieldName === lookupDetail.fieldName && lf.referenceTo === lookupDetail.referenceTo)) {
-      sourceRelDetail.lookupFields.push(lookupDetail);
+          lf.fieldName === lookupDetail.fieldName 
+          && lf.referenceTo === lookupDetail.referenceTo) ) {
+
+        sourceRelDetail.lookupFields.push(lookupDetail);
     }
 
     // Build bidirectional connections
@@ -467,7 +473,7 @@ interface RelationshipDetail {
 
 interface LookupFieldDetail {
   fieldName: string;
-  fieldType: 'lookup' | 'masterdetail';
+  fieldType: 'Lookup' | 'MasterDetail' | 'Hiearchy';
   referenceTo: string;
 }
 

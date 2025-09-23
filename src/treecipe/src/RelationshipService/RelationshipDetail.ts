@@ -11,7 +11,7 @@ export interface RelationshipDetail {
 
 export interface LookupFieldDetail {
   fieldName: string;
-  fieldType: 'lookup' | 'masterdetail';
+  fieldType: 'Lookup' | 'MasterDetail' | 'Hiearchy';
   referenceTo: string;
 }
 
