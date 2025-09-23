@@ -25,11 +25,11 @@
     <picklistValues>
         <picklist>GlobalValuePicklist__c</picklist>
         <values>
-            <fullName>browns%2C</fullName>
+            <fullName>browns</fullName>
             <default>false</default>
         </values>
         <values>
-            <fullName>cavs%2C</fullName>
+            <fullName>cavs</fullName>
             <default>false</default>
         </values>
         <values>
@@ -37,11 +37,11 @@
             <default>false</default>
         </values>
         <values>
-            <fullName>guardians%2C</fullName>
+            <fullName>guardians</fullName>
             <default>false</default>
         </values>
         <values>
-            <fullName>monsters%2C</fullName>
+            <fullName>monsters</fullName>
             <default>false</default>
         </values>
     </picklistValues>
