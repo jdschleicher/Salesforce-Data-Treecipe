@@ -3,12 +3,49 @@
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { RelationshipService } from '../RelationshipService';
 
+import * as fs from 'fs';
+
 
 describe("Shared Relationship Service Tests", () => {
 
-    test("given expected object structure, creates expected recipe", () => {
+    test("given expected object map structure, creates expected recipe", () => {
+
+        const wrapperFilePath = './src/treecipe/src/RelationshipService/tests/mocks/wrappers.json'; // Path to your JSON file
+        const wrapperContent = fs.readFileSync(wrapperFilePath, 'utf8');
+        let objectInfoWrapperMock:ObjectInfoWrapper = JSON.parse(wrapperContent);
+ 
+        let relationshipService = new RelationshipService();
+        
+
+        for (const [objectName, objectInfo] of Object.entries(objectInfoWrapperMock.ObjectToObjectInfoMap)) {
+            
+            objectInfo.RelationshipDetail = null;
+            objectInfo.RelationshipDetail = relationshipService.buildNewRelationshipDetail(objectName);
+
+
+                if (objectInfo.Fields) {
+
+                    objectInfo.Fields.forEach((field) => {
+
+                        if (field.type === 'Lookup' 
+                                || field.type === 'MasterDetail' 
+                                || field.type === 'Hiearchy') {
+
+                            relationshipService.addRelationshipConnection(objectInfoWrapperMock, objectName, field);
+                        
+                        }
+
+                    });
+                }
+
+            }
+
+                // let test = relationshipService.processAllRelationships(objectInfoWrapperMock);
+
 
         
+
+
     });
     /*
     

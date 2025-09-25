@@ -18,7 +18,10 @@ export class RelationshipService {
    /**
    * Main method to process all relationships and establish hierarchy levels
    */
-  processAllRelationships(objectInfoWrapper: ObjectInfoWrapper): void {
+  processAllRelationships(objectInfoWrapper: ObjectInfoWrapper) {
+
+    console.log('test');
+    this.test();
     // Step 1: Build all relationship connections
     this.buildRelationshipConnections(objectInfoWrapper);
     
@@ -27,27 +30,37 @@ export class RelationshipService {
     
     // Step 3: Group objects into relationship trees
     this.buildRelationshipTrees(objectInfoWrapper);
+
+    return objectInfoWrapper;
+
+  }
+
+  private test() {
+    console.log('we are here');
   }
 
   /**
    * Build bidirectional relationship connections between objects
    */
-  private buildRelationshipConnections(objectInfoWrapper: ObjectInfoWrapper): void {
+  private buildRelationshipConnections(objectInfoWrapper: ObjectInfoWrapper) {
 
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
 
-      if (!objectInfo.RelationshipDetail) {
+      // if (!objectInfo.RelationshipDetail) {
         objectInfo.RelationshipDetail = this.buildNewRelationshipDetail(objectName);
-      }
+      // }
       
-      objectInfo.RelationshipDetail.objectApiName = objectName;
       
       if (objectInfo.Fields) {
 
         objectInfo.Fields.forEach((field) => {
 
-          if (field.type === 'Lookup' || field.type === 'MasterDetail' || field.type === 'Hiearchy') {
-            this.addRelationshipConnection(objectInfoWrapper, objectName, field);
+          if (field.type === 'Lookup' 
+                || field.type === 'MasterDetail' 
+                || field.type === 'Hiearchy') {
+
+            // this.addRelationshipConnection(objectInfoWrapper, objectName, field);
+          
           }
 
         });
@@ -58,11 +71,12 @@ export class RelationshipService {
   /**
    * Add a relationship connection between two objects
    */
-  private addRelationshipConnection(
+  addRelationshipConnection(
     objectInfoWrapper: ObjectInfoWrapper, 
     sourceObject: string, 
     field: FieldInfo
-  ): void {
+  ) {
+
     const targetObject = field.referenceTo;
     
     // Ensure target object has relationship detail
@@ -99,6 +113,7 @@ export class RelationshipService {
     if (!targetRelDetail.parentObjects.includes(sourceObject)) {
       targetRelDetail.parentObjects.push(sourceObject);
     }
+
   }
 
   /**
