@@ -79,26 +79,42 @@ export class DirectoryProcessor {
                     || fieldDetail.type === 'MasterDetail' 
                     || fieldDetail.type === 'Hiearchy') {
 
-              // this.addRelationshipConnection(objectInfoWrapper, objectName, field);
-
-              //. capture "referenceTo" field to and pass it into relationship creation service ...
-              // // the reference to becomes a key that contains references by ...
-                  
                   let parentReferenceApiName = fieldDetail.referenceTo;
 
-                  if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail)) {
+                  if ( parentReferenceApiName ) {
 
-                      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(objectName);
+                    if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName])) {
+
+                        objectInfoWrapper.addKeyToObjectInfoMap(parentReferenceApiName);
+
+                        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(parentReferenceApiName);
+
+                    } else if ( !(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail) ) {
+
+                        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(parentReferenceApiName);
+
+                    }
+
+                    if ( !(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName]) ) {
+                      
+                        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName] = [];
+
+                    }
+
+                    objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName].push(fieldDetail.fieldName);
+
+
+
+
+
+                    //level
+                    if (objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 ) {
+                        let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
+                        objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = currentParentLevel++;
+                    }
 
                   }
 
-                  objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName].push(fieldDetail.fieldName);
-
-                  //level
-                  if (objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 ) {
-                      let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
-                      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = currentParentLevel++;
-                  }
                   
               }
 
