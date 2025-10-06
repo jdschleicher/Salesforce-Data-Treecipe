@@ -75,6 +75,34 @@ export class DirectoryProcessor {
                 fieldDetail.fieldName
               );
 
+              if (fieldDetail.type === 'Lookup' 
+                    || fieldDetail.type === 'MasterDetail' 
+                    || fieldDetail.type === 'Hiearchy') {
+
+              // this.addRelationshipConnection(objectInfoWrapper, objectName, field);
+
+              //. capture "referenceTo" field to and pass it into relationship creation service ...
+              // // the reference to becomes a key that contains references by ...
+                  
+                  let parentReferenceApiName = fieldDetail.referenceTo;
+
+                  if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail)) {
+
+                      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(objectName);
+
+                  }
+
+                  objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName].push(fieldDetail.fieldName);
+
+                  //level
+                  if (objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 ) {
+                      let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
+                      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = currentParentLevel++;
+                  }
+                  
+              }
+
+
             });
   
             objectInfoWrapper.CombinedRecipes += objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe;

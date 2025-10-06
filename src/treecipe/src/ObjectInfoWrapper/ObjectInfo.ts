@@ -1,6 +1,7 @@
 import { FieldInfo } from "./FieldInfo";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
-import { RelationshipDetail } from "../RelationshipService/RelationshipDetail";
+import { RelationshipDetail } from "../RelationshipService/RelationshipService";
+// import { RelationshipDetail } from "../RelationshipService/RelationshipDetail";
 
 export class ObjectInfo {
 

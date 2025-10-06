@@ -8,8 +8,8 @@ export class RelationshipService {
       return {
         objectApiName: objectApiName || '',
         level: -1, // -1 indicates not yet processed
-        parentObjects: [],
-        childObjects: [],
+        parentObjectToFieldReferences: {},
+        childObjectToFieldReferences: {},
         lookupFields: [],
         isProcessed: false
       };
@@ -105,14 +105,14 @@ export class RelationshipService {
     }
 
     // Build bidirectional connections
-    if (!sourceRelDetail.childObjects.includes(targetObject)) {
-      sourceRelDetail.childObjects.push(targetObject);
-    }
+    // if (!sourceRelDetail.childObjects.includes(targetObject)) {
+    //   sourceRelDetail.childObjects.push(targetObject);
+    // }
 
-    const targetRelDetail = objectInfoWrapper.ObjectToObjectInfoMap[targetObject].RelationshipDetail!;
-    if (!targetRelDetail.parentObjects.includes(sourceObject)) {
-      targetRelDetail.parentObjects.push(sourceObject);
-    }
+    // const targetRelDetail = objectInfoWrapper.ObjectToObjectInfoMap[targetObject].RelationshipDetail!;
+    // if (!targetRelDetail.parentObjects.includes(sourceObject)) {
+    //   targetRelDetail.parentObjects.push(sourceObject);
+    // }
 
   }
 
@@ -145,13 +145,14 @@ export class RelationshipService {
     }
   }
 
-  /**
-   * Determine if an object is at the top level (no external parents)
-   */
+  // /**
+  //  * Determine if an object is at the top level (no external parents)
+  //  */
   private isTopLevelObject(relationshipDetail: RelationshipDetail): boolean {
-    // Top level if no parents, or only self-references
-    return relationshipDetail.parentObjects.length === 0 || 
-           relationshipDetail.parentObjects.every(parent => parent === relationshipDetail.objectApiName);
+      return true;
+  //   // Top level if no parents, or only self-references
+  //   return relationshipDetail.parentObjectToFieldReferences.length === 0 || 
+  //          relationshipDetail.parentObjectToFieldReferences.every(parent => parent === relationshipDetail.objectApiName);
   }
 
   /**
@@ -164,7 +165,9 @@ export class RelationshipService {
     visited: Set<string> = new Set()
   ): void {
     const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
-    if (!relationshipDetail) return;
+    if (!relationshipDetail) {
+      return;
+    }
 
     // Handle circular references
     if (visited.has(objectName)) {
@@ -179,17 +182,17 @@ export class RelationshipService {
 
     relationshipDetail.isProcessed = true;
 
-    // Process all child objects at the next level
-    for (const childObjectName of relationshipDetail.childObjects) {
-      if (childObjectName !== objectName) { // Skip self-references
-        this.calculateLevelsRecursively(
-          objectInfoWrapper, 
-          childObjectName, 
-          relationshipDetail.level + 1,
-          new Set(visited)
-        );
-      }
-    }
+      // Process all child objects at the next level
+      // for (const childObjectName of relationshipDetail.childObjectToFieldReferences) {
+      //   if (childObjectName !== objectName) { // Skip self-references
+      //     this.calculateLevelsRecursively(
+      //       objectInfoWrapper, 
+      //       childObjectName, 
+      //       relationshipDetail.level + 1,
+      //       new Set(visited)
+      //     );
+      //   }
+    // }
   }
 
   /**
@@ -246,11 +249,11 @@ export class RelationshipService {
       const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[currentObject]?.RelationshipDetail;
       if (relationshipDetail) {
         // Add all connected objects (parents and children)
-        [...relationshipDetail.parentObjects, ...relationshipDetail.childObjects].forEach(connectedObject => {
-          if (!localProcessed.has(connectedObject)) {
-            toProcess.push(connectedObject);
-          }
-        });
+        // [...relationshipDetail.parentObjectToFieldReferences , ...relationshipDetail.childObjectToFieldReferences].forEach(connectedObject => {
+        //   if (!localProcessed.has(connectedObject)) {
+        //     toProcess.push(connectedObject);
+        //   }
+        // });
       }
     }
 
@@ -322,16 +325,16 @@ export class RelationshipService {
           };
 
           // Get the recipe for each object at this level
-          objectsByLevel[level].forEach(objectName => {
-            const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
-            if (objectInfo?.FullRecipe) {
-              levelInfo.recipes.push({
-                objectName: objectName,
-                recipe: objectInfo.FullRecipe,
-                relationshipInfo: this.getObjectRelationshipSummary(objectInfo.RelationshipDetail!)
-              });
-            }
-          });
+          // objectsByLevel[level].forEach(objectName => {
+          //   const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
+          //   if (objectInfo?.FullRecipe) {
+          //     levelInfo.recipes.push({
+          //       objectName: objectName,
+          //       recipe: objectInfo.FullRecipe,
+          //       relationshipInfo: this.getObjectRelationshipSummary(objectInfo.RelationshipDetail!)
+          //     });
+          //   }
+          // });
 
           orderedTree.orderedLevels.push(levelInfo);
         }
@@ -371,16 +374,16 @@ export class RelationshipService {
   /**
    * Get a summary of an object's relationships for documentation
    */
-  private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
-    const parts = [];
-    if (relationshipDetail.parentObjects.length > 0) {
-      parts.push(`Parents: ${relationshipDetail.parentObjects.join(', ')}`);
-    }
-    if (relationshipDetail.childObjects.length > 0) {
-      parts.push(`Children: ${relationshipDetail.childObjects.join(', ')}`);
-    }
-    return parts.join(' | ') || 'No relationships';
-  }
+  // private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
+  //   const parts = [];
+  //   if (relationshipDetail.parentObjects.length > 0) {
+  //     parts.push(`Parents: ${relationshipDetail.parentObjects.join(', ')}`);
+  //   }
+  //   if (relationshipDetail.childObjects.length > 0) {
+  //     parts.push(`Children: ${relationshipDetail.childObjects.join(', ')}`);
+  //   }
+  //   return parts.join(' | ') || 'No relationships';
+  // }
 
   /**
    * Generate separate recipe files for each relationship tree
@@ -476,23 +479,24 @@ export class RelationshipService {
    
 }
 
-interface RelationshipDetail {
+export interface RelationshipDetail {
   objectApiName: string;
   level: number; // 0 = top-most parent, higher numbers = deeper in hierarchy
-  parentObjects: string[]; // Objects that reference this object
-  childObjects: string[]; // Objects this object references
+  childObjectToFieldReferences: Record<string, string[]>;
+  parentObjectToFieldReferences: Record<string, string[]>;
+
   relationshipTreeId?: string; // Groups related objects together
   lookupFields: LookupFieldDetail[]; // Track which fields create relationships
   isProcessed: boolean; // Track if we've calculated its level
 }
 
-interface LookupFieldDetail {
+export interface LookupFieldDetail {
   fieldName: string;
   fieldType: 'Lookup' | 'MasterDetail' | 'Hiearchy';
   referenceTo: string;
 }
 
-interface RelationshipTree {
+export interface RelationshipTree {
   treeId: string;
   topLevelObjects: string[]; // Objects at level 0
   allObjects: string[]; // All objects in this tree

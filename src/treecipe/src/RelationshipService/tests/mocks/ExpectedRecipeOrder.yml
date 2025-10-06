@@ -1,19 +1,51 @@
 
+- object: User
+  nickname: User_NickName
+  count: 1
+  childReferences:
+    - Account: 
+        - OwnerId
+  fields:
+
+- object: Account
+  nickname: Account_NickName
+  count: 1
+  childReferences: 
+    - Account:
+        - ParentId (Self)
+  fields:
+    Name: ${{fake.company}}
+    OwnerId: ### TODO -- User -- REFERENCE ID REQUIRED 
+    ParentId: "FieldType Not Handled -- hierarchy does not exist in this programs Salesforce field map."
+
 - object: Account
   nickname: Account_NickName
   count: 1
   fields:
     Name: ${{fake.company}}
-    OwnerId: ### TODO -- REFERENCE ID REQUIRED
+    OwnerId: ### TODO -- User -- REFERENCE ID REQUIRED 
     ParentId: "FieldType Not Handled -- hierarchy does not exist in this programs Salesforce field map."
+
+- object: Product2
+  nickname: Product2_NickName
+  count: 1
+  fields:
+    Name: ${{fake.catch_phrase}}
+    Description: ${{fake.bs}}
+    ProductCode: ${{fake.ean}}
+    IsActive: ${{random_choice('true', 'false')}}
+    Family: ${{random_choice('Hardware', 'Software', 'Services', 'Other')}}
+    SellerId: ### TODO -- REFERENCE ID REQUIRED
+    SourceProductId: ### TODO -- REFERENCE ID REQUIRED
+
 
 - object: Case
   nickname: Case_NickName
   count: 1
   fields:
     Type: ${{random_choice('Problem', 'Feature Request', 'Question')}}
-    ProductId: ### TODO -- REFERENCE ID REQUIRED
-    Vehicle__c: ### TODO -- REFERENCE ID REQUIRED
+    ProductId: ### TODO -- Product2 -- REFERENCE ID REQUIRED
+    Vehicle__c: ### TODO -- Vehicle__c -- REFERENCE ID REQUIRED
 
 - object: Contact
   nickname: Contact_NickName
@@ -118,18 +150,6 @@
     Description: ${{fake.paragraph}}
     IsActive: ${{random_choice('true', 'false')}}
 
-- object: Product2
-  nickname: Product2_NickName
-  count: 1
-  fields:
-    Name: ${{fake.catch_phrase}}
-    Description: ${{fake.bs}}
-    ProductCode: ${{fake.ean}}
-    IsActive: ${{random_choice('true', 'false')}}
-    Family: ${{random_choice('Hardware', 'Software', 'Services', 'Other')}}
-    ExternalDataSourceId: ### TODO -- REFERENCE ID REQUIRED
-    SellerId: ### TODO -- REFERENCE ID REQUIRED
-    SourceProductId: ### TODO -- REFERENCE ID REQUIRED
 
 - object: Product_Family__c
   nickname: Product_Family__c_NickName
@@ -148,7 +168,4 @@
     Picture_URL__c: ${{fake.url()}}
     Product_Family__c: ### TODO -- REFERENCE ID REQUIRED
 
-- object: User
-  nickname: User_NickName
-  count: 1
-  fields:
+
