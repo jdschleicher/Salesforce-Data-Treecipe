@@ -100,17 +100,27 @@ export class DirectoryProcessor {
                         objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName] = [];
 
                     }
-
                     objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName].push(fieldDetail.fieldName);
 
+                    if ( !(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName]) ) {
+                      
+                        objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName] = [];
 
-
-
+                    }
+                    objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
 
                     //level
-                    if (objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 ) {
+                    if (objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 && parentReferenceApiName !== objectName ) {
                         let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
                         objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = currentParentLevel++;
+
+                    } else if (parentReferenceApiName === objectName ) {
+                          // self lookup that already has a set level, do nothing?
+                    } else {
+                      // if parent level is not set yet
+                      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 0;
+                      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 1;
+
                     }
 
                   }
@@ -247,7 +257,7 @@ export class DirectoryProcessor {
     await this.processDirectory(directoryPathUri, objectInfoWrapper);
     
     // Now process all relationships in one comprehensive pass
-    this.relationshipService.processAllRelationships(objectInfoWrapper);
+    // this.relationshipService.processAllRelationships(objectInfoWrapper);
     
     const json = JSON.stringify(objectInfoWrapper, null, 2);
     const filePath = "./wrappers.json";
