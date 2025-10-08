@@ -107,7 +107,7 @@ export class DirectoryProcessor {
                         objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName] = [];
 
                     }
-                    objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
+                    objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
 
                     //level
                     if (objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 && parentReferenceApiName !== objectName ) {
