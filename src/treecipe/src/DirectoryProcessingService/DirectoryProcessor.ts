@@ -67,6 +67,7 @@ export class DirectoryProcessor {
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
   
+            let highestParentLevel = 0;
             fieldsInfo.forEach((fieldDetail) => {
   
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
@@ -123,18 +124,28 @@ export class DirectoryProcessor {
                     // }
 
                             //level
-                    if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 && parentReferenceApiName !== objectName ) {
+                    if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
+                        && objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level === -1 
+                        && parentReferenceApiName !== objectName ) {
 
                       // if parent level is not set yet
-                      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 0;
-                      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 1;
+                      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 1;
+                      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 0;
+
+                    } else if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
+                                && parentReferenceApiName !== objectName ) {
+
+                          let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
+                          const parentLevel = currentChildLevel++;    
+                          objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = parentLevel;
 
                     } else {
 
                         let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
                         let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
 
-                        if ( currentChildLevel <= currentParentLevel ) {
+                        if ( currentChildLevel >= currentParentLevel ) {
+
                           const updatedParentLevel = currentChildLevel++;
                           objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = updatedParentLevel;
 
