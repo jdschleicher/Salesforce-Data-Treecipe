@@ -109,17 +109,37 @@ export class DirectoryProcessor {
                     }
                     objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
 
-                    //level
-                    if (objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 && parentReferenceApiName !== objectName ) {
-                        let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
-                        objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = currentParentLevel++;
+                    // //level
+                    // if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 && parentReferenceApiName !== objectName ) {
 
-                    } else if (parentReferenceApiName === objectName ) {
-                          // self lookup that already has a set level, do nothing?
-                    } else {
+                    //     let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
+                    //     objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = currentParentLevel++;
+
+                    // } else {
+                    //   // if parent level is not set yet
+                    //   objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 0;
+                    //   objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 1;
+
+                    // }
+
+                            //level
+                    if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 && parentReferenceApiName !== objectName ) {
+
                       // if parent level is not set yet
                       objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 0;
                       objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 1;
+
+                    } else {
+
+                        let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
+                        let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
+
+                        if ( currentChildLevel <= currentParentLevel ) {
+                          const updatedParentLevel = currentChildLevel++;
+                          objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = updatedParentLevel;
+
+                        }
+
 
                     }
 
@@ -256,9 +276,7 @@ export class DirectoryProcessor {
     // Process all directories and objects first
     await this.processDirectory(directoryPathUri, objectInfoWrapper);
     
-    // Now process all relationships in one comprehensive pass
-    // this.relationshipService.processAllRelationships(objectInfoWrapper);
-    
+
     const json = JSON.stringify(objectInfoWrapper, null, 2);
     const filePath = "./wrappers.json";
 
@@ -267,14 +285,14 @@ export class DirectoryProcessor {
     console.log(`Wrappers exported to ${filePath}`);
 
     // Generate ordered recipe structure for Snowfakery
-    // const orderedRecipes = this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
+    const orderedRecipes = this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
     
     // // Print relationship hierarchy for debugging
-    // console.log('Recipe Generation Order:');
-    // console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
+    console.log('Recipe Generation Order:');
+    console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
     
     // // Generate separate recipe files for each relationship tree
-    // const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
     
     // console.log(`Generated ${recipeFiles.length} separate recipe files:`);
     // recipeFiles.forEach(file => {

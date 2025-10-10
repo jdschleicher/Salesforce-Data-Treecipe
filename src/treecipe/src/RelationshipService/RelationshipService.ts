@@ -22,9 +22,7 @@ export class RelationshipService {
 
     console.log('test');
     this.test();
-    // Step 1: Build all relationship connections
-    this.buildRelationshipConnections(objectInfoWrapper);
-    
+
     // Step 2: Calculate hierarchy levels
     this.calculateRelationshipLevels(objectInfoWrapper);
     
@@ -39,34 +37,7 @@ export class RelationshipService {
     console.log('we are here');
   }
 
-  /**
-   * Build bidirectional relationship connections between objects
-   */
-  private buildRelationshipConnections(objectInfoWrapper: ObjectInfoWrapper) {
-
-    for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
-
-      // if (!objectInfo.RelationshipDetail) {
-        objectInfo.RelationshipDetail = this.buildNewRelationshipDetail(objectName);
-      // }
-      
-      
-      if (objectInfo.Fields) {
-
-        objectInfo.Fields.forEach((field) => {
-
-          if (field.type === 'Lookup' 
-                || field.type === 'MasterDetail' 
-                || field.type === 'Hiearchy') {
-
-            // this.addRelationshipConnection(objectInfoWrapper, objectName, field);
-          
-          }
-
-        });
-      }
-    }
-  }
+ 
 
   /**
    * Add a relationship connection between two objects
@@ -199,16 +170,22 @@ export class RelationshipService {
    * Group objects into relationship trees
    */
   private buildRelationshipTrees(objectInfoWrapper: ObjectInfoWrapper): RelationshipTree[] {
+
     const trees: RelationshipTree[] = [];
     const processedObjects = new Set<string>();
 
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
+
       if (!processedObjects.has(objectName) && objectInfo.RelationshipDetail) {
+
         const tree = this.buildSingleRelationshipTree(objectInfoWrapper, objectName, processedObjects);
+
         if (tree.allObjects.length > 0) {
           trees.push(tree);
         }
+
       }
+
     }
 
     // Assign tree IDs to relationship details
@@ -227,11 +204,11 @@ export class RelationshipService {
   /**
    * Build a single relationship tree starting from a given object
    */
-  private buildSingleRelationshipTree(
-    objectInfoWrapper: ObjectInfoWrapper,
-    startObjectName: string,
-    globalProcessedObjects: Set<string>
-  ): RelationshipTree {
+  private buildSingleRelationshipTree(objectInfoWrapper: ObjectInfoWrapper,
+                                        startObjectName: string,
+                                        globalProcessedObjects: Set<string>
+                                      ): RelationshipTree {
+
     const treeId = `tree_${startObjectName}_${Date.now()}`;
     const allObjects = new Set<string>();
     const toProcess = [startObjectName];
@@ -291,6 +268,7 @@ export class RelationshipService {
    * Returns objects grouped by relationship tree, ordered by dependency level
    */
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
+      
     const trees = this.getRelationshipTrees(objectInfoWrapper);
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
@@ -389,6 +367,7 @@ export class RelationshipService {
    * Generate separate recipe files for each relationship tree
    */
   generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper): RecipeFileOutput[] {
+    
     const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper);
     const recipeFiles: RecipeFileOutput[] = [];
 
@@ -498,7 +477,7 @@ export interface LookupFieldDetail {
 
 export interface RelationshipTree {
   treeId: string;
-  topLevelObjects: string[]; // Objects at level 0
+  topLevelObjects: string[]; // Objects at level 0 or -1 , -1 means no other relationships
   allObjects: string[]; // All objects in this tree
   maxLevel: number; // Deepest level in this tree
 }
