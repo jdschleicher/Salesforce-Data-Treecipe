@@ -1,0 +1,39 @@
+
+- name: Account
+  children:
+    - Contact
+      parents: 
+       - User-1
+       - User-2
+         children:
+          - MegaMapMadness__c
+       children:
+       - MasterDetailMadness__c
+    - Order__c
+      children:
+        - Order_Item__c
+          children:
+            - Product2
+        - Product_Family__c
+    - Example_Everything__c
+
+
+- name: Case
+  parents:
+    - Vehicle__c
+
+
+- name: Lead
+
+
+- name: Manufacturing_Event__e
+
+
+- name: opportunity
+  parent: 
+   - (maybe) contact/account
+
+
+
+- name: pricebooks2
+

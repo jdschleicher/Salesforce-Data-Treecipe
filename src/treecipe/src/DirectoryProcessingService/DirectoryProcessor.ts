@@ -305,14 +305,14 @@ export class DirectoryProcessor {
     // // Generate separate recipe files for each relationship tree
     const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
     
-    // console.log(`Generated ${recipeFiles.length} separate recipe files:`);
-    // recipeFiles.forEach(file => {
-    //   console.log(`  - ${file.fileName} (${file.objectCount} objects, max level: ${file.maxLevel})`);
-    // });
+    console.log(`Generated ${recipeFiles.length} separate recipe files:`);
+    recipeFiles.forEach(file => {
+      console.log(`  - ${file.fileName} (${file.objectCount} objects, max level: ${file.maxLevel})`);
+    });
     
     // // Store ordered recipes in the wrapper for later use
     // objectInfoWrapper.OrderedRecipes = orderedRecipes;
-    // objectInfoWrapper.RecipeFiles = recipeFiles;
+    objectInfoWrapper.RecipeFiles = recipeFiles;
     
     return objectInfoWrapper;
   }

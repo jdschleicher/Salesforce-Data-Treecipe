@@ -226,11 +226,14 @@ export class RelationshipService {
       const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[currentObject]?.RelationshipDetail;
       if (relationshipDetail) {
         // Add all connected objects (parents and children)
-        // [...relationshipDetail.parentObjectToFieldReferences , ...relationshipDetail.childObjectToFieldReferences].forEach(connectedObject => {
-        //   if (!localProcessed.has(connectedObject)) {
-        //     toProcess.push(connectedObject);
-        //   }
-        // });
+        const parentReferences = Object.keys(relationshipDetail.parentObjectToFieldReferences);
+        const childReferences = Object.keys(relationshipDetail.childObjectToFieldReferences);
+
+        [...parentReferences , ...childReferences].forEach(connectedObject => {
+          if (!localProcessed.has(connectedObject)) {
+            toProcess.push(connectedObject);
+          }
+        });
       }
     }
 
@@ -276,25 +279,31 @@ export class RelationshipService {
     };
 
     trees.forEach((tree, treeIndex) => {
+      
       const orderedTree: OrderedRelationshipTree = {
-        treeId: tree.treeId,
-        treeName: `RelationshipTree_${treeIndex + 1}`,
-        orderedLevels: [],
-        combinedRecipe: ''
+
+          treeId: tree.treeId,
+          treeName: `RelationshipTree_${treeIndex + 1}`,
+          orderedLevels: [],
+          combinedRecipe: ''
+
       };
 
       // Group objects by level for this tree
       const objectsByLevel: Record<number, string[]> = {};
       tree.allObjects.forEach(objectName => {
+        
         const level = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail?.level ?? -1;
         if (!objectsByLevel[level]) {
           objectsByLevel[level] = [];
         }
         objectsByLevel[level].push(objectName);
+
       });
 
       // Create ordered levels (parents first, then children)
       for (let level = 0; level <= tree.maxLevel; level++) {
+        
         if (objectsByLevel[level]) {
           const levelInfo: RecipeLevel = {
             level: level,

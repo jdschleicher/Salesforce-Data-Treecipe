@@ -66,8 +66,54 @@ describe("Shared Relationship Service Tests", () => {
 
         const objectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
         console.log(objectInfoWrapperCreated);
+
+
+        let expectedMapOfRecipeToObjects:Record<string, string[]> = {};
         
-        
+        let allTrees = [];
+
+        let accountTopRelationshipObjects = [
+            'Account',
+            'Contact',
+            'User',
+            'MegaMapMadness__c',
+            'Order__c',
+            'Order_Item__c',
+            'Product2',
+            'Example_Everything__c',
+            'Product_Family__c',
+            'Product__c'
+        ];
+        allTrees.push(accountTopRelationshipObjects);
+
+        let caseTreeObjects = [
+            'Case',
+            'Vehicle__c'
+        ];
+        allTrees.push(caseTreeObjects);
+
+        let oppTree = [
+            'Opportunity'
+        ];
+        allTrees.push(oppTree);
+
+        let leadTreeObjects = [
+            'Lead'
+        ];
+        allTrees.push(leadTreeObjects);
+
+        let pricebook2Objects = [
+            'Pricebook2'
+        ];
+        allTrees.push(pricebook2Objects);
+
+        let manufacturingTree = [
+            'Manufacturing_Event__e'
+        ];
+        allTrees.push(manufacturingTree);
+
+        expect(allTrees.length).toBe(objectInfoWrapperCreated.RecipeFiles.length);
+
 
 
     });
