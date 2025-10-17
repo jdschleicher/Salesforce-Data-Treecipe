@@ -277,12 +277,10 @@ export class DirectoryProcessor {
 
   }
 
-  // NEW: Method to call after all objects have been processed
   async processAllObjectsAndRelationships(directoryPathUri: vscode.Uri): Promise<ObjectInfoWrapper> {
-    // Initialize the wrapper
-    const objectInfoWrapper = new ObjectInfoWrapper(); // Assuming this exists
     
-    // Process all directories and objects first
+    const objectInfoWrapper = new ObjectInfoWrapper(); 
+    
     await this.processDirectory(directoryPathUri, objectInfoWrapper);
     
     const json = JSON.stringify(objectInfoWrapper, null, 2);
@@ -290,9 +288,11 @@ export class DirectoryProcessor {
     writeFileSync(filePath, json, "utf-8");
     console.log(`Wrappers exported to ${filePath}`);
 
-    // Generate ordered recipe structure for Snowfakery
+
     const orderedRecipes = this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
     
+    this.relationshipService.processAllRelationships(objectInfoWrapper);
+
     // // Print relationship hierarchy for debugging
     console.log('Recipe Generation Order:');
     console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
@@ -306,10 +306,11 @@ export class DirectoryProcessor {
     });
     
     // // Store ordered recipes in the wrapper for later use
-    // objectInfoWrapper.OrderedRecipes = orderedRecipes;
+    objectInfoWrapper.OrderedRecipes = orderedRecipes;
     objectInfoWrapper.RecipeFiles = recipeFiles;
     
     return objectInfoWrapper;
+
   }
 
   // NEW: Generate and save recipe files to disk

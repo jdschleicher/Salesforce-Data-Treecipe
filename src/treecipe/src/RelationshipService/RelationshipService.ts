@@ -27,7 +27,7 @@ export class RelationshipService {
     this.calculateRelationshipLevels(objectInfoWrapper);
     
     // Step 3: Group objects into relationship trees
-    this.buildRelationshipTrees(objectInfoWrapper);
+    // this.buildRelationshipTrees(objectInfoWrapper);
 
     return objectInfoWrapper;
 
@@ -92,12 +92,12 @@ export class RelationshipService {
    */
   private calculateRelationshipLevels(objectInfoWrapper: ObjectInfoWrapper): void {
     // Reset all levels
-    for (const objectInfo of Object.values(objectInfoWrapper.ObjectToObjectInfoMap)) {
-      if (objectInfo.RelationshipDetail) {
-        objectInfo.RelationshipDetail.level = -1;
-        objectInfo.RelationshipDetail.isProcessed = false;
-      }
-    }
+    // for (const objectInfo of Object.values(objectInfoWrapper.ObjectToObjectInfoMap)) {
+    //   if (objectInfo.RelationshipDetail) {
+    //     objectInfo.RelationshipDetail.level = -1;
+    //     objectInfo.RelationshipDetail.isProcessed = false;
+    //   }
+    // }
 
     // Find and process top-level objects (those with no parents or only self-references)
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
@@ -120,10 +120,18 @@ export class RelationshipService {
   //  * Determine if an object is at the top level (no external parents)
   //  */
   private isTopLevelObject(relationshipDetail: RelationshipDetail): boolean {
-      return true;
   //   // Top level if no parents, or only self-references
-  //   return relationshipDetail.parentObjectToFieldReferences.length === 0 || 
-  //          relationshipDetail.parentObjectToFieldReferences.every(parent => parent === relationshipDetail.objectApiName);
+    console.log(relationshipDetail.objectApiName);
+    const parentObjectKeys = Object.keys(relationshipDetail.parentObjectToFieldReferences);
+    const currentObjectIsParentForAllOthersInTree = parentObjectKeys?.every(
+      parent => parent === relationshipDetail.objectApiName
+    ) ?? false;
+    
+    const parentReferencesLength = parentObjectKeys?.length ?? 0;
+
+    const topLevelObjectScenarioMet = (( parentReferencesLength === 0 ) || currentObjectIsParentForAllOthersInTree );
+    return topLevelObjectScenarioMet;
+
   }
 
   /**
@@ -135,6 +143,7 @@ export class RelationshipService {
     proposedLevel: number,
     visited: Set<string> = new Set()
   ): void {
+    
     const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
     if (!relationshipDetail) {
       return;
@@ -153,17 +162,22 @@ export class RelationshipService {
 
     relationshipDetail.isProcessed = true;
 
-      // Process all child objects at the next level
-      // for (const childObjectName of relationshipDetail.childObjectToFieldReferences) {
-      //   if (childObjectName !== objectName) { // Skip self-references
-      //     this.calculateLevelsRecursively(
-      //       objectInfoWrapper, 
-      //       childObjectName, 
-      //       relationshipDetail.level + 1,
-      //       new Set(visited)
-      //     );
-      //   }
-    // }
+    // Process all child objects at the next level
+    const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
+    for (const childObjectName of childObjectKeys) {
+      
+      if (childObjectName !== objectName) { // Skip self-references
+        
+        this.calculateLevelsRecursively(
+          objectInfoWrapper, 
+          childObjectName, 
+          relationshipDetail.level + 1,
+          new Set(visited)
+        );
+
+      }
+
+    }
   }
 
   /**
@@ -190,15 +204,20 @@ export class RelationshipService {
 
     // Assign tree IDs to relationship details
     trees.forEach((tree, index) => {
+
       tree.allObjects.forEach(objectName => {
+
         const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
         if (relationshipDetail) {
           relationshipDetail.relationshipTreeId = tree.treeId;
         }
+
       });
+
     });
 
     return trees;
+
   }
 
   /**
@@ -235,11 +254,15 @@ export class RelationshipService {
 
         const referencesToIterateOver = [...parentReferences , ...childReferences];
         referencesToIterateOver.forEach(connectedObject => {
+          
           if (!localProcessed.has(connectedObject)) {
             toProcess.push(connectedObject);
           }
+
         });
+
       }
+
     }
 
     // Find top level objects and max level
@@ -247,6 +270,7 @@ export class RelationshipService {
     let maxLevel = 0;
 
     Array.from(allObjects).forEach(objectName => {
+      
       const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
       if (relationshipDetail) {
         if (relationshipDetail.level === 0) {
@@ -264,12 +288,6 @@ export class RelationshipService {
     };
   }
 
-  /**
-   * Get relationship trees for debugging/visualization
-   */
-  getRelationshipTrees(objectInfoWrapper: ObjectInfoWrapper): RelationshipTree[] {
-    return this.buildRelationshipTrees(objectInfoWrapper);
-  }
 
   /**
    * Get ordered objects for recipe generation - THIS IS THE KEY METHOD
@@ -277,7 +295,7 @@ export class RelationshipService {
    */
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
       
-    const trees = this.getRelationshipTrees(objectInfoWrapper);
+    const trees = this.buildRelationshipTrees(objectInfoWrapper);
 
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
@@ -318,16 +336,19 @@ export class RelationshipService {
             recipes: []
           };
 
-          // Get the recipe for each object at this level
           objectsByLevel[level].forEach(objectName => {
+
             const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
             if (objectInfo?.FullRecipe) {
+
               levelInfo.recipes.push({
                 objectName: objectName,
                 recipe: objectInfo.FullRecipe,
                 relationshipInfo: this.getObjectRelationshipSummary(objectInfo.RelationshipDetail!)
               });
+
             }
+
           });
 
           orderedTree.orderedLevels.push(levelInfo);
