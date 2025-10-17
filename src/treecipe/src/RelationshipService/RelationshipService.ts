@@ -216,9 +216,13 @@ export class RelationshipService {
 
     // Find all connected objects using BFS
     while (toProcess.length > 0) {
+
       const currentObject = toProcess.shift()!;
       
-      if (localProcessed.has(currentObject)) continue;
+      if (localProcessed.has(currentObject)) {
+        continue;
+      }
+
       localProcessed.add(currentObject);
       globalProcessedObjects.add(currentObject);
       allObjects.add(currentObject);
@@ -229,7 +233,8 @@ export class RelationshipService {
         const parentReferences = Object.keys(relationshipDetail.parentObjectToFieldReferences);
         const childReferences = Object.keys(relationshipDetail.childObjectToFieldReferences);
 
-        [...parentReferences , ...childReferences].forEach(connectedObject => {
+        const referencesToIterateOver = [...parentReferences , ...childReferences];
+        referencesToIterateOver.forEach(connectedObject => {
           if (!localProcessed.has(connectedObject)) {
             toProcess.push(connectedObject);
           }
@@ -273,6 +278,7 @@ export class RelationshipService {
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
       
     const trees = this.getRelationshipTrees(objectInfoWrapper);
+
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
       totalObjects: 0
@@ -305,6 +311,7 @@ export class RelationshipService {
       for (let level = 0; level <= tree.maxLevel; level++) {
         
         if (objectsByLevel[level]) {
+
           const levelInfo: RecipeLevel = {
             level: level,
             objects: objectsByLevel[level].sort(), // Sort alphabetically within level
@@ -312,16 +319,16 @@ export class RelationshipService {
           };
 
           // Get the recipe for each object at this level
-          // objectsByLevel[level].forEach(objectName => {
-          //   const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
-          //   if (objectInfo?.FullRecipe) {
-          //     levelInfo.recipes.push({
-          //       objectName: objectName,
-          //       recipe: objectInfo.FullRecipe,
-          //       relationshipInfo: this.getObjectRelationshipSummary(objectInfo.RelationshipDetail!)
-          //     });
-          //   }
-          // });
+          objectsByLevel[level].forEach(objectName => {
+            const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
+            if (objectInfo?.FullRecipe) {
+              levelInfo.recipes.push({
+                objectName: objectName,
+                recipe: objectInfo.FullRecipe,
+                relationshipInfo: this.getObjectRelationshipSummary(objectInfo.RelationshipDetail!)
+              });
+            }
+          });
 
           orderedTree.orderedLevels.push(levelInfo);
         }
@@ -361,16 +368,16 @@ export class RelationshipService {
   /**
    * Get a summary of an object's relationships for documentation
    */
-  // private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
-  //   const parts = [];
-  //   if (relationshipDetail.parentObjects.length > 0) {
-  //     parts.push(`Parents: ${relationshipDetail.parentObjects.join(', ')}`);
-  //   }
-  //   if (relationshipDetail.childObjects.length > 0) {
-  //     parts.push(`Children: ${relationshipDetail.childObjects.join(', ')}`);
-  //   }
-  //   return parts.join(' | ') || 'No relationships';
-  // }
+  private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
+    const parts = [];
+    if (relationshipDetail.parentObjectToFieldReferences.keys.length > 0) {
+      parts.push(`Parents: ${relationshipDetail.parentObjectToFieldReferences.keys.join(', ')}`);
+    }
+    if (relationshipDetail.childObjectToFieldReferences.keys.length > 0) {
+      parts.push(`Children: ${relationshipDetail.childObjectToFieldReferences.keys.join(', ')}`);
+    }
+    return parts.join(' | ') || 'No relationships';
+  }
 
   /**
    * Generate separate recipe files for each relationship tree
@@ -397,6 +404,7 @@ export class RelationshipService {
    * Print relationship hierarchy for debugging
    */
   printRelationshipHierarchy(objectInfoWrapper: ObjectInfoWrapper): string {
+
     const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper);
     let output = `\n=== RECIPE GENERATION ORDER (${orderedStructure.totalObjects} total objects) ===\n\n`;
 

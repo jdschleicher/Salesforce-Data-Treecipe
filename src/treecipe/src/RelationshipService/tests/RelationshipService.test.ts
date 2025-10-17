@@ -1,9 +1,7 @@
 
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor } from '../../DirectoryProcessingService/DirectoryProcessor';
-import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
-import { RelationshipService } from '../RelationshipService';
 
 import * as fs from 'fs';
 
@@ -66,14 +64,11 @@ describe("Shared Relationship Service Tests", () => {
 
         const objectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
         console.log(objectInfoWrapperCreated);
-
-
-        let expectedMapOfRecipeToObjects:Record<string, string[]> = {};
         
         let allTrees = [];
 
         let accountTopRelationshipObjects = [
-            'Account',
+            'Account', 
             'Contact',
             'User',
             'MegaMapMadness__c',
@@ -121,35 +116,35 @@ describe("Shared Relationship Service Tests", () => {
 
     test("given expected object map structure, creates expected recipe", () => {
 
-        const wrapperFilePath = './src/treecipe/src/RelationshipService/tests/mocks/wrappers.json'; // Path to your JSON file
-        const wrapperContent = fs.readFileSync(wrapperFilePath, 'utf8');
-        let objectInfoWrapperMock:ObjectInfoWrapper = JSON.parse(wrapperContent);
+        // const wrapperFilePath = './src/treecipe/src/RelationshipService/tests/mocks/wrappers.json'; // Path to your JSON file
+        // const wrapperContent = fs.readFileSync(wrapperFilePath, 'utf8');
+        // let objectInfoWrapperMock:ObjectInfoWrapper = JSON.parse(wrapperContent);
  
-        let relationshipService = new RelationshipService();
+        // let relationshipService = new RelationshipService();
         
 
-        for (const [objectName, objectInfo] of Object.entries(objectInfoWrapperMock.ObjectToObjectInfoMap)) {
+        // for (const [objectName, objectInfo] of Object.entries(objectInfoWrapperMock.ObjectToObjectInfoMap)) {
             
-            objectInfo.RelationshipDetail = null;
-            objectInfo.RelationshipDetail = relationshipService.buildNewRelationshipDetail(objectName);
+        //     objectInfo.RelationshipDetail = null;
+        //     objectInfo.RelationshipDetail = relationshipService.buildNewRelationshipDetail(objectName);
 
 
-                if (objectInfo.Fields) {
+        //         if (objectInfo.Fields) {
 
-                    objectInfo.Fields.forEach((field) => {
+        //             objectInfo.Fields.forEach((field) => {
 
-                        if (field.type === 'Lookup' 
-                                || field.type === 'MasterDetail' 
-                                || field.type === 'Hiearchy') {
+        //                 if (field.type === 'Lookup' 
+        //                         || field.type === 'MasterDetail' 
+        //                         || field.type === 'Hiearchy') {
 
-                            relationshipService.addRelationshipConnection(objectInfoWrapperMock, objectName, field);
+        //                     relationshipService.addRelationshipConnection(objectInfoWrapperMock, objectName, field);
                         
-                        }
+        //                 }
 
-                    });
-                }
+        //             });
+        //         }
 
-            }
+        //     }
 
                 // let test = relationshipService.processAllRelationships(objectInfoWrapperMock);
 

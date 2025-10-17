@@ -67,7 +67,6 @@ export class DirectoryProcessor {
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
   
-            let highestParentLevel = 0;
             fieldsInfo.forEach((fieldDetail) => {
   
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
@@ -80,7 +79,20 @@ export class DirectoryProcessor {
                     || fieldDetail.type === 'MasterDetail' 
                     || fieldDetail.type === 'Hiearchy') {
 
-                  let parentReferenceApiName = fieldDetail.referenceTo;
+                  let parentReferenceApiName = null;
+                  if ( fieldDetail.referenceTo ) {
+
+                     parentReferenceApiName = fieldDetail.referenceTo;
+
+                  } else {
+
+                    const ootbLookupReferenceToObjectApiNameMap:Record<string, string> = {
+                        "AccountId": "Account"
+                    };
+
+                    parentReferenceApiName = ootbLookupReferenceToObjectApiNameMap[fieldDetail.fieldName];
+
+                  }
 
                   if ( parentReferenceApiName ) {
 
@@ -111,51 +123,37 @@ export class DirectoryProcessor {
                     objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
 
                     // //level
-                    // if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level !== -1 && parentReferenceApiName !== objectName ) {
+                    // if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
+                    //     && objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level === -1 
+                    //     && parentReferenceApiName !== objectName ) {
 
-                    //     let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
-                    //     objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = currentParentLevel++;
+                    //   // if parent level is not set yet
+                    //   objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 1;
+                    //   objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 0;
+
+                    // } else if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
+                    //             && parentReferenceApiName !== objectName ) {
+
+                    //       let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
+                    //       const parentLevel = currentChildLevel++;    
+                    //       objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = parentLevel;
 
                     // } else {
-                    //   // if parent level is not set yet
-                    //   objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 0;
-                    //   objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 1;
+
+                    //     let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
+                    //     let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
+
+                    //     if ( currentChildLevel >= currentParentLevel ) {
+
+                    //       const updatedParentLevel = currentChildLevel++;
+                    //       objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = updatedParentLevel;
+
+                    //     }
+
 
                     // }
 
-                            //level
-                    if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
-                        && objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level === -1 
-                        && parentReferenceApiName !== objectName ) {
-
-                      // if parent level is not set yet
-                      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 1;
-                      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 0;
-
-                    } else if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
-                                && parentReferenceApiName !== objectName ) {
-
-                          let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
-                          const parentLevel = currentChildLevel++;    
-                          objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = parentLevel;
-
-                    } else {
-
-                        let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
-                        let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
-
-                        if ( currentChildLevel >= currentParentLevel ) {
-
-                          const updatedParentLevel = currentChildLevel++;
-                          objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = updatedParentLevel;
-
-                        }
-
-
-                    }
-
                   }
-
                   
               }
 
@@ -287,12 +285,9 @@ export class DirectoryProcessor {
     // Process all directories and objects first
     await this.processDirectory(directoryPathUri, objectInfoWrapper);
     
-
     const json = JSON.stringify(objectInfoWrapper, null, 2);
     const filePath = "./wrappers.json";
-
     writeFileSync(filePath, json, "utf-8");
-
     console.log(`Wrappers exported to ${filePath}`);
 
     // Generate ordered recipe structure for Snowfakery
