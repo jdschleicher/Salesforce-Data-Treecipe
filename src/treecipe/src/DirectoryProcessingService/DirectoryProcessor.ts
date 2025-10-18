@@ -300,7 +300,13 @@ export class DirectoryProcessor {
     // // Store ordered recipes in the wrapper for later use
     // objectInfoWrapper.OrderedRecipes = orderedRecipes;
     objectInfoWrapper.RecipeFiles = recipeFiles;
-    
+      
+    const json = JSON.stringify(objectInfoWrapper, null, 2);
+    const filePath = "./wrappers.json";
+    writeFileSync(filePath, json, "utf-8");
+    console.log(`Wrappers exported to ${filePath}`);
+
+
     return objectInfoWrapper;
 
   }

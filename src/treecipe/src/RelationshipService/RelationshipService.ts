@@ -352,6 +352,7 @@ export class RelationshipService {
       orderedTree.combinedRecipe = this.buildCombinedTreeRecipe(orderedTree);
       orderedStructure.relationshipTrees.push(orderedTree);
       orderedStructure.totalObjects += tree.allObjects.length;
+      
     });
 
     return orderedStructure;
@@ -402,6 +403,7 @@ export class RelationshipService {
     const recipeFiles: RecipeFileOutput[] = [];
 
     orderedStructure.relationshipTrees.forEach((tree, index) => {
+      
       recipeFiles.push({
         fileName: `recipe_${tree.treeName.toLowerCase()}.yml`,
         content: tree.combinedRecipe,
@@ -409,6 +411,7 @@ export class RelationshipService {
         maxLevel: Math.max(...tree.orderedLevels.map(l => l.level)),
         objects: tree.orderedLevels.flatMap(l => l.objects)
       });
+
     });
 
     return recipeFiles;
