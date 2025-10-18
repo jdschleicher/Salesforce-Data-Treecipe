@@ -91,29 +91,33 @@ export class RelationshipService {
    * Calculate hierarchy levels recursively
    */
   private calculateRelationshipLevels(objectInfoWrapper: ObjectInfoWrapper): void {
-    // Reset all levels
-    // for (const objectInfo of Object.values(objectInfoWrapper.ObjectToObjectInfoMap)) {
-    //   if (objectInfo.RelationshipDetail) {
-    //     objectInfo.RelationshipDetail.level = -1;
-    //     objectInfo.RelationshipDetail.isProcessed = false;
-    //   }
-    // }
+
 
     // Find and process top-level objects (those with no parents or only self-references)
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
+
       if (objectInfo.RelationshipDetail && !objectInfo.RelationshipDetail.isProcessed) {
+        
         if (this.isTopLevelObject(objectInfo.RelationshipDetail)) {
+          
           this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
+        
         }
+
       }
+
     }
 
-    // Handle any remaining unprocessed objects (circular references, orphans)
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
+
       if (objectInfo.RelationshipDetail && !objectInfo.RelationshipDetail.isProcessed) {
+
         this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
+
       }
+
     }
+
   }
 
   // /**
@@ -123,6 +127,7 @@ export class RelationshipService {
   //   // Top level if no parents, or only self-references
     console.log(relationshipDetail.objectApiName);
     const parentObjectKeys = Object.keys(relationshipDetail.parentObjectToFieldReferences);
+    
     const currentObjectIsParentForAllOthersInTree = parentObjectKeys?.every(
       parent => parent === relationshipDetail.objectApiName
     ) ?? false;
@@ -130,6 +135,7 @@ export class RelationshipService {
     const parentReferencesLength = parentObjectKeys?.length ?? 0;
 
     const topLevelObjectScenarioMet = (( parentReferencesLength === 0 ) || currentObjectIsParentForAllOthersInTree );
+
     return topLevelObjectScenarioMet;
 
   }
@@ -145,6 +151,7 @@ export class RelationshipService {
   ): void {
     
     const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
+
     if (!relationshipDetail) {
       return;
     }
@@ -164,6 +171,7 @@ export class RelationshipService {
 
     // Process all child objects at the next level
     const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
+    
     for (const childObjectName of childObjectKeys) {
       
       if (childObjectName !== objectName) { // Skip self-references
