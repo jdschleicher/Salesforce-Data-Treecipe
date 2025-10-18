@@ -20,24 +20,15 @@ export class RelationshipService {
    */
   processAllRelationships(objectInfoWrapper: ObjectInfoWrapper) {
 
-    console.log('test');
-    this.test();
-
     // Step 2: Calculate hierarchy levels
-    this.calculateRelationshipLevels(objectInfoWrapper);
     
-    // Step 3: Group objects into relationship trees
-    // this.buildRelationshipTrees(objectInfoWrapper);
+    objectInfoWrapper.TheTrees = this.buildRelationshipTrees(objectInfoWrapper);
+
+    this.calculateRelationshipLevels(objectInfoWrapper);
 
     return objectInfoWrapper;
 
   }
-
-  private test() {
-    console.log('we are here');
-  }
-
- 
 
   /**
    * Add a relationship connection between two objects
@@ -171,7 +162,7 @@ export class RelationshipService {
 
     // Process all child objects at the next level
     const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
-    
+
     for (const childObjectName of childObjectKeys) {
       
       if (childObjectName !== objectName) { // Skip self-references
@@ -297,20 +288,14 @@ export class RelationshipService {
   }
 
 
-  /**
-   * Get ordered objects for recipe generation - THIS IS THE KEY METHOD
-   * Returns objects grouped by relationship tree, ordered by dependency level
-   */
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
-      
-    const trees = this.buildRelationshipTrees(objectInfoWrapper);
-
+    
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
       totalObjects: 0
     };
 
-    trees.forEach((tree, treeIndex) => {
+    objectInfoWrapper.TheTrees.forEach((tree, treeIndex) => {
       
       const orderedTree: OrderedRelationshipTree = {
 
@@ -399,10 +384,10 @@ export class RelationshipService {
    */
   private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
     const parts = [];
-    if (relationshipDetail.parentObjectToFieldReferences.keys.length > 0) {
+    if (relationshipDetail.parentObjectToFieldReferences?.keys?.length > 0) {
       parts.push(`Parents: ${relationshipDetail.parentObjectToFieldReferences.keys.join(', ')}`);
     }
-    if (relationshipDetail.childObjectToFieldReferences.keys.length > 0) {
+    if (relationshipDetail.childObjectToFieldReferences?.keys?.length > 0) {
       parts.push(`Children: ${relationshipDetail.childObjectToFieldReferences.keys.join(', ')}`);
     }
     return parts.join(' | ') || 'No relationships';

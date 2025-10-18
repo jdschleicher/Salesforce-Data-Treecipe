@@ -282,15 +282,7 @@ export class DirectoryProcessor {
     const objectInfoWrapper = new ObjectInfoWrapper(); 
     
     await this.processDirectory(directoryPathUri, objectInfoWrapper);
-    
-    const json = JSON.stringify(objectInfoWrapper, null, 2);
-    const filePath = "./wrappers.json";
-    writeFileSync(filePath, json, "utf-8");
-    console.log(`Wrappers exported to ${filePath}`);
-
-
-    const orderedRecipes = this.relationshipService.getOrderedObjectsForRecipes(objectInfoWrapper);
-    
+  
     this.relationshipService.processAllRelationships(objectInfoWrapper);
 
     // // Print relationship hierarchy for debugging
@@ -306,7 +298,7 @@ export class DirectoryProcessor {
     });
     
     // // Store ordered recipes in the wrapper for later use
-    objectInfoWrapper.OrderedRecipes = orderedRecipes;
+    // objectInfoWrapper.OrderedRecipes = orderedRecipes;
     objectInfoWrapper.RecipeFiles = recipeFiles;
     
     return objectInfoWrapper;

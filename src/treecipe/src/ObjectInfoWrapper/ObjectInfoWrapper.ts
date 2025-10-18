@@ -1,4 +1,4 @@
-import { OrderedRecipeStructure, RecipeFileOutput, RelationshipService } from "../RelationshipService/RelationshipService";
+import { OrderedRecipeStructure, RecipeFileOutput, RelationshipTree } from "../RelationshipService/RelationshipService";
 import { ObjectInfo } from "./ObjectInfo";
 
 export class ObjectInfoWrapper {
@@ -8,6 +8,8 @@ export class ObjectInfoWrapper {
 
   OrderedRecipes?: OrderedRecipeStructure;
   RecipeFiles?: RecipeFileOutput[];
+
+  TheTrees?: RelationshipTree[];
 
   public addKeyToObjectInfoMap(objectApiName: string) {
 
