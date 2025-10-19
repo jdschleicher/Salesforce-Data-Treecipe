@@ -287,7 +287,7 @@ export class DirectoryProcessor {
 
     // // Print relationship hierarchy for debugging
     console.log('Recipe Generation Order:');
-    console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
+    // console.log(this.relationshipService.printRelationshipHierarchy(objectInfoWrapper));
     
     // // Generate separate recipe files for each relationship tree
     const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
@@ -313,9 +313,8 @@ export class DirectoryProcessor {
 
   // NEW: Generate and save recipe files to disk
   async saveRecipeFiles(objectInfoWrapper: ObjectInfoWrapper, outputDirectory: vscode.Uri): Promise<void> {
-    const recipeFiles = objectInfoWrapper.RecipeFiles || 
-      this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
-
+    const recipeFiles = objectInfoWrapper.RecipeFiles;
+    
     for (const recipeFile of recipeFiles) {
       const filePath = vscode.Uri.joinPath(outputDirectory, recipeFile.fileName);
       const fileContent = Buffer.from(recipeFile.content, 'utf8');

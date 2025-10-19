@@ -24,7 +24,7 @@ export class RelationshipService {
     
     objectInfoWrapper.TheTrees = this.buildRelationshipTrees(objectInfoWrapper);
 
-    this.calculateRelationshipLevels(objectInfoWrapper);
+    // this.calculateRelationshipLevels(objectInfoWrapper);
 
     return objectInfoWrapper;
 
@@ -81,13 +81,15 @@ export class RelationshipService {
   /**
    * Calculate hierarchy levels recursively
    */
-  private calculateRelationshipLevels(objectInfoWrapper: ObjectInfoWrapper): void {
+  private calculateRelationshipLevels(objectInfoWrapper: ObjectInfoWrapper, relatedObjects: Set<string>): void {
 
 
     // Find and process top-level objects (those with no parents or only self-references)
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
 
-      if (objectInfo.RelationshipDetail && !objectInfo.RelationshipDetail.isProcessed) {
+      const isRelatedObjectToBeProcessed = relatedObjects.has(objectName);
+      if ( isRelatedObjectToBeProcessed 
+          && !objectInfo.RelationshipDetail.isProcessed ) {
         
         if (this.isTopLevelObject(objectInfo.RelationshipDetail)) {
           
@@ -100,9 +102,12 @@ export class RelationshipService {
     }
 
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
+    
+      const isRelatedObjectToBeProcessed = relatedObjects.has(objectName);
 
-      if (objectInfo.RelationshipDetail && !objectInfo.RelationshipDetail.isProcessed) {
-
+      if ( isRelatedObjectToBeProcessed 
+          && !objectInfo.RelationshipDetail.isProcessed ) {
+        
         this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
 
       }
@@ -264,6 +269,9 @@ export class RelationshipService {
 
     }
 
+
+    this.calculateRelationshipLevels(objectInfoWrapper, allObjects);
+
     // Find top level objects and max level
     const topLevelObjects: string[] = [];
     let maxLevel = 0;
@@ -277,6 +285,7 @@ export class RelationshipService {
         }
         maxLevel = Math.max(maxLevel, relationshipDetail.level);
       }
+
     });
 
     return {
@@ -306,14 +315,16 @@ export class RelationshipService {
 
       };
 
-      // Group objects by level for this tree
       const objectsByLevel: Record<number, string[]> = {};
+      
       tree.allObjects.forEach(objectName => {
         
         const level = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail?.level ?? -1;
+        
         if (!objectsByLevel[level]) {
           objectsByLevel[level] = [];
         }
+
         objectsByLevel[level].push(objectName);
 
       });
@@ -345,14 +356,16 @@ export class RelationshipService {
           });
 
           orderedTree.orderedLevels.push(levelInfo);
+
         }
+
       }
 
       // Build combined recipe for this tree (in dependency order)
       orderedTree.combinedRecipe = this.buildCombinedTreeRecipe(orderedTree);
       orderedStructure.relationshipTrees.push(orderedTree);
       orderedStructure.totalObjects += tree.allObjects.length;
-      
+
     });
 
     return orderedStructure;
@@ -384,12 +397,16 @@ export class RelationshipService {
    * Get a summary of an object's relationships for documentation
    */
   private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
+
     const parts = [];
-    if (relationshipDetail.parentObjectToFieldReferences?.keys?.length > 0) {
-      parts.push(`Parents: ${relationshipDetail.parentObjectToFieldReferences.keys.join(', ')}`);
+    const parentObjectKeys = Object.keys(relationshipDetail.parentObjectToFieldReferences);
+    const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
+
+    if ( parentObjectKeys?.length > 0 ) {
+      parts.push(`Parents: ${parentObjectKeys.join(', ')}`);
     }
-    if (relationshipDetail.childObjectToFieldReferences?.keys?.length > 0) {
-      parts.push(`Children: ${relationshipDetail.childObjectToFieldReferences.keys.join(', ')}`);
+    if ( childObjectKeys?.length > 0) {
+      parts.push(`Children: ${childObjectKeys.join(', ')}`);
     }
     return parts.join(' | ') || 'No relationships';
   }
