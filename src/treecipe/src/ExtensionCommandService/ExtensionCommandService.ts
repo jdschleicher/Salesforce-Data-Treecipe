@@ -128,71 +128,21 @@ export class ExtensionCommandService {
                 const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
 
                 // Get properly ordered recipes instead of your current CombinedRecipes
-                const orderedCombinedRecipes = directoryProcessor.getCombinedRecipesInOrder(result);
+                // const orderedCombinedRecipes = directoryProcessor.getCombinedRecipesInOrder(result);
 
                 // Save separate recipe files
-                await directoryProcessor.saveRecipeFiles(result, objectsTargetUri);
+                // await directoryProcessor.saveRecipeFiles(result, objectsTargetUri);
 
-                // Access specific relationship tree recipes
-                // result.RecipeFiles?.forEach(file => {
-                //     console.log(`${file.fileName} contains: ${file.objects.join(', ')}`);
-                // });
+    
 
-                await directoryProcessor.createRecipeFilesInSubdirectory(result, objectsTargetUri);
+                await directoryProcessor.createRecipeFilesInSubdirectory(result, objectsTargetUri, workspaceRoot);
 
 
             } else {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-            // ensure dedicated directory for generated recipes exists
-            const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
-            const expectedGeneratedRecipesFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}`;
-            if (!fs.existsSync(expectedGeneratedRecipesFolderPath)) {
-                fs.mkdirSync(expectedGeneratedRecipesFolderPath);
-            }
-
-            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-            let recipeFileName = '';
-            let timestampedRecipeGenerationFolder = '';
-            const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
-            // THE BELOW CONDITIONAL ADJUSTS HOW RECIPE FILE GETS GENERATED TO INCLUDE A SPECIAL FAKERJS INDICATOR OF THE SELECTED FAKER SERVICE IS 'faker-js' 
-            // WITH THIS INDICATOR IN THE RECIPE FILE NAME, THIS WILL PREVENT A FAKER-JS TRYING TO BE PROCESSED
-            // WHEN THE SELECTED FAKER SERVICE IS CONFIGURED FOR 'snowfakery'
-            if (selectedDataFakerService === 'faker-js') {
-
-                const fakerjsRecipeIndicator = 'recipe-fakerjs';
-                recipeFileName = `${fakerjsRecipeIndicator}-${isoDateTimestamp}.yaml`;
-                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${fakerjsRecipeIndicator}-${isoDateTimestamp}`;
-
-            } else {
-
-                recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
-                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
-
-            }
-            
-            fs.mkdirSync(timestampedRecipeGenerationFolder);
-
-            const outputFilePath = `${timestampedRecipeGenerationFolder}/${recipeFileName}`;
-            fs.writeFile(outputFilePath, objectsInfoWrapper.CombinedRecipes, (err) => {
-                if (err) {
-                    throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
-                } else {
-                    vscode.window.showInformationMessage('Treecipe YAML generated successfully');
-                }
-            });
-
-            const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
-            const filePathOfOjectsInfoWrapperJson = `${timestampedRecipeGenerationFolder}/${objectsInfoWrapperFileName}`;
-            const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
-            fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
-                if (err) {
-                    throw new Error('an error occurred when attempting to create the "treecipeObjectsWrapper-DateTime.json" file.');
-                } else {
-                    vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
-                }
-            });
+          
 
         } catch (error) {
 

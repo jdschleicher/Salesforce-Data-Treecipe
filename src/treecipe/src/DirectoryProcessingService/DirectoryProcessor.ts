@@ -6,11 +6,13 @@ import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 import { RecipeFileOutput, RelationshipService } from '../RelationshipService/RelationshipService';
 import { writeFileSync } from 'fs';
+import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 export class DirectoryProcessor {
 
@@ -121,37 +123,6 @@ export class DirectoryProcessor {
 
                     }
                     objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
-
-                    // //level
-                    // if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
-                    //     && objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level === -1 
-                    //     && parentReferenceApiName !== objectName ) {
-
-                    //   // if parent level is not set yet
-                    //   objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = 1;
-                    //   objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = 0;
-
-                    // } else if ( objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level === -1 
-                    //             && parentReferenceApiName !== objectName ) {
-
-                    //       let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
-                    //       const parentLevel = currentChildLevel++;    
-                    //       objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level = parentLevel;
-
-                    // } else {
-
-                    //     let currentParentLevel = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level;
-                    //     let currentChildLevel = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
-
-                    //     if ( currentChildLevel >= currentParentLevel ) {
-
-                    //       const updatedParentLevel = currentChildLevel++;
-                    //       objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.level = updatedParentLevel;
-
-                    //     }
-
-
-                    // }
 
                   }
                   
@@ -339,20 +310,20 @@ export class DirectoryProcessor {
   }
 
   async createRecipeFiles(recipeFiles: RecipeFileOutput[], outputDirectory: vscode.Uri): Promise<void> {
-  console.log(`Creating ${recipeFiles.length} recipe.yaml files...`);
-  
-  for (const recipeFile of recipeFiles) {
-    const filePath = vscode.Uri.joinPath(outputDirectory, recipeFile.fileName);
-    const fileContent = Buffer.from(recipeFile.content, 'utf8');
+    console.log(`Creating ${recipeFiles.length} recipe.yaml files...`);
     
-    try {
-      await vscode.workspace.fs.writeFile(filePath, fileContent);
-      vscode.window.showInformationMessage(`Created recipe file: ${recipeFile.fileName}`);
-      console.log(`✓ Created ${recipeFile.fileName} with ${recipeFile.objectCount} objects (${recipeFile.objects.join(', ')})`);
-    } catch (error) {
-      console.error(`✗ Failed to create recipe file ${recipeFile.fileName}:`, error);
-      vscode.window.showErrorMessage(`Failed to create recipe file: ${recipeFile.fileName}`);
-    }
+    for (const recipeFile of recipeFiles) {
+      const filePath = vscode.Uri.joinPath(outputDirectory, recipeFile.fileName);
+      const fileContent = Buffer.from(recipeFile.content, 'utf8');
+    
+      try {
+        await vscode.workspace.fs.writeFile(filePath, fileContent);
+        vscode.window.showInformationMessage(`Created recipe file: ${recipeFile.fileName}`);
+        console.log(`✓ Created ${recipeFile.fileName} with ${recipeFile.objectCount} objects (${recipeFile.objects.join(', ')})`);
+      } catch (error) {
+        console.error(`✗ Failed to create recipe file ${recipeFile.fileName}:`, error);
+        vscode.window.showErrorMessage(`Failed to create recipe file: ${recipeFile.fileName}`);
+      }
   }
 
   // Show summary
@@ -363,21 +334,114 @@ export class DirectoryProcessor {
 }
 
 // NEW: Alternative method to create files in a recipes subdirectory
-async createRecipeFilesInSubdirectory(objectInfoWrapper: ObjectInfoWrapper, baseOutputDirectory: vscode.Uri): Promise<void> {
-  // Create a 'recipes' subdirectory
-  const recipesDirectory = vscode.Uri.joinPath(baseOutputDirectory, 'recipes');
-  
-  try {
-    await vscode.workspace.fs.createDirectory(recipesDirectory);
-  } catch (error) {
-    // Directory might already exist, that's OK
+  async createRecipeFilesInSubdirectory(objectsInfoWrapper: ObjectInfoWrapper, 
+                                          baseOutputDirectory: vscode.Uri,
+                                          workspaceRoot): Promise<void> {
+    // Create a 'recipes' subdirectory
+    // const recipesDirectory = vscode.Uri.joinPath(baseOutputDirectory, 'recipes');
+    
+    // try {
+    //   await vscode.workspace.fs.createDirectory(recipesDirectory);
+    // } catch (error) {
+    //   // Directory might already exist, that's OK
+    // }
+
+    // const recipeFiles = objectInfoWrapper.RecipeFiles || 
+    // this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+
+    
+    // await this.createRecipeFiles(recipeFiles, recipesDirectory);
+
+      // ensure dedicated directory for generated recipes exists
+      const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+      const expectedGeneratedRecipesFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}`;
+      if (!fs.existsSync(expectedGeneratedRecipesFolderPath)) {
+          fs.mkdirSync(expectedGeneratedRecipesFolderPath);
+      }
+
+      const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+      let timestampedRecipeGenerationFolder = '';
+      const isFakerJSServiceSelected = ( ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' 
+                                            ? true
+                                            : false );
+
+      // THE BELOW CONDITIONAL ADJUSTS HOW RECIPE FILE GETS GENERATED TO INCLUDE A SPECIAL FAKERJS INDICATOR OF THE SELECTED FAKER SERVICE IS 'faker-js' 
+      // WITH THIS INDICATOR IN THE RECIPE FILE NAME, THIS WILL PREVENT A FAKER-JS TRYING TO BE PROCESSED
+      // WHEN THE SELECTED FAKER SERVICE IS CONFIGURED FOR 'snowfakery'
+      let recipePrefix = '';
+      if (isFakerJSServiceSelected) {
+
+          recipePrefix = 'recipe-fakerjs';
+          // recipeFileName = `${fakerjsRecipeIndicator}-${isoDateTimestamp}.yaml`;
+
+      } else {
+
+          recipePrefix = `recipe`;
+          // timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
+
+      }
+
+      timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${recipePrefix}-${isoDateTimestamp}`;
+      fs.mkdirSync(timestampedRecipeGenerationFolder);
+
+
+      const recipeFilesToCreate = objectsInfoWrapper.RecipeFiles;
+      for ( const recipeFile of recipeFilesToCreate ) {
+
+          let treecipeTopToBottomLevelName = '';
+
+          if (recipeFile.objects.length === 1) {
+              const onlyObjectInTreecipe = recipeFile.objects.at(0);
+              treecipeTopToBottomLevelName = `${onlyObjectInTreecipe}-ONLY`;
+
+          } else {
+            
+              const topLevelObjectInRecipe = recipeFile.objects.at(0);
+              const bottomLevelObjectRecipe = recipeFile.objects.at(-1);
+              treecipeTopToBottomLevelName = `${topLevelObjectInRecipe}-${bottomLevelObjectRecipe}`;
+
+          }
+
+          const recipeFileName = `${recipePrefix}--${treecipeTopToBottomLevelName}-${isoDateTimestamp}.yml`;
+
+          const treecipeTopToBottomFolder = `${timestampedRecipeGenerationFolder}/${treecipeTopToBottomLevelName}`;
+          fs.mkdirSync(treecipeTopToBottomFolder);
+
+          const outputFilePath = `${treecipeTopToBottomFolder}/${recipeFileName}`;
+
+          fs.writeFile(outputFilePath, recipeFile.content, (err) => {
+              
+            if (err) {
+                  throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
+            } else {
+                  vscode.window.showInformationMessage('Treecipe YAML generated successfully');
+            }
+              
+          });
+
+          const objectInfoWrappersForRecipe = Object.fromEntries(
+              Object.entries(objectsInfoWrapper).filter(([key]) => recipeFile.objects.includes(key))
+          );
+          const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
+          const filePathOfOjectsInfoWrapperJson = `${treecipeTopToBottomFolder}/${objectsInfoWrapperFileName}`;
+          const objectsInfoWrapperJson = JSON.stringify(objectInfoWrappersForRecipe, null, 2);
+          fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
+              if (err) {
+                  throw new Error('an error occurred when attempting to create the "treecipeObjectsWrapper-DateTime.json" file.');
+              } else {
+                  vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
+              }
+          });
+
+      }
+
+
+
+    
+        
+       
+
   }
-
-  const recipeFiles = objectInfoWrapper.RecipeFiles || 
-    this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
-
-  await this.createRecipeFiles(recipeFiles, recipesDirectory);
-}
 
 
 }
