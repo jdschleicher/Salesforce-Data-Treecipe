@@ -135,7 +135,7 @@ export class ExtensionCommandService {
 
     
 
-                await directoryProcessor.createRecipeFilesInSubdirectory(result, objectsTargetUri, workspaceRoot);
+                await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
 
 
             } else {

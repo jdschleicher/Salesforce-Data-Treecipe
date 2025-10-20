@@ -334,23 +334,8 @@ export class DirectoryProcessor {
 }
 
 // NEW: Alternative method to create files in a recipes subdirectory
-  async createRecipeFilesInSubdirectory(objectsInfoWrapper: ObjectInfoWrapper, 
-                                          baseOutputDirectory: vscode.Uri,
+  async createRecipeFilesInSubdirectory(objectsInfoWrapper: ObjectInfoWrapper,
                                           workspaceRoot): Promise<void> {
-    // Create a 'recipes' subdirectory
-    // const recipesDirectory = vscode.Uri.joinPath(baseOutputDirectory, 'recipes');
-    
-    // try {
-    //   await vscode.workspace.fs.createDirectory(recipesDirectory);
-    // } catch (error) {
-    //   // Directory might already exist, that's OK
-    // }
-
-    // const recipeFiles = objectInfoWrapper.RecipeFiles || 
-    // this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
-
-    
-    // await this.createRecipeFiles(recipeFiles, recipesDirectory);
 
       // ensure dedicated directory for generated recipes exists
       const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
@@ -372,18 +357,15 @@ export class DirectoryProcessor {
       if (isFakerJSServiceSelected) {
 
           recipePrefix = 'recipe-fakerjs';
-          // recipeFileName = `${fakerjsRecipeIndicator}-${isoDateTimestamp}.yaml`;
 
       } else {
 
           recipePrefix = `recipe`;
-          // timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
 
       }
 
       timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${recipePrefix}-${isoDateTimestamp}`;
       fs.mkdirSync(timestampedRecipeGenerationFolder);
-
 
       const recipeFilesToCreate = objectsInfoWrapper.RecipeFiles;
       for ( const recipeFile of recipeFilesToCreate ) {
@@ -419,27 +401,18 @@ export class DirectoryProcessor {
               
           });
 
-          const objectInfoWrappersForRecipe = Object.fromEntries(
-              Object.entries(objectsInfoWrapper).filter(([key]) => recipeFile.objects.includes(key))
-          );
-          const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
-          const filePathOfOjectsInfoWrapperJson = `${treecipeTopToBottomFolder}/${objectsInfoWrapperFileName}`;
-          const objectsInfoWrapperJson = JSON.stringify(objectInfoWrappersForRecipe, null, 2);
-          fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
-              if (err) {
-                  throw new Error('an error occurred when attempting to create the "treecipeObjectsWrapper-DateTime.json" file.');
-              } else {
-                  vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
-              }
-          });
-
       }
 
-
-
-    
-        
-       
+      const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
+      const filePathOfOjectsInfoWrapperJson = `${timestampedRecipeGenerationFolder}/${objectsInfoWrapperFileName}`;
+      const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
+      fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
+          if (err) {
+              throw new Error(`an error occurred when attempting to create the "${objectsInfoWrapperFileName}" file.`);
+          } else {
+              vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
+          }
+      });
 
   }
 
