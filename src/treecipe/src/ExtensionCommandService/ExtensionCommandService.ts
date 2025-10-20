@@ -127,14 +127,6 @@ export class ExtensionCommandService {
             
                 const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
 
-                // Get properly ordered recipes instead of your current CombinedRecipes
-                // const orderedCombinedRecipes = directoryProcessor.getCombinedRecipesInOrder(result);
-
-                // Save separate recipe files
-                // await directoryProcessor.saveRecipeFiles(result, objectsTargetUri);
-
-    
-
                 await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
 
 

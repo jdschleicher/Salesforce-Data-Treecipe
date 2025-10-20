@@ -20,12 +20,7 @@ export class RelationshipService {
    */
   processAllRelationships(objectInfoWrapper: ObjectInfoWrapper) {
 
-    // Step 2: Calculate hierarchy levels
-    
-    objectInfoWrapper.TheTrees = this.buildRelationshipTrees(objectInfoWrapper);
-
-    // this.calculateRelationshipLevels(objectInfoWrapper);
-
+    objectInfoWrapper.RelationshipTrees = this.buildRelationshipTrees(objectInfoWrapper);
     return objectInfoWrapper;
 
   }
@@ -73,7 +68,6 @@ export class RelationshipService {
    * Calculate hierarchy levels recursively
    */
   private calculateRelationshipLevels(objectInfoWrapper: ObjectInfoWrapper, relatedObjects: Set<string>): void {
-
 
     // Find and process top-level objects (those with no parents or only self-references)
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
@@ -178,7 +172,7 @@ export class RelationshipService {
   /**
    * Group objects into relationship trees
    */
-  private buildRelationshipTrees(objectInfoWrapper: ObjectInfoWrapper): RelationshipTree[] {
+  buildRelationshipTrees(objectInfoWrapper: ObjectInfoWrapper): RelationshipTree[] {
 
     const trees: RelationshipTree[] = [];
     const processedObjects = new Set<string>();
@@ -260,7 +254,6 @@ export class RelationshipService {
 
     }
 
-
     this.calculateRelationshipLevels(objectInfoWrapper, allObjects);
 
     // Find top level objects and max level
@@ -287,7 +280,6 @@ export class RelationshipService {
     };
   }
 
-
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
     
     const orderedStructure: OrderedRecipeStructure = {
@@ -295,7 +287,7 @@ export class RelationshipService {
       totalObjects: 0
     };
 
-    objectInfoWrapper.TheTrees.forEach((tree, treeIndex) => {
+    objectInfoWrapper.RelationshipTrees.forEach((tree, treeIndex) => {
       
       const orderedTree: OrderedRelationshipTree = {
 
@@ -423,30 +415,6 @@ export class RelationshipService {
     });
 
     return recipeFiles;
-  }
-
-  /**
-   * Print relationship hierarchy for debugging
-   */
-  printRelationshipHierarchy(objectInfoWrapper: ObjectInfoWrapper): string {
-
-    const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper);
-    let output = `\n=== RECIPE GENERATION ORDER (${orderedStructure.totalObjects} total objects) ===\n\n`;
-
-    orderedStructure.relationshipTrees.forEach((tree, treeIndex) => {
-      output += `Tree ${treeIndex + 1}: ${tree.treeName}\n`;
-      output += `${'='.repeat(40)}\n`;
-      
-      tree.orderedLevels.forEach(level => {
-        output += `Level ${level.level}: ${level.objects.join(', ')}\n`;
-        level.recipes.forEach(recipeInfo => {
-          output += `  └─ ${recipeInfo.objectName} (${recipeInfo.relationshipInfo})\n`;
-        });
-      });
-      output += '\n';
-    });
-
-    return output;
   
   }
      

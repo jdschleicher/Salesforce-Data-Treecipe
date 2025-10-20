@@ -1,15 +1,13 @@
-import { OrderedRecipeStructure, RecipeFileOutput, RelationshipTree } from "../RelationshipService/RelationshipService";
+import { RecipeFileOutput, RelationshipTree } from "../RelationshipService/RelationshipService";
 import { ObjectInfo } from "./ObjectInfo";
 
 export class ObjectInfoWrapper {
   
   ObjectToObjectInfoMap:Record<string, ObjectInfo> = {};
-  CombinedRecipes:string = "";
 
-  OrderedRecipes?: OrderedRecipeStructure;
   RecipeFiles?: RecipeFileOutput[];
 
-  TheTrees?: RelationshipTree[];
+  RelationshipTrees?: RelationshipTree[];
 
   public addKeyToObjectInfoMap(objectApiName: string) {
 
