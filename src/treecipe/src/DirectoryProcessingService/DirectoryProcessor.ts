@@ -80,58 +80,30 @@ export class DirectoryProcessor {
                     || fieldDetail.type === 'MasterDetail' 
                     || fieldDetail.type === 'Hiearchy') {
 
+                  // todo - move out of this class and use singleton 
+                  const ootbLookupReferenceToObjectApiNameMap: Record<string, string> = {
+                    "AccountId": "Account"
+                  };
                   let parentReferenceApiName = null;
-                  if ( fieldDetail.referenceTo ) {
+                  if (fieldDetail.referenceTo) {
 
-                     parentReferenceApiName = fieldDetail.referenceTo;
+                    parentReferenceApiName = fieldDetail.referenceTo;
 
                   } else {
-
-                    const ootbLookupReferenceToObjectApiNameMap:Record<string, string> = {
-                        "AccountId": "Account"
-                    };
 
                     parentReferenceApiName = ootbLookupReferenceToObjectApiNameMap[fieldDetail.fieldName];
 
                   }
 
                   if ( parentReferenceApiName ) {
-
-                    if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName])) {
-
-                        objectInfoWrapper.addKeyToObjectInfoMap(parentReferenceApiName);
-
-                        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(parentReferenceApiName);
-
-                    } else if ( !(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail) ) {
-
-                        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(parentReferenceApiName);
-
-                    }
-
-                    if ( !(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName]) ) {
-                      
-                        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName] = [];
-
-                    }
-                    objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName].push(fieldDetail.fieldName);
-
-                    if ( !(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName]) ) {
-                      
-                        objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName] = [];
-
-                    }
-                    objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
-
+                    objectInfoWrapper.ObjectToObjectInfoMap = this.relationshipService.buildCaptureChildAndParentReferences(fieldDetail, objectInfoWrapper, objectName, parentReferenceApiName);
                   }
-                  
+                    
               }
 
 
             });
   
-            // objectInfoWrapper.CombinedRecipes += objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe;
-            // objectInfoWrapper.CombinedRecipes += "\n";
   
             if ( recordTypeApiToRecordTypeWrapperMap !== undefined && Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
               // if there are keys in the recordTypeMap, add them to the objectsInfoWrapper
@@ -327,7 +299,7 @@ export class DirectoryProcessor {
             
               const topLevelObjectInRecipe = recipeFile.objects.at(0);
               const bottomLevelObjectRecipe = recipeFile.objects.at(-1);
-              treecipeTopToBottomLevelName = `${topLevelObjectInRecipe}-${bottomLevelObjectRecipe}`;
+              treecipeTopToBottomLevelName = `${topLevelObjectInRecipe}-thru-${bottomLevelObjectRecipe}`;
 
           }
 

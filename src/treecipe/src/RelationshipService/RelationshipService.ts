@@ -1,22 +1,25 @@
 import { FieldInfo } from "../ObjectInfoWrapper/FieldInfo";
+import { ObjectInfo } from "../ObjectInfoWrapper/ObjectInfo";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 
 export class RelationshipService {
 
 
-    buildNewRelationshipDetail(objectApiName?: string): RelationshipDetail {
-      return {
-        objectApiName: objectApiName || '',
-        level: -1, // -1 indicates not yet processed
-        parentObjectToFieldReferences: {},
-        childObjectToFieldReferences: {},
-        isProcessed: false
-      };
-    }
+  buildNewRelationshipDetail(objectApiName?: string): RelationshipDetail {
 
-   /**
-   * Main method to process all relationships and establish hierarchy levels
-   */
+    return {
+      objectApiName: objectApiName || '',
+      level: -1, // -1 indicates not yet processed
+      parentObjectToFieldReferences: {},
+      childObjectToFieldReferences: {},
+      isProcessed: false
+    };
+
+  }
+
+  /**
+  * Main method to process all relationships and establish hierarchy levels
+  */
   processAllRelationships(objectInfoWrapper: ObjectInfoWrapper) {
 
     objectInfoWrapper.RelationshipTrees = this.buildRelationshipTrees(objectInfoWrapper);
@@ -30,13 +33,13 @@ export class RelationshipService {
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
 
       const isRelatedObjectToBeProcessed = relatedObjects.has(objectName);
-      if ( isRelatedObjectToBeProcessed 
-          && !objectInfo.RelationshipDetail.isProcessed ) {
-        
+      if (isRelatedObjectToBeProcessed
+        && !objectInfo.RelationshipDetail.isProcessed) {
+
         if (this.isTopLevelObjectWithNoExternalParents(objectInfo.RelationshipDetail)) {
-          
+
           this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
-        
+
         }
 
       }
@@ -44,12 +47,12 @@ export class RelationshipService {
     }
 
     for (const [objectName, objectInfo] of Object.entries(objectInfoWrapper.ObjectToObjectInfoMap)) {
-    
+
       const isRelatedObjectToBeProcessed = relatedObjects.has(objectName);
 
-      if ( isRelatedObjectToBeProcessed 
-          && !objectInfo.RelationshipDetail.isProcessed ) {
-        
+      if (isRelatedObjectToBeProcessed
+        && !objectInfo.RelationshipDetail.isProcessed) {
+
         this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
 
       }
@@ -61,14 +64,14 @@ export class RelationshipService {
   private isTopLevelObjectWithNoExternalParents(relationshipDetail: RelationshipDetail): boolean {
 
     const parentObjectKeys = Object.keys(relationshipDetail.parentObjectToFieldReferences);
-    
+
     const currentObjectIsParentForAllOthersInTree = parentObjectKeys?.every(
-        parent => parent === relationshipDetail.objectApiName
+      parent => parent === relationshipDetail.objectApiName
     ) ?? false;
-    
+
     const parentReferencesLength = parentObjectKeys?.length ?? 0;
 
-    const topLevelObjectScenarioMet = (( parentReferencesLength === 0 ) || currentObjectIsParentForAllOthersInTree );
+    const topLevelObjectScenarioMet = ((parentReferencesLength === 0) || currentObjectIsParentForAllOthersInTree);
 
     return topLevelObjectScenarioMet;
 
@@ -78,12 +81,12 @@ export class RelationshipService {
    * Recursively calculate levels, ensuring parents are always at lower or equal levels than children
    */
   private calculateLevelsRecursively(
-    objectInfoWrapper: ObjectInfoWrapper, 
-    objectName: string, 
+    objectInfoWrapper: ObjectInfoWrapper,
+    objectName: string,
     proposedLevel: number,
     visited: Set<string> = new Set()
   ): void {
-    
+
     const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
 
     if (!relationshipDetail) {
@@ -107,12 +110,12 @@ export class RelationshipService {
     const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
 
     for (const childObjectName of childObjectKeys) {
-      
+
       if (childObjectName !== objectName) { // Skip self-references
-        
+
         this.calculateLevelsRecursively(
-          objectInfoWrapper, 
-          childObjectName, 
+          objectInfoWrapper,
+          childObjectName,
           relationshipDetail.level + 1,
           new Set(visited)
         );
@@ -166,9 +169,9 @@ export class RelationshipService {
    * Build a single relationship tree starting from a given object
    */
   private buildSingleRelationshipTree(objectInfoWrapper: ObjectInfoWrapper,
-                                        startObjectName: string,
-                                        globalProcessedObjects: Set<string>
-                                      ): RelationshipTree {
+    startObjectName: string,
+    globalProcessedObjects: Set<string>
+  ): RelationshipTree {
 
     const treeId = `tree_${startObjectName}_${Date.now()}`;
     const allObjects = new Set<string>();
@@ -179,7 +182,7 @@ export class RelationshipService {
     while (toProcess.length > 0) {
 
       const currentObject = toProcess.shift()!;
-      
+
       if (localProcessed.has(currentObject)) {
         continue;
       }
@@ -194,9 +197,9 @@ export class RelationshipService {
         const parentReferences = Object.keys(relationshipDetail.parentObjectToFieldReferences);
         const childReferences = Object.keys(relationshipDetail.childObjectToFieldReferences);
 
-        const referencesToIterateOver = [...parentReferences , ...childReferences];
+        const referencesToIterateOver = [...parentReferences, ...childReferences];
         referencesToIterateOver.forEach(connectedObject => {
-          
+
           if (!localProcessed.has(connectedObject)) {
             toProcess.push(connectedObject);
           }
@@ -214,7 +217,7 @@ export class RelationshipService {
     let maxLevel = 0;
 
     Array.from(allObjects).forEach(objectName => {
-      
+
       const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
       if (relationshipDetail) {
         if (relationshipDetail.level === 0) {
@@ -234,29 +237,29 @@ export class RelationshipService {
   }
 
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
-    
+
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
       totalObjects: 0
     };
 
     objectInfoWrapper.RelationshipTrees.forEach((tree, treeIndex) => {
-      
+
       const orderedTree: OrderedRelationshipTree = {
 
-          treeId: tree.treeId,
-          treeName: `RelationshipTree_${treeIndex + 1}`,
-          orderedLevels: [],
-          combinedRecipe: ''
+        treeId: tree.treeId,
+        treeName: `RelationshipTree_${treeIndex + 1}`,
+        orderedLevels: [],
+        combinedRecipe: ''
 
       };
 
       const objectsByLevel: Record<number, string[]> = {};
-      
+
       tree.allObjects.forEach(objectName => {
-        
+
         const level = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail?.level ?? -1;
-        
+
         if (!objectsByLevel[level]) {
           objectsByLevel[level] = [];
         }
@@ -267,7 +270,7 @@ export class RelationshipService {
 
       // Create ordered levels (parents first, then children)
       for (let level = 0; level <= tree.maxLevel; level++) {
-        
+
         if (objectsByLevel[level]) {
 
           const levelInfo: RecipeLevel = {
@@ -338,10 +341,10 @@ export class RelationshipService {
     const parentObjectKeys = Object.keys(relationshipDetail.parentObjectToFieldReferences);
     const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
 
-    if ( parentObjectKeys?.length > 0 ) {
+    if (parentObjectKeys?.length > 0) {
       parts.push(`Parents: ${parentObjectKeys.join(', ')}`);
     }
-    if ( childObjectKeys?.length > 0) {
+    if (childObjectKeys?.length > 0) {
       parts.push(`Children: ${childObjectKeys.join(', ')}`);
     }
     return parts.join(' | ') || 'No relationships';
@@ -351,12 +354,12 @@ export class RelationshipService {
    * Generate separate recipe files for each relationship tree
    */
   generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper): RecipeFileOutput[] {
-    
+
     const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper);
     const recipeFiles: RecipeFileOutput[] = [];
 
     orderedStructure.relationshipTrees.forEach((tree, index) => {
-      
+
       recipeFiles.push({
         fileName: `recipe_${tree.treeName.toLowerCase()}.yml`,
         content: tree.combinedRecipe,
@@ -368,9 +371,50 @@ export class RelationshipService {
     });
 
     return recipeFiles;
-  
+
   }
-     
+
+  buildCaptureChildAndParentReferences(fieldDetail: FieldInfo, 
+                                          objectInfoWrapper: ObjectInfoWrapper,
+                                          objectName: string,
+                                          parentReferenceApiName): Record<string, ObjectInfo> {
+
+    if (parentReferenceApiName) {
+
+      if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName])) {
+
+        objectInfoWrapper.addKeyToObjectInfoMap(parentReferenceApiName);
+
+        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.buildNewRelationshipDetail(parentReferenceApiName);
+
+      } else if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail)) {
+
+        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.buildNewRelationshipDetail(parentReferenceApiName);
+
+      }
+
+      if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName])) {
+
+        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName] = [];
+
+      }
+      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName].push(fieldDetail.fieldName);
+
+      if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName])) {
+
+        objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName] = [];
+
+      }
+
+      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
+
+    }
+
+    return objectInfoWrapper.ObjectToObjectInfoMap;
+
+  }
+
+
 }
 
 export interface RelationshipDetail {
