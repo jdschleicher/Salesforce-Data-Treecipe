@@ -259,11 +259,6 @@ export class DirectoryProcessor {
     
     objectInfoWrapper.RecipeFiles = recipeFiles;
       
-    // const json = JSON.stringify(objectInfoWrapper, null, 2);
-    // const filePath = "./wrappers.json";
-    // writeFileSync(filePath, json, "utf-8");
-    // console.log(`Wrappers exported to ${filePath}`);
- 
     return objectInfoWrapper;
 
   }

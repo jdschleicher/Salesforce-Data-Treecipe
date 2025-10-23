@@ -10,7 +10,6 @@ export class RelationshipService {
         level: -1, // -1 indicates not yet processed
         parentObjectToFieldReferences: {},
         childObjectToFieldReferences: {},
-        lookupFields: [],
         isProcessed: false
       };
     }
@@ -25,48 +24,6 @@ export class RelationshipService {
 
   }
 
-  /**
-   * Add a relationship connection between two objects
-   */
-  addRelationshipConnection(
-    objectInfoWrapper: ObjectInfoWrapper, 
-    sourceObject: string, 
-    field: FieldInfo
-  ) {
-
-    const targetObject = field.referenceTo;
-    
-    // Ensure target object has relationship detail
-    if (!objectInfoWrapper.ObjectToObjectInfoMap[targetObject]) {
-      objectInfoWrapper.addKeyToObjectInfoMap(targetObject);
-    }
-
-    if (!objectInfoWrapper.ObjectToObjectInfoMap[targetObject].RelationshipDetail) {
-      objectInfoWrapper.ObjectToObjectInfoMap[targetObject].RelationshipDetail = 
-        this.buildNewRelationshipDetail(targetObject);
-    }
-
-    // Add lookup field detail to source object
-    const sourceRelDetail = objectInfoWrapper.ObjectToObjectInfoMap[sourceObject].RelationshipDetail!;
-    const lookupDetail: LookupFieldDetail = {
-      fieldName: field.fieldName,
-      fieldType: field.type as 'Lookup' | 'MasterDetail' | 'Hiearchy',
-      referenceTo: targetObject
-    };
-    
-    if (!sourceRelDetail.lookupFields.some(lf => 
-          lf.fieldName === lookupDetail.fieldName 
-          && lf.referenceTo === lookupDetail.referenceTo) ) {
-
-        sourceRelDetail.lookupFields.push(lookupDetail);
-    }
-
-
-  }
-
-  /**
-   * Calculate hierarchy levels recursively
-   */
   private calculateRelationshipLevels(objectInfoWrapper: ObjectInfoWrapper, relatedObjects: Set<string>): void {
 
     // Find and process top-level objects (those with no parents or only self-references)
@@ -76,7 +33,7 @@ export class RelationshipService {
       if ( isRelatedObjectToBeProcessed 
           && !objectInfo.RelationshipDetail.isProcessed ) {
         
-        if (this.isTopLevelObject(objectInfo.RelationshipDetail)) {
+        if (this.isTopLevelObjectWithNoExternalParents(objectInfo.RelationshipDetail)) {
           
           this.calculateLevelsRecursively(objectInfoWrapper, objectName, 0);
         
@@ -101,16 +58,12 @@ export class RelationshipService {
 
   }
 
-  // /**
-  //  * Determine if an object is at the top level (no external parents)
-  //  */
-  private isTopLevelObject(relationshipDetail: RelationshipDetail): boolean {
-  //   // Top level if no parents, or only self-references
-    console.log(relationshipDetail.objectApiName);
+  private isTopLevelObjectWithNoExternalParents(relationshipDetail: RelationshipDetail): boolean {
+
     const parentObjectKeys = Object.keys(relationshipDetail.parentObjectToFieldReferences);
     
     const currentObjectIsParentForAllOthersInTree = parentObjectKeys?.every(
-      parent => parent === relationshipDetail.objectApiName
+        parent => parent === relationshipDetail.objectApiName
     ) ?? false;
     
     const parentReferencesLength = parentObjectKeys?.length ?? 0;
@@ -425,16 +378,8 @@ export interface RelationshipDetail {
   level: number; // 0 = top-most parent, higher numbers = deeper in hierarchy
   childObjectToFieldReferences: Record<string, string[]>;
   parentObjectToFieldReferences: Record<string, string[]>;
-
   relationshipTreeId?: string; // Groups related objects together
-  lookupFields: LookupFieldDetail[]; // Track which fields create relationships
   isProcessed: boolean; // Track if we've calculated its level
-}
-
-export interface LookupFieldDetail {
-  fieldName: string;
-  fieldType: 'Lookup' | 'MasterDetail' | 'Hiearchy';
-  referenceTo: string;
 }
 
 export interface RelationshipTree {
