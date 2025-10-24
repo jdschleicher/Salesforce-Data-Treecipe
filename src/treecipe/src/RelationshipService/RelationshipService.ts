@@ -332,9 +332,6 @@ export class RelationshipService {
     return combinedRecipe;
   }
 
-  /**
-   * Get a summary of an object's relationships for documentation
-   */
   private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
 
     const parts = [];
@@ -350,9 +347,6 @@ export class RelationshipService {
     return parts.join(' | ') || 'No relationships';
   }
 
-  /**
-   * Generate separate recipe files for each relationship tree
-   */
   generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper): RecipeFileOutput[] {
 
     const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper);
@@ -374,44 +368,83 @@ export class RelationshipService {
 
   }
 
-  buildCaptureChildAndParentReferences(fieldDetail: FieldInfo, 
-                                          objectInfoWrapper: ObjectInfoWrapper,
-                                          objectName: string,
-                                          parentReferenceApiName): Record<string, ObjectInfo> {
+  buildBidirectionalChildAndParentRelationshipReferences(fieldDetail: FieldInfo, 
+                                                          objectInfoWrapper: ObjectInfoWrapper,
+                                                          objectName: string,
+                                                          parentReferenceApiName): Record<string, ObjectInfo> {
 
     if (parentReferenceApiName) {
 
-      if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName])) {
-
-        objectInfoWrapper.addKeyToObjectInfoMap(parentReferenceApiName);
-
-        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.buildNewRelationshipDetail(parentReferenceApiName);
-
-      } else if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail)) {
-
-        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail = this.buildNewRelationshipDetail(parentReferenceApiName);
-
-      }
-
-      if (!(objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName])) {
-
-        objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName] = [];
-
-      }
-      objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail.childObjectToFieldReferences[objectName].push(fieldDetail.fieldName);
-
-      if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName])) {
-
-        objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName] = [];
-
-      }
-
-      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[parentReferenceApiName].push(fieldDetail.fieldName);
+      this.buildBidirectionalRelationship(
+        objectInfoWrapper,
+        parentReferenceApiName,
+        objectName,
+        fieldDetail.fieldName
+      );
 
     }
 
     return objectInfoWrapper.ObjectToObjectInfoMap;
 
+  }
+
+  private buildBidirectionalRelationship(objectInfoWrapper: ObjectInfoWrapper,
+                                          parentReferenceApiName: string,
+                                          childObjectName: string,
+                                          fieldName: string
+                                        ): void {
+
+    // Ensure both parent and child have RelationshipDetail initialized
+    this.ensureRelationshipDetailExists(objectInfoWrapper, parentReferenceApiName);
+    this.ensureRelationshipDetailExists(objectInfoWrapper, childObjectName);
+
+
+    // Add child reference to parent
+    const parentRelationship = objectInfoWrapper.ObjectToObjectInfoMap[parentReferenceApiName].RelationshipDetail;
+
+    this.addFieldToRelationshipArray(
+      parentRelationship.childObjectToFieldReferences,
+      childObjectName,
+      fieldName
+    );
+
+    // Add parent reference to child
+    const childRelationship = objectInfoWrapper.ObjectToObjectInfoMap[childObjectName].RelationshipDetail;
+    this.addFieldToRelationshipArray(
+      childRelationship.parentObjectToFieldReferences,
+      parentReferenceApiName,
+      fieldName
+    );
+
+  }   
+
+  private ensureRelationshipDetailExists(objectInfoWrapper: ObjectInfoWrapper,
+                                        objectName: string
+                                        ): void {
+
+    if (!objectInfoWrapper.ObjectToObjectInfoMap[objectName]) {
+
+      objectInfoWrapper.addKeyToObjectInfoMap(objectName);
+      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.buildNewRelationshipDetail(objectName);
+
+    } else if (!objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail) {
+
+      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.buildNewRelationshipDetail(objectName);
+
+    }
+
+  }
+
+  private addFieldToRelationshipArray(relationshipMap: Record<string, string[]>,
+                                        key: string,
+                                        fieldName: string
+                                      ): void {
+
+    if (!relationshipMap[key]) {
+      relationshipMap[key] = [];
+    }
+    relationshipMap[key].push(fieldName);
+    
   }
 
 

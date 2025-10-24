@@ -96,7 +96,7 @@ export class DirectoryProcessor {
                   }
 
                   if ( parentReferenceApiName ) {
-                    objectInfoWrapper.ObjectToObjectInfoMap = this.relationshipService.buildCaptureChildAndParentReferences(fieldDetail, objectInfoWrapper, objectName, parentReferenceApiName);
+                    objectInfoWrapper.ObjectToObjectInfoMap = this.relationshipService.buildBidirectionalChildAndParentRelationshipReferences(fieldDetail, objectInfoWrapper, objectName, parentReferenceApiName);
                   }
                     
               }
