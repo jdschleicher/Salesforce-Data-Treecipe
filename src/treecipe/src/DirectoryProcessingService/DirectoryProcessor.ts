@@ -231,24 +231,6 @@ export class DirectoryProcessor {
 
   }
 
-  // NEW: Generate and save recipe files to disk
-  async saveRecipeFiles(objectInfoWrapper: ObjectInfoWrapper, outputDirectory: vscode.Uri): Promise<void> {
-    const recipeFiles = objectInfoWrapper.RecipeFiles;
-    
-    for (const recipeFile of recipeFiles) {
-      const filePath = vscode.Uri.joinPath(outputDirectory, recipeFile.fileName);
-      const fileContent = Buffer.from(recipeFile.content, 'utf8');
-      
-      try {
-        await vscode.workspace.fs.writeFile(filePath, fileContent);
-        console.log(`Saved recipe file: ${recipeFile.fileName}`);
-      } catch (error) {
-        console.error(`Failed to save recipe file ${recipeFile.fileName}:`, error);
-      }
-    }
-  }
-
-
   async createRecipeFilesInSubdirectory(objectsInfoWrapper: ObjectInfoWrapper,
                                           workspaceRoot): Promise<void> {
 
