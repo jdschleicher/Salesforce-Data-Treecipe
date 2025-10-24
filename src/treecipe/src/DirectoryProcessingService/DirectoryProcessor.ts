@@ -20,7 +20,6 @@ export class DirectoryProcessor {
   constructor() {
     const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
     this.recipeService = new RecipeService(selectedDataFakerService);
-
     this.relationshipService = new RelationshipService();
   }
 
@@ -67,7 +66,7 @@ export class DirectoryProcessor {
                                                                               salesforceOOTBFakerMappings
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
-  
+
             fieldsInfo.forEach((fieldDetail) => {
   
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
@@ -80,10 +79,7 @@ export class DirectoryProcessor {
                     || fieldDetail.type === 'MasterDetail' 
                     || fieldDetail.type === 'Hiearchy') {
 
-                  // todo - move out of this class and use singleton 
-                  const ootbLookupReferenceToObjectApiNameMap: Record<string, string> = {
-                    "AccountId": "Account"
-                  };
+                  const ootbFieldReferenceTolLookupApiNameMap = this.relationshipService.getOotbReferenceLookupMap();
                   let parentReferenceApiName = null;
                   if (fieldDetail.referenceTo) {
 
@@ -91,7 +87,7 @@ export class DirectoryProcessor {
 
                   } else {
 
-                    parentReferenceApiName = ootbLookupReferenceToObjectApiNameMap[fieldDetail.fieldName];
+                    parentReferenceApiName = ootbFieldReferenceTolLookupApiNameMap[fieldDetail.fieldName];
 
                   }
 
