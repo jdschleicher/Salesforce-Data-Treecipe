@@ -447,6 +447,20 @@ export class RelationshipService {
     
   }
 
+  getOotbReferenceLookupMap(): Record<string, string> {
+    
+    let ootbLookupReferenceToObjectApiNameMap: Record<string, string> | undefined;
+    if (ootbLookupReferenceToObjectApiNameMap) {
+      return ootbLookupReferenceToObjectApiNameMap;
+    }
+    
+    ootbLookupReferenceToObjectApiNameMap = {
+      "AccountId": "Account"
+    };
+    
+    return ootbLookupReferenceToObjectApiNameMap;
+
+  }
 
 }
 
