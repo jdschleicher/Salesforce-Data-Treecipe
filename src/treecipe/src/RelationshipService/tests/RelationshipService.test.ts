@@ -49,77 +49,61 @@ jest.mock('vscode', () => ({
     }
 }), { virtual: true });
 import * as vscode from 'vscode';
+import { MockRelationshipService } from './mocks/MockRelationshipService';
 
 describe("Shared Relationship Service Tests", () => {
+
+    let directoryProcessor = null;
+
+    beforeAll(() => {
+
+        jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+            .mockImplementation(() => new FakerJSRecipeFakerService());
+
+        directoryProcessor = new DirectoryProcessor();
+
+    });
 
     test("given expected test directory, objects directories are processed and relationships are genereated", async() => {
 
         const expectedTestPath = "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects";
         const directoryPathUri = vscode.Uri.file(expectedTestPath);
 
-        jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
-            .mockImplementation(() => new FakerJSRecipeFakerService());
-  
-        let directoryProcessor = new DirectoryProcessor();
-
         const objectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
         console.log(objectInfoWrapperCreated);
         
-        let allTrees = [];
 
-        let accountTopRelationshipObjects = [
-            'Account', 
-            'Contact',
-            'User',
-            'MegaMapMadness__c',
-            'Order__c',
-            'Order_Item__c',
-            'Product2',
-            'Example_Everything__c',
-            'Product_Family__c',
-            'Product__c'
-        ];
-        allTrees.push(accountTopRelationshipObjects);
+       
+        const expectedTreeStructures = MockRelationshipService.getExpectTreeStructures();
+        expect(expectedTreeStructures.length).toBe(objectInfoWrapperCreated.RecipeFiles.length);
 
-        let caseTreeObjects = [
-            'Case',
-            'Vehicle__c'
-        ];
-        allTrees.push(caseTreeObjects);
+        const relationshipTrees = objectInfoWrapperCreated.RelationshipTrees;
+        expect(6).toBe(relationshipTrees.length);
 
-        let oppTree = [
-            'Opportunity'
-        ];
-        allTrees.push(oppTree);
-
-        let leadTreeObjects = [
-            'Lead'
-        ];
-        allTrees.push(leadTreeObjects);
-
-        let pricebook2Objects = [
-            'Pricebook2'
-        ];
-        allTrees.push(pricebook2Objects);
-
-        let manufacturingTree = [
-            'Manufacturing_Event__e'
-        ];
-        allTrees.push(manufacturingTree);
-
-        expect(allTrees.length).toBe(objectInfoWrapperCreated.RecipeFiles.length);
-
-
-
+        const treeAccountExpectedPattern = "tree_Account";
+        const actualTreeAccountRelationshipTree = objectInfoWrapperCreated.RelationshipTrees.find( tree => tree.treeId.includes(treeAccountExpectedPattern));
+        const expectedAccountThruProductFamilyObjects =['Account', 'Contact', 'Example_Everything__c', 'Opportunity', 'Order__c', 'User', 'MasterDetailMadness__c', 'Order_Item__c', 'MegaMapMadness__c', 'Product__c', 'Product_Family__c']
+        expect(expectedAccountThruProductFamilyObjects.length).toBe(actualTreeAccountRelationshipTree.allObjects.length);
+   
     });
+    
 
+    // describe("ensureRelationshipDetailExists", () => {
 
-    test("given expected object map structure, creates expected recipe", () => {
+    //     test('', () => {
+
+            
+
+    //     });
+
+    // });
+
+    // test("given expected object map structure, creates expected recipe", () => {
 
        
 
 
-    });
+    // });
     /*
     
 
