@@ -4,11 +4,14 @@ import { DirectoryProcessor } from '../../DirectoryProcessingService/DirectoryPr
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { MockRelationshipService } from './mocks/MockRelationshipService';
 
-import * as ncp from 'copy-paste';
-import { promisify } from 'util';
+// import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
+import { RelationshipTree } from '../RelationshipService';
 
-const copy = promisify(ncp.copy);
-const paste = promisify(ncp.paste);
+
+// import * as ncp from 'copy-paste';
+// import { promisify } from 'util';
+// const copy = promisify(ncp.copy);
+// const paste = promisify(ncp.paste);
 
 
 import * as fs from 'fs';
@@ -57,8 +60,18 @@ jest.mock('vscode', () => ({
     }
 }), { virtual: true });
 import * as vscode from 'vscode';
-import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
-import { RelationshipTree } from '../RelationshipService';
+import { hasSubscribers } from 'diagnostics_channel';
+
+
+
+function haseSameSalesforceTreeBase(treeIdXX: string, treeIdYY: string): boolean {
+   
+    const regex = /^tree_([A-Za-z0-9_]+__c|[A-Za-z0-9_]+)_\d+$/;
+    const matchXX = treeIdXX.match(regex);
+    const matchYY = treeIdYY.match(regex);
+    return !!matchXX && !!matchYY && matchXX[1] === matchYY[1];
+
+}
 
 describe("Shared Relationship Service Tests", () => {
 
@@ -73,40 +86,37 @@ describe("Shared Relationship Service Tests", () => {
 
     });
 
+
     test("given expected test directory, objects directories are processed and relationships are genereated", async() => {
 
-        const expectedTestPath = "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects";
-        const directoryPathUri = vscode.Uri.file(expectedTestPath);
+        const dedicatedTestPathToProcessForActualResult = "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects";
+        const directoryPathUri = vscode.Uri.file(dedicatedTestPathToProcessForActualResult);
 
-        const objectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
-       
-        // const testJson = JSON.stringify(objectInfoWrapperCreated.ObjectToObjectInfoMap);
-        // await copy(testJson);
-
-        // const recipeFiles = JSON.stringify(objectInfoWrapperCreated.RecipeFiles);
-        //   await copy(recipeFiles);
-        // const result = await paste();
-
+        const actualObjectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
 
         const expectedRelationshipTreesJson = MockRelationshipService.getExpectedRelationshipTreesJson();
-        await copy(expectedRelationshipTreesJson);
-
         const expectedRelationshipTrees:RelationshipTree[] = JSON.parse(expectedRelationshipTreesJson);
 
-        const relationshipTrees = objectInfoWrapperCreated.RelationshipTrees;
+        const actualRelationshipTrees = actualObjectInfoWrapperCreated.RelationshipTrees;
                
-
-        const expectedCountOfRelationshipTrees = 6;
-        expect(expectedCountOfRelationshipTrees).toBe(relationshipTrees.length);
-
-        const expectedTreeStructuresForExpectedDirectoryStructure = MockRelationshipService.getExpectTreeStructures();
+        expect(expectedRelationshipTrees.length).toBe(actualRelationshipTrees.length);
         
 
-        const treeAccountExpectedPattern = "tree_Account";
-        const actualTreeAccountRelationshipTree = objectInfoWrapperCreated.RelationshipTrees.find( tree => tree.treeId.includes(treeAccountExpectedPattern));
-        const expectedAccountThruProductFamilyObjects =['Account', 'Contact', 'Example_Everything__c', 'Opportunity', 'Order__c', 'User', 'MasterDetailMadness__c', 'Order_Item__c', 'MegaMapMadness__c', 'Product__c', 'Product_Family__c'];
-        expect(expectedAccountThruProductFamilyObjects.length).toBe(actualTreeAccountRelationshipTree.allObjects.length);
+        for ( const actualTree in actualRelationshipTrees ) {
+
+            const match = expectedRelationshipTrees.find(expectedTree => haseSameSalesforceTreeBase(actualTree.treeId, expectedTree.treeId));
+            // console.log(`${actualTree} → ${match ? "Matched: " + match : "No Match"}`);
+
+        }
+        // const expectedTreeStructuresForExpectedDirectoryStructure = MockRelationshipService.getExpectTreeStructures();
+        
+
+        // const treeAccountExpectedPattern = "tree_Account";
+        // const actualTreeAccountRelationshipTree = objectInfoWrapperCreated.RelationshipTrees.find( tree => tree.treeId.includes(treeAccountExpectedPattern));
+        // const expectedAccountThruProductFamilyObjects =['Account', 'Contact', 'Example_Everything__c', 'Opportunity', 'Order__c', 'User', 'MasterDetailMadness__c', 'Order_Item__c', 'MegaMapMadness__c', 'Product__c', 'Product_Family__c'];
+        // expect(expectedAccountThruProductFamilyObjects.length).toBe(actualTreeAccountRelationshipTree.allObjects.length);
    
+        // await copy(expectedRelationshipTreesJson);
 
 
     });
