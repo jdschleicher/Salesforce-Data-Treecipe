@@ -2,6 +2,14 @@
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor } from '../../DirectoryProcessingService/DirectoryProcessor';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
+import { MockRelationshipService } from './mocks/MockRelationshipService';
+
+import * as ncp from 'copy-paste';
+import { promisify } from 'util';
+
+const copy = promisify(ncp.copy);
+const paste = promisify(ncp.paste);
+
 
 import * as fs from 'fs';
 
@@ -49,7 +57,8 @@ jest.mock('vscode', () => ({
     }
 }), { virtual: true });
 import * as vscode from 'vscode';
-import { MockRelationshipService } from './mocks/MockRelationshipService';
+import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
+import { RelationshipTree } from '../RelationshipService';
 
 describe("Shared Relationship Service Tests", () => {
 
@@ -70,21 +79,36 @@ describe("Shared Relationship Service Tests", () => {
         const directoryPathUri = vscode.Uri.file(expectedTestPath);
 
         const objectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
-        console.log(objectInfoWrapperCreated);
-        
-
        
-        const expectedTreeStructures = MockRelationshipService.getExpectTreeStructures();
-        expect(expectedTreeStructures.length).toBe(objectInfoWrapperCreated.RecipeFiles.length);
+        // const testJson = JSON.stringify(objectInfoWrapperCreated.ObjectToObjectInfoMap);
+        // await copy(testJson);
+
+        // const recipeFiles = JSON.stringify(objectInfoWrapperCreated.RecipeFiles);
+        //   await copy(recipeFiles);
+        // const result = await paste();
+
+
+        const expectedRelationshipTreesJson = MockRelationshipService.getExpectedRelationshipTreesJson();
+        await copy(expectedRelationshipTreesJson);
+
+        const expectedRelationshipTrees:RelationshipTree[] = JSON.parse(expectedRelationshipTreesJson);
 
         const relationshipTrees = objectInfoWrapperCreated.RelationshipTrees;
-        expect(6).toBe(relationshipTrees.length);
+               
+
+        const expectedCountOfRelationshipTrees = 6;
+        expect(expectedCountOfRelationshipTrees).toBe(relationshipTrees.length);
+
+        const expectedTreeStructuresForExpectedDirectoryStructure = MockRelationshipService.getExpectTreeStructures();
+        
 
         const treeAccountExpectedPattern = "tree_Account";
         const actualTreeAccountRelationshipTree = objectInfoWrapperCreated.RelationshipTrees.find( tree => tree.treeId.includes(treeAccountExpectedPattern));
-        const expectedAccountThruProductFamilyObjects =['Account', 'Contact', 'Example_Everything__c', 'Opportunity', 'Order__c', 'User', 'MasterDetailMadness__c', 'Order_Item__c', 'MegaMapMadness__c', 'Product__c', 'Product_Family__c']
+        const expectedAccountThruProductFamilyObjects =['Account', 'Contact', 'Example_Everything__c', 'Opportunity', 'Order__c', 'User', 'MasterDetailMadness__c', 'Order_Item__c', 'MegaMapMadness__c', 'Product__c', 'Product_Family__c'];
         expect(expectedAccountThruProductFamilyObjects.length).toBe(actualTreeAccountRelationshipTree.allObjects.length);
    
+
+
     });
     
 
