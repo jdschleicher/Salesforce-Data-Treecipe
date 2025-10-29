@@ -10,5 +10,7 @@ module.exports = {
         "force-app/test/*",
         "out/*",
         ".*MockObjectsService\\.test\\.ts$"
-    ]
+    ],
+    setupFilesAfterEnv: ['jest-extended/all']
+
 };

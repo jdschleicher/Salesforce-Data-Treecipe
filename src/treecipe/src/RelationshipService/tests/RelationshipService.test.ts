@@ -4,20 +4,14 @@ import { DirectoryProcessor } from '../../DirectoryProcessingService/DirectoryPr
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { MockRelationshipService } from './mocks/MockRelationshipService';
 
-// import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { RelationshipTree } from '../RelationshipService';
 
-
-
-// import * as ncp from 'copy-paste';
-// import { promisify } from 'util';
-// const copy = promisify(ncp.copy);
-// const paste = promisify(ncp.paste);
-
-
 import * as fs from 'fs';
-
 import * as path from 'path';
+
+import * as matchers from 'jest-extended';
+expect.extend(matchers);
+
 
 // Simple mock at the top of your test file
 jest.mock('vscode', () => ({
@@ -102,7 +96,7 @@ describe("Shared Relationship Service Tests", () => {
         expect(expectedRelationshipTrees.length).toBe(actualRelationshipTrees.length);
         
 
-        expect( [1, 2, 3, 4, 5] ).toIncludeAllMembers( [3 ] );
+        expect( [1, 2] ).toIncludeAllMembers( [ 2, 1] );
 
         actualRelationshipTrees.forEach(actualTree => {
             
