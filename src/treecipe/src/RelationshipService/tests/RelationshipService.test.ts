@@ -8,6 +8,7 @@ import { MockRelationshipService } from './mocks/MockRelationshipService';
 import { RelationshipTree } from '../RelationshipService';
 
 
+
 // import * as ncp from 'copy-paste';
 // import { promisify } from 'util';
 // const copy = promisify(ncp.copy);
@@ -60,7 +61,6 @@ jest.mock('vscode', () => ({
     }
 }), { virtual: true });
 import * as vscode from 'vscode';
-import { hasSubscribers } from 'diagnostics_channel';
 
 
 
@@ -97,17 +97,34 @@ describe("Shared Relationship Service Tests", () => {
         const expectedRelationshipTreesJson = MockRelationshipService.getExpectedRelationshipTreesJson();
         const expectedRelationshipTrees:RelationshipTree[] = JSON.parse(expectedRelationshipTreesJson);
 
-        const actualRelationshipTrees = actualObjectInfoWrapperCreated.RelationshipTrees;
+        const actualRelationshipTrees:RelationshipTree[] = actualObjectInfoWrapperCreated.RelationshipTrees;
                
         expect(expectedRelationshipTrees.length).toBe(actualRelationshipTrees.length);
         
 
-        for ( const actualTree in actualRelationshipTrees ) {
+        expect( [1, 2, 3, 4, 5] ).toIncludeAllMembers( [3 ] );
 
-            const match = expectedRelationshipTrees.find(expectedTree => haseSameSalesforceTreeBase(actualTree.treeId, expectedTree.treeId));
+        actualRelationshipTrees.forEach(actualTree => {
+            
+            const matchingExpectedRelationshipTree:RelationshipTree = expectedRelationshipTrees.find(
+                expectedTree => haseSameSalesforceTreeBase(actualTree.treeId, expectedTree.treeId)
+            );
+
+            // IF THERE IS NO MATCH IN THE EXPECTED TREE IDS THEN FAIL THAT TREE
+            expect(matchingExpectedRelationshipTree).toBeDefined();
+            console.log(matchingExpectedRelationshipTree.allObjects);
+            console.log(actualTree.allObjects);
+
+
+            expect(actualTree.allObjects.length).toBe(matchingExpectedRelationshipTree.allObjects.length);
+            // actualTree.topLevelObjects.
+        }); 
+        
+        // ( const actualTree in actualRelationshipTrees:RelationshipTree[] ) {
+
             // console.log(`${actualTree} → ${match ? "Matched: " + match : "No Match"}`);
 
-        }
+        // }
         // const expectedTreeStructuresForExpectedDirectoryStructure = MockRelationshipService.getExpectTreeStructures();
         
 
