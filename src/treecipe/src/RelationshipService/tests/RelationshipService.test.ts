@@ -12,8 +12,8 @@ import * as path from 'path';
 import * as matchers from 'jest-extended';
 expect.extend(matchers);
 
+import * as vscode from 'vscode';
 
-// Simple mock at the top of your test file
 jest.mock('vscode', () => ({
     Uri: {
         file: (p: string) => ({ fsPath: p, path: p }),
@@ -54,8 +54,6 @@ jest.mock('vscode', () => ({
         showWarningMessage: jest.fn()
     }
 }), { virtual: true });
-import * as vscode from 'vscode';
-
 
 
 function haseSameSalesforceTreeBase(treeIdXX: string, treeIdYY: string): boolean {
@@ -80,7 +78,6 @@ describe("Shared Relationship Service Tests", () => {
 
     });
 
-
     test("given expected test directory, objects directories are processed and relationships are genereated", async() => {
 
         const dedicatedTestPathToProcessForActualResult = "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects";
@@ -95,9 +92,6 @@ describe("Shared Relationship Service Tests", () => {
                
         expect(expectedRelationshipTrees.length).toBe(actualRelationshipTrees.length);
         
-
-        expect( [1, 2] ).toIncludeAllMembers( [ 2, 1] );
-
         actualRelationshipTrees.forEach(actualTree => {
             
             const matchingExpectedRelationshipTree:RelationshipTree = expectedRelationshipTrees.find(
@@ -109,9 +103,18 @@ describe("Shared Relationship Service Tests", () => {
             console.log(matchingExpectedRelationshipTree.allObjects);
             console.log(actualTree.allObjects);
 
+            actualTree.topLevelObjects.forEach((actualTopLevelObject, index) => {
+                // console.log(index); // 0, 1, 2
+                // console.log(topLevelObject); // 9, 2, 5
+
+                const matchingTtopLevelObject = matchingExpectedRelationshipTree.topLevelObjects[index];
+                expect(actualTopLevelObject).toBe(matchingTtopLevelObject);
+
+            });
 
             expect(actualTree.allObjects.length).toBe(matchingExpectedRelationshipTree.allObjects.length);
-            // actualTree.topLevelObjects.
+            expect(actualTree.allObjects).toIncludeAllMembers(matchingExpectedRelationshipTree.allObjects);
+
         }); 
         
         // ( const actualTree in actualRelationshipTrees:RelationshipTree[] ) {
