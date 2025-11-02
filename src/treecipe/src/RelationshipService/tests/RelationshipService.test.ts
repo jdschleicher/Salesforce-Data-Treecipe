@@ -5,6 +5,7 @@ import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRe
 import { MockRelationshipService } from './mocks/MockRelationshipService';
 
 import { RelationshipTree } from '../RelationshipService';
+import { ObjectInfo } from '../../ObjectInfoWrapper/ObjectInfo';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -56,6 +57,11 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 
+// uncomment below when using copy/paste functionality
+// import * as ncp from 'copy-paste';
+// import { promisify } from 'util';
+// const copy = promisify(ncp.copy);
+
 function haseSameSalesforceTreeBase(treeIdXX: string, treeIdYY: string): boolean {
    
     const regex = /^tree_([A-Za-z0-9_]+__c|[A-Za-z0-9_]+)_\d+$/;
@@ -68,23 +74,25 @@ function haseSameSalesforceTreeBase(treeIdXX: string, treeIdYY: string): boolean
 describe("Shared Relationship Service Tests", () => {
 
     let directoryProcessor = null;
+    let actualObjectInfoWrapperCreated = null;
 
-    beforeAll(() => {
+    beforeAll(async() => {
 
         jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
             .mockImplementation(() => new FakerJSRecipeFakerService());
 
         directoryProcessor = new DirectoryProcessor();
 
-    });
-
-    test("given expected test directory, objects directories are processed and relationships are genereated", async() => {
-
         const dedicatedTestPathToProcessForActualResult = "src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/objects";
         const directoryPathUri = vscode.Uri.file(dedicatedTestPathToProcessForActualResult);
 
-        const actualObjectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
+        actualObjectInfoWrapperCreated = await directoryProcessor.processAllObjectsAndRelationships(directoryPathUri);
 
+    });
+
+    test("given expected mock test directory with expected relationships, object and field directories are parses as expected and expected Relationship Trees are built", async() => {
+        
+    
         const expectedRelationshipTreesJson = MockRelationshipService.getExpectedRelationshipTreesJson();
         const expectedRelationshipTrees:RelationshipTree[] = JSON.parse(expectedRelationshipTreesJson);
 
@@ -104,9 +112,7 @@ describe("Shared Relationship Service Tests", () => {
             console.log(actualTree.allObjects);
 
             actualTree.topLevelObjects.forEach((actualTopLevelObject, index) => {
-                // console.log(index); // 0, 1, 2
-                // console.log(topLevelObject); // 9, 2, 5
-
+       
                 const matchingTtopLevelObject = matchingExpectedRelationshipTree.topLevelObjects[index];
                 expect(actualTopLevelObject).toBe(matchingTtopLevelObject);
 
@@ -116,6 +122,75 @@ describe("Shared Relationship Service Tests", () => {
             expect(actualTree.allObjects).toIncludeAllMembers(matchingExpectedRelationshipTree.allObjects);
 
         }); 
+
+
+    });
+
+    test("given expected hiearchy levels of expected related objects, the actual processing of an expected objects directory creates same hiearchy levels", () => {
+
+        // const testJson = JSON.stringify(actualObjectInfoWrapperCreated.ObjectToObjectInfoMap);
+        // await copy(testJson);
+
+        const expectedObjectToObjectInfoMapJson = MockRelationshipService.getExpectedObjectToObjectInfoMap();
+        const expectedObjectToObjectInfoMap:Record<string, ObjectInfo> = JSON.parse(expectedObjectToObjectInfoMapJson);
+        
+        
+        const actualObjectToObjectInfoMap:Record<string, ObjectInfo> = actualObjectInfoWrapperCreated.ObjectToObjectInfoMap;
+
+        Object.entries(expectedObjectToObjectInfoMap).forEach(([expectedObjectApiKey, expectedObjectInfoWrapper]) => {
+        
+            const iteratingActualObjectInfoWrapper = actualObjectToObjectInfoMap[expectedObjectApiKey];
+            //If there is no wrapper defined then there is a mismatch between
+            // what the directory generated and the expected mock structure
+            expect(iteratingActualObjectInfoWrapper).toBeDefined();
+
+            expect(iteratingActualObjectInfoWrapper.RelationshipDetail.level).toBe(expectedObjectInfoWrapper.RelationshipDetail.level);
+            
+            const actualChildObjectKeys = Object.keys(iteratingActualObjectInfoWrapper.RelationshipDetail.childObjectToFieldReferences);
+            const expectedChildObjectKeys = Object.keys(expectedObjectInfoWrapper.RelationshipDetail.childObjectToFieldReferences);
+            expect(actualChildObjectKeys).toIncludeAllMembers(expectedChildObjectKeys);
+
+            const actualChildObjectValues = Object.values(iteratingActualObjectInfoWrapper.RelationshipDetail.childObjectToFieldReferences);
+            const expectedChildObjectValues = Object.values(expectedObjectInfoWrapper.RelationshipDetail.childObjectToFieldReferences);
+            expect(actualChildObjectValues).toIncludeAllMembers(expectedChildObjectValues);
+
+
+            const actualParentObjectKeys = Object.keys(iteratingActualObjectInfoWrapper.RelationshipDetail.parentObjectToFieldReferences);
+            const expectedParentObjectKeys = Object.keys(expectedObjectInfoWrapper.RelationshipDetail.parentObjectToFieldReferences);
+            expect(actualParentObjectKeys).toIncludeAllMembers(expectedParentObjectKeys);
+
+            const actualParentObjectvalues = Object.values(iteratingActualObjectInfoWrapper.RelationshipDetail.parentObjectToFieldReferences);
+            const expectedParentObjectvalues = Object.values(expectedObjectInfoWrapper.RelationshipDetail.parentObjectToFieldReferences);
+            expect(actualParentObjectvalues).toIncludeAllMembers(expectedParentObjectvalues);
+
+        });
+
+  
+
+        // actualRelationshipTrees.forEach(actualTree => {
+            
+        //     // const matchingExpectedRelationshipTree:RelationshipTree = expectedRelationshipTrees.find(
+        //     //     expectedTree => haseSameSalesforceTreeBase(actualTree.treeId, expectedTree.treeId)
+        //     // );
+
+        //     // IF THERE IS NO MATCH IN THE EXPECTED TREE IDS THEN FAIL THAT TREE
+        //     expect(matchingExpectedRelationshipTree).toBeDefined();
+        //     console.log(matchingExpectedRelationshipTree.allObjects);
+        //     console.log(actualTree.allObjects);
+
+        //     actualTree.topLevelObjects.forEach((actualTopLevelObject, index) => {
+        //         // console.log(index); // 0, 1, 2
+        //         // console.log(topLevelObject); // 9, 2, 5
+
+        //         const matchingTtopLevelObject = matchingExpectedRelationshipTree.topLevelObjects[index];
+        //         expect(actualTopLevelObject).toBe(matchingTtopLevelObject);
+
+        //     });
+
+        //     expect(actualTree.allObjects.length).toBe(matchingExpectedRelationshipTree.allObjects.length);
+        //     expect(actualTree.allObjects).toIncludeAllMembers(matchingExpectedRelationshipTree.allObjects);
+
+        // }); 
         
         // ( const actualTree in actualRelationshipTrees:RelationshipTree[] ) {
 

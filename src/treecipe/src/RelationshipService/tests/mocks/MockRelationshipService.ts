@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+
+
 export class MockRelationshipService {
     static getExpectTreeStructures() {
         let allTrees = [];
@@ -70,6 +73,16 @@ export class MockRelationshipService {
        `;
 
         return relationshipTreesJsonWrapper;
+    }
+
+    static getExpectedObjectToObjectInfoMap() {
+
+        const filePathToExpectedObjectToObjectInfoMapJson = 'src/treecipe/src/RelationshipService/tests/mocks/expectedObjectToObjectInfoMap.json';
+        const expectedObjectToObjectInfoMapJson = fs.readFileSync(filePathToExpectedObjectToObjectInfoMapJson, 'utf-8');
+        // const rawData = fs.readFileSync(collectionsApiFile, 'utf-8');
+
+        return expectedObjectToObjectInfoMapJson;
+
     }
 
 //     static getExpectedObjectInfoJson() {
