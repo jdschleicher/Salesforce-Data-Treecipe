@@ -234,6 +234,7 @@ export class RelationshipService {
       allObjects: Array.from(allObjects),
       maxLevel
     };
+    
   }
 
   getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
@@ -308,6 +309,7 @@ export class RelationshipService {
     });
 
     return orderedStructure;
+    
   }
 
   /**

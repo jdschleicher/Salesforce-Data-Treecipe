@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 
-
 export class MockRelationshipService {
+
     static getExpectTreeStructures() {
         let allTrees = [];
 
