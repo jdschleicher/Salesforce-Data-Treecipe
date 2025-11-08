@@ -1,5 +1,68 @@
 # Change Log
 
+## [2.6.0] - Feature: Comprehensive Test Suite & Bug Fix for Special Characters in Picklists
+
+### 🎯 Major Features
+
+#### 1. **Comprehensive RelationshipService Test Suite**
+Added extensive test coverage for the RelationshipService with 7 distinct test scenarios covering increasingly complex relationship patterns:
+
+- **Scenario 1**: Basic Two-Level Parent-Child (Account → Contact)
+- **Scenario 2**: Three-Level Simple Hierarchy (Account → Contact → Case)  
+- **Scenario 3**: Linear Chain with Multiple Children (Account → Contact → Case → Task)
+- **Scenario 4**: Two Branches from Root (Account with both Contacts and Opportunities)
+- **Scenario 5**: Sibling Objects Without Parent (Contact and Lead as independent objects)
+- **Scenario 6**: Complex Multi-Level with Branches (Account branching to Contacts/Opportunities, then to Cases/Tasks)
+- **Scenario 7**: Diamond Pattern (Account → Contact/Opportunity → Case converging back)
+
+Each scenario includes:
+- Detailed markdown documentation explaining the relationship pattern
+- Visual ASCII diagrams of object relationships
+- Comprehensive unit tests validating correct ordering
+- Edge case handling and validation
+
+#### 2. **Bug Fix: Special Characters in Picklist Values**
+Fixed critical bug where picklist values containing special characters (`&`, `'`, etc.) were breaking FakerJS expression generation.
+
+**Problem**: Picklist values like "Beaches & Snorkeling" or "Family & Kids' Activities" were causing syntax errors when wrapped in single quotes.
+
+**Solution**: Changed from single quotes to backticks (template literals) in `FakerJSRecipeFakerService`:
+- `buildPicklistFakerArraySingleElementSyntaxByPicklistOptions()`: Now uses `` `${option}` ``
+- `buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions()`: Now uses `` `${option}` ``
+
+**Benefits**:
+- Natural handling of all special characters without escaping
+- Consistent format across all picklist/multiselect expressions
+- Future-proof for any special characters in picklist values
+- No breaking changes to existing functionality
+
+### 🧪 Testing Improvements
+
+- Added comprehensive mock infrastructure for testing complex relationships
+- Created `MockRelationshipService` with 7 pre-configured test scenarios
+- Updated all picklist-related tests to use backtick format
+- Added test validation for fields with XML entities (`&amp;`, `&apos;`)
+- Created detailed test documentation with visual relationship diagrams
+
+### 📝 Documentation
+
+- Added scenario-specific markdown files documenting complex relationship patterns
+- Included ASCII diagrams for visual understanding of object hierarchies
+- Provided clear examples of expected sort orders and dependencies
+
+### 🔧 Technical Details
+
+**Files Modified**:
+- `src/treecipe/src/RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService.ts`
+- `src/treecipe/src/RecipeService/tests/FakerJSRecipeService.test.ts`
+- `src/treecipe/src/XMLProcessingService/tests/mocks/XMLMarkupMockService.ts`
+- `src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts`
+- `src/treecipe/src/RelationshipService/tests/mocks/MockRelationshipService.ts`
+
+**New Test Documentation** (with Mermaid diagrams):
+- [Scenario 3: Linear Chain with Multiple Children](src/treecipe/src/RelationshipService/tests/test-scenario-3-linear-chain.md)
+- [Scenario 7: Diamond Pattern](src/treecipe/src/RelationshipService/tests/test-scenario-7-diamond-pattern.md)
+
 ## [2.5.1] [PR#33](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/33) - Bug : 2.5.1
 
 Initial approach to capturing GlobalValueSets assumed that the singleton would be reset with every invocation of the "Generate Recipe" command.
@@ -201,4 +264,3 @@ Based upon the same YAML file approached used with snowfakery, this update intro
  - faker service introduced refactoring needs for separating out expected recipe values in RecipeService into two dedicated recipe providers ( NPMFakerService, SnowfakeryFakerService) - NPMFakerService is not used at the moment and this entire setup was excessive from an actual usage stand point. I did learn some fun stuff and got to apply the factory pattern. In the future, the faker service could be chosen as part of configuration setup. For now it defaults to "Snowfakery"
  - Associated unit tests and supported mock service
  - GitHub Actions for automated jest tests validation and publishing jobs
-

@@ -123,7 +123,6 @@ export class ExtensionCommandService {
 
                 const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-                // objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
             
                 const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
 
