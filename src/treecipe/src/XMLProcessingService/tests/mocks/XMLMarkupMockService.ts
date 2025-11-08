@@ -1175,6 +1175,115 @@ export class XMLMarkupMockService {
     
     }
 
+    static getTypePicklistFieldTypeXMLMarkup():string {
+
+        const xmlPicklistMarkup = `
+        <?xml version="1.0" encoding="UTF-8" ?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Type__c</fullName>
+    <description
+    >The Type field categorizes experiences into specific activities like &quot;Tennis &amp; Pickleball,&quot; &quot;Swimming Pools,&quot; and &quot;Beaches &amp; Snorkeling,&quot; helping guests easily find and book preferred activities, and aiding resort organization.</description>
+    <label>Type</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Adventure Activities</fullName>
+                <default>false</default>
+                <label>Adventure Activities</label>
+            </value>
+            <value>
+                <fullName>Beaches &amp; Snorkeling</fullName>
+                <default>false</default>
+                <label>Beaches &amp; Snorkeling</label>
+            </value>
+            <value>
+                <fullName>Cultural Tours &amp; Workshops</fullName>
+                <default>false</default>
+                <label>Cultural Tours &amp; Workshops</label>
+            </value>
+            <value>
+                <fullName>Dining Experiences</fullName>
+                <default>false</default>
+                <label>Dining Experiences</label>
+            </value>
+            <value>
+                <fullName>Family &amp; Kids&apos; Activities</fullName>
+                <default>false</default>
+                <label>Family &amp; Kids&apos; Activities</label>
+            </value>
+            <value>
+                <fullName>Fitness &amp; Exercise</fullName>
+                <default>false</default>
+                <label>Fitness &amp; Exercise</label>
+            </value>
+            <value>
+                <fullName>Golf</fullName>
+                <default>false</default>
+                <label>Golf</label>
+            </value>
+            <value>
+                <fullName>Nature &amp; Eco Tours</fullName>
+                <default>false</default>
+                <label>Nature &amp; Eco Tours</label>
+            </value>
+            <value>
+                <fullName>Nightlife &amp; Entertainment</fullName>
+                <default>false</default>
+                <label>Nightlife &amp; Entertainment</label>
+            </value>
+            <value>
+                <fullName>Relaxation &amp; Quiet Zones</fullName>
+                <default>false</default>
+                <label>Relaxation &amp; Quiet Zones</label>
+            </value>
+            <value>
+                <fullName>Spa &amp; Wellness</fullName>
+                <default>false</default>
+                <label>Spa &amp; Wellness</label>
+            </value>
+            <value>
+                <fullName>Swimming Pools</fullName>
+                <default>false</default>
+                <label>Swimming Pools</label>
+            </value>
+            <value>
+                <fullName>Tennis &amp; Pickleball</fullName>
+                <default>false</default>
+                <label>Tennis &amp; Pickleball</label>
+            </value>
+            <value>
+                <fullName>Water Sports</fullName>
+                <default>false</default>
+                <label>Water Sports</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
+        `;
+
+        return xmlPicklistMarkup;
+
+    }
+
+    static getTypePicklistXMLFieldDetail(): XMLFieldDetail {
+
+        const mockedPicklistValues = this.getIPicklistValuesForType__c();
+        let picklistXMLField: XMLFieldDetail = {
+            fieldType: "Picklist",
+            apiName: "Type__c",
+            picklistValues: mockedPicklistValues,
+            fieldLabel: "Type",
+            xmlMarkup: this.getTypePicklistFieldTypeXMLMarkup()
+        };
+
+        return picklistXMLField;
+        
+    }
+
     static getPicklistXMLFieldDetail(): XMLFieldDetail {
 
         const mockedPicklistValues = this.getIPicklistValuesForPicklist__c();
@@ -1188,6 +1297,99 @@ export class XMLMarkupMockService {
 
         return picklistXMLField;
         
+    }
+
+    static getIPicklistValuesForType__c(): IPicklistValue[] {
+        
+        const expectedPicklistFieldDetails:IPicklistValue[] = [
+            {
+                picklistOptionApiName: 'Adventure Activities',
+                label: 'Adventure Activities',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Beaches & Snorkeling',
+                label: 'Beaches & Snorkeling',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Cultural Tours & Workshops',
+                label: 'Cultural Tours & Workshops',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Dining Experiences',
+                label: 'Dining Experiences',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: "Family & Kids' Activities",
+                label: "Family & Kids' Activities",
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Fitness & Exercise',
+                label: 'Fitness & Exercise',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Golf',
+                label: 'Golf',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Nature & Eco Tours',
+                label: 'Nature & Eco Tours',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Nightlife & Entertainment',
+                label: 'Nightlife & Entertainment',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Relaxation & Quiet Zones',
+                label: 'Relaxation & Quiet Zones',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Spa & Wellness',
+                label: 'Spa & Wellness',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Swimming Pools',
+                label: 'Swimming Pools',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Tennis & Pickleball',
+                label: 'Tennis & Pickleball',
+                default: false,
+                isActive: true
+            },
+            {
+                picklistOptionApiName: 'Water Sports',
+                label: 'Water Sports',
+                default: false,
+                isActive: true
+            }
+        ];
+
+        return expectedPicklistFieldDetails;
+    
     }
 
     static getIPicklistValuesForPicklist__c(): IPicklistValue[] {

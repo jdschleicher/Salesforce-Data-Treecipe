@@ -142,7 +142,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         test('given expected list of choices, returns expected multiselect picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = `\${{ (faker.helpers.arrayElements(['apple','orange','banana'])).join(';') }}`;
+            const expectedRecipeValue = "\${{ (faker.helpers.arrayElements([`apple`,`orange`,`banana`])).join(';') }}";
             const emptyRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = fakerJSRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(possibleChoices, emptyRecordTypeApiToRecordTypeWrapperMap, fakeFieldApiName);
@@ -214,7 +214,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         test('given expected list of choices, returns expected  picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}`;
+            const expectedRecipeValue = "\${{ faker.helpers.arrayElement([`apple`,`orange`,`banana`]) }}";
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 
@@ -227,7 +227,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             test('given expected list of choices, returns expected  picklist faker value', () => {
 
             const possibleChoices: string[] = ['apple', 'orange', 'banana'];
-            const expectedRecipeValue = `\${{ faker.helpers.arrayElement(['apple','orange','banana']) }}`;
+            const expectedRecipeValue = "\${{ faker.helpers.arrayElement([`apple`,`orange`,`banana`]) }}";
             const emptyRecordTypeNameByRecordTypeNameToXRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
             const fakeFieldApiName = "Fruit__c";
             const actualFakerValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(possibleChoices, 

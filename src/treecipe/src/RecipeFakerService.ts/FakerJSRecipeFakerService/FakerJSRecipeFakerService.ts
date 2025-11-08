@@ -232,7 +232,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
 
-        const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
+        const joinedChoices = availablePicklistChoices.map(option => `\`${option}\``).join(',');
         const fakerjsChoicesSyntax = `faker.helpers.arrayElement([${joinedChoices}])`;
 
         return fakerjsChoicesSyntax;
@@ -241,7 +241,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
 
-        const joinedChoices = availablePicklistChoices.map(option => `'${option}'`).join(',');
+        const joinedChoices = availablePicklistChoices.map(option => `\`${option}\``).join(',');
         const fakerjsChoicesSyntax = `(faker.helpers.arrayElements([${joinedChoices}])).join(';')`;
 
         return fakerjsChoicesSyntax;
