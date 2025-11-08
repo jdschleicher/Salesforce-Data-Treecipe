@@ -44,7 +44,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     describe('getRecipeFakeValueByXMLFieldDetail', () => {
 
-        test('given invalid or not yet handled field type, logs message and returns "FieldType Not Handled Value', () => {
+        test('given invalid or not yet handled field type, logs message and returns "### TODO -- FieldType Not Handled Value', () => {
 
             const fakeFieldTypeValue = "heyooo";
             let fakeXMLFieldDetail: XMLFieldDetail = {
@@ -53,7 +53,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 fieldLabel: "Fake",
                 xmlMarkup: "<xml></xml>"
             };
-            const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
+            const expectedRecipeValue = `"### TODO -- FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualRecipeValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
             expect(expectedRecipeValue).toBe(actualRecipeValue);

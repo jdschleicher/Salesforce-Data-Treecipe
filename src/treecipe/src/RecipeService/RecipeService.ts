@@ -156,7 +156,7 @@ export class RecipeService {
             recipeValue = fieldToRecipeValueMap[fieldType];
         } else {
             // NOT THROWING EXCEPTION HERE, WE WANT THE REMAINING FIELDS TO BE PROCESSED
-            recipeValue = `"FieldType Not Handled -- ${fieldType} does not exist in this programs Salesforce field map."`;
+            recipeValue = `"### TODO -- FieldType Not Handled -- ${fieldType} does not exist in this programs Salesforce field map."`;
         }    
 
         return recipeValue;
