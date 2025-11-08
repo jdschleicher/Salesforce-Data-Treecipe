@@ -1,6 +1,6 @@
 # Change Log
 
-## [2.6.0] - Feature: Comprehensive Test Suite & Bug Fix for Special Characters in Picklists
+## [2.6.0] [PR#34](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/34) - Feature: Comprehensive Test Suite & Bug Fix for Special Characters in Picklists
 
 ### 🎯 Major Features
 
