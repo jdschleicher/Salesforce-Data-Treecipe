@@ -73,19 +73,26 @@ export class ExtensionCommandService {
                 The below lines get the timestamped parent recipe folder 
                 in order to traverse through and get all other artifacts files to use in
                 data generation and inserts commands
+                
+                Since recipe files are now in subdirectories (e.g., GeneratedRecipes/RelationshipTree1/recipe.yaml),
+                we need to go up one level from the recipe's immediate parent to find the treecipe wrapper
             */
             const selectedRecipeParentDirectory = path.dirname(recipeFullFileNamePath);
             if ( path.basename(selectedRecipeParentDirectory) !== "GeneratedRecipes" ) {
-                const filesWithinSelecteRecipeFolder = fs.readdirSync(selectedRecipeParentDirectory, { withFileTypes: true });
+                // Go up one directory level to find the treecipe wrapper file
+                const directoryToSearchForWrapper = path.join(selectedRecipeParentDirectory, '..');
+                const filesWithinSelecteRecipeFolder = fs.readdirSync(directoryToSearchForWrapper, { withFileTypes: true });
                 const expectedObjectsInfoWrapperNamePrefix = ConfigurationService.getTreecipeObjectsWrapperName();
                 const matchingTreecipeObjectsWrapperFile = filesWithinSelecteRecipeFolder.find(file => 
                     file.isFile() && file.name.startsWith(expectedObjectsInfoWrapperNamePrefix)
                 );
     
-                if (matchingTreecipeObjectsWrapperFile) {
-                    const fullTreecipeObjectsWrapperPath = path.join(selectedRecipeParentDirectory, matchingTreecipeObjectsWrapperFile.name);
+                if ( matchingTreecipeObjectsWrapperFile ) {
+                    const fullTreecipeObjectsWrapperPath = path.join(directoryToSearchForWrapper, matchingTreecipeObjectsWrapperFile.name);
                     fs.copyFileSync(fullTreecipeObjectsWrapperPath, `${fullPathToBaseArtifactsFolder}/originalTreecipeWrapper-${matchingTreecipeObjectsWrapperFile.name}`);
-                } 
+                } else {
+                    throw new Error('Selected directory doesnt have an expected OriginalTreecipeWrapper file');
+                }
             }
        
 
