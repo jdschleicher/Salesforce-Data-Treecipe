@@ -92,6 +92,43 @@ export class FakerJSExpressionMocker {
 
     }
 
+    static getFakeCustomProjectFamilyYamlRecipeObjectStructure() {
+
+        const fakeRecipeYamlObjectDetail = [
+            {
+                id: 1,
+                object: 'Project_Family__c',
+                nickname: 'standard_projfam',
+                fields: {
+                    Name: 'Sweet Project',
+                    Description: 'Innovative projects'
+                }
+            },
+            {
+                id: 2,
+                object: 'Project_Family__c',
+                nickname: 'coolNickname',
+                fields: {
+                    Name: 'Widget Project',
+                    Description: 'Quality products'
+                }
+            },
+            {
+                id: 1,
+                object: 'Contact',
+                nickname: 'primary_contact',
+                fields: {
+                    FirstName: 'John',
+                    LastName: 'Doe',
+                    Email: 'john@example.com'
+                }
+            }
+        ];
+
+        return fakeRecipeYamlObjectDetail;
+
+    }
+
     static getExpectedMockYamlDependentPicklistStructure() {
 
       const mockDependentPicklistExpression = {
