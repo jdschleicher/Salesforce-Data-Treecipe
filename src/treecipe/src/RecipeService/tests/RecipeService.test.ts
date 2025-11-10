@@ -38,7 +38,7 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 fieldLabel: "Fake",
                 xmlMarkup: 'not a real xml markup'
             };
-            const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
+            const expectedRecipeValue = `"### TODO -- FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualRecipeValue = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
             expect(expectedRecipeValue).toBe(actualRecipeValue);

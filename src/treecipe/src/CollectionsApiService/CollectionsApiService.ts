@@ -105,7 +105,13 @@ export class CollectionsApiService {
                                             allOrNoneSelection: boolean) {
 
         const collectionsApiFilesDirectoryFolderName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
-        const collectionApiFiles = datasetChildFoldersToFilesMap[collectionsApiFilesDirectoryFolderName];
+        let collectionApiFiles = datasetChildFoldersToFilesMap[collectionsApiFilesDirectoryFolderName];
+
+        // Get the treecipe wrapper to access relationship levels
+        const treecipeObjectWrapperDetail = await this.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
+        
+        // Sort collection API files based on relationship levels from the wrapper
+        collectionApiFiles = this.sortCollectionApiFilesByRelationshipLevel(collectionApiFiles, treecipeObjectWrapperDetail);
 
         const insertAttemptsDirectoryName = 'InsertAttempts';
         const pathToInsertAttemptsDirectory = path.join(selectedDataSetFullDirectoryPath, insertAttemptsDirectoryName);
@@ -166,7 +172,9 @@ export class CollectionsApiService {
                                                             allCollectionApiFilesSobjectResults,
                                                             fullPathToResultsFile,
                                                             token);
+
                     if (!successResult) {
+                        vscode.window.showWarningMessage(`Failed to process ${fileName}`);
                         break;                    
                     }
 
@@ -175,6 +183,7 @@ export class CollectionsApiService {
                     vscode.window.showWarningMessage(`Failed to process ${fileName}`);
 
                 }
+
               }
           
               vscode.window.showInformationMessage("All files processed.");
@@ -468,17 +477,16 @@ export class CollectionsApiService {
 
     static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
 
-        const expectedDoubleUnderscoreForObjectRecipesThatIncludedNickname = "__";
+        const referenceRegexMatch = /(Reference_\d+__)/; // can be a match of "Reference_1_" to "Reference_1000000000__"
         for (const [referenceIdKey, referenceIdAssociatedRecordIdValue ] of  Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
 
-            const splitReferenceIdentifiers = referenceIdKey.split(expectedDoubleUnderscoreForObjectRecipesThatIncludedNickname);
+            const splitReferenceIdentifiers = referenceIdKey.split(referenceRegexMatch).filter(Boolean);
 
-            const incrementalObjectReferenceValue = splitReferenceIdentifiers[0];
-            collectionsApiJson = collectionsApiJson.replaceAll(incrementalObjectReferenceValue, `${referenceIdAssociatedRecordIdValue}`);
-
-            const nicknameValue = splitReferenceIdentifiers[1];
+            const nicknameLookupReferenceMatchIndex = 2;
+  
+            // Not every object and associated could have a "nickname" property so the reference key would not include the double underscore split
+            const nicknameValue = splitReferenceIdentifiers[nicknameLookupReferenceMatchIndex];
             if ( nicknameValue ) {
-                // Not every object and associated could have a "nickname" property so the reference key would not include the double underscore split
                 collectionsApiJson = collectionsApiJson.replaceAll(nicknameValue, `${referenceIdAssociatedRecordIdValue}`);
             }
 
@@ -510,6 +518,35 @@ export class CollectionsApiService {
         const collectionsApiFileName = `collectionsApi-${sobjectApiName}.json`;
         return collectionsApiFileName;
 
+    }
+
+    /**
+     * Sort Collection API files based on relationship levels from the treecipe wrapper
+     * Objects are sorted by their level property (0 = top-level parents, higher = deeper children)
+     * This ensures parent records are inserted before child records
+     */
+    static sortCollectionApiFilesByRelationshipLevel(
+        collectionApiFiles: string[], 
+        treecipeObjectWrapperDetail: any
+    ): string[] {
+        
+        const objectToObjectInfoMap = treecipeObjectWrapperDetail.ObjectToObjectInfoMap;
+        
+        // Sort files based on relationship level (lower levels first)
+        return collectionApiFiles.sort((fileA, fileB) => {
+            const objectA = this.getObjectNameFromCollectionsApiFilePath(fileA);
+            const objectB = this.getObjectNameFromCollectionsApiFilePath(fileB);
+            
+            if (!objectA || !objectB) {
+                return 0;
+            }
+            
+            // Get the level from RelationshipDetail, default to 999 if not found
+            const levelA = objectToObjectInfoMap[objectA]?.RelationshipDetail?.level ?? 999;
+            const levelB = objectToObjectInfoMap[objectB]?.RelationshipDetail?.level ?? 999;
+            
+            return levelA - levelB;
+        });
     }
 
 }

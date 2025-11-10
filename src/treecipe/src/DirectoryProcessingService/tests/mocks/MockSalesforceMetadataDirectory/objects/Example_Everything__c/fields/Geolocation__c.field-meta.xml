@@ -2,6 +2,7 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Geolocation__c</fullName>
     <displayLocationInDecimal>false</displayLocationInDecimal>
+    <externalId>false</externalId>
     <label>Geolocation</label>
     <required>false</required>
     <scale>2</scale>

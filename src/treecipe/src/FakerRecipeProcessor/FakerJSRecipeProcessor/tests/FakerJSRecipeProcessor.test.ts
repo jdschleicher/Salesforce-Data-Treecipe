@@ -119,7 +119,7 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     describe('transformFakerJsonDataToCollectionApiFormattedFilesBySObject', () => {
         
-        test('should transform faker JSON to collection API format', () => {
+        test('for OOTB object, should transform faker JSON to collection API format', () => {
                       
             const fakeAccountYamlRecipeObjectStructure = FakerJSExpressionMocker.getFakeAccountYamlRecipeObjectStructure();
             const fakeAccountRecipeYamlContent = JSON.stringify(fakeAccountYamlRecipeObjectStructure);
@@ -137,6 +137,30 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
             expect(accountData.records[0].Name).toBe('Acme Corp');
             
+            const contactData = actualMappedSObjectApiToRecords.get('Contact');
+            expect(contactData).toBeDefined();
+            expect(contactData.records.length).toBe(1);
+            expect(contactData.records[0].attributes.type).toBe('Contact');
+            expect(contactData.records[0].FirstName).toBe('John');
+
+        });
+
+        test('for custom object, should transform faker JSON to collection API format', () => {
+                      
+            const fakeProjectFamilyYamlRecipeObjectStructure = FakerJSExpressionMocker.getFakeCustomProjectFamilyYamlRecipeObjectStructure();
+            const projectFamiyRecipeYamlContent = JSON.stringify(fakeProjectFamilyYamlRecipeObjectStructure);
+    
+            const actualMappedSObjectApiToRecords = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(projectFamiyRecipeYamlContent);
+        
+            expect(actualMappedSObjectApiToRecords.size).toBe(2); 
+            
+            const projectFamilyData = actualMappedSObjectApiToRecords.get('Project_Family__c');
+            expect(projectFamilyData).toBeDefined();
+            expect(projectFamilyData.records.length).toBe(2);
+            expect(projectFamilyData.records[0].attributes.type).toBe('Project_Family__c');
+            expect(projectFamilyData.records[0].attributes.referenceId).toBe('Project_Family__c_Reference_1__standard_projfam');
+            expect(projectFamilyData.records[1].attributes.referenceId).toBe('Project_Family__c_Reference_2__coolNickname');
+
             const contactData = actualMappedSObjectApiToRecords.get('Contact');
             expect(contactData).toBeDefined();
             expect(contactData.records.length).toBe(1);

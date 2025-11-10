@@ -6,16 +6,21 @@ import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
+import { RelationshipService } from '../RelationshipService/RelationshipService';
+import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 export class DirectoryProcessor {
 
   private recipeService: RecipeService;
+  private relationshipService: RelationshipService;
   constructor() {
     const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
     this.recipeService = new RecipeService(selectedDataFakerService);
+    this.relationshipService = new RelationshipService();
   }
 
   async processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
@@ -48,6 +53,12 @@ export class DirectoryProcessor {
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings);
             }
 
+            if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail)) {
+
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.relationshipService.buildNewRelationshipDetail(objectName);
+
+            }
+
          
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, 
                                                                               objectName, 
@@ -55,7 +66,7 @@ export class DirectoryProcessor {
                                                                               salesforceOOTBFakerMappings
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
-  
+
             fieldsInfo.forEach((fieldDetail) => {
   
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(
@@ -63,11 +74,32 @@ export class DirectoryProcessor {
                 fieldDetail.recipeValue,
                 fieldDetail.fieldName
               );
-  
+
+              if (fieldDetail.type === 'Lookup' 
+                    || fieldDetail.type === 'MasterDetail' 
+                    || fieldDetail.type === 'Hiearchy') {
+
+                  const ootbFieldReferenceTolLookupApiNameMap = this.relationshipService.getOotbReferenceLookupMap();
+                  let parentReferenceApiName = null;
+                  if (fieldDetail.referenceTo) {
+
+                    parentReferenceApiName = fieldDetail.referenceTo;
+
+                  } else {
+
+                    parentReferenceApiName = ootbFieldReferenceTolLookupApiNameMap[fieldDetail.fieldName];
+
+                  }
+
+                  if ( parentReferenceApiName ) {
+                    objectInfoWrapper.ObjectToObjectInfoMap = this.relationshipService.buildBidirectionalChildAndParentRelationshipReferences(fieldDetail, objectInfoWrapper, objectName, parentReferenceApiName);
+                  }
+                    
+              }
+
+
             });
   
-            objectInfoWrapper.CombinedRecipes += objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe;
-            objectInfoWrapper.CombinedRecipes += "\n";
   
             if ( recordTypeApiToRecordTypeWrapperMap !== undefined && Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
               // if there are keys in the recordTypeMap, add them to the objectsInfoWrapper
@@ -182,6 +214,105 @@ export class DirectoryProcessor {
     return parsedSalesforceFieldFileNameInOOTBMappings;
 
   }
+
+  async processAllObjectsAndRelationships(directoryPathUri: vscode.Uri): Promise<ObjectInfoWrapper> {
+    
+    const objectInfoWrapper = new ObjectInfoWrapper(); 
+    
+    await this.processDirectory(directoryPathUri, objectInfoWrapper);
+  
+    objectInfoWrapper.RelationshipTrees = this.relationshipService.buildRelationshipTrees(objectInfoWrapper);
+
+    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+    
+    objectInfoWrapper.RecipeFiles = recipeFiles;
+      
+    return objectInfoWrapper;
+
+  }
+
+  async createRecipeFilesInSubdirectory(objectsInfoWrapper: ObjectInfoWrapper,
+                                          workspaceRoot): Promise<void> {
+
+      // ensure dedicated directory for generated recipes exists
+      const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+      const expectedGeneratedRecipesFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}`;
+      if (!fs.existsSync(expectedGeneratedRecipesFolderPath)) {
+          fs.mkdirSync(expectedGeneratedRecipesFolderPath);
+      }
+
+      const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+      let timestampedRecipeGenerationFolder = '';
+      const isFakerJSServiceSelected = ( ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' 
+                                            ? true
+                                            : false );
+
+      // THE BELOW CONDITIONAL ADJUSTS HOW RECIPE FILE GETS GENERATED TO INCLUDE A SPECIAL FAKERJS INDICATOR OF THE SELECTED FAKER SERVICE IS 'faker-js' 
+      // WITH THIS INDICATOR IN THE RECIPE FILE NAME, THIS WILL PREVENT A FAKER-JS TRYING TO BE PROCESSED
+      // WHEN THE SELECTED FAKER SERVICE IS CONFIGURED FOR 'snowfakery'
+      let recipePrefix = '';
+      if (isFakerJSServiceSelected) {
+
+          recipePrefix = 'recipe-fakerjs';
+
+      } else {
+
+          recipePrefix = `recipe`;
+
+      }
+
+      timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${recipePrefix}-${isoDateTimestamp}`;
+      fs.mkdirSync(timestampedRecipeGenerationFolder);
+
+      const recipeFilesToCreate = objectsInfoWrapper.RecipeFiles;
+      for ( const recipeFile of recipeFilesToCreate ) {
+
+          let treecipeTopToBottomLevelName = '';
+
+          if (recipeFile.objects.length === 1) {
+              const onlyObjectInTreecipe = recipeFile.objects.at(0);
+              treecipeTopToBottomLevelName = `${onlyObjectInTreecipe}-ONLY`;
+
+          } else {
+            
+              const topLevelObjectInRecipe = recipeFile.objects.at(0);
+              const bottomLevelObjectRecipe = recipeFile.objects.at(-1);
+              treecipeTopToBottomLevelName = `${topLevelObjectInRecipe}-thru-${bottomLevelObjectRecipe}`;
+
+          }
+
+          const recipeFileName = `${recipePrefix}--${treecipeTopToBottomLevelName}-${isoDateTimestamp}.yml`;
+
+          const treecipeTopToBottomFolder = `${timestampedRecipeGenerationFolder}/${treecipeTopToBottomLevelName}`;
+          fs.mkdirSync(treecipeTopToBottomFolder);
+
+          const outputFilePath = `${treecipeTopToBottomFolder}/${recipeFileName}`;
+
+          fs.writeFile(outputFilePath, recipeFile.content, (err) => {
+              
+            if (err) {
+                  throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
+            } else {
+                  vscode.window.showInformationMessage('Treecipe YAML generated successfully');
+            }
+              
+          });
+
+      }
+
+      const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
+      const filePathOfOjectsInfoWrapperJson = `${timestampedRecipeGenerationFolder}/${objectsInfoWrapperFileName}`;
+      const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
+      fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
+          if (err) {
+              throw new Error(`an error occurred when attempting to create the "${objectsInfoWrapperFileName}" file.`);
+          } else {
+              vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
+          }
+      });
+
+  }
+
 
 }
 

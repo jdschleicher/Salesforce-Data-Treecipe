@@ -44,7 +44,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     describe('getRecipeFakeValueByXMLFieldDetail', () => {
 
-        test('given invalid or not yet handled field type, logs message and returns "FieldType Not Handled Value', () => {
+        test('given invalid or not yet handled field type, logs message and returns "### TODO -- FieldType Not Handled Value', () => {
 
             const fakeFieldTypeValue = "heyooo";
             let fakeXMLFieldDetail: XMLFieldDetail = {
@@ -53,7 +53,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 fieldLabel: "Fake",
                 xmlMarkup: "<xml></xml>"
             };
-            const expectedRecipeValue = `"FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
+            const expectedRecipeValue = `"### TODO -- FieldType Not Handled -- ${fakeFieldTypeValue} does not exist in this programs Salesforce field map."`;
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualRecipeValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(fakeXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
             expect(expectedRecipeValue).toBe(actualRecipeValue);
@@ -62,7 +62,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
-            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['cle','eastlake','madison','mentor','wickliffe','willoughby']) }}";
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
@@ -81,10 +81,21 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
+        test('given expected Type__c Picklist field with special characters, returns expected faker value', () => {
+
+            const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getTypePicklistXMLFieldDetail();
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement([`Adventure Activities`,`Beaches & Snorkeling`,`Cultural Tours & Workshops`,`Dining Experiences`,`Family & Kids' Activities`,`Fitness & Exercise`,`Golf`,`Nature & Eco Tours`,`Nightlife & Entertainment`,`Relaxation & Quiet Zones`,`Spa & Wellness`,`Swimming Pools`,`Tennis & Pickleball`,`Water Sports`]) }}";
+            const recordTypeNameToRecordTypeXMLMarkup = {};
+            const actualPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
+
+            expect(actualPicklistFakerJSExpression).toBe(expectedPicklistFakerJSValue);
+
+        });
+
         test('given expected Standard Value Set Picklist XMLFieldDetail, returns the expected fakerjs YAML recipe value', () => {
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedStandardValueSetLeadSourcePicklistXMLFieldDetail();
-            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['Web','Phone Inquiry','Partner Referral','Purchased List','Other']) }}";
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement([`Web`,`Phone Inquiry`,`Partner Referral`,`Purchased List`,`Other`]) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualPicklistFakerJSValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
@@ -123,7 +134,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
             await globalValueSetSingleton.initialize(uri.fsPath, generateRecipeOverride);
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedGlobalValueSetCLEGlobalPicklistXMLFieldDetail();
-            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement(['guardians','cavs','browns','monsters','crunch']) }}";
+            const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement([`guardians`,`cavs`,`browns`,`monsters`,`crunch`]) }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualPicklistFakerJSValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 
@@ -134,7 +145,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected MultiSelect Picklist XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedMultiSelectPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getMultiSelectPicklistXMLFieldDetail();
-            const expectedFakerJSMultiSelectPicklistExpression = "\${{ (faker.helpers.arrayElements(['chicken','chorizo','egg','fish','pork','steak','tofu'])).join(';') }}";
+            const expectedFakerJSMultiSelectPicklistExpression = "\${{ (faker.helpers.arrayElements([`chicken`,`chorizo`,`egg`,`fish`,`pork`,`steak`,`tofu`])).join(';') }}";
             const recordTypeNameToRecordTypeXMLMarkup = {};
             const actualMultiSelectPicklistFakerJSExpression = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedMultiSelectPicklistXMLFieldDetail, recordTypeNameToRecordTypeXMLMarkup);
 

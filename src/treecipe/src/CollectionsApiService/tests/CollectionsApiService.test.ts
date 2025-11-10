@@ -419,44 +419,77 @@ describe('Shared tests for CollectionsApiService', () => {
     
         test('should replace reference IDs with corresponding record IDs', () => {
 
-            const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"ref2"}]}';
             const objectReferenceIdToOrgCreatedRecordIdMap = {
-                ref1__sweetNickname: '001ABC',
-                ref2: '002DEF',
+                Order__c_Reference_1__Order__c_NickName: '001ABC',
+                Product__c_Reference_1__Product__c_NickName: '002DEF',
             };
+
+            const collectionsApiJson = `
+            {
+                "allOrNone": true,
+                "records": [
+                {
+                "attributes": {
+                    "type": "Order_Item__c",
+                    "referenceId": "Order_Item__c_Reference_1__Order_Item__c_NickName"
+                },
+                "Order__c": "Order__c_NickName",
+                "Price__c": "632.01",
+                "Product__c": "Product__c_NickName",
+                "Qty_L__c": "13077\n",
+                "Qty_M__c": "517818\n",
+                "Qty_S__c": "294768\n"
+                },
+                {
+                "attributes": {
+                    "type": "Order_Item__c",
+                    "referenceId": "Order_Item__c_Reference_2__Order_Item__c_NickName"
+                },
+                "Order__c": "Order__c_NickName",
+                "Price__c": "454.34",
+                "Product__c": "Product__c_NickName",
+                "Qty_L__c": "363799\n",
+                "Qty_M__c": "376137\n",
+                "Qty_S__c": "407613\n"
+                }
+                ]
+            }`;
 
             const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
 
-            expect(result).toBe('{"records":[{"Id":"001ABC"},{"Id":"002DEF"}]}');
+            const expectedCollectionsApiJson = `{
+                "allOrNone": true,
+                "records": [
+                {
+                "attributes": {
+                    "type": "Order_Item__c",
+                    "referenceId": "Order_Item__c_Reference_1__Order_Item__c_NickName"
+                },
+                "Order__c": "001ABC",
+                "Price__c": "632.01",
+                "Product__c": "002DEF",
+                "Qty_L__c": "13077\n",
+                "Qty_M__c": "517818\n",
+                "Qty_S__c": "294768\n"
+                },
+                {
+                "attributes": {
+                    "type": "Order_Item__c",
+                    "referenceId": "Order_Item__c_Reference_2__Order_Item__c_NickName"
+                },
+                "Order__c": "001ABC",
+                "Price__c": "454.34",
+                "Product__c": "002DEF",
+                "Qty_L__c": "363799\n",
+                "Qty_M__c": "376137\n",
+                "Qty_S__c": "407613\n"
+                }
+                ]
+            }`;
+            expect(result.trim()).toBe(expectedCollectionsApiJson.trim());
 
         });
-
-        test('nickname or associated reference value will operate as reference id that will get assigned Id value', () => {
-
-            const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"Nickname"}]}';
-            const objectReferenceIdToOrgCreatedRecordIdMap = {
-                ref1__Nickname: '001ABC',
-            };
-
-            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
-
-            expect(result).toBe('{"records":[{"Id":"001ABC"},{"Id":"001ABC"}]}');
-
-        });
-
-        test('should replace multiple occurrences of the same reference ID', () => {
-
-            const collectionsApiJson = '{"records":[{"Id":"ref1"},{"Id":"ref1"}]}';
-            const objectReferenceIdToOrgCreatedRecordIdMap = {
-                ref1: '001ABC',
-            };
-
-            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
-
-            expect(result).toBe('{"records":[{"Id":"001ABC"},{"Id":"001ABC"}]}');
-
-        });
-
+        
         test('should not modify the JSON if no reference IDs match', () => {
 
             const collectionsApiJson = '{"records":[{"Id":"noMatch"}]}';

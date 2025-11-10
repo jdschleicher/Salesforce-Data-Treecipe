@@ -3,6 +3,7 @@
     <fullName>Example_Everything_Lookup__c</fullName>
     <deleteConstraint>SetNull</deleteConstraint>
     <description>lookup to itself</description>
+    <externalId>false</externalId>
     <label>Example Everything Lookup</label>
     <referenceTo>Example_Everything__c</referenceTo>
     <relationshipLabel>Everythings</relationshipLabel>

@@ -1,5 +1,61 @@
 # Change Log
 
+## [2.6.0] [PR#34](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/34) - Feature: Relationship Service & Bug Fix for Special Characters in Picklists
+
+### 🎯 Major Features
+
+#### 1. **Comprehensive Relationship Service **
+
+Generating recipes command, now creates relationship "Treecipe" files. 
+
+Each Treecipe file is a set of related objects that are attached based on their xml markup.
+
+Based on your source code and the relationships definied with in each field's xml, there could be one or many Treecipe files created. 
+
+This Treecipe will also be created so that each object is inerted based on the hiearchy of objects in the Treecipe file.
+
+#### 2. **Bug Fix: Special Characters in Picklist Values**
+Fixed critical bug where picklist values containing special characters (`&`, `'`, etc.) were breaking FakerJS expression generation.
+
+**Problem**: Picklist values like "Beaches & Snorkeling" or "Family & Kids' Activities" were causing syntax errors when wrapped in single quotes.
+
+**Solution**: Changed from single quotes to backticks (template literals) in `FakerJSRecipeFakerService`:
+- `buildPicklistFakerArraySingleElementSyntaxByPicklistOptions()`: Now uses `` `${option}` ``
+- `buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions()`: Now uses `` `${option}` ``
+
+**Benefits**:
+- Natural handling of all special characters without escaping
+- Consistent format across all picklist/multiselect expressions
+- Future-proof for any special characters in picklist values
+- No breaking changes to existing functionality
+
+### 🧪 Testing
+
+- Added comprehensive mock infrastructure for testing complex relationships
+- Created `MockRelationshipService` with 7 pre-configured test scenarios
+- Updated all picklist-related tests to use backtick format
+- Added test validation for fields with XML entities (`&amp;`, `&apos;`)
+- Created detailed test documentation with visual relationship diagrams
+
+### 📝 Documentation
+
+- Added scenario-specific markdown files documenting complex relationship patterns
+- Included ASCII diagrams for visual understanding of object hierarchies
+- Provided clear examples of expected sort orders and dependencies
+
+### 🔧 Technical Details
+
+**Files Modified**:
+- `src/treecipe/src/RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService.ts`
+- `src/treecipe/src/RecipeService/tests/FakerJSRecipeService.test.ts`
+- `src/treecipe/src/XMLProcessingService/tests/mocks/XMLMarkupMockService.ts`
+- `src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts`
+- `src/treecipe/src/RelationshipService/tests/mocks/MockRelationshipService.ts`
+
+**New Test Documentation** (with Mermaid diagrams):
+- [Scenario 3: Linear Chain with Multiple Children](src/treecipe/src/RelationshipService/tests/test-scenario-3-linear-chain.md)
+- [Scenario 7: Diamond Pattern](src/treecipe/src/RelationshipService/tests/test-scenario-7-diamond-pattern.md)
+
 ## [2.5.1] [PR#33](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/33) - Bug : 2.5.1
 
 Initial approach to capturing GlobalValueSets assumed that the singleton would be reset with every invocation of the "Generate Recipe" command.
@@ -201,4 +257,3 @@ Based upon the same YAML file approached used with snowfakery, this update intro
  - faker service introduced refactoring needs for separating out expected recipe values in RecipeService into two dedicated recipe providers ( NPMFakerService, SnowfakeryFakerService) - NPMFakerService is not used at the moment and this entire setup was excessive from an actual usage stand point. I did learn some fun stuff and got to apply the factory pattern. In the future, the faker service could be chosen as part of configuration setup. For now it defaults to "Snowfakery"
  - Associated unit tests and supported mock service
  - GitHub Actions for automated jest tests validation and publishing jobs
-

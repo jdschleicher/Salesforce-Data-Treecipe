@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Maintenance_Cycle__c</fullName>
+    <deprecated>false</deprecated>
+    <description>Number of days required before routine maintenance is needed</description>
+    <externalId>false</externalId>
+    <label>Maintenance Cycle (Days)</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackHistory>false</trackHistory>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

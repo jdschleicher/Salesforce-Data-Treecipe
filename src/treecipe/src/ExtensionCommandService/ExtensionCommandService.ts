@@ -73,19 +73,26 @@ export class ExtensionCommandService {
                 The below lines get the timestamped parent recipe folder 
                 in order to traverse through and get all other artifacts files to use in
                 data generation and inserts commands
+                
+                Since recipe files are now in subdirectories (e.g., GeneratedRecipes/RelationshipTree1/recipe.yaml),
+                we need to go up one level from the recipe's immediate parent to find the treecipe wrapper
             */
             const selectedRecipeParentDirectory = path.dirname(recipeFullFileNamePath);
             if ( path.basename(selectedRecipeParentDirectory) !== "GeneratedRecipes" ) {
-                const filesWithinSelecteRecipeFolder = fs.readdirSync(selectedRecipeParentDirectory, { withFileTypes: true });
+                // Go up one directory level to find the treecipe wrapper file
+                const directoryToSearchForWrapper = path.join(selectedRecipeParentDirectory, '..');
+                const filesWithinSelecteRecipeFolder = fs.readdirSync(directoryToSearchForWrapper, { withFileTypes: true });
                 const expectedObjectsInfoWrapperNamePrefix = ConfigurationService.getTreecipeObjectsWrapperName();
                 const matchingTreecipeObjectsWrapperFile = filesWithinSelecteRecipeFolder.find(file => 
                     file.isFile() && file.name.startsWith(expectedObjectsInfoWrapperNamePrefix)
                 );
     
-                if (matchingTreecipeObjectsWrapperFile) {
-                    const fullTreecipeObjectsWrapperPath = path.join(selectedRecipeParentDirectory, matchingTreecipeObjectsWrapperFile.name);
+                if ( matchingTreecipeObjectsWrapperFile ) {
+                    const fullTreecipeObjectsWrapperPath = path.join(directoryToSearchForWrapper, matchingTreecipeObjectsWrapperFile.name);
                     fs.copyFileSync(fullTreecipeObjectsWrapperPath, `${fullPathToBaseArtifactsFolder}/originalTreecipeWrapper-${matchingTreecipeObjectsWrapperFile.name}`);
-                } 
+                } else {
+                    throw new Error('Selected directory doesnt have an expected OriginalTreecipeWrapper file');
+                }
             }
        
 
@@ -123,60 +130,17 @@ export class ExtensionCommandService {
 
                 const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-                objectsInfoWrapper = await directoryProcessor.processDirectory(objectsTargetUri, objectsInfoWrapper);
             
+                const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
+
+                await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
+
+
             } else {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-            // ensure dedicated directory for generated recipes exists
-            const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
-            const expectedGeneratedRecipesFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}`;
-            if (!fs.existsSync(expectedGeneratedRecipesFolderPath)) {
-                fs.mkdirSync(expectedGeneratedRecipesFolderPath);
-            }
-
-            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-            let recipeFileName = '';
-            let timestampedRecipeGenerationFolder = '';
-            const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
-            // THE BELOW CONDITIONAL ADJUSTS HOW RECIPE FILE GETS GENERATED TO INCLUDE A SPECIAL FAKERJS INDICATOR OF THE SELECTED FAKER SERVICE IS 'faker-js' 
-            // WITH THIS INDICATOR IN THE RECIPE FILE NAME, THIS WILL PREVENT A FAKER-JS TRYING TO BE PROCESSED
-            // WHEN THE SELECTED FAKER SERVICE IS CONFIGURED FOR 'snowfakery'
-            if (selectedDataFakerService === 'faker-js') {
-
-                const fakerjsRecipeIndicator = 'recipe-fakerjs';
-                recipeFileName = `${fakerjsRecipeIndicator}-${isoDateTimestamp}.yaml`;
-                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${fakerjsRecipeIndicator}-${isoDateTimestamp}`;
-
-            } else {
-
-                recipeFileName = `recipe-${isoDateTimestamp}.yaml`;
-                timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/recipe-${isoDateTimestamp}`;
-
-            }
-            
-            fs.mkdirSync(timestampedRecipeGenerationFolder);
-
-            const outputFilePath = `${timestampedRecipeGenerationFolder}/${recipeFileName}`;
-            fs.writeFile(outputFilePath, objectsInfoWrapper.CombinedRecipes, (err) => {
-                if (err) {
-                    throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
-                } else {
-                    vscode.window.showInformationMessage('Treecipe YAML generated successfully');
-                }
-            });
-
-            const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
-            const filePathOfOjectsInfoWrapperJson = `${timestampedRecipeGenerationFolder}/${objectsInfoWrapperFileName}`;
-            const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
-            fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
-                if (err) {
-                    throw new Error('an error occurred when attempting to create the "treecipeObjectsWrapper-DateTime.json" file.');
-                } else {
-                    vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
-                }
-            });
+          
 
         } catch (error) {
 
