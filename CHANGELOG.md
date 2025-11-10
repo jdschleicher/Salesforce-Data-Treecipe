@@ -1,25 +1,18 @@
 # Change Log
 
-## [2.6.0] [PR#34](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/34) - Feature: Comprehensive Test Suite & Bug Fix for Special Characters in Picklists
+## [2.6.0] [PR#34](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/34) - Feature: Relationship Service & Bug Fix for Special Characters in Picklists
 
 ### 🎯 Major Features
 
-#### 1. **Comprehensive RelationshipService Test Suite**
-Added extensive test coverage for the RelationshipService with 7 distinct test scenarios covering increasingly complex relationship patterns:
+#### 1. **Comprehensive Relationship Service **
 
-- **Scenario 1**: Basic Two-Level Parent-Child (Account → Contact)
-- **Scenario 2**: Three-Level Simple Hierarchy (Account → Contact → Case)  
-- **Scenario 3**: Linear Chain with Multiple Children (Account → Contact → Case → Task)
-- **Scenario 4**: Two Branches from Root (Account with both Contacts and Opportunities)
-- **Scenario 5**: Sibling Objects Without Parent (Contact and Lead as independent objects)
-- **Scenario 6**: Complex Multi-Level with Branches (Account branching to Contacts/Opportunities, then to Cases/Tasks)
-- **Scenario 7**: Diamond Pattern (Account → Contact/Opportunity → Case converging back)
+Generating recipes command, now creates relationship "Treecipe" files. 
 
-Each scenario includes:
-- Detailed markdown documentation explaining the relationship pattern
-- Visual ASCII diagrams of object relationships
-- Comprehensive unit tests validating correct ordering
-- Edge case handling and validation
+Each Treecipe file is a set of related objects that are attached based on their xml markup.
+
+Based on your source code and the relationships definied with in each field's xml, there could be one or many Treecipe files created. 
+
+This Treecipe will also be created so that each object is inerted based on the hiearchy of objects in the Treecipe file.
 
 #### 2. **Bug Fix: Special Characters in Picklist Values**
 Fixed critical bug where picklist values containing special characters (`&`, `'`, etc.) were breaking FakerJS expression generation.
@@ -36,7 +29,7 @@ Fixed critical bug where picklist values containing special characters (`&`, `'`
 - Future-proof for any special characters in picklist values
 - No breaking changes to existing functionality
 
-### 🧪 Testing Improvements
+### 🧪 Testing
 
 - Added comprehensive mock infrastructure for testing complex relationships
 - Created `MockRelationshipService` with 7 pre-configured test scenarios
