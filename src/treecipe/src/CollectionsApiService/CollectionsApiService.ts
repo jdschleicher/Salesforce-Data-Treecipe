@@ -477,7 +477,6 @@ export class CollectionsApiService {
 
     static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
 
-        const jsonReferenceMap = JSON.stringify(objectReferenceIdToOrgCreatedRecordIdMap);
         const referenceRegexMatch = /(Reference_\d+__)/; // can be a match of "Reference_1_" to "Reference_1000000000__"
         for (const [referenceIdKey, referenceIdAssociatedRecordIdValue ] of  Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
 
