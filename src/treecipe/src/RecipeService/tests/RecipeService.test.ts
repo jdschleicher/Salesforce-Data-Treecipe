@@ -144,6 +144,17 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         });
 
+        test('given expected text XMLFieldDetail with length, returns the expected snowfakery YAML recipe value with length limit', () => {
+
+            const expectedXMLDetailForTextWithLength:XMLFieldDetail = XMLMarkupMockService.getTextXMLFieldDetailWithLength();
+            const expectedSnowfakeryValueForTextWithLength = '${{fake.text(max_nb_chars=50)}}';
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const actualSnowfakeryValueForTextWithLength = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForTextWithLength, recordTypeNameByRecordTypeNameToXMLMarkup);
+
+            expect(actualSnowfakeryValueForTextWithLength).toBe(expectedSnowfakeryValueForTextWithLength);
+
+        });
+
     });
 
     describe('initiateRecipeByObjectName', () => {
@@ -407,4 +418,3 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
     });
 
 });
-

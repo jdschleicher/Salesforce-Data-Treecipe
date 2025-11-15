@@ -397,7 +397,17 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
         return emptyMultiSelectXMLDetailPlaceholder;
-        
+
+    }
+
+    buildTextRecipeValueWithLength(length: number): string {
+        return `${this.openingRecipeSyntax}fake.text(max_nb_chars=${length})${this.closingRecipeSyntax}`;
+    }
+
+    buildNumericRecipeValueWithPrecision(precision: number): string {
+        // For numeric fields, precision typically represents total digits, but we can use it to limit the range
+        const maxValue = Math.pow(10, precision) - 1;
+        return `${this.openingRecipeSyntax}fake.random_int(min=0, max=${maxValue})${this.closingRecipeSyntax}`;
     }
 
 }

@@ -1509,7 +1509,7 @@ export class XMLMarkupMockService {
     }
 
     static getTextXMLFieldDetail():XMLFieldDetail {
-        
+
         let textXMLFieldDetail: XMLFieldDetail = {
             fieldType: "Text",
             apiName: "Text__c",
@@ -1518,6 +1518,37 @@ export class XMLMarkupMockService {
         };
 
         return textXMLFieldDetail;
+    }
+
+    static getTextXMLFieldDetailWithLength():XMLFieldDetail {
+
+        let textXMLFieldDetail: XMLFieldDetail = {
+            fieldType: "Text",
+            apiName: "TextWithLength__c",
+            fieldLabel: "Text With Length",
+            length: 50,
+            xmlMarkup: this.getTextFieldTypeWithLengthXMLMarkup()
+        };
+
+        return textXMLFieldDetail;
+    }
+
+    static getTextFieldTypeWithLengthXMLMarkup():string {
+        const xmlTextMarkup = `
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>TextWithLength__c</fullName>
+    <externalId>false</externalId>
+    <label>Text With Length</label>
+    <length>50</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>
+`;
+        return xmlTextMarkup;
+
     }
 
     static getParseStringCLEGlobalValueSetMock() {

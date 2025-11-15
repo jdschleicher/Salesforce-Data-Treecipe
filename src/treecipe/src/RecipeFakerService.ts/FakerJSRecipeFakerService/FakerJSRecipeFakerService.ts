@@ -504,8 +504,18 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     getMultipicklistTODOPlaceholderWithExample():string {
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (faker.helpers.arrayElements(['apple', 'orange', 'banana']) ).join(';') }}`;
-        return emptyMultiSelectXMLDetailPlaceholder;    
+        return emptyMultiSelectXMLDetailPlaceholder;
 
+    }
+
+    buildTextRecipeValueWithLength(length: number): string {
+        return `${this.openingRecipeSyntax} faker.lorem.text(${length}).substring(0, ${length}) ${this.closingRecipeSyntax}`;
+    }
+
+    buildNumericRecipeValueWithPrecision(precision: number): string {
+        // For numeric fields, precision typically represents total digits, but we can use it to limit the range
+        const maxValue = Math.pow(10, precision) - 1;
+        return `${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxValue}}) ${this.closingRecipeSyntax}`;
     }
 
 }
