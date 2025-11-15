@@ -512,10 +512,19 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return `${this.openingRecipeSyntax} faker.lorem.text(${length}).substring(0, ${length}) ${this.closingRecipeSyntax}`;
     }
 
-    buildNumericRecipeValueWithPrecision(precision: number): string {
-        // For numeric fields, precision typically represents total digits, but we can use it to limit the range
-        const maxValue = Math.pow(10, precision) - 1;
-        return `${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxValue}}) ${this.closingRecipeSyntax}`;
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+        // Handle all numeric fields (number, currency, percent) with precision and optional scale
+        const effectiveScale = scale ?? 0;
+
+        if (effectiveScale === 0) {
+            // Integer fields (number with scale=0, or scale not specified)
+            const maxValue = Math.pow(10, precision) - 1;
+            return `${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxValue}}) ${this.closingRecipeSyntax}`;
+        } else {
+            // Decimal fields (currency, percent with scale > 0)
+            const maxValue = Math.pow(10, precision - effectiveScale) - Math.pow(10, -effectiveScale);
+            return `${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxValue}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+        }
     }
 
 }

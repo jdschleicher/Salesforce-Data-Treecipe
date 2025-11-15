@@ -125,7 +125,7 @@ export class RecipeService {
                 case 'percent':
 
                     if (xmlFieldDetail.precision) {
-                        fakeRecipeValue = this.fakerService.buildNumericRecipeValueWithPrecision(xmlFieldDetail.precision);
+                        fakeRecipeValue = this.fakerService.buildNumericRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale);
                         return fakeRecipeValue;
                     }
                     // Fall through to default if no precision
