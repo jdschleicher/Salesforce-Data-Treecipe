@@ -102,6 +102,7 @@ export class XMLMarkupMockService {
             fieldType: "Html",
             apiName: "TextAreaRich__c",
             fieldLabel: "TextAreaRich",
+            length: 32768,
             xmlMarkup: this.getRichTextAreaFieldTypeXMLMarkup()        };
 
         return richTextAreaXMLField;     
@@ -130,6 +131,7 @@ export class XMLMarkupMockService {
         const longTextAreaXMLField: XMLFieldDetail = {
             fieldType: "LongTextArea",
             apiName: "Text_Area_Long__c",
+            length: 131072,
             fieldLabel: "Text Area Long",
             xmlMarkup: this.getLongTextAreaFieldTypeXMLMarkup()        };
 
@@ -190,10 +192,12 @@ export class XMLMarkupMockService {
             fieldType: "Number",
             apiName: "Number__c",
             fieldLabel: "Number",
+            precision: 18,
+            scale: 0,
             xmlMarkup: this.getNumberFieldTypeXMLMarkup()        };
 
-        return numberXMLField;    
-    
+        return numberXMLField;
+
     }
 
     static getNumberFieldTypeXMLMarkup() {
@@ -233,7 +237,6 @@ export class XMLMarkupMockService {
     <displayLocationInDecimal>false</displayLocationInDecimal>
     <label>Geolocation</label>
     <required>false</required>
-    <scale>2</scale>
     <trackTrending>false</trackTrending>
     <type>Location</type>
 </CustomField>
@@ -263,9 +266,7 @@ export class XMLMarkupMockService {
     <formula>$Organization.Longitude</formula>
     <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
     <label>Formula</label>
-    <precision>18</precision>
     <required>false</required>
-    <scale>2</scale>
     <trackTrending>false</trackTrending>
     <type>Number</type>
     <unique>false</unique>
@@ -995,10 +996,46 @@ export class XMLMarkupMockService {
             fieldType: "Currency",
             apiName: "Currency__c",
             fieldLabel: "Currency",
+            precision: 18,
+            scale: 2,
             xmlMarkup: this.getCurrencyFieldTypeXMLMarkup()
         };
 
         return xmlFieldDetail;
+
+    }
+
+    static getPercentXMLFieldDetail() {
+
+        let xmlFieldDetail: XMLFieldDetail = {
+            fieldType: "Percent",
+            apiName: "Percent__c",
+            fieldLabel: "Percent",
+            precision: 5,
+            scale: 2,
+            xmlMarkup: this.getPercentFieldTypeXMLMarkup()
+        };
+
+        return xmlFieldDetail;
+
+    }
+
+    static getPercentFieldTypeXMLMarkup() {
+
+        const percentXMLMarkup = `
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Percent__c</fullName>
+    <label>Percent</label>
+    <precision>5</precision>
+    <required>false</required>
+    <scale>2</scale>
+    <trackTrending>false</trackTrending>
+    <type>Percent</type>
+</CustomField>
+`;
+
+        return percentXMLMarkup;
 
     }
 
@@ -1514,6 +1551,7 @@ export class XMLMarkupMockService {
             fieldType: "Text",
             apiName: "Text__c",
             fieldLabel: "Text",
+            length: 255,
             xmlMarkup: this.getTextFieldTypeXMLMarkup()
         };
 

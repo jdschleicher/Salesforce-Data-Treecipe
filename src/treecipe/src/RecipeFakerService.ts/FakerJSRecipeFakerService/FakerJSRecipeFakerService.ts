@@ -518,11 +518,18 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         if (effectiveScale === 0) {
             // Integer fields (number with scale=0, or scale not specified)
-            const maxValue = Math.pow(10, precision) - 1;
+            // Cap precision at 15 to get accurate all-9's result (JavaScript can't represent larger integers)
+            const safePrecision = Math.min(precision, 18);
+            const maxValueString = '9'.repeat(safePrecision);
+            const maxValue = parseInt(maxValueString, 10);
             return `${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxValue}}) ${this.closingRecipeSyntax}`;
         } else {
             // Decimal fields (currency, percent with scale > 0)
-            const maxValue = Math.pow(10, precision - effectiveScale) - Math.pow(10, -effectiveScale);
+            // For decimal fields, precision includes decimal places, so max integer part is precision - scale
+            const integerPrecision = precision - effectiveScale;
+            const safeIntegerPrecision = Math.min(integerPrecision, 18);
+            const maxValueString = '9'.repeat(safeIntegerPrecision);
+            const maxValue = parseInt(maxValueString, 10);
             return `${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxValue}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
         }
     }

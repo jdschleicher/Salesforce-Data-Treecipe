@@ -410,12 +410,17 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         if (effectiveScale === 0) {
             // Integer fields (number with scale=0, or scale not specified)
-            const maxValue = Math.pow(10, precision) - 1;
+            // Create max value by repeating '9' precision times, avoiding Math.pow precision issues
+            const maxValueString = '9'.repeat(precision);
+            const maxValue = parseInt(maxValueString, 10);
             return `${this.openingRecipeSyntax}fake.random_int(min=0, max=${maxValue})${this.closingRecipeSyntax}`;
         } else {
             // Decimal fields (currency, percent with scale > 0)
-            const maxValue = Math.pow(10, precision - effectiveScale) - Math.pow(10, -effectiveScale);
-            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${precision - effectiveScale}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+            // For decimal fields, precision includes decimal places, so max integer part is precision - scale
+            const integerPrecision = precision - effectiveScale;
+            const maxValueString = '9'.repeat(integerPrecision);
+            const maxValue = parseInt(maxValueString, 10);
+            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${integerPrecision}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
         }
     }
 
