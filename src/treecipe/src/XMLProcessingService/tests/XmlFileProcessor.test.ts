@@ -367,45 +367,93 @@ describe('processXmlFieldContent', () => {
 
     });
 
+    test('given text field with length XML tag, parses length property correctly', async () => {
 
-});
+        const xmlFieldMarkup = XMLMarkupMockService.getTextFieldTypeWithLengthXMLMarkup();
+        const fakeFieldName = 'TextWithLength__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
+        const expectedXMLFieldDetail = XMLMarkupMockService.getTextXMLFieldDetailWithLength();
 
-describe('isXMLFileType', () => {
-
-    test('given expected xml file extension and valid filetype enum, returns true', () => {
-
-        const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
-        const expectedVSCodeFileTypeEnum = 1;
-        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(validXMLFileExtensionName, expectedVSCodeFileTypeEnum);
-        expect(isXMLFileType).toBeTruthy();
+        expect(actualFieldDetail).toEqual(expectedXMLFieldDetail);
+        expect(actualFieldDetail.length).toBe(50);
 
     });
 
-    test('given expected INVALID xml file extension and valid filetype enum, returns true', () => {
+    test('given number field with precision and scale XML tags, parses properties correctly', async () => {
 
-        const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
-        const expectedVSCodeFileTypeEnum = 1;
-        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(invalidXMLFileExtensionName, expectedVSCodeFileTypeEnum);
-        expect(isXMLFileType).toBeFalsy();
-        
+        const xmlFieldMarkup = XMLMarkupMockService.getNumberFieldTypeXMLMarkup();
+        const fakeFieldName = 'Number__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
+        const expectedXMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
+
+        expect(actualFieldDetail).toEqual(expectedXMLFieldDetail);
+        expect(actualFieldDetail.precision).toBe(18);
+        expect(actualFieldDetail.scale).toBe(0);
+
     });
 
-    test('given expected valid xml file extension and INVALID filetype enum, returns true', () => {
+    test('given currency field with precision and scale XML tags, parses properties correctly', async () => {
 
-        const validXMLFileExtensionName = 'Checkbox__c.field-meta.xml';
-        const directoryTypeEnum = 2;
-        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(validXMLFileExtensionName, directoryTypeEnum);
-        expect(isXMLFileType).toBeFalsy();
-        
+        const xmlFieldMarkup = XMLMarkupMockService.getCurrencyFieldTypeXMLMarkup();
+        const fakeFieldName = 'Currency__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
+        const expectedXMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
+
+        expect(actualFieldDetail).toEqual(expectedXMLFieldDetail);
+        expect(actualFieldDetail.precision).toBe(18);
+        expect(actualFieldDetail.scale).toBe(2);
+
     });
 
-    test('given expected INVALID xml file extension and INVALID filetype enum, returns true', () => {
+    test('given percent field with precision and scale XML tags, parses properties correctly', async () => {
 
-        const invalidXMLFileExtensionName = 'noxmlextensionhere.notme';
-        const directoryTypeEnum = 2;
-        const isXMLFileType:boolean = XmlFileProcessor.isXMLFileType(invalidXMLFileExtensionName, directoryTypeEnum);
-        expect(isXMLFileType).toBeFalsy();
-        
+        const xmlFieldMarkup = XMLMarkupMockService.getPercentFieldTypeXMLMarkup();
+        const fakeFieldName = 'Percent__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
+        const expectedXMLFieldDetail = XMLMarkupMockService.getPercentXMLFieldDetail();
+
+        expect(actualFieldDetail).toEqual(expectedXMLFieldDetail);
+        expect(actualFieldDetail.precision).toBe(5);
+        expect(actualFieldDetail.scale).toBe(2);
+
+    });
+
+    test('given field without precision/scale/length XML tags, does not set properties', async () => {
+
+        const xmlFieldMarkup = XMLMarkupMockService.getEmailFieldTypeXMLMarkup();
+        const fakeFieldName = 'Email__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
+        const expectedXMLFieldDetail = XMLMarkupMockService.getEmailXMLFieldDetail();
+
+        expect(actualFieldDetail).toEqual(expectedXMLFieldDetail);
+        expect(actualFieldDetail.precision).toBeUndefined();
+        expect(actualFieldDetail.scale).toBeUndefined();
+        expect(actualFieldDetail.length).toBeUndefined();
+
+    });
+
+    test('given long textarea field with length XML tag, parses length property correctly', async () => {
+
+        const xmlFieldMarkup = XMLMarkupMockService.getLongTextAreaFieldTypeXMLMarkup();
+        const fakeFieldName = 'LongTextArea__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
+        const expectedXMLFieldDetail = XMLMarkupMockService.getLongTextAreaXMLFieldDetail();
+
+        expect(actualFieldDetail).toEqual(expectedXMLFieldDetail);
+        expect(actualFieldDetail.length).toBe(131072);
+
+    });
+
+    test('given rich text area field with length XML tag, parses length property correctly', async () => {
+
+        const xmlFieldMarkup = XMLMarkupMockService.getRichTextAreaFieldTypeXMLMarkup();
+        const fakeFieldName = 'RichTextArea__c.field-meta.xml';
+        const actualFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlFieldMarkup, fakeFieldName);
+        const expectedXMLFieldDetail = XMLMarkupMockService.getRichTextAreaXMLFieldDetail();
+
+        expect(actualFieldDetail).toEqual(expectedXMLFieldDetail);
+        expect(actualFieldDetail.length).toBe(32768);
+
     });
 
 });

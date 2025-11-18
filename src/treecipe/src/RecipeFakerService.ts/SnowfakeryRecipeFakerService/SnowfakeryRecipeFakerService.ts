@@ -397,7 +397,29 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
         return emptyMultiSelectXMLDetailPlaceholder;
-        
+
+    }
+
+    buildTextRecipeValueWithLength(length: number): string {
+        return `${this.openingRecipeSyntax}fake.text(max_nb_chars=${length})${this.closingRecipeSyntax}`;
+    }
+
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+        // Handle all numeric fields (number, currency, percent) with precision and optional scale
+        const effectiveScale = scale ?? 0;
+        const maxValuePrecision = '9'.repeat(precision);
+
+        if (effectiveScale === 0) {
+            return `${this.openingRecipeSyntax}fake.random_int(min=0, max=${maxValuePrecision})${this.closingRecipeSyntax}`;
+        } else {
+            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxValuePrecision}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+        }
+    }
+
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+        // Special handling for currency fields - use full precision as left_digits
+        const effectiveScale = scale ?? 0;
+        return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${precision}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
     }
 
 }

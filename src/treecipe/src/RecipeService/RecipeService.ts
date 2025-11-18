@@ -95,32 +95,50 @@ export class RecipeService {
                     return fakeRecipeValue;
                     
                 case 'multiselectpicklist':
-    
+
                     if ( !(xmlFieldDetail.picklistValues) ) {
                         // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
                         const emptyMultiSelectXMLDetailPlaceholder = this.fakerService.getMultipicklistTODOPlaceholderWithExample();
                         return emptyMultiSelectXMLDetailPlaceholder;
                     }
                     const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
-                    fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices, 
+                    fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices,
                                                                                                             recordTypeApiToRecordTypeWrapperMap,
                                                                                                             xmlFieldDetail.apiName
                                                                                                         );
-            
+
                     return fakeRecipeValue;
-                    
-                // case 'masterdetail':
-                    
-                //     return {
-                //         type: 'lookup'
-                //     };
-    
-                // case 'lookup':
-    
-                //     return 'test';
-                    
-                default: 
-    
+
+                case 'text':
+                case 'textarea':
+                case 'longtextarea':
+                case 'html':
+
+                    if (xmlFieldDetail.length) {
+                        fakeRecipeValue = this.fakerService.buildTextRecipeValueWithLength(xmlFieldDetail.length);
+                        return fakeRecipeValue;
+                    }
+                    // Fall through to default if no length
+
+                case 'number':
+                case 'percent':
+
+                    if (xmlFieldDetail.precision) {
+                        fakeRecipeValue = this.fakerService.buildNumericRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale);
+                        return fakeRecipeValue;
+                    }
+                    // Fall through to default if no precision
+
+                case 'currency':
+
+                    if (xmlFieldDetail.precision) {
+                        fakeRecipeValue = this.fakerService.buildCurrencyRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale);
+                        return fakeRecipeValue;
+                    }
+                    // Fall through to default if no precision
+
+                default:
+
                     fakeRecipeValue = this.getFakeValueIfExpectedSalesforceFieldType(fieldType);
                     return fakeRecipeValue;
     

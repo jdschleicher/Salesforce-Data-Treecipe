@@ -10,4 +10,7 @@ export class XMLFieldDetail {
     public controllingField?: string;
     public xmlMarkup: string;
     public isStandardValueSet?: boolean;
+    public precision?: number;
+    public scale?: number;
+    public length?: number;
 }

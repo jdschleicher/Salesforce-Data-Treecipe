@@ -37,6 +37,22 @@ export class XmlFileProcessor {
       xmlFieldDetail.fieldType = typeValue;
       xmlFieldDetail.fieldLabel = fieldLabel;
 
+      // Parse precision, scale, and length properties (only if they exist in XML)
+      const precision = fieldXML?.CustomField?.precision?.[0];
+      if (precision !== undefined && precision !== null) {
+        xmlFieldDetail.precision = parseInt(precision, 10);
+      }
+
+      const scale = fieldXML?.CustomField?.scale?.[0];
+      if (scale !== undefined && scale !== null) {
+        xmlFieldDetail.scale = parseInt(scale, 10);
+      }
+
+      const length = fieldXML?.CustomField?.length?.[0];
+      if (length !== undefined && length !== null) {
+        xmlFieldDetail.length = parseInt(length, 10);
+      }
+
       if ( typeValue === 'Picklist' || typeValue === "MultiselectPicklist") {
 
         let picklistValueSetMarkup = fieldXML.CustomField.valueSet?.[0];
@@ -215,8 +231,3 @@ export class XmlFileProcessor {
 
 
 }
-
-  
-
-
-
