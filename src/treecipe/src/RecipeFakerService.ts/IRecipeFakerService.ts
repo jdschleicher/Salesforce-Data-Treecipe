@@ -30,4 +30,5 @@ export interface IRecipeFakerService {
     getStandardAndGlobalValueSetTODOPlaceholderWithExample(): string
     buildTextRecipeValueWithLength(length: number): string
     buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
 }

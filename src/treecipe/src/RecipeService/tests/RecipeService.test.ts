@@ -124,7 +124,7 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
         test('given expected number XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
-            const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999999999999)}}';
+            const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999999999999999)}}';
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
 
             const actualSnowfakeryValueForNumber = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
@@ -136,7 +136,7 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
         test('given expected currency XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
-            const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=16, right_digits=2, positive=True)}}';
+            const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=18, right_digits=2, positive=True)}}';
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualSnowfakeryValueForCurrency = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 

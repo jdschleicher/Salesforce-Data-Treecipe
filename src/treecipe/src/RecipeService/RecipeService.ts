@@ -121,11 +121,18 @@ export class RecipeService {
                     // Fall through to default if no length
 
                 case 'number':
-                case 'currency':
                 case 'percent':
 
                     if (xmlFieldDetail.precision) {
                         fakeRecipeValue = this.fakerService.buildNumericRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale);
+                        return fakeRecipeValue;
+                    }
+                    // Fall through to default if no precision
+
+                case 'currency':
+
+                    if (xmlFieldDetail.precision) {
+                        fakeRecipeValue = this.fakerService.buildCurrencyRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale);
                         return fakeRecipeValue;
                     }
                     // Fall through to default if no precision

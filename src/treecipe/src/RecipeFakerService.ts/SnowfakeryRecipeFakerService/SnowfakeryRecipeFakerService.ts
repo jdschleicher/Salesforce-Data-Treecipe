@@ -407,21 +407,19 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
         // Handle all numeric fields (number, currency, percent) with precision and optional scale
         const effectiveScale = scale ?? 0;
+        const maxValuePrecision = '9'.repeat(precision);
 
         if (effectiveScale === 0) {
-            // Integer fields (number with scale=0, or scale not specified)
-            // Create max value by repeating '9' precision times, avoiding Math.pow precision issues
-            const maxValueString = '9'.repeat(precision);
-            const maxValue = parseInt(maxValueString, 10);
-            return `${this.openingRecipeSyntax}fake.random_int(min=0, max=${maxValue})${this.closingRecipeSyntax}`;
+            return `${this.openingRecipeSyntax}fake.random_int(min=0, max=${maxValuePrecision})${this.closingRecipeSyntax}`;
         } else {
-            // Decimal fields (currency, percent with scale > 0)
-            // For decimal fields, precision includes decimal places, so max integer part is precision - scale
-            const integerPrecision = precision - effectiveScale;
-            const maxValueString = '9'.repeat(integerPrecision);
-            const maxValue = parseInt(maxValueString, 10);
-            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${integerPrecision}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxValuePrecision}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
         }
+    }
+
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+        // Special handling for currency fields - use full precision as left_digits
+        const effectiveScale = scale ?? 0;
+        return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${precision}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
     }
 
 }

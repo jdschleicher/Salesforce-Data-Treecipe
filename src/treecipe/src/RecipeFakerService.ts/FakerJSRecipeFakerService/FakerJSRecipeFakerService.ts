@@ -513,25 +513,25 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
-        // Handle all numeric fields (number, currency, percent) with precision and optional scale
+
         const effectiveScale = scale ?? 0;
+        const maxValueByPrecision = '9'.repeat(precision);
 
         if (effectiveScale === 0) {
-            // Integer fields (number with scale=0, or scale not specified)
-            // Cap precision at 15 to get accurate all-9's result (JavaScript can't represent larger integers)
-            const safePrecision = Math.min(precision, 18);
-            const maxValueString = '9'.repeat(safePrecision);
-            const maxValue = parseInt(maxValueString, 10);
-            return `${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxValue}}) ${this.closingRecipeSyntax}`;
+            return `${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxValueByPrecision}}) ${this.closingRecipeSyntax}`;
         } else {
-            // Decimal fields (currency, percent with scale > 0)
-            // For decimal fields, precision includes decimal places, so max integer part is precision - scale
-            const integerPrecision = precision - effectiveScale;
-            const safeIntegerPrecision = Math.min(integerPrecision, 18);
-            const maxValueString = '9'.repeat(safeIntegerPrecision);
-            const maxValue = parseInt(maxValueString, 10);
-            return `${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxValue}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+            return `${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxValueByPrecision}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
         }
+
+    }
+
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+        // Special handling for currency fields - use full precision as left_digits
+        const effectiveScale = scale ?? 0;
+        const maxValueByPrecision = '9'.repeat(precision);
+
+        return `${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxValueByPrecision}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+   
     }
 
 }
