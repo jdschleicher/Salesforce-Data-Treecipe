@@ -405,7 +405,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
-        // Handle all numeric fields (number, currency, percent) with precision and optional scale
+
         const effectiveScale = scale ?? 0;
         const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
@@ -414,13 +414,15 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         } else {
             return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxNumbersLeftOfDecimal}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
         }
+    
     }
 
     buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
-        // Special handling for currency fields - use full precision as left_digits
+        
         const effectiveScale = scale ?? 0;
         const maxNumbersLeftOfDecimal = precision - effectiveScale;
         return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxNumbersLeftOfDecimal}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+    
     }
 
 }
