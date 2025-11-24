@@ -1,5 +1,70 @@
 # Change Log
 
+## [2.7.0] [PR#35](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/35) - Feature: Enhanced Text & Numeric Field Precision Handling
+
+### 🎯 Major Features
+
+#### 1. **Numeric Field Scale Support**
+Added comprehensive support for scale in numeric recipe value generation, ensuring accurate data generation for currency and number fields with fractional precision.
+
+#### 2. **YAML Block Scalar Formatting**
+Format faker expressions as YAML block scalars in recipes, improving readability and maintainability of complex multi-line expressions.
+
+#### 3. **Text and Numeric Value Constraints**
+Added new methods for building text and numeric recipe values with constraints, enhancing control over generated data ranges and formats.
+
+### 🐛 Bug Fixes
+
+#### 1. **Max Value Calculation Correction**
+Fixed incorrect max value calculations for numeric and currency fields to prevent overflow and ensure data integrity.
+
+#### 2. **Precision-Based Left Digits Calculation**
+Corrected the calculation of left_digits for numeric and currency fields based on precision - scale, fixing value range generation.
+
+#### 3. **JavaScript Number Overflow Prevention**
+Capped numeric precision at 15 to avoid JavaScript number overflow issues when processing large precision values.
+
+#### 4. **Code Cleanup**
+Fixed missing closing braces and removed unnecessary comments in `SnowfakeryRecipeFakerService`.
+
+### 🔧 Technical Details
+
+**Files Modified**:
+- `src/treecipe/src/RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService.ts`
+- Additional related files in RecipeFakerService for numeric handling
+
+**Code Example - Currency Field XML to FakerJS YAML**:
+
+Given a custom object field XML markup with precision and scale:
+
+```xml
+<fields>
+  <fullName>Price__c</fullName>
+  <description>Product price</description>
+  <externalId>false</externalId>
+  <label>Price</label>
+  <precision>8</precision>
+  <required>false</required>
+  <scale>2</scale>
+  <type>Currency</type>
+  <unique>false</unique>
+</fields>
+```
+
+The generated recipe automatically creates a faker expression that respects the precision (8) and scale (2):
+
+```yaml
+- object: My_Custom_Object__c
+  fields:
+    Price__c: ${{ faker.finance.amount({ min: 0, max: 999999, dec: 2 }) }}
+```
+
+This ensures the generated currency values:
+- Have at most 8 total digits (precision)
+- Have exactly 2 decimal places (scale)
+- Are within the valid range (0 to 99,999.99)
+- Match Salesforce field constraints
+
 ## [2.6.0] [PR#34](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/34) - Feature: Relationship Service & Bug Fix for Special Characters in Picklists
 
 ### 🎯 Major Features
