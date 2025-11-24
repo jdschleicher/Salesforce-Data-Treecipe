@@ -515,27 +515,27 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
 
         const effectiveScale = scale ?? 0;
-        const maxValueByPrecision = '9'.repeat(precision);
+        const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
         if (effectiveScale === 0) {
             return `|
-            ${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxValueByPrecision}}) ${this.closingRecipeSyntax}`;
+            ${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxNumbersLeftOfDecimal}}) ${this.closingRecipeSyntax}`;
         } else {
             return `|
-            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxValueByPrecision}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxNumbersLeftOfDecimal}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
         }
 
-    }     
+    }
 
     buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
         // Special handling for currency fields - use full precision as left_digits
-        
+
         const effectiveScale = scale ?? 0;
-        const maxValueByPrecision = '9'.repeat(precision);
+        const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
         return `|
-            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxValueByPrecision}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
-   
+            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxNumbersLeftOfDecimal}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+
     }
 
 }

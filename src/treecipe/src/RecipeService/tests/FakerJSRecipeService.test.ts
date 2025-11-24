@@ -204,7 +204,7 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
             const expectedFakerJSExpressionForCurrency = `|
-            \${{ faker.finance.amount({min: 0, max: 999999999999999999, dec: 2}) }}`;
+            \${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualFakerJSForCurrency = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 
