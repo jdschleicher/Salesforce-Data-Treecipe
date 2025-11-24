@@ -504,7 +504,37 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     getMultipicklistTODOPlaceholderWithExample():string {
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (faker.helpers.arrayElements(['apple', 'orange', 'banana']) ).join(';') }}`;
-        return emptyMultiSelectXMLDetailPlaceholder;    
+        return emptyMultiSelectXMLDetailPlaceholder;
+
+    }
+
+    buildTextRecipeValueWithLength(length: number): string {
+        return `${this.openingRecipeSyntax} faker.lorem.text(${length}).substring(0, ${length}) ${this.closingRecipeSyntax}`;
+    }
+
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+
+        const effectiveScale = scale ?? 0;
+        const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
+
+        if (effectiveScale === 0) {
+            return `|
+            ${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxNumbersLeftOfDecimal}}) ${this.closingRecipeSyntax}`;
+        } else {
+            return `|
+            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxNumbersLeftOfDecimal}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+        }
+
+    }
+
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+        // Special handling for currency fields - use full precision as left_digits
+
+        const effectiveScale = scale ?? 0;
+        const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
+
+        return `|
+            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxNumbersLeftOfDecimal}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
 
     }
 

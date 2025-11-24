@@ -191,9 +191,9 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected number XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
-            const expectedFakerJSExpressionForNumber =  `|
-                \${{ faker.number.int({min: 0, max: 999999}) }}`;
-            const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
+            const expectedFakerJSExpressionForNumber = `|
+            \${{ faker.number.int({min: 0, max: 999999999999999999}) }}`;
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
 
             const actualFakerJSForNumber = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
             expect(actualFakerJSForNumber).toBe(expectedFakerJSExpressionForNumber);
@@ -203,7 +203,8 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
         test('given expected currency XMLFieldDetail, returns the expected fakerJS YAML recipe value', () => {
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
-            const expectedFakerJSExpressionForCurrency = "\${{ faker.finance.amount(0, 999999, 2) }}";
+            const expectedFakerJSExpressionForCurrency = `|
+            \${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}`;
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualFakerJSForCurrency = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 

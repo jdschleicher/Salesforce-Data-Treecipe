@@ -1,5 +1,46 @@
 # Change Log
 
+## [2.7.0] [PR#35](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/35) - Feature: Enhanced Text & Numeric Field Precision Handling
+
+### 🎯 Major Features
+
+#### 1. **Text and Numeric Value Constraints**
+Added new methods for building text and numeric recipe values with constraints, enhancing control over generated data ranges and formats.
+
+### 🔧 Technical Details
+
+**Code Example - Currency Field XML to FakerJS YAML**:
+
+Given a custom object field XML markup with precision and scale:
+
+```xml
+<fields>
+  <fullName>Price__c</fullName>
+  <description>Product price</description>
+  <externalId>false</externalId>
+  <label>Price</label>
+  <precision>8</precision>
+  <required>false</required>
+  <scale>2</scale>
+  <type>Currency</type>
+  <unique>false</unique>
+</fields>
+```
+
+The generated recipe automatically creates a faker expression that respects the precision (8) and scale (2):
+
+```yaml
+- object: My_Custom_Object__c
+  fields:
+    Price__c: ${{ faker.finance.amount({ min: 0, max: 999999, dec: 2 }) }}
+```
+
+This ensures the generated currency values:
+- Have at most 8 total digits (precision)
+- Have exactly 2 decimal places (scale)
+- Are within the valid range (0 to 99,999.99)
+- Match Salesforce field constraints
+
 ## [2.6.0] [PR#34](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/34) - Feature: Relationship Service & Bug Fix for Special Characters in Picklists
 
 ### 🎯 Major Features

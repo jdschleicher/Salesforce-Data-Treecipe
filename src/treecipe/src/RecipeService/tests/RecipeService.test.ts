@@ -124,8 +124,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
         test('given expected number XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedXMLDetailForNumber:XMLFieldDetail = XMLMarkupMockService.getNumberXMLFieldDetail();
-            const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999)}}';
-            const recordTypeNameByRecordTypeNameToXMLMarkup = {};   
+            const expectedSnowfakeryValueForNumber = '${{fake.random_int(min=0, max=999999999999999999)}}';
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
 
             const actualSnowfakeryValueForNumber = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForNumber, recordTypeNameByRecordTypeNameToXMLMarkup);
 
@@ -136,11 +136,22 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
         test('given expected currency XMLFieldDetail, returns the expected snowfakery YAML recipe value', () => {
 
             const expectedXMLDetailForCurrency:XMLFieldDetail = XMLMarkupMockService.getCurrencyFieldDetail();
-            const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=6, right_digits=2, positive=True)}}';
+            const expectedSnowfakeryValueForCurrency = '${{fake.pydecimal(left_digits=16, right_digits=2, positive=True)}}';
             const recordTypeNameByRecordTypeNameToXMLMarkup = {};
             const actualSnowfakeryValueForCurrency = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForCurrency, recordTypeNameByRecordTypeNameToXMLMarkup);
 
             expect(actualSnowfakeryValueForCurrency).toBe(expectedSnowfakeryValueForCurrency);
+
+        });
+
+        test('given expected text XMLFieldDetail with length, returns the expected snowfakery YAML recipe value with length limit', () => {
+
+            const expectedXMLDetailForTextWithLength:XMLFieldDetail = XMLMarkupMockService.getTextXMLFieldDetailWithLength();
+            const expectedSnowfakeryValueForTextWithLength = '${{fake.text(max_nb_chars=50)}}';
+            const recordTypeNameByRecordTypeNameToXMLMarkup = {};
+            const actualSnowfakeryValueForTextWithLength = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(expectedXMLDetailForTextWithLength, recordTypeNameByRecordTypeNameToXMLMarkup);
+
+            expect(actualSnowfakeryValueForTextWithLength).toBe(expectedSnowfakeryValueForTextWithLength);
 
         });
 
@@ -407,4 +418,3 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
     });
 
 });
-

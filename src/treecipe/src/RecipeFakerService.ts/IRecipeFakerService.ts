@@ -28,4 +28,7 @@ export interface IRecipeFakerService {
         controllingValue: string): string
     getMultipicklistTODOPlaceholderWithExample(): string
     getStandardAndGlobalValueSetTODOPlaceholderWithExample(): string
+    buildTextRecipeValueWithLength(length: number): string
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
 }

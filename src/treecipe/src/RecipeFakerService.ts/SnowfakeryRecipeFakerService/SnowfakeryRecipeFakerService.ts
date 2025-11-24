@@ -397,7 +397,32 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         const emptyMultiSelectXMLDetailPlaceholder = `### TODO: POSSIBLE GLOBAL OR STANDARD VALUE SET USED FOR THIS MULTIPICKLIST AS DETAILS ARE NOT IN FIELD XML MARKUP -- FIND ASSOCIATED VALUE SET AND REPLACE COMMA SEPARATED FRUITS WITH VALUE SET OPTIONS: \${{ (';').join((fake.random_sample(elements=('apple', 'orange', 'banana')))) }}`;
         return emptyMultiSelectXMLDetailPlaceholder;
+
+    }
+
+    buildTextRecipeValueWithLength(length: number): string {
+        return `${this.openingRecipeSyntax}fake.text(max_nb_chars=${length})${this.closingRecipeSyntax}`;
+    }
+
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+
+        const effectiveScale = scale ?? 0;
+        const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
+
+        if (effectiveScale === 0) {
+            return `${this.openingRecipeSyntax}fake.random_int(min=0, max=${maxNumbersLeftOfDecimal})${this.closingRecipeSyntax}`;
+        } else {
+            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxNumbersLeftOfDecimal}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+        }
+    
+    }
+
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
         
+        const effectiveScale = scale ?? 0;
+        const maxNumbersLeftOfDecimal = precision - effectiveScale;
+        return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxNumbersLeftOfDecimal}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+    
     }
 
 }
