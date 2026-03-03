@@ -1,6 +1,6 @@
 # Change Log
 
-## [2.8.0] - Feature: SOQL & SOSL Query Template Builder
+## [2.8.0][PR#36](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/36) - Feature: SOQL & SOSL Query Template Builder
 
 ### 🎯 Major Features
 
