@@ -1,5 +1,44 @@
 # Change Log
 
+## [2.8.0] - Feature: SOQL & SOSL Query Template Builder
+
+### 🎯 Major Features
+
+#### 1. **Per-Tree SOQL & SOSL Query Template File**
+
+Each generated Treecipe recipe folder now includes a companion Markdown file (`soql-sosl-templates--{tree-name}-{timestamp}.md`) alongside the recipe YAML. The file is scoped to the objects in that specific relationship hierarchy — one template file per relationship tree, not one combined file for all objects.
+
+**File location:** written into the same subfolder as the recipe YAML (e.g., `Account-thru-OrderItem/`).
+
+#### 2. **Mermaid Entity Relationship Diagram**
+
+The template file opens with a `mermaid erDiagram` block showing all entities and relationships for that tree:
+
+- Object fields rendered as typed attributes (`string`, `number`, `date`, `datetime`, `boolean`)
+- Lookup fields rendered as `|o--o{` relationship lines (optional parent)
+- MasterDetail fields rendered as `||--o{` relationship lines (required parent)
+- Cross-tree relationships intentionally excluded — the diagram reflects only the objects in the current recipe
+
+#### 3. **Per-Object SOQL Query Sections**
+
+For each object in the tree, the template includes:
+
+- **Base Query** — `SELECT Id, <all fields> FROM Object__c`
+- **Child-to-Parent Queries** — one per Lookup/MasterDetail field, using relationship dot-notation (`Account.Name`) with up to five parent fields traversed
+- **Parent-to-Child Queries** — subquery per child object in the same tree (`SELECT Id, ... FROM ChildRelationship__r`)
+- **Record Type Filtered Queries** — one `WHERE RecordType.DeveloperName = 'X'` variant per detected record type
+- **SOSL Template** — `FIND {searchTerm} IN ALL FIELDS RETURNING Object(text-fields)` scoped to text-type fields only
+
+### 🔧 Technical Details
+
+- New `SOQLTemplateService` follows the existing service-per-folder pattern (`src/treecipe/src/SOQLTemplateService/`)
+- `generateSOQLTemplateMarkdownForTree(objectInfoWrapper, treeObjectNames, timestamp)` filters the full wrapper to only the tree's objects, guaranteeing cross-tree isolation in both queries and the ERD
+- `buildParentToChildSubqueries` skips children not present in the current filtered wrapper, preventing cross-tree relationship bleed
+- Integration point: `DirectoryProcessor.createRecipeFilesInSubdirectory()` calls the service inside the per-recipe-file loop, immediately after writing the YAML, using the same `treecipeTopToBottomLevelName` in the filename
+- 38 unit tests added in `SOQLTemplateService/tests/`
+
+---
+
 ## [2.7.0] [PR#35](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/35) - Feature: Enhanced Text & Numeric Field Precision Handling
 
 ### 🎯 Major Features

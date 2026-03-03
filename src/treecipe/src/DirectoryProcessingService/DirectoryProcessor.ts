@@ -12,6 +12,7 @@ import * as path from 'path';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 
 export class DirectoryProcessor {
 
@@ -289,13 +290,24 @@ export class DirectoryProcessor {
           const outputFilePath = `${treecipeTopToBottomFolder}/${recipeFileName}`;
 
           fs.writeFile(outputFilePath, recipeFile.content, (err) => {
-              
+
             if (err) {
                   throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
             } else {
                   vscode.window.showInformationMessage('Treecipe YAML generated successfully');
             }
-              
+
+          });
+
+          const soqlTemplateFileName = `soql-sosl-templates--${treecipeTopToBottomLevelName}-${isoDateTimestamp}.md`;
+          const soqlTemplateFilePath = `${treecipeTopToBottomFolder}/${soqlTemplateFileName}`;
+          const soqlTemplateContent = SOQLTemplateService.generateSOQLTemplateMarkdownForTree(objectsInfoWrapper, recipeFile.objects, isoDateTimestamp);
+          fs.writeFile(soqlTemplateFilePath, soqlTemplateContent, (err) => {
+              if (err) {
+                  throw new Error(`an error occurred when attempting to create the "${soqlTemplateFileName}" file.`);
+              } else {
+                  vscode.window.showInformationMessage('SOQL/SOSL template file generated successfully');
+              }
           });
 
       }
