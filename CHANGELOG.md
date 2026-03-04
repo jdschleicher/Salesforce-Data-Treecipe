@@ -1,6 +1,6 @@
 # Change Log
 
-## [2.9.0] - Mermaid ERD Dedicated File & MermaidService Extraction
+## [2.9.0][PR#37](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/37) - Mermaid ERD Dedicated File & MermaidService Extraction
 
 ### 🎯 Major Features
 
