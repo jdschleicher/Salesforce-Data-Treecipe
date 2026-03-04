@@ -1,5 +1,38 @@
 # Change Log
 
+## [2.9.0] - Mermaid ERD Dedicated File & MermaidService Extraction
+
+### 🎯 Major Features
+
+#### 1. **Dedicated Mermaid ERD Markdown File**
+
+The Mermaid entity relationship diagram has been moved out of the SOQL/SOSL template file and into its own dedicated companion file (`mermaid-erd--{tree-name}-{timestamp}.md`). This separates concerns: the SOQL/SOSL template file focuses purely on query templates, while the ERD file stands alone for diagram rendering and documentation.
+
+**File naming:** `mermaid-erd--{treecipeTopToBottomLevelName}-{timestamp}.md` — written into the same subfolder as the recipe YAML and SOQL template.
+
+#### 2. **Titled Mermaid ERD File**
+
+The dedicated ERD file includes a descriptive header and explanatory prose before the diagram:
+
+- `# Entity Relationship Diagram` title
+- Description of what the diagram shows (typed fields, relationship cardinalities)
+- Explanation of `|o--o{` (Lookup, optional parent) vs `||--o{` (MasterDetail, required parent) notation
+- Generated timestamp and object list
+- Cross-tree exclusion note
+
+#### 3. **MermaidService Extraction**
+
+Mermaid ERD generation logic has been extracted from `SOQLTemplateService` into a dedicated `MermaidService` (`src/treecipe/src/MermaidService/`), following the existing service-per-folder pattern. `SOQLTemplateService` delegates ERD generation to `MermaidService`.
+
+### 🔧 Technical Details
+
+- New `MermaidService` class with `buildMermaidERD()`, `generateMermaidMarkdown()`, and `generateMermaidMarkdownForTree()` methods
+- `DirectoryProcessor` writes both `soql-sosl-templates--*.md` and `mermaid-erd--*.md` per recipe tree
+- SOQL/SOSL template file no longer contains the `## Entity Relationship Diagram` section
+- Unit tests added for `MermaidService`; `SOQLTemplateService` tests updated to reflect ERD removal
+
+---
+
 ## [2.8.0][PR#36](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/36) - Feature: SOQL & SOSL Query Template Builder
 
 ### 🎯 Major Features

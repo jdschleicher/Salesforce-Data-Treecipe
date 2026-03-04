@@ -291,111 +291,20 @@ describe('SOQLTemplateService', () => {
     });
 
 
-    describe('buildMermaidERD', () => {
-
-        it('starts with erDiagram header', () => {
-            const wrapper = buildMockWrapper({
-                Account: { fields: [{ name: 'Name', label: 'Name', type: 'Text' }] }
-            });
-            const result = SOQLTemplateService.buildMermaidERD(wrapper);
-            expect(result).toStartWith('erDiagram');
-        });
-
-        it('uses ||--o{ cardinality for MasterDetail relationships', () => {
-            const wrapper = buildMockWrapper({
-                Account: { fields: [{ name: 'Name', label: 'Name', type: 'Text' }] },
-                Contact: { fields: [
-                    { name: 'AccountId', label: 'Account', type: 'MasterDetail', referenceTo: 'Account' }
-                ]},
-            });
-            const result = SOQLTemplateService.buildMermaidERD(wrapper);
-            expect(result).toContain('||--o{');
-        });
-
-        it('uses |o--o{ cardinality for Lookup relationships', () => {
-            const wrapper = buildMockWrapper({
-                Account: { fields: [{ name: 'Name', label: 'Name', type: 'Text' }] },
-                Contact: { fields: [
-                    { name: 'AccountId', label: 'Account', type: 'Lookup', referenceTo: 'Account' }
-                ]},
-            });
-            const result = SOQLTemplateService.buildMermaidERD(wrapper);
-            expect(result).toContain('|o--o{');
-        });
-
-        it('excludes lookup fields from entity attribute blocks', () => {
-            const wrapper = buildMockWrapper({
-                Contact: { fields: [
-                    { name: 'FirstName', label: 'First Name', type: 'Text' },
-                    { name: 'AccountId', label: 'Account', type: 'Lookup', referenceTo: 'Account' },
-                ]},
-                Account: { fields: [] },
-            });
-            const result = SOQLTemplateService.buildMermaidERD(wrapper);
-            const contactEntityBlock = result.substring(
-                result.indexOf('Contact {'),
-                result.indexOf('}', result.indexOf('Contact {')) + 1
-            );
-            expect(contactEntityBlock).toContain('FirstName');
-            expect(contactEntityBlock).not.toContain('AccountId');
-        });
-
-        it('omits relationship line when referenced object is not in the wrapper', () => {
-            const wrapper = buildMockWrapper({
-                Contact: { fields: [
-                    { name: 'AccountId', label: 'Account', type: 'Lookup', referenceTo: 'Account' },
-                ]},
-            });
-            const result = SOQLTemplateService.buildMermaidERD(wrapper);
-            expect(result).not.toContain('||--o{');
-            expect(result).not.toContain('|o--o{');
-        });
-
-    });
-
-
-    describe('getMermaidFieldType', () => {
-
-        it('maps Text to string', () => {
-            expect(SOQLTemplateService.getMermaidFieldType('Text')).toBe('string');
-        });
-
-        it('maps Number and Currency to number', () => {
-            expect(SOQLTemplateService.getMermaidFieldType('Number')).toBe('number');
-            expect(SOQLTemplateService.getMermaidFieldType('Currency')).toBe('number');
-        });
-
-        it('maps Date and DateTime correctly', () => {
-            expect(SOQLTemplateService.getMermaidFieldType('Date')).toBe('date');
-            expect(SOQLTemplateService.getMermaidFieldType('DateTime')).toBe('datetime');
-        });
-
-        it('maps Boolean and Checkbox to boolean', () => {
-            expect(SOQLTemplateService.getMermaidFieldType('Boolean')).toBe('boolean');
-            expect(SOQLTemplateService.getMermaidFieldType('Checkbox')).toBe('boolean');
-        });
-
-        it('defaults to string for unknown types', () => {
-            expect(SOQLTemplateService.getMermaidFieldType('UnknownCustomType')).toBe('string');
-        });
-
-    });
-
-
     describe('generateSOQLTemplateMarkdown', () => {
 
-        it('includes all top-level section headers', () => {
+        it('includes SOQL/SOSL section headers but not Mermaid ERD', () => {
             const wrapper = buildMockWrapper({
                 Account: { fields: [{ name: 'Name', label: 'Name', type: 'Text' }] }
             });
             const result = SOQLTemplateService.generateSOQLTemplateMarkdown(wrapper, '2024-01-01T00-00-00');
             expect(result).toContain('# SOQL & SOSL Query Templates');
-            expect(result).toContain('## Entity Relationship Diagram');
-            expect(result).toContain('```mermaid');
-            expect(result).toContain('erDiagram');
             expect(result).toContain('## Account');
             expect(result).toContain('### Base Query');
             expect(result).toContain('### SOSL Template');
+            expect(result).not.toContain('## Entity Relationship Diagram');
+            expect(result).not.toContain('```mermaid');
+            expect(result).not.toContain('erDiagram');
         });
 
         it('includes the timestamp in the output', () => {
@@ -451,19 +360,16 @@ describe('SOQLTemplateService', () => {
             expect(result).not.toContain('## Opportunity');
         });
 
-        it('only shows ERD entities for the specified tree', () => {
+        it('does not include ERD content in the SOQL template', () => {
             const wrapper = buildMockWrapper({
                 Account: { fields: [{ name: 'Name', label: 'Name', type: 'Text' }] },
                 Contact: { fields: [{ name: 'FirstName', label: 'First Name', type: 'Text' }] },
-                Opportunity: { fields: [{ name: 'StageName', label: 'Stage', type: 'Text' }] },
             });
             const result = SOQLTemplateService.generateSOQLTemplateMarkdownForTree(
                 wrapper, ['Account', 'Contact'], '2024-01-01T00-00-00'
             );
-            const mermaidBlock = result.substring(result.indexOf('erDiagram'), result.indexOf('```', result.indexOf('erDiagram')));
-            expect(mermaidBlock).toContain('Account');
-            expect(mermaidBlock).toContain('Contact');
-            expect(mermaidBlock).not.toContain('Opportunity');
+            expect(result).not.toContain('erDiagram');
+            expect(result).not.toContain('```mermaid');
         });
 
         it('excludes parent-to-child subqueries for children outside the tree', () => {
@@ -494,5 +400,6 @@ describe('SOQLTemplateService', () => {
         });
 
     });
+
 
 });
