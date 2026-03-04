@@ -13,6 +13,7 @@ import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
+import { MermaidService } from '../MermaidService/MermaidService';
 
 export class DirectoryProcessor {
 
@@ -307,6 +308,17 @@ export class DirectoryProcessor {
                   throw new Error(`an error occurred when attempting to create the "${soqlTemplateFileName}" file.`);
               } else {
                   vscode.window.showInformationMessage('SOQL/SOSL template file generated successfully');
+              }
+          });
+
+          const mermaidErdFileName = `mermaid-erd--${treecipeTopToBottomLevelName}-${isoDateTimestamp}.md`;
+          const mermaidErdFilePath = `${treecipeTopToBottomFolder}/${mermaidErdFileName}`;
+          const mermaidErdContent = MermaidService.generateMermaidMarkdownForTree(objectsInfoWrapper, recipeFile.objects, isoDateTimestamp);
+          fs.writeFile(mermaidErdFilePath, mermaidErdContent, (err) => {
+              if (err) {
+                  throw new Error(`an error occurred when attempting to create the "${mermaidErdFileName}" file.`);
+              } else {
+                  vscode.window.showInformationMessage('Mermaid ERD file generated successfully');
               }
           });
 
