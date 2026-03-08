@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Require_Phone_Format</fullName>
+    <active>true</active>
+    <description>Phone must be a 10-digit number</description>
+    <errorConditionFormula>NOT(REGEX(Phone, "^[0-9]{10}$"))</errorConditionFormula>
+    <errorDisplayField>Phone</errorDisplayField>
+    <errorMessage>Phone must be a 10-digit number with no spaces or dashes.</errorMessage>
+</ValidationRule>

@@ -1,5 +1,57 @@
 # Change Log
 
+## [2.10.0] - Validation Rule Analyzer Service
+
+### 🎯 Major Features
+
+#### 1. **ValidationRuleAnalyzerService**
+
+New service that parses Salesforce validation rule XML (`*.validationRule-meta.xml`) and extracts field constraints from `<errorConditionFormula>` expressions. Inactive rules are automatically ignored. Results are grouped by field API name for easy downstream consumption by faker recipe generators.
+
+**Supported formula patterns:**
+
+| Formula Shape | Constraint Type | Effect on Faker |
+|---|---|---|
+| `NOT(REGEX(Field, "pattern"))` | `regex` | Field must match the regex pattern |
+| `ISBLANK(Field)` | `required` | Field must be non-null |
+| `ISPICKVAL(Field, "value")` | `picklistExclude` | Value is excluded from generated picklist selections |
+| `Field < N` / `Field <= N` | `numericMin` | Minimum allowed numeric value |
+| `Field > N` / `Field >= N` | `numericMax` | Maximum allowed numeric value |
+| `LEN(Field) > N` / `>= N` | `lengthMax` | Maximum allowed string length |
+| `LEN(Field) < N` / `<= N` | `lengthMin` | Minimum required string length |
+| `Field < TODAY()` | `dateRelativeMin` | Date must be today or in the future |
+| `Field > TODAY()` | `dateRelativeMax` | Date must be today or in the past |
+| `Field < DATE(Y, M, D)` | `dateMin` | Date must be on or after absolute ISO date |
+| `Field > DATE(Y, M, D)` | `dateMax` | Date must be on or before absolute ISO date |
+| Any other formula | `unknown` | Emits a YAML comment with the rule name, error message, and raw formula |
+
+#### 2. **Mock Validation Rule XML Fixtures**
+
+Nine realistic `*.validationRule-meta.xml` fixtures covering every supported constraint type, including an inactive rule (ignored) and a complex multi-field formula (emits YAML comment):
+
+- `Opportunity.Require_Phone_Format` — REGEX constraint
+- `Opportunity.Require_Amount_Minimum` — numeric min
+- `Opportunity.Require_Amount_Maximum` — numeric max
+- `Opportunity.Restrict_Lost_Stage` — picklist exclude
+- `Opportunity.Require_Description` — required field
+- `Opportunity.Limit_Description_Length` — length max
+- `Opportunity.Require_Min_Description_Length` — length min
+- `Opportunity.Require_CloseDate_Future` — date relative min (`TODAY()`)
+- `Opportunity.Inactive_Rule` — inactive rule (skipped)
+- `Opportunity.Complex_Formula` — multi-field AND formula → unknown constraint + YAML comment
+
+### 🔧 Technical Details
+
+- `parseValidationRuleXml(xmlContent)` — parses a validation rule XML string via xml2js; returns `ParsedValidationRule` with `active`, `fullName`, `errorConditionFormula`, and `errorMessage`
+- `extractConstraintsFromFormula(formula, errorMessage, ruleName)` — pattern-matches the formula string and returns a typed `ValidationRuleConstraint[]`
+- `getConstraintsFromValidationRuleXml(xmlContent)` — convenience method combining parse + extract; returns `[]` for inactive rules
+- `groupConstraintsByField(constraints)` — groups constraint array into `Record<fieldApiName, ValidationRuleConstraint[]>` for recipe generation lookup
+- `buildUnknownRuleYamlComment(constraint)` — formats a YAML comment string for complex/unresolvable formulas
+- Exported types: `ValidationRuleConstraintType` (union), `ValidationRuleConstraint` (interface), `ParsedValidationRule` (interface)
+- 30 unit tests; `ValidationRuleAnalyzerService` at 97.67% statement coverage, 100% function coverage
+
+---
+
 ## [2.9.0][PR#37](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/37) - Mermaid ERD Dedicated File & MermaidService Extraction
 
 ### 🎯 Major Features

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Require_CloseDate_Future</fullName>
+    <active>true</active>
+    <description>Close Date must be in the future</description>
+    <errorConditionFormula>CloseDate &lt; TODAY()</errorConditionFormula>
+    <errorDisplayField>CloseDate</errorDisplayField>
+    <errorMessage>Close Date must be today or in the future.</errorMessage>
+</ValidationRule>

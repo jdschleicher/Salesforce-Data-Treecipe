@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Complex_Formula</fullName>
+    <active>true</active>
+    <description>Complex multi-field rule that cannot be auto-parsed</description>
+    <errorConditionFormula>AND(ISPICKVAL(StageName, "Closed Won"), ISBLANK(CloseDate), NOT(ISBLANK(Description)), Amount &gt; 50000)</errorConditionFormula>
+    <errorDisplayField>StageName</errorDisplayField>
+    <errorMessage>When Stage is Closed Won, Close Date is required, Description must be blank, and Amount must be under $50,000.</errorMessage>
+</ValidationRule>
