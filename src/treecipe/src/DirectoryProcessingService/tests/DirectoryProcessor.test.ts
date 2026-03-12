@@ -99,7 +99,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
       const fakeObjectApiName = 'Demming';
       const recordTypeNameByRecordTypeNameToXMLMarkup = {};
       const fakeFieldApiName = 'fakeField';
-      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName, recordTypeNameByRecordTypeNameToXMLMarkup, fakeFieldApiName);
+      let actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(textXMLContent, fakeObjectApiName, recordTypeNameByRecordTypeNameToXMLMarkup, fakeFieldApiName, {});
 
       const expectedFieldInfo = XMLMarkupMockService.getTextXMLFieldDetail();
     
@@ -144,10 +144,11 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         const fakeObjectName = 'dont worry about me';
         const fakeRecordTypeNameByRecordTypeNameToXMLMarkup = {};
         const salesforceOOTBMappings = {};
-        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri, 
-                                                                                          fakeObjectName, 
+        const processedFileInfoDetails = await directoryProcessor.processFieldsDirectory(fakeUri,
+                                                                                          fakeObjectName,
                                                                                           fakeRecordTypeNameByRecordTypeNameToXMLMarkup,
-                                                                                          salesforceOOTBMappings);
+                                                                                          salesforceOOTBMappings,
+                                                                                          {});
 
         expect(processedFileInfoDetails.length).toBe(expectedXMLFileTypesInDirectory);
 

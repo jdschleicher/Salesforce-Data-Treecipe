@@ -415,4 +415,88 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
     });
 
+    describe('buildTextRecipeValueWithLength — constraint-aware', () => {
+
+        test('given lengthMax constraint smaller than XML length, uses the constraint max', () => {
+            const constraints: any[] = [{ constraintType: 'lengthMax', value: 50, fieldApiName: 'Description', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = snowfakeryService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('max_nb_chars=50');
+        });
+
+        test('given regex constraint, returns TODO comment for Snowfakery', () => {
+            const constraints: any[] = [{ constraintType: 'regex', value: '^[0-9]{10}$', fieldApiName: 'Phone', rawFormula: '', errorMessage: '', ruleName: 'Require_Phone_Format' }];
+            const result = snowfakeryService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('### TODO');
+            expect(result).toContain('^[0-9]{10}$');
+        });
+
+        test('given no constraints, returns default max_nb_chars expression', () => {
+            const result = snowfakeryService.buildTextRecipeValueWithLength(100);
+            expect(result).toContain('max_nb_chars=100');
+        });
+
+    });
+
+    describe('buildNumericRecipeValueWithPrecisionAndScale — constraint-aware', () => {
+
+        test('given numericMin constraint, uses it as min in random_int', () => {
+            const constraints: any[] = [{ constraintType: 'numericMin', value: 100, fieldApiName: 'Amount', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = snowfakeryService.buildNumericRecipeValueWithPrecisionAndScale(10, 0, constraints);
+            expect(result).toContain('min=100');
+        });
+
+        test('given numericMax constraint, caps max in random_int', () => {
+            const constraints: any[] = [{ constraintType: 'numericMax', value: 500, fieldApiName: 'Amount', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = snowfakeryService.buildNumericRecipeValueWithPrecisionAndScale(10, 0, constraints);
+            expect(result).toContain('max=500');
+        });
+
+        test('given no constraints, uses min=0', () => {
+            const result = snowfakeryService.buildNumericRecipeValueWithPrecisionAndScale(6, 0);
+            expect(result).toContain('min=0');
+        });
+
+    });
+
+    describe('buildPicklistRecipeValueByXMLFieldDetail — constraint-aware', () => {
+
+        test('given picklistExclude constraint, filters out the excluded value', () => {
+            const choices = ['Open', 'Closed', 'Cancelled'];
+            const constraints: any[] = [{ constraintType: 'picklistExclude', value: 'Cancelled', fieldApiName: 'Status__c', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = snowfakeryService.buildPicklistRecipeValueByXMLFieldDetail(choices, {}, 'Status__c', constraints);
+            expect(result).not.toContain('Cancelled');
+            expect(result).toContain('Open');
+        });
+
+    });
+
+    describe('buildDateRecipeValue', () => {
+
+        test('given no constraints, returns default date_between with -1y start', () => {
+            const result = snowfakeryService.buildDateRecipeValue('date');
+            expect(result).toContain('date_between');
+            expect(result).toContain('start_date="-1y"');
+            expect(result).toContain('end_date="today"');
+        });
+
+        test('given dateRelativeMin (TODAY), sets start_date to today', () => {
+            const constraints: any[] = [{ constraintType: 'dateRelativeMin', value: 'TODAY', fieldApiName: 'CloseDate', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = snowfakeryService.buildDateRecipeValue('date', constraints);
+            expect(result).toContain('start_date="today"');
+        });
+
+        test('given dateMin with ISO date, uses it as start_date', () => {
+            const constraints: any[] = [{ constraintType: 'dateMin', value: '2020-01-01', fieldApiName: 'CloseDate', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = snowfakeryService.buildDateRecipeValue('date', constraints);
+            expect(result).toContain('start_date="2020-01-01"');
+        });
+
+        test('given datetime field type, uses date_time_between and strftime', () => {
+            const result = snowfakeryService.buildDateRecipeValue('datetime');
+            expect(result).toContain('date_time_between');
+            expect(result).toContain('strftime');
+        });
+
+    });
+
 });

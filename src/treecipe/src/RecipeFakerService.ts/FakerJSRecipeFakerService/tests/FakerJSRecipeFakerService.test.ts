@@ -239,7 +239,118 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
     });
 
-    describe('getOOTBExpectedObjectToFakerValueMappings', () => { 
+    describe('buildTextRecipeValueWithLength — constraint-aware', () => {
+
+        test('given lengthMax constraint smaller than XML length, uses the constraint max', () => {
+            const constraints: any[] = [{ constraintType: 'lengthMax', value: 50, fieldApiName: 'Description', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('substring(0, 50)');
+        });
+
+        test('given lengthMin constraint, pads generated text to minimum length', () => {
+            const constraints: any[] = [{ constraintType: 'lengthMin', value: 10, fieldApiName: 'Description', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('.padEnd(10');
+        });
+
+        test('given regex constraint, returns fromRegExp expression', () => {
+            const constraints: any[] = [{ constraintType: 'regex', value: '^[0-9]{10}$', fieldApiName: 'Phone', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('faker.helpers.fromRegExp');
+            expect(result).toContain('^[0-9]{10}$');
+        });
+
+        test('given no constraints, returns default expression', () => {
+            const result = fakerJSRecipeFakerService.buildTextRecipeValueWithLength(100);
+            expect(result).toContain('substring(0, 100)');
+            expect(result).not.toContain('padEnd');
+        });
+
+    });
+
+    describe('buildNumericRecipeValueWithPrecisionAndScale — constraint-aware', () => {
+
+        test('given numericMin constraint, uses it as the min value', () => {
+            const constraints: any[] = [{ constraintType: 'numericMin', value: 100, fieldApiName: 'Amount', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildNumericRecipeValueWithPrecisionAndScale(10, 0, constraints);
+            expect(result).toContain('min: 100');
+        });
+
+        test('given numericMax constraint, caps the max at the constraint value', () => {
+            const constraints: any[] = [{ constraintType: 'numericMax', value: 500, fieldApiName: 'Amount', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildNumericRecipeValueWithPrecisionAndScale(10, 0, constraints);
+            expect(result).toContain('max: 500');
+        });
+
+        test('given no constraints, uses 0 as min', () => {
+            const result = fakerJSRecipeFakerService.buildNumericRecipeValueWithPrecisionAndScale(6, 0);
+            expect(result).toContain('min: 0');
+        });
+
+    });
+
+    describe('buildPicklistRecipeValueByXMLFieldDetail — constraint-aware', () => {
+
+        test('given picklistExclude constraint, filters out the excluded value', () => {
+            const choices = ['Open', 'Closed', 'Cancelled'];
+            const constraints: any[] = [{ constraintType: 'picklistExclude', value: 'Cancelled', fieldApiName: 'Status__c', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(choices, {}, 'Status__c', constraints);
+            expect(result).not.toContain('Cancelled');
+            expect(result).toContain('Open');
+            expect(result).toContain('Closed');
+        });
+
+        test('given picklistExclude that removes all choices, falls back to full choices list', () => {
+            const choices = ['Only'];
+            const constraints: any[] = [{ constraintType: 'picklistExclude', value: 'Only', fieldApiName: 'Status__c', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(choices, {}, 'Status__c', constraints);
+            expect(result).toContain('Only');
+        });
+
+    });
+
+    describe('buildDateRecipeValue', () => {
+
+        test('given no constraints, returns default date range expression', () => {
+            const result = fakerJSRecipeFakerService.buildDateRecipeValue('date');
+            expect(result).toContain('faker.date.between');
+            expect(result).toContain("new Date('2023-01-01')");
+            expect(result).toContain('.toISOString().split(\'T\')[0]');
+        });
+
+        test('given dateRelativeMin (TODAY), uses new Date() as from', () => {
+            const constraints: any[] = [{ constraintType: 'dateRelativeMin', value: 'TODAY', fieldApiName: 'CloseDate', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildDateRecipeValue('date', constraints);
+            expect(result).toContain('from: new Date()');
+        });
+
+        test('given dateRelativeMax (TODAY), uses new Date() as to', () => {
+            const constraints: any[] = [{ constraintType: 'dateRelativeMax', value: 'TODAY', fieldApiName: 'CloseDate', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildDateRecipeValue('date', constraints);
+            expect(result).toContain("to: new Date()");
+        });
+
+        test('given dateMin with ISO date, uses it as from', () => {
+            const constraints: any[] = [{ constraintType: 'dateMin', value: '2020-01-01', fieldApiName: 'CloseDate', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildDateRecipeValue('date', constraints);
+            expect(result).toContain("new Date('2020-01-01')");
+        });
+
+        test('given dateMax with ISO date, uses it as to', () => {
+            const constraints: any[] = [{ constraintType: 'dateMax', value: '2025-12-31', fieldApiName: 'CloseDate', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = fakerJSRecipeFakerService.buildDateRecipeValue('date', constraints);
+            expect(result).toContain("new Date('2025-12-31')");
+        });
+
+        test('given datetime field type, omits the T[0] split', () => {
+            const result = fakerJSRecipeFakerService.buildDateRecipeValue('datetime');
+            expect(result).toContain('.toISOString()');
+            expect(result).not.toContain("split('T')[0]");
+        });
+
+    });
+
+    describe('getOOTBExpectedObjectToFakerValueMappings', () => {
 
         test('given expected list of OOTB object keys, mapping keys are found', () => {
             

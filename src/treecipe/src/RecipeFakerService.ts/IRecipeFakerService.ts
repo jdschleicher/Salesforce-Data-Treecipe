@@ -1,4 +1,5 @@
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { ValidationRuleConstraint } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export interface IRecipeFakerService {
 
@@ -6,13 +7,14 @@ export interface IRecipeFakerService {
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
         fieldApiName): string;
-    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>, 
+    buildDependentPicklistRecipeFakerValue(controllingValueToPicklistOptions: Record<string, string[]>,
         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
         controllingField: string,
         fieldApiName): string;
-    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+    buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
-        fieldApiName): string;
+        fieldApiName: string,
+        constraints?: ValidationRuleConstraint[]): string;
     generateTabs(tabCount: number): string;
     getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>>;
     buildRecordTypeBasedPicklistRecipeValue(
@@ -28,7 +30,8 @@ export interface IRecipeFakerService {
         controllingValue: string): string
     getMultipicklistTODOPlaceholderWithExample(): string
     getStandardAndGlobalValueSetTODOPlaceholderWithExample(): string
-    buildTextRecipeValueWithLength(length: number): string
-    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
-    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
+    buildTextRecipeValueWithLength(length: number, constraints?: ValidationRuleConstraint[]): string
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number, constraints?: ValidationRuleConstraint[]): string
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number, constraints?: ValidationRuleConstraint[]): string
+    buildDateRecipeValue(fieldType: string, constraints?: ValidationRuleConstraint[]): string
 }

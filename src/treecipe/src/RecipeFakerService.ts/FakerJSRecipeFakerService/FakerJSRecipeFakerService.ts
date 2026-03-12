@@ -1,5 +1,6 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
+import { ValidationRuleConstraint } from "../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export class FakerJSRecipeFakerService implements IRecipeFakerService {
 
@@ -128,7 +129,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
                                                 recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
-                                                fieldApiName: string): string {
+                                                fieldApiName: string,
+                                                constraints: ValidationRuleConstraint[] = []): string {
 
         let fakeRecipeValue = '';
 
@@ -136,9 +138,17 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             // indicates no svs or picklistvlaues
             return "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
 
-        } 
-         
-        const fakerJoinedChoicesSyntax = this.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices);
+        }
+
+        const excludedValues = constraints
+            .filter(c => c.constraintType === 'picklistExclude')
+            .map(c => c.value as string);
+        const filteredChoices = excludedValues.length > 0
+            ? availablePicklistChoices.filter(choice => !excludedValues.includes(choice))
+            : availablePicklistChoices;
+        const choicesToUse = filteredChoices.length > 0 ? filteredChoices : availablePicklistChoices;
+
+        const fakerJoinedChoicesSyntax = this.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(choicesToUse);
         fakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
 
         const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, fieldApiName);
@@ -508,34 +518,95 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildTextRecipeValueWithLength(length: number): string {
-        return `${this.openingRecipeSyntax} faker.lorem.text(${length}).substring(0, ${length}) ${this.closingRecipeSyntax}`;
+    buildTextRecipeValueWithLength(length: number, constraints: ValidationRuleConstraint[] = []): string {
+
+        const regexConstraint = constraints.find(c => c.constraintType === 'regex');
+        if (regexConstraint) {
+            return `${this.openingRecipeSyntax} faker.helpers.fromRegExp(/${regexConstraint.value}/) ${this.closingRecipeSyntax}`;
+        }
+
+        const lenMaxConstraint = constraints.find(c => c.constraintType === 'lengthMax');
+        const lenMinConstraint = constraints.find(c => c.constraintType === 'lengthMin');
+        const effectiveMax = lenMaxConstraint ? Math.min(Number(lenMaxConstraint.value), length) : length;
+        const effectiveMin = lenMinConstraint ? Number(lenMinConstraint.value) : 0;
+
+        if (effectiveMin > 0) {
+            return `${this.openingRecipeSyntax} faker.lorem.text(${effectiveMax}).substring(0, ${effectiveMax}).padEnd(${effectiveMin}, 'x') ${this.closingRecipeSyntax}`;
+        }
+
+        return `${this.openingRecipeSyntax} faker.lorem.text(${effectiveMax}).substring(0, ${effectiveMax}) ${this.closingRecipeSyntax}`;
+
     }
 
-    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number, constraints: ValidationRuleConstraint[] = []): string {
 
         const effectiveScale = scale ?? 0;
         const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
+        const minConstraints = constraints.filter(c => c.constraintType === 'numericMin');
+        const maxConstraints = constraints.filter(c => c.constraintType === 'numericMax');
+        const effectiveMin = minConstraints.length > 0 ? Math.max(...minConstraints.map(c => Number(c.value))) : 0;
+        const effectiveMax = maxConstraints.length > 0
+            ? Math.min(...maxConstraints.map(c => Number(c.value)), Number(maxNumbersLeftOfDecimal))
+            : maxNumbersLeftOfDecimal;
+
         if (effectiveScale === 0) {
             return `|
-            ${this.openingRecipeSyntax} faker.number.int({min: 0, max: ${maxNumbersLeftOfDecimal}}) ${this.closingRecipeSyntax}`;
+            ${this.openingRecipeSyntax} faker.number.int({min: ${effectiveMin}, max: ${effectiveMax}}) ${this.closingRecipeSyntax}`;
         } else {
             return `|
-            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxNumbersLeftOfDecimal}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+            ${this.openingRecipeSyntax} faker.finance.amount({min: ${effectiveMin}, max: ${effectiveMax}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
         }
 
     }
 
-    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
-        // Special handling for currency fields - use full precision as left_digits
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number, constraints: ValidationRuleConstraint[] = []): string {
 
         const effectiveScale = scale ?? 0;
         const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
+        const minConstraints = constraints.filter(c => c.constraintType === 'numericMin');
+        const maxConstraints = constraints.filter(c => c.constraintType === 'numericMax');
+        const effectiveMin = minConstraints.length > 0 ? Math.max(...minConstraints.map(c => Number(c.value))) : 0;
+        const effectiveMax = maxConstraints.length > 0
+            ? Math.min(...maxConstraints.map(c => Number(c.value)), Number(maxNumbersLeftOfDecimal))
+            : maxNumbersLeftOfDecimal;
+
         return `|
-            ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxNumbersLeftOfDecimal}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+            ${this.openingRecipeSyntax} faker.finance.amount({min: ${effectiveMin}, max: ${effectiveMax}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
+
+    }
+
+    buildDateRecipeValue(fieldType: string, constraints: ValidationRuleConstraint[] = []): string {
+
+        const relMinConstraint = constraints.find(c => c.constraintType === 'dateRelativeMin');
+        const relMaxConstraint = constraints.find(c => c.constraintType === 'dateRelativeMax');
+        const absMinConstraint = constraints.find(c => c.constraintType === 'dateMin');
+        const absMaxConstraint = constraints.find(c => c.constraintType === 'dateMax');
+
+        const isDate = fieldType.toLowerCase() === 'date';
+        const defaultFrom = isDate ? `new Date('2023-01-01')` : `new Date('2023-01-01T00:00:00Z')`;
+
+        const fromExpr = absMinConstraint
+            ? `new Date('${absMinConstraint.value}')`
+            : relMinConstraint
+                ? `new Date()`
+                : defaultFrom;
+
+        const toExpr = absMaxConstraint
+            ? `new Date('${absMaxConstraint.value}')`
+            : relMaxConstraint
+                ? `new Date()`
+                : `new Date()`;
+
+        const formatSuffix = isDate
+            ? `.toISOString().split('T')[0]`
+            : `.toISOString()`;
+
+        return `|
+                ${this.openingRecipeSyntax} faker.date.between({ from: ${fromExpr}, to: ${toExpr} })${formatSuffix} ${this.closingRecipeSyntax}`;
 
     }
 
 }
+

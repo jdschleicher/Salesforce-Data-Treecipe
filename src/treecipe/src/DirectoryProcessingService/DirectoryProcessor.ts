@@ -14,6 +14,7 @@ import { RelationshipService } from '../RelationshipService/RelationshipService'
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { MermaidService } from '../MermaidService/MermaidService';
+import { ValidationRuleAnalyzerService, ValidationRuleConstraint } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 
 export class DirectoryProcessor {
 
@@ -48,9 +49,10 @@ export class DirectoryProcessor {
   
             const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
             const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
+            const constraintMap = await this.readValidationRuleConstraintsForObject(directoryPathUri);
 
             if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe)) {
-              /// if initial yaml recipe structure ( - object: Account ) doesn't exist yet for this object, 
+              /// if initial yaml recipe structure ( - object: Account ) doesn't exist yet for this object,
               // make it, so processed fields can be added on
               objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings);
             }
@@ -61,11 +63,11 @@ export class DirectoryProcessor {
 
             }
 
-         
-            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, 
-                                                                              objectName, 
+            let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath,
+                                                                              objectName,
                                                                               recordTypeApiToRecordTypeWrapperMap,
-                                                                              salesforceOOTBFakerMappings
+                                                                              salesforceOOTBFakerMappings,
+                                                                              constraintMap
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
 
@@ -126,13 +128,14 @@ export class DirectoryProcessor {
   }
 
   async processFieldsDirectory(
-        directoryPathUri: vscode.Uri, 
+        directoryPathUri: vscode.Uri,
         associatedObjectName: string,
         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
-        salesforceOOTBFakerMappings: Record<string, Record<string, string>>
+        salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
+        constraintMap: Record<string, ValidationRuleConstraint[]> = {}
       ): Promise<FieldInfo[]> {
 
-    /* 
+    /*
       - vscode.workspace.fs.readDirectory returns Tuple of type <FileName, and FileType enum -- click into readDirectory method to see more
       - the variable names are intended to convey and support at-a-glance understanding w/out having to click through
       - for additional details like what brought this detailed breakdown about and performance advantages see chatgpt discussion here: https://chatgpt.com/share/6772ab2f-76c8-800a-a60a-893985a8d264
@@ -148,10 +151,11 @@ export class DirectoryProcessor {
         const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
         const fieldXmlContent = Buffer.from(fieldXmlContentUriData).toString('utf8');
 
-        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent, 
-                                                              associatedObjectName, 
+        let fieldInfo = await this.buildFieldInfoByXMLContent(fieldXmlContent,
+                                                              associatedObjectName,
                                                               recordTypeApiToRecordTypeWrapperMap,
-                                                              fileName
+                                                              fileName,
+                                                              constraintMap
                                                             );
         fieldInfoDetails.push(fieldInfo);
 
@@ -163,14 +167,15 @@ export class DirectoryProcessor {
 
   }
 
-  async buildFieldInfoByXMLContent(xmlContent: string, 
+  async buildFieldInfoByXMLContent(xmlContent: string,
                                     associatedObjectName: string,
                                     recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
-                                    xmlFieldFileName: string
+                                    xmlFieldFileName: string,
+                                    constraintMap: Record<string, ValidationRuleConstraint[]> = {}
                                   ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
-    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap);                                                        
+    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, constraintMap);
 
     let fieldInfo = FieldInfo.create(
       associatedObjectName,
@@ -181,8 +186,8 @@ export class DirectoryProcessor {
       fieldXMLDetail.controllingField,
       fieldXMLDetail.referenceTo,
       recipeValue
-    );  
-  
+    );
+
     return fieldInfo;
 
   }
@@ -191,7 +196,7 @@ export class DirectoryProcessor {
     return path.basename(filePath);
   }
 
-  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+  getRecipeValueByFieldXMLDetail(fieldXMLDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>, constraintMap: Record<string, ValidationRuleConstraint[]> = {}): string {
     let recipeValue = null;
     if ( fieldXMLDetail.fieldType === 'AUTO_GENERATED' ) {
 
@@ -199,12 +204,42 @@ export class DirectoryProcessor {
 
     } else {
 
-      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap);
-    
+      const fieldConstraints = constraintMap[fieldXMLDetail.apiName] ?? [];
+      recipeValue = this.recipeService.getRecipeFakeValueByXMLFieldDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, fieldConstraints);
+
     }
-    
+
     return recipeValue;
-  
+
+  }
+
+  private async readValidationRuleConstraintsForObject(
+    objectDirectoryUri: vscode.Uri
+  ): Promise<Record<string, ValidationRuleConstraint[]>> {
+
+    const validationRulesUri = vscode.Uri.joinPath(objectDirectoryUri, 'validationRules');
+    let entries: [string, vscode.FileType][];
+
+    try {
+      entries = await vscode.workspace.fs.readDirectory(validationRulesUri);
+    } catch {
+      // validationRules/ folder does not exist for this object — normal for many objects
+      return {};
+    }
+
+    const allConstraints: ValidationRuleConstraint[] = [];
+    for (const [fileName, fileType] of entries) {
+      if (XmlFileProcessor.isXMLFileType(fileName, fileType)) {
+        const fileUri = vscode.Uri.joinPath(validationRulesUri, fileName);
+        const rawData = await vscode.workspace.fs.readFile(fileUri);
+        const xmlContent = Buffer.from(rawData).toString('utf8');
+        const constraints = ValidationRuleAnalyzerService.getConstraintsFromValidationRuleXml(xmlContent);
+        allConstraints.push(...constraints);
+      }
+    }
+
+    return ValidationRuleAnalyzerService.groupConstraintsByField(allConstraints);
+
   }
 
   isInMappingsOfOotbSalesforceFields(fileName: string, associatedObjectName: string, salesforceOOTBFakerMappings: Record<string, Record<string, string>>):boolean {

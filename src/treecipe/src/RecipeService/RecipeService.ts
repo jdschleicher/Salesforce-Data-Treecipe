@@ -2,6 +2,7 @@ import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingServi
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { ValidationRuleConstraint, ValidationRuleAnalyzerService } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 
@@ -43,22 +44,22 @@ export class RecipeService {
         this.fakerService.getMapSalesforceFieldToFakerValue();
     }
 
-    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
-        
+    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>, fieldConstraints: ValidationRuleConstraint[] = []): string {
+
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
 
         try {
-            
+
             switch (fieldType) {
-            
+
                 case 'picklist':
-                    
+
                     if (xmlFieldDetail.controllingField) {
                         // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
                         fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
                     } else {
-                        
+
                         let availablePicklistValueOptions: string[] = [];
                         if ( !(xmlFieldDetail.picklistValues) ) {
 
@@ -79,21 +80,21 @@ export class RecipeService {
                                      }
 
                                 }
-                              
+
                             }
 
                         } else {
-                            
+
                             availablePicklistValueOptions = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
-                            
+
                         }
 
-                        fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistValueOptions, recordTypeApiToRecordTypeWrapperMap, xmlFieldDetail.apiName );  
-                    
+                        fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistValueOptions, recordTypeApiToRecordTypeWrapperMap, xmlFieldDetail.apiName, fieldConstraints);
+
                     }
-    
+
                     return fakeRecipeValue;
-                    
+
                 case 'multiselectpicklist':
 
                     if ( !(xmlFieldDetail.picklistValues) ) {
@@ -109,13 +110,19 @@ export class RecipeService {
 
                     return fakeRecipeValue;
 
+                case 'date':
+                case 'datetime':
+
+                    fakeRecipeValue = this.fakerService.buildDateRecipeValue(fieldType, fieldConstraints);
+                    return fakeRecipeValue;
+
                 case 'text':
                 case 'textarea':
                 case 'longtextarea':
                 case 'html':
 
                     if (xmlFieldDetail.length) {
-                        fakeRecipeValue = this.fakerService.buildTextRecipeValueWithLength(xmlFieldDetail.length);
+                        fakeRecipeValue = this.fakerService.buildTextRecipeValueWithLength(xmlFieldDetail.length, fieldConstraints);
                         return fakeRecipeValue;
                     }
                     // Fall through to default if no length
@@ -124,7 +131,7 @@ export class RecipeService {
                 case 'percent':
 
                     if (xmlFieldDetail.precision) {
-                        fakeRecipeValue = this.fakerService.buildNumericRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale);
+                        fakeRecipeValue = this.fakerService.buildNumericRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale, fieldConstraints);
                         return fakeRecipeValue;
                     }
                     // Fall through to default if no precision
@@ -132,16 +139,26 @@ export class RecipeService {
                 case 'currency':
 
                     if (xmlFieldDetail.precision) {
-                        fakeRecipeValue = this.fakerService.buildCurrencyRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale);
+                        fakeRecipeValue = this.fakerService.buildCurrencyRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale, fieldConstraints);
                         return fakeRecipeValue;
                     }
                     // Fall through to default if no precision
 
-                default:
+                default: {
 
                     fakeRecipeValue = this.getFakeValueIfExpectedSalesforceFieldType(fieldType);
+
+                    const unknownConstraints = fieldConstraints.filter(c => c.constraintType === 'unknown');
+                    if (unknownConstraints.length > 0) {
+                        const comments = unknownConstraints
+                            .map(c => ValidationRuleAnalyzerService.buildUnknownRuleYamlComment(c))
+                            .join('\n    ');
+                        fakeRecipeValue = `|\n    ${comments}\n    ${fakeRecipeValue}`;
+                    }
+
                     return fakeRecipeValue;
-    
+                }
+
             }
 
         } catch (error) {

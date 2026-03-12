@@ -2,6 +2,7 @@
 
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
+import { ValidationRuleConstraint } from "../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
@@ -126,18 +127,27 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-      buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
+      buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
                                                 recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
-                                                fieldApiName: string): string {
+                                                fieldApiName: string,
+                                                constraints: ValidationRuleConstraint[] = []): string {
 
         let fakeRecipeValue = '';
 
         if ( !(availablePicklistChoices) || availablePicklistChoices.length === 0 ) {
             // indicates no svs or picklistvlaues
             return "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
-        } 
+        }
 
-        const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
+        const excludedValues = constraints
+            .filter(c => c.constraintType === 'picklistExclude')
+            .map(c => c.value as string);
+        const filteredChoices = excludedValues.length > 0
+            ? availablePicklistChoices.filter(choice => !excludedValues.includes(choice))
+            : availablePicklistChoices;
+        const choicesToUse = filteredChoices.length > 0 ? filteredChoices : availablePicklistChoices;
+
+        const commaJoinedPicklistChoices = choicesToUse.join("', '");
         fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
 
         const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, fieldApiName);
@@ -400,29 +410,91 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
-    buildTextRecipeValueWithLength(length: number): string {
-        return `${this.openingRecipeSyntax}fake.text(max_nb_chars=${length})${this.closingRecipeSyntax}`;
+    buildTextRecipeValueWithLength(length: number, constraints: ValidationRuleConstraint[] = []): string {
+
+        const regexConstraint = constraints.find(c => c.constraintType === 'regex');
+        if (regexConstraint) {
+            return `### TODO: Regex constraint "${regexConstraint.value}" from rule "${regexConstraint.ruleName}" — replace with a valid Snowfakery expression`;
+        }
+
+        const lenMaxConstraint = constraints.find(c => c.constraintType === 'lengthMax');
+        const effectiveMax = lenMaxConstraint ? Math.min(Number(lenMaxConstraint.value), length) : length;
+
+        return `${this.openingRecipeSyntax}fake.text(max_nb_chars=${effectiveMax})${this.closingRecipeSyntax}`;
+
     }
 
-    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
+    buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number, constraints: ValidationRuleConstraint[] = []): string {
 
         const effectiveScale = scale ?? 0;
         const maxNumbersLeftOfDecimal = '9'.repeat(precision - effectiveScale);
 
+        const minConstraints = constraints.filter(c => c.constraintType === 'numericMin');
+        const maxConstraints = constraints.filter(c => c.constraintType === 'numericMax');
+        const effectiveMin = minConstraints.length > 0 ? Math.max(...minConstraints.map(c => Number(c.value))) : 0;
+        const effectiveMax = maxConstraints.length > 0
+            ? Math.min(...maxConstraints.map(c => Number(c.value)), Number(maxNumbersLeftOfDecimal))
+            : maxNumbersLeftOfDecimal;
+
         if (effectiveScale === 0) {
-            return `${this.openingRecipeSyntax}fake.random_int(min=0, max=${maxNumbersLeftOfDecimal})${this.closingRecipeSyntax}`;
+            return `${this.openingRecipeSyntax}fake.random_int(min=${effectiveMin}, max=${effectiveMax})${this.closingRecipeSyntax}`;
         } else {
-            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxNumbersLeftOfDecimal}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+            const leftDigits = String(effectiveMax).split('.')[0].length;
+            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${leftDigits}, right_digits=${effectiveScale}, positive=True, min_value=${effectiveMin}, max_value=${effectiveMax})${this.closingRecipeSyntax}`;
         }
-    
+
     }
 
-    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string {
-        
+    buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number, constraints: ValidationRuleConstraint[] = []): string {
+
         const effectiveScale = scale ?? 0;
-        const maxNumbersLeftOfDecimal = precision - effectiveScale;
-        return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxNumbersLeftOfDecimal}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
-    
+        const leftDigitsFromPrecision = precision - effectiveScale;
+
+        const minConstraints = constraints.filter(c => c.constraintType === 'numericMin');
+        const maxConstraints = constraints.filter(c => c.constraintType === 'numericMax');
+
+        if (minConstraints.length === 0 && maxConstraints.length === 0) {
+            return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${leftDigitsFromPrecision}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
+        }
+
+        const maxNumbersLeftOfDecimal = '9'.repeat(leftDigitsFromPrecision);
+        const effectiveMin = minConstraints.length > 0 ? Math.max(...minConstraints.map(c => Number(c.value))) : 0;
+        const effectiveMax = maxConstraints.length > 0
+            ? Math.min(...maxConstraints.map(c => Number(c.value)), Number(maxNumbersLeftOfDecimal))
+            : maxNumbersLeftOfDecimal;
+        const leftDigits = String(effectiveMax).split('.')[0].length;
+        return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${leftDigits}, right_digits=${effectiveScale}, positive=True, min_value=${effectiveMin}, max_value=${effectiveMax})${this.closingRecipeSyntax}`;
+
+    }
+
+    buildDateRecipeValue(fieldType: string, constraints: ValidationRuleConstraint[] = []): string {
+
+        const relMinConstraint = constraints.find(c => c.constraintType === 'dateRelativeMin');
+        const relMaxConstraint = constraints.find(c => c.constraintType === 'dateRelativeMax');
+        const absMinConstraint = constraints.find(c => c.constraintType === 'dateMin');
+        const absMaxConstraint = constraints.find(c => c.constraintType === 'dateMax');
+
+        const startDate = absMinConstraint
+            ? `"${absMinConstraint.value}"`
+            : relMinConstraint
+                ? `"today"`
+                : `"-1y"`;
+
+        const isDate = fieldType.toLowerCase() === 'date';
+        const defaultEndDate = isDate ? `"today"` : `"now"`;
+        const endDate = absMaxConstraint
+            ? `"${absMaxConstraint.value}"`
+            : relMaxConstraint
+                ? `"today"`
+                : defaultEndDate;
+
+        if (isDate) {
+            return `${this.openingRecipeSyntax}date(fake.date_between(start_date=${startDate}, end_date=${endDate}))${this.closingRecipeSyntax}`;
+        } else {
+            return `${this.openingRecipeSyntax} (fake.date_time_between(start_date=${startDate}, end_date=${endDate})).strftime("%Y-%m-%dT%H:%M:%S.000+0000") ${this.closingRecipeSyntax}`;
+        }
+
     }
 
 }
+
