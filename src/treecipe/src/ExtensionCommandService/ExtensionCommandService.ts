@@ -1,7 +1,6 @@
 import { ConfigurationService, TreecipeConfigDetail } from "../ConfigurationService/ConfigurationService";
 import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
-import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
@@ -109,46 +108,52 @@ export class ExtensionCommandService {
 
         try {
 
-            let objectsInfoWrapper = new ObjectInfoWrapper();
             const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
 
-            if (workspaceRoot) {
-            
-                const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-                const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-                const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
-                
-                /* 
-                -- initialize globalvaluesets singleton --
-                 at this point in the extension commands, where a command is entered to generate a reciipe, we should retrieve the globalvaluesets 
-                 as there could be changes that have taken place throughout the vscode instance of the user
-                */
-                const isGlobalValuesInitializedOnExtensionStartUpOverride = false;
-                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
-                let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-                globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isGlobalValuesInitializedOnExtensionStartUpOverride);
-
-                const directoryProcessor = new DirectoryProcessor();
-                const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-            
-                const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
-
-                await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
-
-
-            } else {
+            if (!workspaceRoot) {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-          
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Generating Treecipe...',
+                    cancellable: true
+                },
+                async (progress, token) => {
+
+                    progress.report({ message: 'Reading configuration...' });
+
+                    const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+                    const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
+                    const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+
+                    const isGlobalValuesInitializedOnExtensionStartUpOverride = false;
+                    const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                    const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+                    globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isGlobalValuesInitializedOnExtensionStartUpOverride);
+
+                    progress.report({ message: 'Processing Salesforce object metadata...' });
+
+                    const directoryProcessor = new DirectoryProcessor();
+                    const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+                    const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
+
+                    progress.report({ message: 'Building relationship trees...' });
+
+                    const totalFileCount = result.RecipeFiles.length;
+                    await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot, progress, token, totalFileCount);
+
+                }
+            );
 
         } catch (error) {
 
             const commandName = 'generateRecipeFromConfigurationDetail';
             ErrorHandlingService.handleCapturedError(error, commandName);
-            
+
         }
-      
+
     }
 
     async insertDataSetBySelectedDirectory() {

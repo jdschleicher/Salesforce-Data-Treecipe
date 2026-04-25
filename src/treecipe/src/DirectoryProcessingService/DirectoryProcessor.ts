@@ -269,7 +269,10 @@ export class DirectoryProcessor {
   }
 
   async createRecipeFilesInSubdirectory(objectsInfoWrapper: ObjectInfoWrapper,
-                                          workspaceRoot): Promise<void> {
+                                          workspaceRoot: string,
+                                          _progress?: vscode.Progress<{ message?: string }>,
+                                          _token?: vscode.CancellationToken,
+                                          _totalFileCount?: number): Promise<void> {
 
       // ensure dedicated directory for generated recipes exists
       const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
