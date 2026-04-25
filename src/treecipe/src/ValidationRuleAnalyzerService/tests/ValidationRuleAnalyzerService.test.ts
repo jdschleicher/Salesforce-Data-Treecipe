@@ -367,4 +367,73 @@ describe('ValidationRuleAnalyzerService', () => {
 
     });
 
+    describe('buildDrivenByValidationRuleComment', () => {
+
+        test('given single constraint, returns comment with quoted rule name', () => {
+            const constraints: ValidationRuleConstraint[] = [{
+                fieldApiName: 'Amount',
+                constraintType: 'numericMin',
+                value: 100,
+                rawFormula: 'Amount < 100',
+                errorMessage: 'Amount must be at least 100',
+                ruleName: 'Opportunity_Validation_LessThanMax'
+            }];
+
+            const comment = ValidationRuleAnalyzerService.buildDrivenByValidationRuleComment(constraints);
+
+            expect(comment).toBe('### Driven by ValidationRule "Opportunity_Validation_LessThanMax"');
+        });
+
+        test('given multiple constraints with different rule names, returns comma-separated quoted names', () => {
+            const constraints: ValidationRuleConstraint[] = [
+                {
+                    fieldApiName: 'Amount',
+                    constraintType: 'numericMin',
+                    value: 100,
+                    rawFormula: 'Amount < 100',
+                    errorMessage: 'Amount too low',
+                    ruleName: 'Rule_Min'
+                },
+                {
+                    fieldApiName: 'Amount',
+                    constraintType: 'numericMax',
+                    value: 9999,
+                    rawFormula: 'Amount > 9999',
+                    errorMessage: 'Amount too high',
+                    ruleName: 'Rule_Max'
+                }
+            ];
+
+            const comment = ValidationRuleAnalyzerService.buildDrivenByValidationRuleComment(constraints);
+
+            expect(comment).toBe('### Driven by ValidationRule "Rule_Min", "Rule_Max"');
+        });
+
+        test('given multiple constraints with the same rule name, deduplicates to single entry', () => {
+            const constraints: ValidationRuleConstraint[] = [
+                {
+                    fieldApiName: 'Amount',
+                    constraintType: 'numericMin',
+                    value: 100,
+                    rawFormula: 'Amount < 100',
+                    errorMessage: 'Amount too low',
+                    ruleName: 'Same_Rule'
+                },
+                {
+                    fieldApiName: 'Amount',
+                    constraintType: 'numericMax',
+                    value: 9999,
+                    rawFormula: 'Amount > 9999',
+                    errorMessage: 'Amount too high',
+                    ruleName: 'Same_Rule'
+                }
+            ];
+
+            const comment = ValidationRuleAnalyzerService.buildDrivenByValidationRuleComment(constraints);
+
+            expect(comment).toBe('### Driven by ValidationRule "Same_Rule"');
+        });
+
+    });
+
 });

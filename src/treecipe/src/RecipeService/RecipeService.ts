@@ -58,6 +58,7 @@ export class RecipeService {
                     if (xmlFieldDetail.controllingField) {
                         // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
                         fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
+                        return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
                     } else {
 
                         let availablePicklistValueOptions: string[] = [];
@@ -93,14 +94,14 @@ export class RecipeService {
 
                     }
 
-                    return fakeRecipeValue;
+                    return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
 
                 case 'multiselectpicklist':
 
                     if ( !(xmlFieldDetail.picklistValues) ) {
                         // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
                         const emptyMultiSelectXMLDetailPlaceholder = this.fakerService.getMultipicklistTODOPlaceholderWithExample();
-                        return emptyMultiSelectXMLDetailPlaceholder;
+                        return this.appendValidationRuleComment(emptyMultiSelectXMLDetailPlaceholder, fieldConstraints);
                     }
                     const availablePicklistChoices = xmlFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
                     fakeRecipeValue = this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices,
@@ -108,13 +109,13 @@ export class RecipeService {
                                                                                                             xmlFieldDetail.apiName
                                                                                                         );
 
-                    return fakeRecipeValue;
+                    return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
 
                 case 'date':
                 case 'datetime':
 
                     fakeRecipeValue = this.fakerService.buildDateRecipeValue(fieldType, fieldConstraints);
-                    return fakeRecipeValue;
+                    return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
 
                 case 'text':
                 case 'textarea':
@@ -123,7 +124,7 @@ export class RecipeService {
 
                     if (xmlFieldDetail.length) {
                         fakeRecipeValue = this.fakerService.buildTextRecipeValueWithLength(xmlFieldDetail.length, fieldConstraints);
-                        return fakeRecipeValue;
+                        return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
                     }
                     // Fall through to default if no length
 
@@ -132,7 +133,7 @@ export class RecipeService {
 
                     if (xmlFieldDetail.precision) {
                         fakeRecipeValue = this.fakerService.buildNumericRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale, fieldConstraints);
-                        return fakeRecipeValue;
+                        return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
                     }
                     // Fall through to default if no precision
 
@@ -140,23 +141,14 @@ export class RecipeService {
 
                     if (xmlFieldDetail.precision) {
                         fakeRecipeValue = this.fakerService.buildCurrencyRecipeValueWithPrecisionAndScale(xmlFieldDetail.precision, xmlFieldDetail.scale, fieldConstraints);
-                        return fakeRecipeValue;
+                        return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
                     }
                     // Fall through to default if no precision
 
                 default: {
 
                     fakeRecipeValue = this.getFakeValueIfExpectedSalesforceFieldType(fieldType);
-
-                    const unknownConstraints = fieldConstraints.filter(c => c.constraintType === 'unknown');
-                    if (unknownConstraints.length > 0) {
-                        const comments = unknownConstraints
-                            .map(c => ValidationRuleAnalyzerService.buildUnknownRuleYamlComment(c))
-                            .join('\n    ');
-                        fakeRecipeValue = `|\n    ${comments}\n    ${fakeRecipeValue}`;
-                    }
-
-                    return fakeRecipeValue;
+                    return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
                 }
 
             }
@@ -321,6 +313,14 @@ ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;
 
         return updatedObjectRecipe;
 
+    }
+
+    private appendValidationRuleComment(value: string, constraints: ValidationRuleConstraint[]): string {
+        if (!constraints || constraints.length === 0) {
+            return value;
+        }
+        const comment = ValidationRuleAnalyzerService.buildDrivenByValidationRuleComment(constraints);
+        return `${value} ${comment}`;
     }
 
     getRecipeValueWithMissingXMLDetailByFieldApiName(): string {

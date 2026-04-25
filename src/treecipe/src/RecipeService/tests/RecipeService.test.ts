@@ -1,6 +1,7 @@
 import { RecipeService } from "../../RecipeService/RecipeService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
+import { ValidationRuleConstraint } from "../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 import { RecipeMockService } from "./mocks/RecipeMockService";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
@@ -412,7 +413,82 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 const actualRecipeValue = recipeServiceWithSnow.getFakeValueIfExpectedSalesforceFieldType(fieldTypeKey);
                 expect(actualRecipeValue).toBe(recipeValue);
             }
-            
+
+        });
+
+    });
+
+    describe('getRecipeFakeValueByXMLFieldDetail with ValidationRule constraints', () => {
+
+        const singleConstraint: ValidationRuleConstraint[] = [{
+            fieldApiName: 'Amount',
+            constraintType: 'numericMin',
+            value: 100,
+            rawFormula: 'Amount < 100',
+            errorMessage: 'Amount must be at least 100',
+            ruleName: 'Opportunity_Min_Amount'
+        }];
+
+        const expectedInlineComment = '### Driven by ValidationRule "Opportunity_Min_Amount"';
+
+        test('given picklist XMLFieldDetail with constraint, appends inline ValidationRule comment', () => {
+            const picklistXMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
+            const result = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(picklistXMLFieldDetail, {}, singleConstraint);
+            expect(result).toContain(expectedInlineComment);
+        });
+
+        test('given datetime XMLFieldDetail with constraint, appends inline ValidationRule comment', () => {
+            const datetimeXMLFieldDetail = XMLMarkupMockService.getDateTimeFieldDetail();
+            const result = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(datetimeXMLFieldDetail, {}, singleConstraint);
+            expect(result).toContain(expectedInlineComment);
+        });
+
+        test('given text XMLFieldDetail with length and constraint, appends inline ValidationRule comment', () => {
+            const textXMLFieldDetail = XMLMarkupMockService.getTextXMLFieldDetailWithLength();
+            const result = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(textXMLFieldDetail, {}, singleConstraint);
+            expect(result).toContain(expectedInlineComment);
+        });
+
+        test('given unhandled field type with constraint, appends inline ValidationRule comment instead of block scalar', () => {
+            const unknownFieldDetail: XMLFieldDetail = {
+                fieldType: 'unknowntype',
+                apiName: 'SomeField__c',
+                fieldLabel: 'Some Field',
+                xmlMarkup: ''
+            };
+            const result = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(unknownFieldDetail, {}, singleConstraint);
+            expect(result).toContain(expectedInlineComment);
+            expect(result).not.toContain('|\n');
+        });
+
+        test('given multiple constraints from different rules, appends comment with all rule names', () => {
+            const multiConstraints: ValidationRuleConstraint[] = [
+                {
+                    fieldApiName: 'Amount',
+                    constraintType: 'numericMin',
+                    value: 100,
+                    rawFormula: 'Amount < 100',
+                    errorMessage: 'Amount too low',
+                    ruleName: 'Rule_Min'
+                },
+                {
+                    fieldApiName: 'Amount',
+                    constraintType: 'numericMax',
+                    value: 9999,
+                    rawFormula: 'Amount > 9999',
+                    errorMessage: 'Amount too high',
+                    ruleName: 'Rule_Max'
+                }
+            ];
+            const picklistXMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
+            const result = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(picklistXMLFieldDetail, {}, multiConstraints);
+            expect(result).toContain('### Driven by ValidationRule "Rule_Min", "Rule_Max"');
+        });
+
+        test('given no constraints, returns value without any ValidationRule comment', () => {
+            const picklistXMLFieldDetail = XMLMarkupMockService.getPicklistXMLFieldDetail();
+            const result = recipeServiceWithSnow.getRecipeFakeValueByXMLFieldDetail(picklistXMLFieldDetail, {});
+            expect(result).not.toContain('### Driven by ValidationRule');
         });
 
     });

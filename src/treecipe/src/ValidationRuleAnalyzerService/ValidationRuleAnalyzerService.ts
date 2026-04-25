@@ -308,6 +308,12 @@ export class ValidationRuleAnalyzerService {
         return `# VALIDATION RULE "${constraint.ruleName}": ${constraint.errorMessage} | Formula: ${constraint.rawFormula}`;
     }
 
+    static buildDrivenByValidationRuleComment(constraints: ValidationRuleConstraint[]): string {
+        const uniqueRuleNames = [...new Set(constraints.map(c => c.ruleName))];
+        const quotedNames = uniqueRuleNames.map(name => `"${name}"`).join(', ');
+        return `### Driven by ValidationRule ${quotedNames}`;
+    }
+
     private static extractFirstFieldReferenceFromFormula(formula: string): string | null {
         // Heuristic: grab the first word-token that looks like a field API name
         // (starts with a letter, may end with __c or be a standard field name)
