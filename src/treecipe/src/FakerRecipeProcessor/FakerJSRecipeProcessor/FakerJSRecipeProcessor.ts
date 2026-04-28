@@ -455,7 +455,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         // Replace date_between
         modifiedCode = modifiedCode.replace(dateBetweenRegex, (match, fromValue, toValue) => {
 
-            console.log('Date Between Match:', { match, fromValue, toValue });
             return `dateUtils.date_between({from: '${fromValue}', to: '${toValue}'})`;
 
         });
@@ -463,7 +462,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         // Replace datetime_between
         modifiedCode = modifiedCode.replace(datetimeBetweenRegex, (match, fromValue, toValue) => {
 
-            console.log('Datetime Between Match:', { match, fromValue, toValue });
             return `dateUtils.datetime_between({from: '${fromValue}', to: '${toValue}'})`;
 
         });
@@ -471,15 +469,13 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         // Replace date
         modifiedCode = modifiedCode.replace(dateRegex, (match, inputValue) => {
 
-            console.log('Date Match:', { match, inputValue });
             return `dateUtils.date('${inputValue}')`;
-        
+
         });
 
         // Replace datetime
         modifiedCode = modifiedCode.replace(datetimeRegex, (match, inputValue) => {
 
-            console.log('Datetime Match:', { match, inputValue });
             return `dateUtils.datetime('${inputValue}')`;
 
         });
@@ -516,8 +512,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 to: toResult
             }).toISOString().split('T')[0];
 
-            console.log('date_between fakerDate:', fakerDate);
-
             return fakerDate;
         },
       
@@ -531,7 +525,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 to: toResult
             }).toISOString();
 
-            console.log('datetime_between fakerDate:', fakerDate);
             return fakerDate;
         },
 
@@ -600,11 +593,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     throw new Error(`Shifted date "${sign}${days}" is outside the valid Salesforce date range. minimum date is 0001-01-01 and maximum date is 9999-12-31.`);
                 }
 
-                const formattedDate = isDateTime ? 
-                                        date.toISOString() 
+                const formattedDate = isDateTime ?
+                                        date.toISOString()
                                         : date.toISOString().split('T')[0];
 
-                console.log('formattedDate:', formattedDate);
                 return formattedDate;
             }
             
