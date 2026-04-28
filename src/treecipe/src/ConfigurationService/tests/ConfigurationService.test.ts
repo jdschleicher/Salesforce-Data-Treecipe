@@ -232,6 +232,73 @@ describe('Shared ConfigurationService Tests', () => {
 
     });
 
+    describe('getCustomRelationshipMappings', () => {
+
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+
+        test('given config with customRelationshipMappings present, returns the mapping object', () => {
+
+            const expectedConfigDetailJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery",
+    "customRelationshipMappings": {
+        "CustomObject__c.Primary_Contact__c": "Contact",
+        "Project__c.Owner_Account__c": "Account"
+    }
+}`;
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+
+            const actualMappings = ConfigurationService.getCustomRelationshipMappings();
+
+            expect(actualMappings).toEqual({
+                "CustomObject__c.Primary_Contact__c": "Contact",
+                "Project__c.Owner_Account__c": "Account"
+            });
+
+        });
+
+        test('given config without customRelationshipMappings property, returns empty object', () => {
+
+            const expectedConfigDetailJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery"
+}`;
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+
+            const actualMappings = ConfigurationService.getCustomRelationshipMappings();
+
+            expect(actualMappings).toEqual({});
+
+        });
+
+        test('given config with customRelationshipMappings set to null, returns empty object', () => {
+
+            const expectedConfigDetailJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery",
+    "customRelationshipMappings": null
+}`;
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+
+            const actualMappings = ConfigurationService.getCustomRelationshipMappings();
+
+            expect(actualMappings).toEqual({});
+
+        });
+
+    });
+
     describe('getObjectsPathFromTreecipeJSONConfiguration', () => {
 
         test('given mocked configuration, returns expected objects path.', () => {

@@ -450,17 +450,85 @@ export class RelationshipService {
   }
 
   getOotbReferenceLookupMap(): Record<string, string> {
-    
+
     let ootbLookupReferenceToObjectApiNameMap: Record<string, string> | undefined;
     if (ootbLookupReferenceToObjectApiNameMap) {
       return ootbLookupReferenceToObjectApiNameMap;
     }
-    
+
     ootbLookupReferenceToObjectApiNameMap = {
       "AccountId": "Account"
     };
-    
+
     return ootbLookupReferenceToObjectApiNameMap;
+
+  }
+
+  getMergedReferenceLookupMap(customRelationshipMappings?: Record<string, string>): Record<string, string> {
+
+    const ootbMap = this.getOotbReferenceLookupMap();
+    const merged: Record<string, string> = { ...ootbMap };
+
+    if (!customRelationshipMappings) {
+      return merged;
+    }
+
+    for (const [customKey, parentObjectApiName] of Object.entries(customRelationshipMappings)) {
+
+      if (!this.isValidCustomRelationshipKey(customKey) || !parentObjectApiName) {
+        continue;
+      }
+
+      // OOTB entries always win — custom entries extend, never override
+      if (merged[customKey]) {
+        continue;
+      }
+
+      merged[customKey] = parentObjectApiName;
+
+    }
+
+    return merged;
+
+  }
+
+  resolveParentReferenceForField(
+    objectApiName: string,
+    fieldApiName: string,
+    customRelationshipMappings?: Record<string, string>
+  ): string | undefined {
+
+    const ootbMap = this.getOotbReferenceLookupMap();
+
+    if (customRelationshipMappings) {
+      const objectFieldKey = `${objectApiName}.${fieldApiName}`;
+      const customMatch = customRelationshipMappings[objectFieldKey];
+      if (customMatch && this.isValidCustomRelationshipKey(objectFieldKey)) {
+        return customMatch;
+      }
+    }
+
+    return ootbMap[fieldApiName];
+
+  }
+
+  private isValidCustomRelationshipKey(key: string): boolean {
+
+    if (!key || typeof key !== 'string') {
+      return false;
+    }
+
+    const dotIndex = key.indexOf('.');
+    if (dotIndex <= 0 || dotIndex === key.length - 1) {
+      return false;
+    }
+
+    // reject keys containing more than a single dot separator
+    if (key.indexOf('.', dotIndex + 1) !== -1) {
+      return false;
+    }
+
+    return true;
 
   }
 
