@@ -430,6 +430,21 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
             expect(result).toContain('^[0-9]{10}$');
         });
 
+        test('given lengthMin constraint, uses pystr with min_chars and max_chars', () => {
+            const constraints: any[] = [{ constraintType: 'lengthMin', value: 10, fieldApiName: 'Description', rawFormula: '', errorMessage: '', ruleName: 'R1' }];
+            const result = snowfakeryService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('fake.pystr(min_chars=10, max_chars=255)');
+        });
+
+        test('given both lengthMin and lengthMax constraints, applies both bounds', () => {
+            const constraints: any[] = [
+                { constraintType: 'lengthMin', value: 5, fieldApiName: 'Description', rawFormula: '', errorMessage: '', ruleName: 'R1' },
+                { constraintType: 'lengthMax', value: 50, fieldApiName: 'Description', rawFormula: '', errorMessage: '', ruleName: 'R2' }
+            ];
+            const result = snowfakeryService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('fake.pystr(min_chars=5, max_chars=50)');
+        });
+
         test('given no constraints, returns default max_nb_chars expression', () => {
             const result = snowfakeryService.buildTextRecipeValueWithLength(100);
             expect(result).toContain('max_nb_chars=100');

@@ -114,7 +114,11 @@ export class RecipeService {
                 case 'date':
                 case 'datetime':
 
-                    fakeRecipeValue = this.fakerService.buildDateRecipeValue(fieldType, fieldConstraints);
+                    if (fieldConstraints.length > 0) {
+                        fakeRecipeValue = this.fakerService.buildDateRecipeValue(fieldType, fieldConstraints);
+                        return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
+                    }
+                    fakeRecipeValue = this.getFakeValueIfExpectedSalesforceFieldType(fieldType);
                     return this.appendValidationRuleComment(fakeRecipeValue, fieldConstraints);
 
                 case 'text':

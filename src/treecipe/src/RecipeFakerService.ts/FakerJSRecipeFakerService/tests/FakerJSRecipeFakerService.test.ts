@@ -260,6 +260,22 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             expect(result).toContain('^[0-9]{10}$');
         });
 
+        test('given regex constraint with forward slashes, escapes them before embedding', () => {
+            const constraints: any[] = [{ constraintType: 'regex', value: '^https://', fieldApiName: 'Website__c', rawFormula: '', errorMessage: '', ruleName: 'Require_URL' }];
+            const result = fakerJSRecipeFakerService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('faker.helpers.fromRegExp');
+            expect(result).toContain('^https:\\/\\/');
+            expect(result).not.toContain('fromRegExp(/^https://)');
+        });
+
+        test('given invalid regex constraint, returns TODO comment instead of embedding broken pattern', () => {
+            const constraints: any[] = [{ constraintType: 'regex', value: '[invalid(', fieldApiName: 'Field__c', rawFormula: '', errorMessage: '', ruleName: 'Bad_Rule' }];
+            const result = fakerJSRecipeFakerService.buildTextRecipeValueWithLength(255, constraints);
+            expect(result).toContain('### TODO');
+            expect(result).toContain('Bad_Rule');
+            expect(result).not.toContain('fromRegExp');
+        });
+
         test('given no constraints, returns default expression', () => {
             const result = fakerJSRecipeFakerService.buildTextRecipeValueWithLength(100);
             expect(result).toContain('substring(0, 100)');

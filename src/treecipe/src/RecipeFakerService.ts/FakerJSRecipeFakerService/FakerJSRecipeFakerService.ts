@@ -522,7 +522,14 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
         const regexConstraint = constraints.find(c => c.constraintType === 'regex');
         if (regexConstraint) {
-            return `${this.openingRecipeSyntax} faker.helpers.fromRegExp(/${regexConstraint.value}/) ${this.closingRecipeSyntax}`;
+            const pattern = String(regexConstraint.value);
+            try {
+                new RegExp(pattern);
+            } catch {
+                return `### TODO: Invalid regex constraint from rule "${regexConstraint.ruleName}" — pattern could not be parsed, replace with a valid faker expression`;
+            }
+            const escapedPattern = pattern.replace(/\//g, '\\/');
+            return `${this.openingRecipeSyntax} faker.helpers.fromRegExp(/${escapedPattern}/) ${this.closingRecipeSyntax}`;
         }
 
         const lenMaxConstraint = constraints.find(c => c.constraintType === 'lengthMax');

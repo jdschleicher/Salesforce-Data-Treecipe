@@ -418,7 +418,13 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         }
 
         const lenMaxConstraint = constraints.find(c => c.constraintType === 'lengthMax');
+        const lenMinConstraint = constraints.find(c => c.constraintType === 'lengthMin');
         const effectiveMax = lenMaxConstraint ? Math.min(Number(lenMaxConstraint.value), length) : length;
+        const effectiveMin = lenMinConstraint ? Number(lenMinConstraint.value) : 0;
+
+        if (effectiveMin > 0) {
+            return `${this.openingRecipeSyntax}fake.pystr(min_chars=${effectiveMin}, max_chars=${effectiveMax})${this.closingRecipeSyntax}`;
+        }
 
         return `${this.openingRecipeSyntax}fake.text(max_nb_chars=${effectiveMax})${this.closingRecipeSyntax}`;
 
