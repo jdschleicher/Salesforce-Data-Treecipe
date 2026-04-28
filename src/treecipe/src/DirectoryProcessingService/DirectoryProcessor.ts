@@ -19,10 +19,27 @@ export class DirectoryProcessor {
 
   private recipeService: RecipeService;
   private relationshipService: RelationshipService;
+  private customRelationshipMappings: Record<string, string> | undefined;
   constructor() {
     const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
     this.recipeService = new RecipeService(selectedDataFakerService);
     this.relationshipService = new RelationshipService();
+  }
+
+  private getCustomRelationshipMappings(): Record<string, string> {
+
+    if (this.customRelationshipMappings !== undefined) {
+      return this.customRelationshipMappings;
+    }
+
+    try {
+      this.customRelationshipMappings = ConfigurationService.getCustomRelationshipMappings();
+    } catch {
+      this.customRelationshipMappings = {};
+    }
+
+    return this.customRelationshipMappings;
+
   }
 
   async processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
@@ -77,11 +94,10 @@ export class DirectoryProcessor {
                 fieldDetail.fieldName
               );
 
-              if (fieldDetail.type === 'Lookup' 
-                    || fieldDetail.type === 'MasterDetail' 
+              if (fieldDetail.type === 'Lookup'
+                    || fieldDetail.type === 'MasterDetail'
                     || fieldDetail.type === 'Hiearchy') {
 
-                  const ootbFieldReferenceTolLookupApiNameMap = this.relationshipService.getOotbReferenceLookupMap();
                   let parentReferenceApiName = null;
                   if (fieldDetail.referenceTo) {
 
@@ -89,14 +105,19 @@ export class DirectoryProcessor {
 
                   } else {
 
-                    parentReferenceApiName = ootbFieldReferenceTolLookupApiNameMap[fieldDetail.fieldName];
+                    const customRelationshipMappings = this.getCustomRelationshipMappings();
+                    parentReferenceApiName = this.relationshipService.resolveParentReferenceForField(
+                      objectName,
+                      fieldDetail.fieldName,
+                      customRelationshipMappings
+                    );
 
                   }
 
                   if ( parentReferenceApiName ) {
                     objectInfoWrapper.ObjectToObjectInfoMap = this.relationshipService.buildBidirectionalChildAndParentRelationshipReferences(fieldDetail, objectInfoWrapper, objectName, parentReferenceApiName);
                   }
-                    
+
               }
 
 

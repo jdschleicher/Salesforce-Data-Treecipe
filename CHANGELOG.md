@@ -1,5 +1,55 @@
 # Change Log
 
+## [2.10.0] - Custom Relationship Mappings for Lookup Field Hierarchy Resolution
+
+Resolves [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).
+
+### 🎯 Major Features
+
+#### 1. **`customRelationshipMappings` Config Property**
+
+`treecipe.config.json` now supports an optional `customRelationshipMappings` property — a flat map keyed by `"ObjectApiName.FieldApiName"` whose value is the parent object API name. This lets developers manually resolve custom lookup fields whose XML metadata is missing the `<referenceTo>` tag, so those objects get grouped into the correct relationship tree and Treecipe files are generated with the right insertion order.
+
+**Example:**
+
+```json
+{
+    "salesforceObjectsPath": "force-app/main/default/objects",
+    "dataFakerService": "snowfakery",
+    "customRelationshipMappings": {
+        "CustomObject__c.Primary_Contact__c": "Contact",
+        "Project__c.Owner_Account__c": "Account"
+    }
+}
+```
+
+#### 2. **OOTB Map is Always Preserved**
+
+Custom entries **extend**, never override, the built-in OOTB map (`AccountId → Account`). Lookup resolution checks the full `ObjectApiName.FieldApiName` key in the custom map first, then falls back to OOTB by `FieldApiName`. If a custom entry collides with an OOTB key, OOTB wins.
+
+#### 3. **Graceful Handling of Invalid Keys**
+
+Malformed custom keys (missing dot separator, empty object/field segment, multiple dots) are silently skipped — no crash, behavior matches the pre-existing "no relationship resolved" outcome.
+
+### 🔧 Technical Details
+
+- New `ConfigurationService.getCustomRelationshipMappings()` static getter — returns `{}` when the property is absent or null
+- New `TreecipeConfigDetail.customRelationshipMappings?: Record<string, string>` interface field
+- New `RelationshipService.getMergedReferenceLookupMap(customRelationshipMappings)` — returns OOTB map merged with valid custom entries
+- New `RelationshipService.resolveParentReferenceForField(objectApiName, fieldApiName, customRelationshipMappings)` — resolves a parent for a Lookup/MasterDetail/Hierarchy field, custom-first, OOTB fallback
+- `DirectoryProcessor` lazy-loads custom mappings once per processor instance and consults them at lookup-resolution time when XML `<referenceTo>` is absent
+- Unit tests added for `ConfigurationService.getCustomRelationshipMappings` (present, absent, null)
+- Unit tests added for `RelationshipService.getMergedReferenceLookupMap` and `resolveParentReferenceForField` (OOTB-only, custom extends OOTB, OOTB never overridden, invalid keys skipped, fallback chain)
+
+### 🧭 Out of Scope (Tracked Separately)
+
+- Recipe YAML field-level content generation for custom lookup fields (`friends` block / dynamic relationship references)
+- Distinguishing `Lookup` vs `MasterDetail` field types in custom mappings
+- Overriding OOTB entries with custom mappings
+- VS Code UI for editing custom mappings
+
+---
+
 ## [2.9.0][PR#37](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/37) - Mermaid ERD Dedicated File & MermaidService Extraction
 
 ### 🎯 Major Features

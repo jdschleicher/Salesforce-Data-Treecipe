@@ -20,6 +20,7 @@ export interface ExtensionConfig {
 export interface TreecipeConfigDetail {
     salesforceObjectsPath: string;
     dataFakerService: string;
+    customRelationshipMappings?: Record<string, string>;
 }
 
 export class ConfigurationService {
@@ -44,6 +45,18 @@ export class ConfigurationService {
 
         const configurationDetail = this.getTreecipeConfigurationDetail();
         return configurationDetail.salesforceObjectsPath;
+
+    }
+
+    static getCustomRelationshipMappings(): Record<string, string> {
+
+        const configurationDetail = this.getTreecipeConfigurationDetail();
+        const customRelationshipMappings = configurationDetail?.customRelationshipMappings;
+        if (!customRelationshipMappings || typeof customRelationshipMappings !== 'object') {
+            return {};
+        }
+
+        return customRelationshipMappings;
 
     }
 
