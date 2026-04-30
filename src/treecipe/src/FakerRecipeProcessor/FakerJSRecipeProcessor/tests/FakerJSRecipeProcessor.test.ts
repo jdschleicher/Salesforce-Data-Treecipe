@@ -1,5 +1,6 @@
 import { RecipeMockService } from '../../../RecipeService/tests/mocks/RecipeMockService';
 import { FakerJSRecipeProcessor } from '../FakerJSRecipeProcessor';
+
 import { FakerJSExpressionMocker } from './mocks/FakerJSExpressionMocker';
 
 import * as fs from 'fs';
@@ -455,13 +456,331 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
           const result = fakerJSRecipeProcessor.prepareFakerDateSyntax(
             "date_between({from: 'today', to: '+30'})"
           );
-    
+
           expect(result).toBe("dateUtils.date_between({from: 'today', to: '+30'})");
 
-        
+
         });
 
     });
- 
+
+    describe('processObjectDeclarationForYamlDocumentItem friends block', () => {
+
+        test('recipe with no friends block produces identical output — no regression', async () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const entry = {
+                object: 'Account',
+                nickname: 'plain_account',
+                count: 1,
+                fields: { Name: 'Acme Corp' }
+            };
+
+            const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(
+                'Account', entry, processedYamlWrapper
+            );
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account']).toHaveLength(1);
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account'][0].nickname).toBe('plain_account');
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account'][0].fields.Name).toBe('Acme Corp');
+            expect(Object.keys(result.ObjectPropertyToExistingProcessedYaml)).toEqual(['Account']);
+
+        });
+
+        test('single-level friends count=1: child nickname is objectType_parentNickname, lookup field unchanged', async () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const entry = {
+                object: 'Account',
+                nickname: 'topAccount',
+                count: 1,
+                fields: { Name: 'Acme Corp' },
+                friends: [
+                    {
+                        object: 'Contact',
+                        fields: { FirstName: 'Jane', AccountId: 'topAccount' }
+                    }
+                ]
+            };
+
+            const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(
+                'Account', entry, processedYamlWrapper
+            );
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account']).toHaveLength(1);
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account'][0].nickname).toBe('topAccount');
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Contact']).toHaveLength(1);
+            const childContact = result.ObjectPropertyToExistingProcessedYaml['Contact'][0];
+            expect(childContact.nickname).toBe('Contact_topAccount');
+            expect(childContact.fields.AccountId).toBe('topAccount');
+
+        });
+
+        test('count > 1 parent: each iteration gets unique nickname and rewrites child lookup fields', async () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const entry = {
+                object: 'Account',
+                nickname: 'multiAccount',
+                count: 2,
+                fields: { Name: 'Corp Inc' },
+                friends: [
+                    {
+                        object: 'Contact',
+                        fields: { FirstName: 'Bob', AccountId: 'multiAccount' }
+                    }
+                ]
+            };
+
+            const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(
+                'Account', entry, processedYamlWrapper
+            );
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account']).toHaveLength(2);
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account'][0].nickname).toBe('multiAccount_1');
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account'][1].nickname).toBe('multiAccount_2');
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Contact']).toHaveLength(2);
+
+            const firstChild = result.ObjectPropertyToExistingProcessedYaml['Contact'][0];
+            const secondChild = result.ObjectPropertyToExistingProcessedYaml['Contact'][1];
+
+            expect(firstChild.nickname).toBe('Contact_multiAccount_1');
+            expect(firstChild.fields.AccountId).toBe('multiAccount_1');
+
+            expect(secondChild.nickname).toBe('Contact_multiAccount_2');
+            expect(secondChild.fields.AccountId).toBe('multiAccount_2');
+
+        });
+
+        test('multi-level nested friends: grandchild lookup rewired to immediate parent generated nickname', async () => {
+
+            // The Contact has an explicit YAML nickname so the Case can reference it.
+            // The processor rewrites the Case's ContactId from the Contact's YAML nickname
+            // ('child_contact') to the Contact's generated nickname ('Contact_rootAccount').
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const entry = {
+                object: 'Account',
+                nickname: 'rootAccount',
+                count: 1,
+                fields: { Name: 'Root Corp' },
+                friends: [
+                    {
+                        object: 'Contact',
+                        nickname: 'child_contact',
+                        fields: { FirstName: 'Alice', AccountId: 'rootAccount' },
+                        friends: [
+                            {
+                                object: 'Case',
+                                fields: { Subject: 'Support Request', ContactId: 'child_contact' }
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(
+                'Account', entry, processedYamlWrapper
+            );
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account']).toHaveLength(1);
+            expect(result.ObjectPropertyToExistingProcessedYaml['Contact']).toHaveLength(1);
+            expect(result.ObjectPropertyToExistingProcessedYaml['Case']).toHaveLength(1);
+
+            const contact = result.ObjectPropertyToExistingProcessedYaml['Contact'][0];
+            expect(contact.nickname).toBe('Contact_rootAccount');
+            expect(contact.fields.AccountId).toBe('rootAccount');
+
+            const grandchild = result.ObjectPropertyToExistingProcessedYaml['Case'][0];
+            expect(grandchild.nickname).toBe('Case_Contact_rootAccount');
+            expect(grandchild.fields.ContactId).toBe('Contact_rootAccount');
+
+        });
+
+        test('mixed objects: entries with and without friends all process correctly', async () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const accountEntry = {
+                object: 'Account',
+                nickname: 'solo_account',
+                count: 1,
+                fields: { Name: 'Solo Corp' }
+            };
+
+            const opportunityEntry = {
+                object: 'Opportunity',
+                nickname: 'parent_opp',
+                count: 1,
+                fields: { Name: 'Big Deal' },
+                friends: [
+                    {
+                        object: 'OpportunityLineItem',
+                        fields: { Quantity: '1', OpportunityId: 'parent_opp' }
+                    }
+                ]
+            };
+
+            let result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(
+                'Account', accountEntry, processedYamlWrapper
+            );
+            result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(
+                'Opportunity', opportunityEntry, result
+            );
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account']).toHaveLength(1);
+            expect(result.ObjectPropertyToExistingProcessedYaml['Opportunity']).toHaveLength(1);
+            expect(result.ObjectPropertyToExistingProcessedYaml['OpportunityLineItem']).toHaveLength(1);
+
+            const lineItem = result.ObjectPropertyToExistingProcessedYaml['OpportunityLineItem'][0];
+            expect(lineItem.nickname).toBe('OpportunityLineItem_parent_opp');
+            expect(lineItem.fields.OpportunityId).toBe('parent_opp');
+
+        });
+
+    });
+
+    describe('replaceParentNicknameReferencesInFriendFields', () => {
+
+        test('replaces field values that exactly match the original nickname with the effective nickname', () => {
+
+            const fields = { AccountId: 'top_account', Name: 'Some Name', OtherId: 'unrelated' };
+            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
+                fields, 'top_account', 'top_account_1'
+            );
+
+            expect(result.AccountId).toBe('top_account_1');
+            expect(result.Name).toBe('Some Name');
+            expect(result.OtherId).toBe('unrelated');
+
+        });
+
+        test('returns fields unchanged when originalNickname equals effectiveNickname (count=1 case)', () => {
+
+            const fields = { AccountId: 'top_account', Name: 'Corp' };
+            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
+                fields, 'top_account', 'top_account'
+            );
+
+            expect(result).toEqual(fields);
+
+        });
+
+        test('returns empty object when fields is undefined', () => {
+
+            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
+                undefined, 'top_account', 'top_account_1'
+            );
+
+            expect(result).toEqual({});
+
+        });
+
+        test('does not do partial string replacement — only exact field value matches are replaced', () => {
+
+            const fields = { AccountId: 'top_account_extra', Name: 'top_account' };
+            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
+                fields, 'top_account', 'top_account_1'
+            );
+
+            expect(result.AccountId).toBe('top_account_extra');
+            expect(result.Name).toBe('top_account_1');
+
+        });
+
+    });
+
+    describe('buildRecipeDataStructureSummary', () => {
+
+        test('flat recipe with no friends produces correct totals', () => {
+
+            const parsedYaml = [
+                { object: 'Account', count: 5, fields: {} },
+                { object: 'Contact', count: 10, fields: {} }
+            ];
+
+            const summary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedYaml);
+
+            expect(summary).toContain('Account: 5 total');
+            expect(summary).toContain('Contact: 10 total');
+            expect(summary).toContain('Total records: 15');
+
+        });
+
+        test('recipe with friends block shows per-parent and total counts', () => {
+
+            const parsedYaml = [
+                {
+                    object: 'Account',
+                    count: 2,
+                    fields: {},
+                    friends: [
+                        { object: 'Contact', count: 5, fields: {} }
+                    ]
+                }
+            ];
+
+            const summary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedYaml);
+
+            expect(summary).toContain('Account: 2 total');
+            expect(summary).toContain('Contact: 5 per parent');
+            expect(summary).toContain('10 total');
+            expect(summary).toContain('Total records: 12');
+
+        });
+
+        test('nested friends produce correct cascading totals', () => {
+
+            const parsedYaml = [
+                {
+                    object: 'Account',
+                    count: 2,
+                    fields: {},
+                    friends: [
+                        {
+                            object: 'Contact',
+                            count: 3,
+                            fields: {},
+                            friends: [
+                                { object: 'Case', count: 4, fields: {} }
+                            ]
+                        }
+                    ]
+                }
+            ];
+
+            const summary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedYaml);
+
+            expect(summary).toContain('Account: 2 total');
+            expect(summary).toContain('Contact: 3 per parent');
+            expect(summary).toContain('6 total');
+            expect(summary).toContain('Case: 4 per parent');
+            expect(summary).toContain('24 total');
+            expect(summary).toContain('Total records: 32');
+
+        });
+
+    });
+
 
 });

@@ -48,67 +48,160 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
-    async processObjectDeclarationForYamlDocumentItem(objectType: string, 
-                                                        objectYamlEntry: any, 
+    async processObjectDeclarationForYamlDocumentItem(objectType: string,
+                                                        objectYamlEntry: any,
                                                         processedYamlWrapper: ProcessedYamlWrapper) {
-        
+
         const nickname = objectYamlEntry.nickname;
-        const count = objectYamlEntry.count || 1; // Default to 1 if count isn't provided
-        const fieldsTemplate = objectYamlEntry.fields;
+        const originalYamlNickname: string = objectYamlEntry._originalYamlNickname || nickname;
+        const count = objectYamlEntry.count || 1;
+        const fieldsTemplate = objectYamlEntry.fields || {};
+        const friends: any[] | undefined = objectYamlEntry.friends;
+
+        const hasActiveFriendsBlock = friends && Array.isArray(friends) && friends.length > 0;
+        const requiresPerIterationNickname = hasActiveFriendsBlock && count > 1;
 
         for (let i = 0; i < count; i++) {
+
+            const parentIterationIndex = i + 1;
+            const effectiveNickname = requiresPerIterationNickname
+                ? `${nickname}_${parentIterationIndex}`
+                : nickname;
 
             let fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
             for (const [yamlFieldName, yamlFieldValue] of Object.entries(fieldsTemplate)) {
 
                 try {
 
-                    fieldApiNameByFakerJSEvaluations[yamlFieldName] = await this.evaluateProvidedYamlPropertyValue(yamlFieldValue, 
-                                                                                                                    fieldApiNameByFakerJSEvaluations, 
+                    fieldApiNameByFakerJSEvaluations[yamlFieldName] = await this.evaluateProvidedYamlPropertyValue(yamlFieldValue,
+                                                                                                                    fieldApiNameByFakerJSEvaluations,
                                                                                                                     yamlFieldName,
                                                                                                                     processedYamlWrapper);
-                
+
                 } catch (error) {
-                    
+
                     const executedCommand = "FakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile";
                     const customErrorMessage = `Error evaluating faker-js expression syntax << ${yamlFieldName} - ${ yamlFieldValue } >> - ${error.message}`;
-                    
+
                     const customFakerJSEvaluationError = new Error();
                     customFakerJSEvaluationError.message = customErrorMessage;
-            
+
                     customFakerJSEvaluationError.name = "FakerJSExpressionEvaluationError";
                     customFakerJSEvaluationError.stack = error.stack;
-            
+
                     customFakerJSEvaluationError.cause = error.message;
-            
+
                     ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile(customFakerJSEvaluationError, executedCommand);
-                    
+
                     throw customFakerJSEvaluationError;
-                                
+
                 }
-                
+
             }
 
             const newFieldConfigurationToObject = {
-                id: (i+1),
+                id: parentIterationIndex,
                 object: objectType,
-                nickname: nickname,
+                nickname: effectiveNickname,
                 fields: fieldApiNameByFakerJSEvaluations,
             };
 
             if ( processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType] === undefined ) {
-            
+
                 processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType] = [ newFieldConfigurationToObject ];
 
             } else {
-                
+
                 processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType].push(newFieldConfigurationToObject);
-            
+
+            }
+
+            if (hasActiveFriendsBlock) {
+
+                const parentNicknameForChildren = effectiveNickname || objectType;
+
+                for (const friendEntry of friends) {
+                    const friendObjectType = friendEntry.object;
+                    const generatedFriendNickname = `${friendObjectType}_${parentNicknameForChildren}`;
+
+                    const updatedFriendFields = this.replaceParentNicknameReferencesInFriendFields(
+                        friendEntry.fields,
+                        originalYamlNickname,
+                        effectiveNickname
+                    );
+
+                    const friendEntryWithContext = {
+                        ...friendEntry,
+                        fields: updatedFriendFields,
+                        nickname: generatedFriendNickname,
+                        _originalYamlNickname: friendEntry.nickname,
+                    };
+
+                    processedYamlWrapper = await this.processObjectDeclarationForYamlDocumentItem(
+                        friendObjectType,
+                        friendEntryWithContext,
+                        processedYamlWrapper
+                    );
+                }
+
             }
 
         }
 
         return processedYamlWrapper;
+
+    }
+
+    replaceParentNicknameReferencesInFriendFields(
+        fields: Record<string, any> | undefined,
+        originalNickname: string | undefined,
+        effectiveNickname: string
+    ): Record<string, any> {
+
+        if (!fields || !originalNickname || originalNickname === effectiveNickname) {
+            return fields || {};
+        }
+
+        const updatedFields: Record<string, any> = {};
+        for (const [fieldName, fieldValue] of Object.entries(fields)) {
+            updatedFields[fieldName] = (fieldValue === originalNickname) ? effectiveNickname : fieldValue;
+        }
+        return updatedFields;
+
+    }
+
+    static buildRecipeDataStructureSummary(parsedYaml: any[]): string {
+
+        const lines: string[] = ['The following records will be created in the org:\n'];
+        let totalRecords = 0;
+
+        const traverseEntry = (entry: any, indent: string, parentMultiplier: number) => {
+            if (!entry.object) { return; }
+
+            const count = (entry.count || 1) as number;
+            const totalForThisLevel = count * parentMultiplier;
+            totalRecords += totalForThisLevel;
+
+            const countDetail = parentMultiplier > 1
+                ? `${count} per parent  →  ${totalForThisLevel} total`
+                : `${totalForThisLevel} total`;
+            lines.push(`${indent}${entry.object}: ${countDetail}`);
+
+            if (entry.friends && Array.isArray(entry.friends)) {
+                for (const friend of entry.friends) {
+                    traverseEntry(friend, `${indent}  └─ `, totalForThisLevel);
+                }
+            }
+        };
+
+        for (const entry of parsedYaml) {
+            if (entry.object) {
+                traverseEntry(entry, '  ', 1);
+            }
+        }
+
+        lines.push(`\nTotal records: ${totalRecords}`);
+        return lines.join('\n');
 
     }
 
@@ -453,33 +546,29 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         let modifiedCode = originalCode;
 
         // Replace date_between
-        modifiedCode = modifiedCode.replace(dateBetweenRegex, (match, fromValue, toValue) => {
+        modifiedCode = modifiedCode.replace(dateBetweenRegex, (_match: string, fromValue: string, toValue: string) => {
 
-            console.log('Date Between Match:', { match, fromValue, toValue });
             return `dateUtils.date_between({from: '${fromValue}', to: '${toValue}'})`;
 
         });
 
         // Replace datetime_between
-        modifiedCode = modifiedCode.replace(datetimeBetweenRegex, (match, fromValue, toValue) => {
+        modifiedCode = modifiedCode.replace(datetimeBetweenRegex, (_match: string, fromValue: string, toValue: string) => {
 
-            console.log('Datetime Between Match:', { match, fromValue, toValue });
             return `dateUtils.datetime_between({from: '${fromValue}', to: '${toValue}'})`;
 
         });
 
         // Replace date
-        modifiedCode = modifiedCode.replace(dateRegex, (match, inputValue) => {
+        modifiedCode = modifiedCode.replace(dateRegex, (_match: string, inputValue: string) => {
 
-            console.log('Date Match:', { match, inputValue });
             return `dateUtils.date('${inputValue}')`;
-        
+
         });
 
         // Replace datetime
-        modifiedCode = modifiedCode.replace(datetimeRegex, (match, inputValue) => {
+        modifiedCode = modifiedCode.replace(datetimeRegex, (_match: string, inputValue: string) => {
 
-            console.log('Datetime Match:', { match, inputValue });
             return `dateUtils.datetime('${inputValue}')`;
 
         });
@@ -516,8 +605,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 to: toResult
             }).toISOString().split('T')[0];
 
-            console.log('date_between fakerDate:', fakerDate);
-
             return fakerDate;
         },
       
@@ -531,7 +618,6 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 to: toResult
             }).toISOString();
 
-            console.log('datetime_between fakerDate:', fakerDate);
             return fakerDate;
         },
 
@@ -600,11 +686,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     throw new Error(`Shifted date "${sign}${days}" is outside the valid Salesforce date range. minimum date is 0001-01-01 and maximum date is 9999-12-31.`);
                 }
 
-                const formattedDate = isDateTime ? 
-                                        date.toISOString() 
+                const formattedDate = isDateTime ?
+                                        date.toISOString()
                                         : date.toISOString().split('T')[0];
 
-                console.log('formattedDate:', formattedDate);
                 return formattedDate;
             }
             

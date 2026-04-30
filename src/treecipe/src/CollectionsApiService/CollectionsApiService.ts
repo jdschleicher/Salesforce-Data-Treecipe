@@ -477,19 +477,26 @@ export class CollectionsApiService {
 
     static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
 
-        const referenceRegexMatch = /(Reference_\d+__)/; // can be a match of "Reference_1_" to "Reference_1000000000__"
-        for (const [referenceIdKey, referenceIdAssociatedRecordIdValue ] of  Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
+        const referenceRegexMatch = /(Reference_\d+__)/;
 
+        // Extract nickname from each reference ID, then sort longest-first so that
+        // more-specific nested nicknames (e.g. "Account_top_1") are replaced before
+        // shorter parent nicknames (e.g. "top") that are substrings of the longer ones.
+        const nicknameToOrgIdEntries: { nicknameValue: string; orgRecordId: string }[] = [];
+
+        for (const [referenceIdKey, orgRecordId] of Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
             const splitReferenceIdentifiers = referenceIdKey.split(referenceRegexMatch).filter(Boolean);
-
             const nicknameLookupReferenceMatchIndex = 2;
-  
-            // Not every object and associated could have a "nickname" property so the reference key would not include the double underscore split
             const nicknameValue = splitReferenceIdentifiers[nicknameLookupReferenceMatchIndex];
-            if ( nicknameValue ) {
-                collectionsApiJson = collectionsApiJson.replaceAll(nicknameValue, `${referenceIdAssociatedRecordIdValue}`);
+            if (nicknameValue) {
+                nicknameToOrgIdEntries.push({ nicknameValue, orgRecordId });
             }
+        }
 
+        nicknameToOrgIdEntries.sort((a, b) => b.nicknameValue.length - a.nicknameValue.length);
+
+        for (const { nicknameValue, orgRecordId } of nicknameToOrgIdEntries) {
+            collectionsApiJson = collectionsApiJson.replaceAll(nicknameValue, orgRecordId);
         }
 
         return collectionsApiJson;

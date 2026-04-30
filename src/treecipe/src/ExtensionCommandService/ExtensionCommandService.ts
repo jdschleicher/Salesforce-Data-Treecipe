@@ -6,10 +6,11 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
+import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 
-
 import * as fs from 'fs';
+import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import path = require("path");
 
@@ -41,7 +42,21 @@ export class ExtensionCommandService {
                 return;
             }
             const recipeFullFileNamePath = selectedRecipeFilePathNameQuickPickItem.detail;
-            
+
+            const recipeYamlContent = fs.readFileSync(recipeFullFileNamePath, 'utf8');
+            const parsedRecipeYaml = yaml.load(recipeYamlContent) as any[];
+            const dataStructureSummary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedRecipeYaml);
+
+            const confirmed = await vscode.window.showInformationMessage(
+                dataStructureSummary,
+                { modal: true },
+                'Generate Data'
+            );
+
+            if (confirmed !== 'Generate Data') {
+                return;
+            }
+
             let fakerRecipeProcessor:IFakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
 
             const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFullFileNamePath) as string;
