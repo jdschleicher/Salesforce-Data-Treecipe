@@ -526,6 +526,37 @@ describe('Shared tests for CollectionsApiService', () => {
 
         });
 
+        test('longer nickname replaced before shorter substring nickname to prevent corruption', () => {
+
+            // "top_account" is a substring of "Account_top_account_1".
+            // If the shorter nickname is replaced first it corrupts the longer one.
+            // Sorting by length descending ensures the longer value is replaced first.
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                'Account_Reference_1__top_account': '001PARENT',
+                'Contact_Reference_1__Contact_top_account': '003CHILD',
+            };
+
+            const collectionsApiJson = JSON.stringify({
+                allOrNone: true,
+                records: [
+                    {
+                        attributes: { type: 'Contact', referenceId: 'Contact_Reference_1__Contact_top_account' },
+                        AccountId: 'top_account',
+                        ParentContactId: 'Contact_top_account'
+                    }
+                ]
+            });
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(
+                collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap
+            );
+
+            const parsed = JSON.parse(result);
+            expect(parsed.records[0].AccountId).toBe('001PARENT');
+            expect(parsed.records[0].ParentContactId).toBe('003CHILD');
+
+        });
+
     });
 
     describe('updateCollectionApiJsonContentWithOrgRecordTypeIds', () => {
