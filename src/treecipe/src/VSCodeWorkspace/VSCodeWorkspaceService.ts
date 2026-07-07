@@ -220,8 +220,11 @@ export class VSCodeWorkspaceService {
                     continue;
                 }
 
-                const quickpickLabel = `${entry.name}`; 
-                const fullFilePathName = path.join(entry.path, entry.name);
+                const quickpickLabel = `${entry.name}`;
+                // folderPathToParse (the readdir argument) is the entry's parent directory; the
+                // deprecated fs.Dirent.path (DEP0178) returns undefined in recent Electron/Node
+                // runtimes, and path.join(undefined, ...) would throw
+                const fullFilePathName = path.join(folderPathToParse, entry.name);
                 recipeFileQuickPickItems.push({
                     label: quickpickLabel,
                     description: 'File',

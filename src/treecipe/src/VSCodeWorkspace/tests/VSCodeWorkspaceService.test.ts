@@ -337,6 +337,31 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
+        test('given file Dirents whose deprecated path property is undefined, builds detail from folderPathToParse without throwing', async () => {
+
+            const folderPathToParse = '/mock/generated-recipes';
+
+            // path/parentPath intentionally omitted to mirror the DEP0178 runtime where
+            // fs.Dirent.path is undefined; path.join(undefined, name) would otherwise throw
+            const mockDirents = [
+                Object.assign(new fs.Dirent(), {
+                    name: 'recipe1.yaml',
+                    isFile: () => true
+                }),
+            ];
+
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
+
+            let emptyQuickPickItems: vscode.QuickPickItem[] = [];
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, folderPathToParse);
+
+            expect(actualQuickPickItems).toHaveLength(1);
+            expect(actualQuickPickItems[0].detail).toBe('/mock/generated-recipes/recipe1.yaml');
+            expect(actualQuickPickItems[0].detail).not.toContain('undefined');
+
+        });
+
 
         test('given faker-js as selected faker service and directories with both fakerjs recipes and snowfakery, should return expected QuickPickItems for each file found', async () => {
                           
