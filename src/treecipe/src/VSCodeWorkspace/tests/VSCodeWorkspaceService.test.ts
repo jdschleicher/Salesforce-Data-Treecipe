@@ -111,7 +111,35 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             // TEST IS SETUP TO AVOID RECURSIVE
             expect(result.length).toEqual(0);
-            
+
+        });
+
+        test('given a directory entry, builds a relative-path label from the traversed directoryPath rather than the deprecated Dirent.path', async () => {
+
+            const mockWorkspaceRoot = '/mockWorkspace';
+            const startingDirectoryPath = `${mockWorkspaceRoot}/force-app/main/default`;
+
+            // Dirent intentionally has no path/parentPath to mirror the DEP0178 runtime where
+            // fs.Dirent.path is undefined; the label must still resolve from directoryPath
+            const objectsDirent = Object.assign(new fs.Dirent(), {
+                name: 'objects',
+                isDirectory: () => true
+            });
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(fs.promises, 'readdir')
+                .mockResolvedValueOnce([objectsDirent] as unknown as fs.Dirent[])
+                .mockResolvedValueOnce([] as unknown as fs.Dirent[]);
+            const mockIcon = new vscode.ThemeIcon('folder');
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
+
+            const result = await VSCodeWorkspaceService.getPotentialTreecipeObjectDirectoryPathsQuickPickItems(startingDirectoryPath);
+
+            expect(result.length).toEqual(1);
+            expect(result[0].label).toBe('./force-app/main/default/objects/');
+            expect(result[0].label).not.toContain('undefined');
+            expect(result[0].detail).toBe(`${startingDirectoryPath}/objects`);
+
         });
 
     });
@@ -309,6 +337,31 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
+        test('given file Dirents whose deprecated path property is undefined, builds detail from folderPathToParse without throwing', async () => {
+
+            const folderPathToParse = '/mock/generated-recipes';
+
+            // path/parentPath intentionally omitted to mirror the DEP0178 runtime where
+            // fs.Dirent.path is undefined; path.join(undefined, name) would otherwise throw
+            const mockDirents = [
+                Object.assign(new fs.Dirent(), {
+                    name: 'recipe1.yaml',
+                    isFile: () => true
+                }),
+            ];
+
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue(mockDirents);
+            jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockReturnValue('snowfakery');
+
+            let emptyQuickPickItems: vscode.QuickPickItem[] = [];
+            const actualQuickPickItems = await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory(emptyQuickPickItems, folderPathToParse);
+
+            expect(actualQuickPickItems).toHaveLength(1);
+            expect(actualQuickPickItems[0].detail).toBe('/mock/generated-recipes/recipe1.yaml');
+            expect(actualQuickPickItems[0].detail).not.toContain('undefined');
+
+        });
+
 
         test('given faker-js as selected faker service and directories with both fakerjs recipes and snowfakery, should return expected QuickPickItems for each file found', async () => {
                           
@@ -473,23 +526,22 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
     describe('buildDirectoryVSCodeQuickPickItemByDirectoryEntry', () => {
         
         test('given expected arguments and mocked out modules, should build the correct quickPickItem', () => {
-            
+
             const fakeWorkspaceRoot = '/mock/workspace/root';
             const fakeDirectoryName = 'fakeDirectory';
             const pathToFakeDirectory = 'mock/path/to/entry';
-            const rootPathToFakeDirectory = `${fakeWorkspaceRoot}/${pathToFakeDirectory}`;
-            
+            const parentDirectoryPath = `${fakeWorkspaceRoot}/${pathToFakeDirectory}`;
+
             const mockDirent = {
-                path: rootPathToFakeDirectory, 
-                name: fakeDirectoryName, 
+                name: fakeDirectoryName,
             } as fs.Dirent;
-    
-    
+
+
             const mockIcon = new vscode.ThemeIcon('folder');
             jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
 
-            const actualQuickPickItemEntry = VSCodeWorkspaceService.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(mockDirent, fakeWorkspaceRoot);
-    
+            const actualQuickPickItemEntry = VSCodeWorkspaceService.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(mockDirent, fakeWorkspaceRoot, parentDirectoryPath);
+
             const fullFakePath = `${fakeWorkspaceRoot}/${pathToFakeDirectory}/${fakeDirectoryName}`;
             const fakeRelativePath = `./${pathToFakeDirectory}/${fakeDirectoryName}/`;
             expect(actualQuickPickItemEntry).toEqual({
@@ -498,6 +550,27 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
                 iconPath: mockIcon,
                 detail: fullFakePath,
             });
+
+        });
+
+        test('given a Dirent whose deprecated path property is undefined, should still build a defined label from the caller-supplied parent path', () => {
+
+            const fakeWorkspaceRoot = '/mock/workspace/root';
+            const fakeDirectoryName = 'objects';
+            const parentDirectoryPath = `${fakeWorkspaceRoot}/force-app/main/default`;
+
+            const mockDirent = {
+                path: undefined,
+                name: fakeDirectoryName,
+            } as unknown as fs.Dirent;
+
+            const mockIcon = new vscode.ThemeIcon('folder');
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
+
+            const actualQuickPickItemEntry = VSCodeWorkspaceService.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(mockDirent, fakeWorkspaceRoot, parentDirectoryPath);
+
+            expect(actualQuickPickItemEntry.label).toBe('./force-app/main/default/objects/');
+            expect(actualQuickPickItemEntry.label).not.toContain('undefined');
 
         });
 
@@ -517,15 +590,17 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
        
             const quickPickItems: vscode.QuickPickItem[] = [];
-            const directoryPath = '/mock/directory/path';
+            // the directory being read is the shared parent of every entry; it lives under the
+            // workspace root so the derived relative-path label resolves correctly
+            const directoryPath = 'theworkspaceroot/andotherthings';
 
             jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("snowfakery");
 
             const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
-    
+
             expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
-            
+
             const expectedQuickPickItems = [
                 {
                     "label": "./andotherthings/dataset-foldernameone/rest-ofdirectoryname/",
@@ -569,12 +644,14 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             jest.spyOn(vscode, "ThemeIcon").mockReturnValue(mockIcon);
        
             const quickPickItems: vscode.QuickPickItem[] = [];
-            const directoryPath = '/mock/directory/path';
+            // the directory being read is the shared parent of every entry; it lives under the
+            // workspace root so the derived relative-path label resolves correctly
+            const directoryPath = 'theworkspaceroot/andotherthings';
 
             jest.spyOn(ConfigurationService, "getSelectedDataFakerServiceConfig").mockReturnValue("faker-js");
 
             const actualDataSetQuickPickItems = await VSCodeWorkspaceService.getDataSetDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath, quickPickItems);
-    
+
             expect(fs.promises.readdir).toHaveBeenCalledWith(directoryPath, { withFileTypes: true });
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
             
