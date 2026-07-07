@@ -63,7 +63,7 @@ export class VSCodeWorkspaceService {
   
             if ( this.isPossibleTreecipeUsableDirectory(entry) ) {
 
-                const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot);
+                const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot, directoryPath);
                 quickPickItems.push(quickPickDirectoryItem);
 
                 const fullPath = path.join(directoryPath, entry.name);
@@ -97,11 +97,11 @@ export class VSCodeWorkspaceService {
 
             if ( isFakerJSDatasetWhenFakerJSSelected || isSnowfakeryDatasetWhenSnowfakerySelected ) {
 
-                const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot);
+                const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot, directoryPath);
                 quickPickItems.push(quickPickDirectoryItem);
 
             }
-  
+
         }
       
         return quickPickItems;
@@ -121,9 +121,11 @@ export class VSCodeWorkspaceService {
         return folderName.startsWith('.');
     }
 
-    static buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry: fs.Dirent, workspaceRoot: string) {
-        
-        const fullMachinePathToEntry = entry.path;
+    static buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry: fs.Dirent, workspaceRoot: string, parentDirectoryPath: string) {
+
+        // parentDirectoryPath is supplied by the caller rather than read from the deprecated
+        // fs.Dirent.path (DEP0178), which returns undefined in recent Electron/Node runtimes
+        const fullMachinePathToEntry = parentDirectoryPath;
         const currentDirectoryName = entry.name;
 
         const fullEntryPath = `${fullMachinePathToEntry}/${currentDirectoryName}`;

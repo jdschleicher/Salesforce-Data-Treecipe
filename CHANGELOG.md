@@ -1,5 +1,18 @@
 # Change Log
 
+## [2.11.1] - Fix `.undefined/` directory quick pick items (deprecated fs.Dirent.path)
+
+Resolves [#51](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/51).
+
+### Bug Fixes
+
+- Directory quick pick items in **Initiate Configuration File** (and the **Insert Data Set by Directory** dataset picker) rendered every folder as `.undefined/` instead of its relative path
+- Root cause: `VSCodeWorkspaceService.buildDirectoryVSCodeQuickPickItemByDirectoryEntry` derived the path from `fs.Dirent.path`, which is deprecated ([DEP0178](https://nodejs.org/api/deprecations.html)) in favor of `dirent.parentPath` and returns `undefined` in the Node runtime bundled with recent VS Code/Electron builds — no code change caused this; a runtime update surfaced it
+- The builder now takes the parent directory path from its caller (`getDirectoryQuickPickItemsByStartingDirectoryPath` / `getDataSetDirectoryQuickPickItemsByStartingDirectoryPath`) instead of reading the deprecated `Dirent.path`, making label generation runtime-independent
+- Added regression tests: `buildDirectoryVSCodeQuickPickItemByDirectoryEntry` produces a defined label when `Dirent.path` is `undefined`, and the recursive directory traversal builds a correct relative-path label without relying on `Dirent.path`
+
+---
+
 ## [2.11.0] - friends Block Processing in FakerJS Recipe Processor
 
 Resolves [#45](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/45).
