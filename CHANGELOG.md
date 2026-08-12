@@ -1,5 +1,38 @@
 # Change Log
 
+## [2.12.0] - Apex Picklist Dependency Validation Framework
+
+Resolves [#60](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/60). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### Features
+
+- New deployable Apex framework under `force-app/main/default/classes/` that asserts expected picklist dependency combinations against a live org, so a dependency an admin later rewires is caught in CI instead of surfacing as a confusing Collections API error at data-load time
+- `PicklistDependencySpec` — fluent builder (`forField` / `controlledBy` / `forRecordType` / `expectExactly` / `expectAtLeast` / `expectNone`); match mode is per controlling-value line so a single expectation can be tightened to `expectExactly` without affecting the rest
+- `PicklistDependencySnapshot` — ConnectApi-free snapshot; `valuesValidFor(controllingValue)` decodes `validFor` bit indexes against `controllerValues`, returning an empty set for a controlling value that unlocks nothing and `null` for one the org does not have
+- `PicklistDependencyValidator` — returns a `Failure` list and never throws on a mismatch; failure kinds cover `MISSING_VALUES`, `UNEXPECTED_VALUES`, `UNKNOWN_CONTROLLING_VALUE`, `CONTROLLING_FIELD_MISMATCH`, and `LOOKUP_ERROR`. A source exception is recorded as `LOOKUP_ERROR` for that spec and the remaining specs still validate. `UNKNOWN_CONTROLLING_VALUE` failures list the controlling values the org actually reports
+- `IPicklistDependencySource` — returns a plain `PicklistDependencySnapshot`, not `ConnectApi` types (which are not reliably constructible in Apex), so it can be stubbed in tests
+- `ConnectApiPicklistDependencySource` — reads live data via `ConnectApi.UiApi.getPicklistValues`; specs without a record type read the master record type (`012000000000000AAA`), and `.forRecordType(developerName)` resolves the id via query. The ConnectApi surface is isolated at this boundary
+- `PicklistDependencyReport` — formats a run into a human-readable report plus a `PICKLIST_DEPENDENCY_CHECK_RESULT=PASS|FAIL` marker
+- `PicklistDependencySpecs` — hand-written spec registry today; the target of the upcoming "Generate Picklist Dependency Tests" command ([#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/61))
+
+### Tooling
+
+- Added `sfdx-project.json` (sourceApiVersion `64.0`) at the repo root, making this a Salesforce DX project alongside the extension source
+- `scripts/apex/runPicklistDependencyChecks.apex` — anonymous Apex entry point (ConnectApi reads only work outside `@IsTest`, so verification runs here rather than in a unit test)
+- `scripts/apex/run-picklist-dependency-checks.js` — Node CI runner; exits `0` on pass, `1` on expectation failure, `2` when the check cannot run (CLI missing, compile failure, or unparseable output)
+- New npm scripts: `npm run picklist-dependency-check` (live org check) and `npm run apex-test` (runs `PicklistDependencyValidatorTest`)
+- `.vscodeignore` excludes `force-app/**`, `scripts/apex/**`, and `sfdx-project.json` from the published `.vsix`
+
+### Tests
+
+- `PicklistDependencyValidatorTest` covers both match modes, `expectNone`, `validFor` decode (empty set vs `null`), unknown controlling value, controlling-field mismatch, unresolvable record type, source exceptions (isolated per spec), and report summarisation — driven by a `StubPicklistDependencySource` so no live org is required
+
+### Notes
+
+- No TypeScript service change: this slice consumes no `IRecipeFakerService` / `IFakerRecipeProcessor` surface, so both faker backends are unaffected. `jest.config.js` already ignores `force-app/`, so the Jest suite and coverage are unchanged
+
+---
+
 ## [2.11.1] - Fix `.undefined/` directory quick pick items (deprecated fs.Dirent.path)
 
 Resolves [#51](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/51).
