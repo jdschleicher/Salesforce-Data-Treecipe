@@ -87,6 +87,10 @@ function main() {
         process.exit(EXIT_EXPECTATION_FAILURE);
     }
 
+    if (logs.includes(`${RESULT_MARKER}EMPTY`)) {
+        fail('no picklist dependency specs are registered — this run verified nothing. Add specs to PicklistDependencySpecs.all().');
+    }
+
     if (logs.includes(`${RESULT_MARKER}PASS`)) {
         console.log('[picklist-dependency-check] all expected picklist dependency combinations still valid.');
         process.exit(EXIT_PASS);

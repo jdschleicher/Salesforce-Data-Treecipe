@@ -26,7 +26,19 @@ public class PicklistDependencyReport {
         return failureCount > 0;
     }
 
+    /**
+     * An empty registry would otherwise report PASS and exit 0, turning the CI gate into a
+     * green check that verified nothing. EMPTY is reported distinctly so the runner can
+     * fail loudly instead.
+     */
+    public Boolean isEmpty() {
+        return specCount == 0;
+    }
+
     public String resultMarker() {
+        if (isEmpty()) {
+            return RESULT_MARKER + 'EMPTY';
+        }
         return RESULT_MARKER + (hasFailures() ? 'FAIL' : 'PASS');
     }
 
@@ -37,7 +49,10 @@ public class PicklistDependencyReport {
         lines.add('  specs checked: ' + specCount);
         lines.add('  failures:      ' + failureCount);
 
-        if (hasFailures()) {
+        if (isEmpty()) {
+            lines.add('  no specs registered — PicklistDependencySpecs.all() returned nothing,');
+            lines.add('  so this run verified nothing. Add specs by hand or generate them.');
+        } else if (hasFailures()) {
             lines.add('');
             for (PicklistDependencyValidator.Failure failure : failures) {
                 lines.add('  - ' + failure.toLine());
