@@ -19,7 +19,6 @@ public class PicklistDependencyValidator {
     public class Failure {
         public String objectApiName;
         public String fieldApiName;
-        public String recordTypeDeveloperName;
         public String controllingValue;
         public FailureKind kind;
         public String message;
@@ -28,7 +27,6 @@ public class PicklistDependencyValidator {
         public Failure(PicklistDependencySpec spec, String controllingValue, FailureKind kind, String message, List<String> details) {
             this.objectApiName = spec.objectApiName;
             this.fieldApiName = spec.fieldApiName;
-            this.recordTypeDeveloperName = spec.recordTypeDeveloperName;
             this.controllingValue = controllingValue;
             this.kind = kind;
             this.message = message;
@@ -37,9 +35,6 @@ public class PicklistDependencyValidator {
 
         public String toLine() {
             String scope = objectApiName + '.' + fieldApiName;
-            if (recordTypeDeveloperName != null) {
-                scope += ' [' + recordTypeDeveloperName + ']';
-            }
             if (controllingValue != null) {
                 scope += ' @ "' + controllingValue + '"';
             }

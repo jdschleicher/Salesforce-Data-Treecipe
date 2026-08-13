@@ -1,8 +1,12 @@
 /**
  * Fluent description of the picklist-dependency combinations expected to exist in an org.
  *
- * One spec targets one dependent picklist (object + field), optionally scoped to a record
- * type and its controlling field, and carries one expectation per controlling value.
+ * One spec targets one dependent picklist (object + field) and its controlling field, and
+ * carries one expectation per controlling value.
+ *
+ * Specs are not record-type scoped. Schema describe exposes no record-type-aware picklist
+ * values, so the describe-based source could not honour such a scope; rather than offer a
+ * builder method that always fails, none is provided.
  *
  * Match modes are per controlling-value line, not per spec:
  *   - expectAtLeast : the controlling value must unlock AT LEAST the listed values
@@ -36,7 +40,6 @@ public class PicklistDependencySpec {
     public String objectApiName;
     public String fieldApiName;
     public String controllingFieldApiName;
-    public String recordTypeDeveloperName;
     public List<Expectation> expectations;
 
     private PicklistDependencySpec(String objectApiName, String fieldApiName) {
@@ -51,11 +54,6 @@ public class PicklistDependencySpec {
 
     public PicklistDependencySpec controlledBy(String controllingFieldApiName) {
         this.controllingFieldApiName = controllingFieldApiName;
-        return this;
-    }
-
-    public PicklistDependencySpec forRecordType(String recordTypeDeveloperName) {
-        this.recordTypeDeveloperName = recordTypeDeveloperName;
         return this;
     }
 
@@ -75,8 +73,7 @@ public class PicklistDependencySpec {
     }
 
     public String label() {
-        String base = objectApiName + '.' + fieldApiName;
-        return recordTypeDeveloperName == null ? base : base + ' [' + recordTypeDeveloperName + ']';
+        return objectApiName + '.' + fieldApiName;
     }
 
     private static Set<String> toSet(List<String> values) {

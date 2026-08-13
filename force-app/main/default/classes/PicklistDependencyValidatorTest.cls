@@ -183,12 +183,11 @@ private class PicklistDependencyValidatorTest {
     }
 
     @IsTest
-    static void unresolvableRecordTypeSurfacesAsLookupError() {
+    static void sourceMessageIsCarriedOntoTheLookupErrorFailure() {
         StubPicklistDependencySource source = new StubPicklistDependencySource()
-            .withException(OBJ, FIELD, new StubPicklistDependencySource.StubSourceException('No record type "Ghost" found on Account'));
+            .withException(OBJ, FIELD, new StubPicklistDependencySource.StubSourceException('is not a dependent picklist'));
 
         PicklistDependencySpec spec = PicklistDependencySpec.forField(OBJ, FIELD)
-            .forRecordType('Ghost')
             .expectAtLeast('United States', new List<String>{ 'West' });
 
         List<PicklistDependencyValidator.Failure> failures =
@@ -196,7 +195,8 @@ private class PicklistDependencyValidatorTest {
 
         Assert.areEqual(1, failures.size());
         Assert.areEqual(PicklistDependencyValidator.FailureKind.LOOKUP_ERROR, failures[0].kind);
-        Assert.areEqual('Ghost', failures[0].recordTypeDeveloperName);
+        Assert.areEqual('is not a dependent picklist', failures[0].message,
+            'the source message is what tells the reader why the spec could not be resolved');
     }
 
     @IsTest

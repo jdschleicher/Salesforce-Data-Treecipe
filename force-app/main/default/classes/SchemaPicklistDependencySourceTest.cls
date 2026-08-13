@@ -93,24 +93,6 @@ private class SchemaPicklistDependencySourceTest {
     }
 
     @IsTest
-    static void recordTypeScopedSpecsAreRejectedWithAnActionableMessage() {
-
-        PicklistDependencySpec spec = PicklistDependencySpec.forField('Account', 'Industry')
-            .forRecordType('Some_Record_Type')
-            .expectAtLeast('Anything', new List<String>{ 'Value' });
-
-        try {
-            new SchemaPicklistDependencySource().fetch(spec);
-            Assert.fail('expected a record-type-scoped spec to be rejected');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
-            Assert.isTrue(
-                e.getMessage().contains('forRecordType'),
-                'the message should name the call to remove: ' + e.getMessage()
-            );
-        }
-    }
-
-    @IsTest
     static void unknownObjectIsReportedByName() {
 
         PicklistDependencySpec spec =

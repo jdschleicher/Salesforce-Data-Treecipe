@@ -26,14 +26,6 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
 
     public PicklistDependencySnapshot fetch(PicklistDependencySpec spec) {
 
-        if (spec.recordTypeDeveloperName != null) {
-            throw new PicklistDependencyException(
-                'Record-type-scoped specs are not supported by the describe-based source. '
-                    + 'Schema describe exposes no record-type-aware picklist values; '
-                    + 'remove .forRecordType("' + spec.recordTypeDeveloperName + '") from this spec.'
-            );
-        }
-
         Schema.DescribeFieldResult dependentDescribe = describeField(spec.objectApiName, spec.fieldApiName);
         Schema.SObjectField controllerToken = dependentDescribe.getController();
 
