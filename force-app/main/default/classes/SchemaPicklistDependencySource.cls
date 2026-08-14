@@ -49,9 +49,28 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
         }
 
         for (Schema.PicklistEntry entry : dependentDescribe.getPicklistValues()) {
+
+            String validFor = validForOf(entry);
+
+            // Past the getController() guard above, this field IS dependent, so every entry
+            // must carry a bitmap — a value valid for nothing still serializes as all-zero
+            // bits, not null. An absent key therefore means the serialization this class
+            // relies on has changed, not that the org lost its dependencies. Failing loudly
+            // here keeps that from surfacing as MISSING_VALUES on every spec, which reads
+            // like an admin deleted the dependency configuration.
+            if (validFor == null) {
+                throw new PicklistDependencyException(
+                    'No "validFor" key in the serialized PicklistEntry for '
+                        + spec.objectApiName + '.' + spec.fieldApiName + ' value "' + entry.getValue() + '", '
+                        + 'even though the org reports this field as dependent. '
+                        + 'Schema.PicklistEntry exposes validFor only through JSON serialization, which is '
+                        + 'undocumented — this most likely means that serialization contract has changed.'
+                );
+            }
+
             snapshot.dependentValueValidFor.put(
                 entry.getValue(),
-                decodeValidForIndexes(validForOf(entry), controllingValues.size())
+                decodeValidForIndexes(validFor, controllingValues.size())
             );
         }
 
@@ -59,13 +78,25 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
     }
 
     /**
-     * Checkbox controlling fields report no picklist values; their controlling values are
-     * the literal strings "true" and "false", indexed in that order.
+     * Checkbox controlling fields report no picklist values of their own, so their
+     * controlling values are supplied here.
+     *
+     * The order is FALSE first, then TRUE, and that is not arbitrary — getting it backwards
+     * silently inverts every result for a checkbox-controlled picklist. Verified against a
+     * live org: for a picklist where Gold/Silver require the checkbox CHECKED and Direct
+     * requires it UNCHECKED, Gold and Silver serialize validFor as "QAAA" (0x40, bit index
+     * 1) while Direct serializes as "gAAA" (0x80, bit index 0). The UI API reports the same
+     * mapping: controllerValues = {"false": 0, "true": 1}.
+     *
+     * Note the metadata API spells these values "checked" / "unchecked" in valueSettings,
+     * but describe and the UI API both key them as "true" / "false", which is what a spec
+     * must use.
      */
+    @TestVisible
     private static List<String> controllingValuesInIndexOrder(Schema.DescribeFieldResult controllingDescribe) {
 
         if (controllingDescribe.getType() == Schema.DisplayType.BOOLEAN) {
-            return new List<String>{ 'true', 'false' };
+            return new List<String>{ 'false', 'true' };
         }
 
         List<String> controllingValues = new List<String>();

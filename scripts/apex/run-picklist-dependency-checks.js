@@ -12,7 +12,7 @@
  *   2  the check could not run: CLI missing, Apex failed to compile, or unparseable output
  *
  * Target org resolution (first match wins):
- *   --target-org <alias>  CLI flag passed to this script
+ *   --target-org <alias>  CLI flag passed to this script (--target-org=<alias> also accepted)
  *   $SF_TARGET_ORG        environment variable
  *   otherwise             the CLI's default org
  */
@@ -26,11 +26,28 @@ const EXIT_CANNOT_RUN = 2;
 
 const RESULT_MARKER = 'PICKLIST_DEPENDENCY_CHECK_RESULT=';
 
+// On Windows the CLI is a .cmd shim, and since the Node fix for CVE-2024-27980 spawn
+// refuses to execute .cmd/.bat without a shell. Naming the shim directly keeps the argv
+// form (and its immunity to metacharacters) instead of falling back to shell: true.
+const SF_EXECUTABLE = process.platform === 'win32' ? 'sf.cmd' : 'sf';
+
+// Both spellings must be accepted. Silently ignoring --target-org=alias would fall through
+// to the default org and check the wrong one -- passing green while verifying nothing,
+// which is exactly what the EMPTY marker exists to prevent.
 function resolveTargetOrg(argv) {
     const flagIndex = argv.indexOf('--target-org');
     if (flagIndex !== -1 && argv[flagIndex + 1]) {
         return argv[flagIndex + 1];
     }
+
+    const inlineFlag = argv.find((argument) => argument.startsWith('--target-org='));
+    if (inlineFlag) {
+        const value = inlineFlag.slice('--target-org='.length);
+        if (value) {
+            return value;
+        }
+    }
+
     return process.env.SF_TARGET_ORG || null;
 }
 
@@ -48,11 +65,11 @@ function main() {
         sfArgs.push('--target-org', targetOrg);
     }
 
-    const result = spawnSync('sf', sfArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 64 });
+    const result = spawnSync(SF_EXECUTABLE, sfArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 64 });
 
     if (result.error) {
         if (result.error.code === 'ENOENT') {
-            fail('the Salesforce CLI ("sf") is not installed or not on PATH. Install it and authorize a target org.');
+            fail(`the Salesforce CLI ("${SF_EXECUTABLE}") is not installed or not on PATH. Install it and authorize a target org.`);
         }
         fail(`failed to spawn the Salesforce CLI: ${result.error.message}`);
     }
@@ -68,7 +85,10 @@ function main() {
 
     const runResult = parsed && parsed.result ? parsed.result : null;
     if (!runResult) {
-        fail('Salesforce CLI returned no result payload.');
+        // A failed `sf` command (auth, unknown org) returns {status, name, message} with no
+        // result key. Reporting "no result payload" hides the actual cause.
+        const cliError = [parsed && parsed.name, parsed && parsed.message].filter(Boolean).join(': ');
+        fail(cliError || 'Salesforce CLI returned no result payload.');
     }
 
     if (runResult.compiled === false) {

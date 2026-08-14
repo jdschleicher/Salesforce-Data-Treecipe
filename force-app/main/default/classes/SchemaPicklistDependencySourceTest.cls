@@ -83,6 +83,71 @@ private class SchemaPicklistDependencySourceTest {
         );
     }
 
+    /**
+     * Guards an inversion that would silently swap every result for a checkbox-controlled
+     * picklist. Verified in a live org: with Gold/Silver requiring the checkbox CHECKED and
+     * Direct requiring it UNCHECKED, Gold and Silver serialize validFor as "QAAA" (bit 1)
+     * and Direct as "gAAA" (bit 0). The UI API agrees — controllerValues {"false":0,"true":1}.
+     */
+    @IsTest
+    static void checkboxControllingValuesAreOrderedFalseThenTrue() {
+
+        Schema.DescribeFieldResult booleanField = Schema.getGlobalDescribe()
+            .get('Account')
+            .getDescribe()
+            .fields.getMap()
+            .get('IsDeleted')
+            .getDescribe();
+
+        Assert.areEqual(Schema.DisplayType.BOOLEAN, booleanField.getType(), 'precondition: IsDeleted is a checkbox');
+
+        Assert.areEqual(
+            new List<String>{ 'false', 'true' },
+            SchemaPicklistDependencySource.controllingValuesInIndexOrder(booleanField),
+            'false must be index 0 and true index 1; reversing this inverts every checkbox-controlled result'
+        );
+    }
+
+    @IsTest
+    static void checkboxIndexOrderDecodesTheSameWayTheOrgReportsIt() {
+
+        // "QAAA" is what a value requiring the checkbox CHECKED serializes as in a live org
+        Assert.areEqual(
+            new List<Integer>{ 1 },
+            SchemaPicklistDependencySource.decodeValidForIndexes('QAAA', 2),
+            'a checked-only value decodes to index 1, which is "true" in controllingValuesInIndexOrder'
+        );
+
+        // "gAAA" is what a value requiring the checkbox UNCHECKED serializes as
+        Assert.areEqual(
+            new List<Integer>{ 0 },
+            SchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 2),
+            'an unchecked-only value decodes to index 0, which is "false"'
+        );
+    }
+
+    @IsTest
+    static void picklistControllingValuesKeepTheirDescribeOrder() {
+
+        Schema.DescribeFieldResult industry = Schema.getGlobalDescribe()
+            .get('Account')
+            .getDescribe()
+            .fields.getMap()
+            .get('Industry')
+            .getDescribe();
+
+        List<String> expected = new List<String>();
+        for (Schema.PicklistEntry entry : industry.getPicklistValues()) {
+            expected.add(entry.getValue());
+        }
+
+        Assert.areEqual(
+            expected,
+            SchemaPicklistDependencySource.controllingValuesInIndexOrder(industry),
+            'index order must be getPicklistValues() order — that is what validFor bits refer to'
+        );
+    }
+
     @IsTest
     static void nonDependentPicklistSerializesValidForAsNull() {
         Schema.PicklistEntry industryEntry = Account.Industry.getDescribe().getPicklistValues()[0];
