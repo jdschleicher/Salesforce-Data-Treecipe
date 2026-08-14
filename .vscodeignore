@@ -11,3 +11,6 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 extensionDevelopmentScriptsAndArtifacts/**
 developmentSupportScripts/**
+force-app/**
+scripts/apex/**
+sfdx-project.json
