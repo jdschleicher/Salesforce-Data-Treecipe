@@ -14,6 +14,27 @@
  * in Apex (deploy fails with "Variable does not exist: ConnectApi.UiApi"). The UI API is
  * reachable only as a REST callout, which would require Remote Site or Named Credential
  * setup and cannot run inside @IsTest at all. Describe has neither constraint.
+ *
+ * Governor limits: the validator runs every spec in ONE transaction, so all per-spec work
+ * here is multiplied by the spec count against a shared 10,000 ms CPU and 6 MB heap budget.
+ * Reading via describe costs no SOQL and no callouts, which leaves CPU as the binding limit.
+ * The describe lookups dominate it and are cached below.
+ *
+ * Measured in a scratch org. Each figure is CPU for the DESCRIBE RESOLUTION ALONE (not a full
+ * fetch, which also decodes bitmaps), timed in its own transaction:
+ *
+ *   63 distinct fields on one object : ~827 ms uncached -> ~25 ms cached
+ *   the same field 100 times         : ~1130 ms uncached -> ~70 ms cached
+ *
+ * The distinct-field case is the realistic one — a spec registry holds one spec per dependent
+ * field — and it gains MORE, not less, because getGlobalDescribe() is the dominant term and is
+ * paid once rather than per spec. Caching therefore hands back roughly a tenth of the whole
+ * transaction budget.
+ *
+ * Heap: ~43 KB for one object with its field describes retained. That figure is PER OBJECT and
+ * does not generalize — FIELD_MAPS_BY_OBJECT grows with the number of DISTINCT objects in the
+ * spec list, so a registry spanning many objects trades CPU for monotonically growing heap
+ * against the 6 MB limit. Revisit if a registry ever spans dozens of objects.
  */
 public with sharing class SchemaPicklistDependencySource implements IPicklistDependencySource {
 
@@ -24,6 +45,54 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
         '8' => 8, '9' => 9, 'a' => 10, 'b' => 11, 'c' => 12, 'd' => 13, 'e' => 14, 'f' => 15
     };
 
+    /**
+     * Per-transaction describe caches.
+     *
+     * Schema.getGlobalDescribe() is one of the most expensive calls in Apex — it materializes
+     * every SObject token in the org — and the field map behind it is rebuilt per object. Both
+     * were previously recomputed on every fetch, so a run of N specs paid them N times for an
+     * identical answer. Static caches live for the transaction, which is exactly the scope of
+     * one validator run.
+     *
+     * DESCRIBES_BY_TOKEN is keyed on the Schema.SObjectField token rather than an
+     * "Object.Field" string on purpose. A controlling field is reached through
+     * getController(), which yields a token and no name — naming it would require the very
+     * getDescribe() the cache exists to avoid. Keying on the token covers the dependent and
+     * controlling paths with one map, and dedupes for free when one spec's controlling field
+     * is another spec's dependent field.
+     *
+     * Object keys are lower-cased because Apex Map<String, ...> compares case-sensitively
+     * while describe resolves case-insensitively; without it, specs written 'account' and
+     * 'Account' would each get their own entry holding the same field map.
+     *
+     * NOTE: statics are per-transaction, so these cannot go stale from an admin edit (Metadata
+     * API deploys are async) and cannot leak between users in production (one user per
+     * transaction). The one exception is System.runAs, which switches running user WITHIN a
+     * test transaction and does affect describe/FLS — a cache warmed before a runAs block
+     * would be reused inside it. Any future FLS-variant test must call clearCaches() between
+     * runAs blocks or it will assert against the previous user's describe and pass falsely.
+     */
+    private static Map<String, Schema.SObjectType> globalDescribeCache;
+    private static final Map<String, Map<String, Schema.SObjectField>> FIELD_MAPS_BY_OBJECT =
+        new Map<String, Map<String, Schema.SObjectField>>();
+    private static final Map<Schema.SObjectField, Schema.DescribeFieldResult> DESCRIBES_BY_TOKEN =
+        new Map<Schema.SObjectField, Schema.DescribeFieldResult>();
+
+    @TestVisible
+    private static void clearCaches() {
+        globalDescribeCache = null;
+        FIELD_MAPS_BY_OBJECT.clear();
+        DESCRIBES_BY_TOKEN.clear();
+    }
+
+    /**
+     * Deliberately does NOT memoize the assembled snapshot by object.field. A spec is one per
+     * (object, field) and carries many expectations, so two specs resolving the same field is
+     * redundant by construction rather than the normal case — a snapshot cache would add
+     * staleness surface and retained heap to serve a workload that a well-formed registry does
+     * not produce. The describe caching above is what the realistic distinct-field workload
+     * actually benefits from. Revisit only if duplicate specs become legitimate.
+     */
     public PicklistDependencySnapshot fetch(PicklistDependencySpec spec) {
 
         Schema.DescribeFieldResult dependentDescribe = describeField(spec.objectApiName, spec.fieldApiName);
@@ -36,7 +105,7 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
             );
         }
 
-        Schema.DescribeFieldResult controllingDescribe = controllerToken.getDescribe();
+        Schema.DescribeFieldResult controllingDescribe = describeOf(controllerToken);
 
         PicklistDependencySnapshot snapshot = new PicklistDependencySnapshot();
         snapshot.objectApiName = spec.objectApiName;
@@ -106,14 +175,11 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
         return controllingValues;
     }
 
+    @TestVisible
     private static Schema.DescribeFieldResult describeField(String objectApiName, String fieldApiName) {
 
-        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApiName);
-        if (objectType == null) {
-            throw new PicklistDependencyException('Unknown object "' + objectApiName + '".');
-        }
-
-        Schema.SObjectField fieldToken = objectType.getDescribe().fields.getMap().get(fieldApiName);
+        // fields.getMap() resolves case-insensitively, so no key normalization is needed here.
+        Schema.SObjectField fieldToken = fieldMapFor(objectApiName).get(fieldApiName);
         if (fieldToken == null) {
             throw new PicklistDependencyException(
                 'Field "' + objectApiName + '.' + fieldApiName + '" was not found. It may not exist, '
@@ -122,11 +188,61 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
             );
         }
 
-        return fieldToken.getDescribe();
+        return describeOf(fieldToken);
+    }
+
+    private static Schema.DescribeFieldResult describeOf(Schema.SObjectField fieldToken) {
+
+        Schema.DescribeFieldResult fieldDescribe = DESCRIBES_BY_TOKEN.get(fieldToken);
+        if (fieldDescribe == null) {
+            fieldDescribe = fieldToken.getDescribe();
+            DESCRIBES_BY_TOKEN.put(fieldToken, fieldDescribe);
+        }
+        return fieldDescribe;
+    }
+
+    private static Map<String, Schema.SObjectField> fieldMapFor(String objectApiName) {
+
+        String objectKey = objectApiName == null ? null : objectApiName.toLowerCase();
+
+        if (FIELD_MAPS_BY_OBJECT.containsKey(objectKey)) {
+            return FIELD_MAPS_BY_OBJECT.get(objectKey);
+        }
+
+        if (globalDescribeCache == null) {
+            globalDescribeCache = Schema.getGlobalDescribe();
+        }
+
+        Schema.SObjectType objectType = globalDescribeCache.get(objectApiName);
+        if (objectType == null) {
+            throw new PicklistDependencyException('Unknown object "' + objectApiName + '".');
+        }
+
+        Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe().fields.getMap();
+        FIELD_MAPS_BY_OBJECT.put(objectKey, fieldMap);
+        return fieldMap;
     }
 
     /**
      * Schema.PicklistEntry exposes no getValidFor() in Apex, but serializes one.
+     *
+     * Batching this per field rather than per entry looks like an obvious win — it is not, and
+     * was measured and rejected. Serializing one 32-entry list is no cheaper than serializing
+     * 32 entries: ~500 ms either way for 100 specs x 32 entries, with run-to-run noise larger
+     * than the difference, because JSON cost tracks bytes rather than call count. Batching only
+     * bought a positional-alignment failure mode.
+     *
+     * That ~500 ms is the JSON WORK ALONE across 3,200 entries and is not comparable to the
+     * describe figures in the class header, which time describe resolution alone. Neither is a
+     * whole-fetch measurement. Do not read one against the other.
+     *
+     * This is not the worst-scaling term in the class: JSON scales as O(dependent values) while
+     * decodeValidForIndexes below scales as O(dependent values x controlling values), so the
+     * decode overtakes it as the controlling picklist grows.
+     *
+     * Leave it per entry unless a measurement in a fresh transaction says otherwise — measuring
+     * successive approaches within ONE transaction does not, as each block there runs slower
+     * than the last regardless of what it does.
      */
     @TestVisible
     private static String validForOf(Schema.PicklistEntry entry) {

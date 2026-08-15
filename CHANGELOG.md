@@ -39,7 +39,8 @@ Resolves [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/6
 - Apex string literals are escaped for both `'` and `\` — the backslash is escaped first so the quote escape is not itself doubled. Fixtures cover a controlling value of `O'Brien`, a value of `Back\Slash`, and a dependent value of `Value's One`
 - `ConfigurationService` tests cover every `sfdx-project.json` resolution path including the prompt and its dismissal; `RecipeService` tests assert the extracted map builder directly
 - Existing FakerJS and Snowfakery dependent-picklist tests pass unchanged, which is the regression guard for the `RecipeService` extraction
-- Suite grew from 355 to 403 tests; coverage improved on every metric (lines 83.23% → 84.12%, branches 78.45% → 79.51%, functions 85.03% → 86.09%)
+- The one-spec-per-`(object, field)` invariant is pinned by test: the Apex validator calls `fetch()` once per spec and iterates that spec's expectations against the single snapshot it holds, which is the basis on which snapshot memoization was declined in [#65](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/65). Nothing in the Apex registry or validator merges duplicate entries, so this generator is where the assumption has to hold. Mutation verified — emitting one spec per expectation instead fails 7 tests
+- Suite grew from 355 to 406 tests; coverage improved on every metric (lines 83.23% → 84.12%, branches 78.45% → 79.51%, functions 85.03% → 86.09%)
 
 ### Notes
 
