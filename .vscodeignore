@@ -14,3 +14,18 @@ developmentSupportScripts/**
 force-app/**
 scripts/apex/**
 sfdx-project.json
+
+# Salesforce CLI local tooling and per-org source-tracking state. These are created by the
+# CLI alongside the DX project, are machine-local, and must never be published: .sfdx alone
+# carries a multi-megabyte apex.db plus the whole StandardApexLibrary, and .sf/orgs/<ORG_ID>/
+# names the packaging developer's org and its metadata.
+.sfdx/**
+.sf/**
+
+# Jest coverage output. Being in .gitignore does NOT exclude it here — vsce packages the
+# working directory, not the git index.
+coverage/**
+
+# Repo automation, not extension runtime.
+.claude/**
+.github/**
