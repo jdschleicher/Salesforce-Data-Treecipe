@@ -145,6 +145,64 @@ describe('Shared PicklistDependencyTestService Tests', () => {
 
     });
 
+    /*
+        PicklistDependencyValidator calls source.fetch(spec) once per spec and then iterates that
+        spec's expectations against the single snapshot it holds, so per-field describe cost is paid
+        once only while specs stay one-per-(object, field). Snapshot memoization was declined in #65
+        on exactly that basis. Nothing in the Apex registry or validator rejects or merges duplicate
+        (object, field) entries, so if this generator ever emitted one spec per controlling value the
+        assumption would invert silently and the only symptom would be a slow transaction. Pinned here
+        because this generator is what populates all() in bulk.
+    */
+    describe('one spec per object and field', () => {
+
+        test('given a field with many controlling values, one spec carries them all as grouped expectations', async () => {
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(existingSalesforceMetadataMockObjectsPath);
+
+            const dependentPicklistSpecDetails = collectionResult.specDetails.filter(
+                specDetail => specDetail.fieldApiName === 'DependentPicklist__c'
+            );
+
+            expect(dependentPicklistSpecDetails).toHaveLength(1);
+            expect(dependentPicklistSpecDetails[0].expectations.length).toBeGreaterThan(1);
+
+        });
+
+        test('given every collected spec detail, no object and field pair is emitted more than once', async () => {
+
+            const collectionResults = await Promise.all([
+                PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(existingSalesforceMetadataMockObjectsPath),
+                PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(picklistDependencyMockObjectsPath)
+            ]);
+
+            collectionResults.forEach(collectionResult => {
+
+                const objectAndFieldKeys = collectionResult.specDetails.map(
+                    specDetail => `${specDetail.objectApiName}.${specDetail.fieldApiName}`
+                );
+
+                expect(objectAndFieldKeys).toHaveLength(new Set(objectAndFieldKeys).size);
+
+            });
+
+        });
+
+        test('given generated Apex, forField is emitted once per spec rather than once per controlling value', async () => {
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(existingSalesforceMetadataMockObjectsPath);
+            const generatedApex = PicklistDependencyTestService.generateApexSpecsClassContent(collectionResult.specDetails);
+
+            const forFieldCount = (generatedApex.match(/PicklistDependencySpec\.forField\(/g) || []).length;
+            const expectationCount = (generatedApex.match(/\.expect(AtLeast|None)\(/g) || []).length;
+
+            expect(forFieldCount).toBe(collectionResult.specDetails.length);
+            expect(expectationCount).toBeGreaterThan(forFieldCount);
+
+        });
+
+    });
+
     describe('buildExpectations', () => {
 
         test('given a controlling value in valueSettings that the controlling field no longer declares, the expectation is still produced', () => {
