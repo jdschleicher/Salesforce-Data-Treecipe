@@ -247,5 +247,104 @@ export class ConfigurationService {
         return datasetFilesForCollectionsApiFolderName;
     }
 
+    static getSfdxProjectFileName() {
+        const sfdxProjectFileName = 'sfdx-project.json';
+        return sfdxProjectFileName;
+    }
+
+    static getSfdxProjectDetail(workspaceRoot: string): any {
+
+        const sfdxProjectFilePath = path.join(workspaceRoot, this.getSfdxProjectFileName());
+
+        if ( !(fs.existsSync(sfdxProjectFilePath)) ) {
+            throw new Error(`No "${this.getSfdxProjectFileName()}" found at "${sfdxProjectFilePath}". Open this command from the root of a Salesforce DX project so the generated Apex can be written to a package directory.`);
+        }
+
+        return JSON.parse(fs.readFileSync(sfdxProjectFilePath, 'utf-8'));
+
+    }
+
+    static getSourceApiVersionFromSfdxProject(workspaceRoot: string): string {
+
+        const sfdxProjectDetail = this.getSfdxProjectDetail(workspaceRoot);
+        const defaultSourceApiVersion = '64.0';
+        return sfdxProjectDetail?.sourceApiVersion ?? defaultSourceApiVersion;
+
+    }
+
+    /*
+        Resolves which package directory generated Apex belongs in. A project with one entry, or one
+        entry marked "default", answers itself; only a genuinely ambiguous project prompts. Returns
+        undefined when the user dismisses that prompt so callers can abort without writing anything.
+    */
+    static async resolvePackageDirectoryPath(workspaceRoot: string): Promise<string | undefined> {
+
+        const sfdxProjectDetail = this.getSfdxProjectDetail(workspaceRoot);
+        const packageDirectories = sfdxProjectDetail?.packageDirectories;
+
+        if ( !(Array.isArray(packageDirectories)) || packageDirectories.length === 0 ) {
+            throw new Error(`"${this.getSfdxProjectFileName()}" declares no "packageDirectories". Add at least one package directory before generating picklist dependency tests.`);
+        }
+
+        if ( packageDirectories.length === 1 ) {
+            return packageDirectories[0].path;
+        }
+
+        const defaultPackageDirectory = packageDirectories.find(packageDirectory => packageDirectory.default === true);
+        if ( defaultPackageDirectory ) {
+            return defaultPackageDirectory.path;
+        }
+
+        const packageDirectoryQuickPickItems = packageDirectories.map(packageDirectory => packageDirectory.path);
+        const selectedPackageDirectoryPath = await vscode.window.showQuickPick(packageDirectoryQuickPickItems, {
+            placeHolder: 'Select the package directory to write the generated Apex picklist dependency specs into'
+        });
+
+        return selectedPackageDirectoryPath;
+
+    }
+
+    /*
+        Prefers a "classes" directory the project already has so generated Apex lands beside existing
+        Apex rather than in a second, competing source tree.
+    */
+    static resolveApexClassesDirectoryPath(packageDirectoryFullPath: string): string {
+
+        const existingClassesDirectoryPath = this.findExistingApexClassesDirectoryPath(packageDirectoryFullPath);
+        if ( existingClassesDirectoryPath ) {
+            return existingClassesDirectoryPath;
+        }
+
+        return path.join(packageDirectoryFullPath, 'main', 'default', 'classes');
+
+    }
+
+    private static findExistingApexClassesDirectoryPath(directoryPath: string): string | null {
+
+        if ( !(fs.existsSync(directoryPath)) ) {
+            return null;
+        }
+
+        const childDirectoryNames = fs.readdirSync(directoryPath, { withFileTypes: true })
+                                        .filter(directoryEntry => directoryEntry.isDirectory())
+                                        .map(directoryEntry => directoryEntry.name)
+                                        .sort((firstName, secondName) => firstName.localeCompare(secondName));
+
+        if ( childDirectoryNames.includes('classes') ) {
+            return path.join(directoryPath, 'classes');
+        }
+
+        for ( const childDirectoryName of childDirectoryNames ) {
+
+            const nestedClassesDirectoryPath = this.findExistingApexClassesDirectoryPath(path.join(directoryPath, childDirectoryName));
+            if ( nestedClassesDirectoryPath ) {
+                return nestedClassesDirectoryPath;
+            }
+
+        }
+
+        return null;
+
+    }
 
 }

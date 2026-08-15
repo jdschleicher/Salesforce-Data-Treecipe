@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Dependent_Picklist__c</fullName>
+    <externalId>false</externalId>
+    <label>Dependent Picklist</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>Controlling_Picklist__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Value's One</fullName>
+                <default>false</default>
+                <label>Value's One</label>
+            </value>
+            <value>
+                <fullName>Plain</fullName>
+                <default>false</default>
+                <label>Plain</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>O'Brien</controllingFieldValue>
+            <valueName>Value's One</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>O'Brien</controllingFieldValue>
+            <controllingFieldValue>Back\Slash</controllingFieldValue>
+            <valueName>Plain</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

@@ -8,6 +8,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
+import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -164,6 +165,80 @@ export class ExtensionCommandService {
             
         }
       
+    }
+
+    async generatePicklistDependencyTests() {
+
+        try {
+
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+            if (!workspaceRoot) {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
+            }
+
+            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
+            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+
+            const specCollectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(fullPathToObjectsDirectory);
+
+            specCollectionResult.skippedFieldWarnings.forEach(skippedFieldWarning => {
+                VSCodeWorkspaceService.showWarningMessage(skippedFieldWarning);
+            });
+
+            if ( specCollectionResult.specDetails.length === 0 ) {
+                vscode.window.showInformationMessage(`No dependent picklists were found in "${relativePathToObjectsDirectory}" -- no ${PicklistDependencyTestService.getApexSpecsClassFileName()} was written.`);
+                return;
+            }
+
+            const packageDirectoryPath = await ConfigurationService.resolvePackageDirectoryPath(workspaceRoot);
+            if (!packageDirectoryPath) {
+                // NO SELECTION MADE AT THE PACKAGE DIRECTORY PROMPT
+                return;
+            }
+
+            const classesDirectoryPath = ConfigurationService.resolveApexClassesDirectoryPath(path.join(workspaceRoot, packageDirectoryPath));
+            const apexSpecsClassFilePath = path.join(classesDirectoryPath, PicklistDependencyTestService.getApexSpecsClassFileName());
+
+            if ( fs.existsSync(apexSpecsClassFilePath) ) {
+
+                const overwriteSelection = await vscode.window.showWarningMessage(
+                    `"${PicklistDependencyTestService.getApexSpecsClassFileName()}" already exists at ${apexSpecsClassFilePath}. Regenerating overwrites it, including any lines tightened to expectExactly.`,
+                    { modal: true },
+                    'Overwrite'
+                );
+
+                if (overwriteSelection !== 'Overwrite') {
+                    return;
+                }
+
+            }
+
+            fs.mkdirSync(classesDirectoryPath, { recursive: true });
+
+            const sourceApiVersion = ConfigurationService.getSourceApiVersionFromSfdxProject(workspaceRoot);
+            const apexSpecsClassMetaFilePath = path.join(classesDirectoryPath, PicklistDependencyTestService.getApexSpecsClassMetaFileName());
+
+            fs.writeFileSync(apexSpecsClassFilePath, PicklistDependencyTestService.generateApexSpecsClassContent(specCollectionResult.specDetails));
+            fs.writeFileSync(apexSpecsClassMetaFilePath, PicklistDependencyTestService.getApexClassMetaContent(sourceApiVersion));
+
+            const scaffoldedFrameworkFileNames = PicklistDependencyTestService.scaffoldFrameworkClasses(classesDirectoryPath);
+
+            const scaffoldedFrameworkSummary = scaffoldedFrameworkFileNames.length > 0
+                                                ? ` Also scaffolded ${scaffoldedFrameworkFileNames.length} supporting framework file(s) the generated class compiles against.`
+                                                : '';
+
+            vscode.window.showInformationMessage(
+                `Generated ${PicklistDependencyTestService.getApexSpecsClassFileName()} with ${specCollectionResult.specDetails.length} picklist dependency spec(s) at ${classesDirectoryPath}.${scaffoldedFrameworkSummary}`
+            );
+
+        } catch(error) {
+
+            const commandName = 'generatePicklistDependencyTests';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
     }
 
     async insertDataSetBySelectedDirectory() {

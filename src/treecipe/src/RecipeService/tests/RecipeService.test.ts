@@ -412,7 +412,62 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 const actualRecipeValue = recipeServiceWithSnow.getFakeValueIfExpectedSalesforceFieldType(fieldTypeKey);
                 expect(actualRecipeValue).toBe(recipeValue);
             }
-            
+
+        });
+
+    });
+
+    /*
+        Extracted from getDependentPicklistRecipeFakerValue so PicklistDependencyTestService can emit
+        the same map as Apex expectations -- see issue #61. Asserted directly because both the recipe
+        YAML and the generated Apex now depend on its shape.
+    */
+    describe('buildControllingValueToPicklistOptions', () => {
+
+        test('given dependent picklist values, controlling values map to the values they unlock in declaration order', () => {
+
+            const dependentPicklistXMLFieldDetail = new XMLFieldDetail();
+            dependentPicklistXMLFieldDetail.apiName = 'DependentPicklist__c';
+            dependentPicklistXMLFieldDetail.controllingField = 'Picklist__c';
+            dependentPicklistXMLFieldDetail.picklistValues = [
+                { picklistOptionApiName: 'tree', label: 'tree', controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'madison'] },
+                { picklistOptionApiName: 'plant', label: 'plant', controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['madison'] },
+                { picklistOptionApiName: 'weed', label: 'weed', controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle'] }
+            ];
+
+            const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(dependentPicklistXMLFieldDetail);
+
+            expect(controllingValueToPicklistOptions).toEqual({
+                cle: ['tree', 'weed'],
+                madison: ['tree', 'plant']
+            });
+
+        });
+
+        test('given a field with no picklist values, an empty map is returned', () => {
+
+            const emptyXMLFieldDetail = new XMLFieldDetail();
+            emptyXMLFieldDetail.apiName = 'DependentPicklist__c';
+            emptyXMLFieldDetail.controllingField = 'Picklist__c';
+
+            expect(RecipeService.buildControllingValueToPicklistOptions(emptyXMLFieldDetail)).toEqual({});
+
+        });
+
+        test('given picklist values with no valueSettings, options with no controlling values are skipped without skipping later options', () => {
+
+            const partiallyConfiguredXMLFieldDetail = new XMLFieldDetail();
+            partiallyConfiguredXMLFieldDetail.apiName = 'DependentPicklist__c';
+            partiallyConfiguredXMLFieldDetail.controllingField = 'Picklist__c';
+            partiallyConfiguredXMLFieldDetail.picklistValues = [
+                { picklistOptionApiName: 'unconfigured', label: 'unconfigured' },
+                { picklistOptionApiName: 'configured', label: 'configured', controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle'] }
+            ];
+
+            expect(RecipeService.buildControllingValueToPicklistOptions(partiallyConfiguredXMLFieldDetail)).toEqual({
+                cle: ['configured']
+            });
+
         });
 
     });

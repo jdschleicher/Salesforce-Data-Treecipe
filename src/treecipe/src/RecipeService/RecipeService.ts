@@ -181,20 +181,31 @@ export class RecipeService {
     
     }
 
-    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
-    
-        const controllingField = xmlFieldDetail.controllingField;
+    /*
+        Builds the controlling-value-to-dependent-values map that a dependent picklist's <valueSettings>
+        markup describes. Consumed by recipe generation below and by PicklistDependencyTestService,
+        which emits the same map as Apex expectations -- see issue #61.
+
+        Record types are deliberately not a parameter: <valueSettings> maps a controlling value to its
+        dependent values irrespective of record type, and record types govern which picklist values are
+        available rather than which controlling value unlocks which dependent value.
+    */
+    static buildControllingValueToPicklistOptions(xmlFieldDetail: XMLFieldDetail): Record<string, string[]> {
+
         let controllingValueToPicklistOptions:Record<string, string[]> = {};
 
         if ( !(xmlFieldDetail.picklistValues) ) {
-            return '';
+            return controllingValueToPicklistOptions;
         }
+
         xmlFieldDetail.picklistValues.forEach(picklistOption => {
-            
-            if ( !(picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection) ) {
-                return '';
+
+            const controllingValuesThatUnlockThisOption = picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection;
+            if ( !(controllingValuesThatUnlockThisOption) ) {
+                return;
             }
-            picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection.forEach((controllingValue) => {
+
+            controllingValuesThatUnlockThisOption.forEach((controllingValue) => {
 
                 if ( controllingValue in controllingValueToPicklistOptions ) {
                     controllingValueToPicklistOptions[controllingValue].push(picklistOption.picklistOptionApiName);
@@ -205,6 +216,20 @@ export class RecipeService {
             });
 
         });
+
+        return controllingValueToPicklistOptions;
+
+    }
+
+    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+
+        const controllingField = xmlFieldDetail.controllingField;
+
+        if ( !(xmlFieldDetail.picklistValues) ) {
+            return '';
+        }
+
+        const controllingValueToPicklistOptions:Record<string, string[]> = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
 
         if ( Object.keys(controllingValueToPicklistOptions).length === 0 ) {
 

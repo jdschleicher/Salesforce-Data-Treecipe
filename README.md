@@ -28,6 +28,7 @@ Users have two choices of "Fake Data" implementations:
     - [3. **Salesforce Treecipe: Run Faker by Recipe**](#3-salesforce-treecipe-run-faker-by-recipe)
       - [Corresponding Video:](#corresponding-video-2)
     - [4. **Salesforce Treecipe: Insert Data Set by Directory**](#4-salesforce-treecipe-insert-data-set-by-directory)
+    - [5. **Salesforce Treecipe: Generate Picklist Dependency Tests**](#5-salesforce-treecipe-generate-picklist-dependency-tests)
   - [VIDEO WALKTHROUGHS](#video-walkthroughs)
       - [Initiate Treecipe Configuration with expected Objects directory](#initiate-treecipe-configuration-with-expected-objects-directory)
       - [Generate Treecipe based on treecipe.config.jcon (keep an eye out for OOTB fields and "REMOVE ME" lines)](#generate-treecipe-based-on-treecipeconfigjcon-keep-an-eye-out-for-ootb-fields-and-remove-me-lines)
@@ -80,6 +81,7 @@ Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palet
 2. [Generate Treecipe](#2-salesforce-treecipe-generate-treecipe)
 3. [Run Snowfakery by Recipe(Treecipe) to create FakeDataSet](#3-salesforce-treecipe-run-faker-by-recipe)
 4. [Insert Data Set by Directory](#4-salesforce-treecipe-insert-data-set-by-directory)
+5. [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests)
 
 ---
 
@@ -164,6 +166,41 @@ This command prompts the user for the following items:
 
    * "false" keeps successfully inserted records
    * "true" rolls back all inserted records
+
+---
+
+### <a name="5-salesforce-treecipe-generate-picklist-dependency-tests"></a>5. **Salesforce Treecipe: Generate Picklist Dependency Tests**
+
+Treecipe already knows every controlling-value → dependent-values combination in your source metadata — it reads the `valueSettings` markup to build dependent picklist recipes. This command writes that same knowledge out as a deployable Apex spec class, so a dependency an admin later rewires in the org is caught by a check rather than surfacing as a confusing Collections API error at data-load time.
+
+#### How It Works:
+
+* Select **"Salesforce Treecipe: Generate Picklist Dependency Tests"** from the command palette.
+* Every field in your configured `salesforceObjectsPath` that declares a `controllingField` becomes one `PicklistDependencySpec`.
+* `PicklistDependencySpecs.cls` and its `-meta.xml` are written into your project's package directory (the one marked `default` in `sfdx-project.json`; you are prompted only when the project has several and none is marked default).
+* The supporting framework classes the generated file compiles against are copied in alongside it if they are not already present. Existing files are never overwritten.
+
+#### Prerequisite:
+
+* A valid `treecipe.config.json` (see [Initiate Configuration File](#1-salesforce-treecipe-initiate-configuration-file)) and an `sfdx-project.json` at your workspace root.
+
+#### Running the check:
+
+Deploy the generated class plus the scaffolded framework, then run the check against an authorized org:
+
+```bash
+sf project deploy start --source-dir force-app
+node scripts/apex/run-picklist-dependency-checks.js --target-org <alias>
+```
+
+The runner exits `0` when every expected combination still validates, `1` when a dependency has drifted (naming the object, field, controlling value, and the specific missing values), and `2` when the check could not run at all — so it can gate a CI pipeline. Copy `scripts/apex/` from [this repository](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/main/scripts/apex) into your project to use it.
+
+#### Notes:
+
+* Generated lines use `expectAtLeast`: they assert the combinations in your source metadata still exist and tolerate values the org has added since. Tightening a line to `expectExactly` is a deliberate edit — it will not survive regeneration.
+* A controlling value that unlocks nothing is emitted as `expectNone`.
+* A field declaring a `controllingField` with no `valueSettings` markup is skipped with a warning naming the object and field; the rest of the run continues.
+* Regenerating prompts before overwriting an existing `PicklistDependencySpecs.cls`.
 
 ---
 

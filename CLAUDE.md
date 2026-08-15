@@ -115,6 +115,11 @@ src/
     │   ├── ObjectInfoWrapper.ts
     │   ├── FieldInfo.ts
     │   └── tests/
+    ├── PicklistDependencyTestService/
+    │   ├── PicklistDependencyTestService.ts # Emits Apex PicklistDependencySpecs.cls from object metadata
+    │   ├── PicklistDependencySpecDetail.ts  # Backend-agnostic spec/expectation types
+    │   └── tests/
+    │       └── mocks/
     ├── RecipeFakerService.ts/               # DIRECTORY (not a file)
     │   ├── IRecipeFakerService.ts           # Interface both faker services implement
     │   ├── FakerJSRecipeFakerService/
@@ -182,6 +187,7 @@ User runs command (Cmd+Shift+P)
 | `treecipe.runFakerByRecipe` | Run Faker by Recipe |
 | `treecipe.insertDataSetBySelectedDirectory` | Insert Data Set by Directory |
 | `treecipe.changeFakerImplementationService` | Select Faker Implementation |
+| `treecipe.generatePicklistDependencyTests` | Generate Picklist Dependency Tests |
 
 ---
 

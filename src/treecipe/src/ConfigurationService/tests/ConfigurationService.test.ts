@@ -5,6 +5,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { ConfigurationService } from '../ConfigurationService';
 
 import * as fs from 'fs';
+import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -442,9 +443,165 @@ describe('Shared ConfigurationService Tests', () => {
             expect(() =>
                 ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection()
             ).toThrowError('Unknown Faker Recipe Processor selection: unknown-option');
-        
+
         });
       });
+
+    describe('getSfdxProjectDetail', () => {
+
+        test('given no sfdx-project.json in the workspace, an actionable error naming the expected path is thrown', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            expect(() => ConfigurationService.getSfdxProjectDetail('/mock/workspace'))
+                .toThrowError('No "sfdx-project.json" found at');
+
+        });
+
+        test('given an sfdx-project.json, the parsed project detail is returned', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({ name: 'mock-project' }));
+
+            expect(ConfigurationService.getSfdxProjectDetail('/mock/workspace').name).toBe('mock-project');
+
+        });
+
+    });
+
+    describe('getSourceApiVersionFromSfdxProject', () => {
+
+        test('given a declared sourceApiVersion, that version is returned', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({ sourceApiVersion: '62.0' }));
+
+            expect(ConfigurationService.getSourceApiVersionFromSfdxProject('/mock/workspace')).toBe('62.0');
+
+        });
+
+        test('given no declared sourceApiVersion, a default api version is returned', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({}));
+
+            expect(ConfigurationService.getSourceApiVersionFromSfdxProject('/mock/workspace')).toBe('64.0');
+
+        });
+
+    });
+
+    describe('resolvePackageDirectoryPath', () => {
+
+        const mockSfdxProjectDetail = (sfdxProjectDetail: any) => {
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(sfdxProjectDetail));
+        };
+
+        test('given a single package directory, that directory is used without prompting', async () => {
+
+            mockSfdxProjectDetail({ packageDirectories: [{ path: 'force-app' }] });
+            const showQuickPickSpy = jest.spyOn(vscode.window, 'showQuickPick');
+
+            expect(await ConfigurationService.resolvePackageDirectoryPath('/mock/workspace')).toBe('force-app');
+            expect(showQuickPickSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given multiple package directories with one marked default, the default is used without prompting', async () => {
+
+            mockSfdxProjectDetail({
+                packageDirectories: [
+                    { path: 'utils' },
+                    { path: 'force-app', default: true }
+                ]
+            });
+            const showQuickPickSpy = jest.spyOn(vscode.window, 'showQuickPick');
+
+            expect(await ConfigurationService.resolvePackageDirectoryPath('/mock/workspace')).toBe('force-app');
+            expect(showQuickPickSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given multiple package directories with none marked default, the user is prompted', async () => {
+
+            mockSfdxProjectDetail({
+                packageDirectories: [
+                    { path: 'utils' },
+                    { path: 'force-app' }
+                ]
+            });
+            const showQuickPickSpy = jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue('utils' as any);
+
+            expect(await ConfigurationService.resolvePackageDirectoryPath('/mock/workspace')).toBe('utils');
+            expect(showQuickPickSpy).toHaveBeenCalledWith(['utils', 'force-app'], expect.anything());
+
+        });
+
+        test('given the user dismisses the package directory prompt, undefined is returned so nothing is written', async () => {
+
+            mockSfdxProjectDetail({
+                packageDirectories: [
+                    { path: 'utils' },
+                    { path: 'force-app' }
+                ]
+            });
+            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined as any);
+
+            expect(await ConfigurationService.resolvePackageDirectoryPath('/mock/workspace')).toBeUndefined();
+
+        });
+
+        test('given no packageDirectories entries, an actionable error is thrown', async () => {
+
+            mockSfdxProjectDetail({ packageDirectories: [] });
+
+            await expect(ConfigurationService.resolvePackageDirectoryPath('/mock/workspace'))
+                .rejects.toThrowError('declares no "packageDirectories"');
+
+        });
+
+    });
+
+    describe('resolveApexClassesDirectoryPath', () => {
+
+        test('given a package directory with an existing nested classes directory, that directory is used', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readdirSync').mockImplementation((readPath: any) => {
+
+                const normalizedReadPath = String(readPath).replace(/\\/g, '/');
+                if (normalizedReadPath.endsWith('/force-app')) {
+                    return [{ name: 'main', isDirectory: () => true }] as any;
+                }
+                if (normalizedReadPath.endsWith('/force-app/main')) {
+                    return [{ name: 'default', isDirectory: () => true }] as any;
+                }
+                if (normalizedReadPath.endsWith('/force-app/main/default')) {
+                    return [{ name: 'classes', isDirectory: () => true }] as any;
+                }
+
+                return [] as any;
+
+            });
+
+            const resolvedClassesDirectoryPath = ConfigurationService.resolveApexClassesDirectoryPath('/mock/workspace/force-app');
+
+            expect(resolvedClassesDirectoryPath.replace(/\\/g, '/')).toBe('/mock/workspace/force-app/main/default/classes');
+
+        });
+
+        test('given a package directory with no classes directory, the conventional main/default/classes path is returned', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            const resolvedClassesDirectoryPath = ConfigurationService.resolveApexClassesDirectoryPath('/mock/workspace/force-app');
+
+            expect(resolvedClassesDirectoryPath.replace(/\\/g, '/')).toBe('/mock/workspace/force-app/main/default/classes');
+
+        });
+
+    });
 
 });
 

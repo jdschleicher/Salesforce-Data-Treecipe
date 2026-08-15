@@ -1,5 +1,54 @@
 # Change Log
 
+## [2.12.0] - Generate Picklist Dependency Tests Command
+
+Resolves [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/61). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62). Builds on the framework from [#60](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/60) below.
+
+### Features
+
+- New command **Generate Picklist Dependency Tests** (`treecipe.generatePicklistDependencyTests`) — walks the configured `salesforceObjectsPath` and emits `PicklistDependencySpecs.cls` with one `PicklistDependencySpec` per field carrying a `controllingField`, replacing the hand-written registry that drifted from source metadata the moment it was written
+- `PicklistDependencyTestService` — collects spec details from parsed field XML and serializes them to Apex targeting the `forField` / `controlledBy` / `expectAtLeast` / `expectNone` fluent API
+- Generated lines always use `expectAtLeast`, so source combinations must still exist while org-added values are tolerated; `expectExactly` is never emitted and a line tightened to it will not survive regeneration
+- A controlling value that unlocks nothing is emitted as `expectNone`. Recovering those requires the controlling field's own value set — a value with no `valueSettings` entry is absent from the dependency map entirely — so the controlling field's XML is read alongside the dependent field's. When the controlling field cannot be resolved locally (global value set, standard value set, or defined outside the parsed directory) only the values `valueSettings` actually names are asserted: a narrower contract, never a wrong one
+- A `valueSettings` entry naming a controlling value the controlling field no longer declares is still asserted rather than dropped — that is precisely where drift lives
+- Every emitted spec carries `.controlledBy(...)` so the framework's `CONTROLLING_FIELD_MISMATCH` check stays active
+- Output is deterministic — objects, fields, and expectations are ordered (expectations follow the controlling field's own value set order), so regenerating against unchanged metadata produces a byte-identical file and a clean diff
+
+### Distribution
+
+- The published `.vsix` excludes `force-app/**`, so an extension user had none of the framework classes a generated specs file compiles against. The six runtime framework classes are now bundled as extension assets under `resources/apex/` and copied into the resolved package directory alongside the generated file when missing — existing files are never overwritten, so a customized framework class survives regeneration
+- `StubPicklistDependencySource` is deliberately not bundled: it exists only for the framework's own Apex tests and should never be scaffolded into a user's org
+- `resources/apex/` mirrors `force-app/main/default/classes/`, which remains the source of truth. A test asserts each bundled copy is byte-identical to its counterpart, so drift fails the suite instead of shipping a stale framework
+
+### Refactors
+
+- `RecipeService.buildControllingValueToPicklistOptions` extracted from `getDependentPicklistRecipeFakerValue` and now shared by recipe generation and Apex spec emission. It takes no record-type parameter: `valueSettings` maps a controlling value to its dependent values irrespective of record type, and record types govern which picklist values are *available*, not which controlling value unlocks which dependent value
+- `ConfigurationService` gained `sfdx-project.json` resolution — package directory (single entry or the one marked `default`; prompts only when several exist and none is default), `sourceApiVersion` for the generated `-meta.xml`, and Apex classes directory resolution that prefers a `classes` directory the project already has
+
+### Unhappy paths
+
+- No `sfdx-project.json`, or a project declaring no `packageDirectories` → actionable error naming the expected path; nothing is written
+- A field with a `controllingField` but no `valueSettings` markup → warning naming the object and field; the run continues and the remaining fields are still emitted
+- Zero dependent picklists found → informational message, no file written
+- An existing `PicklistDependencySpecs.cls` → modal confirmation before overwrite, warning that lines tightened to `expectExactly` will be lost
+- Dismissing the package directory prompt → nothing is written
+
+### Tests
+
+- New `PicklistDependencyTestService` suite covering collection, expectation ordering, `expectNone`, the unresolvable-controlling-field fallback, the skipped-field warning, deterministic regeneration, Apex escaping, bundled asset presence and byte-identity, and scaffolding (copies missing, never overwrites)
+- Apex string literals are escaped for both `'` and `\` — the backslash is escaped first so the quote escape is not itself doubled. Fixtures cover a controlling value of `O'Brien`, a value of `Back\Slash`, and a dependent value of `Value's One`
+- `ConfigurationService` tests cover every `sfdx-project.json` resolution path including the prompt and its dismissal; `RecipeService` tests assert the extracted map builder directly
+- Existing FakerJS and Snowfakery dependent-picklist tests pass unchanged, which is the regression guard for the `RecipeService` extraction
+- Suite grew from 355 to 403 tests; coverage improved on every metric (lines 83.23% → 84.12%, branches 78.45% → 79.51%, functions 85.03% → 86.09%)
+
+### Notes
+
+- No faker backend change: this consumes parsed metadata upstream of `IRecipeFakerService`, so neither `FakerJSRecipeFakerService` nor `SnowfakeryRecipeFakerService` gains a handler
+- Specs remain field-level and not record-type scoped, consistent with the framework's `PicklistDependencySpec` API
+- Generation reads local source metadata only — org-connected describe stays Recipe Cockpit territory ([#55](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/55))
+
+---
+
 ## [2.12.0] - Apex Picklist Dependency Validation Framework
 
 Resolves [#60](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/60). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

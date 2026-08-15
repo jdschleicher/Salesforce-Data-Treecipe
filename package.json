@@ -45,6 +45,11 @@
         "command": "treecipe.changeFakerImplementationService",
         "title": "Select Faker Implementation",
         "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.generatePicklistDependencyTests",
+        "title": "Generate Picklist Dependency Tests",
+        "category": "Salesforce Treecipe"
       }
     ],
     "configuration": [
