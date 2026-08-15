@@ -24,6 +24,12 @@ export interface IPicklistDependencyCollectionResult {
     skippedFieldWarnings: string[];
 }
 
+export interface IFrameworkScaffoldResult {
+    scaffoldedClassNames: string[];
+    // FRAMEWORK CLASSES NEITHER ALREADY IN THE WORKSPACE NOR AVAILABLE TO COPY FROM THE EXTENSION
+    unavailableClassNames: string[];
+}
+
 export class PicklistDependencyTestService {
 
     private static specsClassName = 'PicklistDependencySpecs';
@@ -41,6 +47,18 @@ export class PicklistDependencyTestService {
         'PicklistDependencyValidator',
         'SchemaPicklistDependencySource'
     ];
+
+    /*
+        Salesforce object and field API names are letters, numbers and underscores only -- the
+        namespace, "__c" and "__e" suffixes all stay within that set. Nothing upstream enforces
+        this though: a field api name is a raw XML <fullName> text node and an object api name is
+        a directory name on disk, so both are validated here rather than assumed.
+    */
+    private static salesforceApiNamePattern = /^[A-Za-z0-9_]+$/;
+
+    static isValidSalesforceApiName(apiName: string): boolean {
+        return typeof apiName === 'string' && this.salesforceApiNamePattern.test(apiName);
+    }
 
     static getSpecsClassName(): string {
         return this.specsClassName;
@@ -64,26 +82,33 @@ export class PicklistDependencyTestService {
 
         for ( const [entryName, entryType] of directoryEntries ) {
 
-            if ( entryType !== vscode.FileType.Directory ) {
+            // A BITMASK CHECK SO A SYMLINKED OBJECT DIRECTORY ("Directory | SymbolicLink") IS STILL WALKED
+            const isDirectoryEntry = ( (entryType & vscode.FileType.Directory) !== 0 );
+            if ( !isDirectoryEntry ) {
                 continue;
             }
 
             const childDirectoryUri = vscode.Uri.joinPath(objectsDirectoryUri, entryName);
 
+            /*
+                Results are concatenated rather than spread into push -- a spread passes every
+                element as a call argument, which throws once an accumulated subtree exceeds the
+                engine's argument limit.
+            */
             if ( entryName === 'fields' ) {
 
                 const objectApiName = path.basename(objectsDirectoryUri.fsPath);
                 const fieldDetails = await this.getFieldDetailsByFieldsDirectory(childDirectoryUri);
                 const objectResult = this.buildSpecDetailsByObjectFieldDetails(objectApiName, fieldDetails);
 
-                collectedResult.specDetails.push(...objectResult.specDetails);
-                collectedResult.skippedFieldWarnings.push(...objectResult.skippedFieldWarnings);
+                collectedResult.specDetails = collectedResult.specDetails.concat(objectResult.specDetails);
+                collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(objectResult.skippedFieldWarnings);
 
             } else {
 
                 const nestedResult = await this.collectSpecDetailsByObjectsDirectory(childDirectoryUri);
-                collectedResult.specDetails.push(...nestedResult.specDetails);
-                collectedResult.skippedFieldWarnings.push(...nestedResult.skippedFieldWarnings);
+                collectedResult.specDetails = collectedResult.specDetails.concat(nestedResult.specDetails);
+                collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(nestedResult.skippedFieldWarnings);
 
             }
 
@@ -131,6 +156,21 @@ export class PicklistDependencyTestService {
 
             if ( !fieldDetail.controllingField ) {
                 return;
+            }
+
+            /*
+                An api name that is not a plain Salesforce identifier cannot match a real org field,
+                and emitting it would splice unvetted text into an Apex string literal. Skipping is
+                both the safe and the honest result.
+            */
+            const invalidApiName = [objectApiName, fieldDetail.apiName, fieldDetail.controllingField]
+                .find(apiName => !this.isValidSalesforceApiName(apiName));
+
+            if ( invalidApiName !== undefined ) {
+
+                skippedFieldWarnings.push(`Skipped dependent picklist "${objectApiName}.${fieldDetail.apiName}": the api name "${invalidApiName}" is not a valid Salesforce api name (letters, numbers and underscores only). No spec was generated for this field.`);
+                return;
+
             }
 
             const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(fieldDetail);
@@ -229,9 +269,17 @@ ${specsListMarkup}
 
     static buildSpecStatement(specDetail: IPicklistDependencySpecDetail): string {
 
-        // API NAMES ARE EMITTED VERBATIM -- ONLY PICKLIST VALUES ARE USER-AUTHORED FREE TEXT NEEDING ESCAPING
-        let specStatement = `            PicklistDependencySpec.forField('${specDetail.objectApiName}', '${specDetail.fieldApiName}')`;
-        specStatement += `\n                .controlledBy('${specDetail.controllingFieldApiName}')`;
+        /*
+            Api names are validated before a spec is built, so escaping them is a no-op for every
+            name that reaches here. It is applied anyway so that emission stays safe on its own
+            terms rather than depending on a caller having validated first.
+        */
+        const objectApiName = this.escapeApexStringLiteral(specDetail.objectApiName);
+        const fieldApiName = this.escapeApexStringLiteral(specDetail.fieldApiName);
+        const controllingFieldApiName = this.escapeApexStringLiteral(specDetail.controllingFieldApiName);
+
+        let specStatement = `            PicklistDependencySpec.forField('${objectApiName}', '${fieldApiName}')`;
+        specStatement += `\n                .controlledBy('${controllingFieldApiName}')`;
 
         specDetail.expectations.forEach(expectation => {
 
@@ -256,15 +304,31 @@ ${specsListMarkup}
 
     }
 
+    static getSfdxProjectFilePath(workspaceRoot: string): string {
+        return path.join(workspaceRoot, 'sfdx-project.json');
+    }
+
+    static readSfdxProjectJson(sfdxProjectFilePath: string): any {
+
+        const sfdxProjectFileContent = fs.readFileSync(sfdxProjectFilePath, 'utf-8');
+
+        try {
+            return JSON.parse(sfdxProjectFileContent);
+        } catch (error) {
+            throw new Error(`Could not parse "${sfdxProjectFilePath}" as JSON: ${error.message}. Fix the file and run the command again.`);
+        }
+
+    }
+
     static resolveDefaultPackageDirectoryPath(workspaceRoot: string): string {
 
-        const sfdxProjectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
+        const sfdxProjectFilePath = this.getSfdxProjectFilePath(workspaceRoot);
 
         if ( !fs.existsSync(sfdxProjectFilePath) ) {
             throw new Error(`No "sfdx-project.json" found at "${sfdxProjectFilePath}". The Generate Picklist Dependency Tests command writes Apex into a Salesforce DX package directory -- open a DX project, or add an "sfdx-project.json" with a default packageDirectories entry, and run the command again.`);
         }
 
-        const sfdxProjectJson = JSON.parse(fs.readFileSync(sfdxProjectFilePath, 'utf-8'));
+        const sfdxProjectJson = this.readSfdxProjectJson(sfdxProjectFilePath);
         const packageDirectories = sfdxProjectJson?.packageDirectories;
 
         if ( !Array.isArray(packageDirectories) || packageDirectories.length === 0 ) {
@@ -277,21 +341,44 @@ ${specsListMarkup}
             throw new Error(`The resolved package directory in "${sfdxProjectFilePath}" has no "path" value. Add a "path" to the default packageDirectories entry and run the command again.`);
         }
 
-        return path.join(workspaceRoot, defaultPackageDirectory.path);
+        /*
+            The package directory path comes from a workspace file, so it is confirmed to stay
+            inside the workspace before anything is written to it. path.join would quietly
+            normalize a "../.." path into a location outside the folder the user opened.
+        */
+        if ( path.isAbsolute(defaultPackageDirectory.path) ) {
+            throw new Error(`The package directory "${defaultPackageDirectory.path}" in "${sfdxProjectFilePath}" is an absolute path. Use a path relative to the project root and run the command again.`);
+        }
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const resolvedPackageDirectoryPath = path.resolve(resolvedWorkspaceRoot, defaultPackageDirectory.path);
+
+        if ( !resolvedPackageDirectoryPath.startsWith(resolvedWorkspaceRoot + path.sep) ) {
+            throw new Error(`The package directory "${defaultPackageDirectory.path}" in "${sfdxProjectFilePath}" resolves to "${resolvedPackageDirectoryPath}", which is outside the workspace. Use a package directory inside the project and run the command again.`);
+        }
+
+        return resolvedPackageDirectoryPath;
 
     }
 
     static getSourceApiVersion(workspaceRoot: string): string {
 
-        const sfdxProjectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
+        const sfdxProjectFilePath = this.getSfdxProjectFilePath(workspaceRoot);
         const defaultApiVersion = '64.0';
 
         if ( !fs.existsSync(sfdxProjectFilePath) ) {
             return defaultApiVersion;
         }
 
-        const sfdxProjectJson = JSON.parse(fs.readFileSync(sfdxProjectFilePath, 'utf-8'));
-        return sfdxProjectJson?.sourceApiVersion ?? defaultApiVersion;
+        const sfdxProjectJson = this.readSfdxProjectJson(sfdxProjectFilePath);
+        const sourceApiVersion = sfdxProjectJson?.sourceApiVersion;
+
+        // THE VERSION IS INTERPOLATED INTO GENERATED XML, SO ONLY A PLAIN VERSION NUMBER IS ACCEPTED
+        if ( typeof sourceApiVersion !== 'string' || !(/^\d+\.\d+$/.test(sourceApiVersion)) ) {
+            return defaultApiVersion;
+        }
+
+        return sourceApiVersion;
 
     }
 
@@ -328,19 +415,22 @@ ${specsListMarkup}
 
     /*
         Copies only the framework classes the workspace is missing so a user who has already
-        deployed or customized them keeps their copy.
+        deployed or customized them keeps their copy. Anything that could not be supplied is
+        reported back rather than swallowed -- the generated specs class does not compile without
+        the framework, so silently skipping a class would hand the user a broken file with no
+        indication of why.
     */
-    static scaffoldMissingFrameworkClasses(extensionPath: string, classesDirectoryPath: string): string[] {
+    static scaffoldMissingFrameworkClasses(extensionPath: string, classesDirectoryPath: string): IFrameworkScaffoldResult {
 
         const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes');
 
-        if ( !fs.existsSync(shippedFrameworkClassesPath) ) {
-            return [];
-        }
+        let scaffoldedClassNames: string[] = [];
+        let unavailableClassNames: string[] = [];
+
+        const shippedFrameworkClassesExist = fs.existsSync(shippedFrameworkClassesPath);
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
 
-        let scaffoldedClassNames: string[] = [];
         this.frameworkClassNames.forEach(frameworkClassName => {
 
             const targetClassFilePath = path.join(classesDirectoryPath, `${frameworkClassName}.cls`);
@@ -349,17 +439,21 @@ ${specsListMarkup}
             }
 
             const sourceClassFilePath = path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls`);
-            if ( !fs.existsSync(sourceClassFilePath) ) {
+            const sourceMetaFilePath = `${sourceClassFilePath}-meta.xml`;
+
+            // BOTH FILES ARE CHECKED UP FRONT SO A MISSING META XML CANNOT LEAVE AN ORPHANED CLASS FILE BEHIND
+            if ( !shippedFrameworkClassesExist || !fs.existsSync(sourceClassFilePath) || !fs.existsSync(sourceMetaFilePath) ) {
+                unavailableClassNames.push(frameworkClassName);
                 return;
             }
 
             fs.copyFileSync(sourceClassFilePath, targetClassFilePath);
-            fs.copyFileSync(`${sourceClassFilePath}-meta.xml`, `${targetClassFilePath}-meta.xml`);
+            fs.copyFileSync(sourceMetaFilePath, `${targetClassFilePath}-meta.xml`);
             scaffoldedClassNames.push(frameworkClassName);
 
         });
 
-        return scaffoldedClassNames;
+        return { scaffoldedClassNames, unavailableClassNames };
 
     }
 

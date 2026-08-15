@@ -25,9 +25,22 @@ Resolves [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/6
 
 - The `controllingValueToPicklistOptions` build moved out of `RecipeService.getDependentPicklistRecipeFakerValue` into `RecipeService.buildControllingValueToPicklistOptions`, a static shared by recipe generation and spec generation. It reads only `picklistValues`, so it needs no record type parameter. Behavior is unchanged and both faker backends' existing dependent-picklist tests pass untouched as the regression guard
 
+### Hardening
+
+- Object, field, and controlling-field api names are validated against `^[A-Za-z0-9_]+$` and the spec is skipped with a warning when one fails. A field api name is a raw XML `<fullName>` text node and an object api name is a directory name on disk, so neither is trustworthy by construction — the api-name constraint is enforced by Salesforce, and this generator never talks to Salesforce. Api names are additionally escaped at emission, which is a no-op for every name that passes validation, so emission stays safe without depending on the caller having validated first
+- The resolved package directory is confirmed to stay inside the workspace before anything is written. `path.join` normalizes a traversing path rather than rejecting it, so a `packageDirectories[].path` of `../../..` in a workspace `sfdx-project.json` would otherwise have created directories and written files outside the folder the user opened. Absolute paths are rejected outright
+- A framework class that could not be supplied is now reported instead of silently skipped. The generated specs class does not compile without the framework, so the previous behavior handed the user a broken file with no indication of why. Both the class and its `-meta.xml` are checked before either is copied, so a missing meta file cannot leave an orphaned `.cls` behind
+- `sourceApiVersion` is validated against `^\d+\.\d+$` before being interpolated into generated XML, falling back to the default otherwise
+- Malformed `sfdx-project.json` raises an actionable parse error naming the file, rather than surfacing a raw `SyntaxError` behind a "report issue to GitHub" button for what is the user's own typo
+- A missing objects directory reports an actionable message pointing at `salesforceObjectsPath`, the most likely misconfiguration
+- The overwrite prompt now covers the generated `-meta.xml` as well as the `.cls`, so a hand-tuned `apiVersion` or `status` cannot be replaced without confirmation. The success message names the destination directory
+- Skipped-field warnings are capped at three individual notifications followed by an aggregate count, so a managed package declaring dependent picklists without `valueSettings` cannot bury the user in toasts
+- The directory walk tests `entryType` as a bitmask so a symlinked object directory is still walked, and accumulates results with `concat` rather than spread-into-push, which throws once an accumulated subtree exceeds the engine's argument limit
+
 ### Verification
 
 - The generated Apex was validated against a live org via a check-only deploy alongside the framework classes, so the emitted builder calls and the escaping of values containing quotes, backslashes, and ampersands are confirmed to compile rather than merely inferred. A test also asserts every emitted builder method exists on the shipped `PicklistDependencySpec`, so a future change to that fluent API cannot silently break the generator
+- Adversarial tests cover the untrusted-input paths directly: an api name carrying `'); System.abortJob('`, an object directory name containing a quote, a controlling field name with an embedded newline, a traversing and an absolute `packageDirectories[].path`, malformed project JSON, and a `sourceApiVersion` carrying XML markup
 
 ## [2.12.0] - Apex Picklist Dependency Validation Framework
 

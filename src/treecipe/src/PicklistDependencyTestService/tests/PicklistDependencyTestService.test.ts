@@ -371,6 +371,58 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        /*
+            The package directory path comes from a workspace file. path.join would silently
+            normalize a traversing path into a location outside the folder the user opened, so
+            containment is asserted rather than assumed.
+        */
+        test('given a package directory that traverses outside the workspace, throws and resolves nothing', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                packageDirectories: [{ path: '../../../../tmp/evil', default: true }]
+            }));
+
+            expect(() => PicklistDependencyTestService.resolveDefaultPackageDirectoryPath('/workspace/project'))
+                .toThrow(/outside the workspace/);
+
+        });
+
+        test('given an absolute package directory path, throws rather than writing outside the project', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                packageDirectories: [{ path: path.sep + path.join('tmp', 'evil'), default: true }]
+            }));
+
+            expect(() => PicklistDependencyTestService.resolveDefaultPackageDirectoryPath('/workspace/project'))
+                .toThrow(/is an absolute path/);
+
+        });
+
+        test('given a nested but contained package directory, resolves it normally', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                packageDirectories: [{ path: 'packages/core', default: true }]
+            }));
+
+            const resolvedPackageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath('/workspace/project');
+
+            expect(resolvedPackageDirectoryPath).toBe(path.resolve('/workspace/project', 'packages/core'));
+
+        });
+
+        test('given malformed sfdx-project.json, throws an actionable parse error naming the file', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue('{ "packageDirectories": [ }');
+
+            expect(() => PicklistDependencyTestService.resolveDefaultPackageDirectoryPath('/workspace'))
+                .toThrow(/Could not parse .*sfdx-project\.json.* as JSON/);
+
+        });
+
     });
 
     describe('getSourceApiVersion', () => {
@@ -387,6 +439,30 @@ describe('PicklistDependencyTestService', () => {
         test('given no sfdx-project.json, returns the default api version', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            expect(PicklistDependencyTestService.getSourceApiVersion('/workspace')).toBe('64.0');
+
+        });
+
+        // THE VERSION IS INTERPOLATED INTO GENERATED XML, SO ANYTHING BUT A PLAIN VERSION NUMBER IS REJECTED
+        test('given a sourceApiVersion carrying XML markup, falls back to the default rather than emitting it', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                sourceApiVersion: '64.0</apiVersion><fullName>Injected</fullName><apiVersion>64.0'
+            }));
+
+            const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion('/workspace');
+
+            expect(sourceApiVersion).toBe('64.0');
+            expect(PicklistDependencyTestService.buildApexClassMetaXml(sourceApiVersion)).not.toContain('Injected');
+
+        });
+
+        test('given a non-string sourceApiVersion, falls back to the default', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({ sourceApiVersion: 64 }));
 
             expect(PicklistDependencyTestService.getSourceApiVersion('/workspace')).toBe('64.0');
 
@@ -441,9 +517,10 @@ describe('PicklistDependencyTestService', () => {
                 return String(checkedPath).startsWith(shippedFrameworkClassesPath);
             });
 
-            const scaffoldedClassNames = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
-            expect(scaffoldedClassNames).toIncludeSameMembers(PicklistDependencyTestService.getFrameworkClassNames());
+            expect(frameworkScaffoldResult.scaffoldedClassNames).toIncludeSameMembers(PicklistDependencyTestService.getFrameworkClassNames());
+            expect(frameworkScaffoldResult.unavailableClassNames).toHaveLength(0);
             // ONE CALL FOR THE CLASS AND ONE FOR ITS META XML
             expect(copyFileSpy).toHaveBeenCalledTimes(PicklistDependencyTestService.getFrameworkClassNames().length * 2);
 
@@ -459,20 +536,143 @@ describe('PicklistDependencyTestService', () => {
                 return String(checkedPath).startsWith(shippedFrameworkClassesPath) || String(checkedPath) === alreadyPresentClassPath;
             });
 
-            const scaffoldedClassNames = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
-            expect(scaffoldedClassNames).not.toContain('PicklistDependencySpec');
-            expect(scaffoldedClassNames).toContain('PicklistDependencyValidator');
+            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('PicklistDependencySpec');
+            expect(frameworkScaffoldResult.scaffoldedClassNames).toContain('PicklistDependencyValidator');
+            expect(frameworkScaffoldResult.unavailableClassNames).toHaveLength(0);
 
         });
 
-        test('given no shipped framework classes directory, scaffolds nothing rather than throwing', () => {
+        /*
+            The generated specs class cannot compile without the framework, so a class that could not
+            be supplied has to be reported back instead of silently skipped.
+        */
+        test('given no shipped framework classes directory, reports every class as unavailable rather than silently scaffolding nothing', () => {
 
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
 
-            const scaffoldedClassNames = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
-            expect(scaffoldedClassNames).toHaveLength(0);
+            expect(frameworkScaffoldResult.scaffoldedClassNames).toHaveLength(0);
+            expect(frameworkScaffoldResult.unavailableClassNames).toIncludeSameMembers(PicklistDependencyTestService.getFrameworkClassNames());
+
+        });
+
+        test('given a shipped class with no companion meta xml, reports it unavailable and copies neither file', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            const copyFileSpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const missingMetaFilePath = path.join(shippedFrameworkClassesPath, 'PicklistDependencyValidator.cls-meta.xml');
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                if ( String(checkedPath) === missingMetaFilePath ) {
+                    return false;
+                }
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath);
+            });
+
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            expect(frameworkScaffoldResult.unavailableClassNames).toEqual(['PicklistDependencyValidator']);
+            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('PicklistDependencyValidator');
+
+            // NO ORPHANED .cls IS LEFT BEHIND FOR THE CLASS WHOSE META XML WAS MISSING
+            const copiedPaths = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
+            expect(copiedPaths).not.toContain(path.join(classesDirectoryPath, 'PicklistDependencyValidator.cls'));
+
+        });
+
+    });
+
+    /*
+        Adversarial coverage. Api names reach the emitter from a raw XML <fullName> text node and
+        from a directory name on disk, so neither is trustworthy by construction.
+    */
+    describe('untrusted api name handling', () => {
+
+        test('given an api name that breaks out of an Apex string literal, skips the spec with a warning instead of emitting it', () => {
+
+            const dependentFieldDetail = {
+                apiName: `X'); System.abortJob('`,
+                fieldType: 'Picklist',
+                controllingField: 'City__c',
+                picklistValues: [
+                    {
+                        picklistOptionApiName: 'ohiocity',
+                        label: 'ohiocity',
+                        default: false,
+                        isActive: true,
+                        controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle']
+                    }
+                ]
+            } as XMLFieldDetail;
+
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Dependency_Example__c',
+                [dependentFieldDetail]
+            );
+
+            expect(collectionResult.specDetails).toHaveLength(0);
+            expect(collectionResult.skippedFieldWarnings[0]).toContain('is not a valid Salesforce api name');
+
+        });
+
+        test('given an object directory name containing a quote, skips the spec rather than emitting the name', async () => {
+
+            const dependentFieldDetail = await getFieldDetailByFixtureFileName(mockDependencyExampleFieldsPath, 'Neighborhood__c.field-meta.xml');
+
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                `Evil'__c`,
+                [dependentFieldDetail]
+            );
+
+            expect(collectionResult.specDetails).toHaveLength(0);
+            expect(collectionResult.skippedFieldWarnings[0]).toContain(`Evil'__c`);
+
+        });
+
+        test('given a controlling field api name with an embedded newline, skips the spec', async () => {
+
+            const dependentFieldDetail = await getFieldDetailByFixtureFileName(mockDependencyExampleFieldsPath, 'Neighborhood__c.field-meta.xml');
+            dependentFieldDetail.controllingField = "City__c\nSystem.debug('x');";
+
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Dependency_Example__c',
+                [dependentFieldDetail]
+            );
+
+            expect(collectionResult.specDetails).toHaveLength(0);
+
+        });
+
+        test('given legitimate api names including namespaces and custom suffixes, accepts them', () => {
+
+            ['Account', 'Neighborhood__c', 'ns__Custom_Object__c', 'Event__e', 'X123_y'].forEach(validApiName => {
+                expect(PicklistDependencyTestService.isValidSalesforceApiName(validApiName)).toBe(true);
+            });
+
+            [`Bad'Name`, 'has space', 'has-dash', '', 'semi;colon', 'new\nline'].forEach(invalidApiName => {
+                expect(PicklistDependencyTestService.isValidSalesforceApiName(invalidApiName)).toBe(false);
+            });
+
+        });
+
+        test('emitted api names are escaped even when they reach the statement builder directly', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: `Evil'Object`,
+                fieldApiName: `Evil'Field`,
+                controllingFieldApiName: `Evil'Controller`,
+                expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'] }]
+            };
+
+            const specStatement = PicklistDependencyTestService.buildSpecStatement(specDetail);
+
+            expect(specStatement).toContain(`'Evil\\'Object'`);
+            expect(specStatement).toContain(`'Evil\\'Field'`);
+            expect(specStatement).toContain(`'Evil\\'Controller'`);
 
         });
 

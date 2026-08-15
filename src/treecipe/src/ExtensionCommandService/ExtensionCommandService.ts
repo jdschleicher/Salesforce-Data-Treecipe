@@ -179,14 +179,29 @@ export class ExtensionCommandService {
             const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
             const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
             const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+
+            if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
+                throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
+            }
+
             const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
 
             const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
 
-            // A FIELD WITH A CONTROLLING FIELD BUT NO VALUE SETTINGS IS REPORTED AND SKIPPED, IT DOES NOT ABORT THE RUN
-            collectionResult.skippedFieldWarnings.forEach(skippedFieldWarning => {
+            /*
+                A field with a controlling field but no value settings is reported and skipped, it does
+                not abort the run. Only the first few are shown individually so a misconfigured org
+                cannot bury the user in notifications.
+            */
+            const maximumIndividualWarningsToShow = 3;
+            collectionResult.skippedFieldWarnings.slice(0, maximumIndividualWarningsToShow).forEach(skippedFieldWarning => {
                 VSCodeWorkspaceService.showWarningMessage(skippedFieldWarning);
             });
+
+            const remainingSkippedFieldCount = collectionResult.skippedFieldWarnings.length - maximumIndividualWarningsToShow;
+            if ( remainingSkippedFieldCount > 0 ) {
+                VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) were skipped for the same reasons.`);
+            }
 
             if ( collectionResult.specDetails.length === 0 ) {
                 vscode.window.showInformationMessage(`No dependent picklists were found in "${fullPathToObjectsDirectory}". No Apex spec file was written.`);
@@ -198,10 +213,15 @@ export class ExtensionCommandService {
             const specsClassFilePath = PicklistDependencyTestService.getSpecsClassFilePath(classesDirectoryPath);
             const specsClassName = PicklistDependencyTestService.getSpecsClassName();
 
-            if ( fs.existsSync(specsClassFilePath) ) {
+            // BOTH GENERATED FILES ARE CONSIDERED SO A HAND EDITED meta xml CANNOT BE REPLACED WITHOUT A PROMPT
+            const existingGeneratedFilePaths = [specsClassFilePath, `${specsClassFilePath}-meta.xml`].filter(
+                generatedFilePath => fs.existsSync(generatedFilePath)
+            );
+
+            if ( existingGeneratedFilePaths.length > 0 ) {
 
                 const confirmedOverwriteSelection = await vscode.window.showWarningMessage(
-                    `"${specsClassName}.cls" already exists at "${specsClassFilePath}". Regenerating overwrites it, and any spec lines tightened to "expectExactly" by hand will be lost.`,
+                    `${existingGeneratedFilePaths.map(existingFilePath => `"${path.basename(existingFilePath)}"`).join(' and ')} already exist(s) in "${classesDirectoryPath}". Regenerating overwrites them, and any spec lines tightened to "expectExactly" by hand will be lost.`,
                     { modal: true },
                     'Overwrite'
                 );
@@ -216,11 +236,20 @@ export class ExtensionCommandService {
             const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
             PicklistDependencyTestService.writeSpecsClassFiles(classesDirectoryPath, apexClassBody, sourceApiVersion);
 
-            const scaffoldedFrameworkClassNames = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
-            let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s).`;
-            if ( scaffoldedFrameworkClassNames.length > 0 ) {
-                generationSummary += ` Also scaffolded the required framework class(es): ${scaffoldedFrameworkClassNames.join(', ')}.`;
+            /*
+                The generated specs class does not compile without the framework, so a class that could
+                not be supplied is surfaced rather than leaving the user with a file that silently fails
+                to deploy.
+            */
+            if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
+                VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
+            }
+
+            let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s) in "${classesDirectoryPath}".`;
+            if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
+                generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
             }
             vscode.window.showInformationMessage(generationSummary);
 
