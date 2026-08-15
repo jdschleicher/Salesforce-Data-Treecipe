@@ -8,6 +8,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
+import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -164,6 +165,74 @@ export class ExtensionCommandService {
             
         }
       
+    }
+
+    async generatePicklistDependencyTests(extensionPath: string) {
+
+        try {
+
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+            if ( !workspaceRoot ) {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
+            }
+
+            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
+            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+            const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
+
+            // A FIELD WITH A CONTROLLING FIELD BUT NO VALUE SETTINGS IS REPORTED AND SKIPPED, IT DOES NOT ABORT THE RUN
+            collectionResult.skippedFieldWarnings.forEach(skippedFieldWarning => {
+                VSCodeWorkspaceService.showWarningMessage(skippedFieldWarning);
+            });
+
+            if ( collectionResult.specDetails.length === 0 ) {
+                vscode.window.showInformationMessage(`No dependent picklists were found in "${fullPathToObjectsDirectory}". No Apex spec file was written.`);
+                return;
+            }
+
+            const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
+            const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
+            const specsClassFilePath = PicklistDependencyTestService.getSpecsClassFilePath(classesDirectoryPath);
+            const specsClassName = PicklistDependencyTestService.getSpecsClassName();
+
+            if ( fs.existsSync(specsClassFilePath) ) {
+
+                const confirmedOverwriteSelection = await vscode.window.showWarningMessage(
+                    `"${specsClassName}.cls" already exists at "${specsClassFilePath}". Regenerating overwrites it, and any spec lines tightened to "expectExactly" by hand will be lost.`,
+                    { modal: true },
+                    'Overwrite'
+                );
+
+                if ( confirmedOverwriteSelection !== 'Overwrite' ) {
+                    return;
+                }
+
+            }
+
+            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails);
+            const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
+            PicklistDependencyTestService.writeSpecsClassFiles(classesDirectoryPath, apexClassBody, sourceApiVersion);
+
+            const scaffoldedFrameworkClassNames = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s).`;
+            if ( scaffoldedFrameworkClassNames.length > 0 ) {
+                generationSummary += ` Also scaffolded the required framework class(es): ${scaffoldedFrameworkClassNames.join(', ')}.`;
+            }
+            vscode.window.showInformationMessage(generationSummary);
+
+            await VSCodeWorkspaceService.openFileInEditor(specsClassFilePath);
+
+        } catch(error) {
+
+            const commandName = 'generatePicklistDependencyTests';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
     }
 
     async insertDataSetBySelectedDirectory() {

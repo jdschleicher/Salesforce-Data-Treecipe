@@ -1,5 +1,34 @@
 # Change Log
 
+## [2.13.0] - Generate Picklist Dependency Tests Command
+
+Resolves [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/61). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### Features
+
+- New command **Salesforce Treecipe: Generate Picklist Dependency Tests** (`treecipe.generatePicklistDependencyTests`) that emits `PicklistDependencySpecs.cls` from local source metadata, replacing the hand-written registry that [#60](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/60) shipped. The parsing this needs already existed to drive dependent-picklist recipe generation; this is a second consumer of it, emitting Apex instead of YAML
+- New `PicklistDependencyTestService` walks the configured `salesforceObjectsPath` and emits one spec per picklist field declaring a `controllingField`, each carrying `.controlledBy(controllingFieldApiName)` so the framework's `CONTROLLING_FIELD_MISMATCH` check is active
+- Every controlling value is emitted as `expectAtLeast`, so source combinations must still exist while org-added values are tolerated. Tightening a line to `expectExactly` stays a deliberate edit by the spec owner — and is lost on regeneration, which the generated file header states plainly
+- A controlling value that unlocks nothing is emitted as `expectNone`. These are only discoverable by diffing the dependent field's `valueSettings` against the **controlling field's own** picklist values, read from its sibling field file — the dependent field's markup alone cannot distinguish "unlocks nothing" from "does not exist". When the controlling field is not among the parsed fields, no `expectNone` lines are emitted rather than guessing
+- The framework runtime classes are now shipped in the `.vsix` and scaffolded into the resolved package directory when missing. `.vscodeignore` excluded `force-app/**`, so a generated specs file would have had nothing to compile against in a user's workspace. Negation entries ship exactly the six runtime classes and their metadata, keeping `force-app` the single source of truth so the shipped copies cannot drift; the test classes, the stub source, and the placeholder `PicklistDependencySpecs.cls` are deliberately still excluded. An existing class in the workspace is never overwritten, so a customized copy is preserved
+- Picklist values are escaped for Apex string literals (backslash, single quote, and newline, in that order); API names are emitted verbatim. Ampersands need no Apex escaping and are left alone. Note this is separate from the faker services' backtick-wrapping, which is a JS template-literal technique and not reusable here
+- Output written to the `classes` folder of the package directory marked `default` in `sfdx-project.json`, falling back to the first entry when none is marked. `sourceApiVersion` drives the generated `-meta.xml`
+
+### Unhappy paths
+
+- A field with a `controllingField` but no `valueSettings` is reported as a warning naming the object and field, and skipped — the run continues and still generates every other spec
+- No `sfdx-project.json`, no `packageDirectories` entries, or a resolved package directory with no `path` each raise an actionable error and write nothing
+- An existing `PicklistDependencySpecs.cls` prompts before overwrite, warning that hand-tightened lines will be lost
+- Zero dependent picklists in the metadata directory reports an informational message and writes no file, rather than emitting a class whose empty registry the framework would report as `EMPTY`
+
+### Refactor
+
+- The `controllingValueToPicklistOptions` build moved out of `RecipeService.getDependentPicklistRecipeFakerValue` into `RecipeService.buildControllingValueToPicklistOptions`, a static shared by recipe generation and spec generation. It reads only `picklistValues`, so it needs no record type parameter. Behavior is unchanged and both faker backends' existing dependent-picklist tests pass untouched as the regression guard
+
+### Verification
+
+- The generated Apex was validated against a live org via a check-only deploy alongside the framework classes, so the emitted builder calls and the escaping of values containing quotes, backslashes, and ampersands are confirmed to compile rather than merely inferred. A test also asserts every emitted builder method exists on the shipped `PicklistDependencySpec`, so a future change to that fluent API cannot silently break the generator
+
 ## [2.12.0] - Apex Picklist Dependency Validation Framework
 
 Resolves [#60](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/60). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

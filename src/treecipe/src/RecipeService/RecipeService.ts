@@ -181,18 +181,23 @@ export class RecipeService {
     
     }
 
-    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
-    
-        const controllingField = xmlFieldDetail.controllingField;
+    /*
+        Builds the controlling-value-to-dependent-options map from a dependent picklist's
+        <valueSettings> markup. Shared by recipe generation and by Apex picklist dependency
+        spec generation, so it is intentionally free of any faker or record type concern.
+    */
+    static buildControllingValueToPicklistOptions(xmlFieldDetail: XMLFieldDetail): Record<string, string[]> {
+
         let controllingValueToPicklistOptions:Record<string, string[]> = {};
 
         if ( !(xmlFieldDetail.picklistValues) ) {
-            return '';
+            return controllingValueToPicklistOptions;
         }
+
         xmlFieldDetail.picklistValues.forEach(picklistOption => {
-            
+
             if ( !(picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection) ) {
-                return '';
+                return;
             }
             picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection.forEach((controllingValue) => {
 
@@ -205,6 +210,20 @@ export class RecipeService {
             });
 
         });
+
+        return controllingValueToPicklistOptions;
+
+    }
+
+    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+
+        const controllingField = xmlFieldDetail.controllingField;
+
+        if ( !(xmlFieldDetail.picklistValues) ) {
+            return '';
+        }
+
+        const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
 
         if ( Object.keys(controllingValueToPicklistOptions).length === 0 ) {
 
