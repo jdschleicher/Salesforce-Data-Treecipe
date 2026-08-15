@@ -157,6 +157,133 @@ private class SchemaPicklistDependencySourceTest {
         );
     }
 
+    /**
+     * Describe lookups are cached in static maps for the life of the transaction, which is
+     * how a many-spec run stays inside the CPU limit. A cache that returned a stale or wrong
+     * describe on the second read would corrupt every spec after the first, so the repeat
+     * paths are asserted directly — including the failure paths, which must not be poisoned
+     * into passing (or into failing differently) by a cached neighbour.
+     */
+    @IsTest
+    static void repeatedFetchesReturnConsistentResultsThroughTheDescribeCache() {
+
+        SchemaPicklistDependencySource source = new SchemaPicklistDependencySource();
+        PicklistDependencySpec industry = PicklistDependencySpec.forField('Account', 'Industry');
+
+        for (Integer attempt = 0; attempt < 2; attempt++) {
+            try {
+                source.fetch(industry);
+                Assert.fail('attempt ' + attempt + ': a non-dependent picklist must be rejected every time');
+            } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+                Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * The cache must return the field that was ASKED FOR, which the repeat-path test above
+     * does not prove — it only asserts a controller is still null, and almost any cache-bleed
+     * bug satisfies that. If the describe key were ever reduced to the object alone (a
+     * plausible slip, since the field map is keyed exactly that way), every field on Account
+     * would collapse onto one describe and the other tests would still pass.
+     *
+     * Asserting getName() per field pins identity directly.
+     */
+    @IsTest
+    static void cachedDescribesDoNotBleedBetweenFieldsOnTheSameObject() {
+
+        List<String> fieldNames = new List<String>{ 'Industry', 'Type', 'Name' };
+
+        // Twice: the first pass populates the cache, the second reads back through it
+        for (Integer pass = 0; pass < 2; pass++) {
+            for (String fieldName : fieldNames) {
+                Schema.DescribeFieldResult describe =
+                    SchemaPicklistDependencySource.describeField('Account', fieldName);
+                Assert.areEqual(
+                    fieldName,
+                    describe.getName(),
+                    'pass ' + pass + ': Account.' + fieldName + ' resolved to a different field\'s describe'
+                );
+            }
+        }
+    }
+
+    /**
+     * The object-level cache key is lower-cased because Apex maps compare case-sensitively
+     * while describe resolves case-insensitively. Differing casing must reach one cache entry
+     * and one describe, not two.
+     */
+    @IsTest
+    static void objectCacheKeyIsCaseInsensitive() {
+
+        Schema.DescribeFieldResult canonical =
+            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+        Schema.DescribeFieldResult lowerCased =
+            SchemaPicklistDependencySource.describeField('account', 'industry');
+
+        Assert.areEqual(
+            canonical.getName(),
+            lowerCased.getName(),
+            'differing API-name casing must resolve to the same field describe'
+        );
+    }
+
+    /**
+     * clearCaches exists so a future FLS-variant test can switch running user with
+     * System.runAs without silently asserting against the previous user's cached describe.
+     */
+    @IsTest
+    static void clearCachesForcesAColdResolveWithoutChangingResults() {
+
+        Schema.DescribeFieldResult warm =
+            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+
+        SchemaPicklistDependencySource.clearCaches();
+
+        Schema.DescribeFieldResult cold =
+            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+
+        Assert.areEqual(warm.getName(), cold.getName(), 'a cold resolve must agree with the warm one');
+
+        // The error paths must still behave after a clear
+        try {
+            SchemaPicklistDependencySource.describeField('Treecipe_Not_A_Real_Object__c', 'Whatever__c');
+            Assert.fail('an unknown object must still be rejected after clearCaches');
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('Treecipe_Not_A_Real_Object__c'), e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void cachingOneObjectDoesNotMaskAnUnknownObjectOrField() {
+
+        SchemaPicklistDependencySource source = new SchemaPicklistDependencySource();
+
+        // Warm the Account entry in both caches first. Asserted rather than swallowed: if this
+        // ever stopped reaching describeField, the checks below would run against a cold cache
+        // and still pass while testing nothing.
+        try {
+            source.fetch(PicklistDependencySpec.forField('Account', 'Industry'));
+            Assert.fail('precondition: Industry is not dependent and should have thrown');
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
+        }
+
+        try {
+            source.fetch(PicklistDependencySpec.forField('Account', 'Treecipe_Not_A_Real_Field__c'));
+            Assert.fail('a cached object must still reject an unknown field on it');
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('field-level security'), e.getMessage());
+        }
+
+        try {
+            source.fetch(PicklistDependencySpec.forField('Treecipe_Not_A_Real_Object__c', 'Industry'));
+            Assert.fail('a warmed cache must still reject an unknown object');
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('Treecipe_Not_A_Real_Object__c'), e.getMessage());
+        }
+    }
+
     @IsTest
     static void unknownObjectIsReportedByName() {
 
