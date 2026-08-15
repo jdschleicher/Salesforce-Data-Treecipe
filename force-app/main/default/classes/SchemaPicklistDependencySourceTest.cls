@@ -180,16 +180,93 @@ private class SchemaPicklistDependencySourceTest {
         }
     }
 
+    /**
+     * The cache must return the field that was ASKED FOR, which the repeat-path test above
+     * does not prove — it only asserts a controller is still null, and almost any cache-bleed
+     * bug satisfies that. If the describe key were ever reduced to the object alone (a
+     * plausible slip, since the field map is keyed exactly that way), every field on Account
+     * would collapse onto one describe and the other tests would still pass.
+     *
+     * Asserting getName() per field pins identity directly.
+     */
+    @IsTest
+    static void cachedDescribesDoNotBleedBetweenFieldsOnTheSameObject() {
+
+        List<String> fieldNames = new List<String>{ 'Industry', 'Type', 'Name' };
+
+        // Twice: the first pass populates the cache, the second reads back through it
+        for (Integer pass = 0; pass < 2; pass++) {
+            for (String fieldName : fieldNames) {
+                Schema.DescribeFieldResult describe =
+                    SchemaPicklistDependencySource.describeField('Account', fieldName);
+                Assert.areEqual(
+                    fieldName,
+                    describe.getName(),
+                    'pass ' + pass + ': Account.' + fieldName + ' resolved to a different field\'s describe'
+                );
+            }
+        }
+    }
+
+    /**
+     * The object-level cache key is lower-cased because Apex maps compare case-sensitively
+     * while describe resolves case-insensitively. Differing casing must reach one cache entry
+     * and one describe, not two.
+     */
+    @IsTest
+    static void objectCacheKeyIsCaseInsensitive() {
+
+        Schema.DescribeFieldResult canonical =
+            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+        Schema.DescribeFieldResult lowerCased =
+            SchemaPicklistDependencySource.describeField('account', 'industry');
+
+        Assert.areEqual(
+            canonical.getName(),
+            lowerCased.getName(),
+            'differing API-name casing must resolve to the same field describe'
+        );
+    }
+
+    /**
+     * clearCaches exists so a future FLS-variant test can switch running user with
+     * System.runAs without silently asserting against the previous user's cached describe.
+     */
+    @IsTest
+    static void clearCachesForcesAColdResolveWithoutChangingResults() {
+
+        Schema.DescribeFieldResult warm =
+            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+
+        SchemaPicklistDependencySource.clearCaches();
+
+        Schema.DescribeFieldResult cold =
+            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+
+        Assert.areEqual(warm.getName(), cold.getName(), 'a cold resolve must agree with the warm one');
+
+        // The error paths must still behave after a clear
+        try {
+            SchemaPicklistDependencySource.describeField('Treecipe_Not_A_Real_Object__c', 'Whatever__c');
+            Assert.fail('an unknown object must still be rejected after clearCaches');
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('Treecipe_Not_A_Real_Object__c'), e.getMessage());
+        }
+    }
+
     @IsTest
     static void cachingOneObjectDoesNotMaskAnUnknownObjectOrField() {
 
         SchemaPicklistDependencySource source = new SchemaPicklistDependencySource();
 
-        // Warm the Account entry in both caches first
+        // Warm the Account entry in both caches first. Asserted rather than swallowed: if this
+        // ever stopped reaching describeField, the checks below would run against a cold cache
+        // and still pass while testing nothing.
         try {
             source.fetch(PicklistDependencySpec.forField('Account', 'Industry'));
+            Assert.fail('precondition: Industry is not dependent and should have thrown');
         } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
-            // expected — Industry is not dependent; we only wanted the describe cached
+            Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
         }
 
         try {
