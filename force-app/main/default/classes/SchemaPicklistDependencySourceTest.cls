@@ -157,6 +157,56 @@ private class SchemaPicklistDependencySourceTest {
         );
     }
 
+    /**
+     * Describe lookups are cached in static maps for the life of the transaction, which is
+     * how a many-spec run stays inside the CPU limit. A cache that returned a stale or wrong
+     * describe on the second read would corrupt every spec after the first, so the repeat
+     * paths are asserted directly — including the failure paths, which must not be poisoned
+     * into passing (or into failing differently) by a cached neighbour.
+     */
+    @IsTest
+    static void repeatedFetchesReturnConsistentResultsThroughTheDescribeCache() {
+
+        SchemaPicklistDependencySource source = new SchemaPicklistDependencySource();
+        PicklistDependencySpec industry = PicklistDependencySpec.forField('Account', 'Industry');
+
+        for (Integer attempt = 0; attempt < 2; attempt++) {
+            try {
+                source.fetch(industry);
+                Assert.fail('attempt ' + attempt + ': a non-dependent picklist must be rejected every time');
+            } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+                Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    static void cachingOneObjectDoesNotMaskAnUnknownObjectOrField() {
+
+        SchemaPicklistDependencySource source = new SchemaPicklistDependencySource();
+
+        // Warm the Account entry in both caches first
+        try {
+            source.fetch(PicklistDependencySpec.forField('Account', 'Industry'));
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            // expected — Industry is not dependent; we only wanted the describe cached
+        }
+
+        try {
+            source.fetch(PicklistDependencySpec.forField('Account', 'Treecipe_Not_A_Real_Field__c'));
+            Assert.fail('a cached object must still reject an unknown field on it');
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('field-level security'), e.getMessage());
+        }
+
+        try {
+            source.fetch(PicklistDependencySpec.forField('Treecipe_Not_A_Real_Object__c', 'Industry'));
+            Assert.fail('a warmed cache must still reject an unknown object');
+        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('Treecipe_Not_A_Real_Object__c'), e.getMessage());
+        }
+    }
+
     @IsTest
     static void unknownObjectIsReportedByName() {
 

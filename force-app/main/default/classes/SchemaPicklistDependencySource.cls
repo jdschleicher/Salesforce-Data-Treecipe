@@ -14,6 +14,13 @@
  * in Apex (deploy fails with "Variable does not exist: ConnectApi.UiApi"). The UI API is
  * reachable only as a REST callout, which would require Remote Site or Named Credential
  * setup and cannot run inside @IsTest at all. Describe has neither constraint.
+ *
+ * Governor limits: the validator runs every spec in ONE transaction, so all per-spec work
+ * here is multiplied by the spec count against a shared 10,000 ms CPU and 6 MB heap budget.
+ * Reading via describe costs no SOQL and no callouts, which leaves CPU as the binding limit.
+ * The describe lookups themselves dominate it and are cached below — measured at 100 specs
+ * against one object: ~1130 ms uncached vs ~70 ms cached, i.e. caching hands back roughly a
+ * tenth of the whole transaction budget. Heap is not a concern at this scale (~35 KB).
  */
 public with sharing class SchemaPicklistDependencySource implements IPicklistDependencySource {
 
@@ -23,6 +30,21 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
         '0' => 0, '1' => 1, '2' => 2, '3' => 3, '4' => 4, '5' => 5, '6' => 6, '7' => 7,
         '8' => 8, '9' => 9, 'a' => 10, 'b' => 11, 'c' => 12, 'd' => 13, 'e' => 14, 'f' => 15
     };
+
+    /**
+     * Per-transaction describe caches.
+     *
+     * Schema.getGlobalDescribe() is one of the most expensive calls in Apex — it materializes
+     * every SObject token in the org — and the field map behind it is rebuilt per object. Both
+     * were previously recomputed on every fetch, so a run of N specs paid them N times for an
+     * identical answer. Static caches live for the transaction, which is exactly the scope of
+     * one validator run.
+     */
+    private static Map<String, Schema.SObjectType> globalDescribeCache;
+    private static final Map<String, Map<String, Schema.SObjectField>> FIELD_MAPS_BY_OBJECT =
+        new Map<String, Map<String, Schema.SObjectField>>();
+    private static final Map<String, Schema.DescribeFieldResult> FIELD_DESCRIBES =
+        new Map<String, Schema.DescribeFieldResult>();
 
     public PicklistDependencySnapshot fetch(PicklistDependencySpec spec) {
 
@@ -108,25 +130,56 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
 
     private static Schema.DescribeFieldResult describeField(String objectApiName, String fieldApiName) {
 
-        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApiName);
-        if (objectType == null) {
-            throw new PicklistDependencyException('Unknown object "' + objectApiName + '".');
+        String fieldKey = objectApiName + '.' + fieldApiName;
+        if (FIELD_DESCRIBES.containsKey(fieldKey)) {
+            return FIELD_DESCRIBES.get(fieldKey);
         }
 
-        Schema.SObjectField fieldToken = objectType.getDescribe().fields.getMap().get(fieldApiName);
+        Schema.SObjectField fieldToken = fieldMapFor(objectApiName).get(fieldApiName);
         if (fieldToken == null) {
             throw new PicklistDependencyException(
-                'Field "' + objectApiName + '.' + fieldApiName + '" was not found. It may not exist, '
+                'Field "' + fieldKey + '" was not found. It may not exist, '
                     + 'or the running user may lack field-level security on it — an invisible field is '
                     + 'absent from describe entirely.'
             );
         }
 
-        return fieldToken.getDescribe();
+        Schema.DescribeFieldResult fieldDescribe = fieldToken.getDescribe();
+        FIELD_DESCRIBES.put(fieldKey, fieldDescribe);
+        return fieldDescribe;
+    }
+
+    private static Map<String, Schema.SObjectField> fieldMapFor(String objectApiName) {
+
+        if (FIELD_MAPS_BY_OBJECT.containsKey(objectApiName)) {
+            return FIELD_MAPS_BY_OBJECT.get(objectApiName);
+        }
+
+        if (globalDescribeCache == null) {
+            globalDescribeCache = Schema.getGlobalDescribe();
+        }
+
+        Schema.SObjectType objectType = globalDescribeCache.get(objectApiName);
+        if (objectType == null) {
+            throw new PicklistDependencyException('Unknown object "' + objectApiName + '".');
+        }
+
+        Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe().fields.getMap();
+        FIELD_MAPS_BY_OBJECT.put(objectApiName, fieldMap);
+        return fieldMap;
     }
 
     /**
      * Schema.PicklistEntry exposes no getValidFor() in Apex, but serializes one.
+     *
+     * This is the most expensive operation in the class, and batching it per field rather
+     * than per entry looks like an obvious win — it is not, and was measured and rejected.
+     * Serializing one 32-entry list is no cheaper than serializing 32 entries (~500 ms either
+     * way for 100 specs, with run-to-run noise larger than the difference): JSON cost tracks
+     * bytes, not call count. Batching only bought a positional-alignment failure mode. Leave
+     * it per entry unless a measurement in a fresh transaction says otherwise — measuring
+     * successive approaches within ONE transaction does not, as each block there runs slower
+     * than the last regardless of what it does.
      */
     @TestVisible
     private static String validForOf(Schema.PicklistEntry entry) {
