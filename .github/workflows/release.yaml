@@ -5,38 +5,61 @@ on:
     branches: [ main ]
     types: [ closed ]
 
+# This job holds VSCE_PAT. It reads the repository and publishes to the Marketplace; it needs
+# no write access to repository contents.
+permissions:
+  contents: read
+
 jobs:
 
   Publish-Extension:
 
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    
+
     steps:
 
+    # Pinned to main rather than the default ref. On a closed pull_request the default is
+    # refs/pull/N/merge -- the pre-merge test-merge commit -- so if main moved on, the published
+    # artifact would be source that never existed on main. persist-credentials: false keeps the
+    # checkout token out of the git config for the rest of the job.
     - name: Checkout Current Repository
       uses: actions/checkout@v4
-    
+      with:
+        ref: main
+        persist-credentials: false
+
     - name: Use Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '20.x'
         cache: 'npm'
-    
+
+    # "--ignore-scripts" keeps dependency install hooks from executing in the job that holds
+    # VSCE_PAT. No dependency builds a native addon, so nothing needs them.
     - name: Install dependencies
-      run: npm ci
-    
+      run: npm ci --ignore-scripts
+
+    # The token is passed through the environment, never interpolated into the script body and
+    # never placed on a command line. vsce reads VSCE_PAT natively, so no "-p" argument is needed:
+    # an argv-borne secret is readable by any concurrent process on the runner, and GitHub's log
+    # masking does not cover argv. Reading it via $env: also keeps it out of PowerShell's
+    # double-quote expansion.
     - name: Publish VS Code Extension
       shell: pwsh
+      env:
+        VSCE_PAT: ${{ secrets.VSCE_PAT }}
       run: |
         # Check if VSCE_PAT secret is available
-        if ("${{ secrets.VSCE_PAT }}" -eq "") {
-          Write-Host "VSCode is not set. Skipping publish."
+        if ([string]::IsNullOrEmpty($env:VSCE_PAT)) {
+          Write-Host "VSCE_PAT is not set. Skipping publish."
           exit 0
         }
-        
-        # Install vsce globally
-        npm install -g @vscode/vsce
-        
-        # Publish the extension
-        vsce publish -p ${{ secrets.VSCE_PAT }}
+
+        # Pinned rather than floating, and installed with --ignore-scripts: this runs in the job
+        # holding VSCE_PAT, so neither the publish tool nor any of its dependencies should be able
+        # to execute an install hook here.
+        npm install -g --ignore-scripts @vscode/vsce@3.9.2
+
+        # vsce publish runs "vscode:prepublish" (npm run compile) before packaging
+        vsce publish

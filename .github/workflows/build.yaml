@@ -4,8 +4,12 @@ on:
   push:
   pull_request:
 
+# The job only reads the repository; it publishes nothing and opens no pull requests.
+permissions:
+  contents: read
+
 jobs:
-  
+
   Compile-and-Test-Salesforce-Data-Treecipe:
 
     if: github.event.pull_request.draft == false
@@ -23,8 +27,20 @@ jobs:
         node-version: 20
         cache: 'npm'
 
+    # "npm ci" installs exactly what package-lock.json records, so a hijacked patch release
+    # inside an existing version range cannot be pulled into CI. "--ignore-scripts" additionally
+    # stops any dependency's install hook from executing on the runner; no dependency in this
+    # project builds a native addon, so nothing needs those hooks to run.
     - name: Install dependencies
-      run: npm install
+      run: npm ci --ignore-scripts
+
+    # ts-jest only typechecks files reachable from a test, and nothing imports src/extension.ts,
+    # so without this step a type error in the extension entry point reaches the publish job.
+    - name: Compile TypeScript
+      run: npm run compile
+
+    - name: Lint
+      run: npm run lint
 
     - name: Run Jest tests
       run: xvfb-run -a npm run jest-test-summary

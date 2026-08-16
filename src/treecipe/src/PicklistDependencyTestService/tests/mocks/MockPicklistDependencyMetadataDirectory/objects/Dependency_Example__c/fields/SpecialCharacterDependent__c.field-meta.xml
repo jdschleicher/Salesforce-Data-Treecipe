@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>SpecialCharacterDependent__c</fullName>
+    <externalId>false</externalId>
+    <label>Special Character Dependent</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>City__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Bob's Diner</fullName>
+                <default>false</default>
+                <label>Bob's Diner</label>
+            </value>
+            <value>
+                <fullName>Back\Slash</fullName>
+                <default>false</default>
+                <label>Back\Slash</label>
+            </value>
+            <value>
+                <fullName>Tom &amp; Jerry's</fullName>
+                <default>false</default>
+                <label>Tom &amp; Jerry's</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <valueName>Bob's Diner</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <valueName>Back\Slash</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <valueName>Tom &amp; Jerry's</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

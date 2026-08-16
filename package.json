@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "2.12.0",
+  "version": "2.13.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -44,6 +44,11 @@
       {
         "command": "treecipe.changeFakerImplementationService",
         "title": "Select Faker Implementation",
+        "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.generatePicklistDependencyTests",
+        "title": "Generate Picklist Dependency Tests",
         "category": "Salesforce Treecipe"
       }
     ],

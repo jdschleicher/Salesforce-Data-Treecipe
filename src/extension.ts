@@ -44,12 +44,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const generatePicklistDependencyTests = vscode.commands.registerCommand("treecipe.generatePicklistDependencyTests", () => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.generatePicklistDependencyTests(context.extensionPath);
+
+	});
+
 	context.subscriptions.push(
 		generateTreecipe,
 		initiateConfiguration,
 		runFakerByRecipe,
 		insertDataSetBySelectedDirectory,
-		changeFakerImplementationService
+		changeFakerImplementationService,
+		generatePicklistDependencyTests
 	);
 	
 }

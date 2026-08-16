@@ -412,7 +412,81 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
                 const actualRecipeValue = recipeServiceWithSnow.getFakeValueIfExpectedSalesforceFieldType(fieldTypeKey);
                 expect(actualRecipeValue).toBe(recipeValue);
             }
-            
+
+        });
+
+    });
+
+    /*
+        This map build is shared by recipe generation and by Apex picklist dependency spec
+        generation, so it is asserted directly and not only through its recipe consumer.
+    */
+    describe('buildControllingValueToPicklistOptions', () => {
+
+        test('given picklist values carrying controlling values, groups the picklist options by controlling value', () => {
+
+            let xmlFieldDetail = new XMLFieldDetail();
+            xmlFieldDetail.apiName = 'DependentPicklist__c';
+            xmlFieldDetail.controllingField = 'Picklist__c';
+            xmlFieldDetail.picklistValues = [
+                {
+                    picklistOptionApiName: 'tree',
+                    label: 'tree',
+                    default: false,
+                    isActive: true,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle', 'eastlake']
+                },
+                {
+                    picklistOptionApiName: 'weed',
+                    label: 'weed',
+                    default: false,
+                    isActive: true,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle']
+                }
+            ] as IPicklistValue[];
+
+            const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
+
+            expect(controllingValueToPicklistOptions['cle']).toEqual(['tree', 'weed']);
+            expect(controllingValueToPicklistOptions['eastlake']).toEqual(['tree']);
+
+        });
+
+        test('given a picklist option with no controlling values, skips that option without dropping the others', () => {
+
+            let xmlFieldDetail = new XMLFieldDetail();
+            xmlFieldDetail.picklistValues = [
+                {
+                    picklistOptionApiName: 'unmapped',
+                    label: 'unmapped',
+                    default: false,
+                    isActive: true
+                },
+                {
+                    picklistOptionApiName: 'tree',
+                    label: 'tree',
+                    default: false,
+                    isActive: true,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['cle']
+                }
+            ] as IPicklistValue[];
+
+            const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
+
+            expect(controllingValueToPicklistOptions).toEqual({ cle: ['tree'] });
+
+        });
+
+        test('given no picklistValues markup, returns an empty map rather than throwing', () => {
+
+            let xmlFieldDetail = new XMLFieldDetail();
+            xmlFieldDetail.apiName = 'DependentPicklist__c';
+            xmlFieldDetail.controllingField = 'Picklist__c';
+
+            const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
+
+            expect(controllingValueToPicklistOptions).toEqual({});
+
         });
 
     });
