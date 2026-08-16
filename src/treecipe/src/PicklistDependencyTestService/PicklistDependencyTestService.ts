@@ -449,6 +449,126 @@ ${specsListMarkup}
         return path.join(classesDirectoryPath, `${this.specsClassName}.cls`);
     }
 
+    static getSpecsTestClassName(): string {
+        return `${this.specsClassName}Test`;
+    }
+
+    static getSpecsTestClassFilePath(classesDirectoryPath: string): string {
+        return path.join(classesDirectoryPath, `${this.getSpecsTestClassName()}.cls`);
+    }
+
+    /*
+        Object api names are already validated against salesforceApiNamePattern, so the only
+        remaining hazard for an Apex identifier is a leading digit. The api name is embedded rather
+        than an index so a failing method names the object it covers in the test results.
+    */
+    static buildTestMethodNameByObjectApiName(objectApiName: string): string {
+
+        const identifierSafeObjectApiName = /^[0-9]/.test(objectApiName) ? `object${objectApiName}` : objectApiName;
+
+        return `${identifierSafeObjectApiName}_picklistDependenciesMatchSourceMetadata`;
+
+    }
+
+    /*
+        A test method per object rather than one for the whole registry. Each method gets its own
+        transaction and so its own CPU and heap budget, which matters because the describe work in
+        SchemaPicklistDependencySource is what binds the limit -- and a failure names the object in
+        the test results without the message having to be read.
+    */
+    static buildSpecsTestApexClassBody(specDetails: IPicklistDependencySpecDetail[]): string {
+
+        const distinctObjectApiNames = [...new Set(specDetails.map(specDetail => specDetail.objectApiName))].sort();
+
+        const testMethods = distinctObjectApiNames.map(objectApiName => {
+
+            const escapedObjectApiName = this.escapeApexStringLiteral(objectApiName);
+
+            return `    @IsTest
+    static void ${this.buildTestMethodNameByObjectApiName(objectApiName)}() {
+        assertNoPicklistDependencyFailuresForObject('${escapedObjectApiName}');
+    }`;
+
+        }).join('\n\n');
+
+        return `/**
+ * GENERATED FILE -- regenerating overwrites it.
+ *
+ * Created by the Salesforce Data Treecipe "Generate Picklist Dependency Tests" command. Asserts
+ * that every picklist dependency captured from local source metadata still exists in the org this
+ * test runs against.
+ *
+ * These assertions read the org's REAL metadata. Schema describe is not isolated by @IsTest, so no
+ * @TestSetup data and no SeeAllData are involved -- the describe calls in
+ * SchemaPicklistDependencySource return the same result they would outside a test.
+ *
+ * A failure here means an admin has rewired or removed a dependency that local source metadata
+ * still claims exists. Regenerate the specs if the org is now correct, or fix the org if it is not.
+ */
+@IsTest
+private class ${this.getSpecsTestClassName()} {
+
+${testMethods}
+
+    /**
+     * An empty registry must never pass. Without this the class would report green while asserting
+     * nothing at all, which is the same failure mode the EMPTY result marker exists to prevent in
+     * the anonymous Apex entry point.
+     */
+    @IsTest
+    static void specRegistryIsNotEmpty() {
+        Assert.isFalse(
+            ${this.specsClassName}.all().isEmpty(),
+            'No picklist dependency specs are registered, so this run verified nothing. '
+                + 'Re-run the "Generate Picklist Dependency Tests" command.'
+        );
+    }
+
+    private static void assertNoPicklistDependencyFailuresForObject(String objectApiName) {
+
+        List<PicklistDependencySpec> specsForObject = new List<PicklistDependencySpec>();
+        for (PicklistDependencySpec spec : ${this.specsClassName}.all()) {
+            if (spec.objectApiName == objectApiName) {
+                specsForObject.add(spec);
+            }
+        }
+
+        Assert.isFalse(
+            specsForObject.isEmpty(),
+            'No specs found for "' + objectApiName + '". This class is generated from the spec '
+                + 'registry, so the two are out of sync -- regenerate them together.'
+        );
+
+        PicklistDependencyValidator validator =
+            new PicklistDependencyValidator(new SchemaPicklistDependencySource());
+
+        List<PicklistDependencyValidator.Failure> failures = validator.validate(specsForObject);
+
+        Assert.isTrue(failures.isEmpty(), buildFailureMessage(objectApiName, failures));
+
+    }
+
+    private static String buildFailureMessage(String objectApiName, List<PicklistDependencyValidator.Failure> failures) {
+
+        List<String> failureLines = new List<String>();
+        failureLines.add(
+            'Picklist dependency drift on ' + objectApiName + ' -- '
+                + failures.size() + ' combination(s) no longer match local source metadata:'
+        );
+
+        for (PicklistDependencyValidator.Failure failure : failures) {
+            failureLines.add('  - ' + failure.toLine());
+        }
+
+        return String.join(failureLines, '\\n');
+
+    }
+
+}
+`;
+
+    }
+
     static writeSpecsClassFiles(classesDirectoryPath: string, apexClassBody: string, apiVersion: string): string {
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
@@ -458,6 +578,18 @@ ${specsListMarkup}
         fs.writeFileSync(`${specsClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
 
         return specsClassFilePath;
+
+    }
+
+    static writeSpecsTestClassFiles(classesDirectoryPath: string, apexTestClassBody: string, apiVersion: string): string {
+
+        fs.mkdirSync(classesDirectoryPath, { recursive: true });
+
+        const specsTestClassFilePath = this.getSpecsTestClassFilePath(classesDirectoryPath);
+        fs.writeFileSync(specsTestClassFilePath, apexTestClassBody);
+        fs.writeFileSync(`${specsTestClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
+
+        return specsTestClassFilePath;
 
     }
 

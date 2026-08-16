@@ -359,6 +359,119 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    describe('buildSpecsTestApexClassBody', () => {
+
+        const accountSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Account',
+            fieldApiName: 'Type__c',
+            controllingFieldApiName: 'Industry__c',
+            expectations: [{ controllingValue: 'Tech', dependentValues: ['SaaS'] }]
+        };
+
+        const dependencyExampleSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Dependency_Example__c',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations: [{ controllingValue: 'cle', dependentValues: ['tremont'] }]
+        };
+
+        test('given spec details, emits an IsTest class rather than a plain class', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            expect(apexTestClassBody).toContain('@IsTest');
+            expect(apexTestClassBody).toContain('private class PicklistDependencySpecsTest {');
+            expect(apexTestClassBody).toContain('new PicklistDependencyValidator(new SchemaPicklistDependencySource())');
+
+        });
+
+        test('given specs across multiple objects, emits one test method per object', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                accountSpecDetail,
+                dependencyExampleSpecDetail
+            ]);
+
+            expect(apexTestClassBody).toContain('static void Account_picklistDependenciesMatchSourceMetadata()');
+            expect(apexTestClassBody).toContain('static void Dependency_Example__c_picklistDependenciesMatchSourceMetadata()');
+
+        });
+
+        test('given several specs on one object, emits a single test method for that object', () => {
+
+            const secondAccountSpecDetail: IPicklistDependencySpecDetail = {
+                ...accountSpecDetail,
+                fieldApiName: 'SubType__c'
+            };
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                accountSpecDetail,
+                secondAccountSpecDetail
+            ]);
+
+            const accountMethodOccurrences = apexTestClassBody.split('static void Account_picklistDependenciesMatchSourceMetadata()').length - 1;
+
+            expect(accountMethodOccurrences).toBe(1);
+
+        });
+
+        test('always emits an assertion that fails when the spec registry is empty', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
+            expect(apexTestClassBody).toContain('Assert.isFalse(');
+            expect(apexTestClassBody).toContain('PicklistDependencySpecs.all().isEmpty()');
+
+        });
+
+        test('given no spec details, still emits the empty registry guard so nothing passes vacuously', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([]);
+
+            expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
+            expect(apexTestClassBody).not.toContain('_picklistDependenciesMatchSourceMetadata()');
+
+        });
+
+        test('emits a failure message naming the object and the drifted combinations', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            expect(apexTestClassBody).toContain('Picklist dependency drift on ');
+            expect(apexTestClassBody).toContain('failure.toLine()');
+
+        });
+
+    });
+
+    describe('buildTestMethodNameByObjectApiName', () => {
+
+        test('given a standard object api name, builds a valid apex identifier', () => {
+
+            expect(PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Account'))
+                .toBe('Account_picklistDependenciesMatchSourceMetadata');
+
+        });
+
+        test('given a custom object api name, keeps the suffix in the method name', () => {
+
+            expect(PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Dependency_Example__c'))
+                .toBe('Dependency_Example__c_picklistDependenciesMatchSourceMetadata');
+
+        });
+
+        test('given an api name starting with a digit, prefixes it so the identifier stays valid', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('2ndObject__c');
+
+            expect(testMethodName).toStartWith('object2ndObject__c');
+            expect(testMethodName).not.toStartWith('2');
+
+        });
+
+    });
+
     describe('resolveDefaultPackageDirectoryPath', () => {
 
         test('given multiple package directories, resolves the one marked default', () => {

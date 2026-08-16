@@ -51,13 +51,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const runPicklistDependencyCheck = vscode.commands.registerCommand("treecipe.runPicklistDependencyCheck", () => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.runPicklistDependencyCheck();
+
+	});
+
 	context.subscriptions.push(
 		generateTreecipe,
 		initiateConfiguration,
 		runFakerByRecipe,
 		insertDataSetBySelectedDirectory,
 		changeFakerImplementationService,
-		generatePicklistDependencyTests
+		generatePicklistDependencyTests,
+		runPicklistDependencyCheck
 	);
 	
 }

@@ -9,6 +9,9 @@ import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProce
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyCheckService } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+
+import { AuthInfo } from '@salesforce/core';
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -213,9 +216,16 @@ export class ExtensionCommandService {
             const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
             const specsClassFilePath = PicklistDependencyTestService.getSpecsClassFilePath(classesDirectoryPath);
             const specsClassName = PicklistDependencyTestService.getSpecsClassName();
+            const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(classesDirectoryPath);
+            const specsTestClassName = PicklistDependencyTestService.getSpecsTestClassName();
 
-            // BOTH GENERATED FILES ARE CONSIDERED SO A HAND EDITED meta xml CANNOT BE REPLACED WITHOUT A PROMPT
-            const existingGeneratedFilePaths = [specsClassFilePath, `${specsClassFilePath}-meta.xml`].filter(
+            // EVERY GENERATED FILE IS CONSIDERED SO A HAND EDITED meta xml CANNOT BE REPLACED WITHOUT A PROMPT
+            const existingGeneratedFilePaths = [
+                specsClassFilePath,
+                `${specsClassFilePath}-meta.xml`,
+                specsTestClassFilePath,
+                `${specsTestClassFilePath}-meta.xml`
+            ].filter(
                 generatedFilePath => fs.existsSync(generatedFilePath)
             );
 
@@ -237,6 +247,9 @@ export class ExtensionCommandService {
             const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
             PicklistDependencyTestService.writeSpecsClassFiles(classesDirectoryPath, apexClassBody, sourceApiVersion);
 
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody(collectionResult.specDetails);
+            PicklistDependencyTestService.writeSpecsTestClassFiles(classesDirectoryPath, apexTestClassBody, sourceApiVersion);
+
             const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
             /*
@@ -248,7 +261,7 @@ export class ExtensionCommandService {
                 VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
             }
 
-            let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s) in "${classesDirectoryPath}".`;
+            let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s), and ${specsTestClassName}.cls to assert them, in "${classesDirectoryPath}".`;
             if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
                 generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
             }
@@ -259,6 +272,77 @@ export class ExtensionCommandService {
         } catch(error) {
 
             const commandName = 'generatePicklistDependencyTests';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    async runPicklistDependencyCheck() {
+
+        try {
+
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+            if ( !workspaceRoot ) {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
+            }
+
+            const allAuthorizations = await AuthInfo.listAllAuthorizations();
+            const authenticatedOrgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails(allAuthorizations);
+
+            /*
+                Checked before the quick pick is built. Showing an empty picker would leave the user
+                with nothing to select and no indication that authentication is what is missing.
+            */
+            if ( authenticatedOrgDetails.length === 0 ) {
+                vscode.window.showWarningMessage('No authenticated Salesforce orgs were found. Authorize one with "sf org login web" and run the command again.');
+                return;
+            }
+
+            const targetOrgIdentifier = await VSCodeWorkspaceService.promptForAuthenticatedTargetOrg(authenticatedOrgDetails);
+            if ( !targetOrgIdentifier ) {
+                return;
+            }
+
+            const specsTestClassName = PicklistDependencyCheckService.getSpecsTestClassName();
+
+            if ( !PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg(targetOrgIdentifier) ) {
+
+                const confirmedDeploySelection = await vscode.window.showWarningMessage(
+                    `${specsTestClassName} was not found in "${targetOrgIdentifier}". The picklist dependency framework, specs, and test class must be deployed before the check can run.`,
+                    { modal: true },
+                    'Deploy and Run'
+                );
+
+                if ( confirmedDeploySelection !== 'Deploy and Run' ) {
+                    vscode.window.showInformationMessage('Picklist dependency check cancelled. Nothing was deployed.');
+                    return;
+                }
+
+                const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
+                const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
+
+                const deploySummary = PicklistDependencyCheckService.deployPicklistDependencyClasses(classesDirectoryPath, targetOrgIdentifier);
+                vscode.window.showInformationMessage(deploySummary);
+
+            }
+
+            const checkOutcome = PicklistDependencyCheckService.runPicklistDependencyTests(targetOrgIdentifier);
+
+            const report = PicklistDependencyCheckService.buildOutputChannelReport(targetOrgIdentifier, checkOutcome);
+            VSCodeWorkspaceService.showPicklistDependencyCheckReport(report);
+
+            const resultSummaryMessage = PicklistDependencyCheckService.buildResultSummaryMessage(checkOutcome);
+
+            if ( checkOutcome.passed ) {
+                vscode.window.showInformationMessage(resultSummaryMessage);
+            } else {
+                VSCodeWorkspaceService.showWarningMessage(resultSummaryMessage);
+            }
+
+        } catch(error) {
+
+            const commandName = 'runPicklistDependencyCheck';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }

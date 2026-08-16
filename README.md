@@ -29,6 +29,7 @@ Users have two choices of "Fake Data" implementations:
       - [Corresponding Video:](#corresponding-video-2)
     - [4. **Salesforce Treecipe: Insert Data Set by Directory**](#4-salesforce-treecipe-insert-data-set-by-directory)
     - [5. **Salesforce Treecipe: Generate Picklist Dependency Tests**](#5-salesforce-treecipe-generate-picklist-dependency-tests)
+    - [6. **Salesforce Treecipe: Run Picklist Dependency Check**](#6-salesforce-treecipe-run-picklist-dependency-check)
   - [VIDEO WALKTHROUGHS](#video-walkthroughs)
       - [Initiate Treecipe Configuration with expected Objects directory](#initiate-treecipe-configuration-with-expected-objects-directory)
       - [Generate Treecipe based on treecipe.config.jcon (keep an eye out for OOTB fields and "REMOVE ME" lines)](#generate-treecipe-based-on-treecipeconfigjcon-keep-an-eye-out-for-ootb-fields-and-remove-me-lines)
@@ -82,6 +83,7 @@ Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palet
 3. [Run Snowfakery by Recipe(Treecipe) to create FakeDataSet](#3-salesforce-treecipe-run-faker-by-recipe)
 4. [Insert Data Set by Directory](#4-salesforce-treecipe-insert-data-set-by-directory)
 5. [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests)
+6. [Run Picklist Dependency Check](#6-salesforce-treecipe-run-picklist-dependency-check)
 
 Note: **Select Faker Implementation** is also available from the Command Palette at any time to switch between the `faker-js` and `snowfakery` backends.
 
@@ -173,7 +175,7 @@ This command prompts the user for the following items:
 
 ### <a name="5-salesforce-treecipe-generate-picklist-dependency-tests"></a>5. **Salesforce Treecipe: Generate Picklist Dependency Tests**
 
-This command generates an Apex spec class that asserts your picklist dependencies still exist in an org, so a dependency an admin later rewires is caught in CI instead of surfacing as a confusing Collections API error at data-load time.
+This command generates an Apex test class that asserts your picklist dependencies still exist in an org, so a dependency an admin later rewires is caught by a failing test instead of surfacing as a confusing Collections API error at data-load time.
 
 **Prerequisite:** "Initiate Configuration File" must have been run, and the workspace must be a Salesforce DX project with an `sfdx-project.json`.
 
@@ -182,7 +184,8 @@ The command:
 1. Walks the `salesforceObjectsPath` from `treecipe.config.json`
 2. Emits one spec per picklist field that declares a `controllingField`, derived from the `valueSettings` in its field metadata
 3. Writes `PicklistDependencySpecs.cls` (and its `-meta.xml`) into the `classes` folder of the default package directory resolved from `sfdx-project.json`
-4. Scaffolds the Apex validation framework classes it depends on (`PicklistDependencySpec`, `PicklistDependencyValidator`, `SchemaPicklistDependencySource`, and supporting classes) if they are not already present in that folder
+4. Writes `PicklistDependencySpecsTest.cls`, an `@IsTest` class with one test method per object that asserts that object's specs against the org the test runs in, plus a guard method that fails when the spec registry is empty
+5. Scaffolds the Apex validation framework classes it depends on (`PicklistDependencySpec`, `PicklistDependencyValidator`, `SchemaPicklistDependencySource`, and supporting classes) if they are not already present in that folder
 
 Each controlling value is emitted as `expectAtLeast`, meaning the combinations found in your source metadata must still exist in the org while values the org has added since are tolerated. A controlling value that unlocks nothing is emitted as `expectNone`. Tightening a line to `expectExactly` is a deliberate edit — note that regenerating overwrites the file, so hand edits are lost.
 
@@ -192,7 +195,32 @@ Notes:
 * If no dependent picklists are found, an informational message is shown and no file is written
 * If `PicklistDependencySpecs.cls` already exists, you are prompted before it is overwritten
 
-Once generated, deploy the classes and run the validation against a target org with `npm run picklist-dependency-check`.
+The generated assertions read the org's **real** metadata. Schema describe is not isolated by `@IsTest`, so no test setup data and no `SeeAllData` are involved.
+
+Once generated, run them with "Run Picklist Dependency Check" below.
+
+---
+
+### <a name="6-salesforce-treecipe-run-picklist-dependency-check"></a>6. **Salesforce Treecipe: Run Picklist Dependency Check**
+
+This command deploys and runs the generated picklist dependency tests against an org and reports the result in VS Code.
+
+**Prerequisite:** "Generate Picklist Dependency Tests" must have been run, and the Salesforce CLI (`sf`) must be installed with at least one authorized org.
+
+The command:
+
+1. Lists your authenticated orgs and prompts you to pick the target
+2. Checks whether `PicklistDependencySpecsTest` exists in that org, and offers to deploy the classes if it does not — nothing is deployed without explicit confirmation
+3. Runs the test class with `sf apex run test`
+4. Writes a per-method report to the **Picklist Dependency Check** output channel and shows a pass/fail summary notification
+
+A failing method names the object, field, controlling value, and the specific missing values.
+
+Notes:
+
+* If no orgs are authenticated, you are told how to authorize one rather than shown an empty picker
+* Declining the deploy prompt exits cleanly and deploys nothing
+* The output channel is cleared on each run, so what you see always belongs to the run that just finished
 
 ---
 

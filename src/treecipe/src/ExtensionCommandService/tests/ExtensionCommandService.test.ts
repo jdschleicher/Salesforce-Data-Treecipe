@@ -26,10 +26,18 @@ jest.mock('vscode', () => ({
     FileType: { Directory: 2, File: 1, SymbolicLink: 64 }
 }), { virtual: true });
 
+jest.mock('@salesforce/core', () => ({
+    AuthInfo: { listAllAuthorizations: jest.fn() },
+    Org: { create: jest.fn() }
+}));
+
+import { AuthInfo } from '@salesforce/core';
+
 import { ExtensionCommandService } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
 
 describe('ExtensionCommandService', () => {
@@ -48,8 +56,11 @@ describe('ExtensionCommandService', () => {
             expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'] }]
         };
 
+        const specsTestClassFilePath = `${classesDirectoryPath}/PicklistDependencySpecsTest.cls`;
+
         let extensionCommandService: ExtensionCommandService;
         let writeSpecsClassFilesSpy: jest.SpyInstance;
+        let writeSpecsTestClassFilesSpy: jest.SpyInstance;
         let handleCapturedErrorSpy: jest.SpyInstance;
 
         function stubCollectionResult(specDetails: IPicklistDependencySpecDetail[], skippedFieldWarnings: string[] = []) {
@@ -77,11 +88,13 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyTestService, 'resolveDefaultPackageDirectoryPath').mockReturnValue('/workspace/force-app');
             jest.spyOn(PicklistDependencyTestService, 'getClassesDirectoryPath').mockReturnValue(classesDirectoryPath);
             jest.spyOn(PicklistDependencyTestService, 'getSpecsClassFilePath').mockReturnValue(specsClassFilePath);
+            jest.spyOn(PicklistDependencyTestService, 'getSpecsTestClassFilePath').mockReturnValue(specsTestClassFilePath);
             jest.spyOn(PicklistDependencyTestService, 'getSourceApiVersion').mockReturnValue('64.0');
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
                 .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: [] });
 
             writeSpecsClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue(specsClassFilePath);
+            writeSpecsTestClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsTestClassFiles').mockReturnValue(specsTestClassFilePath);
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
             // THE OBJECTS DIRECTORY EXISTS AND NOTHING HAS BEEN GENERATED YET UNLESS A TEST SAYS OTHERWISE
@@ -113,6 +126,38 @@ describe('ExtensionCommandService', () => {
             const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
             expect(informationMessage).toContain('1 picklist dependency spec(s)');
             expect(informationMessage).toContain(classesDirectoryPath);
+
+        });
+
+        test('given dependent picklists found, also writes the IsTest class that asserts the specs', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsTestClassFilesSpy).toHaveBeenCalledWith(
+                classesDirectoryPath,
+                expect.stringContaining('@IsTest'),
+                '64.0'
+            );
+
+            const emittedTestClassBody = writeSpecsTestClassFilesSpy.mock.calls[0][1];
+            expect(emittedTestClassBody).toContain('private class PicklistDependencySpecsTest {');
+            expect(emittedTestClassBody).toContain('static void Dependency_Example__c_picklistDependenciesMatchSourceMetadata()');
+            expect(emittedTestClassBody).toContain('static void specRegistryIsNotEmpty()');
+
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('PicklistDependencySpecsTest.cls');
+
+        });
+
+        test('given zero dependent picklists, writes neither the specs class nor the test class', async () => {
+
+            stubCollectionResult([]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+            expect(writeSpecsTestClassFilesSpy).not.toHaveBeenCalled();
 
         });
 
@@ -322,6 +367,160 @@ describe('ExtensionCommandService', () => {
 
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('changeFakerImplementationService');
+
+        });
+
+    });
+
+    describe('runPicklistDependencyCheck', () => {
+
+        const workspaceRoot = '/workspace';
+        const classesDirectoryPath = '/workspace/force-app/main/default/classes';
+
+        const authenticatedOrgDetail = {
+            targetOrgIdentifier: 'devHub',
+            username: 'dev@example.com',
+            alias: 'devHub'
+        };
+
+        const passingCheckOutcome = {
+            passed: true,
+            failureCount: 0,
+            methodOutcomes: [{ methodName: 'specRegistryIsNotEmpty', passed: true }]
+        };
+
+        const failingCheckOutcome = {
+            passed: false,
+            failureCount: 1,
+            methodOutcomes: [
+                { methodName: 'Account_picklistDependenciesMatchSourceMetadata', passed: false, message: 'drift' }
+            ]
+        };
+
+        let extensionCommandService: ExtensionCommandService;
+        let handleCapturedErrorSpy: jest.SpyInstance;
+        let runPicklistDependencyTestsSpy: jest.SpyInstance;
+        let deployPicklistDependencyClassesSpy: jest.SpyInstance;
+        let showReportSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+
+            jest.clearAllMocks();
+
+            extensionCommandService = new ExtensionCommandService();
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            showReportSpy = jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
+
+            jest.spyOn(PicklistDependencyTestService, 'resolveDefaultPackageDirectoryPath').mockReturnValue('/workspace/force-app');
+            jest.spyOn(PicklistDependencyTestService, 'getClassesDirectoryPath').mockReturnValue(classesDirectoryPath);
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: 'dev@example.com', aliases: ['devHub'] }
+            ]);
+
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockReturnValue(true);
+            runPicklistDependencyTestsSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
+                .mockReturnValue(passingCheckOutcome);
+            deployPicklistDependencyClassesSpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
+                .mockReturnValue('Deployed 8 component(s) to the target org.');
+
+            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg')
+                .mockResolvedValue(authenticatedOrgDetail.targetOrgIdentifier);
+
+            handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+        });
+
+        test('given a deployed test class and passing tests, reports the result and shows the report', async () => {
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub');
+            expect(showReportSpy).toHaveBeenCalled();
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('passed');
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given failing tests, warns rather than reporting success', async () => {
+
+            runPicklistDependencyTestsSpy.mockReturnValue(failingCheckOutcome);
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(showReportSpy).toHaveBeenCalled();
+            expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('failed'));
+
+        });
+
+        test('given no authenticated orgs, warns and never shows an empty quick pick', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([]);
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(VSCodeWorkspaceService.promptForAuthenticatedTargetOrg).not.toHaveBeenCalled();
+            expect(runPicklistDependencyTestsSpy).not.toHaveBeenCalled();
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toContain('No authenticated Salesforce orgs');
+
+        });
+
+        test('given a dismissed org quick pick, exits silently and runs nothing', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue(undefined);
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(runPicklistDependencyTestsSpy).not.toHaveBeenCalled();
+            expect(deployPicklistDependencyClassesSpy).not.toHaveBeenCalled();
+            expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a missing test class and a declined deploy prompt, deploys nothing and runs nothing', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockReturnValue(false);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+                expect.stringContaining('was not found in "devHub"'),
+                { modal: true },
+                'Deploy and Run'
+            );
+            expect(deployPicklistDependencyClassesSpy).not.toHaveBeenCalled();
+            expect(runPicklistDependencyTestsSpy).not.toHaveBeenCalled();
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('Nothing was deployed');
+
+        });
+
+        test('given a missing test class and a confirmed deploy, deploys then runs the check', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockReturnValue(false);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Deploy and Run');
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(deployPicklistDependencyClassesSpy).toHaveBeenCalledWith(classesDirectoryPath, 'devHub');
+            expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub');
+
+        });
+
+        test('given the Salesforce CLI is unavailable, routes the error through ErrorHandlingService', async () => {
+
+            runPicklistDependencyTestsSpy.mockImplementation(() => {
+                throw new Error('The Salesforce CLI ("sf") is not installed or not on PATH.');
+            });
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('not installed or not on PATH');
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('runPicklistDependencyCheck');
 
         });
 
