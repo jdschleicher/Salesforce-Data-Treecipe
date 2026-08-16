@@ -200,7 +200,8 @@ export class ExtensionCommandService {
 
             const remainingSkippedFieldCount = collectionResult.skippedFieldWarnings.length - maximumIndividualWarningsToShow;
             if ( remainingSkippedFieldCount > 0 ) {
-                VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) were skipped for the same reasons.`);
+                // THE SUPPRESSED SKIPS MAY BE A MIX OF INVALID API NAMES AND MISSING VALUE SETTINGS, SO NO SINGLE REASON IS CLAIMED
+                VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) were skipped. Each was skipped either for an invalid api name or for having no "valueSettings" markup.`);
             }
 
             if ( collectionResult.specDetails.length === 0 ) {

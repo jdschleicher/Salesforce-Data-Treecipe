@@ -68,12 +68,24 @@ export class PicklistDependencyTestService {
         return [...this.frameworkClassNames];
     }
 
-    static async collectSpecDetailsByObjectsDirectory(objectsDirectoryUri: vscode.Uri): Promise<IPicklistDependencyCollectionResult> {
+    /*
+        visitedDirectoryPaths guards the recursion. Symlinked directories are walked (see the
+        bitmask check below), so a link pointing back up the tree -- "objects/Thing__c/loop"
+        resolving to "objects" -- would otherwise recurse until the stack is exhausted.
+    */
+    static async collectSpecDetailsByObjectsDirectory(objectsDirectoryUri: vscode.Uri,
+                                                        visitedDirectoryPaths: Set<string> = new Set()): Promise<IPicklistDependencyCollectionResult> {
 
         let collectedResult: IPicklistDependencyCollectionResult = {
             specDetails: [],
             skippedFieldWarnings: []
         };
+
+        const currentDirectoryPath = this.getRealDirectoryPath(objectsDirectoryUri.fsPath);
+        if ( visitedDirectoryPaths.has(currentDirectoryPath) ) {
+            return collectedResult;
+        }
+        visitedDirectoryPaths.add(currentDirectoryPath);
 
         const directoryEntries = await vscode.workspace.fs.readDirectory(objectsDirectoryUri);
         if ( !directoryEntries || directoryEntries.length === 0 ) {
@@ -106,7 +118,7 @@ export class PicklistDependencyTestService {
 
             } else {
 
-                const nestedResult = await this.collectSpecDetailsByObjectsDirectory(childDirectoryUri);
+                const nestedResult = await this.collectSpecDetailsByObjectsDirectory(childDirectoryUri, visitedDirectoryPaths);
                 collectedResult.specDetails = collectedResult.specDetails.concat(nestedResult.specDetails);
                 collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(nestedResult.skippedFieldWarnings);
 
@@ -115,6 +127,21 @@ export class PicklistDependencyTestService {
         }
 
         return collectedResult;
+
+    }
+
+    /*
+        Resolved through symlinks so two paths reaching the same directory compare equal. Falls
+        back to the given path when it cannot be resolved, which keeps the walk working against a
+        mocked or virtual filesystem.
+    */
+    static getRealDirectoryPath(directoryPath: string): string {
+
+        try {
+            return fs.realpathSync(directoryPath);
+        } catch {
+            return path.resolve(directoryPath);
+        }
 
     }
 
@@ -163,11 +190,13 @@ export class PicklistDependencyTestService {
                 and emitting it would splice unvetted text into an Apex string literal. Skipping is
                 both the safe and the honest result.
             */
-            const invalidApiName = [objectApiName, fieldDetail.apiName, fieldDetail.controllingField]
-                .find(apiName => !this.isValidSalesforceApiName(apiName));
+            const apiNamesToValidate = [objectApiName, fieldDetail.apiName, fieldDetail.controllingField];
+            // findIndex rather than find: an invalid entry could itself be undefined, which find cannot distinguish from "nothing matched"
+            const invalidApiNameIndex = apiNamesToValidate.findIndex(apiName => !this.isValidSalesforceApiName(apiName));
 
-            if ( invalidApiName !== undefined ) {
+            if ( invalidApiNameIndex !== -1 ) {
 
+                const invalidApiName = apiNamesToValidate[invalidApiNameIndex];
                 skippedFieldWarnings.push(`Skipped dependent picklist "${objectApiName}.${fieldDetail.apiName}": the api name "${invalidApiName}" is not a valid Salesforce api name (letters, numbers and underscores only). No spec was generated for this field.`);
                 return;
 
@@ -353,11 +382,30 @@ ${specsListMarkup}
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const resolvedPackageDirectoryPath = path.resolve(resolvedWorkspaceRoot, defaultPackageDirectory.path);
 
-        if ( !resolvedPackageDirectoryPath.startsWith(resolvedWorkspaceRoot + path.sep) ) {
+        if ( !this.isPathContainedInWorkspace(resolvedPackageDirectoryPath, resolvedWorkspaceRoot) ) {
             throw new Error(`The package directory "${defaultPackageDirectory.path}" in "${sfdxProjectFilePath}" resolves to "${resolvedPackageDirectoryPath}", which is outside the workspace. Use a package directory inside the project and run the command again.`);
         }
 
         return resolvedPackageDirectoryPath;
+
+    }
+
+    /*
+        A package directory of "." is legal in sfdx-project.json and resolves to the workspace root
+        itself, so the root is treated as contained. Symlinks are resolved on both sides where they
+        exist, otherwise a link inside the workspace pointing outside it would satisfy a plain
+        string comparison. The trailing separator stops "/work-evil" matching a "/work" root.
+    */
+    static isPathContainedInWorkspace(resolvedPath: string, resolvedWorkspaceRoot: string): boolean {
+
+        const realPath = this.getRealDirectoryPath(resolvedPath);
+        const realWorkspaceRoot = this.getRealDirectoryPath(resolvedWorkspaceRoot);
+
+        const isContained = (candidatePath: string, rootPath: string) => (
+            candidatePath === rootPath || candidatePath.startsWith(rootPath + path.sep)
+        );
+
+        return isContained(resolvedPath, resolvedWorkspaceRoot) && isContained(realPath, realWorkspaceRoot);
 
     }
 

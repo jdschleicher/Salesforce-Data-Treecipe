@@ -198,6 +198,56 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        test('given a symlinked object directory, walks it rather than skipping it', async () => {
+
+            // VS CODE REPORTS A SYMLINKED DIRECTORY AS THE "Directory | SymbolicLink" BITMASK, NOT AS Directory
+            const symlinkedDirectoryType = vscode.FileType.Directory | vscode.FileType.SymbolicLink;
+
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockImplementation(async (directoryUri: any) => {
+
+                if ( directoryUri.fsPath.endsWith('/objects') ) {
+                    return [['Dependency_Example__c', symlinkedDirectoryType]];
+                }
+                if ( directoryUri.fsPath.endsWith('/Dependency_Example__c') ) {
+                    return [['fields', vscode.FileType.Directory]];
+                }
+                return fs.readdirSync(mockDependencyExampleFieldsPath, { withFileTypes: true })
+                    .map(directoryEntry => [directoryEntry.name, vscode.FileType.File]);
+
+            });
+
+            (vscode.workspace.fs.readFile as jest.Mock).mockImplementation(async (fileUri: any) => {
+                return fs.readFileSync(path.join(mockDependencyExampleFieldsPath, path.basename(fileUri.fsPath)));
+            });
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                vscode.Uri.file('/metadata/objects')
+            );
+
+            expect(collectionResult.specDetails.length).toBeGreaterThan(0);
+
+        });
+
+        /*
+            Symlinked directories are walked, so a link pointing back up the tree would recurse
+            until the stack is exhausted without a visited guard.
+        */
+        test('given a symlink loop back to an ancestor, terminates instead of recursing forever', async () => {
+
+            const symlinkedDirectoryType = vscode.FileType.Directory | vscode.FileType.SymbolicLink;
+
+            // EVERY DIRECTORY REPORTS A "loop" CHILD, AND realpath RESOLVES THEM ALL TO THE SAME DIRECTORY
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([['loop', symlinkedDirectoryType]]);
+            jest.spyOn(PicklistDependencyTestService, 'getRealDirectoryPath').mockReturnValue('/metadata/objects');
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                vscode.Uri.file('/metadata/objects')
+            );
+
+            expect(collectionResult.specDetails).toHaveLength(0);
+
+        });
+
         test('given an empty directory, returns an empty collection result', async () => {
 
             (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([]);
@@ -410,6 +460,41 @@ describe('PicklistDependencyTestService', () => {
             const resolvedPackageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath('/workspace/project');
 
             expect(resolvedPackageDirectoryPath).toBe(path.resolve('/workspace/project', 'packages/core'));
+
+        });
+
+        /*
+            "." is a legal packageDirectories path for a project that keeps metadata at the repo
+            root, and resolves to the workspace root itself.
+        */
+        test('given a package directory of ".", resolves the workspace root rather than rejecting it', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'realpathSync').mockImplementation((checkedPath: any) => String(checkedPath));
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                packageDirectories: [{ path: '.', default: true }]
+            }));
+
+            const resolvedPackageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath('/workspace/project');
+
+            expect(resolvedPackageDirectoryPath).toBe(path.resolve('/workspace/project'));
+
+        });
+
+        test('given a package directory whose real path escapes the workspace via a symlink, throws', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                packageDirectories: [{ path: 'force-app', default: true }]
+            }));
+
+            // THE PATH STRING IS INSIDE THE WORKSPACE BUT RESOLVES OUTSIDE IT
+            jest.spyOn(fs, 'realpathSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).includes('force-app') ? '/somewhere/else' : String(checkedPath);
+            });
+
+            expect(() => PicklistDependencyTestService.resolveDefaultPackageDirectoryPath('/workspace/project'))
+                .toThrow(/outside the workspace/);
 
         });
 

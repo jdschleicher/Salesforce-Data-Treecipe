@@ -61,11 +61,11 @@ describe('ExtensionCommandService', () => {
 
             /*
                 The jest.fn instances inside the vscode module factory are created once for the
-                module, so restoreMocks does not clear them -- without an explicit reset, calls and
-                queued resolved values leak from one test into the next.
+                module, so restoreMocks does not clear them -- without this, calls and queued
+                resolved values leak from one test into the next. clearAllMocks covers every mock
+                in the factory rather than only the two this suite currently asserts on.
             */
-            (vscode.window.showInformationMessage as jest.Mock).mockReset();
-            (vscode.window.showWarningMessage as jest.Mock).mockReset();
+            jest.clearAllMocks();
 
             extensionCommandService = new ExtensionCommandService();
 
@@ -97,7 +97,17 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(classesDirectoryPath, expect.stringContaining('PicklistDependencySpecs'), '64.0');
+            /*
+                Asserted on real spec content, not on the class declaration: buildSpecsApexClassBody
+                emits "public class PicklistDependencySpecs" even for an empty spec list, so matching
+                the declaration would pass even if every spec had been dropped.
+            */
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(
+                classesDirectoryPath,
+                expect.stringContaining(`forField('Dependency_Example__c', 'Neighborhood__c')`),
+                '64.0'
+            );
+            expect(writeSpecsClassFilesSpy.mock.calls[0][1]).toContain(`.expectAtLeast('cle', new List<String>{ 'ohiocity' })`);
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
 
             const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
