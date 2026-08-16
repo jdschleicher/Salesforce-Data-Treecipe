@@ -5,27 +5,34 @@ on:
     branches: [ main ]
     types: [ closed ]
 
+# This job holds VSCE_PAT. It reads the repository and publishes to the Marketplace; it needs
+# no write access to repository contents.
+permissions:
+  contents: read
+
 jobs:
 
   Publish-Extension:
 
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    
+
     steps:
 
     - name: Checkout Current Repository
       uses: actions/checkout@v4
-    
+
     - name: Use Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '20.x'
         cache: 'npm'
-    
+
+    # "--ignore-scripts" keeps dependency install hooks from executing in the job that holds
+    # VSCE_PAT. No dependency builds a native addon, so nothing needs them.
     - name: Install dependencies
-      run: npm ci
-    
+      run: npm ci --ignore-scripts
+
     - name: Publish VS Code Extension
       shell: pwsh
       run: |
@@ -34,9 +41,10 @@ jobs:
           Write-Host "VSCode is not set. Skipping publish."
           exit 0
         }
-        
-        # Install vsce globally
-        npm install -g @vscode/vsce
-        
-        # Publish the extension
+
+        # Pinned rather than floating: this runs in the job holding VSCE_PAT, so a hijacked
+        # release of the publish tool itself would execute with the token in scope.
+        npm install -g @vscode/vsce@3.9.2
+
+        # vsce publish runs "vscode:prepublish" (npm run compile) before packaging
         vsce publish -p ${{ secrets.VSCE_PAT }}

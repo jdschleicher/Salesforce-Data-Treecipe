@@ -1,0 +1,320 @@
+import * as fs from 'fs';
+
+import * as matchers from 'jest-extended';
+expect.extend(matchers);
+
+import * as vscode from 'vscode';
+
+jest.mock('vscode', () => ({
+    workspace: {
+        workspaceFolders: undefined,
+        getConfiguration: jest.fn().mockReturnValue({ get: jest.fn(), update: jest.fn() }),
+        fs: { readDirectory: jest.fn(), readFile: jest.fn() }
+    },
+    Uri: {
+        file: (filePath: string) => ({ fsPath: filePath }),
+        joinPath: jest.fn()
+    },
+    window: {
+        showWarningMessage: jest.fn(),
+        showInformationMessage: jest.fn(),
+        showQuickPick: jest.fn(),
+        showTextDocument: jest.fn()
+    },
+    commands: { registerCommand: jest.fn() },
+    ConfigurationTarget: { Workspace: 2 },
+    FileType: { Directory: 2, File: 1, SymbolicLink: 64 }
+}), { virtual: true });
+
+import { ExtensionCommandService } from "../ExtensionCommandService";
+import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
+import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
+import { PicklistDependencyTestService, IPicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
+
+describe('ExtensionCommandService', () => {
+
+    describe('generatePicklistDependencyTests', () => {
+
+        const extensionPath = '/extension';
+        const workspaceRoot = '/workspace';
+        const classesDirectoryPath = '/workspace/force-app/main/default/classes';
+        const specsClassFilePath = `${classesDirectoryPath}/PicklistDependencySpecs.cls`;
+
+        const specDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Dependency_Example__c',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'] }]
+        };
+
+        let extensionCommandService: ExtensionCommandService;
+        let writeSpecsClassFilesSpy: jest.SpyInstance;
+        let handleCapturedErrorSpy: jest.SpyInstance;
+
+        function stubCollectionResult(specDetails: IPicklistDependencySpecDetail[], skippedFieldWarnings: string[] = []) {
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockResolvedValue({ specDetails, skippedFieldWarnings });
+        }
+
+        beforeEach(() => {
+
+            /*
+                The jest.fn instances inside the vscode module factory are created once for the
+                module, so restoreMocks does not clear them -- without an explicit reset, calls and
+                queued resolved values leak from one test into the next.
+            */
+            (vscode.window.showInformationMessage as jest.Mock).mockReset();
+            (vscode.window.showWarningMessage as jest.Mock).mockReset();
+
+            extensionCommandService = new ExtensionCommandService();
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('./force-app/main/default/objects');
+
+            jest.spyOn(PicklistDependencyTestService, 'resolveDefaultPackageDirectoryPath').mockReturnValue('/workspace/force-app');
+            jest.spyOn(PicklistDependencyTestService, 'getClassesDirectoryPath').mockReturnValue(classesDirectoryPath);
+            jest.spyOn(PicklistDependencyTestService, 'getSpecsClassFilePath').mockReturnValue(specsClassFilePath);
+            jest.spyOn(PicklistDependencyTestService, 'getSourceApiVersion').mockReturnValue('64.0');
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: [] });
+
+            writeSpecsClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue(specsClassFilePath);
+            handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            // THE OBJECTS DIRECTORY EXISTS AND NOTHING HAS BEEN GENERATED YET UNLESS A TEST SAYS OTHERWISE
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).includes('objects');
+            });
+
+        });
+
+        test('given dependent picklists found, writes the specs class and reports the destination', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(classesDirectoryPath, expect.stringContaining('PicklistDependencySpecs'), '64.0');
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
+            expect(informationMessage).toContain('1 picklist dependency spec(s)');
+            expect(informationMessage).toContain(classesDirectoryPath);
+
+        });
+
+        test('given zero dependent picklists, shows an informational message and writes nothing', async () => {
+
+            stubCollectionResult([]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('No dependent picklists were found');
+
+        });
+
+        test('given a missing objects directory, reports an actionable error and writes nothing', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+
+            const capturedError = handleCapturedErrorSpy.mock.calls[0][0];
+            expect(capturedError.message).toContain('No objects directory found');
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('generatePicklistDependencyTests');
+
+        });
+
+        test('given an existing specs class and a declined overwrite prompt, writes nothing', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+                expect.stringContaining('already exist'),
+                { modal: true },
+                'Overwrite'
+            );
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given an existing specs class and a confirmed overwrite, writes the file', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Overwrite');
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+
+        });
+
+        test('given framework classes that could not be supplied, warns that the generated class will not compile', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: ['PicklistDependencySpec', 'PicklistDependencyValidator'] });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => call[0]);
+            const unavailableWarning = warningMessages.find(message => message.includes('will not compile'));
+
+            expect(unavailableWarning).toBeDefined();
+            expect(unavailableWarning).toContain('PicklistDependencySpec');
+
+        });
+
+        test('given scaffolded framework classes, names them in the success message', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue({ scaffoldedClassNames: ['PicklistDependencySpec'], unavailableClassNames: [] });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('Also scaffolded');
+
+        });
+
+        /*
+            A managed package declaring dependent picklists without valueSettings can produce many
+            skips, and VS Code shows notifications one at a time.
+        */
+        test('given more skipped fields than the notification cap, shows three then one aggregate', async () => {
+
+            const skippedFieldWarnings = Array.from({ length: 10 }, (unusedValue, index) => `skipped field ${index}`);
+            stubCollectionResult([specDetail], skippedFieldWarnings);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => call[0]);
+
+            expect(warningMessages).toHaveLength(4);
+            expect(warningMessages.slice(0, 3)).toEqual(['skipped field 0', 'skipped field 1', 'skipped field 2']);
+            expect(warningMessages[3]).toContain('7 more dependent picklist field(s) were skipped');
+
+        });
+
+        test('given fewer skipped fields than the cap, shows each one and no aggregate', async () => {
+
+            stubCollectionResult([specDetail], ['only skipped field']);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => call[0]);
+
+            expect(warningMessages).toEqual(['only skipped field']);
+
+        });
+
+        test('given no workspace, reports the error rather than throwing out of the command', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given package directory resolution failure, routes the actionable error and writes nothing', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'resolveDefaultPackageDirectoryPath').mockImplementation(() => {
+                throw new Error('No "sfdx-project.json" found at "/workspace/sfdx-project.json".');
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('sfdx-project.json');
+
+        });
+
+    });
+
+    describe('initiateTreecipeConfigurationSetup', () => {
+
+        test('given a successful setup, delegates to ConfigurationService and reports no error', async () => {
+
+            const createConfigurationFileSpy = jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockResolvedValue(undefined);
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            await new ExtensionCommandService().initiateTreecipeConfigurationSetup();
+
+            expect(createConfigurationFileSpy).toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a failure, routes it through ErrorHandlingService under the command name', async () => {
+
+            jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockRejectedValue(new Error('setup blew up'));
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            await new ExtensionCommandService().initiateTreecipeConfigurationSetup();
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('initiateTreecipeConfigurationSetup');
+
+        });
+
+    });
+
+    describe('changeFakerImplementationService', () => {
+
+        test('given a selected faker service, persists it to both the extension config and the treecipe config file', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockResolvedValue('faker-js');
+            const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation(() => undefined);
+            jest.spyOn(ConfigurationService, 'getTreecipeConfigurationDetail').mockReturnValue({
+                salesforceObjectsPath: './force-app/main/default/objects',
+                dataFakerService: 'snowfakery'
+            });
+            const updateTreecipeConfigFileSpy = jest.spyOn(ConfigurationService, 'updateTreecipeConfigFile').mockResolvedValue(undefined);
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            await new ExtensionCommandService().changeFakerImplementationService();
+
+            expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('selectedFakerService', 'faker-js');
+            expect(updateTreecipeConfigFileSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ dataFakerService: 'faker-js' })
+            );
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a failure reading the treecipe config, routes it through ErrorHandlingService', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'promptForFakerServiceImplementation').mockResolvedValue('faker-js');
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation(() => undefined);
+            jest.spyOn(ConfigurationService, 'getTreecipeConfigurationDetail').mockImplementation(() => {
+                throw new Error('missing treecipe configuration setup');
+            });
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            await new ExtensionCommandService().changeFakerImplementationService();
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('changeFakerImplementationService');
+
+        });
+
+    });
+
+});

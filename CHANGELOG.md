@@ -37,6 +37,19 @@ Resolves [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/6
 - Skipped-field warnings are capped at three individual notifications followed by an aggregate count, so a managed package declaring dependent picklists without `valueSettings` cannot bury the user in toasts
 - The directory walk tests `entryType` as a bitmask so a symlinked object directory is still walked, and accumulates results with `concat` rather than spread-into-push, which throws once an accumulated subtree exceeds the engine's argument limit
 
+### CI and supply chain hardening
+
+- `build.yaml` installs with `npm ci --ignore-scripts` instead of bare `npm install`. `npm ci` installs exactly what `package-lock.json` records, so a hijacked patch release inside an existing `^` version range cannot be pulled into CI — which is the axios-incident path and the reason the floating pins in `package.json` were a live risk rather than a theoretical one. `--ignore-scripts` additionally stops dependency install hooks from executing on the runner; verified that no dependency in this project builds a native addon, so nothing needs them
+- `build.yaml` now runs `npm run compile` and `npm run lint`. The job was named `Compile-and-Test` but never compiled: `ts-jest` typechecks only files reachable from a test, and nothing imports `src/extension.ts`, so a type error in the extension entry point passed PR CI and first surfaced during release
+- `release.yaml` pins `@vscode/vsce@3.9.2` rather than installing it unpinned. That install runs in the job holding `VSCE_PAT`, so a hijacked release of the publish tool itself would execute with the token in scope. The pinned version was verified to package this extension identically (103 files, 610.32 KB) before pinning
+- `release.yaml` also uses `--ignore-scripts` and moves to `actions/setup-node@v4`, matching `build.yaml`
+- Both workflows declare least-privilege `permissions: contents: read`; neither writes to the repository
+- Dependencies were deliberately **not** re-pinned to exact versions. With `package-lock.json` committed and `npm ci` in use, the lockfile already determines exact resolution transitively, so exact pins in `package.json` would be redundant defense that makes routine dependency updates noisier. The meaningful fix was replacing `npm install` with `npm ci`
+
+### Tests
+
+- `ExtensionCommandService` gains its first `tests/` folder, covering the new command handler end to end: the write path, zero-dependent-picklist and missing-objects-directory paths, both branches of the overwrite prompt, unavailable and scaffolded framework classes, the skipped-field notification cap, and error routing through `ErrorHandlingService`. `initiateTreecipeConfigurationSetup` and `changeFakerImplementationService` are covered too. Note this *lowers* the reported total percentage while increasing tested code — the file was previously absent from the coverage report entirely, because no test imported it
+
 ### Verification
 
 - The generated Apex was validated against a live org via a check-only deploy alongside the framework classes, so the emitted builder calls and the escaping of values containing quotes, backslashes, and ampersands are confirmed to compile rather than merely inferred. A test also asserts every emitted builder method exists on the shipped `PicklistDependencySpec`, so a future change to that fluent API cannot silently break the generator
