@@ -48,6 +48,7 @@ Applied after a three-reviewer pass (architecture, performance, security) on PR 
 - **The classes directory is re-checked for workspace containment.** Containment was enforced on the package directory, then `main/default/classes` was appended unchecked — and `writeFileSync` follows symlinks
 - **The deploy confirmation lists every file** it will send. Framework classes are scaffolded only when absent, so a workspace carrying its own copy deploys that copy; the user has to see which files those are
 - **The output channel is disposed** via `context.subscriptions`, and typed `OrgAuthorization` replaces the `any[]` on the authorization boundary
+- **The same Windows defect is fixed in `scripts/apex/run-picklist-dependency-checks.js`**, where it originated in [#60](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/60) and from which it was copied — comment included. That runner now enables the shell on Windows with quoted arguments, validates the `--target-org` value (which can arrive from argv or `SF_TARGET_ORG`, and on the shell path would otherwise be interpreted by `cmd.exe`), and reports `EINVAL` distinctly from `ENOENT`
 
 ### Verified against a live org
 

@@ -26,10 +26,36 @@ const EXIT_CANNOT_RUN = 2;
 
 const RESULT_MARKER = 'PICKLIST_DEPENDENCY_CHECK_RESULT=';
 
-// On Windows the CLI is a .cmd shim, and since the Node fix for CVE-2024-27980 spawn
-// refuses to execute .cmd/.bat without a shell. Naming the shim directly keeps the argv
-// form (and its immunity to metacharacters) instead of falling back to shell: true.
-const SF_EXECUTABLE = process.platform === 'win32' ? 'sf.cmd' : 'sf';
+// On Windows the CLI is a .cmd shim, and a shim cannot be executed the way a real binary can.
+// Since the Node fix for CVE-2024-27980, spawning a .cmd or .bat WITH arguments and WITHOUT a
+// shell fails outright with EINVAL -- so naming "sf.cmd" directly does not preserve the argv
+// form, it breaks every invocation on win32. The shell is therefore enabled on Windows only,
+// with every argument quoted below. Other platforms keep the argv form exactly as before.
+const IS_WINDOWS = process.platform === 'win32';
+const SF_EXECUTABLE = IS_WINDOWS ? 'sf.cmd' : 'sf';
+
+// A Salesforce org alias or username. Enforced because the value can come from argv or the
+// environment, and on the Windows shell path an unvalidated value would be interpreted by
+// cmd.exe rather than passed through. The leading character excludes "-" so a value can never
+// be read as a flag instead of a value.
+const TARGET_ORG_PATTERN = /^[A-Za-z0-9._@+][A-Za-z0-9._@+-]*$/;
+
+// Double quotes are the only quoting cmd.exe honours. A value containing one is rejected
+// rather than escaped -- no real alias, username or path contains one, so rejecting beats
+// guessing at cmd.exe's escaping rules.
+function quoteWindowsArgument(argumentValue) {
+    if (argumentValue.includes('"')) {
+        throw new Error(`the value ${argumentValue} contains a double quote and cannot be passed to the Salesforce CLI on Windows.`);
+    }
+    return `"${argumentValue}"`;
+}
+
+function buildSpawnInvocation(sfArgs) {
+    if (IS_WINDOWS) {
+        return { args: sfArgs.map(quoteWindowsArgument), options: { shell: true } };
+    }
+    return { args: sfArgs, options: {} };
+}
 
 // Both spellings must be accepted. Silently ignoring --target-org=alias would fall through
 // to the default org and check the wrong one -- passing green while verifying nothing,
@@ -62,14 +88,31 @@ function main() {
 
     const sfArgs = ['apex', 'run', '--file', apexFile, '--json'];
     if (targetOrg) {
+        if (!TARGET_ORG_PATTERN.test(targetOrg)) {
+            fail(`"${targetOrg}" is not a usable Salesforce org alias or username.`);
+        }
         sfArgs.push('--target-org', targetOrg);
     }
 
-    const result = spawnSync(SF_EXECUTABLE, sfArgs, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 64 });
+    let invocation;
+    try {
+        invocation = buildSpawnInvocation(sfArgs);
+    } catch (invocationError) {
+        fail(invocationError.message);
+    }
+
+    const result = spawnSync(SF_EXECUTABLE, invocation.args, {
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024 * 64,
+        ...invocation.options
+    });
 
     if (result.error) {
         if (result.error.code === 'ENOENT') {
             fail(`the Salesforce CLI ("${SF_EXECUTABLE}") is not installed or not on PATH. Install it and authorize a target org.`);
+        }
+        if (result.error.code === 'EINVAL') {
+            fail(`the Salesforce CLI ("${SF_EXECUTABLE}") could not be started (EINVAL). Confirm the CLI is installed and on PATH.`);
         }
         fail(`failed to spawn the Salesforce CLI: ${result.error.message}`);
     }
