@@ -225,6 +225,19 @@ export class ConfigurationService {
 
     }
 
+    static getPicklistDependencyResultsFolderName() {
+        const picklistDependencyResultsFolderName = 'PicklistDependencyResults';
+        return picklistDependencyResultsFolderName;
+    }
+
+    static getPicklistDependencyResultsFolderPath() {
+
+        const defaultTreecipeConfigurationFolder = this.getDefaultTreecipeConfigurationFolderName();
+        const picklistDependencyResultsFolderName = this.getPicklistDependencyResultsFolderName();
+        return (`${defaultTreecipeConfigurationFolder}/${picklistDependencyResultsFolderName}`);
+
+    }
+
     static getTreecipeObjectsWrapperName() {
 
         const treecipeObjectsWrapperPrefix = 'treecipeObjectsWrapper';

@@ -439,7 +439,42 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg')
                 .mockResolvedValue(authenticatedOrgDetail.targetOrgIdentifier);
 
+            // STUBBED BY DEFAULT SO THE SUITE NEVER WRITES TO A REAL TREECIPE DIRECTORY
+            jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts')
+                .mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-08-16T14-22-08');
+
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+        });
+
+        test('given a completed run, writes the result artifacts into the treecipe directory', async () => {
+
+            const writeCheckResultArtifactsSpy = jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts')
+                .mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-08-16T14-22-08');
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(writeCheckResultArtifactsSpy).toHaveBeenCalledWith(
+                expect.stringContaining('treecipe/PicklistDependencyResults'),
+                'devHub',
+                expect.any(String),
+                passingCheckOutcome
+            );
+
+            // THE USER IS TOLD WHERE THE ARTIFACTS LANDED, NOT LEFT TO GO LOOKING
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0])
+                .toContain('check-devHub-2026-08-16T14-22-08');
+
+        });
+
+        test('given a cancelled run, writes no artifacts', async () => {
+
+            const writeCheckResultArtifactsSpy = jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts');
+            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue(undefined);
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(writeCheckResultArtifactsSpy).not.toHaveBeenCalled();
 
         });
 

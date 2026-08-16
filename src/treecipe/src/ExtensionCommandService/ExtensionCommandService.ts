@@ -376,12 +376,28 @@ export class ExtensionCommandService {
             const report = PicklistDependencyCheckService.buildOutputChannelReport(targetOrgIdentifier, checkOutcome);
             VSCodeWorkspaceService.showPicklistDependencyCheckReport(report);
 
+            /*
+                The output channel is cleared on every run, so the results are also written to the
+                treecipe directory -- a run that found drift leaves something committable and
+                diffable behind rather than only an on screen report.
+            */
+            const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+            const resultsFolderPath = `${workspaceRoot}/${ConfigurationService.getPicklistDependencyResultsFolderPath()}`;
+
+            const runResultsFolderPath = PicklistDependencyCheckService.writeCheckResultArtifacts(
+                resultsFolderPath,
+                targetOrgIdentifier,
+                isoDateTimestamp,
+                checkOutcome
+            );
+
             const resultSummaryMessage = PicklistDependencyCheckService.buildResultSummaryMessage(checkOutcome);
+            const summaryWithArtifactPath = `${resultSummaryMessage} Results written to "${runResultsFolderPath}".`;
 
             if ( checkOutcome.passed ) {
-                vscode.window.showInformationMessage(resultSummaryMessage);
+                vscode.window.showInformationMessage(summaryWithArtifactPath);
             } else {
-                VSCodeWorkspaceService.showWarningMessage(resultSummaryMessage);
+                VSCodeWorkspaceService.showWarningMessage(summaryWithArtifactPath);
             }
 
         } catch(error) {

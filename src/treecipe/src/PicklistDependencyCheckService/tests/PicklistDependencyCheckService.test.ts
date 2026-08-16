@@ -557,6 +557,111 @@ describe('shouldNameEveryFileInTheDeployConfirmation', () => {
 
 });
 
+describe('shouldPersistCheckResultsToTheTreecipeDirectory', () => {
+
+    const isoDateTimestamp = '2026-08-16T14-22-08';
+
+    function buildCheckOutcome(passed: boolean) {
+        return PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
+            buildTestRunPayload(passed ? passingTestMethods : failingTestMethods)
+        );
+    }
+
+    it('shouldNameTheRunFolderByOrgAndTimestamp', () => {
+
+        const resultsFolderName = PicklistDependencyCheckService.buildResultsFolderName('devHub', isoDateTimestamp);
+
+        expect(resultsFolderName).toBe('check-devHub-2026-08-16T14-22-08');
+
+    });
+
+    it('shouldReplaceCharactersThatReadPoorlyInADirectoryListing', () => {
+
+        // A USERNAME IS A VALID TARGET ORG IDENTIFIER AND CONTAINS AN "@"
+        const resultsFolderName = PicklistDependencyCheckService.buildResultsFolderName('test-abc@example.com', isoDateTimestamp);
+
+        expect(resultsFolderName).not.toContain('@');
+        expect(resultsFolderName).toStartWith('check-test-abc-example.com');
+
+    });
+
+    it('shouldWriteMachineReadableJsonCarryingEveryMethodOutcome', () => {
+
+        const resultsJson = JSON.parse(
+            PicklistDependencyCheckService.buildResultsJson('devHub', isoDateTimestamp, buildCheckOutcome(false))
+        );
+
+        expect(resultsJson.targetOrg).toBe('devHub');
+        expect(resultsJson.ranAt).toBe(isoDateTimestamp);
+        expect(resultsJson.passed).toBeFalse();
+        expect(resultsJson.failureCount).toBe(1);
+        expect(resultsJson.methodsRun).toBe(2);
+        expect(resultsJson.methodOutcomes).toHaveLength(2);
+        expect(resultsJson.methodOutcomes[0].message).toContain('Account.Type @ "Customer"');
+
+    });
+
+    it('shouldWriteHumanReadableMarkdownNamingTheOrgAndTheFailures', () => {
+
+        const resultsMarkdown = PicklistDependencyCheckService.buildResultsMarkdown('devHub', isoDateTimestamp, buildCheckOutcome(false));
+
+        expect(resultsMarkdown).toContain('# Picklist Dependency Check');
+        expect(resultsMarkdown).toContain('**Target org:** devHub');
+        expect(resultsMarkdown).toContain('**Result:** FAIL');
+        expect(resultsMarkdown).toContain('| FAIL | `Account_picklistDependenciesMatchSourceMetadata` |');
+        expect(resultsMarkdown).toContain('## Failure detail');
+        expect(resultsMarkdown).toContain('MISSING_VALUES');
+
+    });
+
+    it('shouldOmitTheFailureDetailSectionWhenEverythingPassed', () => {
+
+        const resultsMarkdown = PicklistDependencyCheckService.buildResultsMarkdown('devHub', isoDateTimestamp, buildCheckOutcome(true));
+
+        expect(resultsMarkdown).toContain('**Result:** PASS');
+        expect(resultsMarkdown).not.toContain('## Failure detail');
+
+    });
+
+    it('shouldWriteBothArtifactsIntoATimestampedRunFolder', () => {
+
+        const mkdirSyncSpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+        const writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+
+        const runResultsFolderPath = PicklistDependencyCheckService.writeCheckResultArtifacts(
+            '/workspace/treecipe/PicklistDependencyResults',
+            'devHub',
+            isoDateTimestamp,
+            buildCheckOutcome(false)
+        );
+
+        expect(runResultsFolderPath).toContain('check-devHub-2026-08-16T14-22-08');
+        expect(mkdirSyncSpy).toHaveBeenCalledWith(runResultsFolderPath, { recursive: true });
+
+        const writtenFilePaths = writeFileSyncSpy.mock.calls.map(writeCall => String(writeCall[0]));
+        expect(writtenFilePaths.some(writtenPath => writtenPath.endsWith('results.json'))).toBeTrue();
+        expect(writtenFilePaths.some(writtenPath => writtenPath.endsWith('report.md'))).toBeTrue();
+
+    });
+
+    it('shouldPersistAPassingRunTooSoAGreenCheckIsAlsoOnRecord', () => {
+
+        jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+        const writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+
+        PicklistDependencyCheckService.writeCheckResultArtifacts(
+            '/workspace/treecipe/PicklistDependencyResults',
+            'devHub',
+            isoDateTimestamp,
+            buildCheckOutcome(true)
+        );
+
+        expect(writeFileSyncSpy).toHaveBeenCalledTimes(2);
+
+    });
+
+});
+
 describe('shouldHandleTheWindowsCliShim', () => {
 
     afterEach(() => {

@@ -213,6 +213,7 @@ The command:
 2. Checks whether `PicklistDependencySpecsTest` exists in that org, and offers to deploy the classes if it does not — nothing is deployed without explicit confirmation
 3. Runs the test class with `sf apex run test`
 4. Writes a per-method report to the **Picklist Dependency Check** output channel and shows a pass/fail summary notification
+5. Saves the results into `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/` as `results.json` and `report.md`
 
 A failing method names the object, field, controlling value, and the specific missing values.
 
@@ -221,6 +222,7 @@ Notes:
 * If no orgs are authenticated, you are told how to authorize one rather than shown an empty picker
 * Declining the deploy prompt exits cleanly and deploys nothing
 * The output channel is cleared on each run, so what you see always belongs to the run that just finished
+* Because the channel is cleared, every run is also written to disk under `treecipe/PicklistDependencyResults/` — one timestamped folder per run, so results stay committable and diffable between runs. Passing runs are saved too, not only failures
 
 ---
 

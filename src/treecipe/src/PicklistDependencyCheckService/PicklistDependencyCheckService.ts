@@ -497,6 +497,102 @@ export class PicklistDependencyCheckService {
 
     }
 
+    /*
+        An org alias or username becomes part of a folder name, and a username is an email address
+        containing characters that are legal on disk but awkward in a path. Only the characters that
+        read cleanly in a directory listing are kept.
+    */
+    static buildResultsFolderName(targetOrgIdentifier: string, isoDateTimestamp: string): string {
+
+        const filesystemSafeOrgIdentifier = targetOrgIdentifier.replace(/[^A-Za-z0-9._-]/g, '-');
+
+        return `check-${filesystemSafeOrgIdentifier}-${isoDateTimestamp}`;
+
+    }
+
+    static buildResultsJson(targetOrgIdentifier: string,
+                            isoDateTimestamp: string,
+                            checkOutcome: IPicklistDependencyCheckOutcome): string {
+
+        return JSON.stringify({
+            targetOrg: targetOrgIdentifier,
+            ranAt: isoDateTimestamp,
+            passed: checkOutcome.passed,
+            failureCount: checkOutcome.failureCount,
+            methodsRun: checkOutcome.methodOutcomes.length,
+            methodOutcomes: checkOutcome.methodOutcomes
+        }, null, 2);
+
+    }
+
+    static buildResultsMarkdown(targetOrgIdentifier: string,
+                                isoDateTimestamp: string,
+                                checkOutcome: IPicklistDependencyCheckOutcome): string {
+
+        let markdownLines: string[] = [
+            '# Picklist Dependency Check',
+            '',
+            `- **Target org:** ${targetOrgIdentifier}`,
+            `- **Ran at:** ${isoDateTimestamp}`,
+            `- **Result:** ${checkOutcome.passed ? 'PASS' : 'FAIL'}`,
+            `- **Methods run:** ${checkOutcome.methodOutcomes.length}`,
+            `- **Failures:** ${checkOutcome.failureCount}`,
+            '',
+            '## Methods',
+            '',
+            '| Outcome | Method |',
+            '|---------|--------|'
+        ];
+
+        checkOutcome.methodOutcomes.forEach(methodOutcome => {
+            markdownLines.push(`| ${methodOutcome.passed ? 'PASS' : 'FAIL'} | \`${methodOutcome.methodName}\` |`);
+        });
+
+        const failedMethodOutcomes = checkOutcome.methodOutcomes.filter(methodOutcome => !methodOutcome.passed && methodOutcome.message);
+
+        if ( failedMethodOutcomes.length > 0 ) {
+
+            markdownLines.push('', '## Failure detail', '');
+
+            failedMethodOutcomes.forEach(methodOutcome => {
+                markdownLines.push(`### ${methodOutcome.methodName}`, '', '```', methodOutcome.message.trim(), '```', '');
+            });
+
+        }
+
+        return markdownLines.join('\n');
+
+    }
+
+    /*
+        The output channel is cleared on every run, so without this a check leaves nothing behind --
+        nothing to commit, nothing to diff against the previous run, and nothing to attach to a
+        review. Both shapes are written on purpose: results.json for anything that consumes the
+        outcome, report.md for a person reading it.
+    */
+    static writeCheckResultArtifacts(resultsFolderPath: string,
+                                     targetOrgIdentifier: string,
+                                     isoDateTimestamp: string,
+                                     checkOutcome: IPicklistDependencyCheckOutcome): string {
+
+        const runResultsFolderPath = path.join(resultsFolderPath, this.buildResultsFolderName(targetOrgIdentifier, isoDateTimestamp));
+
+        fs.mkdirSync(runResultsFolderPath, { recursive: true });
+
+        fs.writeFileSync(
+            path.join(runResultsFolderPath, 'results.json'),
+            this.buildResultsJson(targetOrgIdentifier, isoDateTimestamp, checkOutcome)
+        );
+
+        fs.writeFileSync(
+            path.join(runResultsFolderPath, 'report.md'),
+            this.buildResultsMarkdown(targetOrgIdentifier, isoDateTimestamp, checkOutcome)
+        );
+
+        return runResultsFolderPath;
+
+    }
+
     static buildResultSummaryMessage(checkOutcome: IPicklistDependencyCheckOutcome): string {
 
         if ( checkOutcome.passed ) {
