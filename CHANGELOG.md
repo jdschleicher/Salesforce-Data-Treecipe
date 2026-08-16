@@ -35,6 +35,20 @@ Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/6
 - A deploy that fails on compilation surfaces the component failure message rather than a raw stack trace
 - An org with source tracking that reports conflicts gets actionable guidance naming the org and the `--ignore-conflicts` escape hatch, rather than the CLI's bare "N conflicts detected". Conflicts are deliberately not forced past automatically — the org copy may hold edits worth keeping, and this command reports drift rather than overwriting it
 
+### Review fixes
+
+Applied after a three-reviewer pass (architecture, performance, security) on PR [#70](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/70):
+
+- **The CLI is invoked asynchronously.** Every call was `spawnSync`, which blocks the VS Code extension host — a single shared, single-threaded process — for the whole run, freezing every installed extension with no progress and no way out. All three calls now use `execFile` inside `vscode.window.withProgress({ cancellable: true })`, with the cancellation token wired to `child.kill()`
+- **`--wait` is in MINUTES, not seconds.** The test run was sent `--wait 20`, written believing it meant seconds; it meant twenty minutes. Now bounded to 10, and the deploy passes an explicit `--wait` rather than inheriting the CLI's 33-minute default
+- **The Windows handling was backwards.** Naming the `sf.cmd` shim directly was documented as preserving the argv form; since the Node fix for CVE-2024-27980, spawning a `.cmd` with arguments and *without* a shell fails with `EINVAL`, so it broke every invocation on win32 instead. Windows now enables the shell with every argument quoted, and a value containing a double quote is rejected rather than escaped. Other platforms keep the argv form unchanged. The same inverted reasoning still exists in `scripts/apex/run-picklist-dependency-checks.js` from #60, which this PR does not touch
+- **Test result keys are read case-insensitively.** Only `Outcome` was read, so an unexpected casing would have rendered every method failed — a false report of dependency drift, the one thing this command must never produce
+- **`stderr` and the exit code are carried into parse failures.** An auth failure produced "Unexpected end of JSON input" with the real cause discarded
+- **The org identifier is charset-validated** before reaching the CLI, rejecting anything that could be read as a flag rather than a value. Defence in depth given the argv form, and load-bearing on the Windows shell path
+- **The classes directory is re-checked for workspace containment.** Containment was enforced on the package directory, then `main/default/classes` was appended unchecked — and `writeFileSync` follows symlinks
+- **The deploy confirmation lists every file** it will send. Framework classes are scaffolded only when absent, so a workspace carrying its own copy deploys that copy; the user has to see which files those are
+- **The output channel is disposed** via `context.subscriptions`, and typed `OrgAuthorization` replaces the `any[]` on the authorization boundary
+
 ### Verified against a live org
 
 Confirmed in a scratch org rather than assumed from the docs:

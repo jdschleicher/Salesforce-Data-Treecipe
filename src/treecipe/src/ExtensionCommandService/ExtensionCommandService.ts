@@ -214,6 +214,7 @@ export class ExtensionCommandService {
 
             const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
             const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
+            PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
             const specsClassFilePath = PicklistDependencyTestService.getSpecsClassFilePath(classesDirectoryPath);
             const specsClassName = PicklistDependencyTestService.getSpecsClassName();
             const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(classesDirectoryPath);
@@ -304,30 +305,73 @@ export class ExtensionCommandService {
                 return;
             }
 
-            const specsTestClassName = PicklistDependencyCheckService.getSpecsTestClassName();
+            /*
+                Everything that shells out to the CLI runs inside a single cancellable progress
+                notification. The Apex test run waits on an org side queue and the deploy waits on the
+                Metadata API, so both can take minutes -- without progress the window would look hung,
+                and without cancellation the only way out would be to close VS Code.
+            */
+            const checkOutcome = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Picklist Dependency Check',
+                cancellable: true
+            }, async (progress, cancellationToken) => {
 
-            if ( !PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg(targetOrgIdentifier) ) {
+                const registerCancellation = (killChildProcess: () => void) => {
+                    cancellationToken.onCancellationRequested(() => killChildProcess());
+                };
 
-                const confirmedDeploySelection = await vscode.window.showWarningMessage(
-                    `${specsTestClassName} was not found in "${targetOrgIdentifier}". The picklist dependency framework, specs, and test class must be deployed before the check can run.`,
-                    { modal: true },
-                    'Deploy and Run'
-                );
+                progress.report({ message: `Checking ${targetOrgIdentifier} for the generated test class...` });
 
-                if ( confirmedDeploySelection !== 'Deploy and Run' ) {
-                    vscode.window.showInformationMessage('Picklist dependency check cancelled. Nothing was deployed.');
-                    return;
+                const isTestClassDeployed = await PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg(targetOrgIdentifier);
+
+                if ( cancellationToken.isCancellationRequested ) {
+                    return undefined;
                 }
 
-                const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
-                const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
+                if ( !isTestClassDeployed ) {
 
-                const deploySummary = PicklistDependencyCheckService.deployPicklistDependencyClasses(classesDirectoryPath, targetOrgIdentifier);
-                vscode.window.showInformationMessage(deploySummary);
+                    const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
+                    const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
+                    PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
 
+                    const confirmedDeploySelection = await vscode.window.showWarningMessage(
+                        PicklistDependencyCheckService.buildDeployConfirmationMessage(classesDirectoryPath, targetOrgIdentifier),
+                        { modal: true },
+                        'Deploy and Run'
+                    );
+
+                    if ( confirmedDeploySelection !== 'Deploy and Run' ) {
+                        vscode.window.showInformationMessage('Picklist dependency check cancelled. Nothing was deployed.');
+                        return undefined;
+                    }
+
+                    progress.report({ message: `Deploying picklist dependency classes to ${targetOrgIdentifier}...` });
+
+                    const deploySummary = await PicklistDependencyCheckService.deployPicklistDependencyClasses(
+                        classesDirectoryPath,
+                        targetOrgIdentifier,
+                        registerCancellation
+                    );
+
+                    vscode.window.showInformationMessage(deploySummary);
+
+                }
+
+                if ( cancellationToken.isCancellationRequested ) {
+                    return undefined;
+                }
+
+                progress.report({ message: `Running ${PicklistDependencyCheckService.getSpecsTestClassName()} against ${targetOrgIdentifier}...` });
+
+                return await PicklistDependencyCheckService.runPicklistDependencyTests(targetOrgIdentifier, registerCancellation);
+
+            });
+
+            // UNDEFINED MEANS THE USER CANCELLED OR DECLINED THE DEPLOY, BOTH OF WHICH ALREADY REPORTED
+            if ( !checkOutcome ) {
+                return;
             }
-
-            const checkOutcome = PicklistDependencyCheckService.runPicklistDependencyTests(targetOrgIdentifier);
 
             const report = PicklistDependencyCheckService.buildOutputChannelReport(targetOrgIdentifier, checkOutcome);
             VSCodeWorkspaceService.showPicklistDependencyCheckReport(report);

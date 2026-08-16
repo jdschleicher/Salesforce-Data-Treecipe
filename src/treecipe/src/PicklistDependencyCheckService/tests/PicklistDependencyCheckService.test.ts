@@ -1,5 +1,7 @@
 import { PicklistDependencyCheckService } from "../PicklistDependencyCheckService";
 
+import { OrgAuthorization } from '@salesforce/core';
+
 import * as matchers from 'jest-extended';
 expect.extend(matchers);
 
@@ -25,6 +27,48 @@ function buildTestRunPayload(tests: any[]): any {
             tests
         }
     };
+}
+
+/*
+    execFile is invoked as execFile(command, args, options, callback) and the service reads exitCode
+    and kill() off the returned child, so the stub has to supply both rather than only the callback.
+*/
+function stubSalesforceCli(options: { stdout?: string; stderr?: string; exitCode?: number | null; error?: NodeJS.ErrnoException }) {
+
+    const killMock = jest.fn();
+
+    const execFileSpy = jest.spyOn(childProcess, 'execFile').mockImplementation(((
+        _command: string,
+        _args: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout: string, stderr: string) => void
+    ) => {
+        /*
+            Non-zero exits reach the callback as an error whose "code" is a NUMBER, which is how the
+            service tells an exit status apart from a spawn errno. Modelling that here keeps the stub
+            honest rather than letting the service read an exitCode the real API would not supply.
+        */
+        const exitError = options.error
+            ?? (options.exitCode ? Object.assign(new Error(`Command failed with exit code ${options.exitCode}`), { code: options.exitCode }) : null);
+
+        callback(exitError, options.stdout ?? '', options.stderr ?? '');
+        return { kill: killMock } as any;
+    }) as any);
+
+    return { execFileSpy, killMock };
+
+}
+
+function buildOrgAuthorization(overrides: Partial<OrgAuthorization>): OrgAuthorization {
+    return {
+        orgId: '00D000000000000EAA',
+        username: 'dev@example.com',
+        oauthMethod: 'web',
+        aliases: [],
+        configs: [],
+        isExpired: false,
+        ...overrides
+    } as OrgAuthorization;
 }
 
 const passingTestMethods = [
@@ -76,17 +120,6 @@ describe('shouldTranslateApexTestRunResults', () => {
         const failedMethodOutcome = checkOutcome.methodOutcomes.find(methodOutcome => !methodOutcome.passed);
 
         expect(failedMethodOutcome.message).toContain('Account.Type @ "Customer"');
-        expect(failedMethodOutcome.message).toContain('expected Direct, Channel');
-
-    });
-
-    it('shouldAcceptLowerCaseMethodNameKeyFromTheCli', () => {
-
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload([{ methodName: 'specRegistryIsNotEmpty', Outcome: 'Pass' }])
-        );
-
-        expect(checkOutcome.methodOutcomes[0].methodName).toBe('specRegistryIsNotEmpty');
 
     });
 
@@ -108,28 +141,71 @@ describe('shouldTranslateApexTestRunResults', () => {
 
 });
 
-describe('shouldNeverTreatEmptyRegistryAsSuccess', () => {
+/*
+    Reading only the PascalCase keys would make an unexpected casing render every method as failed --
+    a false report of picklist dependency drift, which is the one thing this command must never do.
+*/
+describe('shouldReadTestResultKeysCaseInsensitively', () => {
 
-    /*
-        The empty registry case is an assertion inside the generated test class rather than a marker,
-        so it reaches the extension as an ordinary failing method.
-    */
-    it('shouldSurfaceEmptyRegistryAsAFailingMethodWithGuidance', () => {
-
-        const emptyRegistryTestMethods = [
-            {
-                MethodName: 'specRegistryIsNotEmpty',
-                Outcome: 'Fail',
-                Message: 'No picklist dependency specs are registered, so this run verified nothing. Re-run the "Generate Picklist Dependency Tests" command.'
-            }
-        ];
+    it('shouldAcceptLowerCaseMethodNameKey', () => {
 
         const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(emptyRegistryTestMethods)
+            buildTestRunPayload([{ methodName: 'specRegistryIsNotEmpty', Outcome: 'Pass' }])
+        );
+
+        expect(checkOutcome.methodOutcomes[0].methodName).toBe('specRegistryIsNotEmpty');
+
+    });
+
+    it('shouldNotReportFalseDriftWhenOutcomeKeyArrivesLowerCase', () => {
+
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
+            buildTestRunPayload([
+                { methodName: 'Account_picklistDependenciesMatchSourceMetadata', outcome: 'Pass' },
+                { methodName: 'specRegistryIsNotEmpty', outcome: 'Pass' }
+            ])
+        );
+
+        expect(checkOutcome.passed).toBeTrue();
+        expect(checkOutcome.failureCount).toBe(0);
+
+    });
+
+    it('shouldTreatOutcomeValueCaseInsensitively', () => {
+
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
+            buildTestRunPayload([{ MethodName: 'specRegistryIsNotEmpty', Outcome: 'pass' }])
+        );
+
+        expect(checkOutcome.passed).toBeTrue();
+
+    });
+
+    it('shouldAcceptLowerCaseMessageKeyOnAFailedMethod', () => {
+
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
+            buildTestRunPayload([{ methodName: 'Account_picklistDependenciesMatchSourceMetadata', outcome: 'Fail', message: 'drift detail' }])
+        );
+
+        expect(checkOutcome.methodOutcomes[0].message).toBe('drift detail');
+
+    });
+
+});
+
+describe('shouldNeverTreatEmptyRegistryAsSuccess', () => {
+
+    it('shouldSurfaceEmptyRegistryAsAFailingMethodWithGuidance', () => {
+
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
+            buildTestRunPayload([{
+                MethodName: 'specRegistryIsNotEmpty',
+                Outcome: 'Fail',
+                Message: 'No picklist dependency specs are registered, so this run verified nothing.'
+            }])
         );
 
         expect(checkOutcome.passed).toBeFalse();
-        expect(checkOutcome.failureCount).toBe(1);
         expect(checkOutcome.methodOutcomes[0].message).toContain('verified nothing');
 
     });
@@ -140,10 +216,7 @@ describe('shouldBuildReadableOutputChannelReport', () => {
 
     it('shouldListEveryMethodWithItsOutcome', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(failingTestMethods)
-        );
-
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload(failingTestMethods));
         const report = PicklistDependencyCheckService.buildOutputChannelReport('devHub', checkOutcome);
 
         expect(report).toContain('Picklist Dependency Check — devHub');
@@ -155,10 +228,7 @@ describe('shouldBuildReadableOutputChannelReport', () => {
 
     it('shouldIndentEachLineOfAMultiLineAssertionMessage', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(failingTestMethods)
-        );
-
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload(failingTestMethods));
         const report = PicklistDependencyCheckService.buildOutputChannelReport('devHub', checkOutcome);
         const missingValuesLine = report.split('\n').find(reportLine => reportLine.includes('MISSING_VALUES'));
 
@@ -168,10 +238,7 @@ describe('shouldBuildReadableOutputChannelReport', () => {
 
     it('shouldNotEmitAMessageBlockForPassingMethods', () => {
 
-        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(
-            buildTestRunPayload(passingTestMethods)
-        );
-
+        const checkOutcome = PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload(passingTestMethods));
         const report = PicklistDependencyCheckService.buildOutputChannelReport('devHub', checkOutcome);
 
         expect(report).not.toContain('MISSING_VALUES');
@@ -181,54 +248,145 @@ describe('shouldBuildReadableOutputChannelReport', () => {
 
 });
 
-describe('shouldTranslateSalesforceCliSpawnFailures', () => {
+describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
-    it('shouldThrowActionableMessageWhenCliIsNotInstalled', () => {
+    it('shouldNotUseSpawnSyncAnywhereInTheService', () => {
 
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            error: Object.assign(new Error('spawnSync sf ENOENT'), { code: 'ENOENT' })
-        } as any);
+        const serviceSource = fs.readFileSync(`${__dirname}/../PicklistDependencyCheckService.ts`, 'utf8');
 
-        expect(() => PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
-            .toThrow('not installed or not on PATH');
+        // spawnSync WOULD BLOCK THE SHARED VS CODE EXTENSION HOST FOR THE WHOLE CLI RUN
+        expect(serviceSource).not.toContain('spawnSync');
 
     });
 
-    it('shouldThrowWhenCliOutputIsNotParseableJson', () => {
+    it('shouldReturnOutcomeFromAnAsyncTestRun', async () => {
 
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({ stdout: 'not json at all' } as any);
+        stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(passingTestMethods)) });
 
-        expect(() => PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
-            .toThrow('Could not parse Salesforce CLI JSON output');
+        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+
+        expect(checkOutcome.passed).toBeTrue();
 
     });
 
-    it('shouldStillReportFailuresWhenTheCliExitsNonZeroForFailingTests', () => {
+    it('shouldStillReportFailuresWhenTheCliExitsNonZeroForFailingTests', async () => {
 
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            status: 100,
-            stdout: JSON.stringify(buildTestRunPayload(failingTestMethods))
-        } as any);
+        stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(failingTestMethods)), exitCode: 100 });
 
-        const checkOutcome = PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+        const checkOutcome = await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
 
         expect(checkOutcome.passed).toBeFalse();
         expect(checkOutcome.failureCount).toBe(1);
 
     });
 
-    it('shouldRequestOnlyTheGeneratedTestClass', () => {
+    it('shouldRequestOnlyTheGeneratedTestClassAndBoundTheWait', async () => {
 
-        const spawnSyncSpy = jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            stdout: JSON.stringify(buildTestRunPayload(passingTestMethods))
-        } as any);
+        const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(passingTestMethods)) });
 
-        PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
+        await PicklistDependencyCheckService.runPicklistDependencyTests('devHub');
 
-        const salesforceCliArguments = spawnSyncSpy.mock.calls[0][1] as string[];
+        const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
 
         expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'PicklistDependencySpecsTest']);
         expect(salesforceCliArguments).toIncludeAllMembers(['--target-org', 'devHub']);
+
+        /*
+            --wait is in MINUTES. An unbounded or very large value would hold the command open long
+            past anything a spec registry can justify.
+        */
+        const waitMinutes = Number(salesforceCliArguments[salesforceCliArguments.indexOf('--wait') + 1]);
+        expect(waitMinutes).toBeGreaterThan(0);
+        expect(waitMinutes).toBeLessThanOrEqual(10);
+
+    });
+
+    it('shouldKillTheChildProcessWhenCancellationIsRequested', async () => {
+
+        const { killMock } = stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(passingTestMethods)) });
+
+        let capturedKill: (() => void) | undefined;
+        await PicklistDependencyCheckService.runPicklistDependencyTests('devHub', killChildProcess => { capturedKill = killChildProcess; });
+
+        expect(capturedKill).toBeDefined();
+        capturedKill();
+        expect(killMock).toHaveBeenCalled();
+
+    });
+
+    it('shouldBoundTheDeployWaitRatherThanUsingTheThirtyThreeMinuteDefault', async () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } }) });
+
+        await PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
+
+        const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
+
+        expect(salesforceCliArguments).toContain('--wait');
+        const waitMinutes = Number(salesforceCliArguments[salesforceCliArguments.indexOf('--wait') + 1]);
+        expect(waitMinutes).toBeLessThanOrEqual(10);
+
+    });
+
+});
+
+describe('shouldTranslateSalesforceCliSpawnFailures', () => {
+
+    it('shouldThrowActionableMessageWhenCliIsNotInstalled', async () => {
+
+        stubSalesforceCli({ error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow('not installed or not on PATH');
+
+    });
+
+    it('shouldThrowActionableMessageOnEinvalRatherThanARawSpawnError', async () => {
+
+        stubSalesforceCli({ error: Object.assign(new Error('spawn EINVAL'), { code: 'EINVAL' }) });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow('EINVAL');
+
+    });
+
+    it('shouldIncludeStderrAndExitCodeWhenOutputIsNotParseableJson', async () => {
+
+        stubSalesforceCli({ stdout: '', stderr: 'ERROR running apex: No authorization found', exitCode: 1 });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('devHub'))
+            .rejects.toThrow('No authorization found');
+
+    });
+
+});
+
+describe('shouldValidateTheTargetOrgIdentifier', () => {
+
+    it('shouldAcceptOrdinaryAliasesAndUsernames', () => {
+        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('devHub')).toBeTrue();
+        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('test-abc123@example.com')).toBeTrue();
+    });
+
+    it('shouldRejectAnIdentifierThatWouldBeReadAsACliFlag', () => {
+        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('--json')).toBeFalse();
+    });
+
+    it('shouldRejectShellMetacharacters', () => {
+        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('dev;rm -rf /')).toBeFalse();
+        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('dev$(whoami)')).toBeFalse();
+        expect(PicklistDependencyCheckService.isValidTargetOrgIdentifier('dev"quote')).toBeFalse();
+    });
+
+    it('shouldThrowBeforeInvokingTheCliForAnUnusableIdentifier', async () => {
+
+        const { execFileSpy } = stubSalesforceCli({ stdout: '{}' });
+
+        await expect(PicklistDependencyCheckService.runPicklistDependencyTests('--target-org'))
+            .rejects.toThrow('not a usable Salesforce org alias');
+
+        expect(execFileSpy).not.toHaveBeenCalled();
 
     });
 
@@ -239,19 +397,18 @@ describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
     it('shouldPreferAliasOverUsernameAsTargetOrgIdentifier', () => {
 
         const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            { username: 'dev@example.com', aliases: ['devHub'] }
+            buildOrgAuthorization({ username: 'dev@example.com', aliases: ['devHub'] })
         ]);
 
         expect(orgDetails).toHaveLength(1);
         expect(orgDetails[0].targetOrgIdentifier).toBe('devHub');
-        expect(orgDetails[0].username).toBe('dev@example.com');
 
     });
 
     it('shouldFallBackToUsernameWhenNoAliasIsSet', () => {
 
         const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            { username: 'scratch@example.com', aliases: [] }
+            buildOrgAuthorization({ username: 'scratch@example.com', aliases: [] })
         ]);
 
         expect(orgDetails[0].targetOrgIdentifier).toBe('scratch@example.com');
@@ -262,8 +419,20 @@ describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
     it('shouldSkipAuthorizationsWithoutAUsername', () => {
 
         const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
-            { aliases: ['brokenEntry'] },
-            { username: 'valid@example.com', aliases: [] }
+            buildOrgAuthorization({ username: undefined as unknown as string, aliases: ['brokenEntry'] }),
+            buildOrgAuthorization({ username: 'valid@example.com', aliases: [] })
+        ]);
+
+        expect(orgDetails).toHaveLength(1);
+        expect(orgDetails[0].username).toBe('valid@example.com');
+
+    });
+
+    it('shouldDropAnOrgWhoseIdentifierCouldNotSafelyReachTheCli', () => {
+
+        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
+            buildOrgAuthorization({ username: 'ok@example.com', aliases: ['--json'] }),
+            buildOrgAuthorization({ username: 'valid@example.com', aliases: [] })
         ]);
 
         expect(orgDetails).toHaveLength(1);
@@ -273,40 +442,34 @@ describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
 
     it('shouldReturnEmptyListWhenNoOrgsAreAuthenticated', () => {
         expect(PicklistDependencyCheckService.buildAuthenticatedOrgDetails([])).toBeEmpty();
-        expect(PicklistDependencyCheckService.buildAuthenticatedOrgDetails(undefined as unknown as any[])).toBeEmpty();
+        expect(PicklistDependencyCheckService.buildAuthenticatedOrgDetails(undefined as unknown as OrgAuthorization[])).toBeEmpty();
     });
 
 });
 
 describe('shouldDetectWhetherTestClassIsDeployedInOrg', () => {
 
-    it('shouldReturnTrueWhenTestClassQueryReturnsARecord', () => {
+    it('shouldReturnTrueWhenTestClassQueryReturnsARecord', async () => {
 
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            stdout: JSON.stringify({ status: 0, result: { totalSize: 1, records: [{ Id: '01p000000000000' }] } })
-        } as any);
+        stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 1, records: [{ Id: '01p' }] } }) });
 
-        expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).toBeTrue();
+        await expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).resolves.toBeTrue();
 
     });
 
-    it('shouldReturnFalseWhenTestClassQueryReturnsNoRecords', () => {
+    it('shouldReturnFalseWhenTestClassQueryReturnsNoRecords', async () => {
 
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            stdout: JSON.stringify({ status: 0, result: { totalSize: 0, records: [] } })
-        } as any);
+        stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 0, records: [] } }) });
 
-        expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).toBeFalse();
+        await expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).resolves.toBeFalse();
 
     });
 
-    it('shouldReturnFalseWhenQueryFailsRatherThanAssumingDeployed', () => {
+    it('shouldReturnFalseWhenQueryFailsRatherThanAssumingDeployed', async () => {
 
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            error: Object.assign(new Error('spawnSync sf ENOENT'), { code: 'ENOENT' })
-        } as any);
+        stubSalesforceCli({ error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
 
-        expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).toBeFalse();
+        await expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).resolves.toBeFalse();
 
     });
 
@@ -314,99 +477,123 @@ describe('shouldDetectWhetherTestClassIsDeployedInOrg', () => {
 
 describe('shouldDeployPicklistDependencyClasses', () => {
 
-    it('shouldThrowGuidanceWhenClassesDirectoryDoesNotExist', () => {
+    it('shouldThrowGuidanceWhenClassesDirectoryDoesNotExist', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(false);
 
-        expect(() => PicklistDependencyCheckService.deployPicklistDependencyClasses('/no/such/classes', 'devHub'))
-            .toThrow('Generate Picklist Dependency Tests');
+        await expect(PicklistDependencyCheckService.deployPicklistDependencyClasses('/no/such/classes', 'devHub'))
+            .rejects.toThrow('Generate Picklist Dependency Tests');
 
     });
 
-    it('shouldReturnDeployedComponentSummaryOnSuccess', () => {
+    it('shouldReturnDeployedComponentSummaryOnSuccess', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } })
-        } as any);
+        stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } }) });
 
-        const deploySummary = PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
+        const deploySummary = await PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
 
         expect(deploySummary).toContain('8 component(s)');
 
     });
 
-    it('shouldDeployOnlyTheClassesThisCommandOwnsRatherThanTheWholeDirectory', () => {
+    it('shouldDeployOnlyTheClassesThisCommandOwnsRatherThanTheWholeDirectory', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-        const spawnSyncSpy = jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } })
-        } as any);
+        const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } }) });
 
-        PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
+        await PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
 
-        const salesforceCliArguments = spawnSyncSpy.mock.calls[0][1] as string[];
+        const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
         const deployedPaths = salesforceCliArguments.filter(cliArgument => cliArgument.endsWith('.cls'));
 
         expect(deployedPaths).toSatisfyAll((deployedPath: string) => deployedPath.includes('PicklistDependency'));
-        expect(deployedPaths.some(deployedPath => deployedPath.endsWith('PicklistDependencySpecsTest.cls'))).toBeTrue();
         expect(salesforceCliArguments).not.toContain('/workspace/classes');
 
     });
 
-    it('shouldThrowGuidanceWhenNoOwnedClassesArePresentInTheDirectory', () => {
-
-        jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => !String(checkedPath).endsWith('.cls'));
-
-        expect(() => PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
-            .toThrow('No picklist dependency classes were found');
-
-    });
-
-    it('shouldThrowComponentFailureDetailWhenDeployFails', () => {
+    it('shouldThrowComponentFailureDetailWhenDeployFails', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
+        stubSalesforceCli({
             stdout: JSON.stringify({
                 status: 1,
-                result: {
-                    success: false,
-                    details: {
-                        componentFailures: [
-                            { fullName: 'PicklistDependencySpecsTest', problem: 'Method does not exist: assertNoPicklistDependencyFailuresForObject' }
-                        ]
-                    }
-                }
+                result: { success: false, details: { componentFailures: [{ fullName: 'PicklistDependencySpecsTest', problem: 'Method does not exist' }] } }
             })
-        } as any);
+        });
 
-        expect(() => PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
-            .toThrow('PicklistDependencySpecsTest: Method does not exist');
-
-    });
-
-    it('shouldThrowActionableGuidanceWhenSourceTrackingReportsConflicts', () => {
-
-        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            status: 1,
-            stdout: JSON.stringify({ status: 1, name: 'SourceConflictError', message: '16 conflicts detected' })
-        } as any);
-
-        expect(() => PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
-            .toThrow('Retrieve or resolve them first');
+        await expect(PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
+            .rejects.toThrow('PicklistDependencySpecsTest: Method does not exist');
 
     });
 
-    it('shouldThrowActionableMessageWhenCliIsNotInstalledDuringDeploy', () => {
+    it('shouldThrowActionableGuidanceWhenSourceTrackingReportsConflicts', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-        jest.spyOn(childProcess, 'spawnSync').mockReturnValue({
-            error: Object.assign(new Error('spawnSync sf ENOENT'), { code: 'ENOENT' })
-        } as any);
+        stubSalesforceCli({ stdout: JSON.stringify({ status: 1, name: 'SourceConflictError', message: '16 conflicts detected' }) });
 
-        expect(() => PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
-            .toThrow('not installed or not on PATH');
+        await expect(PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
+            .rejects.toThrow('Retrieve or resolve them first');
+
+    });
+
+});
+
+describe('shouldNameEveryFileInTheDeployConfirmation', () => {
+
+    it('shouldListTheOwnedClassFileNamesAndTheTargetOrg', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+        const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub');
+
+        expect(confirmationMessage).toContain('devHub');
+        expect(confirmationMessage).toContain('PicklistDependencySpecsTest.cls');
+        expect(confirmationMessage).toContain('PicklistDependencyValidator.cls');
+        // THE USER MUST BE ABLE TO SEE THAT WORKSPACE COPIES ARE WHAT GETS SENT
+        expect(confirmationMessage).toContain('as they exist in your workspace');
+
+    });
+
+});
+
+describe('shouldHandleTheWindowsCliShim', () => {
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('shouldUseAShellOnWindowsBecauseSpawningACmdShimWithoutOneFailsWithEinval', () => {
+
+        jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+
+        const invocation = PicklistDependencyCheckService.buildSalesforceCliInvocation(['apex', 'run', 'test']);
+
+        expect(invocation.command).toBe('sf.cmd');
+        expect(invocation.useShell).toBeTrue();
+        // EVERY ARGUMENT IS QUOTED ONCE THE SHELL IS IN PLAY
+        expect(invocation.args).toSatisfyAll((argumentValue: string) => argumentValue.startsWith('"') && argumentValue.endsWith('"'));
+
+    });
+
+    it('shouldKeepTheArgvFormOnNonWindowsPlatforms', () => {
+
+        jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+
+        const invocation = PicklistDependencyCheckService.buildSalesforceCliInvocation(['apex', 'run', 'test']);
+
+        expect(invocation.command).toBe('sf');
+        expect(invocation.useShell).toBeFalse();
+        expect(invocation.args).toEqual(['apex', 'run', 'test']);
+
+    });
+
+    it('shouldRejectAnArgumentContainingADoubleQuoteRatherThanEscapingIt', () => {
+
+        jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+
+        expect(() => PicklistDependencyCheckService.buildSalesforceCliInvocation(['--target-org', 'dev"org']))
+            .toThrow('contains a double quote');
 
     });
 

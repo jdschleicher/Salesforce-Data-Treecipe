@@ -445,6 +445,27 @@ ${specsListMarkup}
         return path.join(packageDirectoryPath, 'main', 'default', 'classes');
     }
 
+    /*
+        resolveDefaultPackageDirectoryPath contains the package directory itself, but the classes path
+        is built by appending "main/default/classes" to it and those segments are never re-checked.
+        Any of them can be a symlink pointing outside the workspace -- writeFileSync follows symlinks,
+        so without this a repository could steer generated files, whose picklist values are partly
+        attacker controlled, to an arbitrary location on disk.
+
+        Called at the point of use rather than inside the write helpers so the check sees the same
+        path the caller is about to write to.
+    */
+    static assertClassesDirectoryContainedInWorkspace(classesDirectoryPath: string, workspaceRoot: string) {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const resolvedClassesDirectoryPath = path.resolve(classesDirectoryPath);
+
+        if ( !this.isPathContainedInWorkspace(resolvedClassesDirectoryPath, resolvedWorkspaceRoot) ) {
+            throw new Error(`The classes directory "${resolvedClassesDirectoryPath}" resolves outside the workspace. A path segment is most likely a symlink pointing elsewhere. Fix the project layout and run the command again.`);
+        }
+
+    }
+
     static getSpecsClassFilePath(classesDirectoryPath: string): string {
         return path.join(classesDirectoryPath, `${this.specsClassName}.cls`);
     }

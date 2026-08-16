@@ -396,13 +396,30 @@ export class VSCodeWorkspaceService {
     /*
         One channel is reused across runs and cleared on each invocation, so what is on screen always
         belongs to the run that just finished rather than being appended to older output.
+
+        Created lazily rather than at activation so a user who never runs the check never pays for it,
+        and registered against the extension context on first use so VS Code disposes it on reload.
     */
     private static picklistDependencyCheckOutputChannel: vscode.OutputChannel;
+
+    private static extensionSubscriptions: { push(disposable: vscode.Disposable): void };
+
+    static registerExtensionSubscriptions(subscriptions: { push(disposable: vscode.Disposable): void }) {
+        this.extensionSubscriptions = subscriptions;
+    }
 
     static getPicklistDependencyCheckOutputChannel(): vscode.OutputChannel {
 
         if ( !this.picklistDependencyCheckOutputChannel ) {
+
             this.picklistDependencyCheckOutputChannel = vscode.window.createOutputChannel('Picklist Dependency Check');
+
+            /*
+                Nothing registers subscriptions in a jest run, so the channel is simply not tracked
+                there -- an untracked channel in a test process has nothing to leak into.
+            */
+            this.extensionSubscriptions?.push(this.picklistDependencyCheckOutputChannel);
+
         }
 
         return this.picklistDependencyCheckOutputChannel;

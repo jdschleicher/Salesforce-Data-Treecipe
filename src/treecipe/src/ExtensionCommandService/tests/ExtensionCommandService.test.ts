@@ -19,9 +19,19 @@ jest.mock('vscode', () => ({
         showWarningMessage: jest.fn(),
         showInformationMessage: jest.fn(),
         showQuickPick: jest.fn(),
-        showTextDocument: jest.fn()
+        showTextDocument: jest.fn(),
+        createOutputChannel: jest.fn(),
+        /*
+            Runs the task immediately with a never-cancelled token, so the tests exercise the real
+            body of the progress callback rather than a stub standing in for it.
+        */
+        withProgress: jest.fn().mockImplementation((_progressOptions, task) => task(
+            { report: jest.fn() },
+            { isCancellationRequested: false, onCancellationRequested: jest.fn() }
+        ))
     },
     commands: { registerCommand: jest.fn() },
+    ProgressLocation: { Notification: 15, Window: 10, SourceControl: 1 },
     ConfigurationTarget: { Workspace: 2 },
     FileType: { Directory: 2, File: 1, SymbolicLink: 64 }
 }), { virtual: true });
@@ -420,11 +430,11 @@ describe('ExtensionCommandService', () => {
                 { username: 'dev@example.com', aliases: ['devHub'] }
             ]);
 
-            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockReturnValue(true);
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(true);
             runPicklistDependencyTestsSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
-                .mockReturnValue(passingCheckOutcome);
+                .mockResolvedValue(passingCheckOutcome);
             deployPicklistDependencyClassesSpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
-                .mockReturnValue('Deployed 8 component(s) to the target org.');
+                .mockResolvedValue('Deployed 8 component(s) to the target org.');
 
             jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg')
                 .mockResolvedValue(authenticatedOrgDetail.targetOrgIdentifier);
@@ -437,7 +447,7 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.runPicklistDependencyCheck();
 
-            expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub');
+            expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub', expect.any(Function));
             expect(showReportSpy).toHaveBeenCalled();
             expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('passed');
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
@@ -446,7 +456,7 @@ describe('ExtensionCommandService', () => {
 
         test('given failing tests, warns rather than reporting success', async () => {
 
-            runPicklistDependencyTestsSpy.mockReturnValue(failingCheckOutcome);
+            runPicklistDependencyTestsSpy.mockResolvedValue(failingCheckOutcome);
 
             await extensionCommandService.runPicklistDependencyCheck();
 
@@ -482,7 +492,7 @@ describe('ExtensionCommandService', () => {
 
         test('given a missing test class and a declined deploy prompt, deploys nothing and runs nothing', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockReturnValue(false);
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(false);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
 
             await extensionCommandService.runPicklistDependencyCheck();
@@ -500,21 +510,19 @@ describe('ExtensionCommandService', () => {
 
         test('given a missing test class and a confirmed deploy, deploys then runs the check', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockReturnValue(false);
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(false);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Deploy and Run');
 
             await extensionCommandService.runPicklistDependencyCheck();
 
-            expect(deployPicklistDependencyClassesSpy).toHaveBeenCalledWith(classesDirectoryPath, 'devHub');
-            expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub');
+            expect(deployPicklistDependencyClassesSpy).toHaveBeenCalledWith(classesDirectoryPath, 'devHub', expect.any(Function));
+            expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub', expect.any(Function));
 
         });
 
         test('given the Salesforce CLI is unavailable, routes the error through ErrorHandlingService', async () => {
 
-            runPicklistDependencyTestsSpy.mockImplementation(() => {
-                throw new Error('The Salesforce CLI ("sf") is not installed or not on PATH.');
-            });
+            runPicklistDependencyTestsSpy.mockRejectedValue(new Error('The Salesforce CLI ("sf") is not installed or not on PATH.'));
 
             await extensionCommandService.runPicklistDependencyCheck();
 

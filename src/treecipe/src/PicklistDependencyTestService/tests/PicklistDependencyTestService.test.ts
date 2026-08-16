@@ -445,6 +445,42 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    describe('assertClassesDirectoryContainedInWorkspace', () => {
+
+        test('given a classes directory inside the workspace, does not throw', () => {
+
+            expect(() => PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(
+                '/workspace/force-app/main/default/classes',
+                '/workspace'
+            )).not.toThrow();
+
+        });
+
+        /*
+            resolveDefaultPackageDirectoryPath only contains the package directory itself. The
+            "main/default/classes" segments appended afterwards can each be a symlink, and
+            writeFileSync follows symlinks -- so the final path is re-checked at the point of use.
+        */
+        test('given a classes directory that escapes the workspace, throws before anything is written', () => {
+
+            expect(() => PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(
+                '/somewhere/else/classes',
+                '/workspace'
+            )).toThrow('outside the workspace');
+
+        });
+
+        test('given a sibling directory sharing the workspace name prefix, throws', () => {
+
+            expect(() => PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(
+                '/workspace-evil/force-app/main/default/classes',
+                '/workspace'
+            )).toThrow('outside the workspace');
+
+        });
+
+    });
+
     describe('buildTestMethodNameByObjectApiName', () => {
 
         test('given a standard object api name, builds a valid apex identifier', () => {
