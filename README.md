@@ -197,7 +197,15 @@ Notes:
 
 The generated assertions read the org's **real** metadata. Schema describe is not isolated by `@IsTest`, so no test setup data and no `SeeAllData` are involved.
 
-Once generated, run them with "Run Picklist Dependency Check" below.
+#### End-to-end in one command
+
+After generating, the command offers to **deploy and run the tests against an org right away**. Accept it and you are prompted for the target org, the classes are deployed, the tests run, and the results land in the output channel and the `treecipe` directory — generation through to verified results without leaving the command.
+
+The offer comes *after* generation rather than before, because generating is useful on its own: reviewing what changed, or working without an org to hand, needs the files and nothing else. Dismissing the prompt leaves you with a completed generation, not a cancelled command.
+
+This path **always deploys**, unlike "Run Picklist Dependency Check" below, which deploys only when the test class is missing. The classes were just rewritten, so the org copy is stale by definition — a conditional deploy would run yesterday's contract against today's metadata.
+
+Once generated, you can also run the check any time with "Run Picklist Dependency Check" below.
 
 ---
 

@@ -43,7 +43,7 @@ jest.mock('@salesforce/core', () => ({
 
 import { AuthInfo } from '@salesforce/core';
 
-import { ExtensionCommandService } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
@@ -112,6 +112,16 @@ describe('ExtensionCommandService', () => {
                 return String(checkedPath).includes('objects');
             });
 
+            /*
+                Generation now OFFERS to run against an org. Declining is the default here so the
+                existing generation assertions stay about generation, and the tests that care about
+                the continuation opt into it explicitly.
+            */
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: 'dev@example.com', aliases: ['devHub'] }
+            ]);
+
         });
 
         test('given dependent picklists found, writes the specs class and reports the destination', async () => {
@@ -157,6 +167,77 @@ describe('ExtensionCommandService', () => {
             expect(emittedTestClassBody).toContain('static void specRegistryIsNotEmpty()');
 
             expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('PicklistDependencySpecsTest.cls');
+
+        });
+
+        test('after generating, offers to deploy and run against an org', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const offerCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0];
+            expect(offerCall[0]).toContain('Deploy and run them against an org now?');
+            expect(offerCall[1]).toBe(RUN_AGAINST_ORG_ACTION_LABEL);
+
+        });
+
+        test('given the offer is dismissed, generation still stands and nothing is deployed', async () => {
+
+            stubCollectionResult([specDetail]);
+            const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses');
+            const runSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests');
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+            expect(deploySpy).not.toHaveBeenCalled();
+            expect(runSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given the offer is accepted, deploys and runs without asking whether the class is already there', async () => {
+
+            stubCollectionResult([specDetail]);
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(RUN_AGAINST_ORG_ACTION_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Deploy and Run');
+
+            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue('devHub');
+            jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
+            jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts').mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-x');
+
+            const isDeployedSpy = jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg');
+            const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
+                .mockResolvedValue('Deployed 8 component(s) to the target org.');
+            const runSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
+                .mockResolvedValue({ passed: true, failureCount: 0, methodOutcomes: [{ methodName: 'specRegistryIsNotEmpty', passed: true }] });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(deploySpy).toHaveBeenCalledWith(classesDirectoryPath, 'devHub', expect.any(Function));
+            expect(runSpy).toHaveBeenCalledWith('devHub', expect.any(Function));
+
+            /*
+                The classes were just rewritten, so the org copy is stale by definition -- checking
+                whether the test class is "already deployed" would run yesterday's contract.
+            */
+            expect(isDeployedSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given the offer is accepted but no org is picked, deploys nothing', async () => {
+
+            stubCollectionResult([specDetail]);
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(RUN_AGAINST_ORG_ACTION_LABEL);
+            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue(undefined);
+
+            const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses');
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+            expect(deploySpy).not.toHaveBeenCalled();
 
         });
 

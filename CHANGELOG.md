@@ -11,6 +11,14 @@ Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/6
 - Results are written to a dedicated **Picklist Dependency Check** output channel, cleared on each run so the visible output always belongs to the run that just finished, with a pass/fail summary notification carrying the failure count
 - **Every run is also saved to `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/`** as `results.json` (machine-readable per-method outcomes) and `report.md` (human-readable). Because the output channel is cleared on each invocation, a check would otherwise leave nothing behind — nothing to commit, nothing to diff against the previous run, and nothing to attach to a review. Passing runs are persisted too, so a green check is on record rather than only a failing one. The org identifier is sanitized for the folder name, since a username is a valid target and contains characters that read poorly in a directory listing
 
+### Generation offers to run end to end
+
+- After writing the classes, **Generate Picklist Dependency Tests** now offers to deploy and run them against an org in the same invocation. Accepting prompts for the target org, deploys, runs, and reports — generation through to verified results without leaving the command
+- Implemented as a prompt on the existing command rather than a new one. A third picklist command in the palette would have been a worse trade for the same capability
+- The offer comes **after** generation, not before: generating is useful on its own — reviewing a diff, or working without an org to hand — so dismissing leaves a completed generation rather than a cancelled command
+- That path **always deploys**, where the standalone check deploys only when the test class is absent. The classes were just rewritten, so the org copy is stale by definition and a conditional deploy would run yesterday's contract against today's metadata. A test asserts `isSpecsTestClassDeployedInOrg` is never consulted on this path
+- Both commands now share three private helpers — generation, org selection, and deploy-run-report — so the two entry points cannot drift in their handling of confirmations, cancellation, artifacts, or reporting
+
 ### Corrected: the generated Apex is now a real test class
 
 - `PicklistDependencyTestService` now also emits `PicklistDependencySpecsTest.cls`, an `@IsTest` class asserting the spec registry through `PicklistDependencyValidator` and `SchemaPicklistDependencySource`. Despite the command being named "Generate Picklist Dependency Tests", what [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/61) emitted was a plain data registry executed by anonymous Apex
