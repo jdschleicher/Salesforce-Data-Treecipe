@@ -446,6 +446,26 @@ ${specsListMarkup}
     }
 
     /*
+        The framework runtime classes are scaffolded into their own directory rather than loose among
+        the user's Apex. Salesforce resolves ApexClass by the enclosing "classes" directory and walks
+        nested folders, so a subdirectory deploys identically while keeping six files the user did not
+        write clearly separated from the ones they did -- and making them removable in one action.
+
+        The generated PicklistDependencySpecs.cls and PicklistDependencySpecsTest.cls deliberately do
+        NOT live here: those are the user's contract, expected to be read and sometimes hand-tightened,
+        so they stay at the classes root where a developer would look for them.
+    */
+    private static frameworkDirectoryName = 'PicklistDependencyFramework';
+
+    static getFrameworkDirectoryName(): string {
+        return this.frameworkDirectoryName;
+    }
+
+    static getFrameworkDirectoryPath(classesDirectoryPath: string): string {
+        return path.join(classesDirectoryPath, this.frameworkDirectoryName);
+    }
+
+    /*
         resolveDefaultPackageDirectoryPath contains the package directory itself, but the classes path
         is built by appending "main/default/classes" to it and those segments are never re-checked.
         Any of them can be a symlink pointing outside the workspace -- writeFileSync follows symlinks,
@@ -623,19 +643,30 @@ ${testMethods}
     */
     static scaffoldMissingFrameworkClasses(extensionPath: string, classesDirectoryPath: string): IFrameworkScaffoldResult {
 
-        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes');
+        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', this.frameworkDirectoryName);
 
         let scaffoldedClassNames: string[] = [];
         let unavailableClassNames: string[] = [];
 
         const shippedFrameworkClassesExist = fs.existsSync(shippedFrameworkClassesPath);
 
+        const frameworkDirectoryPath = this.getFrameworkDirectoryPath(classesDirectoryPath);
+
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
+        fs.mkdirSync(frameworkDirectoryPath, { recursive: true });
 
         this.frameworkClassNames.forEach(frameworkClassName => {
 
-            const targetClassFilePath = path.join(classesDirectoryPath, `${frameworkClassName}.cls`);
-            if ( fs.existsSync(targetClassFilePath) ) {
+            const targetClassFilePath = path.join(frameworkDirectoryPath, `${frameworkClassName}.cls`);
+
+            /*
+                A copy already sitting at the classes root is honoured too. Earlier versions scaffolded
+                there, so re-running the command after an upgrade must not deploy the same class twice
+                under two paths -- Salesforce would reject the duplicate ApexClass.
+            */
+            const legacyClassFilePath = path.join(classesDirectoryPath, `${frameworkClassName}.cls`);
+
+            if ( fs.existsSync(targetClassFilePath) || fs.existsSync(legacyClassFilePath) ) {
                 return;
             }
 

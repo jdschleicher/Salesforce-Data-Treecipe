@@ -740,7 +740,7 @@ describe('PicklistDependencyTestService', () => {
 
         const extensionPath = '/extension';
         const classesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
-        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes');
+        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', 'PicklistDependencyFramework');
 
         test('given no framework classes in the workspace, copies every shipped framework class and its meta xml', () => {
 
@@ -814,7 +814,7 @@ describe('PicklistDependencyTestService', () => {
 
             // NO ORPHANED .cls IS LEFT BEHIND FOR THE CLASS WHOSE META XML WAS MISSING
             const copiedPaths = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
-            expect(copiedPaths).not.toContain(path.join(classesDirectoryPath, 'PicklistDependencyValidator.cls'));
+            expect(copiedPaths).not.toContain(path.join(classesDirectoryPath, 'PicklistDependencyFramework', 'PicklistDependencyValidator.cls'));
 
         });
 
@@ -925,7 +925,7 @@ describe('PicklistDependencyTestService', () => {
             );
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails);
 
-            const shippedSpecClassPath = path.join(__dirname, '..', '..', '..', '..', '..', 'force-app', 'main', 'default', 'classes', 'PicklistDependencySpec.cls');
+            const shippedSpecClassPath = path.join(__dirname, '..', '..', '..', '..', '..', 'force-app', 'main', 'default', 'classes', 'PicklistDependencyFramework', 'PicklistDependencySpec.cls');
             const shippedSpecClassBody = fs.readFileSync(shippedSpecClassPath, 'utf-8');
 
             // ONLY CHAINED INSTANCE BUILDER CALLS -- forField IS STATIC AND IS ASSERTED SEPARATELY BELOW

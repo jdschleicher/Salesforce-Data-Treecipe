@@ -73,6 +73,10 @@ $ScratchDefPath    = Join-Path $ConfigDir 'project-scratch-def.json'
 $PackageDir        = Join-Path $RepoRoot 'force-app'
 $ObjectsDir        = Join-Path $PackageDir 'main/default/objects'
 $ClassesDir        = Join-Path $PackageDir 'main/default/classes'
+# The framework runtime classes live in their own directory. Salesforce resolves ApexClass by the
+# enclosing "classes" directory and walks nested folders, so this deploys identically while keeping
+# the six files the user did not write separate from the generated contract.
+$FrameworkDir      = Join-Path $ClassesDir 'PicklistDependencyFramework'
 $DemoObjectApiName = 'Treecipe_Demo__c'
 $DemoObjectDir     = Join-Path $ObjectsDir $DemoObjectApiName
 $DemoFieldsDir     = Join-Path $DemoObjectDir 'fields'
@@ -373,7 +377,7 @@ function Invoke-Deploy {
 
     $frameworkClassPaths = $OwnedClassNames |
         Where-Object { $_ -notin @('PicklistDependencySpecs', 'PicklistDependencySpecsTest') } |
-        ForEach-Object { Join-Path $ClassesDir "$_.cls" } |
+        ForEach-Object { Join-Path $FrameworkDir "$_.cls" } |
         Where-Object { Test-Path $_ }
 
     if ($frameworkClassPaths.Count -eq 0) {
@@ -458,8 +462,12 @@ function Invoke-Generate {
 #>
 function Invoke-DeployOwnedClasses {
 
+    # Framework classes resolve from their own directory; the generated contract stays at the root.
     $ownedClassPaths = $OwnedClassNames |
-        ForEach-Object { Join-Path $ClassesDir "$_.cls" } |
+        ForEach-Object {
+            $frameworkCandidate = Join-Path $FrameworkDir "$_.cls"
+            if (Test-Path $frameworkCandidate) { $frameworkCandidate } else { Join-Path $ClassesDir "$_.cls" }
+        } |
         Where-Object { Test-Path $_ }
 
     $generatedClassPaths = $ownedClassPaths | Where-Object { $_ -match 'PicklistDependencySpecs(Test)?\.cls$' }

@@ -539,6 +539,61 @@ describe('shouldDeployPicklistDependencyClasses', () => {
 
 });
 
+describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
+
+    const classesDirectoryPath = '/workspace/classes';
+    const frameworkDirectoryPath = `${classesDirectoryPath}/PicklistDependencyFramework`;
+
+    it('shouldPreferTheScaffoldedFrameworkDirectory', () => {
+
+        jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => true);
+
+        const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
+
+        expect(classFilePaths.some(p => p === `${frameworkDirectoryPath}/PicklistDependencyValidator.cls`)).toBeTrue();
+
+    });
+
+    /*
+        A workspace generated before the framework moved has the classes loose at the root. Sending
+        the same ApexClass twice under two paths in one deployment is rejected by Salesforce, so
+        exactly one path per class must be produced.
+    */
+    it('shouldFallBackToTheClassesRootForAnUpgradedWorkspace', () => {
+
+        jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => !String(checkedPath).includes('PicklistDependencyFramework'));
+
+        const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
+
+        expect(classFilePaths.some(p => p === `${classesDirectoryPath}/PicklistDependencyValidator.cls`)).toBeTrue();
+        expect(classFilePaths.some(p => p.includes('PicklistDependencyFramework'))).toBeFalse();
+
+    });
+
+    it('shouldNeverEmitTheSameClassTwiceWhenBothLocationsHaveIt', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+        const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
+        const classFileNames = classFilePaths.map(p => p.split('/').pop());
+
+        expect(new Set(classFileNames).size).toBe(classFileNames.length);
+
+    });
+
+    it('shouldKeepTheGeneratedContractAtTheClassesRoot', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+        const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
+
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/PicklistDependencySpecs.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/PicklistDependencySpecsTest.cls`);
+
+    });
+
+});
+
 describe('shouldNameEveryFileInTheDeployConfirmation', () => {
 
     it('shouldListTheOwnedClassFileNamesAndTheTargetOrg', () => {

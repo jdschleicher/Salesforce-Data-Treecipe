@@ -19,20 +19,13 @@ sfdx-project.json
 # The picklist dependency framework runtime classes ARE shipped: the "Generate Picklist
 # Dependency Tests" command scaffolds them into the user's package directory alongside the
 # generated PicklistDependencySpecs.cls, which would not compile without them. force-app
-# stays the single source of truth so the shipped copies cannot drift. Test classes, the
-# stub source, and the placeholder PicklistDependencySpecs.cls are deliberately NOT shipped.
-!force-app/main/default/classes/IPicklistDependencySource.cls
-!force-app/main/default/classes/IPicklistDependencySource.cls-meta.xml
-!force-app/main/default/classes/PicklistDependencySpec.cls
-!force-app/main/default/classes/PicklistDependencySpec.cls-meta.xml
-!force-app/main/default/classes/PicklistDependencySnapshot.cls
-!force-app/main/default/classes/PicklistDependencySnapshot.cls-meta.xml
-!force-app/main/default/classes/PicklistDependencyReport.cls
-!force-app/main/default/classes/PicklistDependencyReport.cls-meta.xml
-!force-app/main/default/classes/PicklistDependencyValidator.cls
-!force-app/main/default/classes/PicklistDependencyValidator.cls-meta.xml
-!force-app/main/default/classes/SchemaPicklistDependencySource.cls
-!force-app/main/default/classes/SchemaPicklistDependencySource.cls-meta.xml
+# stays the single source of truth so the shipped copies cannot drift.
+#
+# They live in their own directory so this is ONE negation rather than a per-file list that
+# silently fails to ship a class somebody forgets to add. Anything outside that directory --
+# the framework's own test classes, the stub source, and the placeholder
+# PicklistDependencySpecs.cls -- is therefore excluded by construction rather than by omission.
+!force-app/main/default/classes/PicklistDependencyFramework/**
 
 # Salesforce CLI local tooling and per-org source-tracking state. These are created by the
 # CLI alongside the DX project, are machine-local, and must never be published: .sfdx alone
