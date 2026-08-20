@@ -11,6 +11,30 @@ Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/6
 - Results are written to a dedicated **Picklist Dependency Check** output channel, cleared on each run so the visible output always belongs to the run that just finished, with a pass/fail summary notification carrying the failure count
 - **Every run is also saved to `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/`** as `results.json` (machine-readable per-method outcomes) and `report.md` (human-readable). Because the output channel is cleared on each invocation, a check would otherwise leave nothing behind — nothing to commit, nothing to diff against the previous run, and nothing to attach to a review. Passing runs are persisted too, so a green check is on record rather than only a failing one. The org identifier is sanitized for the folder name, since a username is a valid target and contains characters that read poorly in a directory listing
 
+### Generated registry renamed, and one method per scenario
+
+- The generated registry is now **`SFTreecipePicklistDependencySpecs`** (and `SFTreecipePicklistDependencySpecsTest`). The prefix makes it obvious the class was written into the user's package directory by this extension rather than by them, and removes any chance of colliding with a `PicklistDependencySpecs` of their own
+- **Each dependent picklist is now its own method**, and `all()` returns the collection of them:
+
+  ```apex
+  public static PicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c() {
+      return PicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')
+              .controlledBy('City__c')
+              .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })
+              .expectNone('akron');
+  }
+
+  public static List<PicklistDependencySpec> all() {
+      return new List<PicklistDependencySpec>{
+          specFor_Dependency_Example_c_Neighborhood_c()
+      };
+  }
+  ```
+
+  A single dependency can now be read on its own, referenced by name from a hand-written test, or tightened to `expectExactly` without picking through one long list expression. A comment above each method names the object, field and controlling field
+- Spec method names collapse runs of underscores for the same reason the test method names do — Apex identifiers may not contain two consecutive underscores — and take a numeric suffix when two scenarios collapse onto one identifier. The `specFor_` prefix also keeps the identifier valid when an api name starts with a digit
+- The api names inside each spec are still emitted as **string literals** with their exact `__c` suffixes, so Schema describe resolves the real object and field
+
 ### Generation offers to run end to end
 
 - After writing the classes, **Generate Picklist Dependency Tests** now offers to deploy and run them against an org in the same invocation. Accepting prompts for the target org, deploys, runs, and reports — generation through to verified results without leaving the command

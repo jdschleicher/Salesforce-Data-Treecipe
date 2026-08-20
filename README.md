@@ -183,8 +183,8 @@ The command:
 
 1. Walks the `salesforceObjectsPath` from `treecipe.config.json`
 2. Emits one spec per picklist field that declares a `controllingField`, derived from the `valueSettings` in its field metadata
-3. Writes `PicklistDependencySpecs.cls` (and its `-meta.xml`) into the `classes` folder of the default package directory resolved from `sfdx-project.json`
-4. Writes `PicklistDependencySpecsTest.cls`, an `@IsTest` class with one test method per object that asserts that object's specs against the org the test runs in, plus a guard method that fails when the spec registry is empty
+3. Writes `SFTreecipePicklistDependencySpecs.cls` (and its `-meta.xml`) into the `classes` folder of the default package directory resolved from `sfdx-project.json`
+4. Writes `SFTreecipePicklistDependencySpecsTest.cls`, an `@IsTest` class with one test method per object that asserts that object's specs against the org the test runs in, plus a guard method that fails when the spec registry is empty
 5. Scaffolds the Apex validation framework classes it depends on (`PicklistDependencySpec`, `PicklistDependencyValidator`, `SchemaPicklistDependencySource`, and supporting classes) into a `PicklistDependencyFramework` subfolder, if they are not already present. Keeping them in their own directory separates the six files you did not write from the generated contract you do engage with, and makes them removable in one action — Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the layout deploys identically
 
 Each controlling value is emitted as `expectAtLeast`, meaning the combinations found in your source metadata must still exist in the org while values the org has added since are tolerated. A controlling value that unlocks nothing is emitted as `expectNone`. Tightening a line to `expectExactly` is a deliberate edit — note that regenerating overwrites the file, so hand edits are lost.
@@ -193,7 +193,7 @@ Notes:
 
 * A field with a `controllingField` but no `valueSettings` markup is reported as a warning and skipped; the rest of the run continues
 * If no dependent picklists are found, an informational message is shown and no file is written
-* If `PicklistDependencySpecs.cls` already exists, you are prompted before it is overwritten
+* If `SFTreecipePicklistDependencySpecs.cls` already exists, you are prompted before it is overwritten
 
 The generated assertions read the org's **real** metadata. Schema describe is not isolated by `@IsTest`, so no test setup data and no `SeeAllData` are involved.
 
@@ -218,7 +218,7 @@ This command deploys and runs the generated picklist dependency tests against an
 The command:
 
 1. Lists your authenticated orgs and prompts you to pick the target
-2. Checks whether `PicklistDependencySpecsTest` exists in that org, and offers to deploy the classes if it does not — nothing is deployed without explicit confirmation
+2. Checks whether `SFTreecipePicklistDependencySpecsTest` exists in that org, and offers to deploy the classes if it does not — nothing is deployed without explicit confirmation
 3. Runs the test class with `sf apex run test`
 4. Writes a per-method report to the **Picklist Dependency Check** output channel and shows a pass/fail summary notification
 5. Saves the results into `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/` as `results.json` and `report.md`

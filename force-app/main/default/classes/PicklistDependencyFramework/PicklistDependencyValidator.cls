@@ -1,5 +1,5 @@
 /**
- * Compares a set of PicklistDependencySpecs against org reality (via an
+ * Compares a set of SFTreecipePicklistDependencySpecs against org reality (via an
  * IPicklistDependencySource) and returns the mismatches.
  *
  * Never throws on a mismatch: a bad or unreachable spec becomes a Failure so a single

@@ -306,7 +306,7 @@ describe('PicklistDependencyTestService', () => {
 
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([specDetailWithBothMatchModes]);
 
-            expect(apexClassBody).toContain(`public class PicklistDependencySpecs {`);
+            expect(apexClassBody).toContain(`public class SFTreecipePicklistDependencySpecs {`);
             expect(apexClassBody).toContain(`PicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')`);
             expect(apexClassBody).toContain(`.controlledBy('City__c')`);
             expect(apexClassBody).toContain(`.expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })`);
@@ -314,7 +314,7 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
-        test('given multiple specs, separates the list elements with a comma', () => {
+        test('given multiple specs, emits one method per scenario and returns them all from all()', () => {
 
             const secondSpecDetail: IPicklistDependencySpecDetail = {
                 objectApiName: 'Dependency_Example__c',
@@ -325,7 +325,39 @@ describe('PicklistDependencyTestService', () => {
 
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([specDetailWithBothMatchModes, secondSpecDetail]);
 
-            expect(apexClassBody).toContain(`,\n            PicklistDependencySpec.forField('Dependency_Example__c', 'SpecialCharacterDependent__c')`);
+            // EACH SCENARIO IS ITS OWN FACTORY METHOD
+            expect(apexClassBody).toContain('public static PicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c()');
+            expect(apexClassBody).toContain('public static PicklistDependencySpec specFor_Dependency_Example_c_SpecialCharacterDependent_c()');
+
+            // AND all() RETURNS THE COLLECTION OF THEM, COMMA SEPARATED
+            expect(apexClassBody).toContain(`            specFor_Dependency_Example_c_Neighborhood_c(),\n            specFor_Dependency_Example_c_SpecialCharacterDependent_c()`);
+
+        });
+
+        test('emits no spec method name containing two consecutive underscores', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([
+                specDetailWithBothMatchModes,
+                { ...specDetailWithBothMatchModes, objectApiName: 'My_NS__Obj__c', fieldApiName: 'Some__Field__c' }
+            ]);
+
+            const emittedMethodNames = [...apexClassBody.matchAll(/PicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
+
+            expect(emittedMethodNames.length).toBeGreaterThan(0);
+            expect(emittedMethodNames).toSatisfyAll((methodName: string) => !methodName.includes('__'));
+
+        });
+
+        test('given two scenarios whose names collapse to one identifier, emits distinct method names', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([
+                { ...specDetailWithBothMatchModes, objectApiName: 'Foo__c', fieldApiName: 'Bar__c' },
+                { ...specDetailWithBothMatchModes, objectApiName: 'Foo_c', fieldApiName: 'Bar_c' }
+            ]);
+
+            const emittedMethodNames = [...apexClassBody.matchAll(/public static PicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
+
+            expect(new Set(emittedMethodNames).size).toBe(emittedMethodNames.length);
 
         });
 
@@ -354,6 +386,8 @@ describe('PicklistDependencyTestService', () => {
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([]);
 
             expect(apexClassBody).toContain('return new List<PicklistDependencySpec>();');
+            // NO SCENARIO METHODS AT ALL, RATHER THAN AN EMPTY ONE
+            expect(apexClassBody).not.toContain('public static PicklistDependencySpec specFor_');
 
         });
 
@@ -380,7 +414,7 @@ describe('PicklistDependencyTestService', () => {
             const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
 
             expect(apexTestClassBody).toContain('@IsTest');
-            expect(apexTestClassBody).toContain('private class PicklistDependencySpecsTest {');
+            expect(apexTestClassBody).toContain('private class SFTreecipePicklistDependencySpecsTest {');
             expect(apexTestClassBody).toContain('new PicklistDependencyValidator(new SchemaPicklistDependencySource())');
 
         });
@@ -421,7 +455,7 @@ describe('PicklistDependencyTestService', () => {
 
             expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
             expect(apexTestClassBody).toContain('Assert.isFalse(');
-            expect(apexTestClassBody).toContain('PicklistDependencySpecs.all().isEmpty()');
+            expect(apexTestClassBody).toContain('SFTreecipePicklistDependencySpecs.all().isEmpty()');
 
         });
 
@@ -814,7 +848,7 @@ describe('PicklistDependencyTestService', () => {
             const writtenFilePath = PicklistDependencyTestService.writeSpecsClassFiles(classesDirectoryPath, 'apex body', '64.0');
 
             expect(makeDirectorySpy).toHaveBeenCalledWith(classesDirectoryPath, { recursive: true });
-            expect(writtenFilePath).toBe(path.join(classesDirectoryPath, 'PicklistDependencySpecs.cls'));
+            expect(writtenFilePath).toBe(path.join(classesDirectoryPath, 'SFTreecipePicklistDependencySpecs.cls'));
             expect(writeFileSpy).toHaveBeenCalledWith(writtenFilePath, 'apex body');
             expect(writeFileSpy).toHaveBeenCalledWith(`${writtenFilePath}-meta.xml`, expect.stringContaining('<apiVersion>64.0</apiVersion>'));
 

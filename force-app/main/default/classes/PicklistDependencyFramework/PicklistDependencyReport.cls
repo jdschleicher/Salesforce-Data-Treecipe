@@ -50,7 +50,7 @@ public class PicklistDependencyReport {
         lines.add('  failures:      ' + failureCount);
 
         if (isEmpty()) {
-            lines.add('  no specs registered — PicklistDependencySpecs.all() returned nothing,');
+            lines.add('  no specs registered — SFTreecipePicklistDependencySpecs.all() returned nothing,');
             lines.add('  so this run verified nothing. Add specs by hand or generate them.');
         } else if (hasFailures()) {
             lines.add('');

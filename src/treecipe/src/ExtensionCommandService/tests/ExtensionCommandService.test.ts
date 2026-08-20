@@ -57,7 +57,7 @@ describe('ExtensionCommandService', () => {
         const extensionPath = '/extension';
         const workspaceRoot = '/workspace';
         const classesDirectoryPath = '/workspace/force-app/main/default/classes';
-        const specsClassFilePath = `${classesDirectoryPath}/PicklistDependencySpecs.cls`;
+        const specsClassFilePath = `${classesDirectoryPath}/SFTreecipePicklistDependencySpecs.cls`;
 
         const specDetail: IPicklistDependencySpecDetail = {
             objectApiName: 'Dependency_Example__c',
@@ -66,7 +66,7 @@ describe('ExtensionCommandService', () => {
             expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'] }]
         };
 
-        const specsTestClassFilePath = `${classesDirectoryPath}/PicklistDependencySpecsTest.cls`;
+        const specsTestClassFilePath = `${classesDirectoryPath}/SFTreecipePicklistDependencySpecsTest.cls`;
 
         let extensionCommandService: ExtensionCommandService;
         let writeSpecsClassFilesSpy: jest.SpyInstance;
@@ -132,7 +132,7 @@ describe('ExtensionCommandService', () => {
 
             /*
                 Asserted on real spec content, not on the class declaration: buildSpecsApexClassBody
-                emits "public class PicklistDependencySpecs" even for an empty spec list, so matching
+                emits "public class SFTreecipePicklistDependencySpecs" even for an empty spec list, so matching
                 the declaration would pass even if every spec had been dropped.
             */
             expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(
@@ -162,11 +162,11 @@ describe('ExtensionCommandService', () => {
             );
 
             const emittedTestClassBody = writeSpecsTestClassFilesSpy.mock.calls[0][1];
-            expect(emittedTestClassBody).toContain('private class PicklistDependencySpecsTest {');
+            expect(emittedTestClassBody).toContain('private class SFTreecipePicklistDependencySpecsTest {');
             expect(emittedTestClassBody).toContain('static void Dependency_Example_c_picklistDependenciesMatchSourceMetadata()');
             expect(emittedTestClassBody).toContain('static void specRegistryIsNotEmpty()');
 
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('PicklistDependencySpecsTest.cls');
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SFTreecipePicklistDependencySpecsTest.cls');
 
         });
 

@@ -32,10 +32,15 @@ export interface IFrameworkScaffoldResult {
 
 export class PicklistDependencyTestService {
 
-    private static specsClassName = 'PicklistDependencySpecs';
+    /*
+        Prefixed so the class this command writes into a user's package directory is obviously not
+        theirs, and cannot collide with an existing SFTreecipePicklistDependencySpecs of their own. The test
+        class name derives from it, so both move together.
+    */
+    private static specsClassName = 'SFTreecipePicklistDependencySpecs';
 
     /*
-        The runtime classes the generated PicklistDependencySpecs.cls depends on. These ship in the
+        The runtime classes the generated SFTreecipePicklistDependencySpecs.cls depends on. These ship in the
         vsix via negation entries in .vscodeignore and are scaffolded into the user's package
         directory when missing, otherwise the generated file would not compile in their org.
     */
@@ -267,27 +272,92 @@ export class PicklistDependencyTestService {
 
     }
 
+    /*
+        One Apex method name per (object, field) scenario.
+
+        Apex identifiers may not contain two consecutive underscores, so runs are collapsed exactly as
+        they are for the generated test methods -- every custom api name ends in "__c". The "specFor"
+        prefix keeps the identifier valid whatever the api name starts with, including a digit, and
+        reads as a factory at the call site inside all().
+    */
+    static buildSpecMethodName(objectApiName: string, fieldApiName: string): string {
+
+        const collapse = (apiName: string) => apiName.replace(/_{2,}/g, '_');
+
+        return `specFor_${collapse(objectApiName)}_${collapse(fieldApiName)}`;
+
+    }
+
+    /*
+        Collapsing can map two distinct scenarios onto one identifier, and two Apex methods with the
+        same name will not compile, so later collisions take a numeric suffix.
+    */
+    static buildSpecMethodNamesBySpecDetail(specDetails: IPicklistDependencySpecDetail[]): string[] {
+
+        let usedMethodNames = new Set<string>();
+
+        return specDetails.map(specDetail => {
+
+            const baseMethodName = this.buildSpecMethodName(specDetail.objectApiName, specDetail.fieldApiName);
+
+            let uniqueMethodName = baseMethodName;
+            let collisionSuffix = 2;
+            while ( usedMethodNames.has(uniqueMethodName) ) {
+                uniqueMethodName = `${baseMethodName}_${collisionSuffix}`;
+                collisionSuffix++;
+            }
+
+            usedMethodNames.add(uniqueMethodName);
+            return uniqueMethodName;
+
+        });
+
+    }
+
     static buildSpecsApexClassBody(specDetails: IPicklistDependencySpecDetail[]): string {
 
-        const specStatements = specDetails.map(specDetail => this.buildSpecStatement(specDetail)).join(',\n');
+        const specMethodNames = this.buildSpecMethodNamesBySpecDetail(specDetails);
+
+        /*
+            One method per scenario rather than one long list literal. Each dependency becomes
+            individually addressable -- readable on its own, referenced by name from a hand written
+            test, and tightened to expectExactly without picking through a single expression.
+        */
+        const specMethods = specDetails.map((specDetail, specDetailIndex) => {
+
+            const specStatement = this.buildSpecStatement(specDetail)
+                .split('\n')
+                .map(statementLine => statementLine.replace(/^ {8}/, '        '))
+                .join('\n');
+
+            return `    // ${specDetail.objectApiName}.${specDetail.fieldApiName} controlled by ${specDetail.controllingFieldApiName}
+    public static PicklistDependencySpec ${specMethodNames[specDetailIndex]}() {
+        return ${specStatement.trim()};
+    }`;
+
+        }).join('\n\n');
 
         const specsListMarkup = ( specDetails.length === 0 )
             ? `        return new List<PicklistDependencySpec>();`
-            : `        return new List<PicklistDependencySpec>{\n${specStatements}\n        };`;
+            : `        return new List<PicklistDependencySpec>{\n${specMethodNames.map(specMethodName => `            ${specMethodName}()`).join(',\n')}\n        };`;
+
+        const specMethodsBlock = ( specDetails.length === 0 ) ? '' : `\n${specMethods}\n`;
 
         return `/**
- * GENERATED FILE -- do not add specs by hand above the generated block.
+ * GENERATED FILE -- regenerating overwrites it.
  *
  * Created by the Salesforce Data Treecipe "Generate Picklist Dependency Tests" command from
- * the picklist dependency configuration in local source metadata. Regenerating overwrites
- * this file.
+ * the picklist dependency configuration in local source metadata.
  *
- * Every line is emitted as expectAtLeast: the combinations present in source metadata must
+ * Each dependent picklist gets its own method, and all() returns the collection of them. A single
+ * scenario can therefore be read, referenced from a hand written test, or tightened on its own.
+ *
+ * Every value is emitted as expectAtLeast: the combinations present in source metadata must
  * still exist in the org, and values the org has added since are tolerated. Tightening a line
  * to expectExactly is a deliberate edit by the spec owner and will be lost on regeneration.
  */
 public class ${this.specsClassName} {
-
+${specMethodsBlock}
     public static List<PicklistDependencySpec> all() {
 ${specsListMarkup}
     }
@@ -451,7 +521,7 @@ ${specsListMarkup}
         nested folders, so a subdirectory deploys identically while keeping six files the user did not
         write clearly separated from the ones they did -- and making them removable in one action.
 
-        The generated PicklistDependencySpecs.cls and PicklistDependencySpecsTest.cls deliberately do
+        The generated SFTreecipePicklistDependencySpecs.cls and SFTreecipePicklistDependencySpecsTest.cls deliberately do
         NOT live here: those are the user's contract, expected to be read and sometimes hand-tightened,
         so they stay at the classes root where a developer would look for them.
     */

@@ -135,7 +135,7 @@ describe('shouldTranslateApexTestRunResults', () => {
     it('shouldThrowWhenNoTestMethodsRan', () => {
 
         expect(() => PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload([])))
-            .toThrow('No PicklistDependencySpecsTest test methods ran');
+            .toThrow('No SFTreecipePicklistDependencySpecsTest test methods ran');
 
     });
 
@@ -288,7 +288,7 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
 
-        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'PicklistDependencySpecsTest']);
+        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'SFTreecipePicklistDependencySpecsTest']);
         expect(salesforceCliArguments).toIncludeAllMembers(['--target-org', 'devHub']);
 
         /*
@@ -518,12 +518,12 @@ describe('shouldDeployPicklistDependencyClasses', () => {
         stubSalesforceCli({
             stdout: JSON.stringify({
                 status: 1,
-                result: { success: false, details: { componentFailures: [{ fullName: 'PicklistDependencySpecsTest', problem: 'Method does not exist' }] } }
+                result: { success: false, details: { componentFailures: [{ fullName: 'SFTreecipePicklistDependencySpecsTest', problem: 'Method does not exist' }] } }
             })
         });
 
         await expect(PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
-            .rejects.toThrow('PicklistDependencySpecsTest: Method does not exist');
+            .rejects.toThrow('SFTreecipePicklistDependencySpecsTest: Method does not exist');
 
     });
 
@@ -587,8 +587,8 @@ describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
 
         const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
 
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/PicklistDependencySpecs.cls`);
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/PicklistDependencySpecsTest.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SFTreecipePicklistDependencySpecs.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SFTreecipePicklistDependencySpecsTest.cls`);
 
     });
 
@@ -603,7 +603,7 @@ describe('shouldNameEveryFileInTheDeployConfirmation', () => {
         const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub');
 
         expect(confirmationMessage).toContain('devHub');
-        expect(confirmationMessage).toContain('PicklistDependencySpecsTest.cls');
+        expect(confirmationMessage).toContain('SFTreecipePicklistDependencySpecsTest.cls');
         expect(confirmationMessage).toContain('PicklistDependencyValidator.cls');
         // THE USER MUST BE ABLE TO SEE THAT WORKSPACE COPIES ARE WHAT GETS SENT
         expect(confirmationMessage).toContain('as they exist in your workspace');

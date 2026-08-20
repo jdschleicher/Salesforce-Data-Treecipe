@@ -20,7 +20,7 @@
       Scaffold   write the scratch definition and the sample dependent-picklist metadata
       CreateOrg  create the scratch org
       Deploy     deploy the sample object and the Apex framework classes
-      Generate   generate PicklistDependencySpecs.cls and PicklistDependencySpecsTest.cls
+      Generate   generate SFTreecipePicklistDependencySpecs.cls and SFTreecipePicklistDependencySpecsTest.cls
       Check      deploy the generated classes, run them, write artifacts   -> expect PASS
       Drift      rewire the dependency in the org only, re-run             -> expect FAIL
       Restore    put the org dependency back, re-run                       -> expect PASS
@@ -92,8 +92,8 @@ $OwnedClassNames = @(
     'PicklistDependencyReport',
     'PicklistDependencyValidator',
     'SchemaPicklistDependencySource',
-    'PicklistDependencySpecs',
-    'PicklistDependencySpecsTest'
+    'SFTreecipePicklistDependencySpecs',
+    'SFTreecipePicklistDependencySpecsTest'
 )
 
 # --------------------------------------------------------------------------------------------------
@@ -376,7 +376,7 @@ function Invoke-Deploy {
     Write-Step 'Deploy sample object and Apex framework classes'
 
     $frameworkClassPaths = $OwnedClassNames |
-        Where-Object { $_ -notin @('PicklistDependencySpecs', 'PicklistDependencySpecsTest') } |
+        Where-Object { $_ -notin @('SFTreecipePicklistDependencySpecs', 'SFTreecipePicklistDependencySpecsTest') } |
         ForEach-Object { Join-Path $FrameworkDir "$_.cls" } |
         Where-Object { Test-Path $_ }
 
@@ -434,14 +434,14 @@ function Invoke-Generate {
     & node $HeadlessDriver generate $ObjectsDir $ClassesDir $ApiVersion
     if ($LASTEXITCODE -ne 0) { Stop-WithError 'spec generation failed.' }
 
-    $specsPath = Join-Path $ClassesDir 'PicklistDependencySpecs.cls'
-    $testPath  = Join-Path $ClassesDir 'PicklistDependencySpecsTest.cls'
+    $specsPath = Join-Path $ClassesDir 'SFTreecipePicklistDependencySpecs.cls'
+    $testPath  = Join-Path $ClassesDir 'SFTreecipePicklistDependencySpecsTest.cls'
 
     if (-not (Test-Path $specsPath) -or -not (Test-Path $testPath)) {
         Stop-WithError 'generation reported success but the expected classes are not on disk.'
     }
 
-    Write-Good 'PicklistDependencySpecs.cls and PicklistDependencySpecsTest.cls generated'
+    Write-Good 'SFTreecipePicklistDependencySpecs.cls and SFTreecipePicklistDependencySpecsTest.cls generated'
     Write-Info "review them at $ClassesDir"
 }
 
@@ -470,7 +470,7 @@ function Invoke-DeployOwnedClasses {
         } |
         Where-Object { Test-Path $_ }
 
-    $generatedClassPaths = $ownedClassPaths | Where-Object { $_ -match 'PicklistDependencySpecs(Test)?\.cls$' }
+    $generatedClassPaths = $ownedClassPaths | Where-Object { $_ -match 'SFTreecipePicklistDependencySpecs(Test)?\.cls$' }
 
     if ($generatedClassPaths.Count -lt 2) {
         Stop-WithError 'generated classes are missing. Run -Step Generate first.'
