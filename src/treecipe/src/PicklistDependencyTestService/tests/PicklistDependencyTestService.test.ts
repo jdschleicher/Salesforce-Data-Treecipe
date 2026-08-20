@@ -512,6 +512,35 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    describe('non Salesforce files in a fields directory', () => {
+
+        /*
+            The DirectoryProcessing mock fixtures contain "gfh__c.xml" -- CustomField markup for a
+            dependent picklist, but WITHOUT the ".field-meta.xml" suffix Salesforce requires. Matching
+            on ".xml" alone generated a spec for it, so the registry asserted a field the org has no
+            reason to have. The fixture is left in place deliberately as the regression case.
+        */
+        test('given a fields directory holding an xml file without the field-meta suffix, generates no spec for it', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(
+                path.join(existingDirectoryProcessingMocksFieldsPath, '..', '..')
+            );
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const strayFileSpecDetails = collectionResult.specDetails.filter(specDetail => specDetail.fieldApiName.includes('gfh'));
+            expect(strayFileSpecDetails).toBeEmpty();
+
+            // THE PROPERLY NAMED DEPENDENT PICKLIST IN THE SAME DIRECTORY IS STILL PICKED UP
+            const realSpecDetails = collectionResult.specDetails.filter(specDetail => specDetail.fieldApiName === 'DependentPicklist__c');
+            expect(realSpecDetails).toHaveLength(1);
+
+        });
+
+    });
+
     describe('assertClassesDirectoryContainedInWorkspace', () => {
 
         test('given a classes directory inside the workspace, does not throw', () => {

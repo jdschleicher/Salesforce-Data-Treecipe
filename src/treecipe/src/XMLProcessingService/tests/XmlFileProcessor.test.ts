@@ -457,3 +457,51 @@ describe('processXmlFieldContent', () => {
     });
 
 });
+describe('isSalesforceFieldMetadataFile', () => {
+
+    const FILE = 1;
+    const DIRECTORY = 2;
+
+    test('given a real Salesforce field file, returns true', () => {
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('Neighborhood__c.field-meta.xml', FILE)).toBe(true);
+    });
+
+    /*
+        The reported defect: a fields directory can hold a hand-saved copy or an export carrying
+        CustomField markup. Matching on ".xml" alone parsed those as real fields and generated
+        picklist dependency specs for fields the org does not have.
+    */
+    test('given an xml file without the field-meta suffix, returns false', () => {
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('gfh__c.xml', FILE)).toBe(false);
+    });
+
+    test('given other stray xml files that can sit beside field metadata, returns false', () => {
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('package.xml', FILE)).toBe(false);
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('Neighborhood__c.field-meta.xml.bak', FILE)).toBe(false);
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('Copy of Neighborhood__c.xml', FILE)).toBe(false);
+    });
+
+    // A FILE NAMED EXACTLY THE SUFFIX HAS NO API NAME TO DERIVE, SO IT IS NOT A FIELD
+    test('given a file named exactly the suffix, returns false', () => {
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('.field-meta.xml', FILE)).toBe(false);
+    });
+
+    test('given a directory whose name ends in the suffix, returns false', () => {
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('Something.field-meta.xml', DIRECTORY)).toBe(false);
+    });
+
+    test('given mixed casing, still recognises the suffix', () => {
+        expect(XmlFileProcessor.isSalesforceFieldMetadataFile('Neighborhood__c.Field-Meta.XML', FILE)).toBe(true);
+    });
+
+    /*
+        isXMLFileType keeps meaning "is an .xml file" -- GlobalValueSetSingleton and RecordTypeService
+        rely on it for .globalValueSet-meta.xml and .recordType-meta.xml, so narrowing it would have
+        broken those. The two checks are deliberately separate.
+    */
+    test('isXMLFileType still accepts any xml file, unchanged', () => {
+        expect(XmlFileProcessor.isXMLFileType('gfh__c.xml', FILE)).toBe(true);
+        expect(XmlFileProcessor.isXMLFileType('SomeRecordType.recordType-meta.xml', FILE)).toBe(true);
+    });
+
+});

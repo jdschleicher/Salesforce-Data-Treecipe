@@ -157,7 +157,12 @@ export class PicklistDependencyTestService {
         let fieldDetails: XMLFieldDetail[] = [];
         for ( const [fileName, directoryItemTypeEnum] of fieldDirectoryEntries ) {
 
-            if ( !XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) ) {
+            /*
+                Requires the full ".field-meta.xml" suffix rather than any ".xml". A fields directory
+                can hold a hand-saved copy or an export carrying CustomField markup, and matching on
+                the extension alone generated specs for fields that do not exist in the org.
+            */
+            if ( !XmlFileProcessor.isSalesforceFieldMetadataFile(fileName, directoryItemTypeEnum) ) {
                 continue;
             }
 

@@ -229,5 +229,34 @@ export class XmlFileProcessor {
 
   }
 
+  /*
+    Salesforce source format names every custom field file "<ApiName>.field-meta.xml". Matching on
+    ".xml" alone is not enough: a fields directory can hold a hand-saved copy, an export, or a
+    scratch file that happens to carry CustomField markup, and each of those would be parsed as a
+    real field. That produced spec lines for fields the org does not have.
+
+    The api name is taken from the file name rather than the <fullName> element elsewhere in the
+    pipeline, so a file not following the convention has no reliable api name to begin with.
+  */
+  private static salesforceFieldMetadataSuffix = '.field-meta.xml';
+
+  static getSalesforceFieldMetadataSuffix(): string {
+    return this.salesforceFieldMetadataSuffix;
+  }
+
+  static isSalesforceFieldMetadataFile(fileName: string, directoryItemTypeEnum: number): boolean {
+
+    if ( directoryItemTypeEnum !== vscode.FileType.File ) {
+      return false;
+    }
+
+    const normalizedFileName = fileName.toLowerCase();
+
+    // THE SUFFIX MUST BE PRECEDED BY AN API NAME, SO A FILE CALLED EXACTLY ".field-meta.xml" IS NOT ONE
+    return normalizedFileName.endsWith(this.salesforceFieldMetadataSuffix)
+            && normalizedFileName.length > this.salesforceFieldMetadataSuffix.length;
+
+  }
+
 
 }

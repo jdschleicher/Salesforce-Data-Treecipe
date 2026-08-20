@@ -163,7 +163,7 @@ export class DirectoryProcessor {
     let fieldInfoDetails: FieldInfo[] = [];
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
-      if ( XmlFileProcessor.isXMLFileType(fileName, directoryItemTypeEnum) && !this.isInMappingsOfOotbSalesforceFields(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
+      if ( XmlFileProcessor.isSalesforceFieldMetadataFile(fileName, directoryItemTypeEnum) && !this.isInMappingsOfOotbSalesforceFields(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
 
         const fieldUri = vscode.Uri.joinPath(directoryPathUri, fileName);
         const fieldXmlContentUriData = await vscode.workspace.fs.readFile(fieldUri);
