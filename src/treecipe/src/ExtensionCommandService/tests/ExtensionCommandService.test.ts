@@ -153,7 +153,7 @@ describe('ExtensionCommandService', () => {
 
             const emittedTestClassBody = writeSpecsTestClassFilesSpy.mock.calls[0][1];
             expect(emittedTestClassBody).toContain('private class PicklistDependencySpecsTest {');
-            expect(emittedTestClassBody).toContain('static void Dependency_Example__c_picklistDependenciesMatchSourceMetadata()');
+            expect(emittedTestClassBody).toContain('static void Dependency_Example_c_picklistDependenciesMatchSourceMetadata()');
             expect(emittedTestClassBody).toContain('static void specRegistryIsNotEmpty()');
 
             expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('PicklistDependencySpecsTest.cls');

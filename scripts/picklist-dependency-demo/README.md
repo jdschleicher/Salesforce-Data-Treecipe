@@ -159,7 +159,7 @@ Re-running the check produces a failing Apex test whose assertion message names 
 field, the controlling value, and the specific missing value:
 
 ```
-FAIL  Treecipe_Demo__c_picklistDependenciesMatchSourceMetadata
+FAIL  Treecipe_Demo_c_picklistDependenciesMatchSourceMetadata
       System.AssertException: Assertion Failed: Picklist dependency drift on Treecipe_Demo__c
       -- 1 combination(s) no longer match local source metadata:
         - MISSING_VALUES — Treecipe_Demo__c.Neighborhood__c @ "cle": Expected values no longer valid: [tremont]
@@ -168,6 +168,11 @@ FAIL  Treecipe_Demo__c_picklistDependenciesMatchSourceMetadata
 The method name and message format above are taken from the shipped code, not paraphrased:
 `buildTestMethodNameByObjectApiName` produces the method name, and
 `PicklistDependencyValidator.Failure.toLine()` produces `KIND — Object.Field @ "value": message`.
+
+Note the method name is `Treecipe_Demo_c_...`, not `Treecipe_Demo__c_...`. **Apex identifiers may not
+contain two consecutive underscores**, so runs of underscores in the object api name are collapsed.
+The api name itself is passed to the assertion as a string literal and keeps its exact `__c` suffix,
+so the describe still resolves the real object.
 
 ---
 

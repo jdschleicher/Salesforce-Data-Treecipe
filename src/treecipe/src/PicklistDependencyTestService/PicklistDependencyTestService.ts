@@ -499,15 +499,59 @@ ${specsListMarkup}
     }
 
     /*
-        Object api names are already validated against salesforceApiNamePattern, so the only
-        remaining hazard for an Apex identifier is a leading digit. The api name is embedded rather
-        than an index so a failing method names the object it covers in the test results.
+        Builds the Apex method name that covers one object.
+
+        Apex identifiers may NOT contain two consecutive underscores -- that sequence is reserved for
+        namespace and custom-object suffixes -- so a raw api name cannot be used. Every custom object
+        ends in "__c", which means embedding the name verbatim produced a class that failed to deploy
+        with "Invalid character in identifier" for every custom object in the registry. Standard
+        objects happened to work, which is exactly why this survived a live deploy check.
+
+        Runs of underscores are collapsed rather than the suffix being stripped, so "Foo__c" and
+        "Foo__e" stay distinguishable as "Foo_c" and "Foo_e". The api name is embedded at all -- as
+        opposed to an index -- so a failing method names the object it covers in the test results.
+
+        Collapsing can make two distinct api names collide ("Foo__c" and "Foo_c" both yield "Foo_c"),
+        so callers generating a whole class must disambiguate. buildSpecsTestApexClassBody does.
     */
     static buildTestMethodNameByObjectApiName(objectApiName: string): string {
 
-        const identifierSafeObjectApiName = /^[0-9]/.test(objectApiName) ? `object${objectApiName}` : objectApiName;
+        const collapsedUnderscores = objectApiName.replace(/_{2,}/g, '_');
+        const identifierSafeObjectApiName = /^[0-9]/.test(collapsedUnderscores) ? `object${collapsedUnderscores}` : collapsedUnderscores;
 
         return `${identifierSafeObjectApiName}_picklistDependenciesMatchSourceMetadata`;
+
+    }
+
+    /*
+        Assigns one unique method name per object api name, in the order given.
+
+        Two api names can collapse to the same identifier, and two methods with the same name will not
+        compile. A numeric suffix is appended to later collisions rather than the first, so the common
+        case -- no collision at all -- produces the unsuffixed name a reader expects.
+    */
+    static buildTestMethodNamesByObjectApiName(objectApiNames: string[]): Record<string, string> {
+
+        let methodNamesByObjectApiName: Record<string, string> = {};
+        let usedMethodNames = new Set<string>();
+
+        objectApiNames.forEach(objectApiName => {
+
+            const baseMethodName = this.buildTestMethodNameByObjectApiName(objectApiName);
+
+            let uniqueMethodName = baseMethodName;
+            let collisionSuffix = 2;
+            while ( usedMethodNames.has(uniqueMethodName) ) {
+                uniqueMethodName = `${baseMethodName}_${collisionSuffix}`;
+                collisionSuffix++;
+            }
+
+            usedMethodNames.add(uniqueMethodName);
+            methodNamesByObjectApiName[objectApiName] = uniqueMethodName;
+
+        });
+
+        return methodNamesByObjectApiName;
 
     }
 
@@ -521,12 +565,15 @@ ${specsListMarkup}
 
         const distinctObjectApiNames = [...new Set(specDetails.map(specDetail => specDetail.objectApiName))].sort();
 
+        const testMethodNamesByObjectApiName = this.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
+
         const testMethods = distinctObjectApiNames.map(objectApiName => {
 
+            // THE API NAME IS PASSED AS A STRING LITERAL, SO IT KEEPS ITS EXACT SUFFIX FOR THE DESCRIBE
             const escapedObjectApiName = this.escapeApexStringLiteral(objectApiName);
 
             return `    @IsTest
-    static void ${this.buildTestMethodNameByObjectApiName(objectApiName)}() {
+    static void ${testMethodNamesByObjectApiName[objectApiName]}() {
         assertNoPicklistDependencyFailuresForObject('${escapedObjectApiName}');
     }`;
 

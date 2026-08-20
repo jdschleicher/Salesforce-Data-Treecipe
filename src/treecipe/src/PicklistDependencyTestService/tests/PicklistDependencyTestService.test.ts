@@ -393,7 +393,7 @@ describe('PicklistDependencyTestService', () => {
             ]);
 
             expect(apexTestClassBody).toContain('static void Account_picklistDependenciesMatchSourceMetadata()');
-            expect(apexTestClassBody).toContain('static void Dependency_Example__c_picklistDependenciesMatchSourceMetadata()');
+            expect(apexTestClassBody).toContain('static void Dependency_Example_c_picklistDependenciesMatchSourceMetadata()');
 
         });
 
@@ -431,6 +431,39 @@ describe('PicklistDependencyTestService', () => {
 
             expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
             expect(apexTestClassBody).not.toContain('_picklistDependenciesMatchSourceMetadata()');
+
+        });
+
+        /*
+            A whole-class guard rather than a per-name one: any future change that reintroduces a
+            double underscore anywhere in an emitted identifier fails here, regardless of which
+            helper produced it.
+        */
+        test('emits no apex identifier containing two consecutive underscores', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                accountSpecDetail,
+                dependencyExampleSpecDetail,
+                { ...accountSpecDetail, objectApiName: 'My_NS__Obj__c' }
+            ]);
+
+            const emittedMethodNames = [...apexTestClassBody.matchAll(/static void (\w+)\(/g)].map(match => match[1]);
+
+            expect(emittedMethodNames.length).toBeGreaterThan(0);
+            expect(emittedMethodNames).toSatisfyAll((methodName: string) => !methodName.includes('__'));
+
+        });
+
+        test('given objects whose names collapse to one identifier, emits distinct method names', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                { ...accountSpecDetail, objectApiName: 'Foo__c' },
+                { ...accountSpecDetail, objectApiName: 'Foo_c' }
+            ]);
+
+            const emittedMethodNames = [...apexTestClassBody.matchAll(/static void (\w+)\(/g)].map(match => match[1]);
+
+            expect(new Set(emittedMethodNames).size).toBe(emittedMethodNames.length);
 
         });
 
@@ -490,10 +523,37 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
-        test('given a custom object api name, keeps the suffix in the method name', () => {
+        /*
+            Apex identifiers may not contain two consecutive underscores. Every custom object api
+            name ends in "__c", so embedding one verbatim produced a class that failed to deploy with
+            "Invalid character in identifier". Standard objects were unaffected, which is why the
+            defect survived a live deploy check.
+        */
+        test('given a custom object api name, collapses the double underscore so the identifier is valid apex', () => {
 
-            expect(PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Dependency_Example__c'))
-                .toBe('Dependency_Example__c_picklistDependenciesMatchSourceMetadata');
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Dependency_Example__c');
+
+            expect(testMethodName).toBe('Dependency_Example_c_picklistDependenciesMatchSourceMetadata');
+            expect(testMethodName).not.toContain('__');
+
+        });
+
+        test('given a namespaced api name, collapses every run of underscores', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('My_NS__Obj__c');
+
+            expect(testMethodName).toBe('My_NS_Obj_c_picklistDependenciesMatchSourceMetadata');
+            expect(testMethodName).not.toContain('__');
+
+        });
+
+        // COLLAPSING RATHER THAN STRIPPING KEEPS "__c" AND "__e" TELLABLE APART
+        test('given custom object and custom event api names, keeps them distinguishable', () => {
+
+            const customObjectMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Thing__c');
+            const platformEventMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Thing__e');
+
+            expect(customObjectMethodName).not.toBe(platformEventMethodName);
 
         });
 
@@ -501,8 +561,34 @@ describe('PicklistDependencyTestService', () => {
 
             const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('2ndObject__c');
 
-            expect(testMethodName).toStartWith('object2ndObject__c');
+            expect(testMethodName).toStartWith('object2ndObject_c');
             expect(testMethodName).not.toStartWith('2');
+            expect(testMethodName).not.toContain('__');
+
+        });
+
+    });
+
+    describe('buildTestMethodNamesByObjectApiName', () => {
+
+        /*
+            Collapsing underscores can map two distinct api names onto one identifier, and two Apex
+            methods with the same name will not compile.
+        */
+        test('given api names that collapse to the same identifier, disambiguates them', () => {
+
+            const methodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(['Foo__c', 'Foo_c']);
+
+            expect(methodNamesByObjectApiName['Foo__c']).not.toBe(methodNamesByObjectApiName['Foo_c']);
+
+        });
+
+        test('given no collisions, leaves every name unsuffixed', () => {
+
+            const methodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(['Account', 'Contact__c']);
+
+            expect(methodNamesByObjectApiName['Account']).toBe('Account_picklistDependenciesMatchSourceMetadata');
+            expect(methodNamesByObjectApiName['Contact__c']).toBe('Contact_c_picklistDependenciesMatchSourceMetadata');
 
         });
 
