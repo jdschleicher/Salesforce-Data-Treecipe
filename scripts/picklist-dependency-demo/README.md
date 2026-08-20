@@ -67,15 +67,30 @@ On macOS or Linux, `pwsh ./Invoke-PicklistDependencyDemo.ps1` if the script is n
 | `Preflight` | Verifies CLI, Dev Hub, node, compiled output | all green |
 | `Scaffold` | Writes `config/project-scratch-def.json` and a sample dependent picklist under `force-app` | files on disk |
 | `CreateOrg` | Creates the scratch org (reuses a live one with the same alias) | org created |
-| `Deploy` | Deploys the sample object plus the six framework classes | 7+ components |
+| `Deploy` | Deploys the sample **object** plus the six framework classes | 7+ components |
 | `Generate` | Builds `PicklistDependencySpecs.cls` + `PicklistDependencySpecsTest.cls` from **local** metadata | 1 spec, 1 object |
-| `Check` | Deploys the generated classes, runs them, writes artifacts | **PASS** |
+| `Check` | Deploys all eight owned classes, runs the tests, writes artifacts | **PASS** |
 | `Drift` | Removes `cle → tremont` from the **org only**, re-runs | **FAIL** |
 | `Restore` | Puts the org dependency back, re-runs | **PASS** |
 | `Teardown` | Deletes the scratch org | org deleted |
 
 `All` runs `Preflight` through `Check`. `Drift`, `Restore` and `Teardown` are opt-in because they
 mutate or destroy the org.
+
+### Do the framework classes have to come first?
+
+**For generation, no.** The "Generate Picklist Dependency Tests" command *scaffolds* the framework
+into your package directory as part of generating, so the framework, the spec registry and the test
+class all land together. Generation only writes files — it never reads the framework.
+
+**For deployment, they must arrive together — but not in a separate earlier deploy.** The generated
+classes do not compile without the framework, and Salesforce compiles a deployment set as one unit.
+So the extension sends all eight in a single transaction, and this script does the same. Deploying
+only the two generated classes to a fresh org fails with `Invalid type: PicklistDependencySpec`.
+
+`-Step Deploy` is still required, but for the **sample object**: the Apex test resolves
+`Treecipe_Demo__c.Neighborhood__c` through Schema describe, so the fields must exist in the org or
+every method fails with `LOOKUP_ERROR`.
 
 ### The sample dependency
 
@@ -194,7 +209,9 @@ Worth watching, because automated tests mock `vscode` and cannot reach these:
 | `no Dev Hub is authorized` | no Dev Hub | `sf org login web --set-default-dev-hub` |
 | `npm run compile did not produce ... out/` | TypeScript errors | Run `npm run compile` directly and read the errors |
 | `the org reports source conflicts` | org and local both changed | Use a fresh scratch org, or resolve with `sf project retrieve start` |
-| `No PicklistDependencySpecsTest test methods ran` | class not deployed | Run `-Step Check`, which deploys before running |
+| `No PicklistDependencySpecsTest test methods ran` | class not deployed | Run `-Step Check`, which deploys all eight classes before running |
+| `Invalid type: PicklistDependencySpec` | framework missing from the deployment set | Deploy the framework alongside the generated classes, never on its own — `-Step Check` does this |
+| Every method fails with `LOOKUP_ERROR` | the sample object is not in the org | Run `-Step Deploy`; the test resolves the fields through Schema describe |
 | `no dependent picklists found` | no `controllingField` in metadata | Run `-Step Scaffold`, or point at metadata that has a dependency |
 | Check fails right after `Scaffold` | org still has old field shape | Run `-Step Deploy` before `-Step Check` |
 

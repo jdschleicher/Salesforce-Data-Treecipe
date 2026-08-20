@@ -445,22 +445,35 @@ function Invoke-Generate {
 # Step: Check
 # --------------------------------------------------------------------------------------------------
 
-function Invoke-DeployGeneratedClasses {
+<#
+    Deploys all eight owned classes in ONE transaction, mirroring what the "Run Picklist Dependency
+    Check" command does.
 
-    $generatedPaths = @('PicklistDependencySpecs', 'PicklistDependencySpecsTest') |
+    Deploying only the two generated classes would be wrong twice over. It would diverge from the
+    shipped behaviour this script exists to demonstrate, and it would invent an ordering dependency
+    the product does not have: the generated classes do not compile without the framework, so a
+    deploy containing only them fails against a fresh org with "Invalid type: PicklistDependencySpec".
+    Salesforce compiles a deployment set as a unit, so sending all eight together needs no prior
+    framework deploy at all.
+#>
+function Invoke-DeployOwnedClasses {
+
+    $ownedClassPaths = $OwnedClassNames |
         ForEach-Object { Join-Path $ClassesDir "$_.cls" } |
         Where-Object { Test-Path $_ }
 
-    if ($generatedPaths.Count -lt 2) {
+    $generatedClassPaths = $ownedClassPaths | Where-Object { $_ -match 'PicklistDependencySpecs(Test)?\.cls$' }
+
+    if ($generatedClassPaths.Count -lt 2) {
         Stop-WithError 'generated classes are missing. Run -Step Generate first.'
     }
 
     $deployArguments = @('project', 'deploy', 'start', '--target-org', $ScratchOrgAlias, '--wait', '10', '--json')
-    foreach ($generatedPath in $generatedPaths) { $deployArguments += @('--source-dir', $generatedPath) }
+    foreach ($ownedClassPath in $ownedClassPaths) { $deployArguments += @('--source-dir', $ownedClassPath) }
 
     $deployed = Invoke-SalesforceJson -Arguments $deployArguments -AllowNonZeroExit
     Assert-DeploySucceeded -DeployPayload $deployed
-    Write-Good 'generated classes deployed'
+    Write-Good "deployed $($ownedClassPaths.Count) owned class(es) in one transaction"
 }
 
 function Invoke-Check {
@@ -468,7 +481,7 @@ function Invoke-Check {
 
     Write-Step "Run the picklist dependency check (expecting $ExpectedOutcome)"
 
-    Invoke-DeployGeneratedClasses
+    Invoke-DeployOwnedClasses
 
     Write-Info 'this mirrors the "Salesforce Treecipe: Run Picklist Dependency Check" command'
     & node $HeadlessDriver check $ScratchOrgAlias $RepoRoot
