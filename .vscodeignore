@@ -13,6 +13,7 @@ extensionDevelopmentScriptsAndArtifacts/**
 developmentSupportScripts/**
 force-app/**
 scripts/apex/**
+scripts/picklist-dependency-demo/**
 sfdx-project.json
 
 # The picklist dependency framework runtime classes ARE shipped: the "Generate Picklist
