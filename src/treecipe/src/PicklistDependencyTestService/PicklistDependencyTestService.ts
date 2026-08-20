@@ -97,37 +97,52 @@ export class PicklistDependencyTestService {
             return collectedResult;
         }
 
-        for ( const [entryName, entryType] of directoryEntries ) {
+        // A BITMASK CHECK SO A SYMLINKED OBJECT DIRECTORY ("Directory | SymbolicLink") IS STILL WALKED
+        const childDirectoryNames = directoryEntries
+            .filter(([, entryType]) => (entryType & vscode.FileType.Directory) !== 0)
+            .map(([entryName]) => entryName);
 
-            // A BITMASK CHECK SO A SYMLINKED OBJECT DIRECTORY ("Directory | SymbolicLink") IS STILL WALKED
-            const isDirectoryEntry = ( (entryType & vscode.FileType.Directory) !== 0 );
-            if ( !isDirectoryEntry ) {
-                continue;
-            }
+        /*
+            A directory containing "fields" IS an object directory, so its other children are
+            metadata types that cannot hold fields -- recordTypes, listViews, webLinks,
+            compactLayouts and the rest. Descending into them read directories that could never
+            contribute a spec: on the fixture tree alone that was 43 directories visited to reach
+            the 15 holding fields.
 
-            const childDirectoryUri = vscode.Uri.joinPath(objectsDirectoryUri, entryName);
+            Stopping here rather than deny-listing the known type names means no maintenance when
+            Salesforce adds another child type, and it also pins the object api name to the
+            directory that actually holds the fields -- a "fields" folder found deeper in the tree
+            would otherwise be attributed to whatever directory happened to contain it.
+        */
+        const objectFieldsDirectoryName = childDirectoryNames.find(childDirectoryName => childDirectoryName === 'fields');
+
+        if ( objectFieldsDirectoryName ) {
+
+            const objectApiName = path.basename(objectsDirectoryUri.fsPath);
+            const fieldsDirectoryUri = vscode.Uri.joinPath(objectsDirectoryUri, objectFieldsDirectoryName);
+
+            const fieldDetails = await this.getFieldDetailsByFieldsDirectory(fieldsDirectoryUri);
+            const objectResult = this.buildSpecDetailsByObjectFieldDetails(objectApiName, fieldDetails);
 
             /*
                 Results are concatenated rather than spread into push -- a spread passes every
                 element as a call argument, which throws once an accumulated subtree exceeds the
                 engine's argument limit.
             */
-            if ( entryName === 'fields' ) {
+            collectedResult.specDetails = collectedResult.specDetails.concat(objectResult.specDetails);
+            collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(objectResult.skippedFieldWarnings);
 
-                const objectApiName = path.basename(objectsDirectoryUri.fsPath);
-                const fieldDetails = await this.getFieldDetailsByFieldsDirectory(childDirectoryUri);
-                const objectResult = this.buildSpecDetailsByObjectFieldDetails(objectApiName, fieldDetails);
+            return collectedResult;
 
-                collectedResult.specDetails = collectedResult.specDetails.concat(objectResult.specDetails);
-                collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(objectResult.skippedFieldWarnings);
+        }
 
-            } else {
+        for ( const childDirectoryName of childDirectoryNames ) {
 
-                const nestedResult = await this.collectSpecDetailsByObjectsDirectory(childDirectoryUri, visitedDirectoryPaths);
-                collectedResult.specDetails = collectedResult.specDetails.concat(nestedResult.specDetails);
-                collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(nestedResult.skippedFieldWarnings);
+            const childDirectoryUri = vscode.Uri.joinPath(objectsDirectoryUri, childDirectoryName);
 
-            }
+            const nestedResult = await this.collectSpecDetailsByObjectsDirectory(childDirectoryUri, visitedDirectoryPaths);
+            collectedResult.specDetails = collectedResult.specDetails.concat(nestedResult.specDetails);
+            collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(nestedResult.skippedFieldWarnings);
 
         }
 

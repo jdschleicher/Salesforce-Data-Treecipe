@@ -11,6 +11,13 @@ Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/6
 - Results are written to a dedicated **Picklist Dependency Check** output channel, cleared on each run so the visible output always belongs to the run that just finished, with a pass/fail summary notification carrying the failure count
 - **Every run is also saved to `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/`** as `results.json` (machine-readable per-method outcomes) and `report.md` (human-readable). Because the output channel is cleared on each invocation, a check would otherwise leave nothing behind — nothing to commit, nothing to diff against the previous run, and nothing to attach to a review. Passing runs are persisted too, so a green check is on record rather than only a failing one. The org identifier is sanitized for the folder name, since a username is a valid target and contains characters that read poorly in a directory listing
 
+### Directory walks now filter to what is actually consumed
+
+- Both walks recursed into **every** child directory of an object — `recordTypes`, `listViews`, `webLinks`, and anything else Salesforce puts there — hunting for more `fields`. Nothing downstream reads those types: only `fields` is consumed, and record types are reached by navigating from the fields directory path rather than by the walk finding them
+- A directory containing `fields` is an object directory, so its other children cannot contribute anything. Both walks now stop there. Measured on the fixture tree: **43 directory reads down to 32, and 11 non-field directories visited down to 0**, with identical output. The saving scales with the number of objects in the org rather than the number of dependent picklists
+- Filtering on this invariant rather than deny-listing type names means no maintenance when Salesforce adds another object child type
+- It also pins the object api name to the directory that actually holds the fields. A `fields` folder found deeper in the tree would previously have been attributed to whatever directory happened to contain it
+
 ### Fixed: files without the `.field-meta.xml` suffix were parsed as fields
 
 - The field walk accepted **any** `.xml` file in a `fields` directory. Salesforce source format names every custom field `<ApiName>.field-meta.xml`, so a hand-saved copy, an export, or a scratch file carrying `CustomField` markup was parsed as a real field — generating picklist dependency specs for fields the org has no reason to have

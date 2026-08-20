@@ -541,6 +541,41 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    describe('directory traversal scope', () => {
+
+        /*
+            Only "fields" is consumed. Descending into recordTypes, listViews or webLinks reads
+            directories that cannot contribute a spec, and the cost scales with the number of objects
+            in the org rather than the number of dependent picklists.
+        */
+        test('does not read directories that cannot contain fields', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const readDirectoryPaths: string[] = [];
+            const realReadDirectory = (vscode.workspace.fs.readDirectory as jest.Mock).getMockImplementation();
+
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockImplementation(async (directoryUri: any) => {
+                readDirectoryPaths.push(directoryUri.fsPath);
+                return realReadDirectory(directoryUri);
+            });
+
+            const objectsDirectoryUri = vscode.Uri.file(
+                path.join(existingDirectoryProcessingMocksFieldsPath, '..', '..')
+            );
+
+            await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const nonFieldDirectoriesRead = readDirectoryPaths.filter(readPath => /recordTypes|listViews|webLinks/.test(readPath));
+            expect(nonFieldDirectoriesRead).toBeEmpty();
+
+            // AND THE fields DIRECTORIES THEMSELVES ARE STILL READ
+            expect(readDirectoryPaths.some(readPath => readPath.endsWith('fields'))).toBeTrue();
+
+        });
+
+    });
+
     describe('assertClassesDirectoryContainedInWorkspace', () => {
 
         test('given a classes directory inside the workspace, does not throw', () => {

@@ -51,11 +51,28 @@ export class DirectoryProcessor {
 
     } else {
 
+      /*
+        Nothing downstream consumes listViews, webLinks, compactLayouts or any other object child
+        type -- only "fields" is read. Record types ARE used, but RecordTypeService navigates to them
+        from the fields directory path rather than relying on this walk finding them.
+
+        So once a directory is known to contain "fields" it is an object directory, and descending
+        into its other children reads directories that cannot contribute anything. Filtering here
+        rather than deny-listing the type names means no maintenance when Salesforce adds another.
+      */
+      const containsFieldsDirectory = entries.some(
+        ([entryName, entryType]) => entryType === vscode.FileType.Directory && entryName === 'fields'
+      );
+
       for (const [entryName, entryType] of entries) {
 
         const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
   
         if (entryType === vscode.FileType.Directory) {
+
+          if (containsFieldsDirectory && entryName !== 'fields') {
+            continue;
+          }
   
           if (entryName === 'fields') {
   
