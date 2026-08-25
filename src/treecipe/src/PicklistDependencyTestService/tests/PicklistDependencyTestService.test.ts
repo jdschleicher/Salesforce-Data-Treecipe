@@ -306,7 +306,7 @@ describe('PicklistDependencyTestService', () => {
 
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([specDetailWithBothMatchModes]);
 
-            expect(apexClassBody).toContain(`public class PicklistDependencySpecs {`);
+            expect(apexClassBody).toContain(`public class SFTreecipePicklistDependencySpecs {`);
             expect(apexClassBody).toContain(`PicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')`);
             expect(apexClassBody).toContain(`.controlledBy('City__c')`);
             expect(apexClassBody).toContain(`.expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })`);
@@ -314,7 +314,7 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
-        test('given multiple specs, separates the list elements with a comma', () => {
+        test('given multiple specs, emits one method per scenario and returns them all from all()', () => {
 
             const secondSpecDetail: IPicklistDependencySpecDetail = {
                 objectApiName: 'Dependency_Example__c',
@@ -325,7 +325,39 @@ describe('PicklistDependencyTestService', () => {
 
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([specDetailWithBothMatchModes, secondSpecDetail]);
 
-            expect(apexClassBody).toContain(`,\n            PicklistDependencySpec.forField('Dependency_Example__c', 'SpecialCharacterDependent__c')`);
+            // EACH SCENARIO IS ITS OWN FACTORY METHOD
+            expect(apexClassBody).toContain('public static PicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c()');
+            expect(apexClassBody).toContain('public static PicklistDependencySpec specFor_Dependency_Example_c_SpecialCharacterDependent_c()');
+
+            // AND all() RETURNS THE COLLECTION OF THEM, COMMA SEPARATED
+            expect(apexClassBody).toContain(`            specFor_Dependency_Example_c_Neighborhood_c(),\n            specFor_Dependency_Example_c_SpecialCharacterDependent_c()`);
+
+        });
+
+        test('emits no spec method name containing two consecutive underscores', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([
+                specDetailWithBothMatchModes,
+                { ...specDetailWithBothMatchModes, objectApiName: 'My_NS__Obj__c', fieldApiName: 'Some__Field__c' }
+            ]);
+
+            const emittedMethodNames = [...apexClassBody.matchAll(/PicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
+
+            expect(emittedMethodNames.length).toBeGreaterThan(0);
+            expect(emittedMethodNames).toSatisfyAll((methodName: string) => !methodName.includes('__'));
+
+        });
+
+        test('given two scenarios whose names collapse to one identifier, emits distinct method names', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([
+                { ...specDetailWithBothMatchModes, objectApiName: 'Foo__c', fieldApiName: 'Bar__c' },
+                { ...specDetailWithBothMatchModes, objectApiName: 'Foo_c', fieldApiName: 'Bar_c' }
+            ]);
+
+            const emittedMethodNames = [...apexClassBody.matchAll(/public static PicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
+
+            expect(new Set(emittedMethodNames).size).toBe(emittedMethodNames.length);
 
         });
 
@@ -354,6 +386,307 @@ describe('PicklistDependencyTestService', () => {
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([]);
 
             expect(apexClassBody).toContain('return new List<PicklistDependencySpec>();');
+            // NO SCENARIO METHODS AT ALL, RATHER THAN AN EMPTY ONE
+            expect(apexClassBody).not.toContain('public static PicklistDependencySpec specFor_');
+
+        });
+
+    });
+
+    describe('buildSpecsTestApexClassBody', () => {
+
+        const accountSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Account',
+            fieldApiName: 'Type__c',
+            controllingFieldApiName: 'Industry__c',
+            expectations: [{ controllingValue: 'Tech', dependentValues: ['SaaS'] }]
+        };
+
+        const dependencyExampleSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Dependency_Example__c',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations: [{ controllingValue: 'cle', dependentValues: ['tremont'] }]
+        };
+
+        test('given spec details, emits an IsTest class rather than a plain class', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            expect(apexTestClassBody).toContain('@IsTest');
+            expect(apexTestClassBody).toContain('private class SFTreecipePicklistDependencySpecsTest {');
+            expect(apexTestClassBody).toContain('new PicklistDependencyValidator(new SchemaPicklistDependencySource())');
+
+        });
+
+        test('given specs across multiple objects, emits one test method per object', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                accountSpecDetail,
+                dependencyExampleSpecDetail
+            ]);
+
+            expect(apexTestClassBody).toContain('static void Account_picklistDependenciesMatchSourceMetadata()');
+            expect(apexTestClassBody).toContain('static void Dependency_Example_c_picklistDependenciesMatchSourceMetadata()');
+
+        });
+
+        test('given several specs on one object, emits a single test method for that object', () => {
+
+            const secondAccountSpecDetail: IPicklistDependencySpecDetail = {
+                ...accountSpecDetail,
+                fieldApiName: 'SubType__c'
+            };
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                accountSpecDetail,
+                secondAccountSpecDetail
+            ]);
+
+            const accountMethodOccurrences = apexTestClassBody.split('static void Account_picklistDependenciesMatchSourceMetadata()').length - 1;
+
+            expect(accountMethodOccurrences).toBe(1);
+
+        });
+
+        test('always emits an assertion that fails when the spec registry is empty', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
+            expect(apexTestClassBody).toContain('Assert.isFalse(');
+            expect(apexTestClassBody).toContain('SFTreecipePicklistDependencySpecs.all().isEmpty()');
+
+        });
+
+        test('given no spec details, still emits the empty registry guard so nothing passes vacuously', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([]);
+
+            expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
+            expect(apexTestClassBody).not.toContain('_picklistDependenciesMatchSourceMetadata()');
+
+        });
+
+        /*
+            A whole-class guard rather than a per-name one: any future change that reintroduces a
+            double underscore anywhere in an emitted identifier fails here, regardless of which
+            helper produced it.
+        */
+        test('emits no apex identifier containing two consecutive underscores', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                accountSpecDetail,
+                dependencyExampleSpecDetail,
+                { ...accountSpecDetail, objectApiName: 'My_NS__Obj__c' }
+            ]);
+
+            const emittedMethodNames = [...apexTestClassBody.matchAll(/static void (\w+)\(/g)].map(match => match[1]);
+
+            expect(emittedMethodNames.length).toBeGreaterThan(0);
+            expect(emittedMethodNames).toSatisfyAll((methodName: string) => !methodName.includes('__'));
+
+        });
+
+        test('given objects whose names collapse to one identifier, emits distinct method names', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([
+                { ...accountSpecDetail, objectApiName: 'Foo__c' },
+                { ...accountSpecDetail, objectApiName: 'Foo_c' }
+            ]);
+
+            const emittedMethodNames = [...apexTestClassBody.matchAll(/static void (\w+)\(/g)].map(match => match[1]);
+
+            expect(new Set(emittedMethodNames).size).toBe(emittedMethodNames.length);
+
+        });
+
+        test('emits a failure message naming the object and the drifted combinations', () => {
+
+            const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            expect(apexTestClassBody).toContain('Picklist dependency drift on ');
+            expect(apexTestClassBody).toContain('failure.toLine()');
+
+        });
+
+    });
+
+    describe('non Salesforce files in a fields directory', () => {
+
+        /*
+            The DirectoryProcessing mock fixtures contain "gfh__c.xml" -- CustomField markup for a
+            dependent picklist, but WITHOUT the ".field-meta.xml" suffix Salesforce requires. Matching
+            on ".xml" alone generated a spec for it, so the registry asserted a field the org has no
+            reason to have. The fixture is left in place deliberately as the regression case.
+        */
+        test('given a fields directory holding an xml file without the field-meta suffix, generates no spec for it', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(
+                path.join(existingDirectoryProcessingMocksFieldsPath, '..', '..')
+            );
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const strayFileSpecDetails = collectionResult.specDetails.filter(specDetail => specDetail.fieldApiName.includes('gfh'));
+            expect(strayFileSpecDetails).toBeEmpty();
+
+            // THE PROPERLY NAMED DEPENDENT PICKLIST IN THE SAME DIRECTORY IS STILL PICKED UP
+            const realSpecDetails = collectionResult.specDetails.filter(specDetail => specDetail.fieldApiName === 'DependentPicklist__c');
+            expect(realSpecDetails).toHaveLength(1);
+
+        });
+
+    });
+
+    describe('directory traversal scope', () => {
+
+        /*
+            Only "fields" is consumed. Descending into recordTypes, listViews or webLinks reads
+            directories that cannot contribute a spec, and the cost scales with the number of objects
+            in the org rather than the number of dependent picklists.
+        */
+        test('does not read directories that cannot contain fields', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const readDirectoryPaths: string[] = [];
+            const realReadDirectory = (vscode.workspace.fs.readDirectory as jest.Mock).getMockImplementation();
+
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockImplementation(async (directoryUri: any) => {
+                readDirectoryPaths.push(directoryUri.fsPath);
+                return realReadDirectory(directoryUri);
+            });
+
+            const objectsDirectoryUri = vscode.Uri.file(
+                path.join(existingDirectoryProcessingMocksFieldsPath, '..', '..')
+            );
+
+            await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const nonFieldDirectoriesRead = readDirectoryPaths.filter(readPath => /recordTypes|listViews|webLinks/.test(readPath));
+            expect(nonFieldDirectoriesRead).toBeEmpty();
+
+            // AND THE fields DIRECTORIES THEMSELVES ARE STILL READ
+            expect(readDirectoryPaths.some(readPath => readPath.endsWith('fields'))).toBeTrue();
+
+        });
+
+    });
+
+    describe('assertClassesDirectoryContainedInWorkspace', () => {
+
+        test('given a classes directory inside the workspace, does not throw', () => {
+
+            expect(() => PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(
+                '/workspace/force-app/main/default/classes',
+                '/workspace'
+            )).not.toThrow();
+
+        });
+
+        /*
+            resolveDefaultPackageDirectoryPath only contains the package directory itself. The
+            "main/default/classes" segments appended afterwards can each be a symlink, and
+            writeFileSync follows symlinks -- so the final path is re-checked at the point of use.
+        */
+        test('given a classes directory that escapes the workspace, throws before anything is written', () => {
+
+            expect(() => PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(
+                '/somewhere/else/classes',
+                '/workspace'
+            )).toThrow('outside the workspace');
+
+        });
+
+        test('given a sibling directory sharing the workspace name prefix, throws', () => {
+
+            expect(() => PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(
+                '/workspace-evil/force-app/main/default/classes',
+                '/workspace'
+            )).toThrow('outside the workspace');
+
+        });
+
+    });
+
+    describe('buildTestMethodNameByObjectApiName', () => {
+
+        test('given a standard object api name, builds a valid apex identifier', () => {
+
+            expect(PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Account'))
+                .toBe('Account_picklistDependenciesMatchSourceMetadata');
+
+        });
+
+        /*
+            Apex identifiers may not contain two consecutive underscores. Every custom object api
+            name ends in "__c", so embedding one verbatim produced a class that failed to deploy with
+            "Invalid character in identifier". Standard objects were unaffected, which is why the
+            defect survived a live deploy check.
+        */
+        test('given a custom object api name, collapses the double underscore so the identifier is valid apex', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Dependency_Example__c');
+
+            expect(testMethodName).toBe('Dependency_Example_c_picklistDependenciesMatchSourceMetadata');
+            expect(testMethodName).not.toContain('__');
+
+        });
+
+        test('given a namespaced api name, collapses every run of underscores', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('My_NS__Obj__c');
+
+            expect(testMethodName).toBe('My_NS_Obj_c_picklistDependenciesMatchSourceMetadata');
+            expect(testMethodName).not.toContain('__');
+
+        });
+
+        // COLLAPSING RATHER THAN STRIPPING KEEPS "__c" AND "__e" TELLABLE APART
+        test('given custom object and custom event api names, keeps them distinguishable', () => {
+
+            const customObjectMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Thing__c');
+            const platformEventMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Thing__e');
+
+            expect(customObjectMethodName).not.toBe(platformEventMethodName);
+
+        });
+
+        test('given an api name starting with a digit, prefixes it so the identifier stays valid', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('2ndObject__c');
+
+            expect(testMethodName).toStartWith('object2ndObject_c');
+            expect(testMethodName).not.toStartWith('2');
+            expect(testMethodName).not.toContain('__');
+
+        });
+
+    });
+
+    describe('buildTestMethodNamesByObjectApiName', () => {
+
+        /*
+            Collapsing underscores can map two distinct api names onto one identifier, and two Apex
+            methods with the same name will not compile.
+        */
+        test('given api names that collapse to the same identifier, disambiguates them', () => {
+
+            const methodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(['Foo__c', 'Foo_c']);
+
+            expect(methodNamesByObjectApiName['Foo__c']).not.toBe(methodNamesByObjectApiName['Foo_c']);
+
+        });
+
+        test('given no collisions, leaves every name unsuffixed', () => {
+
+            const methodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(['Account', 'Contact__c']);
+
+            expect(methodNamesByObjectApiName['Account']).toBe('Account_picklistDependenciesMatchSourceMetadata');
+            expect(methodNamesByObjectApiName['Contact__c']).toBe('Contact_c_picklistDependenciesMatchSourceMetadata');
 
         });
 
@@ -579,7 +912,7 @@ describe('PicklistDependencyTestService', () => {
             const writtenFilePath = PicklistDependencyTestService.writeSpecsClassFiles(classesDirectoryPath, 'apex body', '64.0');
 
             expect(makeDirectorySpy).toHaveBeenCalledWith(classesDirectoryPath, { recursive: true });
-            expect(writtenFilePath).toBe(path.join(classesDirectoryPath, 'PicklistDependencySpecs.cls'));
+            expect(writtenFilePath).toBe(path.join(classesDirectoryPath, 'SFTreecipePicklistDependencySpecs.cls'));
             expect(writeFileSpy).toHaveBeenCalledWith(writtenFilePath, 'apex body');
             expect(writeFileSpy).toHaveBeenCalledWith(`${writtenFilePath}-meta.xml`, expect.stringContaining('<apiVersion>64.0</apiVersion>'));
 
@@ -591,7 +924,7 @@ describe('PicklistDependencyTestService', () => {
 
         const extensionPath = '/extension';
         const classesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
-        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes');
+        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', 'PicklistDependencyFramework');
 
         test('given no framework classes in the workspace, copies every shipped framework class and its meta xml', () => {
 
@@ -665,7 +998,7 @@ describe('PicklistDependencyTestService', () => {
 
             // NO ORPHANED .cls IS LEFT BEHIND FOR THE CLASS WHOSE META XML WAS MISSING
             const copiedPaths = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
-            expect(copiedPaths).not.toContain(path.join(classesDirectoryPath, 'PicklistDependencyValidator.cls'));
+            expect(copiedPaths).not.toContain(path.join(classesDirectoryPath, 'PicklistDependencyFramework', 'PicklistDependencyValidator.cls'));
 
         });
 
@@ -776,7 +1109,7 @@ describe('PicklistDependencyTestService', () => {
             );
             const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails);
 
-            const shippedSpecClassPath = path.join(__dirname, '..', '..', '..', '..', '..', 'force-app', 'main', 'default', 'classes', 'PicklistDependencySpec.cls');
+            const shippedSpecClassPath = path.join(__dirname, '..', '..', '..', '..', '..', 'force-app', 'main', 'default', 'classes', 'PicklistDependencyFramework', 'PicklistDependencySpec.cls');
             const shippedSpecClassBody = fs.readFileSync(shippedSpecClassPath, 'utf-8');
 
             // ONLY CHAINED INSTANCE BUILDER CALLS -- forField IS STATIC AND IS ASSERTED SEPARATELY BELOW

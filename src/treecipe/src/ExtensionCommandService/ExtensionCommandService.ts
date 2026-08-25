@@ -9,11 +9,24 @@ import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProce
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyCheckService } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+
+import { AuthInfo } from '@salesforce/core';
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import path = require("path");
+
+// SHARED WITH THE TESTS SO THE BUTTON LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
+export const RUN_AGAINST_ORG_ACTION_LABEL = 'Deploy and Run Against Org';
+
+interface IPicklistDependencyGenerationResult {
+    classesDirectoryPath: string;
+    specsClassFilePath: string;
+    specCount: number;
+    generationSummary: string;
+}
 
 export class ExtensionCommandService {
     
@@ -167,6 +180,250 @@ export class ExtensionCommandService {
       
     }
 
+    /*
+        Shared by the generate command and the end to end command. Returns undefined when there is
+        nothing to generate or the user declined an overwrite, both of which are already reported --
+        callers stop quietly rather than reporting a second time.
+    */
+    private async generatePicklistDependencyClasses(extensionPath: string, workspaceRoot: string): Promise<IPicklistDependencyGenerationResult | undefined> {
+
+        const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+        const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
+        const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+
+        if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
+            throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
+        }
+
+        const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+        const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
+
+        /*
+            A field with a controlling field but no value settings is reported and skipped, it does
+            not abort the run. Only the first few are shown individually so a misconfigured org
+            cannot bury the user in notifications.
+        */
+        const maximumIndividualWarningsToShow = 3;
+        collectionResult.skippedFieldWarnings.slice(0, maximumIndividualWarningsToShow).forEach(skippedFieldWarning => {
+            VSCodeWorkspaceService.showWarningMessage(skippedFieldWarning);
+        });
+
+        const remainingSkippedFieldCount = collectionResult.skippedFieldWarnings.length - maximumIndividualWarningsToShow;
+        if ( remainingSkippedFieldCount > 0 ) {
+            // THE SUPPRESSED SKIPS MAY BE A MIX OF INVALID API NAMES AND MISSING VALUE SETTINGS, SO NO SINGLE REASON IS CLAIMED
+            VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) were skipped. Each was skipped either for an invalid api name or for having no "valueSettings" markup.`);
+        }
+
+        if ( collectionResult.specDetails.length === 0 ) {
+            vscode.window.showInformationMessage(`No dependent picklists were found in "${fullPathToObjectsDirectory}". No Apex spec file was written.`);
+            return undefined;
+        }
+
+        const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
+        const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
+        PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
+
+        const specsClassFilePath = PicklistDependencyTestService.getSpecsClassFilePath(classesDirectoryPath);
+        const specsClassName = PicklistDependencyTestService.getSpecsClassName();
+        const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(classesDirectoryPath);
+        const specsTestClassName = PicklistDependencyTestService.getSpecsTestClassName();
+
+        // EVERY GENERATED FILE IS CONSIDERED SO A HAND EDITED meta xml CANNOT BE REPLACED WITHOUT A PROMPT
+        const existingGeneratedFilePaths = [
+            specsClassFilePath,
+            `${specsClassFilePath}-meta.xml`,
+            specsTestClassFilePath,
+            `${specsTestClassFilePath}-meta.xml`
+        ].filter(
+            generatedFilePath => fs.existsSync(generatedFilePath)
+        );
+
+        if ( existingGeneratedFilePaths.length > 0 ) {
+
+            const confirmedOverwriteSelection = await vscode.window.showWarningMessage(
+                `${existingGeneratedFilePaths.map(existingFilePath => `"${path.basename(existingFilePath)}"`).join(' and ')} already exist(s) in "${classesDirectoryPath}". Regenerating overwrites them, and any spec lines tightened to "expectExactly" by hand will be lost.`,
+                { modal: true },
+                'Overwrite'
+            );
+
+            if ( confirmedOverwriteSelection !== 'Overwrite' ) {
+                return undefined;
+            }
+
+        }
+
+        const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
+
+        PicklistDependencyTestService.writeSpecsClassFiles(
+            classesDirectoryPath,
+            PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails),
+            sourceApiVersion
+        );
+
+        PicklistDependencyTestService.writeSpecsTestClassFiles(
+            classesDirectoryPath,
+            PicklistDependencyTestService.buildSpecsTestApexClassBody(collectionResult.specDetails),
+            sourceApiVersion
+        );
+
+        const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+        /*
+            The generated specs class does not compile without the framework, so a class that could
+            not be supplied is surfaced rather than leaving the user with a file that silently fails
+            to deploy.
+        */
+        if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
+        }
+
+        let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s), and ${specsTestClassName}.cls to assert them, in "${classesDirectoryPath}".`;
+        if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
+            generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
+        }
+
+        return {
+            classesDirectoryPath,
+            specsClassFilePath,
+            specCount: collectionResult.specDetails.length,
+            generationSummary
+        };
+
+    }
+
+    /*
+        Returns undefined both when no org is authenticated and when the quick pick is dismissed. The
+        first case is reported here, because an empty picker would leave the user with nothing to
+        select and no indication that authentication is what is missing.
+    */
+    private async promptForPicklistDependencyTargetOrg(): Promise<string | undefined> {
+
+        const allAuthorizations = await AuthInfo.listAllAuthorizations();
+        const authenticatedOrgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails(allAuthorizations);
+
+        if ( authenticatedOrgDetails.length === 0 ) {
+            vscode.window.showWarningMessage('No authenticated Salesforce orgs were found. Authorize one with "sf org login web" and run the command again.');
+            return undefined;
+        }
+
+        return await VSCodeWorkspaceService.promptForAuthenticatedTargetOrg(authenticatedOrgDetails);
+
+    }
+
+    /*
+        Deploys when needed, runs the generated tests, then reports to the output channel, a summary
+        notification and an artifact folder.
+
+        alwaysDeploy is what separates the two callers. The check command deploys only when the test
+        class is absent, so an unchanged registry is not redeployed on every run. The end to end
+        command has just rewritten those classes, so the org copy is stale by definition and a
+        conditional deploy would run yesterday's contract against today's metadata.
+    */
+    private async deployRunAndReportPicklistDependencyCheck(targetOrgIdentifier: string,
+                                                            workspaceRoot: string,
+                                                            classesDirectoryPath: string,
+                                                            alwaysDeploy: boolean) {
+
+        const checkOutcome = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Picklist Dependency Check',
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            const registerCancellation = (killChildProcess: () => void) => {
+                cancellationToken.onCancellationRequested(() => killChildProcess());
+            };
+
+            let deployRequired = alwaysDeploy;
+
+            if ( !deployRequired ) {
+
+                progress.report({ message: `Checking ${targetOrgIdentifier} for the generated test class...` });
+                deployRequired = !(await PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg(targetOrgIdentifier));
+
+                if ( cancellationToken.isCancellationRequested ) {
+                    return undefined;
+                }
+
+            }
+
+            if ( deployRequired ) {
+
+                const confirmedDeploySelection = await vscode.window.showWarningMessage(
+                    PicklistDependencyCheckService.buildDeployConfirmationMessage(classesDirectoryPath, targetOrgIdentifier),
+                    { modal: true },
+                    'Deploy and Run'
+                );
+
+                if ( confirmedDeploySelection !== 'Deploy and Run' ) {
+                    vscode.window.showInformationMessage('Picklist dependency check cancelled. Nothing was deployed.');
+                    return undefined;
+                }
+
+                progress.report({ message: `Deploying picklist dependency classes to ${targetOrgIdentifier}...` });
+
+                const deploySummary = await PicklistDependencyCheckService.deployPicklistDependencyClasses(
+                    classesDirectoryPath,
+                    targetOrgIdentifier,
+                    registerCancellation
+                );
+
+                vscode.window.showInformationMessage(deploySummary);
+
+            }
+
+            if ( cancellationToken.isCancellationRequested ) {
+                return undefined;
+            }
+
+            progress.report({ message: `Running ${PicklistDependencyCheckService.getSpecsTestClassName()} against ${targetOrgIdentifier}...` });
+
+            return await PicklistDependencyCheckService.runPicklistDependencyTests(targetOrgIdentifier, registerCancellation);
+
+        });
+
+        // UNDEFINED MEANS THE USER CANCELLED OR DECLINED THE DEPLOY, BOTH OF WHICH ALREADY REPORTED
+        if ( !checkOutcome ) {
+            return;
+        }
+
+        const report = PicklistDependencyCheckService.buildOutputChannelReport(targetOrgIdentifier, checkOutcome);
+        VSCodeWorkspaceService.showPicklistDependencyCheckReport(report);
+
+        /*
+            The output channel is cleared on every run, so the results are also written to the
+            treecipe directory -- a run that found drift leaves something committable and
+            diffable behind rather than only an on screen report.
+        */
+        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+        const resultsFolderPath = `${workspaceRoot}/${ConfigurationService.getPicklistDependencyResultsFolderPath()}`;
+
+        const runResultsFolderPath = PicklistDependencyCheckService.writeCheckResultArtifacts(
+            resultsFolderPath,
+            targetOrgIdentifier,
+            isoDateTimestamp,
+            checkOutcome
+        );
+
+        const resultSummaryMessage = PicklistDependencyCheckService.buildResultSummaryMessage(checkOutcome);
+        const summaryWithArtifactPath = `${resultSummaryMessage} Results written to "${runResultsFolderPath}".`;
+
+        if ( checkOutcome.passed ) {
+            vscode.window.showInformationMessage(summaryWithArtifactPath);
+        } else {
+            VSCodeWorkspaceService.showWarningMessage(summaryWithArtifactPath);
+        }
+
+    }
+
+    /*
+        Generates the contract, then OFFERS to run it against an org in the same invocation.
+
+        The offer comes after generation rather than before it. Generating is the useful half on its
+        own -- a user reviewing what changed, or working without an org to hand, wants the files and
+        nothing else -- so the run is opt in and dismissing the prompt leaves a completed generation
+        rather than a cancelled command.
+    */
     async generatePicklistDependencyTests(extensionPath: string) {
 
         try {
@@ -176,89 +433,72 @@ export class ExtensionCommandService {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
-
-            if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
-                throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
+            const generationResult = await this.generatePicklistDependencyClasses(extensionPath, workspaceRoot);
+            if ( !generationResult ) {
+                return;
             }
 
-            const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+            await VSCodeWorkspaceService.openFileInEditor(generationResult.specsClassFilePath);
 
-            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
+            const runAgainstOrgSelection = await vscode.window.showInformationMessage(
+                `${generationResult.generationSummary} Deploy and run them against an org now?`,
+                RUN_AGAINST_ORG_ACTION_LABEL
+            );
 
-            /*
-                A field with a controlling field but no value settings is reported and skipped, it does
-                not abort the run. Only the first few are shown individually so a misconfigured org
-                cannot bury the user in notifications.
-            */
-            const maximumIndividualWarningsToShow = 3;
-            collectionResult.skippedFieldWarnings.slice(0, maximumIndividualWarningsToShow).forEach(skippedFieldWarning => {
-                VSCodeWorkspaceService.showWarningMessage(skippedFieldWarning);
-            });
-
-            const remainingSkippedFieldCount = collectionResult.skippedFieldWarnings.length - maximumIndividualWarningsToShow;
-            if ( remainingSkippedFieldCount > 0 ) {
-                // THE SUPPRESSED SKIPS MAY BE A MIX OF INVALID API NAMES AND MISSING VALUE SETTINGS, SO NO SINGLE REASON IS CLAIMED
-                VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) were skipped. Each was skipped either for an invalid api name or for having no "valueSettings" markup.`);
+            if ( runAgainstOrgSelection !== RUN_AGAINST_ORG_ACTION_LABEL ) {
+                return;
             }
 
-            if ( collectionResult.specDetails.length === 0 ) {
-                vscode.window.showInformationMessage(`No dependent picklists were found in "${fullPathToObjectsDirectory}". No Apex spec file was written.`);
+            const targetOrgIdentifier = await this.promptForPicklistDependencyTargetOrg();
+            if ( !targetOrgIdentifier ) {
+                return;
+            }
+
+            // ALWAYS DEPLOYS: THE CLASSES WERE JUST REWRITTEN, SO THE ORG COPY IS STALE BY DEFINITION
+            await this.deployRunAndReportPicklistDependencyCheck(
+                targetOrgIdentifier,
+                workspaceRoot,
+                generationResult.classesDirectoryPath,
+                true
+            );
+
+        } catch(error) {
+
+            const commandName = 'generatePicklistDependencyTests';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    async runPicklistDependencyCheck() {
+
+        try {
+
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+            if ( !workspaceRoot ) {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
+            }
+
+            const targetOrgIdentifier = await this.promptForPicklistDependencyTargetOrg();
+            if ( !targetOrgIdentifier ) {
                 return;
             }
 
             const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
             const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
-            const specsClassFilePath = PicklistDependencyTestService.getSpecsClassFilePath(classesDirectoryPath);
-            const specsClassName = PicklistDependencyTestService.getSpecsClassName();
+            PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
 
-            // BOTH GENERATED FILES ARE CONSIDERED SO A HAND EDITED meta xml CANNOT BE REPLACED WITHOUT A PROMPT
-            const existingGeneratedFilePaths = [specsClassFilePath, `${specsClassFilePath}-meta.xml`].filter(
-                generatedFilePath => fs.existsSync(generatedFilePath)
+            await this.deployRunAndReportPicklistDependencyCheck(
+                targetOrgIdentifier,
+                workspaceRoot,
+                classesDirectoryPath,
+                false
             );
-
-            if ( existingGeneratedFilePaths.length > 0 ) {
-
-                const confirmedOverwriteSelection = await vscode.window.showWarningMessage(
-                    `${existingGeneratedFilePaths.map(existingFilePath => `"${path.basename(existingFilePath)}"`).join(' and ')} already exist(s) in "${classesDirectoryPath}". Regenerating overwrites them, and any spec lines tightened to "expectExactly" by hand will be lost.`,
-                    { modal: true },
-                    'Overwrite'
-                );
-
-                if ( confirmedOverwriteSelection !== 'Overwrite' ) {
-                    return;
-                }
-
-            }
-
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails);
-            const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
-            PicklistDependencyTestService.writeSpecsClassFiles(classesDirectoryPath, apexClassBody, sourceApiVersion);
-
-            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
-
-            /*
-                The generated specs class does not compile without the framework, so a class that could
-                not be supplied is surfaced rather than leaving the user with a file that silently fails
-                to deploy.
-            */
-            if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
-                VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
-            }
-
-            let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s) in "${classesDirectoryPath}".`;
-            if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
-                generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
-            }
-            vscode.window.showInformationMessage(generationSummary);
-
-            await VSCodeWorkspaceService.openFileInEditor(specsClassFilePath);
 
         } catch(error) {
 
-            const commandName = 'generatePicklistDependencyTests';
+            const commandName = 'runPicklistDependencyCheck';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }

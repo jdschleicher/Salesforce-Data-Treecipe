@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import { ConfigurationService } from './treecipe/src/ConfigurationService/ConfigurationService';
 import { ExtensionCommandService } from './treecipe/src/ExtensionCommandService/ExtensionCommandService';
+import { VSCodeWorkspaceService } from './treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -10,6 +11,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// below set config value of "useSnowfakeryAsDefault" will be used until an implementation is built fully for faker-js
 	ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', false);
+
+	// LETS LAZILY CREATED OUTPUT CHANNELS BE DISPOSED BY VS CODE WITHOUT CREATING THEM AT ACTIVATION
+	VSCodeWorkspaceService.registerExtensionSubscriptions(context.subscriptions);
 
 	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', () => {
 		const extensionCommandService = new ExtensionCommandService();
@@ -51,13 +55,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const runPicklistDependencyCheck = vscode.commands.registerCommand("treecipe.runPicklistDependencyCheck", () => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.runPicklistDependencyCheck();
+
+	});
+
 	context.subscriptions.push(
 		generateTreecipe,
 		initiateConfiguration,
 		runFakerByRecipe,
 		insertDataSetBySelectedDirectory,
 		changeFakerImplementationService,
-		generatePicklistDependencyTests
+		generatePicklistDependencyTests,
+		runPicklistDependencyCheck
 	);
 	
 }

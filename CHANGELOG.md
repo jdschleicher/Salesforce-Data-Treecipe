@@ -1,5 +1,142 @@
 # Change Log
 
+## [2.14.0] - Run Picklist Dependency Check Command
+
+Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### Features
+
+- New command **Salesforce Treecipe: Run Picklist Dependency Check** (`treecipe.runPicklistDependencyCheck`) that deploys and runs the generated picklist dependency tests against an org and reports the outcome in VS Code. [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/61) generated specs but shipped nothing that could execute them — `.vscodeignore` excludes `scripts/apex/**`, so the `npm run picklist-dependency-check` runner its verification story assumed is repo-local tooling that never reaches an extension user
+- The target org is chosen from a quick pick built from `AuthInfo.listAllAuthorizations()`, preferring the alias and falling back to the username. Both are accepted by `sf --target-org`
+- Results are written to a dedicated **Picklist Dependency Check** output channel, cleared on each run so the visible output always belongs to the run that just finished, with a pass/fail summary notification carrying the failure count
+- **Every run is also saved to `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/`** as `results.json` (machine-readable per-method outcomes) and `report.md` (human-readable). Because the output channel is cleared on each invocation, a check would otherwise leave nothing behind — nothing to commit, nothing to diff against the previous run, and nothing to attach to a review. Passing runs are persisted too, so a green check is on record rather than only a failing one. The org identifier is sanitized for the folder name, since a username is a valid target and contains characters that read poorly in a directory listing
+
+### Directory walks now filter to what is actually consumed
+
+- Both walks recursed into **every** child directory of an object — `recordTypes`, `listViews`, `webLinks`, and anything else Salesforce puts there — hunting for more `fields`. Nothing downstream reads those types: only `fields` is consumed, and record types are reached by navigating from the fields directory path rather than by the walk finding them
+- A directory containing `fields` is an object directory, so its other children cannot contribute anything. Both walks now stop there. Measured on the fixture tree: **43 directory reads down to 32, and 11 non-field directories visited down to 0**, with identical output. The saving scales with the number of objects in the org rather than the number of dependent picklists
+- Filtering on this invariant rather than deny-listing type names means no maintenance when Salesforce adds another object child type
+- It also pins the object api name to the directory that actually holds the fields. A `fields` folder found deeper in the tree would previously have been attributed to whatever directory happened to contain it
+
+### Fixed: files without the `.field-meta.xml` suffix were parsed as fields
+
+- The field walk accepted **any** `.xml` file in a `fields` directory. Salesforce source format names every custom field `<ApiName>.field-meta.xml`, so a hand-saved copy, an export, or a scratch file carrying `CustomField` markup was parsed as a real field — generating picklist dependency specs for fields the org has no reason to have
+- Reproduced against a fixture already in this repository. `MockSalesforceMetadataDirectory/objects/Example_Everything__c/fields/gfh__c.xml` holds dependent-picklist markup without the required suffix:
+
+  | | specs generated | `gfh` references in the registry |
+  |---|---|---|
+  | Before | 2 | 4 |
+  | After | 1 | 0 |
+
+- **`isXMLFileType` is unchanged and still means "is an `.xml` file".** `GlobalValueSetSingleton` and `RecordTypeService` depend on it for `.globalValueSet-meta.xml` and `.recordType-meta.xml`, so narrowing it would have broken them. A separate `isSalesforceFieldMetadataFile` carries the stricter rule, and requires an api name before the suffix so a file called exactly `.field-meta.xml` is not treated as a field
+- The same strictness is applied to `DirectoryProcessor`, which had the identical defect on the recipe generation path. **This changes recipe output for anyone whose `fields` directory contains a stray `.xml`** — such a field will no longer appear in a generated recipe, which is the intended behaviour
+- The `gfh__c.xml` fixture is deliberately left in place as the regression case, with a test asserting no spec is generated for it while the properly named dependent picklist beside it still is
+
+### Generated registry renamed, and one method per scenario
+
+- The generated registry is now **`SFTreecipePicklistDependencySpecs`** (and `SFTreecipePicklistDependencySpecsTest`). The prefix makes it obvious the class was written into the user's package directory by this extension rather than by them, and removes any chance of colliding with a `PicklistDependencySpecs` of their own
+- **Each dependent picklist is now its own method**, and `all()` returns the collection of them:
+
+  ```apex
+  public static PicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c() {
+      return PicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')
+              .controlledBy('City__c')
+              .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })
+              .expectNone('akron');
+  }
+
+  public static List<PicklistDependencySpec> all() {
+      return new List<PicklistDependencySpec>{
+          specFor_Dependency_Example_c_Neighborhood_c()
+      };
+  }
+  ```
+
+  A single dependency can now be read on its own, referenced by name from a hand-written test, or tightened to `expectExactly` without picking through one long list expression. A comment above each method names the object, field and controlling field
+- Spec method names collapse runs of underscores for the same reason the test method names do — Apex identifiers may not contain two consecutive underscores — and take a numeric suffix when two scenarios collapse onto one identifier. The `specFor_` prefix also keeps the identifier valid when an api name starts with a digit
+- The api names inside each spec are still emitted as **string literals** with their exact `__c` suffixes, so Schema describe resolves the real object and field
+
+### Generation offers to run end to end
+
+- After writing the classes, **Generate Picklist Dependency Tests** now offers to deploy and run them against an org in the same invocation. Accepting prompts for the target org, deploys, runs, and reports — generation through to verified results without leaving the command
+- Implemented as a prompt on the existing command rather than a new one. A third picklist command in the palette would have been a worse trade for the same capability
+- The offer comes **after** generation, not before: generating is useful on its own — reviewing a diff, or working without an org to hand — so dismissing leaves a completed generation rather than a cancelled command
+- That path **always deploys**, where the standalone check deploys only when the test class is absent. The classes were just rewritten, so the org copy is stale by definition and a conditional deploy would run yesterday's contract against today's metadata. A test asserts `isSpecsTestClassDeployedInOrg` is never consulted on this path
+- Both commands now share three private helpers — generation, org selection, and deploy-run-report — so the two entry points cannot drift in their handling of confirmations, cancellation, artifacts, or reporting
+
+### Corrected: the generated Apex is now a real test class
+
+- `PicklistDependencyTestService` now also emits `PicklistDependencySpecsTest.cls`, an `@IsTest` class asserting the spec registry through `PicklistDependencyValidator` and `SchemaPicklistDependencySource`. Despite the command being named "Generate Picklist Dependency Tests", what [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/61) emitted was a plain data registry executed by anonymous Apex
+- That design came from an epic decision that **stopped being true**: verification was anonymous Apex because the original `ConnectApi`-based source could not run inside `@IsTest`. `e6c624d` replaced it with `SchemaPicklistDependencySource`, and Schema describe has neither constraint — it runs inside `@IsTest` and returns the org's real metadata rather than isolated test data, so no `SeeAllData` and no test setup are involved
+- One test method per object, so a failure names the object in the test results and each method gets its own CPU and heap budget rather than sharing one transaction across the whole registry — the describe work is what binds that limit
+- A `specRegistryIsNotEmpty` guard method fails when the registry is empty. This is the `EMPTY` semantics of the anonymous-Apex marker protocol expressed as an assertion; without it the class would report green while asserting nothing
+- Generated method names are derived from validated object API names, with a prefix applied when a name begins with a digit so the Apex identifier stays valid
+
+### Salesforce CLI over the API equivalents
+
+- The check runs `sf apex run test --json` rather than `connection.tooling.executeAnonymous()`. `executeAnonymous` returns compile and success status but **not** the debug log, and the entire per-combination report is emitted through `System.debug` — recovering it would have required a debugging header or a follow-up `ApexLog` query. `sf apex run test` returns structured per-method results, so no marker protocol and no debug-log scraping exist on the extension's path at all
+- The optional deploy step uses `sf project deploy start --source-dir`, which avoids a zip library plus metadata-format packaging via `connection.metadata.deploy()` and avoids adding `@salesforce/source-deploy-retrieve` as a dependency
+- That deploy names the eight classes this command owns individually rather than passing the whole `classes` directory. A user's package directory holds their own Apex, and a deploy approved to get a dependency check running must not carry unrelated work-in-progress classes into the org with it
+- This adds no meaningful new requirement: `CollectionsApiService.getConnectionFromAlias` already resolves orgs through `Org.create({ aliasOrUsername })`, which reads the CLI's own auth files, so a user without the CLI has no authenticated orgs to select in the first place. Precedent for shelling out already exists in `SnowfakeryRecipeProcessor`
+- On Windows the CLI is named as its `sf.cmd` shim directly. Since the Node fix for CVE-2024-27980, spawn refuses `.cmd`/`.bat` without a shell, and naming the shim keeps the argv form and its immunity to shell metacharacters instead of falling back to `shell: true`
+
+### Unhappy paths
+
+- No authenticated orgs reports how to authorize one rather than showing an empty quick pick
+- Dismissing the org quick pick exits silently and runs nothing
+- A missing test class prompts before deploying; declining exits cleanly and deploys nothing
+- The Salesforce CLI missing from `PATH` reports an actionable message naming the CLI rather than a raw spawn error, and is never conflated with dependency drift
+- A deploy that fails on compilation surfaces the component failure message rather than a raw stack trace
+- An org with source tracking that reports conflicts gets actionable guidance naming the org and the `--ignore-conflicts` escape hatch, rather than the CLI's bare "N conflicts detected". Conflicts are deliberately not forced past automatically — the org copy may hold edits worth keeping, and this command reports drift rather than overwriting it
+
+### Review fixes
+
+Applied after a three-reviewer pass (architecture, performance, security) on PR [#70](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/70):
+
+- **The CLI is invoked asynchronously.** Every call was `spawnSync`, which blocks the VS Code extension host — a single shared, single-threaded process — for the whole run, freezing every installed extension with no progress and no way out. All three calls now use `execFile` inside `vscode.window.withProgress({ cancellable: true })`, with the cancellation token wired to `child.kill()`
+- **`--wait` is in MINUTES, not seconds.** The test run was sent `--wait 20`, written believing it meant seconds; it meant twenty minutes. Now bounded to 10, and the deploy passes an explicit `--wait` rather than inheriting the CLI's 33-minute default
+- **The Windows handling was backwards.** Naming the `sf.cmd` shim directly was documented as preserving the argv form; since the Node fix for CVE-2024-27980, spawning a `.cmd` with arguments and *without* a shell fails with `EINVAL`, so it broke every invocation on win32 instead. Windows now enables the shell with every argument quoted, and a value containing a double quote is rejected rather than escaped. Other platforms keep the argv form unchanged
+- **Test result keys are read case-insensitively.** Only `Outcome` was read, so an unexpected casing would have rendered every method failed — a false report of dependency drift, the one thing this command must never produce
+- **`stderr` and the exit code are carried into parse failures.** An auth failure produced "Unexpected end of JSON input" with the real cause discarded
+- **The org identifier is charset-validated** before reaching the CLI, rejecting anything that could be read as a flag rather than a value. Defence in depth given the argv form, and load-bearing on the Windows shell path
+- **The classes directory is re-checked for workspace containment.** Containment was enforced on the package directory, then `main/default/classes` was appended unchecked — and `writeFileSync` follows symlinks
+- **The deploy confirmation lists every file** it will send. Framework classes are scaffolded only when absent, so a workspace carrying its own copy deploys that copy; the user has to see which files those are
+- **The output channel is disposed** via `context.subscriptions`, and typed `OrgAuthorization` replaces the `any[]` on the authorization boundary
+- **The same Windows defect is fixed in `scripts/apex/run-picklist-dependency-checks.js`**, where it originated in [#60](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/60) and from which it was copied — comment included. That runner now enables the shell on Windows with quoted arguments, validates the `--target-org` value (which can arrive from argv or `SF_TARGET_ORG`, and on the shell path would otherwise be interpreted by `cmd.exe`), and reports `EINVAL` distinctly from `ENOENT`
+
+### Fixed: generated test class would not deploy for any custom object
+
+- **Apex identifiers may not contain two consecutive underscores**, and every custom object api name ends in `__c`. The generated method name embedded the api name verbatim, so `Example_Everything__c` produced `Example_Everything__c_picklistDependenciesMatchSourceMetadata` and the class failed to deploy with `Invalid character in identifier`. Runs of underscores are now collapsed: `Example_Everything_c_picklistDependenciesMatchSourceMetadata`
+- Collapsing rather than stripping the suffix keeps `Thing__c` and `Thing__e` distinguishable as `Thing_c` and `Thing_e`
+- The api name is still passed to the assertion as a **string literal**, keeping its exact `__c` suffix, so Schema describe resolves the real object — only the method identifier changed
+- Collapsing can map two distinct api names onto one identifier (`Foo__c` and `Foo_c` both yield `Foo_c`), and two Apex methods with the same name will not compile, so later collisions now get a numeric suffix
+- A whole-class guard test asserts no emitted identifier contains `__`, so any future change reintroducing this fails regardless of which helper produced the name
+
+  This survived the earlier live-org deploy check because that check used `Account` and `Contact` — **standard** objects, which have no `__c` and were therefore unaffected. Verifying against standard objects alone was not enough to exercise the path every real registry takes.
+
+### Framework classes moved into their own directory
+
+- The six runtime framework classes now live in `force-app/main/default/classes/PicklistDependencyFramework/`, and are scaffolded into the matching `PicklistDependencyFramework` subfolder of the user's package directory. Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the layout deploys identically — verified locally with `sf project convert source`, which resolved a nested class to `ApexClass` in `package.xml`
+- The split is for humans, not the platform: six files the user did not write stay separate from `PicklistDependencySpecs.cls` and `PicklistDependencySpecsTest.cls`, which are the contract they read and sometimes hand-tighten. The framework becomes removable in one action
+- **`.vscodeignore` drops from twelve per-file negations to one directory negation.** The per-file list was a standing hazard: adding a framework class without adding two more lines would have silently shipped a `.vsix` whose generated code could not compile. Anything outside that directory is now excluded by construction rather than by omission — confirmed the package still carries exactly 12 files, the 6 classes and their metadata
+- A workspace generated by an earlier version keeps working. The scaffolder skips a class present in **either** location, and the deploy resolves each class from one path only — Salesforce rejects the same `ApexClass` twice in a single deployment
+
+### Verified against a live org
+
+Confirmed in a scratch org rather than assumed from the docs:
+
+- The generated `PicklistDependencySpecs.cls` and `PicklistDependencySpecsTest.cls` **compile** — deployed 8 of 8 components with no component failures, including a picklist value carrying an apostrophe, which exercises the Apex string-literal escaping
+- `sf apex run test --json` returns `result.tests[]` with `MethodName`, `Outcome`, and `Message`, and `Message` is `null` rather than absent on passing methods
+- A failing run exits **100**, confirming that a non-zero CLI exit must not be treated as an error — the payload still carries the per-method outcomes
+- The multi-line assertion message survives the round trip, so the object name and the specific failing combination reach the output channel intact
+- The CLI's `@salesforce/sfdx-scanner` plugin warning is written to **stderr**, leaving `stdout` as clean JSON — the service reads `stdout` specifically, so the warning cannot corrupt parsing
+- A failing Apex test makes the CLI exit non-zero, which is deliberately **not** treated as an error — the result payload still carries the per-method outcomes the user needs to see
+
+### Notes
+
+- This repository's own `npm run picklist-dependency-check`, its anonymous-Apex entry point, and the `PICKLIST_DEPENDENCY_CHECK_RESULT` marker are unchanged and stay as local tooling
+- No faker service change; neither `IRecipeFakerService` nor `IFakerRecipeProcessor` is touched, so no dual-backend parity work was required
+
 ## [2.13.0] - Generate Picklist Dependency Tests Command
 
 Resolves [#61](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/61). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

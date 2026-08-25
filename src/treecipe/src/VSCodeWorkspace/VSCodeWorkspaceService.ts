@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import path = require('path');
 import * as fs from 'fs';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 
 
 export class VSCodeWorkspaceService {
@@ -358,9 +359,81 @@ export class VSCodeWorkspaceService {
 
         const parentDirectoryPathSlashIndex = pathWithoutTrailingForwardSlash.lastIndexOf('/');
         const parentDirectoryPath = parentDirectoryPathSlashIndex > 0 ? pathWithoutTrailingForwardSlash.substring(0, parentDirectoryPathSlashIndex) : '';
-        
+
         return parentDirectoryPath;
-    
+
     }
-    
+
+    static buildAuthenticatedOrgQuickPickItems(authenticatedOrgDetails: IAuthenticatedOrgDetail[]): vscode.QuickPickItem[] {
+
+        return authenticatedOrgDetails.map(authenticatedOrgDetail => ({
+            label: authenticatedOrgDetail.alias || authenticatedOrgDetail.username,
+            // THE USERNAME IS SHOWN EVEN WHEN IT IS THE LABEL SO TWO ALIASES ON ONE ORG STAY TELLABLE APART
+            description: authenticatedOrgDetail.username,
+            detail: authenticatedOrgDetail.targetOrgIdentifier
+        }));
+
+    }
+
+    /*
+        Returns undefined both when the user dismisses the quick pick and when no orgs are
+        authenticated. The two are distinguished before this is called -- an empty quick pick would
+        otherwise render as a list with nothing in it and no explanation of why.
+    */
+    static async promptForAuthenticatedTargetOrg(authenticatedOrgDetails: IAuthenticatedOrgDetail[]): Promise<string | undefined> {
+
+        const orgQuickPickItems = this.buildAuthenticatedOrgQuickPickItems(authenticatedOrgDetails);
+
+        const selectedOrgQuickPickItem = await vscode.window.showQuickPick(orgQuickPickItems, {
+            placeHolder: 'Select the Salesforce org to check picklist dependencies against',
+            ignoreFocusOut: true
+        });
+
+        return selectedOrgQuickPickItem?.detail;
+
+    }
+
+    /*
+        One channel is reused across runs and cleared on each invocation, so what is on screen always
+        belongs to the run that just finished rather than being appended to older output.
+
+        Created lazily rather than at activation so a user who never runs the check never pays for it,
+        and registered against the extension context on first use so VS Code disposes it on reload.
+    */
+    private static picklistDependencyCheckOutputChannel: vscode.OutputChannel;
+
+    private static extensionSubscriptions: { push(disposable: vscode.Disposable): void };
+
+    static registerExtensionSubscriptions(subscriptions: { push(disposable: vscode.Disposable): void }) {
+        this.extensionSubscriptions = subscriptions;
+    }
+
+    static getPicklistDependencyCheckOutputChannel(): vscode.OutputChannel {
+
+        if ( !this.picklistDependencyCheckOutputChannel ) {
+
+            this.picklistDependencyCheckOutputChannel = vscode.window.createOutputChannel('Picklist Dependency Check');
+
+            /*
+                Nothing registers subscriptions in a jest run, so the channel is simply not tracked
+                there -- an untracked channel in a test process has nothing to leak into.
+            */
+            this.extensionSubscriptions?.push(this.picklistDependencyCheckOutputChannel);
+
+        }
+
+        return this.picklistDependencyCheckOutputChannel;
+
+    }
+
+    static showPicklistDependencyCheckReport(report: string) {
+
+        const outputChannel = this.getPicklistDependencyCheckOutputChannel();
+
+        outputChannel.clear();
+        outputChannel.appendLine(report);
+        outputChannel.show(true);
+
+    }
+
 }
