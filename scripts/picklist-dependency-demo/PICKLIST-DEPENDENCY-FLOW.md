@@ -121,7 +121,9 @@ flowchart LR
 ## 3. Generate Picklist Dependency Tests
 
 `treecipe.generatePicklistDependencyTests` → `ExtensionCommandService.generatePicklistDependencyTests`.
-Generation only writes files. It never reads the org.
+Generation reads local source metadata — a `readDirectory` per directory and a `readFile` plus xml2js
+parse per `*.field-meta.xml`, scaling with the size of the objects tree. It writes the Apex classes.
+It never reads the org: org contact happens only if you accept the deploy prompt at the end.
 
 ```mermaid
 sequenceDiagram
@@ -162,13 +164,18 @@ sequenceDiagram
     Cmd->>Disk: write SpecsTest.cls + meta.xml
     Cmd->>Gen: scaffoldMissingFrameworkClasses
     Gen->>Disk: copy any of the 6 framework classes not already present
+    Gen-->>Cmd: scaffoldedClassNames + unavailableClassNames
+    Cmd-->>User: warn if a framework class could not be added —<br/>the generated class will not compile until it is
     Cmd-->>User: open Specs.cls, offer "deploy and run now?"
+    Note over Cmd: declined → return, files are already written
     User->>Cmd: yes
+    Cmd-->>User: org quick pick
+    Note over Cmd: dismissed → silent return
     Cmd->>Cmd: deployRunAndReportPicklistDependencyCheck, alwaysDeploy = true
 ```
 
-Step 27 always deploys: the classes were just rewritten, so the org copy is stale by definition and a
-conditional deploy would run yesterday's contract against today's metadata.
+That final call always deploys: the classes were just rewritten, so the org copy is stale by
+definition and a conditional deploy would run yesterday's contract against today's metadata.
 
 ---
 
@@ -195,18 +202,20 @@ sequenceDiagram
     Note over Cmd: dismissed → silent return
 
     rect rgb(240, 240, 250)
-        Note over Cmd,Org: withProgress, cancellable — cancel kills the child process
+        Note over Cmd,Org: withProgress, cancellable
         alt alwaysDeploy is false
             Cmd->>Chk: isSpecsTestClassDeployedInOrg
             Chk->>CLI: sf data query ApexClass
+            Note over Chk,CLI: no cancellation hook on this probe —<br/>cancelling is honoured after it returns
             CLI-->>Chk: present or absent
         end
         alt deploy required
-            Cmd-->>User: modal listing all 8 file names
+            Cmd-->>User: modal naming each file that exists on disk<br/>up to 8, count is dynamic
             Note over Cmd: declined → "nothing was deployed", return
             Cmd->>Chk: deployPicklistDependencyClasses
+            Note over Cmd,CLI: cancel kills this child process
             Chk->>CLI: sf project deploy start
-            CLI->>Org: 8 classes, one transaction
+            CLI->>Org: the resolved classes, one transaction
         end
         Cmd->>Chk: runPicklistDependencyTests
         Chk->>CLI: sf apex run test --tests SpecsTest --json
@@ -219,7 +228,7 @@ sequenceDiagram
     Cmd->>Cmd: buildOutputChannelReport
     Cmd-->>User: output channel, cleared per run
     Cmd->>Chk: writeCheckResultArtifacts
-    Chk->>Disk: check-<org>-<timestamp>/results.json + report.md
+    Chk->>Disk: check-{org}-{timestamp}/results.json + report.md
     Cmd-->>User: pass info / fail warning naming the artifact folder
 ```
 
@@ -254,9 +263,10 @@ flowchart TB
     SPECS -->|"compile dependency"| SPEC
     TEST --> SPECS
     TEST --> VAL
+    TEST --> SRC
     VAL --> SNAP
-    VAL --> REP
     VAL --> I
+    REP --> VAL
     SRC -.->|"implements"| I
     SRC -->|"Schema describe"| ORG[("Target org")]
 
@@ -351,7 +361,11 @@ Salesforce identifier.
 
 ## What the diagrams cannot cover
 
-The VS Code UI layer has no automated coverage — Jest mocks `vscode`, and the demo script drives the
-compiled services rather than the extension host. The manual checklist in
-[`README.md`](./README.md#testing-through-the-vs-code-ui-instead) is the only thing exercising the
-quick pick, the cancellable progress notification, the deploy modal, and the output channel.
+The VS Code UI layer has no automated coverage **beyond unit tests against a mocked `vscode`** —
+`ExtensionCommandService.test.ts` does cover the command paths, including cancellation, the empty-org
+case and report display, but against a mock rather than a running extension host, and the demo script
+drives the compiled services rather than the host either. What no automated test observes is the real
+UI: that the quick pick shows alias and username as it should, that the progress notification actually
+renders a Cancel button, that the deploy modal is modal, and that the output channel opens and indents
+multi-line assertion messages. The manual checklist in
+[`README.md`](./README.md#testing-through-the-vs-code-ui-instead) is what covers those.
