@@ -1,5 +1,5 @@
 /**
- * Production IPicklistDependencySource backed by Schema describe.
+ * Production ISDTPicklistDependencySource backed by Schema describe.
  *
  * Dependency data is read without a callout. Schema.PicklistEntry has no getValidFor()
  * accessor in Apex, but JSON.serialize(entry) does emit a "validFor" key: a base64-encoded
@@ -36,7 +36,7 @@
  * spec list, so a registry spanning many objects trades CPU for monotonically growing heap
  * against the 6 MB limit. Revisit if a registry ever spans dozens of objects.
  */
-public with sharing class SchemaPicklistDependencySource implements IPicklistDependencySource {
+public with sharing class SDTSchemaPicklistDependencySource implements ISDTPicklistDependencySource {
 
     public class PicklistDependencyException extends Exception {}
 
@@ -93,7 +93,7 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
      * not produce. The describe caching above is what the realistic distinct-field workload
      * actually benefits from. Revisit only if duplicate specs become legitimate.
      */
-    public PicklistDependencySnapshot fetch(PicklistDependencySpec spec) {
+    public SDTPicklistDependencySnapshot fetch(SDTPicklistDependencySpec spec) {
 
         Schema.DescribeFieldResult dependentDescribe = describeField(spec.objectApiName, spec.fieldApiName);
         Schema.SObjectField controllerToken = dependentDescribe.getController();
@@ -107,7 +107,7 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
 
         Schema.DescribeFieldResult controllingDescribe = describeOf(controllerToken);
 
-        PicklistDependencySnapshot snapshot = new PicklistDependencySnapshot();
+        SDTPicklistDependencySnapshot snapshot = new SDTPicklistDependencySnapshot();
         snapshot.objectApiName = spec.objectApiName;
         snapshot.fieldApiName = spec.fieldApiName;
         snapshot.controllingFieldApiName = controllingDescribe.getName();

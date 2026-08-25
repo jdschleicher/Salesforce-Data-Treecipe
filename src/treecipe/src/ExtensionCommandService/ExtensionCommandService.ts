@@ -254,9 +254,9 @@ export class ExtensionCommandService {
 
         const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
 
-        PicklistDependencyTestService.writeSpecsClassFiles(
+        const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
             classesDirectoryPath,
-            PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails),
+            collectionResult.specDetails,
             sourceApiVersion
         );
 
@@ -277,9 +277,23 @@ export class ExtensionCommandService {
             VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
         }
 
-        let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s), and ${specsTestClassName}.cls to assert them, in "${classesDirectoryPath}".`;
+        const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
+
+        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}".`;
         if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
             generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
+        }
+        if ( specsClassWriteResult.removedStaleClassFilePaths.length > 0 ) {
+            generationSummary += ` Removed ${specsClassWriteResult.removedStaleClassFilePaths.length} generated class(es) for object(s) no longer declaring a dependent picklist: ${specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath)).join(', ')}.`;
+        }
+
+        /*
+            Surfaced after generation rather than before it: the new classes are written either way,
+            and the warning is about cleaning up what an earlier version left behind.
+        */
+        const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath);
+        if ( legacyArtifactPaths.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(PicklistDependencyTestService.buildLegacyArtifactWarning(legacyArtifactPaths));
         }
 
         return {

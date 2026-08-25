@@ -1,5 +1,71 @@
 # Change Log
 
+## [3.0.0] - SDT-Prefixed Per-Object Picklist Dependency Specs with Negative Assertions
+
+Resolves [#72](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/72). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### BREAKING: every Apex class this extension writes is now `SDT`-prefixed
+
+The picklist dependency framework shipped unprefixed in 2.12.0 and the generated registry carried an `SFTreecipe` prefix. Both are renamed, so **anyone who deployed the framework between 2.12.0 and 2.14.0 has classes in their org that this version orphans**:
+
+| Was | Now |
+|---|---|
+| `PicklistDependencyFramework/` (folder) | `SDTPicklistDependencyFramework/` |
+| `IPicklistDependencySource` | `ISDTPicklistDependencySource` |
+| `PicklistDependencySpec` | `SDTPicklistDependencySpec` |
+| `PicklistDependencySnapshot` | `SDTPicklistDependencySnapshot` |
+| `PicklistDependencyReport` | `SDTPicklistDependencyReport` |
+| `PicklistDependencyValidator` | `SDTPicklistDependencyValidator` |
+| `SchemaPicklistDependencySource` | `SDTSchemaPicklistDependencySource` |
+| `SFTreecipePicklistDependencySpecs[Test]` | `SDTPicklistDependencySpecs[Test]` |
+
+- One prefix, applied to everything: a class in your package directory starting with `SDT` was put there by Salesforce Data Treecipe, not by you, and cannot collide with your own `PicklistDependencySpec`
+- **Generation detects the old layout and warns**, naming the exact paths to delete locally and the exact class names to delete from any org they reached. **Nothing is deleted for you** — these are files in your package directory that may well be committed and deployed, so removing them is your call
+- Left in place, the two frameworks deploy side by side under different names and both compile, which is why the warning names them rather than staying quiet
+
+### Negative assertions: drift is now caught in both directions
+
+Generated specs only ever asserted what a controlling value *must* unlock, so a value that drifted **into** a combination it does not belong in passed silently. Each controlling value now gets a second line:
+
+```apex
+.expectAtLeast('USA', new List<String>{ 'Ohio', 'Texas' })
+.expectNotAllowed('USA', new List<String>{ 'Ontario' })
+```
+
+- New `expectNotAllowed(controllingValue, values)` builder and a `FORBIDDEN_VALUES_PRESENT` failure kind naming the specific offending values
+- The forbidden list is the **complement** — every value the dependent field declares that this controlling value does not unlock — taken from the field's own `<valueSet>` rather than from its `valueSettings` map, so a value carrying no `valueSettings` entry at all (unreachable under every controlling value) lands in every complement
+- **This deliberately does not switch the generator to `expectExactly`.** Exact matching would fire on any value an admin legitimately adds to the field after generation; the complement tolerates that while still failing on a value in the wrong bucket. The `expectAtLeast` design decision from #62 stands
+- A controlling value whose complement is empty emits no line — it would assert nothing. A controlling value that unlocks nothing still emits `expectNone`, which is strictly stronger than listing what it must not unlock
+
+### One spec class per object, with an aggregator
+
+A registry covering every dependent picklist in a real org is not something anyone reads, and regenerating rewrote one file that every object's diff landed in.
+
+- One `SDTPicklistDependencySpecs_<Object>.cls` per object, each with one spec method per dependent picklist on that object
+- `SDTPicklistDependencySpecs.all()` becomes a thin aggregator calling each per-object `all()`. Callers depend on the aggregator, so a per-object class appearing or disappearing does not ripple outwards
+- **Splitting per field was considered and rejected** — it multiplies files by the number of dependent picklists for no gain in readability, and separates a chained picklist from the field that controls it
+- The generated test class keeps its existing one-`@IsTest`-method-per-object shape, so **Run Picklist Dependency Check** needs no change to how it invokes or parses results
+- Object api names collapsing to one Apex identifier (`Foo__c` and `Foo_c` both yield `Foo_c`) take a numeric suffix, as spec method names already did
+- **Stale classes are removed.** An object that loses its last dependent picklist leaves a generated class the new aggregator no longer calls — left on disk it still deploys, so the org keeps asserting a contract your metadata no longer describes. Only files matching the generated pattern and absent from the current run are removed, and the summary names them. The aggregator, the test class and your own Apex are never touched
+- The check command discovers per-object classes from disk and adds them to the deploy set — without them the aggregator deploys and fails to compile against classes that are not there
+
+### Chained dependencies are linked
+
+Where a dependent picklist is itself the controlling field of another (`Country__c` → `State__c` → `City__c`), the lower spec now carries `.dependsOn(specFor_Chain_Example_c_State_c())`.
+
+- The validator resolves the chain and reports a break **once at its source**; each downstream spec gets a single `UPSTREAM_FAILURE` naming the spec to fix first, instead of repeating the same describe mismatch for every dependent below it
+- Upstream specs are resolved **on demand and memoized**, not assumed present in the caller's list — the generated test class validates one object at a time, and a controlling field shared by several dependents costs one describe rather than one per dependent
+- A `CIRCULAR_DEPENDENCY` guard terminates a hand-edited cycle rather than exhausting the stack. Salesforce cannot express a cyclic picklist dependency; a hand-edited `dependsOn` can
+- A spec listed twice is reported once
+- **A controlling field always lives on the same object as the field it controls**, so an emitted `dependsOn` always names a sibling method in the same per-object class. There is no cross-object chain to link, and none is fabricated
+
+### Testing
+
+- New three-level chain fixture (`Chain_Example__c`: `Country__c` → `State__c` → `City__c`) drives complement, chain-linking and contract coverage
+- The contract test asserting that every emitted builder exists on the shipped Apex class now covers `dependsOn` and `expectNotAllowed`, and additionally asserts the validator exposes the new failure kinds and that every framework class the generator scaffolds is actually present in the shipped directory
+- Apex tests added for forbidden-value detection, tolerance of org-added values, unknown controlling values under a negative assertion, healthy and broken chains, upstream-not-in-list resolution, the cycle guard, and duplicate specs
+- Coverage: 83.07% → 83.58% statements, 77.67% → 78.08% branches, 85.15% → 85.83% functions
+
 ## [2.14.0] - Run Picklist Dependency Check Command
 
 Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

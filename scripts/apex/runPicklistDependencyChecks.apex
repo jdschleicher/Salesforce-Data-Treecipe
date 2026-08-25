@@ -1,7 +1,7 @@
 // Anonymous Apex entry point for the picklist dependency check.
 //
-// Runs every spec in SFTreecipePicklistDependencySpecs.all() against the target org via
-// SchemaPicklistDependencySource and prints a report plus a machine-readable RESULT
+// Runs every spec in SDTPicklistDependencySpecs.all() against the target org via
+// SDTSchemaPicklistDependencySource and prints a report plus a machine-readable RESULT
 // marker (PICKLIST_DEPENDENCY_CHECK_RESULT=PASS|FAIL|EMPTY) that the Node runner keys
 // its exit code off of.
 //
@@ -9,14 +9,14 @@
 // way to run the check — but as anonymous Apex it needs no deploy of a test class and
 // reports against the org's real metadata.
 
-List<PicklistDependencySpec> specs = SFTreecipePicklistDependencySpecs.all();
+List<SDTPicklistDependencySpec> specs = SDTPicklistDependencySpecs.all();
 
-PicklistDependencyValidator validator =
-    new PicklistDependencyValidator(new SchemaPicklistDependencySource());
+SDTPicklistDependencyValidator validator =
+    new SDTPicklistDependencyValidator(new SDTSchemaPicklistDependencySource());
 
-List<PicklistDependencyValidator.Failure> failures = validator.validate(specs);
+List<SDTPicklistDependencyValidator.Failure> failures = validator.validate(specs);
 
-PicklistDependencyReport report = PicklistDependencyReport.build(specs, failures);
+SDTPicklistDependencyReport report = SDTPicklistDependencyReport.build(specs, failures);
 
 System.debug(LoggingLevel.ERROR, '\n' + report.toDisplayString());
 System.debug(LoggingLevel.ERROR, report.resultMarker());

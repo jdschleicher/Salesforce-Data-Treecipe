@@ -401,8 +401,29 @@ export class PicklistDependencyCheckService {
             PicklistDependencyTestService.getSpecsTestClassName()
         ].map(generatedClassName => path.join(classesDirectoryPath, `${generatedClassName}.cls`));
 
-        return [...frameworkClassFilePaths, ...generatedClassFilePaths]
+        /*
+            The aggregator calls into one generated class per object, so deploying it without them
+            fails to compile in the org. They are discovered from disk rather than rebuilt from
+            metadata: this command deploys what was generated, and re-deriving the list here would
+            silently disagree with it whenever the metadata changed after the last generation.
+        */
+        const perObjectSpecsClassFilePaths = this.getPerObjectSpecsClassFilePaths(classesDirectoryPath);
+
+        return [...frameworkClassFilePaths, ...perObjectSpecsClassFilePaths, ...generatedClassFilePaths]
             .filter(classFilePath => fs.existsSync(classFilePath));
+
+    }
+
+    static getPerObjectSpecsClassFilePaths(classesDirectoryPath: string): string[] {
+
+        if ( !fs.existsSync(classesDirectoryPath) ) {
+            return [];
+        }
+
+        return fs.readdirSync(classesDirectoryPath)
+            .filter(fileName => PicklistDependencyTestService.isPerObjectSpecsClassFileName(fileName))
+            .sort()
+            .map(fileName => path.join(classesDirectoryPath, fileName));
 
     }
 

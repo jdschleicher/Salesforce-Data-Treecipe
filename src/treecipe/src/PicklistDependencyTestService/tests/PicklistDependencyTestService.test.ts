@@ -37,6 +37,7 @@ jest.mock('vscode', () => ({
 
 const mockMetadataDirectoryPath = path.join(__dirname, 'mocks', 'MockPicklistDependencyMetadataDirectory', 'objects');
 const mockDependencyExampleFieldsPath = path.join(mockMetadataDirectoryPath, 'Dependency_Example__c', 'fields');
+const mockChainExampleFieldsPath = path.join(mockMetadataDirectoryPath, 'Chain_Example__c', 'fields');
 
 const existingDirectoryProcessingMocksFieldsPath = path.join(
     __dirname, '..', '..',
@@ -185,16 +186,60 @@ describe('PicklistDependencyTestService', () => {
             const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
             const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
 
-            const generatedFieldApiNames = collectionResult.specDetails.map(specDetail => specDetail.fieldApiName);
-            expect(generatedFieldApiNames).toIncludeSameMembers(['Neighborhood__c', 'SpecialCharacterDependent__c']);
+            const specDetailLabels = collectionResult.specDetails.map(specDetail => `${specDetail.objectApiName}.${specDetail.fieldApiName}`);
+            expect(specDetailLabels).toIncludeSameMembers([
+                'Dependency_Example__c.Neighborhood__c',
+                'Dependency_Example__c.SpecialCharacterDependent__c',
+                'Chain_Example__c.State__c',
+                'Chain_Example__c.City__c'
+            ]);
 
-            collectionResult.specDetails.forEach(specDetail => {
-                expect(specDetail.objectApiName).toBe('Dependency_Example__c');
-                expect(specDetail.controllingFieldApiName).toBe('City__c');
-            });
+            const controllingFieldApiNamesByLabel = Object.fromEntries(
+                collectionResult.specDetails.map(specDetail => [`${specDetail.objectApiName}.${specDetail.fieldApiName}`, specDetail.controllingFieldApiName])
+            );
+            expect(controllingFieldApiNamesByLabel['Dependency_Example__c.Neighborhood__c']).toBe('City__c');
+            expect(controllingFieldApiNamesByLabel['Chain_Example__c.City__c']).toBe('State__c');
 
             expect(collectionResult.skippedFieldWarnings).toHaveLength(1);
             expect(collectionResult.skippedFieldWarnings[0]).toContain('NoValueSettingsDependent__c');
+
+        });
+
+        test('given a three level chain, links only the middle and leaf specs to their upstream field', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const upstreamFieldApiNamesByLabel = Object.fromEntries(
+                collectionResult.specDetails.map(specDetail => [`${specDetail.objectApiName}.${specDetail.fieldApiName}`, specDetail.upstreamFieldApiName])
+            );
+
+            // Country__c IS A PLAIN PICKLIST, SO State__c IS THE ROOT OF THE CHAIN AND HAS NO UPSTREAM SPEC
+            expect(upstreamFieldApiNamesByLabel['Chain_Example__c.State__c']).toBeUndefined();
+            expect(upstreamFieldApiNamesByLabel['Chain_Example__c.City__c']).toBe('State__c');
+
+        });
+
+        test('given a dependent picklist, records the complement of each controlling value as its forbidden values', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const stateSpecDetail = collectionResult.specDetails.find(
+                specDetail => specDetail.objectApiName === 'Chain_Example__c' && specDetail.fieldApiName === 'State__c'
+            )!;
+
+            const usaExpectation = stateSpecDetail.expectations.find(expectation => expectation.controllingValue === 'USA')!;
+            expect(usaExpectation.dependentValues).toIncludeSameMembers(['Ohio', 'Texas']);
+            expect(usaExpectation.forbiddenValues).toIncludeSameMembers(['Ontario']);
+
+            const canadaExpectation = stateSpecDetail.expectations.find(expectation => expectation.controllingValue === 'Canada')!;
+            expect(canadaExpectation.dependentValues).toIncludeSameMembers(['Ontario']);
+            expect(canadaExpectation.forbiddenValues).toIncludeSameMembers(['Ohio', 'Texas']);
 
         });
 
@@ -290,27 +335,92 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
-    describe('buildSpecsApexClassBody', () => {
+    describe('buildPerObjectSpecsApexClassBody', () => {
 
         const specDetailWithBothMatchModes: IPicklistDependencySpecDetail = {
             objectApiName: 'Dependency_Example__c',
             fieldApiName: 'Neighborhood__c',
             controllingFieldApiName: 'City__c',
             expectations: [
-                { controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont'] },
+                { controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont'], forbiddenValues: ['willowick'] },
                 { controllingValue: 'akron', dependentValues: [] }
             ]
         };
 
+        const buildBodyForSpecDetails = (specDetails: IPicklistDependencySpecDetail[]) =>
+            PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                specDetails[0].objectApiName,
+                PicklistDependencyTestService.buildPerObjectSpecsClassName(specDetails[0].objectApiName),
+                specDetails
+            );
+
         test('given spec details, emits forField, controlledBy, expectAtLeast and expectNone markup', () => {
 
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([specDetailWithBothMatchModes]);
+            const apexClassBody = buildBodyForSpecDetails([specDetailWithBothMatchModes]);
 
-            expect(apexClassBody).toContain(`public class SFTreecipePicklistDependencySpecs {`);
-            expect(apexClassBody).toContain(`PicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')`);
+            expect(apexClassBody).toContain(`public class SDTPicklistDependencySpecs_Dependency_Example_c {`);
+            expect(apexClassBody).toContain(`SDTPicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')`);
             expect(apexClassBody).toContain(`.controlledBy('City__c')`);
             expect(apexClassBody).toContain(`.expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })`);
             expect(apexClassBody).toContain(`.expectNone('akron')`);
+
+        });
+
+        test('given forbidden values, emits an expectNotAllowed line beside the expectAtLeast line', () => {
+
+            const apexClassBody = buildBodyForSpecDetails([specDetailWithBothMatchModes]);
+
+            expect(apexClassBody).toContain(`.expectNotAllowed('cle', new List<String>{ 'willowick' })`);
+
+        });
+
+        test('given a controlling value with no forbidden values, emits no expectNotAllowed line for it', () => {
+
+            const apexClassBody = buildBodyForSpecDetails([{
+                ...specDetailWithBothMatchModes,
+                expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'], forbiddenValues: [] }]
+            }]);
+
+            expect(apexClassBody).toContain(`.expectAtLeast('cle', new List<String>{ 'ohiocity' })`);
+            expect(apexClassBody).not.toContain('.expectNotAllowed(');
+
+        });
+
+        test('given a controlling value that unlocks nothing, emits expectNone without a redundant expectNotAllowed', () => {
+
+            const apexClassBody = buildBodyForSpecDetails([{
+                ...specDetailWithBothMatchModes,
+                expectations: [{ controllingValue: 'akron', dependentValues: [], forbiddenValues: ['ohiocity', 'tremont'] }]
+            }]);
+
+            expect(apexClassBody).toContain(`.expectNone('akron')`);
+            // expectNone ALREADY ASSERTS NOTHING IS UNLOCKED, WHICH IS STRICTLY STRONGER
+            expect(apexClassBody).not.toContain('.expectNotAllowed(');
+
+        });
+
+        test('given a spec whose controlling field is itself dependent, emits a dependsOn call naming that sibling spec method', () => {
+
+            const upstreamSpecDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: ['Ontario'] }]
+            };
+
+            const downstreamSpecDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'City__c',
+                controllingFieldApiName: 'State__c',
+                expectations: [{ controllingValue: 'Ohio', dependentValues: ['Cleveland'], forbiddenValues: ['Austin'] }],
+                upstreamFieldApiName: 'State__c'
+            };
+
+            const apexClassBody = buildBodyForSpecDetails([upstreamSpecDetail, downstreamSpecDetail]);
+
+            expect(apexClassBody).toContain('.dependsOn(specFor_Chain_Example_c_State_c())');
+            // THE ROOT OF THE CHAIN HAS NOTHING UPSTREAM OF IT
+            expect([...apexClassBody.matchAll(/\.dependsOn\(/g)]).toHaveLength(1);
 
         });
 
@@ -323,11 +433,11 @@ describe('PicklistDependencyTestService', () => {
                 expectations: [{ controllingValue: 'cle', dependentValues: [`Bob's Diner`] }]
             };
 
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([specDetailWithBothMatchModes, secondSpecDetail]);
+            const apexClassBody = buildBodyForSpecDetails([specDetailWithBothMatchModes, secondSpecDetail]);
 
             // EACH SCENARIO IS ITS OWN FACTORY METHOD
-            expect(apexClassBody).toContain('public static PicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c()');
-            expect(apexClassBody).toContain('public static PicklistDependencySpec specFor_Dependency_Example_c_SpecialCharacterDependent_c()');
+            expect(apexClassBody).toContain('public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c()');
+            expect(apexClassBody).toContain('public static SDTPicklistDependencySpec specFor_Dependency_Example_c_SpecialCharacterDependent_c()');
 
             // AND all() RETURNS THE COLLECTION OF THEM, COMMA SEPARATED
             expect(apexClassBody).toContain(`            specFor_Dependency_Example_c_Neighborhood_c(),\n            specFor_Dependency_Example_c_SpecialCharacterDependent_c()`);
@@ -336,12 +446,12 @@ describe('PicklistDependencyTestService', () => {
 
         test('emits no spec method name containing two consecutive underscores', () => {
 
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([
-                specDetailWithBothMatchModes,
-                { ...specDetailWithBothMatchModes, objectApiName: 'My_NS__Obj__c', fieldApiName: 'Some__Field__c' }
+            const apexClassBody = buildBodyForSpecDetails([
+                { ...specDetailWithBothMatchModes, objectApiName: 'My_NS__Obj__c', fieldApiName: 'Some__Field__c' },
+                { ...specDetailWithBothMatchModes, objectApiName: 'My_NS__Obj__c', fieldApiName: 'Other__Field__c' }
             ]);
 
-            const emittedMethodNames = [...apexClassBody.matchAll(/PicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
+            const emittedMethodNames = [...apexClassBody.matchAll(/SDTPicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
 
             expect(emittedMethodNames.length).toBeGreaterThan(0);
             expect(emittedMethodNames).toSatisfyAll((methodName: string) => !methodName.includes('__'));
@@ -350,12 +460,12 @@ describe('PicklistDependencyTestService', () => {
 
         test('given two scenarios whose names collapse to one identifier, emits distinct method names', () => {
 
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([
+            const apexClassBody = buildBodyForSpecDetails([
                 { ...specDetailWithBothMatchModes, objectApiName: 'Foo__c', fieldApiName: 'Bar__c' },
-                { ...specDetailWithBothMatchModes, objectApiName: 'Foo_c', fieldApiName: 'Bar_c' }
+                { ...specDetailWithBothMatchModes, objectApiName: 'Foo__c', fieldApiName: 'Bar_c' }
             ]);
 
-            const emittedMethodNames = [...apexClassBody.matchAll(/public static PicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
+            const emittedMethodNames = [...apexClassBody.matchAll(/public static SDTPicklistDependencySpec (\w+)\(\)/g)].map(match => match[1]);
 
             expect(new Set(emittedMethodNames).size).toBe(emittedMethodNames.length);
 
@@ -370,7 +480,7 @@ describe('PicklistDependencyTestService', () => {
                 'Dependency_Example__c',
                 [controllingFieldDetail, specialCharacterFieldDetail]
             );
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails);
+            const apexClassBody = buildBodyForSpecDetails(collectionResult.specDetails);
 
             expect(apexClassBody).toContain(`'Bob\\'s Diner'`);
             expect(apexClassBody).toContain(`'Back\\\\Slash'`);
@@ -383,11 +493,69 @@ describe('PicklistDependencyTestService', () => {
 
         test('given no spec details, emits a compiling class returning an empty list', () => {
 
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody([]);
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Dependency_Example__c',
+                'SDTPicklistDependencySpecs_Dependency_Example_c',
+                []
+            );
 
-            expect(apexClassBody).toContain('return new List<PicklistDependencySpec>();');
+            expect(apexClassBody).toContain('return new List<SDTPicklistDependencySpec>();');
             // NO SCENARIO METHODS AT ALL, RATHER THAN AN EMPTY ONE
-            expect(apexClassBody).not.toContain('public static PicklistDependencySpec specFor_');
+            expect(apexClassBody).not.toContain('public static SDTPicklistDependencySpec specFor_');
+
+        });
+
+    });
+
+    describe('buildPerObjectSpecsClassNamesByObjectApiName', () => {
+
+        test('given an object api name, collapses underscore runs into a valid Apex class name', () => {
+
+            expect(PicklistDependencyTestService.buildPerObjectSpecsClassName('Dependency_Example__c'))
+                .toBe('SDTPicklistDependencySpecs_Dependency_Example_c');
+
+        });
+
+        test('given two object api names that collapse to one identifier, suffixes the later class name', () => {
+
+            const classNamesByObjectApiName = PicklistDependencyTestService
+                .buildPerObjectSpecsClassNamesByObjectApiName(['Foo__c', 'Foo_c']);
+
+            expect(classNamesByObjectApiName['Foo__c']).toBe('SDTPicklistDependencySpecs_Foo_c');
+            expect(classNamesByObjectApiName['Foo_c']).toBe('SDTPicklistDependencySpecs_Foo_c_2');
+
+        });
+
+        test('given an object api name starting with a digit, prefixes it so the class name is a valid identifier', () => {
+
+            expect(PicklistDependencyTestService.buildPerObjectSpecsClassName('9Lives__c'))
+                .toBe('SDTPicklistDependencySpecs_object9Lives_c');
+
+        });
+
+    });
+
+    describe('buildAggregatorSpecsApexClassBody', () => {
+
+        test('given per-object class names, emits an all() that adds each of them', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildAggregatorSpecsApexClassBody({
+                'Account': 'SDTPicklistDependencySpecs_Account',
+                'Dependency_Example__c': 'SDTPicklistDependencySpecs_Dependency_Example_c'
+            });
+
+            expect(apexClassBody).toContain('public class SDTPicklistDependencySpecs {');
+            expect(apexClassBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Account.all());');
+            expect(apexClassBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Dependency_Example_c.all());');
+
+        });
+
+        test('given no per-object classes, emits a compiling all() returning an empty list', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildAggregatorSpecsApexClassBody({});
+
+            expect(apexClassBody).toContain('return new List<SDTPicklistDependencySpec>();');
+            expect(apexClassBody).not.toContain('.all());');
 
         });
 
@@ -414,8 +582,8 @@ describe('PicklistDependencyTestService', () => {
             const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
 
             expect(apexTestClassBody).toContain('@IsTest');
-            expect(apexTestClassBody).toContain('private class SFTreecipePicklistDependencySpecsTest {');
-            expect(apexTestClassBody).toContain('new PicklistDependencyValidator(new SchemaPicklistDependencySource())');
+            expect(apexTestClassBody).toContain('private class SDTPicklistDependencySpecsTest {');
+            expect(apexTestClassBody).toContain('new SDTPicklistDependencyValidator(new SDTSchemaPicklistDependencySource())');
 
         });
 
@@ -455,7 +623,7 @@ describe('PicklistDependencyTestService', () => {
 
             expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
             expect(apexTestClassBody).toContain('Assert.isFalse(');
-            expect(apexTestClassBody).toContain('SFTreecipePicklistDependencySpecs.all().isEmpty()');
+            expect(apexTestClassBody).toContain('SDTPicklistDependencySpecs.all().isEmpty()');
 
         });
 
@@ -903,18 +1071,168 @@ describe('PicklistDependencyTestService', () => {
 
     describe('writeSpecsClassFiles', () => {
 
-        test('given a classes directory, writes the cls and its meta xml', () => {
+        const classesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
+
+        const accountSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Account',
+            fieldApiName: 'Region__c',
+            controllingFieldApiName: 'Country__c',
+            expectations: [{ controllingValue: 'USA', dependentValues: ['West'], forbiddenValues: ['Ontario'] }]
+        };
+
+        const dependencyExampleSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Dependency_Example__c',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations: [{ controllingValue: 'cle', dependentValues: ['tremont'], forbiddenValues: ['willowick'] }]
+        };
+
+        test('given spec details across two objects, writes one class per object plus the aggregator, each with a meta xml', () => {
 
             const makeDirectorySpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
             const writeFileSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
 
-            const classesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
-            const writtenFilePath = PicklistDependencyTestService.writeSpecsClassFiles(classesDirectoryPath, 'apex body', '64.0');
+            const writeResult = PicklistDependencyTestService.writeSpecsClassFiles(
+                classesDirectoryPath,
+                [accountSpecDetail, dependencyExampleSpecDetail],
+                '64.0'
+            );
 
             expect(makeDirectorySpy).toHaveBeenCalledWith(classesDirectoryPath, { recursive: true });
-            expect(writtenFilePath).toBe(path.join(classesDirectoryPath, 'SFTreecipePicklistDependencySpecs.cls'));
-            expect(writeFileSpy).toHaveBeenCalledWith(writtenFilePath, 'apex body');
-            expect(writeFileSpy).toHaveBeenCalledWith(`${writtenFilePath}-meta.xml`, expect.stringContaining('<apiVersion>64.0</apiVersion>'));
+
+            expect(writeResult.aggregatorClassFilePath).toBe(path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls'));
+            expect(writeResult.perObjectClassFilePathsByObjectApiName).toEqual({
+                'Account': path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Account.cls'),
+                'Dependency_Example__c': path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Dependency_Example_c.cls')
+            });
+
+            // EVERY GENERATED CLASS GETS ITS meta xml, OR IT WILL NOT DEPLOY
+            [
+                'SDTPicklistDependencySpecs_Account.cls',
+                'SDTPicklistDependencySpecs_Dependency_Example_c.cls',
+                'SDTPicklistDependencySpecs.cls'
+            ].forEach(generatedFileName => {
+                const generatedFilePath = path.join(classesDirectoryPath, generatedFileName);
+                expect(writeFileSpy).toHaveBeenCalledWith(generatedFilePath, expect.any(String));
+                expect(writeFileSpy).toHaveBeenCalledWith(`${generatedFilePath}-meta.xml`, expect.stringContaining('<apiVersion>64.0</apiVersion>'));
+            });
+
+        });
+
+        test('the aggregator it writes calls into every per-object class it wrote', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            let writtenBodiesByFilePath: Record<string, string> = {};
+            jest.spyOn(fs, 'writeFileSync').mockImplementation((filePath: any, body: any) => {
+                writtenBodiesByFilePath[String(filePath)] = String(body);
+            });
+
+            PicklistDependencyTestService.writeSpecsClassFiles(
+                classesDirectoryPath,
+                [accountSpecDetail, dependencyExampleSpecDetail],
+                '64.0'
+            );
+
+            const aggregatorBody = writtenBodiesByFilePath[path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls')];
+
+            expect(aggregatorBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Account.all());');
+            expect(aggregatorBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Dependency_Example_c.all());');
+
+        });
+
+        test('given a generated class for an object no longer in the metadata, removes it and reports the removal', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readdirSync').mockReturnValue([
+                'SDTPicklistDependencySpecs_Account.cls',
+                'SDTPicklistDependencySpecs_Retired_Object_c.cls',
+                'SDTPicklistDependencySpecs.cls',
+                'SDTPicklistDependencySpecsTest.cls',
+                'SomeUnrelatedClass.cls'
+            ] as any);
+            const removeSpy = jest.spyOn(fs, 'rmSync').mockImplementation(() => undefined);
+
+            const writeResult = PicklistDependencyTestService.writeSpecsClassFiles(
+                classesDirectoryPath,
+                [accountSpecDetail],
+                '64.0'
+            );
+
+            const stalePath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Retired_Object_c.cls');
+
+            expect(writeResult.removedStaleClassFilePaths).toEqual([stalePath]);
+            expect(removeSpy).toHaveBeenCalledWith(stalePath, { force: true });
+            expect(removeSpy).toHaveBeenCalledWith(`${stalePath}-meta.xml`, { force: true });
+
+            // THE AGGREGATOR, THE TEST CLASS AND THE USER'S OWN APEX ARE NEVER TOUCHED
+            const removedPaths = removeSpy.mock.calls.map(removeCall => String(removeCall[0]));
+            expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls'));
+            expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPicklistDependencySpecsTest.cls'));
+            expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SomeUnrelatedClass.cls'));
+
+        });
+
+    });
+
+    describe('isPerObjectSpecsClassFileName', () => {
+
+        test('matches a generated per-object class file', () => {
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecs_Account.cls')).toBeTrue();
+        });
+
+        test('does not match the aggregator or the generated test class', () => {
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecs.cls')).toBeFalse();
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecsTest.cls')).toBeFalse();
+        });
+
+        test('does not match a meta xml or an unrelated class', () => {
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecs_Account.cls-meta.xml')).toBeFalse();
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('AccountService.cls')).toBeFalse();
+        });
+
+    });
+
+    describe('detectLegacyGeneratedArtifacts', () => {
+
+        const classesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
+
+        test('given a legacy framework directory and legacy spec classes, reports each of their paths', () => {
+
+            const legacyFrameworkDirectoryPath = path.join(classesDirectoryPath, 'PicklistDependencyFramework');
+            const legacySpecsClassFilePath = path.join(classesDirectoryPath, 'SFTreecipePicklistDependencySpecs.cls');
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) =>
+                String(checkedPath) === legacyFrameworkDirectoryPath || String(checkedPath) === legacySpecsClassFilePath);
+
+            const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath);
+
+            expect(legacyArtifactPaths).toEqual([legacyFrameworkDirectoryPath, legacySpecsClassFilePath]);
+
+        });
+
+        test('given a workspace with nothing from an earlier version, reports nothing', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            expect(PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath)).toEqual([]);
+
+        });
+
+        test('the warning names the paths to remove locally and the classes to delete from the org', () => {
+
+            const legacyFrameworkDirectoryPath = path.join(classesDirectoryPath, 'PicklistDependencyFramework');
+
+            const warning = PicklistDependencyTestService.buildLegacyArtifactWarning([legacyFrameworkDirectoryPath]);
+
+            expect(warning).toContain(legacyFrameworkDirectoryPath);
+            expect(warning).toContain('SFTreecipePicklistDependencySpecs');
+            expect(warning).toContain('PicklistDependencyValidator');
+            expect(warning).toContain('SchemaPicklistDependencySource');
 
         });
 
@@ -924,7 +1242,7 @@ describe('PicklistDependencyTestService', () => {
 
         const extensionPath = '/extension';
         const classesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
-        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', 'PicklistDependencyFramework');
+        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', 'SDTPicklistDependencyFramework');
 
         test('given no framework classes in the workspace, copies every shipped framework class and its meta xml', () => {
 
@@ -949,15 +1267,15 @@ describe('PicklistDependencyTestService', () => {
             jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
             jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
 
-            const alreadyPresentClassPath = path.join(classesDirectoryPath, 'PicklistDependencySpec.cls');
+            const alreadyPresentClassPath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpec.cls');
             jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
                 return String(checkedPath).startsWith(shippedFrameworkClassesPath) || String(checkedPath) === alreadyPresentClassPath;
             });
 
             const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
-            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('PicklistDependencySpec');
-            expect(frameworkScaffoldResult.scaffoldedClassNames).toContain('PicklistDependencyValidator');
+            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('SDTPicklistDependencySpec');
+            expect(frameworkScaffoldResult.scaffoldedClassNames).toContain('SDTPicklistDependencyValidator');
             expect(frameworkScaffoldResult.unavailableClassNames).toHaveLength(0);
 
         });
@@ -983,7 +1301,7 @@ describe('PicklistDependencyTestService', () => {
             jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
             const copyFileSpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
 
-            const missingMetaFilePath = path.join(shippedFrameworkClassesPath, 'PicklistDependencyValidator.cls-meta.xml');
+            const missingMetaFilePath = path.join(shippedFrameworkClassesPath, 'SDTPicklistDependencyValidator.cls-meta.xml');
             jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
                 if ( String(checkedPath) === missingMetaFilePath ) {
                     return false;
@@ -993,12 +1311,12 @@ describe('PicklistDependencyTestService', () => {
 
             const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
-            expect(frameworkScaffoldResult.unavailableClassNames).toEqual(['PicklistDependencyValidator']);
-            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('PicklistDependencyValidator');
+            expect(frameworkScaffoldResult.unavailableClassNames).toEqual(['SDTPicklistDependencyValidator']);
+            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('SDTPicklistDependencyValidator');
 
             // NO ORPHANED .cls IS LEFT BEHIND FOR THE CLASS WHOSE META XML WAS MISSING
             const copiedPaths = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
-            expect(copiedPaths).not.toContain(path.join(classesDirectoryPath, 'PicklistDependencyFramework', 'PicklistDependencyValidator.cls'));
+            expect(copiedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPicklistDependencyFramework', 'SDTPicklistDependencyValidator.cls'));
 
         });
 
@@ -1098,32 +1416,61 @@ describe('PicklistDependencyTestService', () => {
 
     describe('generated Apex against the shipped framework API', () => {
 
-        test('emitted builder methods all exist on the shipped PicklistDependencySpec class', async () => {
+        const shippedFrameworkClassesPath = path.join(__dirname, '..', '..', '..', '..', '..', 'force-app', 'main', 'default', 'classes', 'SDTPicklistDependencyFramework');
 
-            const controllingFieldDetail = await getFieldDetailByFixtureFileName(mockDependencyExampleFieldsPath, 'City__c.field-meta.xml');
-            const dependentFieldDetail = await getFieldDetailByFixtureFileName(mockDependencyExampleFieldsPath, 'Neighborhood__c.field-meta.xml');
+        test('emitted builder methods all exist on the shipped SDTPicklistDependencySpec class', async () => {
+
+            /*
+                The chain fixture is what exercises every builder the generator can emit: a root and a
+                dependent-of-a-dependent give dependsOn, and restricted value sets give both halves of
+                the positive/negative pair.
+            */
+            const countryFieldDetail = await getFieldDetailByFixtureFileName(mockChainExampleFieldsPath, 'Country__c.field-meta.xml');
+            const stateFieldDetail = await getFieldDetailByFixtureFileName(mockChainExampleFieldsPath, 'State__c.field-meta.xml');
+            const cityFieldDetail = await getFieldDetailByFixtureFileName(mockChainExampleFieldsPath, 'City__c.field-meta.xml');
 
             const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
-                'Dependency_Example__c',
-                [controllingFieldDetail, dependentFieldDetail]
+                'Chain_Example__c',
+                [countryFieldDetail, stateFieldDetail, cityFieldDetail]
             );
-            const apexClassBody = PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails);
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Chain_Example__c',
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain_Example__c'),
+                collectionResult.specDetails
+            );
 
-            const shippedSpecClassPath = path.join(__dirname, '..', '..', '..', '..', '..', 'force-app', 'main', 'default', 'classes', 'PicklistDependencyFramework', 'PicklistDependencySpec.cls');
-            const shippedSpecClassBody = fs.readFileSync(shippedSpecClassPath, 'utf-8');
+            const shippedSpecClassBody = fs.readFileSync(path.join(shippedFrameworkClassesPath, 'SDTPicklistDependencySpec.cls'), 'utf-8');
 
             // ONLY CHAINED INSTANCE BUILDER CALLS -- forField IS STATIC AND IS ASSERTED SEPARATELY BELOW
             const emittedBuilderMethodNames = [...apexClassBody.matchAll(/^\s+\.([a-zA-Z]+)\(/gm)].map(matchResult => matchResult[1]);
             const uniqueEmittedBuilderMethodNames = [...new Set(emittedBuilderMethodNames)];
 
-            expect(uniqueEmittedBuilderMethodNames).toIncludeSameMembers(['controlledBy', 'expectAtLeast', 'expectNone']);
+            expect(uniqueEmittedBuilderMethodNames).toIncludeSameMembers(['controlledBy', 'dependsOn', 'expectAtLeast', 'expectNotAllowed']);
 
-            expect(uniqueEmittedBuilderMethodNames.length).toBeGreaterThan(0);
             uniqueEmittedBuilderMethodNames.forEach(builderMethodName => {
-                expect(shippedSpecClassBody).toContain(`public PicklistDependencySpec ${builderMethodName}(`);
+                expect(shippedSpecClassBody).toContain(`public SDTPicklistDependencySpec ${builderMethodName}(`);
             });
 
-            expect(shippedSpecClassBody).toContain('public static PicklistDependencySpec forField(');
+            expect(shippedSpecClassBody).toContain('public static SDTPicklistDependencySpec forField(');
+
+        });
+
+        test('the shipped validator exposes the failure kind the negative assertions rely on', () => {
+
+            const shippedValidatorClassBody = fs.readFileSync(path.join(shippedFrameworkClassesPath, 'SDTPicklistDependencyValidator.cls'), 'utf-8');
+
+            expect(shippedValidatorClassBody).toContain('FORBIDDEN_VALUES_PRESENT');
+            expect(shippedValidatorClassBody).toContain('UPSTREAM_FAILURE');
+            expect(shippedValidatorClassBody).toContain('CIRCULAR_DEPENDENCY');
+
+        });
+
+        test('every framework class the generator scaffolds exists in the shipped framework directory', () => {
+
+            PicklistDependencyTestService.getFrameworkClassNames().forEach(frameworkClassName => {
+                expect(fs.existsSync(path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls`))).toBeTrue();
+                expect(fs.existsSync(path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls-meta.xml`))).toBeTrue();
+            });
 
         });
 

@@ -2,11 +2,11 @@
  * Plain, ConnectApi-free snapshot of a dependent picklist's org-side state.
  *
  * ConnectApi output classes are not reliably constructible in Apex, so the source
- * boundary (IPicklistDependencySource) translates ConnectApi results into this
+ * boundary (ISDTPicklistDependencySource) translates ConnectApi results into this
  * plain type. That keeps the validator and its tests decoupled from ConnectApi and
  * lets tests stub a source with hand-built snapshots.
  */
-public class PicklistDependencySnapshot {
+public class SDTPicklistDependencySnapshot {
 
     public String objectApiName;
     public String fieldApiName;
@@ -24,7 +24,7 @@ public class PicklistDependencySnapshot {
     /** Dependent value -> the controlling-value bit indexes for which it is valid. */
     public Map<String, List<Integer>> dependentValueValidFor;
 
-    public PicklistDependencySnapshot() {
+    public SDTPicklistDependencySnapshot() {
         this.controllerValues = new Map<String, Integer>();
         this.dependentValueValidFor = new Map<String, List<Integer>>();
     }
