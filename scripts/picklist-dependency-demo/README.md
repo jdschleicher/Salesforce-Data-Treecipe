@@ -6,6 +6,10 @@ check, against a real scratch org.
 > **Repo tooling, not shipped.** This folder is excluded from the `.vsix` via `.vscodeignore`. It
 > exists to test and demonstrate the feature, not to reach extension users.
 
+> **Diagrams:** [`PICKLIST-DEPENDENCY-FLOW.md`](./PICKLIST-DEPENDENCY-FLOW.md) draws the same flow as
+> mermaid — the contract loop, the step machine, both command sequences, the deployment set, and how
+> drift is caught.
+
 ---
 
 ## What this proves
