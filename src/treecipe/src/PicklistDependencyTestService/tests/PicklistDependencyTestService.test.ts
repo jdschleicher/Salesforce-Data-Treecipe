@@ -424,6 +424,30 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        test('given an upstream field that was skipped, emits no dependsOn rather than naming a method that does not exist', () => {
+
+            /*
+                A controlling field can be dependent AND still produce no spec -- a field with a
+                controllingField but no valueSettings is skipped with a warning. The downstream spec
+                still records it as upstream, so emission has to tolerate the spec method being absent
+                or it would name a method that was never generated and the class would not compile.
+            */
+            const downstreamWithSkippedUpstream: IPicklistDependencySpecDetail = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'City__c',
+                controllingFieldApiName: 'State__c',
+                expectations: [{ controllingValue: 'Ohio', dependentValues: ['Cleveland'], forbiddenValues: ['Austin'] }],
+                upstreamFieldApiName: 'State__c'
+            };
+
+            const apexClassBody = buildBodyForSpecDetails([downstreamWithSkippedUpstream]);
+
+            expect(apexClassBody).not.toContain('.dependsOn(');
+            expect(apexClassBody).toContain(`.controlledBy('State__c')`);
+            expect(apexClassBody).toContain(`.expectAtLeast('Ohio', new List<String>{ 'Cleveland' })`);
+
+        });
+
         test('given multiple specs, emits one method per scenario and returns them all from all()', () => {
 
             const secondSpecDetail: IPicklistDependencySpecDetail = {
