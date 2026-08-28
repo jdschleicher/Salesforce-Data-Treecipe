@@ -20,7 +20,7 @@
       Scaffold   write the scratch definition and the sample dependent-picklist metadata
       CreateOrg  create the scratch org
       Deploy     deploy the sample object and the Apex framework classes
-      Generate   generate SDTPicklistDependencySpecs.cls, its per-object spec classes and SDTPicklistDependencySpecsTest.cls
+      Generate   generate SDTPLDSpecs.cls, its per-object spec classes and SDTPLDSpecsTest.cls
       Check      deploy the generated classes, run them, write artifacts   -> expect PASS
       Drift      rewire the dependency in the org only, re-run             -> expect FAIL
       Restore    put the org dependency back, re-run                       -> expect PASS
@@ -98,8 +98,8 @@ $FrameworkClassNames = @(
 # listed: there is one per object with a dependent picklist, so the set depends on the metadata and
 # is discovered from disk by Get-GeneratedClassPath rather than hard coded here.
 $GeneratedClassNames = @(
-    'SDTPicklistDependencySpecs',
-    'SDTPicklistDependencySpecsTest'
+    'SDTPLDSpecs',
+    'SDTPLDSpecsTest'
 )
 
 <#
@@ -116,7 +116,7 @@ function Get-GeneratedClassPath {
         Where-Object { Test-Path $_ }
 
     $perObjectClassPaths = @(
-        Get-ChildItem -Path $ClassesDir -Filter 'SDTPicklistDependencySpecs_*.cls' -File -ErrorAction SilentlyContinue |
+        Get-ChildItem -Path $ClassesDir -Filter 'SDTPLDSpecs_*.cls' -File -ErrorAction SilentlyContinue |
             Sort-Object Name |
             ForEach-Object { $_.FullName }
     )
@@ -461,20 +461,20 @@ function Invoke-Generate {
     & node $HeadlessDriver generate $ObjectsDir $ClassesDir $ApiVersion
     if ($LASTEXITCODE -ne 0) { Stop-WithError 'spec generation failed.' }
 
-    $specsPath = Join-Path $ClassesDir 'SDTPicklistDependencySpecs.cls'
-    $testPath  = Join-Path $ClassesDir 'SDTPicklistDependencySpecsTest.cls'
+    $specsPath = Join-Path $ClassesDir 'SDTPLDSpecs.cls'
+    $testPath  = Join-Path $ClassesDir 'SDTPLDSpecsTest.cls'
 
     if (-not (Test-Path $specsPath) -or -not (Test-Path $testPath)) {
         Stop-WithError 'generation reported success but the expected classes are not on disk.'
     }
 
-    $perObjectClassPaths = @(Get-GeneratedClassPath) | Where-Object { $_ -match 'SDTPicklistDependencySpecs_' }
+    $perObjectClassPaths = @(Get-GeneratedClassPath) | Where-Object { $_ -match 'SDTPLDSpecs_' }
 
     if ($perObjectClassPaths.Count -eq 0) {
         Stop-WithError 'the aggregator was generated but no per-object spec class was. It would return an empty list.'
     }
 
-    Write-Good "SDTPicklistDependencySpecs.cls, SDTPicklistDependencySpecsTest.cls and $($perObjectClassPaths.Count) per-object spec class(es) generated"
+    Write-Good "SDTPLDSpecs.cls, SDTPLDSpecsTest.cls and $($perObjectClassPaths.Count) per-object spec class(es) generated"
     Write-Info "review them at $ClassesDir"
 }
 

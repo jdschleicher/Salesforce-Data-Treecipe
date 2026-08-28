@@ -358,7 +358,7 @@ describe('PicklistDependencyTestService', () => {
 
             const apexClassBody = buildBodyForSpecDetails([specDetailWithBothMatchModes]);
 
-            expect(apexClassBody).toContain(`public class SDTPicklistDependencySpecs_Dependency_Example_c {`);
+            expect(apexClassBody).toContain(`public class SDTPLDSpecs_Dependency_Example_c {`);
             expect(apexClassBody).toContain(`SDTPicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')`);
             expect(apexClassBody).toContain(`.controlledBy('City__c')`);
             expect(apexClassBody).toContain(`.expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })`);
@@ -519,7 +519,7 @@ describe('PicklistDependencyTestService', () => {
 
             const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
                 'Dependency_Example__c',
-                'SDTPicklistDependencySpecs_Dependency_Example_c',
+                'SDTPLDSpecs_Dependency_Example_c',
                 []
             );
 
@@ -536,7 +536,7 @@ describe('PicklistDependencyTestService', () => {
         test('given an object api name, collapses underscore runs into a valid Apex class name', () => {
 
             expect(PicklistDependencyTestService.buildPerObjectSpecsClassName('Dependency_Example__c'))
-                .toBe('SDTPicklistDependencySpecs_Dependency_Example_c');
+                .toBe('SDTPLDSpecs_Dependency_Example_c');
 
         });
 
@@ -545,15 +545,59 @@ describe('PicklistDependencyTestService', () => {
             const classNamesByObjectApiName = PicklistDependencyTestService
                 .buildPerObjectSpecsClassNamesByObjectApiName(['Foo__c', 'Foo_c']);
 
-            expect(classNamesByObjectApiName['Foo__c']).toBe('SDTPicklistDependencySpecs_Foo_c');
-            expect(classNamesByObjectApiName['Foo_c']).toBe('SDTPicklistDependencySpecs_Foo_c_2');
+            expect(classNamesByObjectApiName['Foo__c']).toBe('SDTPLDSpecs_Foo_c');
+            expect(classNamesByObjectApiName['Foo_c']).toBe('SDTPLDSpecs_Foo_c_2');
+
+        });
+
+        test('never emits a class name longer than the 40 character Salesforce ApexClass limit', () => {
+
+            /*
+                A custom object api name can itself reach 40 characters, so this is not a theoretical
+                bound -- the previous "SDTPicklistDependencySpecs_" prefix spent 27 of the 40 before
+                the object name began and failed the deploy for almost any custom object.
+            */
+            const longestPossibleObjectApiName = `${'A'.repeat(37)}__c`;
+
+            const className = PicklistDependencyTestService.buildPerObjectSpecsClassName(longestPossibleObjectApiName);
+
+            expect(className.length).toBeLessThanOrEqual(40);
+            expect(className).toStartWith('SDTPLDSpecs_');
+            // APEX FORBIDS TWO CONSECUTIVE UNDERSCORES IN AN IDENTIFIER
+            expect(className).not.toContain('__');
+
+        });
+
+        test('given the same over-long object api name, returns the same class name on every run', () => {
+
+            const objectApiName = `${'Order_Line_Item'.repeat(3)}__c`;
+
+            const firstRunClassName = PicklistDependencyTestService.buildPerObjectSpecsClassName(objectApiName);
+            const secondRunClassName = PicklistDependencyTestService.buildPerObjectSpecsClassName(objectApiName);
+
+            // AN UNSTABLE NAME WOULD ORPHAN THE PREVIOUSLY GENERATED CLASS IN THE ORG ON EVERY REGENERATION
+            expect(firstRunClassName).toBe(secondRunClassName);
+
+        });
+
+        test('given two over-long object api names sharing a truncated prefix, still emits distinct class names', () => {
+
+            const firstObjectApiName = `${'Shared_Prefix_Value'.repeat(2)}_One__c`;
+            const secondObjectApiName = `${'Shared_Prefix_Value'.repeat(2)}_Two__c`;
+
+            const firstClassName = PicklistDependencyTestService.buildPerObjectSpecsClassName(firstObjectApiName);
+            const secondClassName = PicklistDependencyTestService.buildPerObjectSpecsClassName(secondObjectApiName);
+
+            expect(firstClassName).not.toBe(secondClassName);
+            expect(firstClassName.length).toBeLessThanOrEqual(40);
+            expect(secondClassName.length).toBeLessThanOrEqual(40);
 
         });
 
         test('given an object api name starting with a digit, prefixes it so the class name is a valid identifier', () => {
 
             expect(PicklistDependencyTestService.buildPerObjectSpecsClassName('9Lives__c'))
-                .toBe('SDTPicklistDependencySpecs_object9Lives_c');
+                .toBe('SDTPLDSpecs_object9Lives_c');
 
         });
 
@@ -564,13 +608,13 @@ describe('PicklistDependencyTestService', () => {
         test('given per-object class names, emits an all() that adds each of them', () => {
 
             const apexClassBody = PicklistDependencyTestService.buildAggregatorSpecsApexClassBody({
-                'Account': 'SDTPicklistDependencySpecs_Account',
-                'Dependency_Example__c': 'SDTPicklistDependencySpecs_Dependency_Example_c'
+                'Account': 'SDTPLDSpecs_Account',
+                'Dependency_Example__c': 'SDTPLDSpecs_Dependency_Example_c'
             });
 
-            expect(apexClassBody).toContain('public class SDTPicklistDependencySpecs {');
-            expect(apexClassBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Account.all());');
-            expect(apexClassBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Dependency_Example_c.all());');
+            expect(apexClassBody).toContain('public class SDTPLDSpecs {');
+            expect(apexClassBody).toContain('specs.addAll(SDTPLDSpecs_Account.all());');
+            expect(apexClassBody).toContain('specs.addAll(SDTPLDSpecs_Dependency_Example_c.all());');
 
         });
 
@@ -606,7 +650,7 @@ describe('PicklistDependencyTestService', () => {
             const apexTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
 
             expect(apexTestClassBody).toContain('@IsTest');
-            expect(apexTestClassBody).toContain('private class SDTPicklistDependencySpecsTest {');
+            expect(apexTestClassBody).toContain('private class SDTPLDSpecsTest {');
             expect(apexTestClassBody).toContain('new SDTPicklistDependencyValidator(new SDTSchemaPicklistDependencySource())');
 
         });
@@ -647,7 +691,7 @@ describe('PicklistDependencyTestService', () => {
 
             expect(apexTestClassBody).toContain('static void specRegistryIsNotEmpty()');
             expect(apexTestClassBody).toContain('Assert.isFalse(');
-            expect(apexTestClassBody).toContain('SDTPicklistDependencySpecs.all().isEmpty()');
+            expect(apexTestClassBody).toContain('SDTPLDSpecs.all().isEmpty()');
 
         });
 
@@ -1125,17 +1169,17 @@ describe('PicklistDependencyTestService', () => {
 
             expect(makeDirectorySpy).toHaveBeenCalledWith(classesDirectoryPath, { recursive: true });
 
-            expect(writeResult.aggregatorClassFilePath).toBe(path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls'));
+            expect(writeResult.aggregatorClassFilePath).toBe(path.join(classesDirectoryPath, 'SDTPLDSpecs.cls'));
             expect(writeResult.perObjectClassFilePathsByObjectApiName).toEqual({
-                'Account': path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Account.cls'),
-                'Dependency_Example__c': path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Dependency_Example_c.cls')
+                'Account': path.join(classesDirectoryPath, 'SDTPLDSpecs_Account.cls'),
+                'Dependency_Example__c': path.join(classesDirectoryPath, 'SDTPLDSpecs_Dependency_Example_c.cls')
             });
 
             // EVERY GENERATED CLASS GETS ITS meta xml, OR IT WILL NOT DEPLOY
             [
-                'SDTPicklistDependencySpecs_Account.cls',
-                'SDTPicklistDependencySpecs_Dependency_Example_c.cls',
-                'SDTPicklistDependencySpecs.cls'
+                'SDTPLDSpecs_Account.cls',
+                'SDTPLDSpecs_Dependency_Example_c.cls',
+                'SDTPLDSpecs.cls'
             ].forEach(generatedFileName => {
                 const generatedFilePath = path.join(classesDirectoryPath, generatedFileName);
                 expect(writeFileSpy).toHaveBeenCalledWith(generatedFilePath, expect.any(String));
@@ -1160,10 +1204,10 @@ describe('PicklistDependencyTestService', () => {
                 '64.0'
             );
 
-            const aggregatorBody = writtenBodiesByFilePath[path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls')];
+            const aggregatorBody = writtenBodiesByFilePath[path.join(classesDirectoryPath, 'SDTPLDSpecs.cls')];
 
-            expect(aggregatorBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Account.all());');
-            expect(aggregatorBody).toContain('specs.addAll(SDTPicklistDependencySpecs_Dependency_Example_c.all());');
+            expect(aggregatorBody).toContain('specs.addAll(SDTPLDSpecs_Account.all());');
+            expect(aggregatorBody).toContain('specs.addAll(SDTPLDSpecs_Dependency_Example_c.all());');
 
         });
 
@@ -1173,10 +1217,10 @@ describe('PicklistDependencyTestService', () => {
             jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readdirSync').mockReturnValue([
-                'SDTPicklistDependencySpecs_Account.cls',
-                'SDTPicklistDependencySpecs_Retired_Object_c.cls',
-                'SDTPicklistDependencySpecs.cls',
-                'SDTPicklistDependencySpecsTest.cls',
+                'SDTPLDSpecs_Account.cls',
+                'SDTPLDSpecs_Retired_Object_c.cls',
+                'SDTPLDSpecs.cls',
+                'SDTPLDSpecsTest.cls',
                 'SomeUnrelatedClass.cls'
             ] as any);
             const removeSpy = jest.spyOn(fs, 'rmSync').mockImplementation(() => undefined);
@@ -1187,7 +1231,7 @@ describe('PicklistDependencyTestService', () => {
                 '64.0'
             );
 
-            const stalePath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Retired_Object_c.cls');
+            const stalePath = path.join(classesDirectoryPath, 'SDTPLDSpecs_Retired_Object_c.cls');
 
             expect(writeResult.removedStaleClassFilePaths).toEqual([stalePath]);
             expect(removeSpy).toHaveBeenCalledWith(stalePath, { force: true });
@@ -1195,8 +1239,8 @@ describe('PicklistDependencyTestService', () => {
 
             // THE AGGREGATOR, THE TEST CLASS AND THE USER'S OWN APEX ARE NEVER TOUCHED
             const removedPaths = removeSpy.mock.calls.map(removeCall => String(removeCall[0]));
-            expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls'));
-            expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPicklistDependencySpecsTest.cls'));
+            expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPLDSpecs.cls'));
+            expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPLDSpecsTest.cls'));
             expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SomeUnrelatedClass.cls'));
 
         });
@@ -1206,16 +1250,16 @@ describe('PicklistDependencyTestService', () => {
     describe('isPerObjectSpecsClassFileName', () => {
 
         test('matches a generated per-object class file', () => {
-            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecs_Account.cls')).toBeTrue();
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPLDSpecs_Account.cls')).toBeTrue();
         });
 
         test('does not match the aggregator or the generated test class', () => {
-            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecs.cls')).toBeFalse();
-            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecsTest.cls')).toBeFalse();
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPLDSpecs.cls')).toBeFalse();
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPLDSpecsTest.cls')).toBeFalse();
         });
 
         test('does not match a meta xml or an unrelated class', () => {
-            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPicklistDependencySpecs_Account.cls-meta.xml')).toBeFalse();
+            expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('SDTPLDSpecs_Account.cls-meta.xml')).toBeFalse();
             expect(PicklistDependencyTestService.isPerObjectSpecsClassFileName('AccountService.cls')).toBeFalse();
         });
 

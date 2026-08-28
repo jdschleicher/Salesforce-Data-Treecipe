@@ -1,5 +1,5 @@
 /**
- * Compares a set of SDTPicklistDependencySpecs against org reality (via an
+ * Compares a set of SDTPicklistDependencySpec against org reality (via an
  * ISDTPicklistDependencySource) and returns the mismatches.
  *
  * Never throws on a mismatch: a bad or unreachable spec becomes a Failure so a single

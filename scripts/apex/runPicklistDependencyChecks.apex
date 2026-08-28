@@ -1,6 +1,6 @@
 // Anonymous Apex entry point for the picklist dependency check.
 //
-// Runs every spec in SDTPicklistDependencySpecs.all() against the target org via
+// Runs every spec in SDTPLDSpecs.all() against the target org via
 // SDTSchemaPicklistDependencySource and prints a report plus a machine-readable RESULT
 // marker (PICKLIST_DEPENDENCY_CHECK_RESULT=PASS|FAIL|EMPTY) that the Node runner keys
 // its exit code off of.
@@ -9,7 +9,7 @@
 // way to run the check — but as anonymous Apex it needs no deploy of a test class and
 // reports against the org's real metadata.
 
-List<SDTPicklistDependencySpec> specs = SDTPicklistDependencySpecs.all();
+List<SDTPicklistDependencySpec> specs = SDTPLDSpecs.all();
 
 SDTPicklistDependencyValidator validator =
     new SDTPicklistDependencyValidator(new SDTSchemaPicklistDependencySource());

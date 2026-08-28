@@ -23,6 +23,16 @@ The picklist dependency framework shipped unprefixed in 2.12.0 and the generated
 - **Generation detects the old layout and warns**, naming the exact paths to delete locally and the exact class names to delete from any org they reached. **Nothing is deleted for you** — these are files in your package directory that may well be committed and deployed, so removing them is your call
 - Left in place, the two frameworks deploy side by side under different names and both compile, which is why the warning names them rather than staying quiet
 
+### Generated class names fit the Salesforce 40-character ApexClass limit
+
+Found in scratch-org testing: the first per-object naming used a `SDTPicklistDependencySpecs_` prefix, which spent **27 of the 40 characters** before the object name began. `SDTPicklistDependencySpecs_Treecipe_Demo_c` is 42 characters and the deploy was rejected — almost any custom object breached it.
+
+- The generated registry family is now `SDTPLDSpecs`, `SDTPLDSpecsTest` and `SDTPLDSpecs_<Object>`. `PLD` is picklist-dependency abbreviated; the prefix drops to 12 characters, leaving 28 for the part of the name that identifies the class
+- The six framework classes keep their descriptive names — they are fixed-length, all fit comfortably, and they are the ones a human actually reads
+- A custom object api name can itself reach 40 characters, so a short prefix alone is not a guarantee. An over-long name is truncated and given a 6-character digest of the **full** api name: unique, and stable across runs. A positional suffix would have changed as metadata changed and orphaned the previously generated class in the org
+- Truncation strips a trailing underscore before appending, since `__` is not legal in an Apex identifier
+- Tests assert the invariant directly against a 40-character object api name, plus stability across runs and distinctness for two names sharing a truncated prefix
+
 ### Negative assertions: drift is now caught in both directions
 
 Generated specs only ever asserted what a controlling value *must* unlock, so a value that drifted **into** a combination it does not belong in passed silently. Each controlling value now gets a second line:

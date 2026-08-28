@@ -57,8 +57,8 @@ describe('ExtensionCommandService', () => {
         const extensionPath = '/extension';
         const workspaceRoot = '/workspace';
         const classesDirectoryPath = '/workspace/force-app/main/default/classes';
-        const specsClassFilePath = `${classesDirectoryPath}/SDTPicklistDependencySpecs.cls`;
-        const perObjectSpecsClassFilePath = `${classesDirectoryPath}/SDTPicklistDependencySpecs_Dependency_Example_c.cls`;
+        const specsClassFilePath = `${classesDirectoryPath}/SDTPLDSpecs.cls`;
+        const perObjectSpecsClassFilePath = `${classesDirectoryPath}/SDTPLDSpecs_Dependency_Example_c.cls`;
 
         const specDetail: IPicklistDependencySpecDetail = {
             objectApiName: 'Dependency_Example__c',
@@ -67,7 +67,7 @@ describe('ExtensionCommandService', () => {
             expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'] }]
         };
 
-        const specsTestClassFilePath = `${classesDirectoryPath}/SDTPicklistDependencySpecsTest.cls`;
+        const specsTestClassFilePath = `${classesDirectoryPath}/SDTPLDSpecsTest.cls`;
 
         let extensionCommandService: ExtensionCommandService;
         let writeSpecsClassFilesSpy: jest.SpyInstance;
@@ -192,14 +192,14 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue({
                 aggregatorClassFilePath: specsClassFilePath,
                 perObjectClassFilePathsByObjectApiName: { 'Dependency_Example__c': perObjectSpecsClassFilePath },
-                removedStaleClassFilePaths: [`${classesDirectoryPath}/SDTPicklistDependencySpecs_Retired_Object_c.cls`]
+                removedStaleClassFilePaths: [`${classesDirectoryPath}/SDTPLDSpecs_Retired_Object_c.cls`]
             });
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
             const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
 
-            expect(informationMessage).toContain('SDTPicklistDependencySpecs_Retired_Object_c.cls');
+            expect(informationMessage).toContain('SDTPLDSpecs_Retired_Object_c.cls');
             expect(informationMessage).toContain('no longer declaring a dependent picklist');
 
         });
@@ -217,11 +217,11 @@ describe('ExtensionCommandService', () => {
             );
 
             const emittedTestClassBody = writeSpecsTestClassFilesSpy.mock.calls[0][1];
-            expect(emittedTestClassBody).toContain('private class SDTPicklistDependencySpecsTest {');
+            expect(emittedTestClassBody).toContain('private class SDTPLDSpecsTest {');
             expect(emittedTestClassBody).toContain('static void Dependency_Example_c_picklistDependenciesMatchSourceMetadata()');
             expect(emittedTestClassBody).toContain('static void specRegistryIsNotEmpty()');
 
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SDTPicklistDependencySpecsTest.cls');
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SDTPLDSpecsTest.cls');
 
         });
 

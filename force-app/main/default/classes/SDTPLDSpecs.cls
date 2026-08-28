@@ -3,7 +3,7 @@
  *
  * This placeholder is what ships in the repository. The "Generate Picklist Dependency Tests"
  * command overwrites it with an all() that pulls in one generated class per object --
- * SDTPicklistDependencySpecs_Account, SDTPicklistDependencySpecs_Order_c and so on -- each
+ * SDTPLDSpecs_Account, SDTPLDSpecs_Order_c and so on -- each
  * carrying one method per dependent picklist on that object.
  *
  * Callers depend on this class rather than on the per-object ones, so a class appearing or
@@ -11,7 +11,7 @@
  *
  * Generated shape:
  *
- *   // SDTPicklistDependencySpecs_Account.cls
+ *   // SDTPLDSpecs_Account.cls
  *   public static SDTPicklistDependencySpec specFor_Account_Region_c() {
  *       return SDTPicklistDependencySpec.forField('Account', 'Region__c')
  *               .controlledBy('Country__c')
@@ -20,10 +20,10 @@
  *               .expectNone('Antarctica');
  *   }
  *
- *   // SDTPicklistDependencySpecs.cls
+ *   // SDTPLDSpecs.cls
  *   public static List<SDTPicklistDependencySpec> all() {
  *       List<SDTPicklistDependencySpec> specs = new List<SDTPicklistDependencySpec>();
- *       specs.addAll(SDTPicklistDependencySpecs_Account.all());
+ *       specs.addAll(SDTPLDSpecs_Account.all());
  *       return specs;
  *   }
  *
@@ -36,7 +36,7 @@
  * dependsOn naming the controlling field's spec, so a break in the chain is reported once at its
  * source rather than repeated for every dependent below it.
  */
-public class SDTPicklistDependencySpecs {
+public class SDTPLDSpecs {
 
     public static List<SDTPicklistDependencySpec> all() {
         return new List<SDTPicklistDependencySpec>();

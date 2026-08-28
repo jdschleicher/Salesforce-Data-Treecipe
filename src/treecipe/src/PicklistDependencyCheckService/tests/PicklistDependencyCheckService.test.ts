@@ -135,7 +135,7 @@ describe('shouldTranslateApexTestRunResults', () => {
     it('shouldThrowWhenNoTestMethodsRan', () => {
 
         expect(() => PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload([])))
-            .toThrow('No SDTPicklistDependencySpecsTest test methods ran');
+            .toThrow('No SDTPLDSpecsTest test methods ran');
 
     });
 
@@ -288,7 +288,7 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
 
-        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'SDTPicklistDependencySpecsTest']);
+        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'SDTPLDSpecsTest']);
         expect(salesforceCliArguments).toIncludeAllMembers(['--target-org', 'devHub']);
 
         /*
@@ -510,7 +510,12 @@ describe('shouldDeployPicklistDependencyClasses', () => {
         const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
         const deployedPaths = salesforceCliArguments.filter(cliArgument => cliArgument.endsWith('.cls'));
 
-        expect(deployedPaths).toSatisfyAll((deployedPath: string) => deployedPath.includes('PicklistDependency'));
+        /*
+            Every class this command owns is SDT-prefixed -- that IS the ownership rule, and it is
+            what keeps a user's own Apex in the same directory out of a deploy they approved for the
+            check. Matching on "PicklistDependency" would miss the generated SDTPLDSpecs family.
+        */
+        expect(deployedPaths).toSatisfyAll((deployedPath: string) => /\/I?SDT[A-Za-z0-9_]*\.cls$/.test(deployedPath));
         expect(salesforceCliArguments).not.toContain('/workspace/classes');
 
     });
@@ -522,12 +527,12 @@ describe('shouldDeployPicklistDependencyClasses', () => {
         stubSalesforceCli({
             stdout: JSON.stringify({
                 status: 1,
-                result: { success: false, details: { componentFailures: [{ fullName: 'SDTPicklistDependencySpecsTest', problem: 'Method does not exist' }] } }
+                result: { success: false, details: { componentFailures: [{ fullName: 'SDTPLDSpecsTest', problem: 'Method does not exist' }] } }
             })
         });
 
         await expect(PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
-            .rejects.toThrow('SDTPicklistDependencySpecsTest: Method does not exist');
+            .rejects.toThrow('SDTPLDSpecsTest: Method does not exist');
 
     });
 
@@ -564,18 +569,18 @@ describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
         jest.spyOn(fs, 'readdirSync').mockReturnValue([
-            'SDTPicklistDependencySpecs_Account.cls',
-            'SDTPicklistDependencySpecs_Dependency_Example_c.cls',
-            'SDTPicklistDependencySpecs.cls',
-            'SDTPicklistDependencySpecsTest.cls',
+            'SDTPLDSpecs_Account.cls',
+            'SDTPLDSpecs_Dependency_Example_c.cls',
+            'SDTPLDSpecs.cls',
+            'SDTPLDSpecsTest.cls',
             'SomeUnrelatedClass.cls'
         ] as any);
 
         const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
 
         // WITHOUT THESE THE AGGREGATOR DEPLOYS AND FAILS TO COMPILE AGAINST CLASSES THAT ARE NOT THERE
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPicklistDependencySpecs_Account.cls`);
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPicklistDependencySpecs_Dependency_Example_c.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecs_Account.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecs_Dependency_Example_c.cls`);
 
         // AND THE USER'S OWN APEX IS STILL LEFT OUT OF A DEPLOY THEY APPROVED FOR THE CHECK
         expect(classFilePaths).not.toContain(`${classesDirectoryPath}/SomeUnrelatedClass.cls`);
@@ -621,8 +626,8 @@ describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
 
         const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
 
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPicklistDependencySpecs.cls`);
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPicklistDependencySpecsTest.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecs.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecsTest.cls`);
 
     });
 
@@ -638,7 +643,7 @@ describe('shouldNameEveryFileInTheDeployConfirmation', () => {
         const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub');
 
         expect(confirmationMessage).toContain('devHub');
-        expect(confirmationMessage).toContain('SDTPicklistDependencySpecsTest.cls');
+        expect(confirmationMessage).toContain('SDTPLDSpecsTest.cls');
         expect(confirmationMessage).toContain('SDTPicklistDependencyValidator.cls');
         // THE USER MUST BE ABLE TO SEE THAT WORKSPACE COPIES ARE WHAT GETS SENT
         expect(confirmationMessage).toContain('as they exist in your workspace');

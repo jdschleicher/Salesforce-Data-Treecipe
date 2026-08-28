@@ -2,6 +2,7 @@ import { RecipeService } from '../RecipeService/RecipeService';
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -59,7 +60,17 @@ export class PicklistDependencyTestService {
         PicklistDependencySpecs of their own. The aggregator, the per-object classes and the test
         class all derive from it, so they move together.
     */
-    private static specsClassName = 'SDTPicklistDependencySpecs';
+    private static specsClassName = 'SDTPLDSpecs';
+
+    /*
+        Salesforce caps an ApexClass name at 40 characters. The per-object classes are the only
+        generated names that embed a variable-length api name, so they are the only ones that can
+        breach it -- and the earlier "SDTPicklistDependencySpecs_" prefix spent 27 of the 40 before
+        the object name began, leaving 13 and failing the deploy for almost any custom object.
+        "PLD" is picklist-dependency abbreviated, which buys back 15 characters for the part of the
+        name that actually identifies the class.
+    */
+    private static maximumApexClassNameLength = 40;
 
     /*
         Class names this command generated under its previous naming, checked for so a user
@@ -74,7 +85,7 @@ export class PicklistDependencyTestService {
     private static legacyFrameworkDirectoryName = 'PicklistDependencyFramework';
 
     /*
-        The runtime classes the generated SDTPicklistDependencySpecs.cls depends on. These ship in the
+        The runtime classes the generated SDTPLDSpecs.cls depends on. These ship in the
         vsix via negation entries in .vscodeignore and are scaffolded into the user's package
         directory when missing, otherwise the generated file would not compile in their org.
     */
@@ -428,7 +439,26 @@ export class PicklistDependencyTestService {
         const collapsedUnderscores = objectApiName.replace(/_{2,}/g, '_');
         const identifierSafeObjectApiName = /^[0-9]/.test(collapsedUnderscores) ? `object${collapsedUnderscores}` : collapsedUnderscores;
 
-        return `${this.specsClassName}_${identifierSafeObjectApiName}`;
+        const classNamePrefix = `${this.specsClassName}_`;
+        const candidateClassName = `${classNamePrefix}${identifierSafeObjectApiName}`;
+
+        if ( candidateClassName.length <= this.maximumApexClassNameLength ) {
+            return candidateClassName;
+        }
+
+        /*
+            A custom object api name can itself reach 40 characters, so no prefix short enough to be
+            readable guarantees a legal name. The overflow is truncated and given a digest of the
+            FULL api name, which keeps the result unique and -- unlike a positional suffix -- stable
+            across runs. An unstable name would orphan the previously generated class in the org.
+        */
+        const objectApiNameDigest = crypto.createHash('sha256').update(objectApiName).digest('hex').slice(0, 6);
+        const truncatedLength = this.maximumApexClassNameLength - classNamePrefix.length - objectApiNameDigest.length - 1;
+
+        // A TRAILING UNDERSCORE WOULD MEET THE SEPARATOR AND FORM THE "__" APEX FORBIDS IN AN IDENTIFIER
+        const truncatedObjectApiName = identifierSafeObjectApiName.slice(0, truncatedLength).replace(/_+$/, '');
+
+        return `${classNamePrefix}${truncatedObjectApiName}_${objectApiNameDigest}`;
 
     }
 
@@ -733,7 +763,7 @@ ${aggregationMarkup}
         nested folders, so a subdirectory deploys identically while keeping six files the user did not
         write clearly separated from the ones they did -- and making them removable in one action.
 
-        The generated SDTPicklistDependencySpecs.cls and SDTPicklistDependencySpecsTest.cls deliberately do
+        The generated SDTPLDSpecs.cls and SDTPLDSpecsTest.cls deliberately do
         NOT live here: those are the user's contract, expected to be read and sometimes hand-tightened,
         so they stay at the classes root where a developer would look for them.
     */
@@ -945,10 +975,10 @@ ${testMethods}
 
     /*
         Matches the per-object classes this command emits and nothing else. The underscore is what
-        keeps SDTPicklistDependencySpecsTest.cls out of it -- deleting the generated test class as
-        though it were a stale per-object class would break the check command on the next run.
+        keeps SDTPLDSpecsTest.cls out of it -- deleting the generated test class as though it were a
+        stale per-object class would break the check command on the next run.
     */
-    private static perObjectSpecsClassFilePattern = /^SDTPicklistDependencySpecs_[A-Za-z0-9_]+\.cls$/;
+    private static perObjectSpecsClassFilePattern = /^SDTPLDSpecs_[A-Za-z0-9_]+\.cls$/;
 
     static isPerObjectSpecsClassFileName(fileName: string): boolean {
         return this.perObjectSpecsClassFilePattern.test(fileName);

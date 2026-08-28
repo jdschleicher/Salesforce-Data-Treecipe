@@ -151,7 +151,7 @@ function main() {
     }
 
     if (logs.includes(`${RESULT_MARKER}EMPTY`)) {
-        fail('no picklist dependency specs are registered — this run verified nothing. Add specs to SDTPicklistDependencySpecs.all().');
+        fail('no picklist dependency specs are registered — this run verified nothing. Add specs to SDTPLDSpecs.all().');
     }
 
     if (logs.includes(`${RESULT_MARKER}PASS`)) {

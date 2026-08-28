@@ -68,7 +68,7 @@ On macOS or Linux, `pwsh ./Invoke-PicklistDependencyDemo.ps1` if the script is n
 | `Scaffold` | Writes `config/project-scratch-def.json` and a sample dependent picklist under `force-app` | files on disk |
 | `CreateOrg` | Creates the scratch org (reuses a live one with the same alias) | org created |
 | `Deploy` | Deploys the sample **object** plus the six framework classes | 7+ components |
-| `Generate` | Builds `SDTPicklistDependencySpecs.cls` + `SDTPicklistDependencySpecsTest.cls` from **local** metadata | 1 spec, 1 object |
+| `Generate` | Builds `SDTPLDSpecs.cls` + `SDTPLDSpecsTest.cls` from **local** metadata | 1 spec, 1 object |
 | `Check` | Deploys all eight owned classes, runs the tests, writes artifacts | **PASS** |
 | `Drift` | Removes `cle → tremont` from the **org only**, re-runs | **FAIL** |
 | `Restore` | Puts the org dependency back, re-runs | **PASS** |
@@ -99,8 +99,8 @@ only the two generated classes to a fresh org fails with `Invalid type: SDTPickl
     SDTPicklistDependencyReport.cls
     SDTPicklistDependencyValidator.cls
     SDTSchemaPicklistDependencySource.cls
-  SDTPicklistDependencySpecs.cls           <- generated contract, yours to read and tighten
-  SDTPicklistDependencySpecsTest.cls       <- generated assertions
+  SDTPLDSpecs.cls           <- generated contract, yours to read and tighten
+  SDTPLDSpecsTest.cls       <- generated assertions
 ```
 
 Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the
@@ -213,7 +213,7 @@ Worth watching, because automated tests mock `vscode` and cannot reach these:
 - [ ] Output channel opens, is cleared per run, and indents multi-line assertion messages
 - [ ] Summary notification names the artifact folder
 
-> **Note on the deploy prompt:** it only appears when `SDTPicklistDependencySpecsTest` is absent from the
+> **Note on the deploy prompt:** it only appears when `SDTPLDSpecsTest` is absent from the
 > target org. Point at a fresh org to exercise that branch.
 
 ---
@@ -238,7 +238,7 @@ Worth watching, because automated tests mock `vscode` and cannot reach these:
 | `no Dev Hub is authorized` | no Dev Hub | `sf org login web --set-default-dev-hub` |
 | `npm run compile did not produce ... out/` | TypeScript errors | Run `npm run compile` directly and read the errors |
 | `the org reports source conflicts` | org and local both changed | Use a fresh scratch org, or resolve with `sf project retrieve start` |
-| `No SDTPicklistDependencySpecsTest test methods ran` | class not deployed | Run `-Step Check`, which deploys all eight classes before running |
+| `No SDTPLDSpecsTest test methods ran` | class not deployed | Run `-Step Check`, which deploys all eight classes before running |
 | `Invalid type: SDTPicklistDependencySpec` | framework missing from the deployment set | Deploy the framework alongside the generated classes, never on its own — `-Step Check` does this |
 | Every method fails with `LOOKUP_ERROR` | the sample object is not in the org | Run `-Step Deploy`; the test resolves the fields through Schema describe |
 | `no dependent picklists found` | no `controllingField` in metadata | Run `-Step Scaffold`, or point at metadata that has a dependency |
@@ -257,9 +257,9 @@ and the generated classes are left on disk — remove them by hand if you do not
 
 ```bash
 rm -rf force-app/main/default/objects/Treecipe_Demo__c
-rm -f force-app/main/default/classes/SDTPicklistDependencySpecsTest.cls*
-git checkout force-app/main/default/classes/SDTPicklistDependencySpecs.cls
+rm -f force-app/main/default/classes/SDTPLDSpecsTest.cls*
+git checkout force-app/main/default/classes/SDTPLDSpecs.cls
 ```
 
-That last line matters: the repo's committed `SDTPicklistDependencySpecs.cls` is an intentional
+That last line matters: the repo's committed `SDTPLDSpecs.cls` is an intentional
 placeholder, and `-Step Generate` overwrites it.
