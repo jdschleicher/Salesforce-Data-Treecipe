@@ -395,6 +395,15 @@ A chained dependency (`Country__c` → `State__c` → `City__c`) emits `dependsO
 spec's own generated method, so a break upstream is reported once at its source and each link below
 it gets a single `UPSTREAM_FAILURE` instead of repeating the same describe mismatch all the way down.
 
+A dependent picklist whose values come from a **global value set** is captured the same way. Such a
+field has no local `valueSetDefinition` — only the value *definitions* live elsewhere — but its
+`controllingField` and `valueSettings` are in the field file like any other, so the dependency map is
+built from `valueSettings` directly and the field gets the same `expectAtLeast` / `expectNotAllowed`
+pair and the same `dependsOn` link. For that shape the complement's universe is the set of values
+carrying `valueSettings` configuration rather than a local declaration list: a global value set value
+with no `valueSettings` entry is unlocked by no controlling value and does not appear, because
+generation reads the object metadata it was pointed at and does not open the global value set file.
+
 A field with a `controllingField` but no `valueSettings` markup is reported and skipped rather than
 aborting the run, as is a field whose object, field, or controlling api name is not a plain
 Salesforce identifier.
