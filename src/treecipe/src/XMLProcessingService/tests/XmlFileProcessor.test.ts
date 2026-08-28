@@ -504,4 +504,77 @@ describe('isSalesforceFieldMetadataFile', () => {
         expect(XmlFileProcessor.isXMLFileType('SomeRecordType.recordType-meta.xml', FILE)).toBe(true);
     });
 
+
+    describe('global value set backed dependent picklist', () => {
+
+        /*
+            A picklist whose values come from a GLOBAL value set has no local valueSetDefinition, but
+            it can still be dependent -- the controllingField and valueSettings markup are present in
+            the field file either way. controllingField was previously read only inside the
+            valueSetDefinition branch, so such a field parsed as NOT dependent: no dependency spec was
+            generated for it, and recipe generation treated it as a plain picklist.
+        */
+        const globalValueSetDependentPicklistMarkup = `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>GlobalSuperDependent__c</fullName>
+    <label>GlobalSuperDependent</label>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>DependentPicklist__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetName>Planets</valueSetName>
+        <valueSettings>
+            <controllingFieldValue>tree</controllingFieldValue>
+            <controllingFieldValue>weed</controllingFieldValue>
+            <valueName>earth</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>plant</controllingFieldValue>
+            <valueName>neptune</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>`;
+
+        test('captures the controlling field rather than dropping it', async () => {
+
+            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(globalValueSetDependentPicklistMarkup, 'GlobalSuperDependent__c.field-meta.xml');
+
+            expect(fieldDetail.controllingField).toBe('DependentPicklist__c');
+            // THE GLOBAL VALUE SET NAME IS STILL RECORDED -- BOTH FACTS ARE TRUE OF THIS FIELD
+            expect(fieldDetail.globalValueSetName).toBe('Planets');
+
+        });
+
+        test('derives the dependency configuration from valueSettings', async () => {
+
+            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(globalValueSetDependentPicklistMarkup, 'GlobalSuperDependent__c.field-meta.xml');
+
+            const controllingValuesByDependentValue = Object.fromEntries(
+                (fieldDetail.picklistValues ?? []).map(picklistValue => [
+                    picklistValue.picklistOptionApiName,
+                    picklistValue.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection
+                ])
+            );
+
+            expect(controllingValuesByDependentValue['earth']).toEqual(['tree', 'weed']);
+            expect(controllingValuesByDependentValue['neptune']).toEqual(['plant']);
+
+        });
+
+        test('given a global value set picklist that is NOT dependent, records no controlling field and no picklist values', async () => {
+
+            const nonDependentMarkup = globalValueSetDependentPicklistMarkup
+                .replace('<controllingField>DependentPicklist__c</controllingField>', '')
+                .replace(/<valueSettings>[\s\S]*<\/valueSettings>/, '');
+
+            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(nonDependentMarkup, 'PlainGlobal__c.field-meta.xml');
+
+            expect(fieldDetail.controllingField).toBeUndefined();
+            expect(fieldDetail.globalValueSetName).toBe('Planets');
+            expect(fieldDetail.picklistValues).toBeUndefined();
+
+        });
+
+    });
+
 });

@@ -23,6 +23,28 @@ The picklist dependency framework shipped unprefixed in 2.12.0 and the generated
 - **Generation detects the old layout and warns**, naming the exact paths to delete locally and the exact class names to delete from any org they reached. **Nothing is deleted for you** — these are files in your package directory that may well be committed and deployed, so removing them is your call
 - Left in place, the two frameworks deploy side by side under different names and both compile, which is why the warning names them rather than staying quiet
 
+### A dependent picklist backed by a global value set is now captured
+
+Found by running the generator against real-world metadata artifacts. `controllingField` was read only inside the `valueSetDefinition` branch of `XmlFileProcessor`, so a picklist whose values come from a **global value set** parsed as not dependent at all — even with `<controllingField>` and full `<valueSettings>` markup in the field file.
+
+Two consequences, both silent: no dependency spec was generated for such a field, and recipe generation treated it as a plain picklist rather than a dependent one.
+
+- `controllingField` is now read for a global-value-set picklist too, and `globalValueSetName` continues to be recorded — both facts are true of the field
+- Its dependency configuration is derived from `valueSettings`, which names every dependent value and the controlling values that unlock it. Only the value *definitions* live in the global value set; the dependency markup is local
+- The field therefore travels the same path as any other dependent picklist: it gets a generated spec with `expectAtLeast` / `expectNotAllowed`, a `dependsOn` link when its controlling field is itself dependent, and a dependency-aware recipe value with record type sections
+- **Limitation, deliberate:** the values captured are those carrying `valueSettings` configuration. A global value set value with no `valueSettings` entry is unlocked by no controlling value and does not appear — reading the global value set file to include it is not done, since generation reads the object metadata it was pointed at
+- A global value set picklist that is *not* dependent is unchanged, asserted by test
+
+### A dependent picklist absent from a record type no longer crashes recipe generation
+
+Also found through real-world artifacts, and present on `main` — unrelated to the picklist dependency spec work.
+
+A record type can expose the **controlling** field, with the controlling value available, and still not include the dependent field in its picklist sections. The controlling-field lookup was guarded; the dependent-field lookup two lines later was not, so the undefined dereference threw and took recipe generation down for the entire run rather than reporting a gap in one record type.
+
+- Present identically in **both** faker backends; fixed in both
+- Each now emits the same `### TODO: -- RecordType Options --` line it already emits when the controlling value is unavailable, and continues with the remaining record types
+- Tests added to both backends first, confirmed failing with `Cannot read properties of undefined (reading 'forEach')` before the fix
+
 ### Generated class names fit the Salesforce 40-character ApexClass limit
 
 Found in scratch-org testing: the first per-object naming used a `SDTPicklistDependencySpecs_` prefix, which spent **27 of the 40 characters** before the object name began. `SDTPicklistDependencySpecs_Treecipe_Demo_c` is 42 characters and the deploy was rejected — almost any custom object breached it.

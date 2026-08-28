@@ -74,6 +74,21 @@ export class XmlFileProcessor {
               // Index of "0" used to convert xml tag array to single value
               xmlFieldDetail.globalValueSetName = picklistValueSetMarkup.valueSetName[0];
 
+              /*
+                A picklist backed by a GLOBAL value set can still be DEPENDENT. controllingField was
+                previously read only in the branch above, so such a field parsed as not dependent at
+                all: no dependency spec was generated for it and recipe generation treated it as a
+                plain picklist. The controllingField and valueSettings markup are present in the
+                field file either way -- only the value DEFINITIONS live elsewhere.
+              */
+              const globalValueSetControllingFieldApiName = picklistValueSetMarkup.controllingField ? picklistValueSetMarkup.controllingField[0] : null;
+              if (globalValueSetControllingFieldApiName) {
+
+                xmlFieldDetail.controllingField = globalValueSetControllingFieldApiName;
+                xmlFieldDetail.picklistValues = this.extractPicklistDetailsFromValueSettings(picklistValueSetMarkup);
+
+              }
+
             } 
 
         } else {
@@ -152,6 +167,56 @@ export class XmlFileProcessor {
     }
 
     return picklistFieldDetails;
+
+  }
+
+  /*
+    Builds picklist details for a dependent picklist whose values come from a global value set.
+
+    Such a field has no local valueSetDefinition to walk, but its valueSettings name every dependent
+    value and the controlling values that unlock it -- which is all the dependency map needs. Deriving
+    the details from valueSettings lets a global-value-set-backed dependent picklist travel the same
+    path as any other rather than being treated as non-dependent.
+
+    The values this yields are those carrying dependency configuration. A global value set value with
+    no valueSettings entry is unlocked by no controlling value and so does not appear here; reading
+    the global value set file to include it is deliberately not done, since generation reads the
+    object metadata it was pointed at.
+  */
+  static extractPicklistDetailsFromValueSettings(picklistValueSetMarkup: any): IPicklistValue[] {
+
+    const dependentPicklistValueSettings = picklistValueSetMarkup?.valueSettings;
+    if ( !dependentPicklistValueSettings ) {
+      return [];
+    }
+
+    let controllingValuesByDependentValue: Record<string, string[]> = {};
+
+    dependentPicklistValueSettings.forEach(dependentPicklistSetting => {
+
+      const dependentValueApiName = dependentPicklistSetting?.valueName?.[0];
+      if ( !dependentValueApiName ) {
+        return;
+      }
+
+      const controllingFieldValues: string[] = dependentPicklistSetting?.controllingFieldValue ?? [];
+      const alreadyCapturedControllingValues = controllingValuesByDependentValue[dependentValueApiName] ?? [];
+
+      // A DEPENDENT VALUE CAN APPEAR IN MORE THAN ONE valueSettings BLOCK, SO THE CONTROLLING VALUES ARE MERGED
+      controllingValuesByDependentValue[dependentValueApiName] = [
+        ...alreadyCapturedControllingValues,
+        ...controllingFieldValues.filter(controllingValue => !alreadyCapturedControllingValues.includes(controllingValue))
+      ];
+
+    });
+
+    return Object.entries(controllingValuesByDependentValue).map(([dependentValueApiName, controllingValues]) => ({
+      picklistOptionApiName: dependentValueApiName,
+      label: dependentValueApiName,
+      default: false,
+      isActive: true,
+      controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: controllingValues
+    }));
 
   }
 
