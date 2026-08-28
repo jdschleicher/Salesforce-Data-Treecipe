@@ -13,7 +13,7 @@ and `Invoke-PicklistDependencyDemo.ps1`.
 | [2. Demo script step machine](#2-demo-script-step-machine) | What each `-Step` does and what gates it |
 | [3. Generate command](#3-generate-picklist-dependency-tests) | What happens on generate, including every early exit |
 | [4. Run check command](#4-run-picklist-dependency-check) | Deploy-or-skip, cancellation, artifacts |
-| [5. The deployment set](#5-the-deployment-set) | Why all eight classes ship in one transaction |
+| [5. The deployment set](#5-the-deployment-set) | Why the framework, the aggregator and every per-object class ship in one transaction |
 | [6. Drift detection](#6-drift-detection-the-step-that-proves-it) | How a rewired org gets caught |
 | [7. Metadata to assertion](#7-metadata-to-assertion) | XML → Apex → verdict, value by value |
 
@@ -35,9 +35,10 @@ flowchart LR
     end
 
     subgraph classes["packageDir/main/default/classes"]
-        FW["PicklistDependencyFramework/<br/>6 scaffolded classes"]
-        SPECS["SFTreecipePicklistDependencySpecs.cls<br/>the contract"]
-        TEST["SFTreecipePicklistDependencySpecsTest.cls<br/>the assertions"]
+        FW["SDTPicklistDependencyFramework/<br/>6 scaffolded classes"]
+        PER["SDTPLDSpecs_{Object}.cls<br/>one contract per object"]
+        SPECS["SDTPLDSpecs.cls<br/>aggregator"]
+        TEST["SDTPLDSpecsTest.cls<br/>the assertions"]
     end
 
     subgraph org["Target Salesforce org"]
@@ -81,8 +82,8 @@ flowchart TD
     SCAF["Scaffold<br/>project-scratch-def.json +<br/>Treecipe_Demo__c dependent picklist"]
     SCAF --> CREATE["CreateOrg<br/>reuses a live org with the same alias"]
     CREATE --> DEPLOY["Deploy<br/>sample object + 6 framework classes<br/>7+ components"]
-    DEPLOY --> GENERATE["Generate<br/>Specs.cls + SpecsTest.cls<br/>from LOCAL metadata only"]
-    GENERATE --> CHECK["Check<br/>deploy all 8 owned classes, run tests"]
+    DEPLOY --> GENERATE["Generate<br/>SDTPLDSpecs_{Object} + aggregator + test<br/>from LOCAL metadata only"]
+    GENERATE --> CHECK["Check<br/>deploy every owned class found on disk, run tests"]
     CHECK ==>|"expected"| PASS1["PASS<br/>source and org agree"]
 
     PASS1 -.->|"opt in"| DRIFT["Drift<br/>remove cle to tremont in the ORG only"]
@@ -160,13 +161,16 @@ sequenceDiagram
     Cmd->>Gen: assertClassesDirectoryContainedInWorkspace
     Cmd-->>User: confirm overwrite of existing generated files
     Cmd->>Gen: getSourceApiVersion from sfdx-project.json
-    Cmd->>Disk: write Specs.cls + meta.xml
-    Cmd->>Disk: write SpecsTest.cls + meta.xml
+    Cmd->>Gen: buildPerObjectSpecsClassNamesByObjectApiName<br/>40-char cap, digest on overflow, suffix on collision
+    Cmd->>Disk: write one SDTPLDSpecs_{Object}.cls + meta.xml per object
+    Cmd->>Disk: write SDTPLDSpecs.cls aggregator + meta.xml
+    Cmd->>Disk: write SDTPLDSpecsTest.cls + meta.xml
     Cmd->>Gen: scaffoldMissingFrameworkClasses
     Gen->>Disk: copy any of the 6 framework classes not already present
     Gen-->>Cmd: scaffoldedClassNames + unavailableClassNames
     Cmd-->>User: warn if a framework class could not be added —<br/>the generated class will not compile until it is
-    Cmd-->>User: open Specs.cls, offer "deploy and run now?"
+    Cmd-->>User: warn if classes from the pre-3.0 naming are still present
+    Cmd-->>User: open SDTPLDSpecs.cls, offer "deploy and run now?"
     Note over Cmd: declined → return, files are already written
     User->>Cmd: yes
     Cmd-->>User: org quick pick
@@ -210,9 +214,10 @@ sequenceDiagram
             CLI-->>Chk: present or absent
         end
         alt deploy required
-            Cmd-->>User: modal naming each file that exists on disk<br/>up to 8, count is dynamic
+            Cmd-->>User: modal naming each file found on disk<br/>framework + per-object + aggregator + test
             Note over Cmd: declined → "nothing was deployed", return
             Cmd->>Chk: deployPicklistDependencyClasses
+            Note over Chk: per-object classes are discovered from disk —<br/>this deploys what was generated, not what metadata implies
             Note over Cmd,CLI: cancel kills this child process
             Chk->>CLI: sf project deploy start
             CLI->>Org: the resolved classes, one transaction
@@ -240,46 +245,63 @@ check belongs on record, not just a failing one.
 
 ## 5. The deployment set
 
-Eight classes, one transaction. Not a convention — a compile requirement.
+The framework, the aggregator, the test and one class per object — all in one transaction. Not a
+convention, a compile requirement.
 
 ```mermaid
 flowchart TB
     subgraph tx["One sf project deploy start"]
-        direction TB
         subgraph gen["Generated — yours to read"]
-            SPECS["SFTreecipePicklistDependencySpecs"]
-            TEST["SFTreecipePicklistDependencySpecsTest"]
+            PER["SDTPLDSpecs_{Object}<br/>one per object, N of them"]
+            SPECS["SDTPLDSpecs<br/>aggregator"]
+            TEST["SDTPLDSpecsTest"]
         end
-        subgraph fw["PicklistDependencyFramework/ — scaffolded boilerplate"]
-            I["IPicklistDependencySource"]
-            SPEC["PicklistDependencySpec"]
-            SNAP["PicklistDependencySnapshot"]
-            REP["PicklistDependencyReport"]
-            VAL["PicklistDependencyValidator"]
-            SRC["SchemaPicklistDependencySource"]
+        subgraph fw["SDTPicklistDependencyFramework/ — scaffolded boilerplate"]
+            I["ISDTPicklistDependencySource"]
+            SPEC["SDTPicklistDependencySpec"]
+            SNAP["SDTPicklistDependencySnapshot"]
+            REP["SDTPicklistDependencyReport"]
+            VAL["SDTPicklistDependencyValidator"]
+            SRC["SDTSchemaPicklistDependencySource"]
         end
     end
 
-    SPECS -->|"compile dependency"| SPEC
+    PER -->|"compile dependency"| SPEC
+    SPECS -->|"aggregates"| PER
     TEST --> SPECS
     TEST --> VAL
     TEST --> SRC
     VAL --> SNAP
     VAL --> I
+    VAL --> SPEC
     REP --> VAL
     SRC -.->|"implements"| I
     SRC -->|"Schema describe"| ORG[("Target org")]
 
-    BAD["Deploying only the 2 generated classes"] -.->|"Invalid type:<br/>PicklistDependencySpec"| FAILS(["deploy fails"])
+    BAD["Deploying the aggregator<br/>without its per-object classes"] -.->|"does not compile"| FAILS(["deploy fails"])
     style FAILS fill:#b71c1c,color:#fff
 ```
 
 Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the
 subdirectory deploys identically to a flat layout. The split is for humans: the framework is
-replaceable boilerplate you can delete in one action; the two generated files are the contract you
+replaceable boilerplate you can delete in one action; the generated files are the contract you
 actually engage with. Workspaces generated by an earlier version keep the framework loose at the
 classes root — both layouts work, and each class is resolved from one path only, since Salesforce
 rejects the same `ApexClass` twice in one deployment.
+
+The count is deliberately not stated as a number here. It is `6 + N + 2` — six framework classes, one
+per object with a dependent picklist, plus the aggregator and its test — so it moves with the
+metadata. `getPicklistDependencyClassFilePaths` discovers the per-object classes **from disk** rather
+than re-deriving them from metadata, because this command deploys what was generated; re-deriving
+would silently disagree with it whenever the metadata changed after the last generation.
+
+Generated class names must also fit Salesforce's 40-character `ApexClass.Name` cap. An object api
+name long enough to breach it is truncated and given a six-character digest of the *full* api name —
+stable across runs, where a positional suffix would orphan the previously generated class in the org.
+
+Upgrading from 2.12.x–2.14.x leaves the pre-3.0 classes (`SFTreecipePicklistDependencySpecs` and the
+old `PicklistDependencyFramework/`) in the workspace. Generation warns about them rather than
+deleting them, so you are told what to remove instead of ending up with two frameworks side by side.
 
 ---
 
@@ -309,6 +331,7 @@ sequenceDiagram
     Local->>Check: cle unlocks ohiocity, tremont
     Org->>Check: cle unlocks ohiocity
     Check-->>Check: FAIL, MISSING_VALUES on tremont
+    Note over Check: the mirror case — a value drifting INTO a<br/>combination — fails as FORBIDDEN_VALUES_PRESENT<br/>against the expectNotAllowed complement
 ```
 
 The failure names the object, the field, the controlling value, and the specific missing value:
@@ -325,6 +348,13 @@ contain two consecutive underscores, so runs of underscores in the object api na
 `buildTestMethodNameByObjectApiName`. The api name itself reaches the assertion as a string literal
 and keeps its exact `__c` suffix, so the describe still resolves the real object.
 
+`MISSING_VALUES` is one of several kinds `SDTPicklistDependencyValidator.FailureKind` can report.
+The others carry their own meaning: `FORBIDDEN_VALUES_PRESENT` for a value that drifted into a
+combination it does not belong in, `UPSTREAM_FAILURE` for a link whose controlling field already
+failed further up a chain, `CIRCULAR_DEPENDENCY`, `CONTROLLING_FIELD_MISMATCH`,
+`UNKNOWN_CONTROLLING_VALUE`, `UNEXPECTED_VALUES`, and `LOOKUP_ERROR` when a field cannot be resolved
+at all — that last one is reported per spec rather than aborting, so the remaining specs still run.
+
 ---
 
 ## 7. Metadata to assertion
@@ -337,10 +367,10 @@ flowchart TB
     B["Neighborhood__c valueSettings<br/>ohiocity ← cle<br/>tremont ← cle<br/>willowick ← eastlake"] --> C
 
     C["buildControllingValueToPicklistOptions<br/>cle → ohiocity, tremont<br/>eastlake → willowick"]
-    C --> D["buildExpectations<br/>diff against the controlling field's own values<br/>akron unlocks nothing → expectNone"]
+    C --> D["buildExpectations<br/>complement each allowed set against the field's<br/>declared values → forbiddenValues<br/>akron unlocks nothing → expectNone, no complement"]
     D --> E["buildSpecStatement<br/>api names validated, literals escaped"]
-    E --> F["forField.controlledBy<br/>.expectAtLeast cle, ohiocity + tremont<br/>.expectAtLeast eastlake, willowick<br/>.expectNone akron"]
-    F --> G["PicklistDependencyValidator<br/>vs SchemaPicklistDependencySource"]
+    E --> F["forField.controlledBy<br/>.expectAtLeast cle, ohiocity + tremont<br/>.expectNotAllowed cle, willowick<br/>.expectAtLeast eastlake, willowick<br/>.expectNotAllowed eastlake, ohiocity + tremont<br/>.expectNone akron"]
+    F --> G["SDTPicklistDependencyValidator<br/>vs SDTSchemaPicklistDependencySource"]
     G --> H{"org still satisfies<br/>every expectation?"}
     H -->|yes| PASS["PASS"]
     H -->|no| FAIL["FAIL — KIND — Object.Field @ value: message"]
@@ -349,9 +379,21 @@ flowchart TB
     style FAIL fill:#b71c1c,color:#fff
 ```
 
-`expectAtLeast` is what the generator always emits: combinations present in source must still exist,
-while values the org has *added* since are tolerated. Tightening a line to `expectExactly` is a
-deliberate hand edit — and is lost on regeneration, which the generated file header states plainly.
+Every combination is now asserted twice. `expectAtLeast` says which values a controlling value must
+still unlock; `expectNotAllowed` says which it must not. The pair catches a value going missing *and*
+a value drifting into the wrong bucket — the positive assertion alone only ever caught the first.
+
+The complement is deliberately not `expectExactly`. Switching the generator to an exact match would
+be the obvious move and is wrong: it fires on any value an admin legitimately adds to the field after
+generation. The complement tolerates that while still failing on a value in the wrong bucket. Its
+universe comes from the field's own declared values rather than its `valueSettings` map, so a value
+with no `valueSettings` entry at all — unreachable under every controlling value — falls into every
+complement naturally. A controlling value that unlocks nothing gets no complement: `expectNone`
+already asserts that.
+
+A chained dependency (`Country__c` → `State__c` → `City__c`) emits `dependsOn` naming the upstream
+spec's own generated method, so a break upstream is reported once at its source and each link below
+it gets a single `UPSTREAM_FAILURE` instead of repeating the same describe mismatch all the way down.
 
 A field with a `controllingField` but no `valueSettings` markup is reported and skipped rather than
 aborting the run, as is a field whose object, field, or controlling api name is not a plain
