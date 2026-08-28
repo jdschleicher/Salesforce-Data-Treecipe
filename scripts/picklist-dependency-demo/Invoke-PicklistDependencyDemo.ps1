@@ -20,7 +20,7 @@
       Scaffold   write the scratch definition and the sample dependent-picklist metadata
       CreateOrg  create the scratch org
       Deploy     deploy the sample object and the Apex framework classes
-      Generate   generate SFTreecipePicklistDependencySpecs.cls and SFTreecipePicklistDependencySpecsTest.cls
+      Generate   generate SDTPicklistDependencySpecs.cls, its per-object spec classes and SDTPicklistDependencySpecsTest.cls
       Check      deploy the generated classes, run them, write artifacts   -> expect PASS
       Drift      rewire the dependency in the org only, re-run             -> expect FAIL
       Restore    put the org dependency back, re-run                       -> expect PASS
@@ -76,25 +76,53 @@ $ClassesDir        = Join-Path $PackageDir 'main/default/classes'
 # The framework runtime classes live in their own directory. Salesforce resolves ApexClass by the
 # enclosing "classes" directory and walks nested folders, so this deploys identically while keeping
 # the six files the user did not write separate from the generated contract.
-$FrameworkDir      = Join-Path $ClassesDir 'PicklistDependencyFramework'
+$FrameworkDir      = Join-Path $ClassesDir 'SDTPicklistDependencyFramework'
 $DemoObjectApiName = 'Treecipe_Demo__c'
 $DemoObjectDir     = Join-Path $ObjectsDir $DemoObjectApiName
 $DemoFieldsDir     = Join-Path $DemoObjectDir 'fields'
 $HeadlessDriver    = Join-Path $PSScriptRoot 'treecipe-headless.js'
 $ApiVersion        = '64.0'
 
-# The eight classes the check owns. Deployed by name so unrelated Apex in the package directory is
+# The framework runtime classes. Deployed by name so unrelated Apex in the package directory is
 # never swept into the org alongside them.
-$OwnedClassNames = @(
-    'IPicklistDependencySource',
-    'PicklistDependencySpec',
-    'PicklistDependencySnapshot',
-    'PicklistDependencyReport',
-    'PicklistDependencyValidator',
-    'SchemaPicklistDependencySource',
-    'SFTreecipePicklistDependencySpecs',
-    'SFTreecipePicklistDependencySpecsTest'
+$FrameworkClassNames = @(
+    'ISDTPicklistDependencySource',
+    'SDTPicklistDependencySpec',
+    'SDTPicklistDependencySnapshot',
+    'SDTPicklistDependencyReport',
+    'SDTPicklistDependencyValidator',
+    'SDTSchemaPicklistDependencySource'
 )
+
+# The aggregator and the test class. The per-object spec classes the aggregator calls into are NOT
+# listed: there is one per object with a dependent picklist, so the set depends on the metadata and
+# is discovered from disk by Get-GeneratedClassPath rather than hard coded here.
+$GeneratedClassNames = @(
+    'SDTPicklistDependencySpecs',
+    'SDTPicklistDependencySpecsTest'
+)
+
+<#
+    Every generated class on disk: the aggregator, the test class, and one spec class per object.
+
+    The aggregator calls into the per-object classes, so a deploy carrying it without them fails to
+    compile in the org. Globbing is what keeps this correct when the demo metadata gains or loses an
+    object -- the same reason the Run Picklist Dependency Check command discovers them the same way.
+#>
+function Get-GeneratedClassPath {
+
+    $generatedClassPaths = $GeneratedClassNames |
+        ForEach-Object { Join-Path $ClassesDir "$_.cls" } |
+        Where-Object { Test-Path $_ }
+
+    $perObjectClassPaths = @(
+        Get-ChildItem -Path $ClassesDir -Filter 'SDTPicklistDependencySpecs_*.cls' -File -ErrorAction SilentlyContinue |
+            Sort-Object Name |
+            ForEach-Object { $_.FullName }
+    )
+
+    return @($generatedClassPaths) + $perObjectClassPaths
+}
 
 # --------------------------------------------------------------------------------------------------
 # Output helpers
@@ -375,8 +403,7 @@ function Invoke-Deploy {
 
     Write-Step 'Deploy sample object and Apex framework classes'
 
-    $frameworkClassPaths = $OwnedClassNames |
-        Where-Object { $_ -notin @('SFTreecipePicklistDependencySpecs', 'SFTreecipePicklistDependencySpecsTest') } |
+    $frameworkClassPaths = $FrameworkClassNames |
         ForEach-Object { Join-Path $FrameworkDir "$_.cls" } |
         Where-Object { Test-Path $_ }
 
@@ -434,14 +461,20 @@ function Invoke-Generate {
     & node $HeadlessDriver generate $ObjectsDir $ClassesDir $ApiVersion
     if ($LASTEXITCODE -ne 0) { Stop-WithError 'spec generation failed.' }
 
-    $specsPath = Join-Path $ClassesDir 'SFTreecipePicklistDependencySpecs.cls'
-    $testPath  = Join-Path $ClassesDir 'SFTreecipePicklistDependencySpecsTest.cls'
+    $specsPath = Join-Path $ClassesDir 'SDTPicklistDependencySpecs.cls'
+    $testPath  = Join-Path $ClassesDir 'SDTPicklistDependencySpecsTest.cls'
 
     if (-not (Test-Path $specsPath) -or -not (Test-Path $testPath)) {
         Stop-WithError 'generation reported success but the expected classes are not on disk.'
     }
 
-    Write-Good 'SFTreecipePicklistDependencySpecs.cls and SFTreecipePicklistDependencySpecsTest.cls generated'
+    $perObjectClassPaths = @(Get-GeneratedClassPath) | Where-Object { $_ -match 'SDTPicklistDependencySpecs_' }
+
+    if ($perObjectClassPaths.Count -eq 0) {
+        Stop-WithError 'the aggregator was generated but no per-object spec class was. It would return an empty list.'
+    }
+
+    Write-Good "SDTPicklistDependencySpecs.cls, SDTPicklistDependencySpecsTest.cls and $($perObjectClassPaths.Count) per-object spec class(es) generated"
     Write-Info "review them at $ClassesDir"
 }
 
@@ -450,31 +483,35 @@ function Invoke-Generate {
 # --------------------------------------------------------------------------------------------------
 
 <#
-    Deploys all eight owned classes in ONE transaction, mirroring what the "Run Picklist Dependency
-    Check" command does.
+    Deploys every owned class in ONE transaction, mirroring what the "Run Picklist Dependency
+    Check" command does: the six framework classes, the aggregator, the test class, and one spec
+    class per object.
 
-    Deploying only the two generated classes would be wrong twice over. It would diverge from the
+    Deploying only the generated classes would be wrong twice over. It would diverge from the
     shipped behaviour this script exists to demonstrate, and it would invent an ordering dependency
     the product does not have: the generated classes do not compile without the framework, so a
-    deploy containing only them fails against a fresh org with "Invalid type: PicklistDependencySpec".
-    Salesforce compiles a deployment set as a unit, so sending all eight together needs no prior
+    deploy containing only them fails against a fresh org with "Invalid type: SDTPicklistDependencySpec".
+    Salesforce compiles a deployment set as a unit, so sending them all together needs no prior
     framework deploy at all.
 #>
 function Invoke-DeployOwnedClasses {
 
     # Framework classes resolve from their own directory; the generated contract stays at the root.
-    $ownedClassPaths = $OwnedClassNames |
+    $frameworkClassPaths = $FrameworkClassNames |
         ForEach-Object {
             $frameworkCandidate = Join-Path $FrameworkDir "$_.cls"
             if (Test-Path $frameworkCandidate) { $frameworkCandidate } else { Join-Path $ClassesDir "$_.cls" }
         } |
         Where-Object { Test-Path $_ }
 
-    $generatedClassPaths = $ownedClassPaths | Where-Object { $_ -match 'SFTreecipePicklistDependencySpecs(Test)?\.cls$' }
+    $generatedClassPaths = @(Get-GeneratedClassPath)
 
-    if ($generatedClassPaths.Count -lt 2) {
+    # THE AGGREGATOR, THE TEST CLASS AND AT LEAST ONE PER-OBJECT CLASS
+    if ($generatedClassPaths.Count -lt 3) {
         Stop-WithError 'generated classes are missing. Run -Step Generate first.'
     }
+
+    $ownedClassPaths = @($frameworkClassPaths) + $generatedClassPaths
 
     $deployArguments = @('project', 'deploy', 'start', '--target-org', $ScratchOrgAlias, '--wait', '10', '--json')
     foreach ($ownedClassPath in $ownedClassPaths) { $deployArguments += @('--source-dir', $ownedClassPath) }

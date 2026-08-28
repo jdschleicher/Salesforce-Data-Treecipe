@@ -104,9 +104,10 @@ async function generate(objectsDirectory, classesDirectory, apiVersion) {
         process.exit(2);
     }
 
-    PicklistDependencyTestService.writeSpecsClassFiles(
+    // writeSpecsClassFiles owns the per-object split, the aggregator and stale-class removal
+    const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
         classesDirectory,
-        PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails),
+        collectionResult.specDetails,
         apiVersion
     );
 
@@ -116,8 +117,22 @@ async function generate(objectsDirectory, classesDirectory, apiVersion) {
         apiVersion
     );
 
-    const objectApiNames = [...new Set(collectionResult.specDetails.map(detail => detail.objectApiName))];
+    const objectApiNames = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName);
     console.log(`[treecipe-headless] generated ${collectionResult.specDetails.length} spec(s) across ${objectApiNames.length} object(s): ${objectApiNames.join(', ')}`);
+    objectApiNames.forEach(objectApiName => {
+        console.log(`[treecipe-headless]   ${objectApiName} -> ${path.basename(specsClassWriteResult.perObjectClassFilePathsByObjectApiName[objectApiName])}`);
+    });
+    console.log(`[treecipe-headless] aggregator: ${path.basename(specsClassWriteResult.aggregatorClassFilePath)}`);
+
+    if (specsClassWriteResult.removedStaleClassFilePaths.length > 0) {
+        console.log(`[treecipe-headless] removed ${specsClassWriteResult.removedStaleClassFilePaths.length} stale class(es): ${specsClassWriteResult.removedStaleClassFilePaths.map(stalePath => path.basename(stalePath)).join(', ')}`);
+    }
+
+    const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectory);
+    if (legacyArtifactPaths.length > 0) {
+        console.warn(`[treecipe-headless] ${PicklistDependencyTestService.buildLegacyArtifactWarning(legacyArtifactPaths)}`);
+    }
+
     console.log(`[treecipe-headless] written to ${classesDirectory}`);
 }
 
