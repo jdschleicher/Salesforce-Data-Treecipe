@@ -178,6 +178,21 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 let recordTypeChoicesBreakdown:string;
 
                 const picklistValuesForDependentField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[dependentFieldApiName];
+
+                /*
+                    A record type can expose the CONTROLLING field, with this controlling value
+                    available, and still not include the dependent field in its picklist sections at
+                    all. That is a gap in one record type, not a reason to abort the whole run --
+                    without this guard the undefined lookup threw and took recipe generation down for
+                    every remaining field.
+                */
+                if ( !picklistValuesForDependentField ) {
+
+                    allRecordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- ${dependentFieldApiName} is not an available field for record type ${recordTypeApiNameKey}`;
+                    return;
+
+                }
+
                 picklistValuesForDependentField.forEach( recordTypeAvailablePicklistValue => {
     
                     if (recordTypeChoicesBreakdown) {

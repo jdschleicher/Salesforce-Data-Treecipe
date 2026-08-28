@@ -274,6 +274,43 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
     describe('updateDependentPicklistRecipeFakerValueByRecordTypeSections', () => {
 
+        /*
+            A dependent picklist need not appear in a record type's picklist sections at all: the
+            record type can expose the CONTROLLING field, with the controlling value available, and
+            simply not include the dependent field. The lookup for the controlling field was guarded;
+            the one for the dependent field two lines later was not, so this crashed recipe
+            generation for the whole run rather than reporting the gap for one record type.
+        */
+        test('given a dependent field absent from the record type picklist sections, reports a TODO rather than throwing', () => {
+
+            const recordTypeWrapperMap: Record<string, RecordTypeWrapper> = {
+                OneRecType: {
+                    DeveloperName: 'OneRecType',
+                    // THE CONTROLLING FIELD IS PRESENT AND UNLOCKS "cle"; THE DEPENDENT FIELD IS NOT IN THIS RECORD TYPE
+                    PicklistFieldSectionsToPicklistDetail: { 'Picklist__c': ['cle'] },
+                    RecordTypeId: ''
+                }
+            };
+
+            let actualChoicesBreakdown = '';
+
+            expect(() => {
+                actualChoicesBreakdown = snowfakeryService.updateDependentPicklistRecipeFakerValueByRecordTypeSections(
+                    recordTypeWrapperMap,
+                    'DependentPicklistNotInRecordType__c',
+                    'Picklist__c',
+                    'cle'
+                );
+            }).not.toThrow();
+
+            expect(actualChoicesBreakdown).toContain('### TODO');
+            expect(actualChoicesBreakdown).toContain('DependentPicklistNotInRecordType__c');
+            expect(actualChoicesBreakdown).toContain('OneRecType');
+
+        });
+
+
+
         test('given expected cle controlling field recipe choices and expected recordtype to picklist map returns expected choices breakdown', () => {
             
             const expectedRecordTypeDeveloperNameToRecordTypeWrapperMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
