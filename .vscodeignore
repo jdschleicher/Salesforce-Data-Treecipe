@@ -41,3 +41,28 @@ coverage/**
 # Repo automation, not extension runtime.
 .claude/**
 .github/**
+
+# Repo-side documentation and DX project scaffolding. None of it is read at runtime, and the
+# design record in docs/ is an internal architecture and security-review document that has no
+# business on a user's disk.
+docs/**
+config/**
+CLAUDE.md
+tasks.md
+jest.config.js
+.forceignore
+
+# A debug dump of an ObjectInfoWrapper from a development run. 160KB, referenced by no code.
+wrappers.json
+
+# Output the picklist dependency check writes into the workspace. Being untracked does NOT
+# exclude it, for the same reason coverage/ is listed above: vsce packages the working
+# directory, not the git index. Packaging from a machine that has run the demo would otherwise
+# publish that machine's scratch org names and run reports.
+treecipe/**
+
+# Compiled Jest output and test doubles. The **/*.ts rule above removes the sources but not what
+# tsc emitted, so the mock services under each service's tests/ folder ship without this.
+out/*.test.js
+out/**/*.test.js
+out/**/tests/**
