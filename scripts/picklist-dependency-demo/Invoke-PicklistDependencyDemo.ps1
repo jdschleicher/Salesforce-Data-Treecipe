@@ -36,6 +36,12 @@
     is a clean-room verification, and an org left over from a previous run carries that run's drift,
     classes and source-tracking history. Useful while iterating on a single step.
 
+.PARAMETER ForceOrgReplacement
+    Allow CreateOrg to delete a live scratch org whose alias is NOT this script's own default.
+    Without it, an alias the script does not recognise as its own is never deleted -- the alias is
+    typed by hand (and surfaced through a VS Code task input), so it can easily name a colleague's
+    shared org or a long-lived one of your own.
+
 .PARAMETER Interactive
     Pause at the points where a human should actually look at something -- the generated Apex before
     it is deployed, and each drift report after it fails. Off by default so the same script can run
@@ -72,6 +78,8 @@ param(
 
     [switch]$ReuseExistingOrg,
 
+    [switch]$ForceOrgReplacement,
+
     [string]$ScratchOrgAlias = 'treecipe-picklist-demo',
 
     [string]$DevHubAlias,
@@ -97,6 +105,9 @@ $ClassesDir        = Join-Path $PackageDir 'main/default/classes'
 # enclosing "classes" directory and walks nested folders, so this deploys identically while keeping
 # the six files the user did not write separate from the generated contract.
 $FrameworkDir      = Join-Path $ClassesDir 'SDTPicklistDependencyFramework'
+# The alias this script considers its own. Only an org carrying THIS alias is replaced without
+# an explicit opt-in, because any other alias was typed by a human and may name an org they care about.
+$OwnScratchOrgAlias = 'treecipe-picklist-demo'
 $DemoObjectApiName = 'Treecipe_Demo__c'
 $DemoObjectDir     = Join-Path $ObjectsDir $DemoObjectApiName
 $DemoFieldsDir     = Join-Path $DemoObjectDir 'fields'
@@ -736,8 +747,26 @@ function Invoke-CreateOrg {
             return
         }
 
-        # Deleting is scoped to a scratch org carrying this script's own alias, and only after the
-        # alias was matched against the Dev Hub's scratch org list -- never a sandbox or production.
+        <#
+            Only an org carrying this script's OWN alias is deleted without an explicit opt-in.
+
+            Any other alias reached this point because a human typed it -- the VS Code tasks surface
+            it as a free-text input with a remembered history -- so it can just as easily name a
+            colleague's shared org, or a long-lived one of your own, as a throwaway. Deleting that
+            without asking is not a risk worth taking for a demo harness.
+
+            sf org delete scratch refuses anything that is not a scratch org, so a sandbox or
+            production org was never reachable here; this guard is about the orgs that ARE reachable.
+        #>
+        if ($ScratchOrgAlias -ne $OwnScratchOrgAlias -and -not $ForceOrgReplacement) {
+            Write-Bad "a live scratch org '$ScratchOrgAlias' already exists, and that is not this script's own alias ('$OwnScratchOrgAlias')."
+            Write-Info 'refusing to delete an org this script did not name. Choose one of:'
+            Write-Info '  -ReuseExistingOrg      run against the org that is already there'
+            Write-Info '  -ForceOrgReplacement   delete it and create a fresh one'
+            Write-Info "  -ScratchOrgAlias $OwnScratchOrgAlias   use the script's own alias"
+            Stop-WithError 'no org was created or deleted.'
+        }
+
         Write-Warn "a live scratch org '$ScratchOrgAlias' already exists and will be DELETED so the run starts clean"
         Write-Info 'pass -ReuseExistingOrg to keep it instead'
         Invoke-SalesforceJson -Arguments @('org', 'delete', 'scratch', '--target-org', $ScratchOrgAlias, '--no-prompt', '--json') | Out-Null

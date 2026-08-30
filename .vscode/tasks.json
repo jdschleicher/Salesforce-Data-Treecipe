@@ -84,8 +84,8 @@
         {
             "id": "devHubAlias",
             "type": "promptString",
-            "description": "Dev Hub alias to create the scratch org against",
-            "default": "devhub-jd"
+            "description": "Dev Hub alias to create the scratch org against (leave blank to use the CLI's default Dev Hub)",
+            "default": ""
         }
     ]
 }
