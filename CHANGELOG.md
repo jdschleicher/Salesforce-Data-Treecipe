@@ -98,6 +98,18 @@ Where a dependent picklist is itself the controlling field of another (`Country_
 - Apex tests added for forbidden-value detection, tolerance of org-added values, unknown controlling values under a negative assertion, healthy and broken chains, upstream-not-in-list resolution, the cycle guard, and duplicate specs
 - Coverage: 83.07% → 83.58% statements, 77.67% → 78.08% branches, 85.15% → 85.83% functions
 
+### A stray `undefined/` directory, and the bug that created it
+
+`undefined/treecipe/GeneratedRecipes/RecipeGenerationErrors/` was committed to this branch by accident, carrying two error captures from a debugging run. It was not excluded by `.vscodeignore`, so it would have shipped in the `.vsix`.
+
+The directory name was the symptom of a real defect. `VSCodeWorkspaceService.getWorkspaceRoot()` is declared to return a `string` but returns `undefined` when no workspace folder is open, and all three error-capture writers interpolated it straight into a template literal — producing the literal string `"undefined"` and silently creating an `undefined/treecipe/...` tree wherever the process happened to be running. Anything running outside an extension host, the headless demo driver included, hits this.
+
+- The three writers now resolve their target through a shared guard that returns `undefined` rather than a path built from a missing root, and each skips the capture with a warning instead of writing somewhere nobody will look
+- The committed directory is removed
+- Tests cover all three writers plus the guard: no directory is created, no file is written, a warning is raised, and the resolved path never contains `"undefined"`
+
+The wider issue is untouched and worth a separate look: `getWorkspaceRoot()` still lies about its return type, and nine other call sites interpolate its result the same way.
+
 ### End-to-end scratch org verification
 
 Verified against a fresh scratch org: generation, deployment, a passing check, drift detection in both directions, and restore.

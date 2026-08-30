@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { ErrorHandlingService } from '../ErrorHandlingService';
 import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
+import * as fs from 'fs';
+import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 jest.mock('vscode', () => ({
     
@@ -87,6 +89,54 @@ describe('ErrorHandlingService', () => {
             openExternalMock.mockRestore();
             jest.restoreAllMocks();
         
+        });
+
+    });
+
+    describe('error capture files when no workspace folder is open', () => {
+
+        /*
+            getWorkspaceRoot is declared to return a string but returns undefined with no workspace
+            open. Interpolating that produced a literal "undefined/treecipe/..." directory, which was
+            committed to this repository by accident before it was noticed.
+        */
+
+        const captureWriters: [string, (error: Error, command: string) => void][] = [
+            ['createGenerateRecipeErrorCaptureFile', ErrorHandlingService.createGenerateRecipeErrorCaptureFile.bind(ErrorHandlingService)],
+            ['createGetRecipeFakerErrorCaptureFile', ErrorHandlingService.createGetRecipeFakerErrorCaptureFile.bind(ErrorHandlingService)],
+            ['createFakerExpressionEvaluationErrorCaptureFile', ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile.bind(ErrorHandlingService)]
+        ];
+
+        test.each(captureWriters)('%s creates no "undefined" directory and writes no file', (writerName, captureWriter) => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+            const makeDirectorySpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(jest.fn());
+            const writeFileSpy = jest.spyOn(fs, 'writeFile').mockImplementation(jest.fn() as never);
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(jest.fn());
+
+            captureWriter(new Error('boom'), 'treecipe.generateTreecipe');
+
+            expect(makeDirectorySpy).not.toHaveBeenCalled();
+            expect(writeFileSpy).not.toHaveBeenCalled();
+            expect(warningSpy).toHaveBeenCalledWith(expect.stringContaining('No workspace folder found'));
+        });
+
+        test('resolveErrorCaptureFolderPath returns undefined rather than a path containing "undefined"', () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+
+            expect(ErrorHandlingService.resolveErrorCaptureFolderPath('RecipeGenerationErrors')).toBeUndefined();
+        });
+
+        test('resolveErrorCaptureFolderPath builds the path under the workspace root when one exists', () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('/tmp/some-workspace');
+
+            const resolvedPath = ErrorHandlingService.resolveErrorCaptureFolderPath('RecipeGenerationErrors');
+
+            expect(resolvedPath).toContain('/tmp/some-workspace/treecipe/');
+            expect(resolvedPath).toContain('RecipeGenerationErrors');
+            expect(resolvedPath).not.toContain('undefined');
         });
 
     });

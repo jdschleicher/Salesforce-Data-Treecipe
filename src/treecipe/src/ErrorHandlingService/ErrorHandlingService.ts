@@ -134,14 +134,34 @@ ${stackTrace}
         });
     }
 
+    /**
+     * Resolves the folder an error capture file belongs in, or undefined when there is no workspace.
+     *
+     * getWorkspaceRoot is declared to return a string but returns undefined when no workspace folder
+     * is open, and interpolating that yields the literal string "undefined" -- silently creating an
+     * "undefined/treecipe/..." tree wherever the process happened to be running. That artefact
+     * reached this repository once already. Skipping the capture is better than writing it somewhere
+     * nobody will look for it.
+     */
+    static resolveErrorCaptureFolderPath(errorsGenerationFolderName: string): string | undefined {
+
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        if (!workspaceRoot) {
+            return undefined;
+        }
+
+        const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+        return `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${errorsGenerationFolderName}`;
+    }
+
     static createGenerateRecipeErrorCaptureFile(customGenerateRecipeError: Error, executedCommand: string) {
         
-        // ensure dedicated directory for generated recipes exists
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-        const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+        const expectedErrorsFolderPath = this.resolveErrorCaptureFolderPath(this.getRecipeGenerationErrorsFolderName());
+        if (!expectedErrorsFolderPath) {
+            VSCodeWorkspaceService.showWarningMessage('No workspace folder found, so the recipe generation error could not be captured to a file.');
+            return;
+        }
 
-        const errorsGenerationFolderName = this.getRecipeGenerationErrorsFolderName();
-        const expectedErrorsFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${errorsGenerationFolderName}`;
         if (!fs.existsSync(expectedErrorsFolderPath)) {
             fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
         }
@@ -167,12 +187,12 @@ ${stackTrace}
 
     static createGetRecipeFakerErrorCaptureFile(customGenerateFakerJSValueError: Error, executedCommand: string) {
     
-        // ensure dedicated directory for generated recipes exists
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-        const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+        const expectedErrorsFolderPath = this.resolveErrorCaptureFolderPath(this.getRecipeGenerationErrorsFolderName());
+        if (!expectedErrorsFolderPath) {
+            VSCodeWorkspaceService.showWarningMessage('No workspace folder found, so the faker value error could not be captured to a file.');
+            return;
+        }
 
-        const errorsGenerationFolderName = this.getRecipeGenerationErrorsFolderName();
-        const expectedErrorsFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${errorsGenerationFolderName}`;
         if (!fs.existsSync(expectedErrorsFolderPath)) {
             fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
         }
@@ -202,12 +222,12 @@ ${stackTrace}
 
     static createFakerExpressionEvaluationErrorCaptureFile(customFakerExpressionEvaluationValueError: Error, executedCommand: string) {
     
-        // ensure dedicated directory for generated recipes exists
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
-        const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
+        const expectedErrorsFolderPath = this.resolveErrorCaptureFolderPath(this.getFakerJSExpressionErrorsFolderName());
+        if (!expectedErrorsFolderPath) {
+            VSCodeWorkspaceService.showWarningMessage('No workspace folder found, so the faker-js expression error could not be captured to a file.');
+            return;
+        }
 
-        const errorsGenerationFolderName = this.getFakerJSExpressionErrorsFolderName();
-        const expectedErrorsFolderPath = `${workspaceRoot}/treecipe/${generatedRecipesFolderName}/${errorsGenerationFolderName}`;
         if (!fs.existsSync(expectedErrorsFolderPath)) {
             fs.mkdirSync(expectedErrorsFolderPath, { recursive: true });
         }
