@@ -98,6 +98,29 @@ Where a dependent picklist is itself the controlling field of another (`Country_
 - Apex tests added for forbidden-value detection, tolerance of org-added values, unknown controlling values under a negative assertion, healthy and broken chains, upstream-not-in-list resolution, the cycle guard, and duplicate specs
 - Coverage: 83.07% → 83.58% statements, 77.67% → 78.08% branches, 85.15% → 85.83% functions
 
+### End-to-end scratch org verification
+
+Verified against a fresh scratch org: generation, deployment, a passing check, drift detection in both directions, and restore.
+
+- The demo scaffold (`scripts/picklist-dependency-demo/`) covered only a plain two-tier dependency with a local `valueSetDefinition`, so a real scratch org run never exercised the chained or global-value-set paths this release added. It now writes a `Planets` global value set plus a third tier: `Dressing__c` (chained, local values, and a value containing a space) and `Planet__c` (chained, **global value set**). Generation produces 3 specs for the object, and `Planet__c` correctly emits both a spec and a `dependsOn` link
+- **The Drift step could never have failed.** It broke a dependency by omitting a `valueSettings` entry, but Salesforce *merges* `valueSettings` on a `CustomField` deploy — the omitted entry stayed in the org, the deploy reported `Succeeded`, and the check correctly reported PASS against an org that never changed. Drift now *rewires* a value from one controlling value to another, which is what an admin actually does in Setup and asserts more: `MISSING_VALUES` on the old controlling value and `FORBIDDEN_VALUES_PRESENT` on the new one
+- Drift runs in two phases, because a broken controlling field short-circuits every spec below it into a single `UPSTREAM_FAILURE`. Phase 1 drifts only the global-value-set field, so its own expectations are actually evaluated; phase 2 drifts the controlling field as well, proving the chain reports the break once at its source
+- Fixed `.Count` on a single-element pipeline result failing under `Set-StrictMode -Version Latest`, which aborted `-Step Generate` whenever exactly one per-object spec class was produced — the demo's normal case
+
+### One-command orchestration for the end-to-end run
+
+The verification above took a dozen separate invocations plus hand-written anonymous Apex to root-cause. It is now a single command, and a VS Code task.
+
+- **`-Step Verify`** reads the live controlling-value map out of the org through `SDTSchemaPicklistDependencySource` — the same source the check uses — and prints it. This is the question a deploy result cannot answer, and it previously had no command at all
+- **`-Step FullRun`** chains `Preflight` → `Restore`, including both drift phases, in one invocation
+- **A drift guard.** `Drift` now calls `Verify` before and after its own deploy and refuses to run the check unless the org genuinely moved, exiting `1` with the reason. Without it, a no-op drift deploy produces a `PASS` indistinguishable from a healthy run — which is exactly how the omission bug above survived
+- **`-Interactive`** pauses at the three points a human has to judge something an assertion cannot: the generated contract before it deploys, and each drift report after it fails. Off by default, so the same script runs unattended in CI
+- **`-Step Accept`** closes the loop. Drift has two legitimate endings and only one existed: `Restore` rejects the change by putting the org back. `Accept` treats the org as correct — it retrieves the org state into local source, regenerates the contract, redeploys and re-runs. Retrieving *before* regenerating is the whole point: generation reads local metadata, and drift deliberately leaves local source at the original contract, so regenerating alone produces a byte-identical contract that fails again identically. `Accept` fingerprints the generated classes either side of regeneration and refuses to re-run if nothing changed
+- `-Step FullRun` now runs the complete lifecycle — stand up, pass, drift, fail, regenerate, pass — in one invocation
+- **Every run now starts from a new scratch org.** `CreateOrg` used to reuse a live org carrying the same alias, which meant a run inherited the previous run's drift, deployed classes and source-tracking history — a green result proved the feature worked *there* rather than from nothing, and the reuse is what produced this harness's source-conflict failures. It now replaces that org; `-ReuseExistingOrg` opts back in for iterating on a single step
+- Deploys pass `--ignore-conflicts`. The script authors every file it deploys, so local is authoritative by construction, and `Accept` creates a source-tracking conflict by design when it retrieves. Without this, every deploy after an `Accept` was refused
+- Six `PICKLIST:` tasks in `.vscode/tasks.json` wrap the script, prompting for the scratch org alias and Dev Hub
+
 ## [2.14.0] - Run Picklist Dependency Check Command
 
 Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

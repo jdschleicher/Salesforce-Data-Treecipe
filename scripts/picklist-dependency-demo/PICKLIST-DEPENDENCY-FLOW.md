@@ -68,8 +68,9 @@ dependency later fails a test instead of surfacing as a confusing Collections AP
 
 ## 2. Demo script step machine
 
-`./Invoke-PicklistDependencyDemo.ps1 -Step <Step>`. `All` runs `Preflight` → `Check`.
-`Drift`, `Restore` and `Teardown` are opt-in because they mutate or destroy the org.
+`./Invoke-PicklistDependencyDemo.ps1 -Step <Step>`. `All` runs `Preflight` → `Check` and stops.
+`FullRun` runs the whole contract lifecycle in one invocation. `Drift`, `Restore`, `Accept` and
+`Teardown` are opt-in individually because they mutate or destroy the org.
 
 ```mermaid
 flowchart TD
@@ -79,24 +80,49 @@ flowchart TD
     PRE -->|"missing prerequisite"| STOP["Stop with an actionable message"]
     PRE -->|"all green"| SCAF
 
-    SCAF["Scaffold<br/>project-scratch-def.json +<br/>Treecipe_Demo__c dependent picklist"]
-    SCAF --> CREATE["CreateOrg<br/>reuses a live org with the same alias"]
-    CREATE --> DEPLOY["Deploy<br/>sample object + 6 framework classes<br/>7+ components"]
+    SCAF["Scaffold<br/>project-scratch-def.json +<br/>Planets global value set +<br/>Treecipe_Demo__c three-tier dependent picklists"]
+    SCAF --> CREATE["CreateOrg<br/>DELETES a live org with the same alias,<br/>then creates a fresh one<br/>-ReuseExistingOrg keeps it instead"]
+    CREATE --> DEPLOY["Deploy<br/>Planets value set + sample object<br/>+ 6 framework classes"]
     DEPLOY --> GENERATE["Generate<br/>SDTPLDSpecs_{Object} + aggregator + test<br/>from LOCAL metadata only"]
+    GENERATE -.->|"-Interactive"| PAUSE1["pause: read the generated contract"]
     GENERATE --> CHECK["Check<br/>deploy every owned class found on disk, run tests"]
     CHECK ==>|"expected"| PASS1["PASS<br/>source and org agree"]
 
-    PASS1 -.->|"opt in"| DRIFT["Drift<br/>remove cle to tremont in the ORG only"]
-    DRIFT ==>|"expected"| FAIL["FAIL<br/>named, specific, non-zero exit"]
-    FAIL -.->|"opt in"| RESTORE["Restore<br/>put the org dependency back"]
-    RESTORE ==> PASS2["PASS again"]
+    PASS1 --> DRIFT["Drift, two phases<br/>1. rewire mars ohiocity to willowick on Planet__c<br/>2. also rewire tremont cle to eastlake on Neighborhood__c<br/>ORG only, never regenerated"]
+    DRIFT --> GUARD{"Verify before and after:<br/>did the org actually move?"}
+    GUARD -->|"no"| STOPDRIFT["Stop, exit 1<br/>a no-op drift would report a meaningless PASS"]
+    GUARD -->|"yes"| FAIL["FAIL<br/>named, specific, non-zero exit"]
+    FAIL -.->|"-Interactive"| PAUSE2["pause: read the drift report"]
+
+    FAIL --> REJECT["Restore<br/>REJECT the drift:<br/>rewire the org back"]
+    FAIL --> ACCEPT["Accept<br/>ACCEPT the drift: retrieve it into local source,<br/>regenerate, redeploy"]
+    REJECT ==> PASS2["PASS again<br/>original contract everywhere"]
+    ACCEPT ==> PASS3["PASS again<br/>contract updated to the new reality"]
     PASS2 -.->|"opt in"| TEAR["Teardown<br/>delete the scratch org"]
+    PASS3 -.->|"opt in"| TEAR
 
     style PASS1 fill:#1b5e20,color:#fff
     style PASS2 fill:#1b5e20,color:#fff
+    style PASS3 fill:#1b5e20,color:#fff
     style FAIL fill:#b71c1c,color:#fff
     style STOP fill:#b71c1c,color:#fff
+    style STOPDRIFT fill:#b71c1c,color:#fff
+    style GUARD fill:#f9a825,color:#000
 ```
+
+`FullRun` chains `Preflight` → `Check` → `Drift` → `Accept`, so one invocation proves the contract
+passes, catches the org moving, and comes back into agreement.
+
+**`Verify` is the step underneath the guard.** It reads the live controlling-value map through
+`SDTSchemaPicklistDependencySource`, the same source the check uses, and answers the one question a
+deploy result cannot: what does the org actually hold. `Drift` calls it either side of its own deploy
+and refuses to continue unless the org genuinely moved — a deploy reporting `Succeeded` says only
+that the payload was accepted.
+
+**Deploys pass `--ignore-conflicts`.** The script authored every file it deploys, so local is
+authoritative by construction, and `Accept` creates a source-tracking conflict by design when it
+retrieves. This is correct for a harness that owns its own metadata; it is not advice for deploying
+a real project.
 
 `Deploy` is not optional even though generation reads nothing from the org: the Apex test resolves
 `Treecipe_Demo__c.Neighborhood__c` through Schema describe, so the fields must exist in the org or
@@ -322,7 +348,7 @@ sequenceDiagram
     Check-->>Check: PASS
 
     Note over Local,Org: -Step Drift
-    Local->>Local: rewrite Neighborhood__c WITHOUT cle → tremont
+    Local->>Local: rewire Neighborhood__c so tremont hangs off eastlake, not cle
     Local->>Org: deploy that one reduced field
     Local->>Local: immediately restore the original file
     Note over Local,Org: source and org now genuinely disagree
@@ -330,7 +356,7 @@ sequenceDiagram
     Note over Check: specs are deliberately NOT regenerated —<br/>regenerating would rewrite the contract to match<br/>the drift and hide the exact problem
     Local->>Check: cle unlocks ohiocity, tremont
     Org->>Check: cle unlocks ohiocity
-    Check-->>Check: FAIL, MISSING_VALUES on tremont
+    Check-->>Check: FAIL, MISSING_VALUES on cle + FORBIDDEN_VALUES_PRESENT on eastlake
     Note over Check: the mirror case — a value drifting INTO a<br/>combination — fails as FORBIDDEN_VALUES_PRESENT<br/>against the expectNotAllowed complement
 ```
 
@@ -354,6 +380,12 @@ combination it does not belong in, `UPSTREAM_FAILURE` for a link whose controlli
 failed further up a chain, `CIRCULAR_DEPENDENCY`, `CONTROLLING_FIELD_MISMATCH`,
 `UNKNOWN_CONTROLLING_VALUE`, `UNEXPECTED_VALUES`, and `LOOKUP_ERROR` when a field cannot be resolved
 at all — that last one is reported per spec rather than aborting, so the remaining specs still run.
+
+> **A dependency cannot be broken by omission.** Salesforce merges `valueSettings` on a `CustomField`
+> deploy, so an entry left out of the payload is not removed from the org and the deploy still
+> reports `Succeeded`. Drift must therefore *rewire* a value from one controlling value to another,
+> which is also what an admin does in Setup. Rewiring is the stronger assertion anyway: it fires
+> `MISSING_VALUES` on the old controlling value and `FORBIDDEN_VALUES_PRESENT` on the new one.
 
 ---
 
