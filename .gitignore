@@ -9,16 +9,11 @@ coverage/
 .sfdx/*
 .sf/*
 
-# Output the picklist dependency demo harness writes into the working tree. It lands inside
-# force-app, which is the single source of truth for the framework classes the extension
-# scaffolds into users' orgs, so a stray "git add -A" would commit demo-only Apex and a demo
-# object into shipped source. That is not hypothetical: b6038c1 committed an "undefined/"
-# capture directory exactly this way. -Step Scaffold rewrites all of it deterministically,
-# so none of it needs tracking.
+# Output the picklist dependency demo harness writes. The harness generates a throwaway
+# Salesforce DX project (sfdx-project.json, scratch definition, sample metadata, copied
+# framework classes, generated contract classes) so this repository never needs to be one.
+# -Step Scaffold rewrites all of it deterministically, so none of it needs tracking — and a
+# stray "git add -A" must never commit demo-only Apex or a demo object. That is not
+# hypothetical: b6038c1 committed an "undefined/" capture directory exactly this way.
 treecipe/
-force-app/main/default/objects/Treecipe_Demo__c/
-force-app/main/default/globalValueSets/Planets.globalValueSet-meta.xml
-force-app/main/default/classes/SDTPLDSpecs_*.cls
-force-app/main/default/classes/SDTPLDSpecs_*.cls-meta.xml
-force-app/main/default/classes/SDTPLDSpecsTest.cls
-force-app/main/default/classes/SDTPLDSpecsTest.cls-meta.xml
+scripts/picklist-dependency-demo/demoSalesforceProject/

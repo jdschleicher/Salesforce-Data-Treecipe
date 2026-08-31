@@ -154,6 +154,17 @@ The verification above took a dozen separate invocations plus hand-written anony
 
 `scripts/apex/runPicklistDependencyChecks.apex` and `scripts/apex/run-picklist-dependency-checks.js` (with the `npm run picklist-dependency-check` script) are deleted. Every picklist dependency check now runs one way: from generated Apex that has been **deployed** to the target environment and executed as a test class in system context. The anonymous-Apex path ran as the authenticated user, so its result could vary — misleadingly — with that user's field-level security, and nothing invoked it: no CI workflow called the runner, `.vscodeignore` already excluded it from the `.vsix`, and the end-to-end demo harness deploys the generated classes instead. The `PICKLIST_DEPENDENCY_CHECK_RESULT` marker is unaffected — `SDTPicklistDependencyReport` still emits it
 
+### Removed: the repository is no longer a Salesforce DX project
+
+`force-app/`, `sfdx-project.json`, `config/project-scratch-def.json` and `.forceignore` are gone. This repository is a VS Code extension; the only Salesforce metadata it carries is the Apex framework source, which now lives in a directory named for exactly that purpose:
+
+- **`apexPicklistDependencyFramework/SDTPicklistDependencyFramework/`** — the six runtime classes shipped in the `.vsix` and scaffolded into the user's package directory by Generate Picklist Dependency Tests. `scaffoldMissingFrameworkClasses` and the `.vscodeignore` negation both point here now
+- **`apexPicklistDependencyFramework/frameworkApexTests/`** — the framework's own Apex unit tests and stub source, dev-only, never shipped
+- **`apexPicklistDependencyFramework/README.md`** — documents what each half is for and how to deploy the tests
+- The committed `SDTPLDSpecs.cls` placeholder is deleted outright: generation always emits a fresh aggregator, so a tracked copy existed only to be overwritten
+
+The demo harness no longer deploys from the repository. `-Step Scaffold` generates a throwaway DX project under `scripts/picklist-dependency-demo/demoSalesforceProject/` (gitignored) — `sfdx-project.json` written on the fly, framework classes copied in from their source of truth, sample metadata and generated classes landing inside it — and every `sf` project command runs from that directory. This is also the more faithful demo: the extension's real consumers run it against their own DX project, and the staging project plays that role
+
 ## [2.14.0] - Run Picklist Dependency Check Command
 
 Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

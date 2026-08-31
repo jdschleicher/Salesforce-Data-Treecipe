@@ -85,9 +85,10 @@ export class PicklistDependencyTestService {
     private static legacyFrameworkDirectoryName = 'PicklistDependencyFramework';
 
     /*
-        The runtime classes the generated SDTPLDSpecs.cls depends on. These ship in the
-        vsix via negation entries in .vscodeignore and are scaffolded into the user's package
-        directory when missing, otherwise the generated file would not compile in their org.
+        The runtime classes the generated SDTPLDSpecs.cls depends on. Their source lives in
+        apexPicklistDependencyFramework/, ships in the vsix via negation entries in .vscodeignore,
+        and is scaffolded into the user's package directory when missing, otherwise the generated
+        file would not compile in their org.
     */
     private static frameworkClassNames: string[] = [
         'ISDTPicklistDependencySource',
@@ -1128,7 +1129,7 @@ ${testMethods}
     */
     static scaffoldMissingFrameworkClasses(extensionPath: string, classesDirectoryPath: string): IFrameworkScaffoldResult {
 
-        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', this.frameworkDirectoryName);
+        const shippedFrameworkClassesPath = path.join(extensionPath, 'apexPicklistDependencyFramework', this.frameworkDirectoryName);
 
         let scaffoldedClassNames: string[] = [];
         let unavailableClassNames: string[] = [];

@@ -7,6 +7,10 @@
     tests from the LOCAL source metadata, deploys and runs them, then rewires the dependency IN THE
     ORG ONLY so the check fails the way it would when an admin quietly changes a dependency.
 
+    The repository itself is not a Salesforce DX project, so the demo stages a throwaway one under
+    scripts/picklist-dependency-demo/demoSalesforceProject/ -- sfdx-project.json generated on the
+    fly -- and runs everything against it, the same shape as a real user's workspace.
+
     That last step is the point of the whole exercise. A check that only ever passes proves nothing;
     this proves the check detects real drift, names it, and exits non-zero.
 
@@ -17,7 +21,9 @@
     because they mutate or destroy the org.
 
       Preflight  verify sf CLI, Dev Hub, node, compiled output
-      Scaffold   write the scratch definition and the sample dependent-picklist metadata
+      Scaffold   generate the staging DX project (sfdx-project.json on the fly), copy the
+                 framework classes into it, write the scratch definition and the sample
+                 dependent-picklist metadata
       CreateOrg  create the scratch org
       Deploy     deploy the sample object and the Apex framework classes
       Generate   generate SDTPLDSpecs.cls, its per-object spec classes and SDTPLDSpecsTest.cls
@@ -96,11 +102,23 @@ $ErrorActionPreference = 'Stop'
 # --------------------------------------------------------------------------------------------------
 
 $RepoRoot          = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
-$ConfigDir         = Join-Path $RepoRoot 'config'
+
+# This repository is a VS Code extension, not a Salesforce DX project. The demo therefore stages a
+# throwaway DX project of its own -- sfdx-project.json generated on the fly, exactly like the
+# Trailhead quick-start flow -- and every deploy, retrieve and generation runs against it. This is
+# also the more faithful demo: the extension's real consumers run it against their own DX project,
+# and this directory plays that role. Gitignored; -Step Scaffold rewrites it deterministically.
+$StagingProjectDir = Join-Path $PSScriptRoot 'demoSalesforceProject'
+$ConfigDir         = Join-Path $StagingProjectDir 'config'
 $ScratchDefPath    = Join-Path $ConfigDir 'project-scratch-def.json'
-$PackageDir        = Join-Path $RepoRoot 'force-app'
+$PackageDir        = Join-Path $StagingProjectDir 'force-app'
 $ObjectsDir        = Join-Path $PackageDir 'main/default/objects'
 $ClassesDir        = Join-Path $PackageDir 'main/default/classes'
+
+# Where the framework's Apex source actually lives in this repository -- the same files the
+# published .vsix carries and scaffolds into a user's project. Scaffold copies them into the
+# staging project so the demo deploys byte-identical framework classes.
+$ShippedFrameworkSourceDir = Join-Path $RepoRoot 'apexPicklistDependencyFramework/SDTPicklistDependencyFramework'
 # The framework runtime classes live in their own directory. Salesforce resolves ApexClass by the
 # enclosing "classes" directory and walks nested folders, so this deploys identically while keeping
 # the six files the user did not write separate from the generated contract.
@@ -200,8 +218,18 @@ function Invoke-SalesforceJson {
 
     Write-Info "sf $($Arguments -join ' ')"
 
-    $stdout = & sf @Arguments 2>$null
-    $exitCode = $LASTEXITCODE
+    # Project commands (deploy, retrieve) must run from inside a DX project. The staging project is
+    # that project, so every sf invocation runs from it once it exists; org- and apex-level commands
+    # are indifferent to cwd, so this is safe across the board.
+    $runFromStagingProject = Test-Path (Join-Path $StagingProjectDir 'sfdx-project.json')
+    if ($runFromStagingProject) { Push-Location $StagingProjectDir }
+    try {
+        $stdout = & sf @Arguments 2>$null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        if ($runFromStagingProject) { Pop-Location }
+    }
 
     if (-not $stdout) {
         Stop-WithError "the Salesforce CLI returned no output for: sf $($Arguments -join ' ')"
@@ -246,7 +274,7 @@ function Suspend-ForReview {
 
 function Get-NewestReportPath {
 
-    $resultsRoot = Join-Path $RepoRoot 'treecipe/PicklistDependencyResults'
+    $resultsRoot = Join-Path $StagingProjectDir 'treecipe/PicklistDependencyResults'
     if (-not (Test-Path $resultsRoot)) { return $null }
 
     $newestRun = Get-ChildItem -Path $resultsRoot -Directory -ErrorAction SilentlyContinue |
@@ -441,6 +469,11 @@ function Invoke-Preflight {
     }
     Write-Good 'compiled services present'
 
+    if (-not (Test-Path $ShippedFrameworkSourceDir)) {
+        Stop-WithError "framework Apex source not found at $ShippedFrameworkSourceDir."
+    }
+    Write-Good 'framework Apex source present'
+
     $devHubArguments = @('org', 'list', '--json')
     $orgList = Invoke-SalesforceJson -Arguments $devHubArguments
 
@@ -462,11 +495,52 @@ function Invoke-Preflight {
 # Step: Scaffold
 # --------------------------------------------------------------------------------------------------
 
+<#
+    Stands up the staging DX project: sfdx-project.json written on the fly, and the framework
+    classes copied in from their source of truth under apexPicklistDependencyFramework/.
+
+    The copy is unconditional -- the staging project is disposable output, so the repo copy always
+    wins and an edit to the framework source lands in the next run without a manual cleanup.
+#>
+function Initialize-DemoSalesforceProject {
+
+    New-Item -ItemType Directory -Path $FrameworkDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
+
+    $sfdxProjectPath = Join-Path $StagingProjectDir 'sfdx-project.json'
+    @"
+{
+    "packageDirectories": [
+        {
+            "path": "force-app",
+            "default": true
+        }
+    ],
+    "name": "treecipe-picklist-dependency-demo",
+    "namespace": "",
+    "sfdcLoginUrl": "https://login.salesforce.com",
+    "sourceApiVersion": "$ApiVersion"
+}
+"@ | Set-Content -Path $sfdxProjectPath -Encoding utf8
+    Write-Good "wrote $sfdxProjectPath"
+
+    foreach ($frameworkClassName in $FrameworkClassNames) {
+        foreach ($suffix in @('.cls', '.cls-meta.xml')) {
+            $sourceFilePath = Join-Path $ShippedFrameworkSourceDir "$frameworkClassName$suffix"
+            if (-not (Test-Path $sourceFilePath)) {
+                Stop-WithError "framework source file missing: $sourceFilePath"
+            }
+            Copy-Item -Path $sourceFilePath -Destination (Join-Path $FrameworkDir "$frameworkClassName$suffix") -Force
+        }
+    }
+    Write-Good "copied $($FrameworkClassNames.Count) framework class(es) from $ShippedFrameworkSourceDir"
+}
+
 function Invoke-Scaffold {
 
-    Write-Step 'Scaffold scratch definition and sample dependent-picklist metadata'
+    Write-Step 'Scaffold the staging DX project, scratch definition and sample dependent-picklist metadata'
 
-    if (-not (Test-Path $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
+    Initialize-DemoSalesforceProject
 
     if (Test-Path $ScratchDefPath) {
         Write-Info 'scratch definition already present, leaving it alone'
@@ -804,7 +878,7 @@ function Invoke-Deploy {
     )
 
     if ($frameworkClassPaths.Count -eq 0) {
-        Stop-WithError "no framework classes found in $ClassesDir"
+        Stop-WithError "no framework classes found in $ClassesDir -- run -Step Scaffold first."
     }
 
     # --ignore-conflicts because this script AUTHORED every file it deploys. Source tracking flags a
@@ -942,8 +1016,14 @@ function Invoke-Check {
     Invoke-DeployOwnedClasses
 
     Write-Info 'this mirrors the "Salesforce Treecipe: Run Picklist Dependency Check" command'
-    & node $HeadlessDriver check $ScratchOrgAlias $RepoRoot
-    $checkExitCode = $LASTEXITCODE
+    Push-Location $StagingProjectDir
+    try {
+        & node $HeadlessDriver check $ScratchOrgAlias $StagingProjectDir
+        $checkExitCode = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
 
     if ($checkExitCode -eq 2) {
         Stop-WithError 'the check could not run.'
@@ -959,7 +1039,7 @@ function Invoke-Check {
         exit 1
     }
 
-    Write-Info "artifacts under $(Join-Path $RepoRoot 'treecipe/PicklistDependencyResults')"
+    Write-Info "artifacts under $(Join-Path $StagingProjectDir 'treecipe/PicklistDependencyResults')"
     return $actualOutcome
 }
 
@@ -1137,7 +1217,7 @@ function Invoke-Teardown {
 
     Invoke-SalesforceJson -Arguments @('org', 'delete', 'scratch', '--target-org', $ScratchOrgAlias, '--no-prompt', '--json') | Out-Null
     Write-Good "deleted $ScratchOrgAlias"
-    Write-Info "sample metadata under $DemoObjectDir was left in place; remove it by hand if you no longer want it"
+    Write-Info "the staging DX project at $StagingProjectDir was left in place; it is gitignored and safe to delete"
 }
 
 # --------------------------------------------------------------------------------------------------

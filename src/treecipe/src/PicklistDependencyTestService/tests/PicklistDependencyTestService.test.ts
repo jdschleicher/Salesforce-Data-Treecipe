@@ -1310,7 +1310,7 @@ describe('PicklistDependencyTestService', () => {
 
         const extensionPath = '/extension';
         const classesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
-        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', 'SDTPicklistDependencyFramework');
+        const shippedFrameworkClassesPath = path.join(extensionPath, 'apexPicklistDependencyFramework', 'SDTPicklistDependencyFramework');
 
         test('given no framework classes in the workspace, copies every shipped framework class and its meta xml', () => {
 
@@ -1484,7 +1484,7 @@ describe('PicklistDependencyTestService', () => {
 
     describe('generated Apex against the shipped framework API', () => {
 
-        const shippedFrameworkClassesPath = path.join(__dirname, '..', '..', '..', '..', '..', 'force-app', 'main', 'default', 'classes', 'SDTPicklistDependencyFramework');
+        const shippedFrameworkClassesPath = path.join(__dirname, '..', '..', '..', '..', '..', 'apexPicklistDependencyFramework', 'SDTPicklistDependencyFramework');
 
         test('emitted builder methods all exist on the shipped SDTPicklistDependencySpec class', async () => {
 

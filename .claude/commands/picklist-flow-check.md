@@ -25,8 +25,8 @@ src/treecipe/src/ExtensionCommandService/ExtensionCommandService.ts
 scripts/picklist-dependency-demo
 '
 # Apex framework + generated-contract classes, wherever they currently live
-find force-app -type d -name "*PicklistDependency*" 2>/dev/null
-find force-app -name "*PicklistDependency*.cls" -o -name "*PLDSpecs*.cls" 2>/dev/null
+find apexPicklistDependencyFramework -type d -name "*PicklistDependency*" 2>/dev/null
+find apexPicklistDependencyFramework -name "*PicklistDependency*.cls" -o -name "*PLDSpecs*.cls" 2>/dev/null
 ```
 
 ---
@@ -85,7 +85,7 @@ def strip_strings(s):
     s = re.sub(r'"[^"]*"', '""', s)
     return re.sub(r'//.*$', '', s)
 
-SEARCH = ['src', 'force-app', 'scripts']
+SEARCH = ['src', 'apexPicklistDependencyFramework', 'scripts']
 missing, mention_only, live = [], [], []
 for ident in sorted(idents):
     if list(pathlib.Path('.').glob(f'**/{ident}.cls')) or list(pathlib.Path('src').glob(f'**/{ident}.ts')):
@@ -127,7 +127,7 @@ The reverse direction catches *additions* — a new assertion verb, a new framew
 DOC=scripts/picklist-dependency-demo/PICKLIST-DEPENDENCY-FLOW.md
 
 # Apex classes that ship or are scaffolded
-find force-app -name "*.cls" | sed 's|.*/||; s|\.cls$||' \
+find apexPicklistDependencyFramework -name "*.cls" | sed 's|.*/||; s|\.cls$||' \
   | grep -E "PicklistDependency|PLDSpecs" | sort -u > /tmp/code-classes.txt
 
 # Public builder verbs the generated Apex actually emits

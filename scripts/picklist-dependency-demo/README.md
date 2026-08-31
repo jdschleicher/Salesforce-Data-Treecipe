@@ -76,7 +76,7 @@ On macOS or Linux, `pwsh ./Invoke-PicklistDependencyDemo.ps1` if the script is n
 | Step | Action | Expected |
 |---|---|---|
 | `Preflight` | Verifies CLI, Dev Hub, node, compiled output | all green |
-| `Scaffold` | Writes `config/project-scratch-def.json`, the `Planets` global value set, and a three-tier sample dependent picklist under `force-app` | files on disk |
+| `Scaffold` | Generates the staging DX project (`demoSalesforceProject/` with an on-the-fly `sfdx-project.json`), copies in the framework classes from `apexPicklistDependencyFramework/`, then writes the scratch definition, the `Planets` global value set, and a three-tier sample dependent picklist | files on disk |
 | `CreateOrg` | **Deletes** a live org carrying the same alias, then creates a fresh one | org created |
 | `Deploy` | Deploys the **global value set** and the sample **object** plus the six framework classes | 8+ components |
 | `Generate` | Builds `SDTPLDSpecs.cls`, `SDTPLDSpecs_Treecipe_Demo_c.cls` and `SDTPLDSpecsTest.cls` from **local** metadata | 3 specs, 1 object |
@@ -246,7 +246,7 @@ Why each tier is there:
 | 3 | `Dressing__c` | a **chained** dependency — its controlling field is itself dependent, so the spec emits `dependsOn`. `blue cheese` carries a space, so the generated literal has to be quoted correctly |
 | 3 | `Planet__c` | a dependent picklist whose values come from a **global value set** (`Planets`). It has no local `valueSetDefinition` at all — only `controllingField` and `valueSettings` — which is precisely the shape that used to parse as *not dependent* and produce no spec |
 
-`Planets` is a real `GlobalValueSet` under `force-app/main/default/globalValueSets/`, and it must be
+`Planets` is a real `GlobalValueSet` under the staging project's `force-app/main/default/globalValueSets/`, and it must be
 in the same deployment as the object: `Planet__c` references it by name, so an object-only deploy
 fails against a fresh org.
 
@@ -416,16 +416,13 @@ Worth watching, because automated tests mock `vscode` and cannot reach these:
 ./Invoke-PicklistDependencyDemo.ps1 -Step Teardown
 ```
 
-Deletes the scratch org. The sample metadata under `force-app/main/default/objects/Treecipe_Demo__c`
-and the generated classes are left on disk — remove them by hand if you do not want them:
+Deletes the scratch org. The staging DX project is left on disk — it is gitignored and
+`-Step Scaffold` rewrites it deterministically, so removing it is optional:
 
 ```bash
-rm -rf force-app/main/default/objects/Treecipe_Demo__c
-rm -rf force-app/main/default/globalValueSets
-rm -f force-app/main/default/classes/SDTPLDSpecsTest.cls*
-rm -f force-app/main/default/classes/SDTPLDSpecs_Treecipe_Demo_c.cls*
-git checkout force-app/main/default/classes/SDTPLDSpecs.cls
+rm -rf scripts/picklist-dependency-demo/demoSalesforceProject
 ```
 
-That last line matters: the repo's committed `SDTPLDSpecs.cls` is an intentional
-placeholder, and `-Step Generate` overwrites it.
+Nothing the demo writes lives in tracked source: the framework classes it deploys are copies of
+`apexPicklistDependencyFramework/SDTPicklistDependencyFramework/`, and every generated or sample
+file lands inside the staging project.

@@ -725,9 +725,9 @@ Every statement about behaviour in this document is drawn from the following fil
 | Command orchestration, consent | [`ExtensionCommandService.ts`](../src/treecipe/src/ExtensionCommandService/ExtensionCommandService.ts) |
 | Metadata → Apex generation | [`PicklistDependencyTestService.ts`](../src/treecipe/src/PicklistDependencyTestService/PicklistDependencyTestService.ts) |
 | CLI invocation, deploy, results | [`PicklistDependencyCheckService.ts`](../src/treecipe/src/PicklistDependencyCheckService/PicklistDependencyCheckService.ts) |
-| Contract DSL | [`SDTPicklistDependencySpec.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTPicklistDependencySpec.cls) |
-| Comparison + failure taxonomy | [`SDTPicklistDependencyValidator.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTPicklistDependencyValidator.cls) |
-| Describe source, caching, bit decode | [`SDTSchemaPicklistDependencySource.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTSchemaPicklistDependencySource.cls) |
-| Org-state value object | [`SDTPicklistDependencySnapshot.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTPicklistDependencySnapshot.cls) |
-| Reporting + CI marker | [`SDTPicklistDependencyReport.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTPicklistDependencyReport.cls) |
-| Worked example of generated output | [`SDTPLDSpecs_Treecipe_Demo_c.cls`](../force-app/main/default/classes/SDTPLDSpecs_Treecipe_Demo_c.cls) |
+| Contract DSL | [`SDTPicklistDependencySpec.cls`](../apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencySpec.cls) |
+| Comparison + failure taxonomy | [`SDTPicklistDependencyValidator.cls`](../apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencyValidator.cls) |
+| Describe source, caching, bit decode | [`SDTSchemaPicklistDependencySource.cls`](../apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTSchemaPicklistDependencySource.cls) |
+| Org-state value object | [`SDTPicklistDependencySnapshot.cls`](../apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencySnapshot.cls) |
+| Reporting + CI marker | [`SDTPicklistDependencyReport.cls`](../apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencyReport.cls) |
+| Worked example of generated output | `SDTPLDSpecs_Treecipe_Demo_c.cls`, generated into the demo staging project by `scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step Generate` |
