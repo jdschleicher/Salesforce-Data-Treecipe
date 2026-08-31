@@ -41,3 +41,6 @@ coverage/**
 # Repo automation, not extension runtime.
 .claude/**
 .github/**
+
+# Contributor-facing technical design docs; end-user docs stay in README.md.
+docs/**

@@ -1,5 +1,12 @@
 # Change Log
 
+## [Unreleased]
+
+### Documentation
+
+- New technical design document `docs/picklist-dependency-validfor-design.md` capturing how `SchemaPicklistDependencySource` reads dependent-picklist rules: who generates the `validFor` bitmap, its exact bit layout (MSB-first, controlling-field describe order, checkbox `false`=0/`true`=1), why the undocumented `JSON.serialize(Schema.PicklistEntry)` loophole was chosen over the UI API and other alternatives, the guards against that serialization changing, links to the official Salesforce documentation per API, and an anonymous-Apex walkthrough reproducing the bitmap from a blank org
+- `docs/**` excluded from the packaged `.vsix` — contributor-facing design docs, not extension runtime
+
 ## [2.14.0] - Run Picklist Dependency Check Command
 
 Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
