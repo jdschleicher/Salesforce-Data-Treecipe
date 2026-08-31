@@ -921,7 +921,7 @@ ${testMethods}
         Assert.isFalse(
             ${this.specsClassName}.all().isEmpty(),
             'No picklist dependency specs are registered, so this run verified nothing. '
-                + 'Re-run the "Generate Picklist Dependency Tests" command.'
+                + 'Re-run the Generate Picklist Dependency Tests command.'
         );
     }
 
@@ -936,7 +936,7 @@ ${testMethods}
 
         Assert.isFalse(
             specsForObject.isEmpty(),
-            'No specs found for "' + objectApiName + '". This class is generated from the spec '
+            'No specs found for ' + objectApiName + '. This class is generated from the spec '
                 + 'registry, so the two are out of sync -- regenerate them together.'
         );
 

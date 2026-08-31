@@ -80,7 +80,7 @@ const failingTestMethods = [
     {
         MethodName: 'Account_picklistDependenciesMatchSourceMetadata',
         Outcome: 'Fail',
-        Message: 'Picklist dependency drift on Account -- 1 combination(s) no longer match local source metadata:\n  - MISSING_VALUES — Account.Type @ "Customer": expected Direct, Channel but org allows only Direct'
+        Message: 'Picklist dependency drift on Account -- 1 combination(s) no longer match local source metadata:\n  - MISSING_VALUES — Account.Type @ Customer: expected Direct, Channel but org allows only Direct'
     },
     { MethodName: 'specRegistryIsNotEmpty', Outcome: 'Pass' }
 ];
@@ -119,7 +119,7 @@ describe('shouldTranslateApexTestRunResults', () => {
 
         const failedMethodOutcome = checkOutcome.methodOutcomes.find(methodOutcome => !methodOutcome.passed);
 
-        expect(failedMethodOutcome.message).toContain('Account.Type @ "Customer"');
+        expect(failedMethodOutcome.message).toContain('Account.Type @ Customer');
 
     });
 
@@ -757,7 +757,7 @@ describe('shouldPersistCheckResultsToTheTreecipeDirectory', () => {
         expect(resultsJson.failureCount).toBe(1);
         expect(resultsJson.methodsRun).toBe(2);
         expect(resultsJson.methodOutcomes).toHaveLength(2);
-        expect(resultsJson.methodOutcomes[0].message).toContain('Account.Type @ "Customer"');
+        expect(resultsJson.methodOutcomes[0].message).toContain('Account.Type @ Customer');
 
     });
 

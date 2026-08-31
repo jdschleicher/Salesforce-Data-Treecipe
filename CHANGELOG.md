@@ -165,6 +165,14 @@ The verification above took a dozen separate invocations plus hand-written anony
 
 The demo harness no longer deploys from the repository. `-Step Scaffold` generates a throwaway DX project under `scripts/picklist-dependency-demo/demoSalesforceProject/` (gitignored) — `sfdx-project.json` written on the fly, framework classes copied in from their source of truth, sample metadata and generated classes landing inside it — and every `sf` project command runs from that directory. This is also the more faithful demo: the extension's real consumers run it against their own DX project, and the staging project plays that role
 
+### New: `docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md`
+
+An org-side companion to the design record, written for the admin or developer looking at `SDTPLDSpecsTest` in a Salesforce org with no VS Code in front of them: what each deployed class is, how to read a generated spec line-by-line against the **Field Dependencies** grid in Setup, where the org side of the comparison actually comes from (including Execute Anonymous diagnostics that print the org's live view, flagged as diagnostics rather than the gate), the four ways to run the tests, the full failure-kind table, how to **trigger a failure on purpose** — and why omitting a `valueSettings` entry silently will not do it — and a decision tree for choosing between fixing the org and regenerating the specs. Linked from the README, the design record, and the demo runbook.
+
+### Cleaner assert messages
+
+Assertion failures surfaced in a Salesforce org escaped every embedded double quote as `&quot;`, which buried the field and value names the message exists to report. Every double quote is gone from the messages `SDTPicklistDependencyValidator`, `SDTSchemaPicklistDependencySource`, and the generated test class produce — `Account.Type @ "Customer"` now reads `Account.Type @ Customer`. The word "reports", which reads as Salesforce Reports to an admin, is replaced with "the org has" throughout those messages.
+
 ## [2.14.0] - Run Picklist Dependency Check Command
 
 Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

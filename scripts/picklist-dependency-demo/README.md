@@ -12,6 +12,10 @@ check, against a real scratch org.
 
 ---
 
+> Looking at these classes from inside a Salesforce org rather than running the harness? The
+> [in-org guide](../../docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md) covers reading the deployed classes,
+> running the tests from Setup, and fixing a failure.
+
 ## What this proves
 
 Treecipe already knows every dependent picklist's controlling-value → allowed-values map — it builds
@@ -302,8 +306,8 @@ evaluated — the global value set path would look covered while proving nothing
 ```
 FAIL  Treecipe_Demo_c_picklistDependenciesMatchSourceMetadata
       Picklist dependency drift on Treecipe_Demo__c -- 2 combination(s) no longer match local source metadata:
-        - MISSING_VALUES — Treecipe_Demo__c.Planet__c @ "ohiocity": Expected values no longer valid: [mars]
-        - FORBIDDEN_VALUES_PRESENT — Treecipe_Demo__c.Planet__c @ "willowick": Org unlocks values this controlling value must not unlock: [mars]
+        - MISSING_VALUES — Treecipe_Demo__c.Planet__c @ ohiocity: Expected values no longer valid: [mars]
+        - FORBIDDEN_VALUES_PRESENT — Treecipe_Demo__c.Planet__c @ willowick: Org unlocks values this controlling value must not unlock: [mars]
 ```
 
 ### Phase 2 — the controlling field as well
@@ -316,14 +320,14 @@ mismatch down every link:
 FAIL  Treecipe_Demo_c_picklistDependenciesMatchSourceMetadata
       Picklist dependency drift on Treecipe_Demo__c -- 4 combination(s) no longer match local source metadata:
         - UPSTREAM_FAILURE — Treecipe_Demo__c.Dressing__c: Controlling field spec Treecipe_Demo__c.Neighborhood__c failed (MISSING_VALUES), so this spec was not evaluated. Fix Treecipe_Demo__c.Neighborhood__c first.
-        - MISSING_VALUES — Treecipe_Demo__c.Neighborhood__c @ "cle": Expected values no longer valid: [tremont]
-        - FORBIDDEN_VALUES_PRESENT — Treecipe_Demo__c.Neighborhood__c @ "eastlake": Org unlocks values this controlling value must not unlock: [tremont]
+        - MISSING_VALUES — Treecipe_Demo__c.Neighborhood__c @ cle: Expected values no longer valid: [tremont]
+        - FORBIDDEN_VALUES_PRESENT — Treecipe_Demo__c.Neighborhood__c @ eastlake: Org unlocks values this controlling value must not unlock: [tremont]
         - UPSTREAM_FAILURE — Treecipe_Demo__c.Planet__c: Controlling field spec Treecipe_Demo__c.Neighborhood__c failed (MISSING_VALUES), so this spec was not evaluated. Fix Treecipe_Demo__c.Neighborhood__c first.
 ```
 
 Both outputs above are copied from real runs against a scratch org, not paraphrased.
 `buildTestMethodNameByObjectApiName` produces the method name, and
-`SDTPicklistDependencyValidator.Failure.toLine()` produces `KIND — Object.Field @ "value": message`.
+`SDTPicklistDependencyValidator.Failure.toLine()` produces `KIND — Object.Field @ value: message`.
 
 Note the method name is `Treecipe_Demo_c_...`, not `Treecipe_Demo__c_...`. **Apex identifiers may not
 contain two consecutive underscores**, so runs of underscores in the object api name are collapsed.

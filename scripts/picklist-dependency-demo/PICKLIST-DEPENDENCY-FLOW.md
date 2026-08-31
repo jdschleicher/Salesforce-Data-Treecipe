@@ -366,7 +366,7 @@ The failure names the object, the field, the controlling value, and the specific
 FAIL  Treecipe_Demo_c_picklistDependenciesMatchSourceMetadata
       System.AssertException: Assertion Failed: Picklist dependency drift on Treecipe_Demo__c
       -- 1 combination(s) no longer match local source metadata:
-        - MISSING_VALUES — Treecipe_Demo__c.Neighborhood__c @ "cle": Expected values no longer valid: [tremont]
+        - MISSING_VALUES — Treecipe_Demo__c.Neighborhood__c @ cle: Expected values no longer valid: [tremont]
 ```
 
 The method name is `Treecipe_Demo_c_...`, not `Treecipe_Demo__c_...`: Apex identifiers may not

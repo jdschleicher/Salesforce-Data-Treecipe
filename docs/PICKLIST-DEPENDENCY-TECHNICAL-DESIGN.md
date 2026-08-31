@@ -6,6 +6,7 @@
 **Audience:** Salesforce Center of Excellence, platform architects, release management, security review
 
 > **Companion documents**
+> - [`docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md`](./PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md) — the in-org guide: reading the deployed classes, running the tests from Setup, triggering a failure on purpose, and fixing one
 > - [`scripts/picklist-dependency-demo/PICKLIST-DEPENDENCY-FLOW.md`](../scripts/picklist-dependency-demo/PICKLIST-DEPENDENCY-FLOW.md) — operational flow diagrams (what moves, in what order)
 > - [`scripts/picklist-dependency-demo/README.md`](../scripts/picklist-dependency-demo/README.md) — runbook for the scratch-org demo harness
 >

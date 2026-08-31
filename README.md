@@ -236,6 +236,10 @@ This path **always deploys**, unlike "Run Picklist Dependency Check" below, whic
 
 Once generated, you can also run the check any time with "Run Picklist Dependency Check" below.
 
+#### Once the classes are in your org
+
+Everything above is the VS Code side. For the org side — what each deployed class is, how to read a generated spec against the **Field Dependencies** grid in Setup, how to run the tests from Setup or the Developer Console, how to trigger a failure on purpose to prove the gate works, and how to decide whether to fix the org or regenerate the specs — see the **[Picklist Dependency In-Org Guide](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md)**. It is written for an admin or developer looking at `SDTPLDSpecsTest` in an org, and assumes nothing about this extension.
+
 ---
 
 ### <a name="6-salesforce-treecipe-run-picklist-dependency-check"></a>6. **Salesforce Treecipe: Run Picklist Dependency Check**

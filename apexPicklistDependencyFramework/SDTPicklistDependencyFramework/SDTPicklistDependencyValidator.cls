@@ -44,7 +44,7 @@ public class SDTPicklistDependencyValidator {
         public String toLine() {
             String scope = objectApiName + '.' + fieldApiName;
             if (controllingValue != null) {
-                scope += ' @ "' + controllingValue + '"';
+                scope += ' @ ' + controllingValue;
             }
             return kind.name() + ' — ' + scope + ': ' + message;
         }
@@ -166,8 +166,8 @@ public class SDTPicklistDependencyValidator {
                 spec,
                 null,
                 FailureKind.CONTROLLING_FIELD_MISMATCH,
-                'Spec declares controlling field "' + spec.controllingFieldApiName
-                    + '" but org reports "' + snapshot.controllingFieldApiName + '"',
+                'Spec declares controlling field ' + spec.controllingFieldApiName
+                    + ' but the org has ' + snapshot.controllingFieldApiName,
                 new List<String>{ snapshot.controllingFieldApiName }
             ));
             return failures;
@@ -183,7 +183,7 @@ public class SDTPicklistDependencyValidator {
                     spec,
                     expectation.controllingValue,
                     FailureKind.UNKNOWN_CONTROLLING_VALUE,
-                    'Controlling value not found in org; org reports: ['
+                    'Controlling value not found in the org; the org has: ['
                         + String.join(orgControllingValues, ', ') + ']',
                     orgControllingValues
                 ));

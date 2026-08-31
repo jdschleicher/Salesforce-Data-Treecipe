@@ -101,7 +101,7 @@ public with sharing class SDTSchemaPicklistDependencySource implements ISDTPickl
         if (controllerToken == null) {
             throw new PicklistDependencyException(
                 spec.objectApiName + '.' + spec.fieldApiName + ' is not a dependent picklist '
-                    + '(the org reports no controlling field).'
+                    + '(the org has no controlling field for it).'
             );
         }
 
@@ -129,9 +129,9 @@ public with sharing class SDTSchemaPicklistDependencySource implements ISDTPickl
             // like an admin deleted the dependency configuration.
             if (validFor == null) {
                 throw new PicklistDependencyException(
-                    'No "validFor" key in the serialized PicklistEntry for '
-                        + spec.objectApiName + '.' + spec.fieldApiName + ' value "' + entry.getValue() + '", '
-                        + 'even though the org reports this field as dependent. '
+                    'No validFor key in the serialized PicklistEntry for '
+                        + spec.objectApiName + '.' + spec.fieldApiName + ' value ' + entry.getValue() + ', '
+                        + 'even though the org has this field as dependent. '
                         + 'Schema.PicklistEntry exposes validFor only through JSON serialization, which is '
                         + 'undocumented — this most likely means that serialization contract has changed.'
                 );
@@ -182,7 +182,7 @@ public with sharing class SDTSchemaPicklistDependencySource implements ISDTPickl
         Schema.SObjectField fieldToken = fieldMapFor(objectApiName).get(fieldApiName);
         if (fieldToken == null) {
             throw new PicklistDependencyException(
-                'Field "' + objectApiName + '.' + fieldApiName + '" was not found. It may not exist, '
+                'Field ' + objectApiName + '.' + fieldApiName + ' was not found. It may not exist, '
                     + 'or the running user may lack field-level security on it — an invisible field is '
                     + 'absent from describe entirely.'
             );
@@ -215,7 +215,7 @@ public with sharing class SDTSchemaPicklistDependencySource implements ISDTPickl
 
         Schema.SObjectType objectType = globalDescribeCache.get(objectApiName);
         if (objectType == null) {
-            throw new PicklistDependencyException('Unknown object "' + objectApiName + '".');
+            throw new PicklistDependencyException('Unknown object ' + objectApiName + '.');
         }
 
         Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe().fields.getMap();
