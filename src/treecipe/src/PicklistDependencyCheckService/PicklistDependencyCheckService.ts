@@ -62,6 +62,12 @@ export interface ISalesforceCliJsonPayload {
     };
 }
 
+/*
+    Why a deploy is being proposed. The two commands arrive at the same confirmation for different
+    reasons, and the confirmation has to say which.
+*/
+export type PicklistDependencyDeployReason = 'specsTestClassAbsentFromOrg' | 'specsClassesJustRegenerated';
+
 export class PicklistDependencyCheckService {
 
     /*
@@ -427,11 +433,15 @@ export class PicklistDependencyCheckService {
 
     }
 
-    static async deployPicklistDependencyClasses(classesDirectoryPath: string,
-                                                 targetOrgIdentifier: string,
-                                                 registerCancellation?: (killChildProcess: () => void) => void): Promise<string> {
+    /*
+        Confirms there is actually something to deploy, and returns it.
 
-        this.assertValidTargetOrgIdentifier(targetOrgIdentifier);
+        Callers run this BEFORE showing the deploy confirmation, not only inside the deploy itself.
+        The confirmation lists the files that will be sent, so a workspace where generation never ran
+        would otherwise render an approval dialog offering zero files and only produce the real,
+        actionable error after the user approved it.
+    */
+    static assertDeployableClassesExist(classesDirectoryPath: string): string[] {
 
         if ( !fs.existsSync(classesDirectoryPath) ) {
             throw new Error(`No classes directory found at "${classesDirectoryPath}". Run "Generate Picklist Dependency Tests" first, then run the command again.`);
@@ -442,6 +452,18 @@ export class PicklistDependencyCheckService {
         if ( classFilePathsToDeploy.length === 0 ) {
             throw new Error(`No picklist dependency classes were found in "${classesDirectoryPath}". Run "Generate Picklist Dependency Tests" first, then run the command again.`);
         }
+
+        return classFilePathsToDeploy;
+
+    }
+
+    static async deployPicklistDependencyClasses(classesDirectoryPath: string,
+                                                 targetOrgIdentifier: string,
+                                                 registerCancellation?: (killChildProcess: () => void) => void): Promise<string> {
+
+        this.assertValidTargetOrgIdentifier(targetOrgIdentifier);
+
+        const classFilePathsToDeploy = this.assertDeployableClassesExist(classesDirectoryPath);
 
         const sourceDirArguments = classFilePathsToDeploy.flatMap(classFilePath => ['--source-dir', classFilePath]);
 
@@ -496,12 +518,25 @@ export class PicklistDependencyCheckService {
         when absent, so a workspace carrying its own copy of one deploys that copy -- the user has to
         be able to see which files those are before approving.
     */
-    static buildDeployConfirmationMessage(classesDirectoryPath: string, targetOrgIdentifier: string): string {
+    static buildDeployConfirmationMessage(classesDirectoryPath: string,
+                                          targetOrgIdentifier: string,
+                                          deployReason: PicklistDependencyDeployReason): string {
 
         const classFileNames = this.getPicklistDependencyClassFilePaths(classesDirectoryPath)
             .map(classFilePath => path.basename(classFilePath));
 
-        return `${this.getSpecsTestClassName()} was not found in "${targetOrgIdentifier}".\n\n`
+        /*
+            The opening line is the only thing a user has to reason about before approving a deploy,
+            so it has to describe why THIS one is happening. The check command looked the test class
+            up and did not find it. The end to end command has just rewritten the classes and never
+            looked, so claiming the class "was not found" there tells a user whose class is deployed
+            that it is missing -- and invites them to conclude their last deploy failed.
+        */
+        const deployReasonLine = deployReason === 'specsTestClassAbsentFromOrg'
+            ? `${this.getSpecsTestClassName()} was not found in "${targetOrgIdentifier}".`
+            : `The picklist dependency classes were just regenerated and will be redeployed to "${targetOrgIdentifier}".`;
+
+        return `${deployReasonLine}\n\n`
             + `The following ${classFileNames.length} file(s) from "${classesDirectoryPath}" will be deployed:\n\n`
             + `${classFileNames.join('\n')}\n\n`
             + 'These are deployed as they exist in your workspace.';

@@ -263,6 +263,11 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts').mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-x');
 
             const isDeployedSpy = jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg');
+
+            // GENERATION JUST WROTE THESE CLASSES, SO THEY ARE ON DISK BY DEFINITION
+            jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist')
+                .mockReturnValue([`${classesDirectoryPath}/SDTPLDSpecsTest.cls`]);
+
             const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
                 .mockResolvedValue('Deployed 8 component(s) to the target org.');
             const runSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
@@ -567,6 +572,15 @@ describe('ExtensionCommandService', () => {
             ]);
 
             jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(true);
+
+            /*
+                These scenarios all assume generation has already run. The deploy path now asserts
+                that before building its confirmation, so that a workspace with nothing to send gets
+                an actionable error instead of an approval dialog offering zero files.
+            */
+            jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist')
+                .mockReturnValue([`${classesDirectoryPath}/SDTPLDSpecsTest.cls`]);
+
             runPicklistDependencyTestsSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
                 .mockResolvedValue(passingCheckOutcome);
             deployPicklistDependencyClassesSpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
@@ -688,6 +702,33 @@ describe('ExtensionCommandService', () => {
 
             expect(deployPicklistDependencyClassesSpy).toHaveBeenCalledWith(classesDirectoryPath, 'devHub', expect.any(Function));
             expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub', expect.any(Function));
+
+        });
+
+        /*
+            The confirmation lists the files that will be sent, so a workspace where generation never
+            ran must fail BEFORE the modal. Otherwise the user approves a dialog offering zero files
+            and only then learns they needed to run Generate first.
+        */
+        test('given no generated classes on disk, refuses before showing the deploy confirmation', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(false);
+
+            jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist').mockImplementation(() => {
+                throw new Error('No picklist dependency classes were found in "/workspace/classes". Run "Generate Picklist Dependency Tests" first, then run the command again.');
+            });
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockClear();
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(deployPicklistDependencyClassesSpy).not.toHaveBeenCalled();
+            expect(runPicklistDependencyTestsSpy).not.toHaveBeenCalled();
+
+            const reportedError = handleCapturedErrorSpy.mock.calls[0][0] as Error;
+            expect(reportedError.message).toContain('Generate Picklist Dependency Tests');
 
         });
 

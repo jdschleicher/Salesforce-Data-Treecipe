@@ -19,7 +19,8 @@ jest.mock('vscode', () => ({
     window: {
         showErrorMessage: jest.fn(),
         showQuickPick: jest.fn(),
-        showInputBox: jest.fn()
+        showInputBox: jest.fn(),
+        createOutputChannel: jest.fn()
     },
     ThemeIcon: jest.fn().mockImplementation(
         (name) => ({ id: name })
@@ -29,6 +30,161 @@ jest.mock('vscode', () => ({
 
 
 describe('Shared VSCodeWorkspaceService unit tests', () => {
+
+    describe('buildAuthenticatedOrgQuickPickItems', () => {
+
+        test('given an alias, the alias labels the item and the username still describes it', () => {
+
+            const quickPickItems = VSCodeWorkspaceService.buildAuthenticatedOrgQuickPickItems([
+                { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' }
+            ] as any);
+
+            expect(quickPickItems[0].label).toBe('devhub');
+            // THE USERNAME IS WHAT KEEPS TWO ALIASES ON ONE ORG TELLABLE APART
+            expect(quickPickItems[0].description).toBe('jd@example.com');
+            expect(quickPickItems[0].detail).toBe('devhub');
+
+        });
+
+        test('given no alias, the username labels the item', () => {
+
+            const quickPickItems = VSCodeWorkspaceService.buildAuthenticatedOrgQuickPickItems([
+                { targetOrgIdentifier: 'jd@example.com', username: 'jd@example.com', alias: undefined }
+            ] as any);
+
+            expect(quickPickItems[0].label).toBe('jd@example.com');
+            expect(quickPickItems[0].detail).toBe('jd@example.com');
+
+        });
+
+        test('given no authenticated orgs, produces an empty list rather than throwing', () => {
+            expect(VSCodeWorkspaceService.buildAuthenticatedOrgQuickPickItems([])).toEqual([]);
+        });
+
+    });
+
+    describe('promptForAuthenticatedTargetOrg', () => {
+
+        test('given a selection, returns the target org identifier carried on detail', async () => {
+
+            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue({
+                label: 'devhub',
+                description: 'jd@example.com',
+                detail: 'devhub'
+            } as never);
+
+            const selectedTargetOrg = await VSCodeWorkspaceService.promptForAuthenticatedTargetOrg([
+                { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' }
+            ] as any);
+
+            expect(selectedTargetOrg).toBe('devhub');
+
+        });
+
+        test('given the quick pick is dismissed, returns undefined', async () => {
+
+            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined as never);
+
+            const selectedTargetOrg = await VSCodeWorkspaceService.promptForAuthenticatedTargetOrg([
+                { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' }
+            ] as any);
+
+            expect(selectedTargetOrg).toBeUndefined();
+
+        });
+
+        /*
+            A selection returns `detail`, so an org reaching the quick pick with an empty
+            targetOrgIdentifier would be indistinguishable from a dismissal and the command would
+            silently do nothing. That cannot happen because buildAuthenticatedOrgDetails drops an
+            unusable identifier before it ever gets here -- this pins the property the safety of
+            `?.detail` actually rests on.
+        */
+        test('every quick pick item carries a non-empty detail to select by', () => {
+
+            const quickPickItems = VSCodeWorkspaceService.buildAuthenticatedOrgQuickPickItems([
+                { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' },
+                { targetOrgIdentifier: 'jd@example.com', username: 'jd@example.com', alias: undefined }
+            ] as any);
+
+            quickPickItems.forEach(quickPickItem => {
+                expect(quickPickItem.detail).toBeTruthy();
+            });
+
+        });
+
+    });
+
+    describe('picklist dependency check output channel', () => {
+
+        function buildMockOutputChannel() {
+            return { clear: jest.fn(), appendLine: jest.fn(), show: jest.fn(), dispose: jest.fn() };
+        }
+
+        beforeEach(() => {
+            // THE CHANNEL IS CACHED ON THE CLASS, SO IT HAS TO BE CLEARED BETWEEN CASES
+            (VSCodeWorkspaceService as any).picklistDependencyCheckOutputChannel = undefined;
+            (VSCodeWorkspaceService as any).extensionSubscriptions = undefined;
+        });
+
+        test('creates the channel lazily and reuses the same one across calls', () => {
+
+            const mockOutputChannel = buildMockOutputChannel();
+            const createOutputChannelSpy = jest.spyOn(vscode.window, 'createOutputChannel')
+                .mockReturnValue(mockOutputChannel as never);
+
+            const firstChannel = VSCodeWorkspaceService.getPicklistDependencyCheckOutputChannel();
+            const secondChannel = VSCodeWorkspaceService.getPicklistDependencyCheckOutputChannel();
+
+            expect(createOutputChannelSpy).toHaveBeenCalledTimes(1);
+            expect(firstChannel).toBe(secondChannel);
+
+        });
+
+        test('registers the channel for disposal when the extension supplied subscriptions', () => {
+
+            jest.spyOn(vscode.window, 'createOutputChannel').mockReturnValue(buildMockOutputChannel() as never);
+
+            const subscriptions: any[] = [];
+            VSCodeWorkspaceService.registerExtensionSubscriptions(subscriptions);
+
+            VSCodeWorkspaceService.getPicklistDependencyCheckOutputChannel();
+
+            expect(subscriptions.length).toBe(1);
+
+        });
+
+        // NOTHING REGISTERS SUBSCRIPTIONS IN A JEST RUN, AND THAT MUST NOT THROW
+        test('creates the channel without throwing when no subscriptions were registered', () => {
+
+            jest.spyOn(vscode.window, 'createOutputChannel').mockReturnValue(buildMockOutputChannel() as never);
+
+            expect(() => VSCodeWorkspaceService.getPicklistDependencyCheckOutputChannel()).not.toThrow();
+
+        });
+
+        /*
+            Clearing before appending is what makes the visible output belong to the run that just
+            finished. Appending without it silently accumulates every previous run's report.
+        */
+        test('clears the channel before writing the report, then reveals it', () => {
+
+            const mockOutputChannel = buildMockOutputChannel();
+            jest.spyOn(vscode.window, 'createOutputChannel').mockReturnValue(mockOutputChannel as never);
+
+            VSCodeWorkspaceService.showPicklistDependencyCheckReport('report body');
+
+            expect(mockOutputChannel.clear).toHaveBeenCalled();
+            expect(mockOutputChannel.appendLine).toHaveBeenCalledWith('report body');
+            expect(mockOutputChannel.show).toHaveBeenCalledWith(true);
+
+            const clearCallOrder = mockOutputChannel.clear.mock.invocationCallOrder[0];
+            const appendCallOrder = mockOutputChannel.appendLine.mock.invocationCallOrder[0];
+            expect(clearCallOrder).toBeLessThan(appendCallOrder);
+
+        });
+
+    });
 
     describe('promptForObjectsPath', () => {
 

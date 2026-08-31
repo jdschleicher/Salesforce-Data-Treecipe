@@ -98,6 +98,23 @@ Where a dependent picklist is itself the controlling field of another (`Country_
 - Apex tests added for forbidden-value detection, tolerance of org-added values, unknown controlling values under a negative assertion, healthy and broken chains, upstream-not-in-list resolution, the cycle guard, and duplicate specs
 - Coverage: 83.07% → 83.58% statements, 77.67% → 78.08% branches, 85.15% → 85.83% functions
 
+### Deploy confirmation now states the real reason, and refuses when there is nothing to send
+
+Two defects in the deploy prompt, both found in review.
+
+- The confirmation opened with *"`SDTPLDSpecsTest` was not found in `<org>`"* on **both** paths. The end-to-end command deploys because it has just rewritten the classes, having never asked the org anything — so a user whose test class *was* deployed was told it was missing, and could reasonably conclude their previous deploy had failed. The opening line is the only thing anyone has to reason about before approving a deploy. It now names the real reason on each path
+- The confirmation was built **before** the check for anything to deploy, so a workspace where generation never ran got an approval dialog reading *"The following 0 file(s) will be deployed:"* with a blank list, and only received the actionable "run Generate first" error after approving it. The validation is now extracted and runs before the modal
+
+### Tests for three service files that changed without them
+
+Against CLAUDE.md's "update tests each change" mandate, three files had shipped untested.
+
+- **`DirectoryProcessor`** — the new object-child pruning changes recipe generation for *every* user, and its safety argument lived only in a comment. Pinned now: sibling directories are not read once `fields` is present, a directory with no `fields` child is still walked in full, the object is still registered, and — the load-bearing one — record types still resolve from the fields path even though `recordTypes` is pruned from the walk
+- **`VSCodeWorkspaceService`** — org quick pick labelling and dismissal, and the output channel's lazy creation, reuse, subscription registration, and clear-before-append ordering. Review raised that an org with an empty identifier would be indistinguishable from a dismissed picker; verification showed `buildAuthenticatedOrgDetails` already drops an unusable identifier upstream, so a test pins that invariant rather than adding a redundant guard
+- **`ConfigurationService`** — the two picklist dependency results path methods
+
+Coverage: 83.58% → 84.59% statements, 78.08% → 79.22% branches, 85.83% → 87.47% functions. `VSCodeWorkspaceService` moved from 75% to 85% statements and 61.5% to 84.6% functions.
+
 ### A stray `undefined/` directory, and the bug that created it
 
 `undefined/treecipe/GeneratedRecipes/RecipeGenerationErrors/` was committed to this branch by accident, carrying two error captures from a debugging run. It was not excluded by `.vscodeignore`, so it would have shipped in the `.vsix`.

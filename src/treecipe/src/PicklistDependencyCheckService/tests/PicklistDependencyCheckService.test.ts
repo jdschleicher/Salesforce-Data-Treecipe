@@ -640,13 +640,78 @@ describe('shouldNameEveryFileInTheDeployConfirmation', () => {
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
         jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
-        const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub');
+        const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestClassAbsentFromOrg');
 
         expect(confirmationMessage).toContain('devHub');
         expect(confirmationMessage).toContain('SDTPLDSpecsTest.cls');
         expect(confirmationMessage).toContain('SDTPicklistDependencyValidator.cls');
         // THE USER MUST BE ABLE TO SEE THAT WORKSPACE COPIES ARE WHAT GETS SENT
         expect(confirmationMessage).toContain('as they exist in your workspace');
+
+    });
+
+    /*
+        The end to end command deploys because it just rewrote the classes, having never asked the
+        org anything. Telling that user the test class "was not found" is simply false, and invites
+        them to conclude their previous deploy failed.
+    */
+    it('shouldSayTheClassWasNotFoundOnlyWhenTheOrgWasActuallyAsked', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        const absentFromOrgMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestClassAbsentFromOrg');
+        const regeneratedMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsClassesJustRegenerated');
+
+        expect(absentFromOrgMessage).toContain('was not found in "devHub"');
+
+        expect(regeneratedMessage).not.toContain('was not found');
+        expect(regeneratedMessage).toContain('just regenerated');
+        expect(regeneratedMessage).toContain('devHub');
+
+    });
+
+});
+
+describe('shouldRefuseToProposeADeployWithNothingToSend', () => {
+
+    /*
+        The confirmation lists the files that will be sent, so this has to fail BEFORE the modal is
+        built -- otherwise the user approves a dialog offering zero files and only then learns they
+        needed to run Generate first.
+    */
+    it('shouldThrowAnActionableErrorWhenTheClassesDirectoryIsMissing', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('No classes directory found at "/workspace/classes"');
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('Generate Picklist Dependency Tests');
+
+    });
+
+    it('shouldThrowAnActionableErrorWhenNoOwnedClassesAreOnDisk', () => {
+
+        // THE DIRECTORY IS THERE, BUT NOTHING THE COMMAND OWNS HAS BEEN GENERATED INTO IT
+        jest.spyOn(fs, 'existsSync').mockImplementation((candidatePath: any) => candidatePath === '/workspace/classes');
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('No picklist dependency classes were found');
+
+    });
+
+    it('shouldReturnTheDeployableClassPathsWhenGenerationHasRun', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        const deployableClassPaths = PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes');
+
+        expect(deployableClassPaths.length).toBeGreaterThan(0);
+        expect(deployableClassPaths.some(classPath => classPath.includes('SDTPLDSpecsTest.cls'))).toBe(true);
 
     });
 

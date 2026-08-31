@@ -9,7 +9,7 @@ import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProce
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
-import { PicklistDependencyCheckService } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -350,10 +350,14 @@ export class ExtensionCommandService {
 
             let deployRequired = alwaysDeploy;
 
+            // ALWAYS-DEPLOY ARRIVES HERE BECAUSE THE CLASSES WERE JUST REWRITTEN, NOT BECAUSE THE ORG WAS ASKED
+            let deployReason: PicklistDependencyDeployReason = 'specsClassesJustRegenerated';
+
             if ( !deployRequired ) {
 
                 progress.report({ message: `Checking ${targetOrgIdentifier} for the generated test class...` });
                 deployRequired = !(await PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg(targetOrgIdentifier));
+                deployReason = 'specsTestClassAbsentFromOrg';
 
                 if ( cancellationToken.isCancellationRequested ) {
                     return undefined;
@@ -363,8 +367,16 @@ export class ExtensionCommandService {
 
             if ( deployRequired ) {
 
+                /*
+                    Validated before the confirmation is built, because the confirmation lists the
+                    files that will be sent. A workspace where generation never ran would otherwise
+                    show an approval dialog offering zero files, and only produce the actionable
+                    "run Generate first" error once the user had approved it.
+                */
+                PicklistDependencyCheckService.assertDeployableClassesExist(classesDirectoryPath);
+
                 const confirmedDeploySelection = await vscode.window.showWarningMessage(
-                    PicklistDependencyCheckService.buildDeployConfirmationMessage(classesDirectoryPath, targetOrgIdentifier),
+                    PicklistDependencyCheckService.buildDeployConfirmationMessage(classesDirectoryPath, targetOrgIdentifier, deployReason),
                     { modal: true },
                     'Deploy and Run'
                 );
