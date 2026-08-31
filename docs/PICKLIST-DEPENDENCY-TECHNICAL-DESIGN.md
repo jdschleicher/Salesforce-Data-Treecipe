@@ -288,6 +288,8 @@ flowchart LR
 
 Apex's `Schema.PicklistEntry` exposes **no** `getValidFor()` accessor. The dependency matrix is reachable only through an undocumented property of `JSON.serialize(entry)`, which emits a `validFor` key holding a base64-encoded bitmap. Set bits are indexes into the **controlling field's own `getPicklistValues()` order**.
 
+**Where the bitmap comes from.** Nothing in this repository generates `validFor` — Salesforce does. An administrator defines the dependency in Setup (Field Dependencies) by ticking a matrix of controlling values × dependent values; the platform stores that matrix; and its describe engine serves each dependent value's row of it, compressed to one bit per controlling value, whenever any API describes the field. The bitmap is compactness only: a controlling picklist of 100 values costs 100 bits (~17 base64 characters) per dependent value instead of a list of names.
+
 ```mermaid
 flowchart TB
     E["Schema.PicklistEntry<br/>value = 'ranch'"]
@@ -305,6 +307,77 @@ flowchart TB
 
     style J fill:#fff3cd,stroke:#664d03
 ```
+
+### The full deserialize-and-parse walkthrough
+
+The flowchart above shows the transformation for one entry; the sequence below is the whole path — from the admin's click in Setup to the failure line an operator reads — with the serialization loophole and both decode products (`controllerValues` and the per-entry indexes) in one picture. Method names are those of `SDTSchemaPicklistDependencySource`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin
+    participant SF as Salesforce platform
+    participant Src as SDTSchemaPicklistDependencySource
+    participant Desc as Schema describe
+    participant Snap as SDTPicklistDependencySnapshot
+    participant Val as SDTPicklistDependencyValidator
+
+    Admin->>SF: Setup → Field Dependencies:<br/>tick matrix (ohiocity unlocks ranch, french)
+    Note over SF: matrix stored; describe engine will serve<br/>each dependent value's row as a validFor bitmap
+
+    Val->>Src: fetch(spec for Object.Dependent__c)
+    Src->>Desc: describeField(object, field)
+    Desc-->>Src: DescribeFieldResult (dependent)
+    Src->>Desc: getController() → describeOf(token)
+    Desc-->>Src: DescribeFieldResult (controlling)
+
+    Src->>Src: controllingValuesInIndexOrder(controlling)
+    Note over Src: picklist → getPicklistValues() order<br/>checkbox → { 'false', 'true' } exactly
+    Src->>Snap: controllerValues = { ohiocity→0, tremont→1, willowick→2 }
+
+    loop each dependent Schema.PicklistEntry
+        Src->>Src: validForOf(entry)
+        Note over Src: JSON.serialize(entry) →<br/>{ ..., "validFor": "gAAA" } —<br/>undocumented key, no Apex getter exists
+        alt validFor is null on a DEPENDENT field
+            Src-->>Val: throw — serialization contract changed<br/>(fail loud, never MISSING_VALUES everywhere)
+        else bitmap present
+            Src->>Src: decodeValidForIndexes('gAAA', 3)
+            Note over Src: base64Decode → 0x80 0x00 0x00<br/>convertToHex → "800000"<br/>walk bits MSB-first: nibble i/4, position 3-(i mod 4)<br/>ignore padding bits ≥ controlling count
+            Src->>Snap: dependentValueValidFor: ranch → [0]
+        end
+    end
+
+    Snap-->>Val: snapshot (controllerValues + per-value indexes)
+    Val->>Val: compare spec expectations to snapshot
+    Val-->>Val: PASS, or Failure:<br/>"MISSING_VALUES — Object.Field @ 'ohiocity': [ranch]"
+```
+
+### Worked bitmap examples
+
+Each row is pinned by a unit test in `SDTSchemaPicklistDependencySourceTest`:
+
+| base64 | decoded bytes | set bit indexes | meaning |
+|---|---|---|---|
+| `gAAA` | `80 00 00` | 0 | valid only for controlling value #1 |
+| `QAAA` | `40 00 00` | 1 | valid only for controlling value #2 |
+| `wAAA` | `C0 00 00` | 0, 1 | valid for the first two controlling values |
+| `AIAA` | `00 80 00` | 8 | valid only for controlling value #9 (second byte) |
+| `null` / `""` | — | none | not a dependent picklist — normal, not an error |
+
+The bitmap may carry padding bits beyond the controlling-value count (ignored) or be shorter than the requested count (decoding stops at the data's end rather than throwing).
+
+### What Salesforce documents — and what it does not
+
+`validFor` is an officially documented field of the platform's describe result; **reading it from Apex via JSON serialization is documented nowhere**. The doc trail, per API:
+
+| API | What it documents | Link |
+|---|---|---|
+| SOAP API — `DescribeSObjectResult` → `PicklistEntry.validFor` | The field itself: set only for dependent picklists, indicates which controlling values make the entry valid | [sforce_api_calls_describesobjects_describesobjectresult.htm](https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/sforce_api_calls_describesobjects_describesobjectresult.htm) |
+| Apex Reference — `Schema.PicklistEntry` | Exactly four methods (`getLabel`, `getValue`, `isActive`, `isDefaultValue`) and no `getValidFor` — the gap this design works around | [apex_class_Schema_PicklistEntry.htm](https://developer.salesforce.com/docs/atlas.en-us.apexref.meta/apexref/apex_class_Schema_PicklistEntry.htm) |
+| UI API — Picklist Values response | The same data already decoded: per-value `validFor` index arrays plus the `controllerValues` map — the source used to cross-verify the bit order, including `{"false": 0, "true": 1}` for checkboxes | [ui_api_responses_picklist_value.htm](https://developer.salesforce.com/docs/atlas.en-us.uiapi.meta/uiapi/ui_api_responses_picklist_value.htm) |
+| Metadata API — `CustomField` → `ValueSet` → `valueSettings` | How the dependency is *authored* in source format (`controllingFieldValue` per value; checkboxes spelled `checked`/`unchecked` here, unlike describe's `true`/`false`) | [customfield.htm](https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/customfield.htm) |
+
+If a URL drifts between doc releases, search developer.salesforce.com for the page titles — the section names are stable even when the atlas paths move. The `JSON.serialize(Schema.PicklistEntry)` behaviour itself is a long-standing community-known loophole with no official contract behind it, which is why risk **R4** exists and why the missing-key path fails loud.
 
 Three consequences follow, and each is handled explicitly in `SDTSchemaPicklistDependencySource`:
 
@@ -694,7 +767,7 @@ A reviewer should not approve this design on the document alone. Confirm each it
 - [ ] **Permission mapping.** In a sandbox, create a user with `API Enabled` only. Attempt `sf project deploy start` and `sf apex run test`. Record which permission each step actually demands, and update [§9.1](#91-required-permissions-by-operation) with the observed answer for your API version.
 - [ ] **Production deploy path.** Attempt the deploy against a production-like org and confirm whether the absence of `--test-level` blocks it (risk **R1**).
 - [ ] **FLS and describe.** Confirm whether a field hidden by FLS is genuinely absent from `fields.getMap()`, or merely reports `isAccessible() == false` (risk **R3**).
-- [ ] **`validFor` contract.** Confirm the serialization still emits `validFor` at your API version, including for a checkbox-controlled picklist, and that bit 0 is `false`.
+- [ ] **`validFor` contract.** Confirm the serialization still emits `validFor` at your API version, including for a checkbox-controlled picklist, and that bit 0 is `false`. [Appendix B](#appendix-b--reproducing-the-validfor-contract-from-a-blank-org) is a self-contained procedure that works from a blank org.
 - [ ] **Governor headroom.** Run the check against your largest object set and record actual CPU and heap consumption against the 10,000 ms / 6 MB budget.
 - [ ] **Data classification.** Review a generated `SDTPLDSpecs_*.cls` and a `results.json` against your repository visibility and data-handling policy ([§8](#security-design), Data classification).
 - [ ] **Deploy scope.** Confirm from a real deploy's component list that only `SDT`-prefixed classes were sent.
@@ -732,3 +805,69 @@ Every statement about behaviour in this document is drawn from the following fil
 | Org-state value object | [`SDTPicklistDependencySnapshot.cls`](../apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencySnapshot.cls) |
 | Reporting + CI marker | [`SDTPicklistDependencyReport.cls`](../apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencyReport.cls) |
 | Worked example of generated output | `SDTPLDSpecs_Treecipe_Demo_c.cls`, generated into the demo staging project by `scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step Generate` |
+
+---
+
+## Appendix B — Reproducing the `validFor` contract from a blank org
+
+A blank org has no dependent picklists, so proving the contract takes one Setup step between two anonymous-Apex snippets. This is the verification procedure behind the [§12](#12-verification-checklist) `validFor` item, and doubles as the fastest way to see the whole mechanism with your own eyes.
+
+**1. Prove the hidden key exists (runs immediately on any org):**
+
+```apex
+Schema.PicklistEntry entry = Account.Industry.getDescribe().getPicklistValues()[0];
+System.debug(JSON.serialize(entry));
+// {"active":true,"defaultValue":false,"label":"Agriculture","validFor":null,"value":"Agriculture"}
+```
+
+`validFor` is present despite `Schema.PicklistEntry` having no getter for it, and `null` because Industry is not dependent.
+
+**2. Create a dependency in Setup (~2 minutes, no code).** On Account: a picklist `Controlling__c` with values `A`, `B`; a picklist `Dependent__c` with values `X`, `Y`; then Field Dependencies → include `X` under `A` and `Y` under `B` → Save.
+
+**3. Dump and decode the real bitmap (anonymous Apex):**
+
+```apex
+Schema.DescribeFieldResult dep = Schema.getGlobalDescribe()
+    .get('Account').getDescribe()
+    .fields.getMap().get('Dependent__c').getDescribe();
+
+Schema.DescribeFieldResult ctrl = dep.getController().getDescribe();
+
+List<String> controllingValues = new List<String>();
+for (Schema.PicklistEntry e : ctrl.getPicklistValues()) {
+    controllingValues.add(e.getValue());
+}
+System.debug('Controlling values in bit order: ' + controllingValues);
+
+Map<String, Integer> hexMap = new Map<String, Integer>{
+    '0'=>0,'1'=>1,'2'=>2,'3'=>3,'4'=>4,'5'=>5,'6'=>6,'7'=>7,
+    '8'=>8,'9'=>9,'a'=>10,'b'=>11,'c'=>12,'d'=>13,'e'=>14,'f'=>15
+};
+
+for (Schema.PicklistEntry e : dep.getPicklistValues()) {
+
+    Map<String, Object> raw = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(e));
+    String validFor = (String) raw.get('validFor');
+
+    List<String> allowedFor = new List<String>();
+    String hex = EncodingUtil.convertToHex(EncodingUtil.base64Decode(validFor)).toLowerCase();
+    for (Integer i = 0; i < controllingValues.size(); i++) {
+        Integer nibble = hexMap.get(hex.substring(i / 4, i / 4 + 1));
+        if (((nibble >> (3 - Math.mod(i, 4))) & 1) == 1) {
+            allowedFor.add(controllingValues[i]);
+        }
+    }
+
+    System.debug(e.getValue() + ' -> validFor=' + validFor + ' -> allowed when Controlling = ' + allowedFor);
+}
+```
+
+Expected output (the base64 length may vary — `gA==` vs `gAAA` — the bits are what matter):
+
+```
+Controlling values in bit order: (A, B)
+X -> validFor=gA== -> allowed when Controlling = (A)
+Y -> validFor=QA== -> allowed when Controlling = (B)
+```
+
+**4. Checkbox variant (verifies bit 0 = `false`).** Repeat with a Checkbox controlling field: a dependent value requiring the box CHECKED must serialize with bit 1 set, one requiring it UNCHECKED with bit 0 set — matching `controllingValuesInIndexOrder`'s `{ 'false', 'true' }` order. If your org ever reports the opposite, `SDTSchemaPicklistDependencySource` is inverting every checkbox-controlled result and risk **R4** has materialised.
