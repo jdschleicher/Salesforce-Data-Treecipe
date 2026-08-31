@@ -23,7 +23,6 @@ src/treecipe/src/PicklistDependencyTestService
 src/treecipe/src/PicklistDependencyCheckService
 src/treecipe/src/ExtensionCommandService/ExtensionCommandService.ts
 scripts/picklist-dependency-demo
-scripts/apex
 '
 # Apex framework + generated-contract classes, wherever they currently live
 find force-app -type d -name "*PicklistDependency*" 2>/dev/null
@@ -36,7 +35,7 @@ find force-app -name "*PicklistDependency*.cls" -o -name "*PLDSpecs*.cls" 2>/dev
 
 ```bash
 CHANGED=$(git diff main...HEAD --name-only 2>/dev/null || git diff HEAD~1 --name-only)
-echo "$CHANGED" | grep -E "PicklistDependency|picklist-dependency|PLDSpecs|scripts/apex" || echo "NO PICKLIST CHANGES"
+echo "$CHANGED" | grep -E "PicklistDependency|picklist-dependency|PLDSpecs" || echo "NO PICKLIST CHANGES"
 ```
 
 If nothing matches, report **NOT APPLICABLE** and stop — do not run the remaining checks or manufacture findings.
@@ -240,7 +239,7 @@ If `@mermaid-js/mermaid-cli` is available, render each block as a final gate —
 
 ```bash
 CHANGED=$(git diff main...HEAD --name-only 2>/dev/null || git diff HEAD~1 --name-only)
-PIPELINE=$(echo "$CHANGED" | grep -E "PicklistDependency|PLDSpecs|scripts/apex" | grep -v "^scripts/picklist-dependency-demo/" || true)
+PIPELINE=$(echo "$CHANGED" | grep -E "PicklistDependency|PLDSpecs" | grep -v "^scripts/picklist-dependency-demo/" || true)
 DOCCHANGED=$(echo "$CHANGED" | grep -E "^scripts/picklist-dependency-demo/(PICKLIST-DEPENDENCY-FLOW|README)\.md$" || true)
 
 if [ -n "$PIPELINE" ] && [ -z "$DOCCHANGED" ]; then

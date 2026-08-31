@@ -15,7 +15,7 @@
  *   node treecipe-headless.js generate <objectsDir> <classesDir> <apiVersion>
  *   node treecipe-headless.js check <targetOrg> <workspaceRoot>
  *
- * Exit codes for "check" mirror scripts/apex/run-picklist-dependency-checks.js:
+ * Exit codes for "check":
  *   0  every expected combination still valid
  *   1  drift detected
  *   2  the check could not run

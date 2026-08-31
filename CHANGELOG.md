@@ -150,6 +150,10 @@ The verification above took a dozen separate invocations plus hand-written anony
 - Deploys pass `--ignore-conflicts`. The script authors every file it deploys, so local is authoritative by construction, and `Accept` creates a source-tracking conflict by design when it retrieves. Without this, every deploy after an `Accept` was refused
 - Six `PICKLIST:` tasks in `.vscode/tasks.json` wrap the script, prompting for the scratch org alias and Dev Hub
 
+### Removed: the anonymous-Apex CI runner
+
+`scripts/apex/runPicklistDependencyChecks.apex` and `scripts/apex/run-picklist-dependency-checks.js` (with the `npm run picklist-dependency-check` script) are deleted. Every picklist dependency check now runs one way: from generated Apex that has been **deployed** to the target environment and executed as a test class in system context. The anonymous-Apex path ran as the authenticated user, so its result could vary — misleadingly — with that user's field-level security, and nothing invoked it: no CI workflow called the runner, `.vscodeignore` already excluded it from the `.vsix`, and the end-to-end demo harness deploys the generated classes instead. The `PICKLIST_DEPENDENCY_CHECK_RESULT` marker is unaffected — `SDTPicklistDependencyReport` still emits it
+
 ## [2.14.0] - Run Picklist Dependency Check Command
 
 Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

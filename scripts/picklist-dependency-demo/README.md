@@ -382,9 +382,9 @@ Worth watching, because automated tests mock `vscode` and cannot reach these:
   writing any other drift scenario: rewire an entry, do not delete one. The `Restore` step relies on
   the same fact — it rewires the values back rather than re-adding them.
 
-- **The Windows `sf.cmd` path is unverified on Windows.** Both the extension service and
-  `scripts/apex/run-picklist-dependency-checks.js` enable the shell on win32 because, since the Node
-  fix for CVE-2024-27980, spawning a `.cmd` with arguments and *without* a shell fails with `EINVAL`.
+- **The Windows `sf.cmd` path is unverified on Windows.** The extension service enables the shell
+  on win32 because, since the Node fix for CVE-2024-27980, spawning a `.cmd` with arguments and
+  *without* a shell fails with `EINVAL`.
   That reasoning follows documented Node behavior but has not been run on Windows. This PowerShell
   script is unaffected — PowerShell resolves and invokes the shim itself.
 - **The VS Code UI layer has no automated coverage** beyond unit tests against a mocked `vscode`.

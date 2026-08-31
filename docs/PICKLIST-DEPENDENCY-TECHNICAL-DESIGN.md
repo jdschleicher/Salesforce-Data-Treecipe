@@ -203,7 +203,7 @@ Every emitted class carries the `SDT` prefix — this is a hard project rule, no
 
 ### Why a per-object class *and* an aggregator
 
-An object appearing or disappearing from the metadata changes only which per-object class exists. `SDTPLDSpecs.all()` is the stable seam that every consumer — the generated test, the anonymous-Apex entry point, any customer-written CI Apex — binds to. Without it, each metadata change would ripple into every caller.
+An object appearing or disappearing from the metadata changes only which per-object class exists. `SDTPLDSpecs.all()` is the stable seam that every consumer — the generated test, any customer-written CI Apex — binds to. Without it, each metadata change would ripple into every caller.
 
 ---
 
@@ -311,24 +311,18 @@ Three consequences follow, and each is handled explicitly in `SDTSchemaPicklistD
 2. **Checkbox controlling fields report no picklist values.** Their controlling values are supplied as `{ 'false', 'true' }` in that order. The order is not arbitrary — inverting it silently inverts every result for a checkbox-controlled picklist. Verified against a live org: bit 0 = `false`, bit 1 = `true`. Note the Metadata API spells these `checked`/`unchecked` in `valueSettings` while describe and the UI API key them `true`/`false`; **a spec must use `true`/`false`**.
 3. **This replaced a ConnectApi-based design.** `ConnectApi.UiApi` does not exist in Apex (deploy fails outright), and the UI API is reachable only as a REST callout — which would require Remote Site or Named Credential configuration and **cannot run inside `@IsTest` at all**. Describe has neither constraint. This is why goal **G5** is achievable.
 
-### Execution paths
+### Execution path
 
-Two entry points exist, with materially different execution contexts. This distinction drives [§9](#9-permissions-and-access-model).
+One entry point exists: the generated, **deployed** Apex test. Every run — the extension command, the demo harness, CI — deploys `SDTPLDSpecsTest` alongside the specs and executes it with `sf apex run test`. There is deliberately no anonymous-Apex variant: a check that runs from deployed Apex always executes in system context, so its result cannot vary with the running user ([§9](#9-permissions-and-access-model)).
 
 ```mermaid
 flowchart TB
     START(["SDTPLDSpecs.all()"])
 
-    subgraph P1["Path A — Apex test (the extension's path)"]
+    subgraph P1["Apex test — generated and deployed"]
         T1["sf apex run test --tests SDTPLDSpecsTest"]
         T2["SDTPLDSpecsTest<br/>one method per object"]
         T3["Runs in <b>system context</b>"]
-    end
-
-    subgraph P2["Path B — anonymous Apex (the CI script path)"]
-        A1["sf apex run -f runPicklistDependencyChecks.apex"]
-        A2["Report + RESULT marker to debug log"]
-        A3["Runs as the <b>authenticated user</b>"]
     end
 
     V["SDTPicklistDependencyValidator.validate(specs)"]
@@ -339,9 +333,7 @@ flowchart TB
     EMPTY(["EMPTY — never green"])
 
     START --> P1 --> V
-    START --> P2 --> V
     T1 --> T2 --> T3
-    A1 --> A2 --> A3
     V --> S
     S --> R
     R -->|"yes, specs > 0"| PASS
@@ -349,7 +341,6 @@ flowchart TB
     START -->|"specs == 0"| EMPTY
 
     style P1 fill:#eef2ff,stroke:#4338ca
-    style P2 fill:#f0fdf4,stroke:#15803d
     style EMPTY fill:#fef3c7,stroke:#92400e
     style FAIL fill:#fee2e2,stroke:#b91c1c
 ```
@@ -536,7 +527,6 @@ flowchart TB
 | Query `ApexClass` (deploy-needed check) | `sf data query` | **API Enabled**; read access to the `ApexClass` tooling/standard object, which in practice accompanies **View Setup and Configuration** **[verify-in-org]** | A failure is treated as "not deployed" — the design prefers a redundant prompt over a skipped deploy |
 | Deploy the classes | `sf project deploy start` | **API Enabled** + **Author Apex** **[verify-in-org]** | Author Apex is the governing permission for creating/updating `ApexClass` via the Metadata API |
 | Run the test class | `sf apex run test` | **API Enabled** + Apex test execution rights, conventionally granted with **Author Apex** **[verify-in-org]** | Creates no records; reads describe only |
-| Run the anonymous-Apex variant | `sf apex run -f` | **API Enabled** + **Author Apex** **[verify-in-org]** | CI-runner path only; not used by the extension commands |
 
 > **[verify-in-org]** The precise permission names above reflect standard Salesforce practice, but permission-to-operation mappings change between releases and are affected by org-specific permission sets. Confirm each against your own org and your current API version before writing them into a policy document. [§12](#12-verification-checklist) gives a procedure.
 
@@ -545,7 +535,8 @@ flowchart TB
 | Path | Context | CRUD/FLS enforced? | Implication |
 |---|---|---|---|
 | `SDTPLDSpecsTest` via `sf apex run test` | **System context** (Apex tests run in system mode absent an explicit `System.runAs`) | **No** | Describe returns the full field set regardless of the running user's field-level security. The assertion result does **not** vary by who runs it. This is what makes the check a reliable, reproducible gate |
-| `runPicklistDependencyChecks.apex` via `sf apex run` | **Current user** | Anonymous Apex is compiled and executed against the current user's object and field permissions **[verify-in-org]** | A user lacking visibility on a field could see a different — and misleading — result on this path. **Use a consistent, adequately-permissioned integration user for CI.** |
+
+Running the check as **anonymous Apex** (`sf apex run -f`) would execute as the authenticated user, against that user's object and field permissions — a user lacking visibility on a field could see a different, and misleading, result. This is the design reason the check runs **only** from generated Apex that has been deployed to the target environment; no anonymous-Apex entry point ships.
 
 `SDTSchemaPicklistDependencySource` is declared `with sharing`. This is defensive hygiene, not a functional control: **sharing rules govern record access and have no bearing on `Schema` describe**, which reads metadata. No records are queried anywhere in this component.
 
@@ -633,7 +624,7 @@ Caching returns roughly a tenth of the whole transaction budget on the realistic
 |---|---|---|
 | **Distinct objects** in the registry | `FIELD_MAPS_BY_OBJECT` grows monotonically with distinct objects | Trades CPU for heap against the 6 MB limit. **Revisit if a registry spans dozens of objects** |
 | **Controlling picklist width** | Decode is O(dependent × controlling) | Overtakes JSON cost as the controlling picklist grows |
-| **Total spec count in one transaction** | All specs share one 10,000 ms budget | The per-object test methods mitigate this on the **test** path (each method validates one object, in its own transaction). The **anonymous Apex** path validates everything in one — the more likely place to hit the ceiling |
+| **Total spec count in one transaction** | All specs share one 10,000 ms budget | The per-object test methods mitigate this: each method validates one object, in its own transaction. Customer-written Apex that calls `SDTPLDSpecs.all()` and validates everything in one transaction is the more likely place to hit the ceiling |
 | **Cache and `System.runAs`** | Statics are per-transaction and cannot go stale from an admin edit or leak between users in production | **Exception:** `System.runAs` switches user *within* a test transaction. A future FLS-variant test must call `clearCaches()` between `runAs` blocks or it will assert against the previous user's describe and **pass falsely** |
 
 ### Extension-host performance
@@ -685,13 +676,13 @@ Each generated file carries a `GENERATED FILE -- regenerating overwrites it` hea
 
 ### CI integration contract
 
-The anonymous-Apex runner keys its exit code off a single stable line:
+CI runs the same path as everything else: deploy the generated classes, then `sf apex run test --tests SDTPLDSpecsTest` and gate on the test outcome. For pipelines that read the report output, `SDTPicklistDependencyReport` emits a single stable line:
 
 ```
 PICKLIST_DEPENDENCY_CHECK_RESULT=PASS | FAIL | EMPTY
 ```
 
-`EMPTY` must be treated as failure. Any pipeline consuming this component should assert on the marker rather than on log text, which is not a stable contract.
+`EMPTY` must be treated as failure. Any pipeline consuming this component should assert on the test result or the marker rather than on log text, which is not a stable contract.
 
 ---
 
@@ -701,7 +692,6 @@ A reviewer should not approve this design on the document alone. Confirm each it
 
 - [ ] **Permission mapping.** In a sandbox, create a user with `API Enabled` only. Attempt `sf project deploy start` and `sf apex run test`. Record which permission each step actually demands, and update [§9.1](#91-required-permissions-by-operation) with the observed answer for your API version.
 - [ ] **Production deploy path.** Attempt the deploy against a production-like org and confirm whether the absence of `--test-level` blocks it (risk **R1**).
-- [ ] **Anonymous Apex execution context.** Run the anonymous script as a low-privilege user against a field they cannot see. Confirm whether the result differs from the system-context test run ([§9.2](#92-execution-context--the-part-that-surprises-people)).
 - [ ] **FLS and describe.** Confirm whether a field hidden by FLS is genuinely absent from `fields.getMap()`, or merely reports `isAccessible() == false` (risk **R3**).
 - [ ] **`validFor` contract.** Confirm the serialization still emits `validFor` at your API version, including for a checkbox-controlled picklist, and that bit 0 is `false`.
 - [ ] **Governor headroom.** Run the check against your largest object set and record actual CPU and heap consumption against the 10,000 ms / 6 MB budget.
@@ -740,5 +730,4 @@ Every statement about behaviour in this document is drawn from the following fil
 | Describe source, caching, bit decode | [`SDTSchemaPicklistDependencySource.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTSchemaPicklistDependencySource.cls) |
 | Org-state value object | [`SDTPicklistDependencySnapshot.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTPicklistDependencySnapshot.cls) |
 | Reporting + CI marker | [`SDTPicklistDependencyReport.cls`](../force-app/main/default/classes/SDTPicklistDependencyFramework/SDTPicklistDependencyReport.cls) |
-| CI entry point | [`runPicklistDependencyChecks.apex`](../scripts/apex/runPicklistDependencyChecks.apex) |
 | Worked example of generated output | [`SDTPLDSpecs_Treecipe_Demo_c.cls`](../force-app/main/default/classes/SDTPLDSpecs_Treecipe_Demo_c.cls) |

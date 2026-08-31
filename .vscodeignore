@@ -12,7 +12,6 @@ vsc-extension-quickstart.md
 extensionDevelopmentScriptsAndArtifacts/**
 developmentSupportScripts/**
 force-app/**
-scripts/apex/**
 scripts/picklist-dependency-demo/**
 sfdx-project.json
 
