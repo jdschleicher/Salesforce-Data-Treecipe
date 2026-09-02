@@ -135,6 +135,146 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
 
     });
 
+    /*
+        Reading the sets is supplementary to every command that does it, so a failure here must cost
+        the sets and nothing else. Awaited from a command body, an unguarded throw would abort the
+        whole run over metadata a field-level skip warning already explains.
+    */
+    describe("a globalValueSets directory that cannot be read", () => {
+
+        test("given a directory listing that throws, leaves the sets empty rather than throwing at the caller", async () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockRejectedValue(new Error('EACCES'));
+
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            await expect(globalValueSetSingleton.initialize('./unreadable', true)).resolves.toBeUndefined();
+            expect(globalValueSetSingleton.getPicklistValueMaps()).toBeNull();
+
+        });
+
+        test("given one malformed set file, keeps every other set rather than losing them all", async () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockResolvedValue([
+                ['Broken.globalValueSet-meta.xml', vscode.FileType.File],
+                ['Planets.globalValueSet-meta.xml', vscode.FileType.File]
+            ] as any);
+
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockImplementation(async (uri, fileName) => {
+                    if ( fileName === 'Broken.globalValueSet-meta.xml' ) {
+                        return '<GlobalValueSet><customValue><notFullName>x</notFullName></customValue></GlobalValueSet>';
+                    }
+                    return XMLMarkupMockService.getPlanetsGlobalValueSetXMLFileContent();
+                });
+
+            await globalValueSetSingleton.initialize('./partly-broken', true);
+
+            const picklistValuesByGlobalValueSetName = globalValueSetSingleton.getPicklistValueMaps();
+            expect(picklistValuesByGlobalValueSetName['Planets']).toBeTruthy();
+
+        });
+
+        test("given a set file with no customValue children, skips it without throwing", async () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory')
+                .mockResolvedValue([['Empty.globalValueSet-meta.xml', vscode.FileType.File]] as any);
+
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockResolvedValue('<?xml version="1.0" encoding="UTF-8"?><GlobalValueSet><masterLabel>Empty</masterLabel></GlobalValueSet>');
+
+            await expect(globalValueSetSingleton.initialize('./empty-set', true)).resolves.toBeUndefined();
+
+        });
+
+    });
+
+    /*
+        An INACTIVE value cannot be selected in any org. Left in the universe it becomes an
+        expectNone line for a controlling value the org's describe never returns, which the validator
+        reports as UNKNOWN_CONTROLLING_VALUE -- a generated spec that must fail against correct
+        metadata.
+    */
+    describe("inactive global value set values", () => {
+
+        test("given an inactive customValue, leaves it out of the set's usable values", async () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory')
+                .mockResolvedValue([['Territories.globalValueSet-meta.xml', vscode.FileType.File]] as any);
+
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockResolvedValue(`<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>Still_Active</fullName>
+        <isActive>true</isActive>
+        <label>Still Active</label>
+    </customValue>
+    <customValue>
+        <fullName>Retired</fullName>
+        <isActive>false</isActive>
+        <label>Retired</label>
+    </customValue>
+    <customValue>
+        <fullName>No_Markup_Means_Active</fullName>
+        <label>No Markup Means Active</label>
+    </customValue>
+    <masterLabel>Territories</masterLabel>
+</GlobalValueSet>`);
+
+            await globalValueSetSingleton.initialize('./territories', true);
+
+            expect(globalValueSetSingleton.getPicklistValueMaps()['Territories'])
+                .toEqual(['Still_Active', 'No_Markup_Means_Active']);
+
+        });
+
+    });
+
+    /*
+        Both names are registered, so two sets collide when one's masterLabel equals another's file
+        name. Last-write-wins would hand a field the WRONG value universe with directory order
+        deciding which -- a silent wrong answer rather than a visible failure.
+    */
+    describe("a masterLabel that collides with another set's full name", () => {
+
+        test("given a collision, the set that owns the name as its full name wins", async () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(vscode.workspace.fs, 'readDirectory').mockResolvedValue([
+                ['Zone_Values.globalValueSet-meta.xml', vscode.FileType.File],
+                ['Other_Set.globalValueSet-meta.xml', vscode.FileType.File]
+            ] as any);
+
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
+                .mockImplementation(async (uri, fileName) => {
+                    if ( fileName === 'Zone_Values.globalValueSet-meta.xml' ) {
+                        return '<?xml version="1.0"?><GlobalValueSet><customValue><fullName>owned</fullName></customValue><masterLabel>Zone Values</masterLabel></GlobalValueSet>';
+                    }
+                    // THIS SET'S LABEL IS THE OTHER SET'S FULL NAME
+                    return '<?xml version="1.0"?><GlobalValueSet><customValue><fullName>impostor</fullName></customValue><masterLabel>Zone_Values</masterLabel></GlobalValueSet>';
+                });
+
+            await globalValueSetSingleton.initialize('./colliding', true);
+
+            expect(globalValueSetSingleton.getPicklistValueMaps()['Zone_Values']).toEqual(['owned']);
+
+        });
+
+    });
+
     describe("getGlobalValueSetFullNameByFileName", () => {
 
         test("given a source format global value set file name, returns the full name a field references it by", () => {

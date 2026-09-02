@@ -40,13 +40,43 @@ export class GlobalValueSetSingleton {
         }
         
         const globalValueSetsTargetUri = vscode.Uri.file(expectedGlobalValueSetDirectoriesPath);
-        const globalValueSetFileEntryTuples = await vscode.workspace.fs.readDirectory(globalValueSetsTargetUri);
 
-        this.globalValueSets = {};
+        /*
+            Reading the sets must never take the CALLER down with it. This used to be unreachable --
+            the picklist dependency callers passed the flag that returns early, and recipe generation
+            does not await -- so a directory that could not be listed, or one malformed file, threw
+            into nothing. Awaited from a command body it would abort the whole run over metadata that
+            is supplementary: a field that actually needed a set is named individually in its own
+            skip warning, which is a far better outcome than losing every other object's specs.
+        */
+        let globalValueSetFileEntryTuples: [string, vscode.FileType][];
+
+        try {
+            globalValueSetFileEntryTuples = await vscode.workspace.fs.readDirectory(globalValueSetsTargetUri);
+        } catch {
+            this.globalValueSets = null;
+            return;
+        }
+
+        if ( !Array.isArray(globalValueSetFileEntryTuples) ) {
+            this.globalValueSets = null;
+            return;
+        }
+
+        /*
+            A set's name comes from a file name or an admin-editable <masterLabel>, so it is
+            untrusted text used as an object key. A plain object literal would let a set called
+            "__proto__" reassign the map's prototype; a null-prototype map has no prototype to
+            reassign and no inherited keys to shadow a real lookup.
+        */
+        this.globalValueSets = Object.create(null);
 
         for (const [fileName, fileTypeEnum] of globalValueSetFileEntryTuples) {
 
             if ( XmlFileProcessor.isXMLFileType(fileName, fileTypeEnum) ) {
+
+                // ONE UNREADABLE OR MALFORMED SET COSTS THAT SET, NOT EVERY OTHER SET AND NOT THE CALLING COMMAND
+                try {
 
                 const globalValueSetXMLFileContent =  await this.getGlobalValueSetPicklistXMLFileContent(globalValueSetsTargetUri, fileName);
                 
@@ -69,7 +99,11 @@ export class GlobalValueSetSingleton {
                     this.addGlobalValueSetUnderEveryNameItIsReferencedBy(fileName, fileXML, picklistValuesFromGlobalValueSet);
 
                 }
-                
+
+                } catch {
+                    continue;
+                }
+
             }
 
         }
@@ -97,6 +131,16 @@ export class GlobalValueSetSingleton {
         [globalValueSetFullName, globalValueSetMasterLabel].forEach(globalValueSetName => {
 
             if ( typeof globalValueSetName !== 'string' || globalValueSetName.trim() === '' ) {
+                return;
+            }
+
+            /*
+                The full name is registered first and wins. Two sets collide when one's masterLabel
+                equals another's file name, and last-write-wins would hand a field the WRONG value
+                universe with directory order deciding which -- a silent wrong answer. The alias
+                yields to the set that genuinely owns the name.
+            */
+            if ( globalValueSetName in this.globalValueSets ) {
                 return;
             }
 
@@ -151,11 +195,36 @@ export class GlobalValueSetSingleton {
         }
 
         let globalValueSet = fileXML.GlobalValueSet;
+
+        /*
+            A GlobalValueSet file with no <customValue> children parses to an object with no
+            customValue key. Unguarded this threw a TypeError out of initialize -- which the
+            fire-and-forget recipe call swallowed, but the awaited picklist dependency calls would
+            surface as an aborted command over one malformed file.
+        */
+        if ( !Array.isArray(globalValueSet.customValue) ) {
+            return picklistValuesFinal;
+        }
+
         globalValueSet.customValue.forEach(customValueDefinitionElement => {
-            
+
+            /*
+                An INACTIVE value cannot be selected in any org, so it is not part of the set's
+                usable universe. Left in, it reaches picklist dependency generation as a declared
+                value and a controlling value that unlocks nothing becomes expectNone -- against an
+                org whose describe never returns it, which reports UNKNOWN_CONTROLLING_VALUE. That
+                is a generated spec that must fail against correct metadata. Absent markup means
+                active, which is how Salesforce reads it.
+            */
+            const isActiveMarkupValue = customValueDefinitionElement?.isActive?.[0];
+            const isPicklistValueActive = !( isActiveMarkupValue === 'false' || isActiveMarkupValue === false );
+            if ( !isPicklistValueActive ) {
+                return;
+            }
+
             const picklistOptionApiName:string = customValueDefinitionElement.fullName[0];
             picklistValuesFinal.push(picklistOptionApiName);
-            
+
         });
 
         return picklistValuesFinal;

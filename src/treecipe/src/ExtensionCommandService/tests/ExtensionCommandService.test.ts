@@ -142,17 +142,50 @@ describe('ExtensionCommandService', () => {
             recipe generation used to read them, so spec generation saw such a field as having no
             declared values at all.
         */
-        test('given the generate command, reads the global value sets beside the objects directory before collecting specs', async () => {
+        /*
+            Asserted on the singleton's RESULTING STATE rather than on initialize's argument tuple.
+            The first version of this test mocked initialize away and asserted the arguments it was
+            called with -- which locked in a second argument of false, the value that makes
+            initialize return before doing any work. It could never have failed on the bug it was
+            written to cover. What matters is that the sets are actually loaded by the time specs
+            are collected, so that is what is asserted.
+        */
+        test('given the generate command, actually loads the global value sets beside the objects directory', async () => {
 
             stubCollectionResult([specDetail]);
 
-            const initializeGlobalValueSetsSpy = jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize')
-                .mockResolvedValue(undefined);
+            const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
+
+            /*
+                A REAL globalValueSets DIRECTORY HOLDING ONE SET, READ THROUGH THE SAME CALL THE
+                COMMAND MAKES. Scoped with "Once" and a path-aware existsSync: the vscode module
+                factory's jest.fn instances are shared for the whole file and the suite's
+                beforeEach only clears CALLS, not implementations, so an unscoped mockResolvedValue
+                here leaks into every later test.
+            */
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                const checkedPathText = String(checkedPath);
+                return checkedPathText.includes('objects') || checkedPathText.includes('globalValueSets');
+            });
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValueOnce([
+                ['SDT_Territory_Values.globalValueSet-meta.xml', 1]
+            ]);
+            jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent').mockResolvedValue(`<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>Territory_North</fullName>
+        <default>false</default>
+        <label>Territory North</label>
+    </customValue>
+    <masterLabel>SDT Territory Values</masterLabel>
+</GlobalValueSet>`);
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            // THE THIRD ARGUMENT SUPPRESSES THE "no globalValueSets directory" NOTICE, WHICH IS NOISE ON A PROJECT WITHOUT ONE
-            expect(initializeGlobalValueSetsSpy).toHaveBeenCalledWith('/workspace/force-app/main/default', false, false);
+            const picklistValuesByGlobalValueSetName = globalValueSetSingleton.getPicklistValueMaps();
+
+            expect(picklistValuesByGlobalValueSetName).toBeTruthy();
+            expect(picklistValuesByGlobalValueSetName['SDT_Territory_Values']).toEqual(['Territory_North']);
 
         });
 
@@ -471,7 +504,9 @@ describe('ExtensionCommandService', () => {
 
             expect(warningMessages).toHaveLength(4);
             expect(warningMessages.slice(0, 3)).toEqual(['skipped field 0', 'skipped field 1', 'skipped field 2']);
-            expect(warningMessages[3]).toContain('7 more dependent picklist field(s) or record type combination(s) were skipped');
+            expect(warningMessages[3]).toContain('7 more picklist dependency warning(s)');
+            // NOT EVERY SUPPRESSED ENTRY IS A SKIP -- AN UNDECLARED valueSettings VALUE IS DROPPED FROM A SPEC THAT IS STILL GENERATED
+            expect(warningMessages[3]).not.toContain('were skipped');
 
         });
 

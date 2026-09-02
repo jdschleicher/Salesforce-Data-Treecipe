@@ -15,6 +15,8 @@ Generation read only the field file, so the declared-value universe was just the
 - A field references its set by **full name** (the file name), while the only name inside the set file is `<masterLabel>` — an admin-editable display label. Global value sets are now registered under **both** names, collapsing to one entry wherever they agree, so a set whose label was renamed is still reachable from the field pointing at it
 - A field naming a global value set that is **not in the project** is skipped with an explicit warning naming the set and the `globalValueSets` directory, rather than being specced against an empty universe
 - A `valueSettings` entry naming a value the set does **not** declare — usually a value removed from the set without cleaning up the field — is dropped from the spec and reported. No org exposes that value, so asserting it would generate a spec that must fail for a reason the spec cannot fix. A controlling value left unlocking nothing becomes `expectNone`, which is what the metadata now says about it
+- **Inactive** global value set values are excluded from the universe. An inactive value cannot be selected in any org, so leaving it in turned a controlling value that unlocks nothing into an `expectNone` line the org's describe can never satisfy — a generated spec that must fail against correct metadata
+- Reading the sets never takes the calling command down with it. A `globalValueSets` directory that cannot be listed, or one malformed set file, costs that set rather than every other object's specs
 - Recipe YAML output is unchanged: recipe generation reads the same `valueSettings`-derived map it always did
 
 ### Dependency chains deeper than two links are covered

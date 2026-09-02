@@ -2416,15 +2416,13 @@ describe('PicklistDependencyTestService', () => {
         /*
             The singleton outlives a test, and a later test resolving a global value set it never
             asked for would be reading state rather than its own fixture.
+
+            Cleared by stubbing the reader rather than by initializing against a path that does not
+            exist. The earlier version relied on that path staying absent -- creating a directory
+            with that name would have silently switched this isolation off.
         */
-        afterEach(async () => {
-
-            const isGlobalValuesInitializedOnExtensionStartUp = true;
-            await GlobalValueSetSingleton.getInstance().initialize(
-                path.join(__dirname, 'mocks', 'DirectoryWithNoGlobalValueSets'),
-                isGlobalValuesInitializedOnExtensionStartUp
-            );
-
+        afterEach(() => {
+            jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getPicklistValueMaps').mockReturnValue(null);
         });
 
         describe('getGlobalValueSetPicklistValues', () => {
