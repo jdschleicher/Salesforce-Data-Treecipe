@@ -263,7 +263,7 @@ Once generated, you can also run the check any time with "Run Picklist Dependenc
 
 #### Once the classes are in your org
 
-Everything above is the VS Code side. For the org side — what each deployed class is, how to read a generated spec against the **Field Dependencies** grid in Setup, how to run the tests from Setup or the Developer Console, how to trigger a failure on purpose to prove the gate works, and how to decide whether to fix the org or regenerate the specs — see the **[Picklist Dependency In-Org Guide](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md)**. It is written for an admin or developer looking at `SDTPLDSpecsTest` in an org, and assumes nothing about this extension.
+Everything above is the VS Code side. For the org side — what each deployed class is, how to read a generated spec against the **Field Dependencies** grid in Setup — including which argument is which, and how a record-type-scoped spec differs from the field-level one — how to run the tests from Setup or the Developer Console, how to trigger a failure on purpose to prove the gate works, and how to decide whether to fix the org or regenerate the specs — see the **[Picklist Dependency In-Org Guide](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md)**. It is written for an admin or developer looking at `SDTPLDSpecsTest` in an org, and assumes nothing about this extension.
 
 ---
 
