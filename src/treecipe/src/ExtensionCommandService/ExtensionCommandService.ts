@@ -163,8 +163,15 @@ export class ExtensionCommandService {
                     Awaited: the walk below reads these sets, so starting it first is a race that
                     empties every global-value-set-backed picklist in the generated recipe whenever
                     the read loses.
+
+                    The directory-level notice is suppressed, matching the picklist dependency paths.
+                    Most projects have no global value sets and nothing is missing for them, while a
+                    field that DOES need one already generates a TODO naming that field exactly --
+                    strictly more useful than a toast on every run. Note this notice never actually
+                    appeared before: the call returned at its guard without reaching the check.
                 */
-                await globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory);
+                const isMissingGlobalValueSetsDirectoryWarningShown = false;
+                await globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
                 const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);

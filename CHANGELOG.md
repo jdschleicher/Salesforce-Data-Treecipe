@@ -16,7 +16,22 @@ Territory__c: '### TODO: This picklist field needs manually updated with either 
 Territory__c: ${{ faker.helpers.arrayElement([`Territory_North`,`Territory_South`]) }}
 ```
 
-If your project uses global value sets, regenerating will replace those TODO placeholders with real generated values. That is the only output change.
+If your project uses global value sets, regenerating will replace those TODO placeholders with real generated values.
+
+**Generate Treecipe no longer warns when a project has no `globalValueSets` directory.** That notice never actually appeared before — the call returned at its guard before reaching the check — and it would now fire on every run for the majority of projects, which have no global value sets at all. A field that genuinely needs a set still generates a TODO naming that field exactly, which is more useful than a directory-level toast.
+
+### Security: picklist values are now escaped before being embedded in faker expressions
+
+A picklist option is untrusted text — it comes from field metadata, or a global value set, in whatever repository the user opened — and both backends embedded it into an executable expression with no escaping, contrary to the rule stated in `CLAUDE.md`.
+
+- **faker-js**: options are embedded in a JavaScript template literal that the recipe processor passes to `new Function()`. A value containing a backtick closed the literal, and the rest of the value was executed as code rather than read as data. A `${...}` interpolation did the same without needing a backtick.
+- **Snowfakery**: options are embedded in a single-quoted Jinja2 string literal evaluated by the `snowfakery` CLI. A value containing an apostrophe closed the literal the same way.
+
+Both backends now escape every option at every embedding site — backslash first, then the delimiter each language uses, then newlines, which also prevents a value from breaking the generated recipe's YAML structure. The two escapers are deliberately **separate**, because the backends embed into different languages and one escaper covering both would under-escape each.
+
+Values without special characters generate byte-identical output; only a value containing a backtick, apostrophe, backslash, `${`, or newline changes — and only to be emitted correctly as data.
+
+This flaw predates this release and was reachable through ordinary picklist values, not only global value sets. It was found by the security review on the PR that made global value sets reach recipe generation for the first time.
 
 ### The flag is gone rather than fixed
 

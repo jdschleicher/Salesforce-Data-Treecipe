@@ -245,9 +245,37 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
+    /*
+        A picklist option is UNTRUSTED text -- it comes from field metadata or a global value set in
+        whatever repository the user opened -- and it is embedded inside a JavaScript template
+        literal that FakerJSRecipeProcessor later hands to new Function(). Unescaped, a value
+        containing a backtick closes the literal and everything after it is executed as code rather
+        than read as data.
+
+        Escaped, in this order:
+          \  first, or the escapes added below would themselves be re-escaped
+          `   ends the template literal
+          ${  opens an interpolation, which evaluates arbitrary expressions without needing a backtick
+          newlines, which would otherwise break the generated recipe's YAML structure
+
+        Escaping, not stripping: a value legitimately containing these characters must still generate
+        that exact value.
+    */
+    static escapePicklistOptionForTemplateLiteral(picklistOption: string): string {
+
+        return String(picklistOption)
+            .replace(/\\/g, '\\\\')
+            .replace(/`/g, '\\`')
+            .replace(/\$\{/g, '\\${')
+            .replace(/\r\n|\r|\n/g, '\\n');
+
+    }
+
     buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
 
-        const joinedChoices = availablePicklistChoices.map(option => `\`${option}\``).join(',');
+        const joinedChoices = availablePicklistChoices
+            .map(option => `\`${FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral(option)}\``)
+            .join(',');
         const fakerjsChoicesSyntax = `faker.helpers.arrayElement([${joinedChoices}])`;
 
         return fakerjsChoicesSyntax;
@@ -256,7 +284,9 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
 
-        const joinedChoices = availablePicklistChoices.map(option => `\`${option}\``).join(',');
+        const joinedChoices = availablePicklistChoices
+            .map(option => `\`${FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral(option)}\``)
+            .join(',');
         const fakerjsChoicesSyntax = `(faker.helpers.arrayElements([${joinedChoices}])).join(';')`;
 
         return fakerjsChoicesSyntax;

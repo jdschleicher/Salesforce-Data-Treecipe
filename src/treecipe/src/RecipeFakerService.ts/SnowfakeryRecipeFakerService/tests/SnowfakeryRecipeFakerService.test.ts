@@ -452,4 +452,67 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
     });
 
+
+    /*
+        The Snowfakery half of the same defect. Options are embedded in a SINGLE-QUOTED Jinja2 string
+        literal that the snowfakery CLI evaluates, so the dangerous character here is the apostrophe
+        rather than the backtick -- which is why this escaper is separate from the FakerJS one rather
+        than shared.
+    */
+    describe('escapePicklistOptionForJinjaStringLiteral', () => {
+
+        test('given a value containing an apostrophe, escapes it so it cannot close the Jinja literal', () => {
+
+            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral("O'Brien")).toBe("O\\'Brien");
+
+        });
+
+        test('given a breakout attempt, the injected expression is neutralised', () => {
+
+            const breakoutAttempt = "a', 'x') ~ INJECTED ~ random_choice('b";
+            const escapedOption = SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(breakoutAttempt);
+
+            // EVERY APOSTROPHE IS ESCAPED, SO NONE OF IT CAN LEAVE THE LITERAL
+            expect(escapedOption).not.toMatch(/[^\\]'/);
+
+        });
+
+        test('given a value containing a backslash, escapes it first so it cannot re-escape the escaping', () => {
+
+            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral('back\\slash')).toBe('back\\\\slash');
+            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral("trailing\\")).toBe("trailing\\\\");
+
+        });
+
+        test('given a value containing a newline, escapes it so the recipe YAML structure survives', () => {
+
+            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral('a\nb')).toBe('a\\nb');
+
+        });
+
+        test('given ordinary values, leaves them byte-identical', () => {
+
+            const ordinaryOptions = ['guardians', 'cavs', 'Ohio_City', 'Some Value'];
+            ordinaryOptions.forEach(ordinaryOption => {
+                expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(ordinaryOption)).toBe(ordinaryOption);
+            });
+
+        });
+
+        test('every random_choice embedding site escapes, not just the first', () => {
+
+            const joinedChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(["O'Brien", "D'Angelo"]);
+
+            /*
+                Exact match rather than a pattern: the only unescaped apostrophes in the result are
+                the "', '" delimiters BETWEEN options, which must stay unescaped, so a
+                "no unescaped quotes" regex would flag correct output. Pinning the whole string says
+                precisely which quotes are structure and which are data.
+            */
+            expect(joinedChoices).toBe("O\\'Brien', 'D\\'Angelo");
+
+        });
+
+    });
+
 });
