@@ -234,12 +234,11 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualFailures[0]).toEqual({
                 objectApiName: 'Chain_Example__c',
                 fieldApiName: 'State__c',
-                controllingValue: 'USA',
                 kind: 'MISSING_VALUES',
-                message: 'expected value(s) not unlocked in the org: Texas'
+                controllingValueAndMessage: 'USA: expected value(s) not unlocked in the org: Texas'
             });
             expect(actualFailures[1].kind).toBe('FORBIDDEN_VALUES_PRESENT');
-            expect(actualFailures[1].controllingValue).toBe('Ohio');
+            expect(actualFailures[1].controllingValueAndMessage).toBe('Ohio: value(s) unlocked that local metadata forbids: Toronto');
 
         });
 
@@ -250,7 +249,8 @@ describe('PicklistDependencyExplorerService', () => {
             const actualFailures = PicklistDependencyExplorerService.parseFailureLines(assertionMessage);
 
             expect(actualFailures).toHaveLength(1);
-            expect(actualFailures[0].controllingValue).toBeUndefined();
+            expect(actualFailures[0].controllingValueAndMessage).toBeUndefined();
+            expect(actualFailures[0].fieldLevelMessage).toBe('Source returned no snapshot for this field');
             expect(actualFailures[0].kind).toBe('LOOKUP_ERROR');
 
         });
@@ -282,6 +282,22 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualSourceFilePath).toBe(
                 path.join(mockObjectsDirectoryPath, 'Chain_Example__c', 'fields', 'State__c.field-meta.xml')
             );
+
+        });
+
+        /*
+            The reveal allow-list is built from this function, so it enforces the api name shape
+            itself rather than relying on the caller that happens to validate first.
+        */
+        it('given an api name that could escape the objects directory, throws rather than building the path', () => {
+
+            expect(() => PicklistDependencyExplorerService.buildFieldSourceFilePath(
+                mockObjectsDirectoryPath, '..', 'State__c'
+            )).toThrow('letters, numbers and underscores only');
+
+            expect(() => PicklistDependencyExplorerService.buildFieldSourceFilePath(
+                mockObjectsDirectoryPath, 'Chain_Example__c', '../../../../etc/passwd'
+            )).toThrow('letters, numbers and underscores only');
 
         });
 
@@ -350,10 +366,13 @@ describe('PicklistDependencyExplorerService', () => {
             );
 
             /*
-                Every field is nested under the other, so neither is a root and the object renders as
-                empty. What matters is that the walk RETURNS -- a cycle must not hang the panel.
+                What matters first is that the walk RETURNS -- a cycle must not hang the panel. It
+                must also not swallow the fields: every member is reachable from a root, promoted
+                where the cycle left it rootless, and each appears exactly once.
             */
-            expect(actualRootNodes).toEqual([]);
+            expect(PicklistDependencyExplorerService.countNodes(actualRootNodes)).toBe(2);
+            expect(PicklistDependencyExplorerService.flattenNodes(actualRootNodes).map(node => node.fieldApiName).sort())
+                .toEqual(['First__c', 'Second__c']);
 
         });
 
@@ -372,7 +391,10 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath, 'Dependency_Example__c', specDetails
             );
 
-            expect(actualRootNodes[0].combinations[0].forbiddenValues).toEqual([]);
+            expect(actualRootNodes[0].combinations[0].hasForbiddenAssertion).toBe(false);
+            expect(PicklistDependencyExplorerService.buildForbiddenValues(
+                actualRootNodes[0].declaredValues, actualRootNodes[0].combinations[0]
+            )).toEqual([]);
 
         });
 
@@ -424,12 +446,13 @@ describe('PicklistDependencyExplorerService', () => {
             const stateNode = chainObjectViewModel.rootNodes[0];
             const failedUsaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
             expect(failedUsaCombination.status).toBe('failed');
-            expect(failedUsaCombination.failureKind).toBe('MISSING_VALUES');
-            expect(failedUsaCombination.failureMessage).toContain('Texas');
+            expect(failedUsaCombination.failures).toHaveLength(1);
+            expect(failedUsaCombination.failures[0].kind).toBe('MISSING_VALUES');
+            expect(failedUsaCombination.failures[0].message).toContain('Texas');
 
             const passedCanadaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'Canada');
             expect(passedCanadaCombination.status).toBe('passed');
-            expect(passedCanadaCombination.failureKind).toBeUndefined();
+            expect(passedCanadaCombination.failures).toEqual([]);
 
         });
 
@@ -444,8 +467,10 @@ describe('PicklistDependencyExplorerService', () => {
 
             const failedOhioCombination = cityNode.combinations.find(combination => combination.controllingValue === 'Ohio');
             expect(failedOhioCombination.status).toBe('failed');
-            expect(failedOhioCombination.failureKind).toBe('FORBIDDEN_VALUES_PRESENT');
-            expect(failedOhioCombination.forbiddenValues).toContain('Toronto');
+            expect(failedOhioCombination.failures[0].kind).toBe('FORBIDDEN_VALUES_PRESENT');
+            expect(PicklistDependencyExplorerService.buildForbiddenValues(
+                cityNode.declaredValues, failedOhioCombination
+            )).toContain('Toronto');
 
         });
 
@@ -514,7 +539,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const chainObjectViewModel = actualViewModel.objects[0];
             expect(chainObjectViewModel.status).toBe('failed');
-            expect(chainObjectViewModel.unattributedFailureMessage).toContain('Apex CPU time limit exceeded');
+            expect(chainObjectViewModel.unattributedFailureMessages.join('\n')).toContain('Apex CPU time limit exceeded');
             expect(chainObjectViewModel.rootNodes[0].status).toBe('unknown');
             expect(chainObjectViewModel.rootNodes[0].combinations[0].status).toBe('unknown');
 
@@ -548,8 +573,9 @@ describe('PicklistDependencyExplorerService', () => {
 
             const stateNode = actualViewModel.objects[0].rootNodes[0];
             expect(stateNode.status).toBe('failed');
-            expect(stateNode.fieldLevelFailureKind).toBe('CONTROLLING_FIELD_MISMATCH');
-            expect(stateNode.fieldLevelFailureMessage).toContain('Region__c');
+            expect(stateNode.fieldLevelFailures).toHaveLength(1);
+            expect(stateNode.fieldLevelFailures[0].kind).toBe('CONTROLLING_FIELD_MISMATCH');
+            expect(stateNode.fieldLevelFailures[0].message).toContain('Region__c');
             expect(stateNode.combinations.every(combination => combination.status === 'passed')).toBe(true);
 
         });
@@ -584,6 +610,298 @@ describe('PicklistDependencyExplorerService', () => {
             );
 
             expect(actualViewModel.objects[0].testMethodName).toBe('Chain_Example_c_picklistDependenciesMatchSourceMetadata');
+
+        });
+
+    });
+
+
+    /*
+        Every case below is a defect found in review against the first implementation of this
+        service, kept as a regression test rather than only fixed. All three shared one failure
+        mode: a combination the org had actually broken rendered as a green tick.
+    */
+    describe('failure attribution regressions', () => {
+
+        function buildColonValuedSpecDetails(): IPicklistDependencySpecDetail[] {
+
+            return [
+                {
+                    objectApiName: 'Account',
+                    fieldApiName: 'Sub_Type__c',
+                    controllingFieldApiName: 'Type__c',
+                    expectations: [
+                        { controllingValue: 'Tier 1: Premium', dependentValues: ['Gold'], forbiddenValues: ['Basic'] },
+                        { controllingValue: 'Tier 2', dependentValues: ['Basic'], forbiddenValues: ['Gold'] }
+                    ]
+                }
+            ];
+        }
+
+        function buildAccountResultsLoad(assertionMessage: string): IPicklistDependencyResultsLoad {
+
+            return {
+                state: 'loaded',
+                message: '',
+                resultsFilePath: '/workspace/results.json',
+                results: {
+                    targetOrg: 'devHub',
+                    ranAt: '2026-08-20T09-01-33',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [
+                        { methodName: 'Account_picklistDependenciesMatchSourceMetadata', passed: false, message: assertionMessage }
+                    ]
+                }
+            };
+        }
+
+        /*
+            A Salesforce picklist value may contain ": ", so splitting the failure line at the first
+            colon attributed the failure to a controlling value that does not exist -- and the
+            unmatched failure was then dropped, leaving the genuinely drifted combination green.
+        */
+        it('given a controlling value containing a colon, attributes the failure to the right combination', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 1: Premium: expected value(s) not unlocked in the org: Gold';
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildColonValuedSpecDetails(), [], buildAccountResultsLoad(assertionMessage)
+            );
+
+            const subTypeNode = actualViewModel.objects[0].rootNodes[0];
+            const premiumCombination = subTypeNode.combinations.find(combination => combination.controllingValue === 'Tier 1: Premium');
+
+            expect(premiumCombination.status).toBe('failed');
+            expect(premiumCombination.failures[0].kind).toBe('MISSING_VALUES');
+            expect(premiumCombination.failures[0].message).toBe('expected value(s) not unlocked in the org: Gold');
+            expect(actualViewModel.objects[0].unattributedFailureMessages).toEqual([]);
+
+        });
+
+        /*
+            The regression that mattered most: a parsed failure matching no combination was neither
+            applied nor reported, so the object showed as failed while every combination under it
+            showed as passed and the Apex message vanished from the panel entirely.
+        */
+        it('given a failure naming a combination this metadata no longer describes, holds the combinations at not checked and surfaces the message', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 3 Retired: expected value(s) not unlocked in the org: Platinum';
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildColonValuedSpecDetails(), [], buildAccountResultsLoad(assertionMessage)
+            );
+
+            const accountObject = actualViewModel.objects[0];
+
+            expect(accountObject.status).toBe('failed');
+            expect(accountObject.rootNodes[0].status).toBe('unknown');
+            expect(accountObject.rootNodes[0].combinations.every(combination => combination.status === 'unknown')).toBe(true);
+
+            const unattributedText = accountObject.unattributedFailureMessages.join('\n');
+            expect(unattributedText).toContain('Tier 3 Retired');
+            expect(unattributedText).toContain('Platinum');
+
+            // THE MESSAGE MUST ALSO SURVIVE INTO THE RENDERED SHELL, WHICH IS WHERE IT WAS PREVIOUSLY LOST
+            expect(PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce')).toContain('Platinum');
+
+        });
+
+        /*
+            SDTPicklistDependencyValidator raises MISSING_VALUES and FORBIDDEN_VALUES_PRESENT
+            independently for the same controlling value, so taking only the first hid a real
+            drift fact.
+        */
+        it('given two failure kinds on one combination, keeps both rather than only the first', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 2: expected value(s) not unlocked in the org: Basic\n'
+                + '  - FORBIDDEN_VALUES_PRESENT — Account.Sub_Type__c @ Tier 2: value(s) unlocked that local metadata forbids: Gold';
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildColonValuedSpecDetails(), [], buildAccountResultsLoad(assertionMessage)
+            );
+
+            const tierTwoCombination = actualViewModel.objects[0].rootNodes[0].combinations
+                .find(combination => combination.controllingValue === 'Tier 2');
+
+            expect(tierTwoCombination.failures).toHaveLength(2);
+            expect(tierTwoCombination.failures.map(failure => failure.kind))
+                .toEqual(['MISSING_VALUES', 'FORBIDDEN_VALUES_PRESENT']);
+            expect(actualViewModel.objects[0].failureCount).toBe(2);
+
+            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            expect(actualWebviewHtml).toContain('FORBIDDEN_VALUES_PRESENT');
+            expect(actualWebviewHtml).toContain('MISSING_VALUES');
+
+        });
+
+        it('given a mutual upstream cycle, still shows both fields rather than rendering the object empty', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Loop_Example__c',
+                    fieldApiName: 'First__c',
+                    controllingFieldApiName: 'Second__c',
+                    upstreamFieldApiName: 'Second__c',
+                    expectations: [{ controllingValue: 'A', dependentValues: ['B'], forbiddenValues: [] }]
+                },
+                {
+                    objectApiName: 'Loop_Example__c',
+                    fieldApiName: 'Second__c',
+                    controllingFieldApiName: 'First__c',
+                    upstreamFieldApiName: 'First__c',
+                    expectations: [{ controllingValue: 'B', dependentValues: ['A'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()
+            );
+
+            // ONE MEMBER IS PROMOTED TO A ROOT AND THE OTHER HANGS BENEATH IT, SO BOTH ARE SHOWN EXACTLY ONCE
+            expect(actualViewModel.dependentFieldCount).toBe(2);
+            expect(PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .map(node => node.fieldApiName).sort()).toEqual(['First__c', 'Second__c']);
+
+        });
+
+        it('given a field naming itself as upstream, treats it as a root rather than losing it', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Self_Example__c',
+                    fieldApiName: 'Only__c',
+                    controllingFieldApiName: 'Only__c',
+                    upstreamFieldApiName: 'Only__c',
+                    expectations: [{ controllingValue: 'A', dependentValues: ['B'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()
+            );
+
+            expect(actualViewModel.objects[0].rootNodes).toHaveLength(1);
+            expect(actualViewModel.objects[0].rootNodes[0].fieldApiName).toBe('Only__c');
+            expect(actualViewModel.objects[0].rootNodes[0].downstreamNodes).toEqual([]);
+
+        });
+
+    });
+
+    describe('extractFailureMessageForControllingValue', () => {
+
+        it('given a tail whose controlling value contains a colon, splits on the declared value rather than the first colon', () => {
+
+            const actualMessage = PicklistDependencyExplorerService.extractFailureMessageForControllingValue(
+                'Tier 1: Premium: expected value(s) not unlocked: Gold', 'Tier 1: Premium'
+            );
+
+            expect(actualMessage).toBe('expected value(s) not unlocked: Gold');
+
+        });
+
+        it('given a tail for a different controlling value, returns undefined so the caller can report it unattributed', () => {
+
+            const actualMessage = PicklistDependencyExplorerService.extractFailureMessageForControllingValue(
+                'Tier 3: something drifted', 'Tier 2'
+            );
+
+            expect(actualMessage).toBeUndefined();
+
+        });
+
+        it('given a tail that is exactly the controlling value, returns an empty message rather than undefined', () => {
+
+            expect(PicklistDependencyExplorerService.extractFailureMessageForControllingValue('Tier 2', 'Tier 2')).toBe('');
+
+        });
+
+    });
+
+    describe('buildDeclaredValuesByExpectations / buildForbiddenValues', () => {
+
+        it('reconstructs the declared value set from the allowed and forbidden halves', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'City__c',
+                controllingFieldApiName: 'State__c',
+                expectations: [
+                    { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin', 'Toronto'] },
+                    { controllingValue: 'Texas', dependentValues: ['Austin'], forbiddenValues: ['Columbus', 'Toronto'] }
+                ]
+            };
+
+            expect(PicklistDependencyExplorerService.buildDeclaredValuesByExpectations(specDetail))
+                .toEqual(['Columbus', 'Austin', 'Toronto']);
+
+        });
+
+        /*
+            The payload optimisation is only sound if the derived complement is identical to the
+            forbidden list the generator would have emitted, so that equivalence is asserted rather
+            than assumed.
+        */
+        it('derives exactly the forbidden list the spec detail declared', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'City__c',
+                controllingFieldApiName: 'State__c',
+                expectations: [
+                    { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin', 'Toronto'] },
+                    { controllingValue: 'Texas', dependentValues: ['Austin'], forbiddenValues: ['Columbus', 'Toronto'] },
+                    { controllingValue: 'Ontario', dependentValues: [], forbiddenValues: ['Columbus', 'Austin', 'Toronto'] }
+                ]
+            };
+
+            const declaredValues = PicklistDependencyExplorerService.buildDeclaredValuesByExpectations(specDetail);
+            const combinations = PicklistDependencyExplorerService.buildCombinationViewModels(specDetail);
+
+            combinations.forEach((combination, combinationIndex) => {
+                expect(PicklistDependencyExplorerService.buildForbiddenValues(declaredValues, combination).sort())
+                    .toEqual([...specDetail.expectations[combinationIndex].forbiddenValues].sort());
+            });
+
+        });
+
+        /*
+            The embedded payload was the product of the two picklists' sizes before the complement
+            moved to the panel. This pins the linear shape so it cannot silently regress.
+        */
+        it('keeps the embedded payload linear in picklist size rather than quadratic', () => {
+
+            const controllingValueCount = 40;
+            const dependentValueCount = 120;
+
+            const declaredValues = Array.from({ length: dependentValueCount }, (_, valueIndex) => `Dependent_Value_${valueIndex}`);
+            const expectations = Array.from({ length: controllingValueCount }, (_, controllingIndex) => {
+                const allowedValues = declaredValues.filter((_, valueIndex) => valueIndex % controllingValueCount === controllingIndex);
+                const allowedValueSet = new Set(allowedValues);
+                return {
+                    controllingValue: `Controlling_Value_${controllingIndex}`,
+                    dependentValues: allowedValues,
+                    forbiddenValues: declaredValues.filter(declaredValue => !allowedValueSet.has(declaredValue))
+                };
+            });
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                [{ objectApiName: 'Big__c', fieldApiName: 'Dependent__c', controllingFieldApiName: 'Controlling__c', expectations }],
+                [],
+                buildNoResultsLoad()
+            );
+
+            const embeddedJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(actualViewModel).length;
+
+            /*
+                Quadratic would be ~40 x 120 = 4800 value strings. Linear is ~120 declared plus the
+                120 spread across the allowed lists, so well under 400 -- the bound below sits
+                between the two and would have failed against the previous implementation.
+            */
+            expect(embeddedJsonLength).toBeLessThan(30000);
 
         });
 
@@ -659,6 +977,9 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualContentSecurityPolicy).toContain(`default-src 'none'`);
             expect(actualContentSecurityPolicy).toContain(`style-src 'nonce-testNonce'`);
             expect(actualContentSecurityPolicy).toContain(`script-src 'nonce-testNonce'`);
+            // NEITHER FALLS BACK TO default-src, SO BOTH ARE NAMED EXPLICITLY
+            expect(actualContentSecurityPolicy).toContain(`form-action 'none'`);
+            expect(actualContentSecurityPolicy).toContain(`base-uri 'none'`);
             expect(actualContentSecurityPolicy).not.toContain('http');
 
         });

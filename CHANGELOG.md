@@ -17,7 +17,11 @@ The dependency data this extension already extracts had only ever been emitted a
 
 ### It is a webview, deliberately
 
-No local HTTP server, no open port, no new runtime dependency, and no second process. The panel's content security policy is `default-src 'none'` with only the extension's own nonced inline style and script admitted, so it can load nothing from the network. Every colour is a VS Code theme variable, so it follows your active light, dark or high contrast theme without the extension knowing which is active.
+No local HTTP server, no open port, no new runtime dependency, and no second process. The panel's content security policy is `default-src 'none'` with only the extension's own nonced inline style and script admitted, so it can load nothing from the network — `form-action` and `base-uri` are named explicitly because neither falls back to `default-src`. The nonce comes from the crypto RNG rather than `Math.random`, so the policy does not rest on there being no injection primitive to spend a predicted value on. `localResourceRoots` is set **empty** rather than omitted: omitting it does not deny the grant, it defaults to the extension directory plus every open workspace folder.
+
+Every colour is a VS Code theme variable, so it follows your active light, dark or high contrast theme without the extension knowing which is active.
+
+One panel is reused for the window and revealed on re-run, rather than a new tab stacking up per invocation, and `retainContextWhenHidden` is deliberately not set — the panel's state is entirely derived from the model, so a hidden panel costs nothing to rebuild. Scanning runs under a progress notification instead of leaving the command looking inert while it walks a large org's metadata.
 
 Picklist values, api names and Apex failure messages all originate in metadata the extension does not control, so none of them are interpolated raw — they are HTML-escaped, and the model is handed to the panel as JSON inside a `application/json` block that a value containing `</script>` cannot close. The "Reveal in Explorer" handler opens a path only when the built view model itself named it, so a message from anywhere else cannot make the extension host open an arbitrary file.
 
@@ -27,11 +31,25 @@ The generated test class asserts one method **per object**, so `results.json` ca
 
 | Situation | Shown as |
 |---|---|
-| The run covered this object and named no failure against this combination | passed |
-| The run named this exact combination as failing | failed, with the kind and message |
-| No check has run, the object was not in the run, or the object failed in a way that names no combination | **not checked**, with the raw Apex message surfaced on the object |
+| The run covered this object and every failure it reported was tied to a combination, but not this one | passed |
+| The run named this exact combination as failing | failed, with every kind and message it reported |
+| No check has run, the object was not in the run, or **any** of the object's failures could not be tied to a combination | **not checked**, with the unplaceable failure text surfaced on the object |
 
 The third row is the point. Marking every combination of an unattributable failure as failed would overstate a drift that touched one of them; marking them passed would report green for a combination the org may well have broken. Neither is a claim the loaded artifact supports.
+
+Attribution is therefore decided **before** any status is assigned. An earlier revision only asked whether the failure message parsed at all, not whether the parsed failures actually landed on a combination — so a failure naming a combination the local metadata no longer describes was silently discarded, leaving the object marked failed while every combination under it showed a green tick and the Apex message vanished from the panel entirely. Found in review, fixed, and pinned by regression tests.
+
+A controlling value may itself contain `": "` — `Tier 1: Premium` is a legal Salesforce picklist value — so the failure line `KIND — Object.Field @ Tier 1: Premium: message` cannot be split by the line alone. The raw tail is carried through parsing and resolved against the controlling values the metadata actually declares, rather than guessing at the first colon.
+
+`SDTPicklistDependencyValidator` raises `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT` independently for the same controlling value, so **every** failure on a combination is kept and rendered. Showing only the first hid a real drift fact.
+
+### The panel payload is linear in picklist size, not quadratic
+
+`forbiddenValues` is the complement of the allowed values within the field's declared set, so carrying it per combination made the embedded model the *product* of the two picklists' sizes. Measured against the first revision: **62 MB** of embedded JSON and 2.25 M value elements for a large org, and 6.6 MB for a single 300 × 800 picklist — enough to freeze the webview renderer.
+
+The node now carries its declared values once and the panel derives each combination's complement, which is the same rendering from the *sum* rather than the product. Same shapes after the change: 6.9 MB (**9× smaller**) and 0.08 MB (**83× smaller**). A test pins the linear shape so it cannot silently regress.
+
+An expectation that never declared a forbidden list asserted only the positive half, and the panel still renders no complement for it — the derivation is exact, not an approximation.
 
 ### Unhappy paths render, they do not error
 
@@ -41,6 +59,11 @@ The third row is the point. Marking every combination of an unattributable failu
 - **A run folder holding no `results.json`** is skipped rather than picked and then failed on, so a partially written run does not hide the last good one
 
 The newest run is chosen by the timestamp in the `check-<org>-<timestamp>` folder name rather than by file mtime — every file in a fresh clone carries the checkout time, which would make "most recent" arbitrary for anyone committing their check artifacts.
+
+### Known limitations
+
+- **A combination added since the last check run shows as passed.** Results are recorded per object, and nothing in `results.json` fingerprints the specs it was generated from, so the panel cannot tell "this combination was verified" from "this combination was added to `valueSettings` after the run". Re-run the check after changing dependency metadata.
+- **A dependent picklist whose field is skipped during collection does not appear**, for the same reasons generation skips it — an invalid api name, or no `valueSettings` markup. The count of skipped fields and the reason for each is shown at the top of the panel rather than being silently omitted.
 
 ## [3.0.0] - SDT-Prefixed Per-Object Picklist Dependency Specs with Negative Assertions
 

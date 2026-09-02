@@ -3,14 +3,15 @@ import {
     PicklistDependencyTestService
 } from '../PicklistDependencyTestService/PicklistDependencyTestService';
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
 /*
     A combination is either confirmed good, confirmed drifted, or not covered by the run that was
-    loaded. "unknown" is a distinct state on purpose: a check that has not run, or a failure whose
-    message could not be attributed to a combination, must never render as a green tick -- the
-    panel would then report a dependency as verified when nothing verified it.
+    loaded. "unknown" is a distinct state on purpose: a check that has not run, or a failure that
+    could not be tied to a combination, must never render as a green tick -- the panel would then
+    report a dependency as verified when nothing verified it.
 */
 export type PicklistDependencyCheckStatus = 'passed' | 'failed' | 'unknown';
 
@@ -20,13 +21,25 @@ export type PicklistDependencyCheckStatus = 'passed' | 'failed' | 'unknown';
 */
 export type PicklistDependencyRunLoadState = 'loaded' | 'noResultsFound' | 'unreadableResults';
 
+export interface IPicklistDependencyFailureDetailViewModel {
+    kind: string;
+    message: string;
+}
+
 export interface IPicklistDependencyCombinationViewModel {
     controllingValue: string;
     allowedValues: string[];
-    forbiddenValues: string[];
+    /*
+        Whether the spec asserts what this controlling value must NOT unlock. The forbidden values
+        themselves are not carried here: they are the complement of allowedValues within the node's
+        declaredValues, and the panel derives them. Carrying them per combination made the payload
+        the product of the two picklists' sizes -- 62MB of embedded JSON for a large org -- when the
+        information content is their sum.
+    */
+    hasForbiddenAssertion: boolean;
     status: PicklistDependencyCheckStatus;
-    failureKind?: string;
-    failureMessage?: string;
+    // EVERY FAILURE THE RUN REPORTED FOR THIS COMBINATION. THE VALIDATOR CAN RAISE MORE THAN ONE.
+    failures: IPicklistDependencyFailureDetailViewModel[];
 }
 
 export interface IPicklistDependencyNodeViewModel {
@@ -35,14 +48,15 @@ export interface IPicklistDependencyNodeViewModel {
     controllingFieldApiName: string;
     // ABSOLUTE PATH TO THE ".field-meta.xml" THAT GENERATED THIS NODE, FOR THE REVEAL ACTION
     sourceFilePath: string;
+    // EVERY VALUE THE DEPENDENT FIELD DECLARES. THE UNIVERSE EACH COMBINATION'S FORBIDDEN SET IS THE COMPLEMENT AGAINST.
+    declaredValues: string[];
     combinations: IPicklistDependencyCombinationViewModel[];
     // FIELDS CONTROLLED BY THIS ONE, WHICH IS WHAT MAKES A CHAIN A GRAPH RATHER THAN REPEATED ROWS
     downstreamNodes: IPicklistDependencyNodeViewModel[];
     status: PicklistDependencyCheckStatus;
     failureCount: number;
-    // SET WHEN THE VALIDATOR REPORTED A FAILURE AGAINST THE FIELD RATHER THAN AGAINST ONE COMBINATION
-    fieldLevelFailureKind?: string;
-    fieldLevelFailureMessage?: string;
+    // FAILURES THE VALIDATOR RAISED AGAINST THE FIELD RATHER THAN AGAINST ONE COMBINATION
+    fieldLevelFailures: IPicklistDependencyFailureDetailViewModel[];
 }
 
 export interface IPicklistDependencyObjectViewModel {
@@ -58,8 +72,12 @@ export interface IPicklistDependencyObjectViewModel {
         the loaded run is distinguishable from one that ran and passed.
     */
     testMethodName: string;
-    // THE FAILURE MESSAGE AS APEX WROTE IT, KEPT WHEN NO COMBINATION COULD BE ATTRIBUTED
-    unattributedFailureMessage?: string;
+    /*
+        Failure text from the run that could NOT be tied to a combination in this object -- either
+        the message named no combination at all, or it named one this metadata no longer describes.
+        Its presence is what holds the object's combinations at "unknown".
+    */
+    unattributedFailureMessages: string[];
 }
 
 export interface IPicklistDependencyRunSummary {
@@ -86,10 +104,16 @@ export interface IPicklistDependencyExplorerViewModel {
 export interface IParsedPicklistDependencyFailure {
     objectApiName: string;
     fieldApiName: string;
-    // ABSENT FOR A FAILURE THE VALIDATOR RAISED AGAINST THE WHOLE FIELD RATHER THAN ONE COMBINATION
-    controllingValue?: string;
     kind: string;
-    message: string;
+    /*
+        The raw text after "@ " for a scoped failure, which is "<controllingValue>: <message>".
+        A Salesforce picklist value may itself contain ": ", so where that split falls cannot be
+        decided by the line alone -- it is resolved against the controlling values the metadata
+        actually declares. Absent for a failure raised against the whole field.
+    */
+    controllingValueAndMessage?: string;
+    // SET ONLY FOR A FIELD LEVEL FAILURE, WHERE NO CONTROLLING VALUE IS IN PLAY
+    fieldLevelMessage?: string;
 }
 
 export interface IPicklistDependencyResultsMethodOutcome {
@@ -198,7 +222,7 @@ export class PicklistDependencyExplorerService {
             };
         }
 
-        let parsedResultsFileContent: any;
+        let parsedResultsFileContent: unknown;
 
         try {
             parsedResultsFileContent = JSON.parse(fs.readFileSync(latestResultsFilePath, 'utf-8'));
@@ -210,8 +234,10 @@ export class PicklistDependencyExplorerService {
             };
         }
 
+        const resultsFileRecord = parsedResultsFileContent as Record<string, unknown> | null;
+
         // A FILE THAT PARSES BUT CARRIES NO OUTCOMES IS AS UNUSABLE AS ONE THAT DOES NOT PARSE, AND IS REPORTED THE SAME WAY
-        if ( !parsedResultsFileContent || !Array.isArray(parsedResultsFileContent.methodOutcomes) ) {
+        if ( !resultsFileRecord || !Array.isArray(resultsFileRecord.methodOutcomes) ) {
             return {
                 state: 'unreadableResults',
                 message: `The most recent check results at "${latestResultsFilePath}" are missing the "methodOutcomes" list, so no pass/fail state could be overlaid. Re-run the picklist dependency check to replace the file.`,
@@ -219,12 +245,18 @@ export class PicklistDependencyExplorerService {
             };
         }
 
-        const methodOutcomes: IPicklistDependencyResultsMethodOutcome[] = parsedResultsFileContent.methodOutcomes.map(
-            (methodOutcome: any) => ({
-                methodName: typeof methodOutcome?.methodName === 'string' ? methodOutcome.methodName : 'unknown',
-                passed: methodOutcome?.passed === true,
-                message: typeof methodOutcome?.message === 'string' ? methodOutcome.message : undefined
-            })
+        const methodOutcomes: IPicklistDependencyResultsMethodOutcome[] = resultsFileRecord.methodOutcomes.map(
+            (methodOutcomeEntry: unknown) => {
+
+                const methodOutcome = methodOutcomeEntry as Record<string, unknown> | null;
+
+                return {
+                    methodName: typeof methodOutcome?.methodName === 'string' ? methodOutcome.methodName : 'unknown',
+                    passed: methodOutcome?.passed === true,
+                    message: typeof methodOutcome?.message === 'string' ? methodOutcome.message : undefined
+                };
+
+            }
         );
 
         return {
@@ -232,11 +264,11 @@ export class PicklistDependencyExplorerService {
             message: '',
             resultsFilePath: latestResultsFilePath,
             results: {
-                targetOrg: typeof parsedResultsFileContent.targetOrg === 'string' ? parsedResultsFileContent.targetOrg : 'unknown org',
-                ranAt: typeof parsedResultsFileContent.ranAt === 'string' ? parsedResultsFileContent.ranAt : 'unknown time',
-                passed: parsedResultsFileContent.passed === true,
-                failureCount: typeof parsedResultsFileContent.failureCount === 'number' ? parsedResultsFileContent.failureCount : 0,
-                methodsRun: typeof parsedResultsFileContent.methodsRun === 'number' ? parsedResultsFileContent.methodsRun : methodOutcomes.length,
+                targetOrg: typeof resultsFileRecord.targetOrg === 'string' ? resultsFileRecord.targetOrg : 'unknown org',
+                ranAt: typeof resultsFileRecord.ranAt === 'string' ? resultsFileRecord.ranAt : 'unknown time',
+                passed: resultsFileRecord.passed === true,
+                failureCount: typeof resultsFileRecord.failureCount === 'number' ? resultsFileRecord.failureCount : 0,
+                methodsRun: typeof resultsFileRecord.methodsRun === 'number' ? resultsFileRecord.methodsRun : methodOutcomes.length,
                 methodOutcomes: methodOutcomes
             }
         };
@@ -244,19 +276,35 @@ export class PicklistDependencyExplorerService {
     }
 
     /*
-        Pulls the per-combination failures out of an Apex assertion message.
+        Matches "KIND — Object.Field" and hands back everything after it, rather than trying to split
+        the remainder in the same expression.
+
+        The kind group requires all caps, which is what keeps the generated header line -- "Picklist
+        dependency drift on Account -- 3 combination(s)..." -- from matching.
+    */
+    private static failureLinePattern = /^\s*(?:-\s*)?([A-Z][A-Z0-9_]*)\s+(?:—|--|-)\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)([\s\S]*)$/;
+
+    private static scopedFailureTailPattern = /^\s+@\s+([\s\S]+)$/;
+
+    private static fieldLevelFailureTailPattern = /^\s*:\s*([\s\S]*)$/;
+
+    /*
+        Pulls the failures out of an Apex assertion message.
 
         The generated test class joins SDTPicklistDependencyValidator.Failure.toLine() output, whose
         shape is "KIND — Object.Field @ ControllingValue: message". The message reaching results.json
         is that text wrapped in whatever the CLI adds around a failed assertion, so every line is
         scanned rather than the message being parsed as a whole.
 
+        The controlling value is NOT split from the message here. A picklist value may contain ": "
+        -- "Tier 1: Premium" is a legal value -- so the line alone cannot say where the boundary is,
+        and guessing at the first colon silently mis-attributed the failure. The raw tail is carried
+        instead and resolved against the controlling values the metadata declares.
+
         Both an em dash and a plain hyphen are accepted as the separator: the Apex emits an em dash,
         but a message that has been through a lossy encoding on its way out of the org should still
-        attribute rather than silently degrade the whole object to "unknown".
+        attribute rather than degrading the whole object to "unknown".
     */
-    private static failureLinePattern = /^\s*(?:-\s*)?([A-Z][A-Z0-9_]*)\s+(?:—|--|-)\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?:\s+@\s+(.+?))?\s*:\s*(.*)$/;
-
     static parseFailureLines(assertionMessage: string | undefined): IParsedPicklistDependencyFailure[] {
 
         if ( !assertionMessage ) {
@@ -272,14 +320,35 @@ export class PicklistDependencyExplorerService {
                 return;
             }
 
-            const [, failureKind, objectApiName, fieldApiName, controllingValue, failureMessage] = failureLineMatch;
+            const [, failureKind, objectApiName, fieldApiName, failureLineTail] = failureLineMatch;
+
+            const scopedTailMatch = this.scopedFailureTailPattern.exec(failureLineTail);
+
+            if ( scopedTailMatch ) {
+
+                parsedFailures.push({
+                    objectApiName: objectApiName,
+                    fieldApiName: fieldApiName,
+                    kind: failureKind,
+                    controllingValueAndMessage: scopedTailMatch[1]
+                });
+
+                return;
+
+            }
+
+            const fieldLevelTailMatch = this.fieldLevelFailureTailPattern.exec(failureLineTail);
+
+            // NEITHER SHAPE MEANS THE LINE IS NOT A FAILURE LINE, SO IT IS NOT COUNTED AS ONE
+            if ( !fieldLevelTailMatch ) {
+                return;
+            }
 
             parsedFailures.push({
                 objectApiName: objectApiName,
                 fieldApiName: fieldApiName,
-                controllingValue: controllingValue ? controllingValue.trim() : undefined,
                 kind: failureKind,
-                message: failureMessage.trim()
+                fieldLevelMessage: fieldLevelTailMatch[1].trim()
             });
 
         });
@@ -289,12 +358,80 @@ export class PicklistDependencyExplorerService {
     }
 
     /*
+        Splits a scoped failure's tail against a known controlling value.
+
+        The tail is "<controllingValue>: <message>", and the controlling value is the ground truth
+        the metadata provides -- so rather than guessing where the colon falls, each candidate value
+        is tested as a prefix. Returns the message when the value matches, undefined when it does
+        not, which is what lets an unmatched failure be reported rather than quietly dropped.
+    */
+    static extractFailureMessageForControllingValue(controllingValueAndMessage: string, controllingValue: string): string | undefined {
+
+        if ( controllingValueAndMessage === controllingValue ) {
+            return '';
+        }
+
+        if ( !controllingValueAndMessage.startsWith(`${controllingValue}:`) ) {
+            return undefined;
+        }
+
+        return controllingValueAndMessage.slice(controllingValue.length + 1).trim();
+
+    }
+
+    /*
         The ".field-meta.xml" that produced a spec. Derived from the scanned objects directory rather
         than recorded during collection, which keeps the collection service read-only -- source format
         fixes the layout as "<objects>/<Object>/fields/<Field>.field-meta.xml", so nothing is guessed.
+
+        The api names are re-validated here even though every in-repo caller has already validated
+        them upstream. This function is what the reveal allow-list is built from, so the guarantee
+        that it cannot produce a path outside the objects directory belongs to it rather than to a
+        caller that happens to check first.
     */
     static buildFieldSourceFilePath(objectsDirectoryPath: string, objectApiName: string, fieldApiName: string): string {
+
+        const invalidApiName = [objectApiName, fieldApiName].find(apiName => !PicklistDependencyTestService.isValidSalesforceApiName(apiName));
+
+        if ( invalidApiName !== undefined ) {
+            throw new Error(`Cannot build a field metadata path for the api name "${invalidApiName}": a Salesforce api name is letters, numbers and underscores only.`);
+        }
+
         return path.join(objectsDirectoryPath, objectApiName, 'fields', `${fieldApiName}.field-meta.xml`);
+
+    }
+
+    /*
+        Every value the dependent field declares, reconstructed from the expectations.
+
+        forbiddenValues is the complement of dependentValues within the declared set, so the union of
+        both across every expectation is that declared set exactly. Reconstructing it lets the node
+        carry each value once instead of once per controlling value that does not unlock it.
+    */
+    static buildDeclaredValuesByExpectations(specDetail: IPicklistDependencySpecDetail): string[] {
+
+        let declaredValues: string[] = [];
+        let seenValues = new Set<string>();
+
+        specDetail.expectations.forEach(expectation => {
+
+            const expectationValues = [...expectation.dependentValues, ...(expectation.forbiddenValues || [])];
+
+            expectationValues.forEach(expectationValue => {
+
+                if ( seenValues.has(expectationValue) ) {
+                    return;
+                }
+
+                seenValues.add(expectationValue);
+                declaredValues.push(expectationValue);
+
+            });
+
+        });
+
+        return declaredValues;
+
     }
 
     static buildCombinationViewModels(specDetail: IPicklistDependencySpecDetail): IPicklistDependencyCombinationViewModel[] {
@@ -302,9 +439,32 @@ export class PicklistDependencyExplorerService {
         return specDetail.expectations.map(expectation => ({
             controllingValue: expectation.controllingValue,
             allowedValues: [...expectation.dependentValues],
-            forbiddenValues: expectation.forbiddenValues ? [...expectation.forbiddenValues] : [],
-            status: 'unknown' as PicklistDependencyCheckStatus
+            /*
+                An expectation that never declared a forbidden list asserted only the positive half,
+                so the panel must not render a complement it does not claim. An empty declared list
+                is still an assertion -- it means this controlling value unlocks everything.
+            */
+            hasForbiddenAssertion: Array.isArray(expectation.forbiddenValues),
+            status: 'unknown' as PicklistDependencyCheckStatus,
+            failures: []
         }));
+
+    }
+
+    /*
+        The forbidden values for one combination: what the field declares, minus what this
+        controlling value unlocks. Held here rather than in the model so the payload carries each
+        declared value once per field instead of once per controlling value.
+    */
+    static buildForbiddenValues(declaredValues: string[], combination: IPicklistDependencyCombinationViewModel): string[] {
+
+        if ( !combination.hasForbiddenAssertion ) {
+            return [];
+        }
+
+        const allowedValues = new Set(combination.allowedValues);
+
+        return declaredValues.filter(declaredValue => !allowedValues.has(declaredValue));
 
     }
 
@@ -333,8 +493,12 @@ export class PicklistDependencyExplorerService {
                 An upstream field naming a spec that is not in this object's collection cannot be
                 nested under anything, so the spec is treated as a root. That happens when the
                 upstream field was skipped for an invalid api name or missing valueSettings.
+
+                A field naming ITSELF is likewise treated as a root rather than nested under itself.
             */
-            if ( !specDetail.upstreamFieldApiName || !specDetailFieldApiNames.has(specDetail.upstreamFieldApiName) ) {
+            if ( !specDetail.upstreamFieldApiName
+                    || specDetail.upstreamFieldApiName === specDetail.fieldApiName
+                    || !specDetailFieldApiNames.has(specDetail.upstreamFieldApiName) ) {
                 return;
             }
 
@@ -364,17 +528,53 @@ export class PicklistDependencyExplorerService {
                 fieldApiName: specDetail.fieldApiName,
                 controllingFieldApiName: specDetail.controllingFieldApiName,
                 sourceFilePath: this.buildFieldSourceFilePath(objectsDirectoryPath, specDetail.objectApiName, specDetail.fieldApiName),
+                declaredValues: this.buildDeclaredValuesByExpectations(specDetail),
                 combinations: this.buildCombinationViewModels(specDetail),
                 downstreamNodes: downstreamSpecDetails.map(downstreamSpecDetail => buildNode(downstreamSpecDetail, alreadyVisitedFieldApiNames)),
                 status: 'unknown',
-                failureCount: 0
+                failureCount: 0,
+                fieldLevelFailures: []
             };
 
         };
 
-        return objectSpecDetails
-            .filter(specDetail => !nestedFieldApiNames.has(specDetail.fieldApiName))
-            .map(specDetail => buildNode(specDetail, new Set<string>()));
+        const rootSpecDetails = objectSpecDetails.filter(specDetail => !nestedFieldApiNames.has(specDetail.fieldApiName));
+        let rootNodes = rootSpecDetails.map(specDetail => buildNode(specDetail, new Set<string>()));
+
+        /*
+            A mutual upstream cycle leaves every field in it nested under another, so none is a root
+            and the whole group would vanish from the panel -- an object rendering as empty while its
+            metadata plainly declares dependent picklists. Any field that no root reaches is promoted
+            to a root so it is shown rather than silently dropped.
+        */
+        let reachedFieldApiNames = new Set<string>();
+        const collectReached = (nodes: IPicklistDependencyNodeViewModel[]) => {
+            nodes.forEach(node => {
+                reachedFieldApiNames.add(node.fieldApiName);
+                collectReached(node.downstreamNodes);
+            });
+        };
+        collectReached(rootNodes);
+
+        objectSpecDetails.forEach(specDetail => {
+
+            if ( reachedFieldApiNames.has(specDetail.fieldApiName) ) {
+                return;
+            }
+
+            const promotedNode = buildNode(specDetail, new Set<string>([specDetail.fieldApiName]));
+            rootNodes.push(promotedNode);
+
+            /*
+                The promoted node brings its whole subtree with it, so every field in that subtree
+                is now shown. Marking only the promoted field would promote the rest of the cycle a
+                second time, rendering each member once per member.
+            */
+            collectReached([promotedNode]);
+
+        });
+
+        return rootNodes;
 
     }
 
@@ -386,22 +586,43 @@ export class PicklistDependencyExplorerService {
         return nodes.reduce((combinationCount, node) => combinationCount + node.combinations.length + this.countCombinations(node.downstreamNodes), 0);
     }
 
+    static flattenNodes(nodes: IPicklistDependencyNodeViewModel[]): IPicklistDependencyNodeViewModel[] {
+
+        let flattenedNodes: IPicklistDependencyNodeViewModel[] = [];
+
+        const visitNode = (node: IPicklistDependencyNodeViewModel) => {
+            flattenedNodes.push(node);
+            node.downstreamNodes.forEach(visitNode);
+        };
+
+        nodes.forEach(visitNode);
+
+        return flattenedNodes;
+
+    }
+
     /*
-        Applies one object's parsed failures down its graph.
+        Applies one object's parsed failures down its graph, and reports which of them found nowhere
+        to land.
 
         A failure naming a controlling value marks that combination; one without names the field as a
         whole (LOOKUP_ERROR, CONTROLLING_FIELD_MISMATCH, UPSTREAM_FAILURE, CIRCULAR_DEPENDENCY all
-        arrive that way). Everything the object's run covered and no failure named is passed --
-        which is only sound because the caller withholds this entirely when the run failed with
-        nothing attributable.
+        arrive that way). A failure naming a field or combination this metadata no longer describes
+        can be applied to nothing, and is RETURNED rather than discarded -- discarding it was what
+        let a drifted combination render green while its Apex message disappeared.
+
+        Every failure matching a combination is kept, not just the first: the validator raises
+        MISSING_VALUES and FORBIDDEN_VALUES_PRESENT independently for the same controlling value, and
+        showing one of the two hides a real drift fact.
     */
     static applyFailuresToNodes(nodes: IPicklistDependencyNodeViewModel[],
                                     parsedFailures: IParsedPicklistDependencyFailure[],
-                                    objectRan: boolean): number {
+                                    objectRan: boolean): IParsedPicklistDependencyFailure[] {
 
-        let appliedFailureCount = 0;
+        const allNodes = this.flattenNodes(nodes);
+        let appliedFailures = new Set<IParsedPicklistDependencyFailure>();
 
-        nodes.forEach(node => {
+        allNodes.forEach(node => {
 
             const failuresForField = parsedFailures.filter(
                 parsedFailure => parsedFailure.objectApiName === node.objectApiName && parsedFailure.fieldApiName === node.fieldApiName
@@ -411,36 +632,48 @@ export class PicklistDependencyExplorerService {
 
             node.combinations.forEach(combination => {
 
-                const failureForCombination = failuresForField.find(
-                    parsedFailure => parsedFailure.controllingValue === combination.controllingValue
-                );
+                let combinationFailures: IPicklistDependencyFailureDetailViewModel[] = [];
 
-                if ( failureForCombination ) {
+                failuresForField.forEach(parsedFailure => {
 
+                    if ( parsedFailure.controllingValueAndMessage === undefined ) {
+                        return;
+                    }
+
+                    const failureMessage = this.extractFailureMessageForControllingValue(
+                        parsedFailure.controllingValueAndMessage,
+                        combination.controllingValue
+                    );
+
+                    if ( failureMessage === undefined ) {
+                        return;
+                    }
+
+                    combinationFailures.push({ kind: parsedFailure.kind, message: failureMessage });
+                    appliedFailures.add(parsedFailure);
+
+                });
+
+                combination.failures = combinationFailures;
+
+                if ( combinationFailures.length > 0 ) {
                     combination.status = 'failed';
-                    combination.failureKind = failureForCombination.kind;
-                    combination.failureMessage = failureForCombination.message;
-                    nodeFailureCount++;
+                    nodeFailureCount += combinationFailures.length;
                     return;
-
                 }
 
                 combination.status = objectRan ? 'passed' : 'unknown';
 
             });
 
-            const fieldLevelFailure = failuresForField.find(parsedFailure => parsedFailure.controllingValue === undefined);
+            const fieldLevelFailures = failuresForField.filter(parsedFailure => parsedFailure.fieldLevelMessage !== undefined);
 
-            if ( fieldLevelFailure ) {
+            node.fieldLevelFailures = fieldLevelFailures.map(parsedFailure => {
+                appliedFailures.add(parsedFailure);
+                return { kind: parsedFailure.kind, message: parsedFailure.fieldLevelMessage };
+            });
 
-                node.fieldLevelFailureKind = fieldLevelFailure.kind;
-                node.fieldLevelFailureMessage = fieldLevelFailure.message;
-                nodeFailureCount++;
-
-            }
-
-            const downstreamFailureCount = this.applyFailuresToNodes(node.downstreamNodes, parsedFailures, objectRan);
-
+            nodeFailureCount += node.fieldLevelFailures.length;
             node.failureCount = nodeFailureCount;
 
             if ( nodeFailureCount > 0 ) {
@@ -451,11 +684,31 @@ export class PicklistDependencyExplorerService {
                 node.status = 'unknown';
             }
 
-            appliedFailureCount += nodeFailureCount + downstreamFailureCount;
-
         });
 
-        return appliedFailureCount;
+        return parsedFailures.filter(parsedFailure => !appliedFailures.has(parsedFailure));
+
+    }
+
+    static buildUnattributedFailureMessage(parsedFailure: IParsedPicklistDependencyFailure): string {
+
+        const failureScope = `${parsedFailure.objectApiName}.${parsedFailure.fieldApiName}`;
+        const failureDetail = parsedFailure.controllingValueAndMessage ?? parsedFailure.fieldLevelMessage ?? '';
+
+        return `${parsedFailure.kind} — ${failureScope}${parsedFailure.controllingValueAndMessage !== undefined ? ' @ ' : ': '}${failureDetail}`;
+
+    }
+
+    static groupSpecDetailsByObjectApiName(specDetails: IPicklistDependencySpecDetail[]): Record<string, IPicklistDependencySpecDetail[]> {
+
+        let specDetailsByObjectApiName: Record<string, IPicklistDependencySpecDetail[]> = {};
+
+        specDetails.forEach(specDetail => {
+            specDetailsByObjectApiName[specDetail.objectApiName] = specDetailsByObjectApiName[specDetail.objectApiName] || [];
+            specDetailsByObjectApiName[specDetail.objectApiName].push(specDetail);
+        });
+
+        return specDetailsByObjectApiName;
 
     }
 
@@ -463,11 +716,12 @@ export class PicklistDependencyExplorerService {
         The whole view model: dependency structure from local source metadata, with the most recent
         check overlaid onto it when one exists.
 
-        An object whose test method failed but whose message yielded no attributable failure line
-        keeps every combination at "unknown" and surfaces the raw Apex message instead. Marking them
-        all failed would overstate a drift that touched one combination, and marking them passed
-        would report green for a combination the org may well have broken -- neither is a claim the
-        loaded artifact supports.
+        An object whose test method failed but whose failures cannot ALL be tied to a combination
+        keeps every combination at "unknown" and surfaces the unattributable text instead. Marking
+        them all failed would overstate a drift that touched one combination, and marking them
+        passed would report green for a combination the org may well have broken -- neither is a
+        claim the loaded artifact supports. Attribution is therefore decided BEFORE the statuses are
+        assigned: a failure that lands nowhere has to be able to hold the whole object back.
     */
     static buildExplorerViewModel(objectsDirectoryPath: string,
                                     specDetails: IPicklistDependencySpecDetail[],
@@ -476,6 +730,7 @@ export class PicklistDependencyExplorerService {
 
         const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(specDetails);
         const testMethodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
+        const specDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(specDetails);
 
         let methodOutcomesByMethodName: Record<string, IPicklistDependencyResultsMethodOutcome> = {};
         ( resultsLoad.results?.methodOutcomes || [] ).forEach(methodOutcome => {
@@ -484,7 +739,7 @@ export class PicklistDependencyExplorerService {
 
         const objects: IPicklistDependencyObjectViewModel[] = distinctObjectApiNames.map(objectApiName => {
 
-            const objectSpecDetails = specDetails.filter(specDetail => specDetail.objectApiName === objectApiName);
+            const objectSpecDetails = specDetailsByObjectApiName[objectApiName] || [];
             const rootNodes = this.buildNodesByObjectSpecDetails(objectsDirectoryPath, objectApiName, objectSpecDetails);
 
             const testMethodName = testMethodNamesByObjectApiName[objectApiName];
@@ -494,14 +749,35 @@ export class PicklistDependencyExplorerService {
                 ? this.parseFailureLines(methodOutcome.message)
                 : [];
 
-            const failureIsUnattributable = !!( methodOutcome && !methodOutcome.passed && parsedFailures.length === 0 );
+            /*
+                A dry run first, purely to learn whether every failure can be placed. Its status
+                assignments are discarded by the second pass below -- what it is being asked is
+                "does anything land nowhere", which cannot be known without attempting the match.
+            */
+            const unattributedFailures = this.applyFailuresToNodes(rootNodes, parsedFailures, true);
+
+            const failureIsUnattributable = !!( methodOutcome && !methodOutcome.passed
+                                                    && ( parsedFailures.length === 0 || unattributedFailures.length > 0 ) );
+
             const objectRan = !!methodOutcome && !failureIsUnattributable;
 
-            const attributedFailureCount = this.applyFailuresToNodes(rootNodes, parsedFailures, objectRan);
+            this.applyFailuresToNodes(rootNodes, parsedFailures, objectRan);
+
+            const attributedFailureCount = this.flattenNodes(rootNodes)
+                .reduce((failureCount, node) => failureCount + node.failureCount, 0);
 
             let objectStatus: PicklistDependencyCheckStatus = 'unknown';
             if ( methodOutcome ) {
                 objectStatus = methodOutcome.passed ? 'passed' : 'failed';
+            }
+
+            let unattributedFailureMessages: string[] = [];
+            if ( failureIsUnattributable ) {
+
+                unattributedFailureMessages = unattributedFailures.length > 0
+                    ? unattributedFailures.map(unattributedFailure => this.buildUnattributedFailureMessage(unattributedFailure))
+                    : [methodOutcome.message ?? ''];
+
             }
 
             return {
@@ -512,7 +788,7 @@ export class PicklistDependencyExplorerService {
                 status: objectStatus,
                 failureCount: attributedFailureCount,
                 testMethodName: testMethodName,
-                unattributedFailureMessage: failureIsUnattributable ? methodOutcome.message : undefined
+                unattributedFailureMessages: unattributedFailureMessages
             };
 
         });
@@ -524,7 +800,7 @@ export class PicklistDependencyExplorerService {
                 passed: resultsLoad.results.passed,
                 failureCount: resultsLoad.results.failureCount,
                 methodsRun: resultsLoad.results.methodsRun,
-                resultsFilePath: resultsLoad.resultsFilePath
+                resultsFilePath: resultsLoad.resultsFilePath ?? ''
             }
             : undefined;
 
@@ -550,10 +826,13 @@ export class PicklistDependencyExplorerService {
     */
     static collectSourceFilePaths(viewModel: IPicklistDependencyExplorerViewModel): string[] {
 
-        const collectFromNodes = (nodes: IPicklistDependencyNodeViewModel[]): string[] =>
-            nodes.reduce((sourceFilePaths: string[], node) => sourceFilePaths.concat([node.sourceFilePath], collectFromNodes(node.downstreamNodes)), []);
+        let sourceFilePaths: string[] = [];
 
-        return viewModel.objects.reduce((sourceFilePaths: string[], objectViewModel) => sourceFilePaths.concat(collectFromNodes(objectViewModel.rootNodes)), []);
+        viewModel.objects.forEach(objectViewModel => {
+            this.flattenNodes(objectViewModel.rootNodes).forEach(node => sourceFilePaths.push(node.sourceFilePath));
+        });
+
+        return sourceFilePaths;
 
     }
 
@@ -599,22 +878,31 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        form-action and base-uri are named explicitly because neither falls back to default-src.
+        Everything else the panel could fetch -- img, connect, font, media, frame, worker -- does
+        fall back, and so is already denied by default-src 'none'.
+    */
     static buildContentSecurityPolicy(nonce: string): string {
 
-        return `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';`;
+        return `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; form-action 'none'; base-uri 'none';`;
 
     }
 
+    /*
+        From the crypto RNG rather than Math.random. The nonce is what lets the CSP deny every
+        script but this extension's own, so it should not depend on there being no injection
+        primitive to spend a predicted value on -- that is the property the CSP exists to provide
+        independently.
+    */
     static buildNonce(): string {
 
-        const nonceCharacters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-
-        let nonce = '';
-        for ( let nonceCharacterIndex = 0; nonceCharacterIndex < 32; nonceCharacterIndex++ ) {
-            nonce += nonceCharacters.charAt(Math.floor(Math.random() * nonceCharacters.length));
-        }
-
-        return nonce;
+        /*
+            48 bytes rather than 24: base64 yields "+", "/" and "=" which are stripped so the value
+            is safe unquoted in the CSP header, and 24 bytes can fall short of 32 characters once
+            they are removed.
+        */
+        return crypto.randomBytes(48).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
 
     }
 
@@ -775,6 +1063,26 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        Derived here rather than carried in the model. Sending the complement per controlling value
+        made the payload the product of the two picklists' sizes; the declared list plus each
+        allowed list is their sum, and yields exactly the same rendering.
+    */
+    function buildForbiddenValues(node, combination) {
+
+        if (!combination.hasForbiddenAssertion) { return []; }
+
+        const allowedValues = new Set(combination.allowedValues);
+        return node.declaredValues.filter(function (declaredValue) { return !allowedValues.has(declaredValue); });
+
+    }
+
+    function appendFailureDetails(parentElement, failures) {
+        failures.forEach(function (failure) {
+            parentElement.appendChild(createElement('div', 'failureDetail', failure.kind + '\\n' + failure.message));
+        });
+    }
+
     function buildCombinationElement(node, combination) {
 
         const combinationElement = createElement('div', 'combination ' + combination.status);
@@ -790,13 +1098,8 @@ export class PicklistDependencyExplorerService {
             combinationElement.appendChild(createElement('div', 'valueList muted', 'unlocks nothing'));
         }
 
-        appendValueList(combinationElement, 'must not unlock', combination.forbiddenValues, 'value forbidden');
-
-        if (combination.status === 'failed') {
-            combinationElement.appendChild(
-                createElement('div', 'failureDetail', combination.failureKind + '\\n' + combination.failureMessage)
-            );
-        }
+        appendValueList(combinationElement, 'must not unlock', buildForbiddenValues(node, combination), 'value forbidden');
+        appendFailureDetails(combinationElement, combination.failures);
 
         const sourceDetailElement = createElement('div', 'sourceDetail hidden');
         sourceDetailElement.appendChild(createElement('div', 'sourcePath', node.sourceFilePath));
@@ -828,11 +1131,7 @@ export class PicklistDependencyExplorerService {
         appendStatusBadge(nodeHeading, node.status);
         nodeElement.appendChild(nodeHeading);
 
-        if (node.fieldLevelFailureMessage) {
-            nodeElement.appendChild(
-                createElement('div', 'failureDetail', node.fieldLevelFailureKind + '\\n' + node.fieldLevelFailureMessage)
-            );
-        }
+        appendFailureDetails(nodeElement, node.fieldLevelFailures);
 
         node.combinations.forEach(function (combination) {
             nodeElement.appendChild(buildCombinationElement(node, combination));
@@ -909,10 +1208,11 @@ export class PicklistDependencyExplorerService {
             appendStatusBadge(objectHeading, objectViewModel.status);
             objectElement.appendChild(objectHeading);
 
-            if (objectViewModel.unattributedFailureMessage) {
+            if (objectViewModel.unattributedFailureMessages.length) {
                 objectElement.appendChild(createElement('div', 'failureDetail',
-                    'This object\\'s check failed, but no individual combination could be identified from the failure message, so the combinations below are shown as not checked.\\n\\n'
-                        + objectViewModel.unattributedFailureMessage));
+                    'This object\\'s check reported failures that could not be tied to a specific combination below, '
+                        + 'so those combinations are shown as not checked rather than passed.\\n\\n'
+                        + objectViewModel.unattributedFailureMessages.join('\\n')));
             }
 
             objectViewModel.rootNodes.forEach(function (rootNode) {

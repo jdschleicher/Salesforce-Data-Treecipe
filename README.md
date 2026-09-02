@@ -290,7 +290,9 @@ Notes:
 * **No check has been run yet?** The structure still renders in full, marked "not checked" throughout, with the directory it looked in named
 * **A corrupt `results.json`?** You get a readable message and the structure without the overlay, not a blank panel
 * **No dependent picklists at all?** You get an empty state naming the objects directory that was scanned
-* A combination is only shown as passed when the loaded run actually covered it. An object whose test failed in a way that could not be tied back to a specific combination is shown as failed with the raw Apex message, and its combinations stay "not checked" rather than being reported green
+* A combination is only shown as passed when the loaded run actually covered it. If **any** of an object's reported failures cannot be tied back to a specific combination, that text is surfaced on the object and its combinations stay "not checked" rather than being reported green
+* Where a combination did fail, **every** failure reported against it is shown — the validator raises `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT` independently, and both matter
+* **Known limitation:** results are recorded per object with no fingerprint of the specs they were generated from, so a combination added to `valueSettings` *after* the last check run shows as passed. Re-run the check after changing dependency metadata
 
 ---
 

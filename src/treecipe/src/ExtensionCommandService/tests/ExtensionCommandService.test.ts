@@ -767,6 +767,8 @@ describe('ExtensionCommandService', () => {
         let handleCapturedErrorSpy: jest.SpyInstance;
         let createdWebviewPanel: any;
         let receivedMessageHandler: (panelMessage: any) => Promise<void>;
+        let registeredDisposeHandler: () => void;
+        const registeredMessageSubscriptions: { dispose: jest.Mock }[] = [];
 
         beforeEach(() => {
 
@@ -790,13 +792,30 @@ describe('ExtensionCommandService', () => {
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
             createdWebviewPanel = {
+                reveal: jest.fn(),
+                onDidDispose: jest.fn().mockImplementation(disposeHandler => {
+                    registeredDisposeHandler = disposeHandler;
+                    return { dispose: jest.fn() };
+                }),
                 webview: {
                     html: '',
                     onDidReceiveMessage: jest.fn().mockImplementation(messageHandler => {
                         receivedMessageHandler = messageHandler;
+                        const messageSubscription = { dispose: jest.fn() };
+                        registeredMessageSubscriptions.push(messageSubscription);
+                        return messageSubscription;
                     })
                 }
             };
+
+            registeredMessageSubscriptions.length = 0;
+
+            /*
+                The panel is held on the class so it can be reused across invocations, which means it
+                also survives between tests unless it is cleared.
+            */
+            (ExtensionCommandService as any).picklistDependencyExplorerPanel = undefined;
+            (ExtensionCommandService as any).picklistDependencyExplorerMessageSubscription = undefined;
 
             (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(createdWebviewPanel);
             (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
@@ -814,7 +833,7 @@ describe('ExtensionCommandService', () => {
                 PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE,
                 'Picklist Dependency Explorer',
                 vscode.ViewColumn.One,
-                { enableScripts: true, retainContextWhenHidden: true }
+                { enableScripts: true, localResourceRoots: [] }
             );
 
             expect(createdWebviewPanel.webview.html).toContain('Picklist Dependency Explorer');
@@ -934,6 +953,65 @@ describe('ExtensionCommandService', () => {
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('No objects directory found');
             expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('openPicklistDependencyExplorer');
+
+        });
+
+
+        test('given the command is run twice, reuses the one panel and reveals it rather than stacking tabs', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1);
+            expect(createdWebviewPanel.reveal).toHaveBeenCalledTimes(2);
+
+        });
+
+        /*
+            The second render builds a fresh allow-list. A listener left over from the first would
+            still be answering reveal messages against the paths it captured, so it is disposed.
+        */
+        test('given the command is run twice, disposes the previous message listener', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(registeredMessageSubscriptions).toHaveLength(2);
+            expect(registeredMessageSubscriptions[0].dispose).toHaveBeenCalled();
+            expect(registeredMessageSubscriptions[1].dispose).not.toHaveBeenCalled();
+
+        });
+
+        test('given the panel is closed, drops the reference so the next run creates a new one', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+            registeredDisposeHandler();
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(2);
+
+        });
+
+        test('reports progress while scanning rather than leaving the command looking inert', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.withProgress).toHaveBeenCalledWith(
+                expect.objectContaining({ title: 'Picklist Dependency Explorer' }),
+                expect.any(Function)
+            );
 
         });
 
