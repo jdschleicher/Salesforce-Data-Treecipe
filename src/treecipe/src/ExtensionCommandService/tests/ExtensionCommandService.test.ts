@@ -28,9 +28,11 @@ jest.mock('vscode', () => ({
         withProgress: jest.fn().mockImplementation((_progressOptions, task) => task(
             { report: jest.fn() },
             { isCancellationRequested: false, onCancellationRequested: jest.fn() }
-        ))
+        )),
+        createWebviewPanel: jest.fn()
     },
-    commands: { registerCommand: jest.fn() },
+    commands: { registerCommand: jest.fn(), executeCommand: jest.fn() },
+    ViewColumn: { One: 1 },
     ProgressLocation: { Notification: 15, Window: 10, SourceControl: 1 },
     ConfigurationTarget: { Workspace: 2 },
     FileType: { Directory: 2, File: 1, SymbolicLink: 64 }
@@ -43,12 +45,13 @@ jest.mock('@salesforce/core', () => ({
 
 import { AuthInfo } from '@salesforce/core';
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
+import { PicklistDependencyExplorerService } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 
 describe('ExtensionCommandService', () => {
 
@@ -741,6 +744,207 @@ describe('ExtensionCommandService', () => {
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('not installed or not on PATH');
             expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('runPicklistDependencyCheck');
+
+        });
+
+    });
+
+
+    describe('openPicklistDependencyExplorer', () => {
+
+        const workspaceRoot = '/workspace';
+        const objectsDirectoryPath = '/workspace/force-app/main/default/objects';
+        const stateFieldSourceFilePath = `${objectsDirectoryPath}/Chain_Example__c/fields/State__c.field-meta.xml`;
+
+        const chainSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Chain_Example__c',
+            fieldApiName: 'State__c',
+            controllingFieldApiName: 'Country__c',
+            expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: ['Ontario'] }]
+        };
+
+        let extensionCommandService: ExtensionCommandService;
+        let handleCapturedErrorSpy: jest.SpyInstance;
+        let createdWebviewPanel: any;
+        let receivedMessageHandler: (panelMessage: any) => Promise<void>;
+
+        beforeEach(() => {
+
+            extensionCommandService = new ExtensionCommandService();
+
+            /*
+                These live on the module factory rather than on a spy, so restoreMocks does not
+                reach them and their call history would otherwise carry between tests.
+            */
+            (vscode.window.createWebviewPanel as jest.Mock).mockClear();
+            (vscode.commands.executeCommand as jest.Mock).mockClear();
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration')
+                .mockReturnValue('./force-app/main/default/objects');
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockResolvedValue({ specDetails: [chainSpecDetail], skippedFieldWarnings: [] });
+
+            handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            createdWebviewPanel = {
+                webview: {
+                    html: '',
+                    onDidReceiveMessage: jest.fn().mockImplementation(messageHandler => {
+                        receivedMessageHandler = messageHandler;
+                    })
+                }
+            };
+
+            (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(createdWebviewPanel);
+            (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
+
+        });
+
+        test('given collected dependencies, opens a scripted webview panel carrying the rendered model', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
+                PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE,
+                'Picklist Dependency Explorer',
+                vscode.ViewColumn.One,
+                { enableScripts: true, retainContextWhenHidden: true }
+            );
+
+            expect(createdWebviewPanel.webview.html).toContain('Picklist Dependency Explorer');
+            expect(createdWebviewPanel.webview.html).toContain(`default-src 'none'`);
+            expect(createdWebviewPanel.webview.html).toContain('State__c');
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a results folder, reads the latest run from the configured treecipe results path', async () => {
+
+            const loadLatestResultsSpy = jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(loadLatestResultsSpy).toHaveBeenCalledWith(
+                expect.stringContaining('treecipe')
+            );
+            expect(loadLatestResultsSpy.mock.calls[0][0]).toContain('PicklistDependencyResults');
+
+        });
+
+        test('given a reveal message naming a field the model contains, reveals and opens that field file', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'revealFieldSource', sourceFilePath: stateFieldSourceFilePath });
+
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith('revealInExplorer', { fsPath: stateFieldSourceFilePath });
+            expect(openFileInEditorSpy).toHaveBeenCalledWith(stateFieldSourceFilePath);
+
+        });
+
+        /*
+            The panel is the one surface this feature exposes to content it did not author, so a
+            posted path the model never named must not reach the editor at all.
+        */
+        test('given a reveal message naming a path the model never produced, opens nothing', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'revealFieldSource', sourceFilePath: '/etc/passwd' });
+
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a message that is not a reveal request, opens nothing', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'somethingElse', sourceFilePath: stateFieldSourceFilePath });
+
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given the field file has since been deleted, warns rather than opening a missing path', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(false);
+
+            await receivedMessageHandler({ command: 'revealFieldSource', sourceFilePath: stateFieldSourceFilePath });
+
+            expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('no longer exists'));
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given no dependent picklists at all, still opens the panel with the empty state', async () => {
+
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockResolvedValue({ specDetails: [], skippedFieldWarnings: [] });
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
+            expect(createdWebviewPanel.webview.html).toContain('No dependent picklists were found in');
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given no objects directory on disk, routes the error through ErrorHandlingService', async () => {
+
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(false);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('No objects directory found');
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('openPicklistDependencyExplorer');
+
+        });
+
+        test('given no workspace, routes the error through ErrorHandlingService', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('openPicklistDependencyExplorer');
 
         });
 

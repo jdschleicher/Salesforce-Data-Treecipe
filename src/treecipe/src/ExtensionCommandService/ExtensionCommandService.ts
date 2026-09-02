@@ -10,6 +10,7 @@ import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipePro
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { PicklistDependencyExplorerService, IPicklistDependencyExplorerViewModel } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -20,6 +21,9 @@ import path = require("path");
 
 // SHARED WITH THE TESTS SO THE BUTTON LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RUN_AGAINST_ORG_ACTION_LABEL = 'Deploy and Run Against Org';
+
+// SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
+export const PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE = 'treecipe.picklistDependencyExplorer';
 
 interface IPicklistDependencyGenerationResult {
     classesDirectoryPath: string;
@@ -528,6 +532,104 @@ export class ExtensionCommandService {
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
+
+    }
+
+    /*
+        Reads local source metadata and the most recent persisted check, and renders both in a
+        webview panel.
+
+        A webview rather than a served page: the panel needs no port, no runtime dependency and no
+        second process, and it inherits the user's theme for free. The content security policy below
+        allows only the nonced inline style and script this extension emits, so the panel cannot
+        reach the network even if a picklist value tried to make it.
+    */
+    async openPicklistDependencyExplorer() {
+
+        try {
+
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+            if ( !workspaceRoot ) {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
+            }
+
+            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
+            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+
+            if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
+                throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
+            }
+
+            const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
+
+            const resultsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencyResultsFolderPath());
+            const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
+
+            const explorerViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                fullPathToObjectsDirectory,
+                collectionResult.specDetails,
+                collectionResult.skippedFieldWarnings,
+                resultsLoad
+            );
+
+            this.showPicklistDependencyExplorerPanel(explorerViewModel);
+
+        } catch(error) {
+
+            const commandName = 'openPicklistDependencyExplorer';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    private showPicklistDependencyExplorerPanel(explorerViewModel: IPicklistDependencyExplorerViewModel) {
+
+        const explorerPanel = vscode.window.createWebviewPanel(
+            PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE,
+            'Picklist Dependency Explorer',
+            vscode.ViewColumn.One,
+            /*
+                No localResourceRoots are granted. Everything the panel renders is inlined into the
+                html, so the panel has no reason to load a file from disk -- and enableScripts is
+                what the nonced inline script needs, not a resource grant.
+            */
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+
+        const nonce = PicklistDependencyExplorerService.buildNonce();
+        explorerPanel.webview.html = PicklistDependencyExplorerService.buildWebviewHtml(explorerViewModel, nonce);
+
+        /*
+            The panel may only reveal a field file the model it was built from actually names. The
+            posted path is matched against that set rather than being validated as a path, so a
+            message arriving from anywhere else cannot make the extension host open an arbitrary
+            file on the user's disk.
+        */
+        const revealableSourceFilePaths = new Set(PicklistDependencyExplorerService.collectSourceFilePaths(explorerViewModel));
+
+        explorerPanel.webview.onDidReceiveMessage(async (panelMessage: { command?: string; sourceFilePath?: string }) => {
+
+            if ( panelMessage?.command !== 'revealFieldSource' || !panelMessage.sourceFilePath ) {
+                return;
+            }
+
+            if ( !revealableSourceFilePaths.has(panelMessage.sourceFilePath) ) {
+                return;
+            }
+
+            if ( !fs.existsSync(panelMessage.sourceFilePath) ) {
+                VSCodeWorkspaceService.showWarningMessage(`The field metadata file "${panelMessage.sourceFilePath}" no longer exists. Re-open the explorer to rebuild it from the current metadata.`);
+                return;
+            }
+
+            const fieldSourceUri = vscode.Uri.file(panelMessage.sourceFilePath);
+            await vscode.commands.executeCommand('revealInExplorer', fieldSourceUri);
+            await VSCodeWorkspaceService.openFileInEditor(panelMessage.sourceFilePath);
+
+        });
 
     }
 

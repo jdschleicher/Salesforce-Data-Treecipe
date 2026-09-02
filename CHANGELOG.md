@@ -1,5 +1,47 @@
 # Change Log
 
+## [3.1.0] - Picklist Dependency Explorer
+
+Resolves [#73](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/73). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### New command: **Salesforce Treecipe: Open Picklist Dependency Explorer**
+
+The dependency data this extension already extracts had only ever been emitted as Apex and as `treecipe/PicklistDependencyResults/check-*/{results.json,report.md}`. There was nothing to *look* at — working out which controlling value unlocks what, or which combination just broke, meant reading generated Apex or a markdown dump.
+
+`treecipe.openPicklistDependencyExplorer` opens a read-only panel showing object → controlling field → controlling value → allowed values, with the values a combination must **not** unlock rendered alongside them, and the most recent check overlaid as pass/fail per combination.
+
+- **Chains are a graph, not repeated rows.** A field whose controlling field is itself a dependent picklist is nested under it, drawn once, however deep the chain runs
+- **A failing combination names the failure kind and message** — `MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH` and the rest, read out of the run's Apex assertion message
+- **Clicking a combination reveals the generating field's source XML path**, with a "Reveal in Explorer" action that opens the `.field-meta.xml`
+- Nothing new is required to use it: no org, no Salesforce CLI, and no previous check run. Only `treecipe.config.json` pointing at your objects directory
+
+### It is a webview, deliberately
+
+No local HTTP server, no open port, no new runtime dependency, and no second process. The panel's content security policy is `default-src 'none'` with only the extension's own nonced inline style and script admitted, so it can load nothing from the network. Every colour is a VS Code theme variable, so it follows your active light, dark or high contrast theme without the extension knowing which is active.
+
+Picklist values, api names and Apex failure messages all originate in metadata the extension does not control, so none of them are interpolated raw — they are HTML-escaped, and the model is handed to the panel as JSON inside a `application/json` block that a value containing `</script>` cannot close. The "Reveal in Explorer" handler opens a path only when the built view model itself named it, so a message from anywhere else cannot make the extension host open an arbitrary file.
+
+### An unverified combination is never shown as verified
+
+The generated test class asserts one method **per object**, so `results.json` carries object-level outcomes and the per-combination detail lives inside the failure message. Three states follow, and the panel distinguishes all three rather than collapsing them into pass/fail:
+
+| Situation | Shown as |
+|---|---|
+| The run covered this object and named no failure against this combination | passed |
+| The run named this exact combination as failing | failed, with the kind and message |
+| No check has run, the object was not in the run, or the object failed in a way that names no combination | **not checked**, with the raw Apex message surfaced on the object |
+
+The third row is the point. Marking every combination of an unattributable failure as failed would overstate a drift that touched one of them; marking them passed would report green for a combination the org may well have broken. Neither is a claim the loaded artifact supports.
+
+### Unhappy paths render, they do not error
+
+- **No results directory** — the structure renders in full, marked "not checked" throughout, naming the directory that was looked in and the command that would populate it
+- **Malformed `results.json`** — a readable message and the structure without the overlay, never a blank panel. A file that parses but carries no `methodOutcomes` list is reported the same way
+- **Zero dependent picklists** — an empty state naming the objects directory that was scanned, and what makes a picklist appear there
+- **A run folder holding no `results.json`** is skipped rather than picked and then failed on, so a partially written run does not hide the last good one
+
+The newest run is chosen by the timestamp in the `check-<org>-<timestamp>` folder name rather than by file mtime — every file in a fresh clone carries the checkout time, which would make "most recent" arbitrary for anyone committing their check artifacts.
+
 ## [3.0.0] - SDT-Prefixed Per-Object Picklist Dependency Specs with Negative Assertions
 
 Resolves [#72](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/72). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
