@@ -39,6 +39,15 @@ The one genuinely ambiguous case in the metadata. Treating absence as "every val
 - `SDTPicklistDependencyValidator.Failure` carries `recordTypeDeveloperName` and renders it in the scope: `MISSING_VALUES — Account.Region__c [US_Only] @ United States: ...`
 - Record type developer names pass the same api name gate as object and field names before being embedded in Apex; an invalid one is skipped with a warning rather than emitted
 
+### The Explorer shows them too
+
+The Picklist Dependency Explorer (3.1.0) renders the field-level structure; record type scoping was invisible there, which would have left the panel quietly disagreeing with the Apex it sits beside.
+
+- Each record type's narrowed combinations are nested under the field they narrow, collapsed until opened, with the scope's own values as the universe its "must not unlock" list complements against — a value the record type does not expose is already unreachable through it
+- A controlling value the record type does not assign renders as **not available under this record type** rather than as unlocking nothing: a different claim, and the one `expectUnavailable` actually makes
+- Scoped rows are counted apart from field-level ones in the header, and stay "not checked" even after a passing run — the check validates `SDTPLDSpecs.all()`, which holds the field-level specs only, so calling them passed would report a scope nothing verified as green. Every scope says so beside its own rows
+- The Explorer's failure parser now understands the `[RecordType]` segment `SDTPicklistDependencyValidator` emits, so a scoped failure attributes to its record type instead of landing on the field-level row for the same controlling value — and a failure naming a record type the metadata no longer declares is reported with its scope rather than silently dropped
+
 ### Known limitation: the scoped specs are captured, not yet verified against an org
 
 Apex `Schema` describe returns picklist values with **no** record type filtering, and the UI API that does is a REST callout that cannot run inside `@IsTest`. Rather than answer a scoped spec with field-level data — which would report a scope that was never checked as green — `SDTSchemaPicklistDependencySource` rejects one outright with a message saying why.

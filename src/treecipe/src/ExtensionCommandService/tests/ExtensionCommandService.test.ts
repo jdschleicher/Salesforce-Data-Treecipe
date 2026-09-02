@@ -964,6 +964,35 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test('given record type scoped specs collected, hands them to the explorer view model', async () => {
+
+            const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'North_America',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+            };
+
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockResolvedValue({ specDetails: [chainSpecDetail], recordTypeSpecDetails: [recordTypeSpecDetail], skippedFieldWarnings: [] });
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const buildExplorerViewModelSpy = jest.spyOn(PicklistDependencyExplorerService, 'buildExplorerViewModel');
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(buildExplorerViewModelSpy).toHaveBeenCalledWith(
+                expect.any(String),
+                [chainSpecDetail],
+                [],
+                expect.anything(),
+                [recordTypeSpecDetail]
+            );
+
+        });
+
         test('given no dependent picklists at all, still opens the panel with the empty state', async () => {
 
             jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')

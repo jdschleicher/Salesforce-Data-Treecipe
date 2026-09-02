@@ -591,7 +591,8 @@ export class ExtensionCommandService {
                     fullPathToObjectsDirectory,
                     collectionResult.specDetails,
                     collectionResult.skippedFieldWarnings,
-                    resultsLoad
+                    resultsLoad,
+                    collectionResult.recordTypeSpecDetails
                 );
 
             });

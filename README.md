@@ -305,6 +305,7 @@ The command:
 3. Finds the most recent run under `treecipe/PicklistDependencyResults/` and overlays it, marking each combination passed, failed, or not checked
 4. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination
 5. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`
+6. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
 
 Notes:
 
@@ -315,6 +316,8 @@ Notes:
 * **No dependent picklists at all?** You get an empty state naming the objects directory that was scanned
 * A combination is only shown as passed when the loaded run actually covered it. If **any** of an object's reported failures cannot be tied back to a specific combination, that text is surfaced on the object and its combinations stay "not checked" rather than being reported green
 * Where a combination did fail, **every** failure reported against it is shown — the validator raises `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT` independently, and both matter
+* **Record-type-scoped rows never go green, by design.** They are generated from source metadata and deployed with the contract, but Apex describe returns picklist values without record type filtering, so the check cannot verify them — see the record type section under [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests). Each scope says so beside its own rows rather than relying on a note elsewhere in the panel, and a value the record type does not assign is shown as *not available* rather than as unlocking nothing, which is a different claim
+* Scoped combinations are counted separately in the header (`N combination(s) + M record-type-scoped`) so a green run is never read as covering more than it did
 * **Known limitation:** results are recorded per object with no fingerprint of the specs they were generated from, so a combination added to `valueSettings` *after* the last check run shows as passed. Re-run the check after changing dependency metadata
 
 ---
