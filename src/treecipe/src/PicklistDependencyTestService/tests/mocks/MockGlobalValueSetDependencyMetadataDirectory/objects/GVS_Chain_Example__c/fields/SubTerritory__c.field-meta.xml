@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>SubTerritory__c</fullName>
+    <externalId>false</externalId>
+    <label>Sub Territory</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>Territory__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>North_Uptown</fullName>
+                <default>false</default>
+                <label>North Uptown</label>
+            </value>
+            <value>
+                <fullName>South_Docks</fullName>
+                <default>false</default>
+                <label>South Docks</label>
+            </value>
+            <value>
+                <fullName>East_Harbor</fullName>
+                <default>false</default>
+                <label>East Harbor</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>Territory_North</controllingFieldValue>
+            <valueName>North_Uptown</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>Territory_South</controllingFieldValue>
+            <valueName>South_Docks</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>Territory_East</controllingFieldValue>
+            <valueName>East_Harbor</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

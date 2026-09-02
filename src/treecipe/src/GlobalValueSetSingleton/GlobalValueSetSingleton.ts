@@ -12,7 +12,16 @@ export class GlobalValueSetSingleton {
 
     private constructor() {}
 
-    async initialize(salesforceMetadataParentPath: string, isGlobalValuesInitializedOnExtensionStartUp: boolean): Promise<void> {
+    /*
+        isMissingDirectoryWarningShown lets a caller that does not NEED global value sets initialize
+        them anyway without telling the user off for not having any. Recipe generation warns, because
+        a missing directory there silently empties a picklist's options. Picklist dependency
+        generation does not: a field that actually needed a set is named individually in its own skip
+        warning, so the directory-level notice is noise on every project without one.
+    */
+    async initialize(salesforceMetadataParentPath: string,
+                        isGlobalValuesInitializedOnExtensionStartUp: boolean,
+                        isMissingDirectoryWarningShown: boolean = true): Promise<void> {
 
         if ( !(isGlobalValuesInitializedOnExtensionStartUp) ) {
             return;
@@ -24,7 +33,9 @@ export class GlobalValueSetSingleton {
         // IF THERE IS NO "globalValueSets" directory, stop processing
         if (!fs.existsSync(expectedGlobalValueSetDirectoriesPath)) {
             this.globalValueSets = null;
-            vscode.window.showWarningMessage('No GlobalValueSets found in directory: ' + expectedGlobalValueSetDirectoriesPath);
+            if ( isMissingDirectoryWarningShown ) {
+                vscode.window.showWarningMessage('No GlobalValueSets found in directory: ' + expectedGlobalValueSetDirectoriesPath);
+            }
             return;
         }
         
@@ -55,14 +66,64 @@ export class GlobalValueSetSingleton {
 
                 if ( picklistValuesFromGlobalValueSet ) {
 
-                    const gvsApiName = fileXML.GlobalValueSet.masterLabel;
+                    this.addGlobalValueSetUnderEveryNameItIsReferencedBy(fileName, fileXML, picklistValuesFromGlobalValueSet);
 
-                    this.globalValueSets[gvsApiName] = picklistValuesFromGlobalValueSet;
                 }
                 
             }
 
         }
+
+    }
+
+    private static globalValueSetMetadataSuffix = '.globalvalueset-meta.xml';
+
+    /*
+        A field points at a global value set by its FULL NAME -- "<valueSetName>Territory_Values</valueSetName>"
+        -- which in source format is the file name, while the only name inside the file is <masterLabel>,
+        an admin-editable display label. The two agree often enough that keying by masterLabel alone
+        worked for the fixtures, and not at all for a set whose label was ever renamed or simply carries
+        the spaces a label is allowed to have.
+
+        Both names are registered rather than one being chosen, so a lookup by either resolves. They
+        collapse to a single entry wherever they agree, which is why this reads as no change at all for
+        a set that never diverged.
+    */
+    addGlobalValueSetUnderEveryNameItIsReferencedBy(globalValueSetFileName: string, fileXML: any, picklistValuesFromGlobalValueSet: string[]) {
+
+        const globalValueSetFullName = GlobalValueSetSingleton.getGlobalValueSetFullNameByFileName(globalValueSetFileName);
+        const globalValueSetMasterLabel = fileXML?.GlobalValueSet?.masterLabel?.[0];
+
+        [globalValueSetFullName, globalValueSetMasterLabel].forEach(globalValueSetName => {
+
+            if ( typeof globalValueSetName !== 'string' || globalValueSetName.trim() === '' ) {
+                return;
+            }
+
+            this.globalValueSets[globalValueSetName] = picklistValuesFromGlobalValueSet;
+
+        });
+
+    }
+
+    /*
+        "Territory_Values.globalValueSet-meta.xml" is the full name plus the source format suffix. A
+        file not carrying that suffix still yields a usable name from everything before its first dot,
+        which is what the Metadata API would have called it.
+    */
+    static getGlobalValueSetFullNameByFileName(globalValueSetFileName: string): string {
+
+        if ( !globalValueSetFileName ) {
+            return '';
+        }
+
+        const normalizedFileName = globalValueSetFileName.toLowerCase();
+
+        if ( normalizedFileName.endsWith(this.globalValueSetMetadataSuffix) ) {
+            return globalValueSetFileName.slice(0, globalValueSetFileName.length - this.globalValueSetMetadataSuffix.length);
+        }
+
+        return globalValueSetFileName.split('.')[0];
 
     }
 

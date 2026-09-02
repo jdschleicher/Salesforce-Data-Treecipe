@@ -48,6 +48,7 @@ import { AuthInfo } from '@salesforce/core';
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
+import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
@@ -132,6 +133,26 @@ describe('ExtensionCommandService', () => {
             (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
                 { username: 'dev@example.com', aliases: ['devHub'] }
             ]);
+
+        });
+
+        /*
+            A dependent picklist can take its values from a GLOBAL value set, whose values live in a
+            "globalValueSets" sibling of the objects directory rather than in the field file. Only
+            recipe generation used to read them, so spec generation saw such a field as having no
+            declared values at all.
+        */
+        test('given the generate command, reads the global value sets beside the objects directory before collecting specs', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            const initializeGlobalValueSetsSpy = jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize')
+                .mockResolvedValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            // THE THIRD ARGUMENT SUPPRESSES THE "no globalValueSets directory" NOTICE, WHICH IS NOISE ON A PROJECT WITHOUT ONE
+            expect(initializeGlobalValueSetsSpy).toHaveBeenCalledWith('/workspace/force-app/main/default', false, false);
 
         });
 

@@ -430,18 +430,26 @@ with no `valueSettings` entry at all — unreachable under every controlling val
 complement naturally. A controlling value that unlocks nothing gets no complement: `expectNone`
 already asserts that.
 
-A chained dependency (`Country__c` → `State__c` → `City__c`) emits `dependsOn` naming the upstream
-spec's own generated method, so a break upstream is reported once at its source and each link below
-it gets a single `UPSTREAM_FAILURE` instead of repeating the same describe mismatch all the way down.
+A chained dependency (`Country__c` → `State__c` → `City__c` → `District__c`) emits `dependsOn` naming
+the upstream spec's own generated method, so a break upstream is reported once at its source and each
+link below it gets a single `UPSTREAM_FAILURE` naming its **immediate** upstream, instead of repeating
+the same describe mismatch all the way down. The link is emitted only where the controlling field is
+itself dependent, so a chain of three dependency links gives two `dependsOn` calls — the root of the
+graph has nothing above it.
 
 A dependent picklist whose values come from a **global value set** is captured the same way. Such a
 field has no local `valueSetDefinition` — only the value *definitions* live elsewhere — but its
 `controllingField` and `valueSettings` are in the field file like any other, so the dependency map is
 built from `valueSettings` directly and the field gets the same `expectAtLeast` / `expectNotAllowed`
-pair and the same `dependsOn` link. For that shape the complement's universe is the set of values
-carrying `valueSettings` configuration rather than a local declaration list: a global value set value
-with no `valueSettings` entry is unlocked by no controlling value and does not appear, because
-generation reads the object metadata it was pointed at and does not open the global value set file.
+pair and the same `dependsOn` link. Its complement's universe comes from the **global value set
+itself**, read through the `GlobalValueSetSingleton` that recipe generation already populates, so a
+set value with no `valueSettings` entry — unlocked by no controlling value — lands in every complement
+just as a locally declared one does. A field references its set by full name while the only name
+inside the set file is its `masterLabel`, so the singleton registers each set under both.
+
+Where that set cannot be read, the field is skipped with a warning naming it rather than specced
+against an empty universe; where a `valueSettings` entry names a value the set does not declare, that
+value is dropped and reported, and a controlling value left unlocking nothing becomes `expectNone`.
 
 A field with a `controllingField` but no `valueSettings` markup is reported and skipped rather than
 aborting the run, as is a field whose object, field, or controlling api name is not a plain

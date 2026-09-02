@@ -199,6 +199,17 @@ export class ExtensionCommandService {
             throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
         }
 
+        /*
+            A dependent picklist can take its values from a GLOBAL value set, whose values live
+            beside the objects directory rather than in the field file. Spec generation reads them
+            from this singleton, so it is initialized here for the same reason recipe generation
+            initializes it -- the sets may have changed since the window opened.
+        */
+        const isGlobalValuesInitializedOnExtensionStartUpOverride = false;
+        const isMissingGlobalValueSetsDirectoryWarningShown = false;
+        const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+        await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isGlobalValuesInitializedOnExtensionStartUpOverride, isMissingGlobalValueSetsDirectoryWarningShown);
+
         const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
         const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
 
@@ -567,6 +578,12 @@ export class ExtensionCommandService {
             }
 
             const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+
+            // THE EXPLORER READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
+            const isGlobalValuesInitializedOnExtensionStartUpOverride = false;
+            const isMissingGlobalValueSetsDirectoryWarningShown = false;
+            const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+            await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isGlobalValuesInitializedOnExtensionStartUpOverride, isMissingGlobalValueSetsDirectoryWarningShown);
 
             /*
                 Walking a real org's objects directory parses every field file and takes seconds, so

@@ -36,4 +36,19 @@
             <default>false</default>
         </values>
     </picklistValues>
+    <picklistValues>
+        <picklist>District__c</picklist>
+        <values>
+            <fullName>Tremont</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Ohio_City</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Distillery</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
 </RecordType>

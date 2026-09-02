@@ -2,6 +2,7 @@ import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTy
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { XmlFileProcessor } from "../../XMLProcessingService/XmlFileProcessor";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
+import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -40,6 +41,14 @@ jest.mock('vscode', () => ({
 const mockMetadataDirectoryPath = path.join(__dirname, 'mocks', 'MockPicklistDependencyMetadataDirectory', 'objects');
 const mockDependencyExampleFieldsPath = path.join(mockMetadataDirectoryPath, 'Dependency_Example__c', 'fields');
 const mockChainExampleFieldsPath = path.join(mockMetadataDirectoryPath, 'Chain_Example__c', 'fields');
+
+/*
+    A metadata parent of its own rather than another object under the directory above, because a
+    global value set lives in a "globalValueSets" SIBLING of the objects directory -- the layout is
+    part of what these fixtures are exercising.
+*/
+const mockGlobalValueSetMetadataParentPath = path.join(__dirname, 'mocks', 'MockGlobalValueSetDependencyMetadataDirectory');
+const mockGlobalValueSetObjectsPath = path.join(mockGlobalValueSetMetadataParentPath, 'objects');
 
 const existingDirectoryProcessingMocksFieldsPath = path.join(
     __dirname, '..', '..',
@@ -193,7 +202,8 @@ describe('PicklistDependencyTestService', () => {
                 'Dependency_Example__c.Neighborhood__c',
                 'Dependency_Example__c.SpecialCharacterDependent__c',
                 'Chain_Example__c.State__c',
-                'Chain_Example__c.City__c'
+                'Chain_Example__c.City__c',
+                'Chain_Example__c.District__c'
             ]);
 
             const controllingFieldApiNamesByLabel = Object.fromEntries(
@@ -224,6 +234,82 @@ describe('PicklistDependencyTestService', () => {
             // Country__c IS A PLAIN PICKLIST, SO State__c IS THE ROOT OF THE CHAIN AND HAS NO UPSTREAM SPEC
             expect(upstreamFieldApiNamesByLabel['Chain_Example__c.State__c']).toBeUndefined();
             expect(upstreamFieldApiNamesByLabel['Chain_Example__c.City__c']).toBe('State__c');
+
+        });
+
+        /*
+            Two links prove a spec can have an upstream. They cannot prove a spec can have an upstream
+            AND be one, which is the only link a chain deeper than two has that a two link chain does
+            not. Chain_Example__c runs Country__c -> State__c -> City__c -> District__c so City__c is
+            that link.
+        */
+        test('given a chain of three dependency links, links every dependent field to its immediate upstream', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const upstreamFieldApiNamesByLabel = Object.fromEntries(
+                collectionResult.specDetails.map(specDetail => [`${specDetail.objectApiName}.${specDetail.fieldApiName}`, specDetail.upstreamFieldApiName])
+            );
+
+            expect(upstreamFieldApiNamesByLabel['Chain_Example__c.State__c']).toBeUndefined();
+            expect(upstreamFieldApiNamesByLabel['Chain_Example__c.City__c']).toBe('State__c');
+            // THE MIDDLE LINK IS UPSTREAM OF THIS ONE AND DOWNSTREAM OF State__c AT THE SAME TIME
+            expect(upstreamFieldApiNamesByLabel['Chain_Example__c.District__c']).toBe('City__c');
+
+        });
+
+        test('given a chain of three dependency links, emits exactly two dependsOn calls and none for the root', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const chainSpecDetails = collectionResult.specDetails.filter(specDetail => specDetail.objectApiName === 'Chain_Example__c');
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Chain_Example__c',
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain_Example__c'),
+                chainSpecDetails,
+                []
+            );
+
+            expect(apexClassBody).toContain('.dependsOn(specFor_Chain_Example_c_State_c())');
+            expect(apexClassBody).toContain('.dependsOn(specFor_Chain_Example_c_City_c())');
+
+            /*
+                Country__c is a plain picklist, so State__c is the root of the dependsOn graph and
+                links to nothing. Three dependency LINKS therefore give two dependsOn calls, not three.
+            */
+            expect([...apexClassBody.matchAll(/\.dependsOn\(/g)]).toHaveLength(2);
+            expect(apexClassBody).not.toContain('.dependsOn(specFor_Chain_Example_c_Country_c())');
+
+        });
+
+        test('given the leaf of a three link chain, takes its forbidden complement from every value the leaf declares', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            const districtSpecDetail = collectionResult.specDetails.find(
+                specDetail => specDetail.objectApiName === 'Chain_Example__c' && specDetail.fieldApiName === 'District__c'
+            )!;
+
+            expect(districtSpecDetail.controllingFieldApiName).toBe('City__c');
+
+            const clevelandExpectation = districtSpecDetail.expectations.find(expectation => expectation.controllingValue === 'Cleveland')!;
+            expect(clevelandExpectation.dependentValues).toIncludeSameMembers(['Tremont', 'Ohio_City']);
+            expect(clevelandExpectation.forbiddenValues).toIncludeSameMembers(['Short_North', 'Distillery']);
+
+            // Austin IS DECLARED BY City__c BUT UNLOCKS NO DISTRICT, WHICH IS expectNone RATHER THAN A COMPLEMENT
+            const austinExpectation = districtSpecDetail.expectations.find(expectation => expectation.controllingValue === 'Austin')!;
+            expect(austinExpectation.dependentValues).toBeEmpty();
+            expect(austinExpectation.forbiddenValues).toBeEmpty();
 
         });
 
@@ -1286,11 +1372,12 @@ describe('PicklistDependencyTestService', () => {
                     'Dependency_Example__c.Neighborhood__c [Cleveland_Only]',
                     'Dependency_Example__c.SpecialCharacterDependent__c [Cleveland_Only]',
                     'Chain_Example__c.State__c [North_America]',
-                    'Chain_Example__c.City__c [North_America]'
+                    'Chain_Example__c.City__c [North_America]',
+                    'Chain_Example__c.District__c [North_America]'
                 ]);
 
                 // THE FIELD LEVEL SPECS ARE UNCHANGED BY RECORD TYPE COLLECTION
-                expect(collectionResult.specDetails).toHaveLength(4);
+                expect(collectionResult.specDetails).toHaveLength(5);
 
                 const scopedNeighborhoodSpecDetail = collectionResult.recordTypeSpecDetails.find(
                     recordTypeSpecDetail => recordTypeSpecDetail.fieldApiName === 'Neighborhood__c'
@@ -1343,7 +1430,7 @@ describe('PicklistDependencyTestService', () => {
                     vscode.Uri.file(objectDirectoryPath)
                 );
 
-                expect(collectionResult.specDetails).toHaveLength(2);
+                expect(collectionResult.specDetails).toHaveLength(3);
                 expect(collectionResult.recordTypeSpecDetails).toBeEmpty();
                 expect(collectionResult.skippedFieldWarnings).toBeEmpty();
 
@@ -2300,6 +2387,296 @@ describe('PicklistDependencyTestService', () => {
             expect(specStatement).toContain(`'Evil\\'Object'`);
             expect(specStatement).toContain(`'Evil\\'Field'`);
             expect(specStatement).toContain(`'Evil\\'Controller'`);
+
+        });
+
+    });
+
+    /*
+        A dependent picklist can take its values from a GLOBAL value set, in which case its own field
+        file carries the dependency configuration -- controllingField and valueSettings -- but none of
+        the values. Everything below turns on where the DECLARED value universe comes from, since that
+        is what the expectNotAllowed complement is taken against.
+    */
+    describe('global value set backed dependent picklists', () => {
+
+        async function collectFromGlobalValueSetFixtures() {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const isGlobalValuesInitializedOnExtensionStartUp = true;
+            await GlobalValueSetSingleton.getInstance().initialize(mockGlobalValueSetMetadataParentPath, isGlobalValuesInitializedOnExtensionStartUp);
+
+            return await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                vscode.Uri.file(mockGlobalValueSetObjectsPath)
+            );
+
+        }
+
+        /*
+            The singleton outlives a test, and a later test resolving a global value set it never
+            asked for would be reading state rather than its own fixture.
+        */
+        afterEach(async () => {
+
+            const isGlobalValuesInitializedOnExtensionStartUp = true;
+            await GlobalValueSetSingleton.getInstance().initialize(
+                path.join(__dirname, 'mocks', 'DirectoryWithNoGlobalValueSets'),
+                isGlobalValuesInitializedOnExtensionStartUp
+            );
+
+        });
+
+        describe('getGlobalValueSetPicklistValues', () => {
+
+            test('given no global value set name, answers undefined without reaching for the singleton', () => {
+
+                expect(PicklistDependencyTestService.getGlobalValueSetPicklistValues(undefined)).toBeUndefined();
+
+            });
+
+            /*
+                Null is what the singleton holds when no globalValueSets directory was ever read,
+                which is a different situation from "read, and it has no such set" but the same
+                answer here -- neither yields a value universe.
+            */
+            test('given no global value sets read at all, answers undefined rather than throwing', () => {
+
+                jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getPicklistValueMaps').mockReturnValue(null);
+
+                expect(PicklistDependencyTestService.getGlobalValueSetPicklistValues('SDT_Territory_Values')).toBeUndefined();
+
+            });
+
+            test('given global value sets that do not include the named one, answers undefined', () => {
+
+                jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getPicklistValueMaps')
+                    .mockReturnValue({ Planets: ['earth', 'mars'] });
+
+                expect(PicklistDependencyTestService.getGlobalValueSetPicklistValues('SDT_Territory_Values')).toBeUndefined();
+                expect(PicklistDependencyTestService.getGlobalValueSetPicklistValues('Planets')).toEqual(['earth', 'mars']);
+
+            });
+
+            // THE MAP IS BUILT FROM PARSED XML, SO AN ENTRY THAT IS NOT A LIST OF VALUES IS A REAL SHAPE TO SURVIVE
+            test('given a global value set entry that is not a list of values, answers undefined rather than passing it on', () => {
+
+                jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getPicklistValueMaps')
+                    .mockReturnValue({ SDT_Territory_Values: 'Territory_North' } as any);
+
+                expect(PicklistDependencyTestService.getGlobalValueSetPicklistValues('SDT_Territory_Values')).toBeUndefined();
+
+            });
+
+        });
+
+        describe('buildDeclaredValuesByFieldDetail', () => {
+
+            test('given no field detail, declares nothing', () => {
+
+                expect(PicklistDependencyTestService.buildDeclaredValuesByFieldDetail(undefined)).toBeEmpty();
+
+            });
+
+            /*
+                A field whose global value set cannot be read still has whatever its own markup
+                declares, which for a dependent field is its valueSettings values. That is a partial
+                list rather than a wrong one, and it is better than declaring nothing.
+            */
+            test('given a global value set that cannot be read, falls back to the values in the field markup', () => {
+
+                jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getPicklistValueMaps').mockReturnValue(null);
+
+                const globalValueSetBackedFieldDetail = new XMLFieldDetail();
+                globalValueSetBackedFieldDetail.globalValueSetName = 'SDT_Territory_Values';
+                globalValueSetBackedFieldDetail.picklistValues = [
+                    { picklistOptionApiName: 'Territory_North', label: 'Territory_North', default: false, isActive: true }
+                ];
+
+                expect(PicklistDependencyTestService.buildDeclaredValuesByFieldDetail(globalValueSetBackedFieldDetail))
+                    .toEqual(['Territory_North']);
+
+            });
+
+        });
+
+        describe('buildDeclaredDependentValues', () => {
+
+            test('given a field with no picklist values of its own, declares nothing rather than throwing', () => {
+
+                expect(PicklistDependencyTestService.buildDeclaredDependentValues(undefined)).toBeEmpty();
+                expect(PicklistDependencyTestService.buildDeclaredDependentValues(new XMLFieldDetail())).toBeEmpty();
+
+            });
+
+        });
+
+        test('given a dependent picklist backed by a global value set, specs it rather than treating it as a plain picklist', async () => {
+
+            const collectionResult = await collectFromGlobalValueSetFixtures();
+
+            const territorySpecDetail = collectionResult.specDetails.find(
+                specDetail => specDetail.fieldApiName === 'Territory__c'
+            )!;
+
+            expect(territorySpecDetail).toBeDefined();
+            expect(territorySpecDetail.controllingFieldApiName).toBe('Zone__c');
+
+            const zoneAExpectation = territorySpecDetail.expectations.find(expectation => expectation.controllingValue === 'Zone_A')!;
+            expect(zoneAExpectation.dependentValues).toIncludeSameMembers(['Territory_North', 'Territory_South']);
+
+        });
+
+        /*
+            The value the whole feature turns on: Territory_Unassigned is declared by the global value
+            set and named by no valueSettings entry, so nothing unlocks it and it belongs in EVERY
+            complement. Read from the field file alone it is invisible, and every generated
+            expectNotAllowed would be missing it.
+        */
+        test('given a global value set value that no valueSettings entry names, puts it in every forbidden complement', async () => {
+
+            const collectionResult = await collectFromGlobalValueSetFixtures();
+
+            const territorySpecDetail = collectionResult.specDetails.find(
+                specDetail => specDetail.fieldApiName === 'Territory__c'
+            )!;
+
+            const zoneAExpectation = territorySpecDetail.expectations.find(expectation => expectation.controllingValue === 'Zone_A')!;
+            expect(zoneAExpectation.forbiddenValues).toIncludeSameMembers(['Territory_East', 'Territory_Unassigned']);
+
+            const zoneBExpectation = territorySpecDetail.expectations.find(expectation => expectation.controllingValue === 'Zone_B')!;
+            expect(zoneBExpectation.forbiddenValues).toIncludeSameMembers(['Territory_North', 'Territory_South', 'Territory_Unassigned']);
+
+        });
+
+        /*
+            A field names its global value set by FULL NAME, while the only name inside the set file is
+            its masterLabel. This fixture deliberately gives the set a label that is not its full name
+            so a lookup keyed by the label alone finds nothing.
+        */
+        test('given a global value set whose masterLabel differs from its full name, resolves it by the name the field references', async () => {
+
+            const collectionResult = await collectFromGlobalValueSetFixtures();
+
+            const globalValueSetNotFoundWarnings = collectionResult.skippedFieldWarnings.filter(
+                skippedFieldWarning => skippedFieldWarning.includes('"SDT_Territory_Values", which was not found')
+            );
+
+            expect(globalValueSetNotFoundWarnings).toBeEmpty();
+
+            // AND THE SET RESOLVING IS WHAT LET THE FIELD BE SPECCED AT ALL
+            expect(collectionResult.specDetails.map(specDetail => specDetail.fieldApiName)).toContain('Territory__c');
+
+        });
+
+        test('given a global value set backed field mid chain, links the spec downstream of it to that field', async () => {
+
+            const collectionResult = await collectFromGlobalValueSetFixtures();
+
+            const upstreamFieldApiNamesByLabel = Object.fromEntries(
+                collectionResult.specDetails.map(specDetail => [specDetail.fieldApiName, specDetail.upstreamFieldApiName])
+            );
+
+            // Zone__c IS A PLAIN LOCAL PICKLIST, SO THE GLOBAL VALUE SET BACKED FIELD IS THE ROOT OF THE dependsOn GRAPH
+            expect(upstreamFieldApiNamesByLabel['Territory__c']).toBeUndefined();
+            expect(upstreamFieldApiNamesByLabel['SubTerritory__c']).toBe('Territory__c');
+
+            const chainSpecDetails = collectionResult.specDetails.filter(specDetail => specDetail.objectApiName === 'GVS_Chain_Example__c');
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'GVS_Chain_Example__c',
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('GVS_Chain_Example__c'),
+                chainSpecDetails,
+                []
+            );
+
+            expect(apexClassBody).toContain('.dependsOn(specFor_GVS_Chain_Example_c_Territory_c())');
+
+        });
+
+        /*
+            The mirror of the dependent side. A CONTROLLING field can be global value set backed too,
+            and its declared values are what the "unlocks nothing" sweep reads -- so without resolving
+            them, a controlling value that unlocks nothing would get no expectNone at all.
+        */
+        test('given a global value set backed controlling field, still emits expectNone for a value of it that unlocks nothing', async () => {
+
+            const collectionResult = await collectFromGlobalValueSetFixtures();
+
+            const subTerritorySpecDetail = collectionResult.specDetails.find(
+                specDetail => specDetail.fieldApiName === 'SubTerritory__c'
+            )!;
+
+            const unassignedExpectation = subTerritorySpecDetail.expectations.find(
+                expectation => expectation.controllingValue === 'Territory_Unassigned'
+            )!;
+
+            expect(unassignedExpectation).toBeDefined();
+            expect(unassignedExpectation.dependentValues).toBeEmpty();
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'GVS_Chain_Example__c',
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('GVS_Chain_Example__c'),
+                collectionResult.specDetails.filter(specDetail => specDetail.objectApiName === 'GVS_Chain_Example__c'),
+                []
+            );
+
+            expect(apexClassBody).toContain(`.expectNone('Territory_Unassigned')`);
+
+        });
+
+        test('given a dependent picklist naming a global value set that is not in the project, skips it with an explicit warning', async () => {
+
+            const collectionResult = await collectFromGlobalValueSetFixtures();
+
+            const missingGlobalValueSetSpecDetail = collectionResult.specDetails.find(
+                specDetail => specDetail.fieldApiName === 'MissingGlobalValueSetDependent__c'
+            );
+            expect(missingGlobalValueSetSpecDetail).toBeUndefined();
+
+            const missingGlobalValueSetWarnings = collectionResult.skippedFieldWarnings.filter(
+                skippedFieldWarning => skippedFieldWarning.includes('MissingGlobalValueSetDependent__c')
+            );
+
+            expect(missingGlobalValueSetWarnings).toHaveLength(1);
+            expect(missingGlobalValueSetWarnings[0]).toContain('SDT_Not_Retrieved_Values');
+            expect(missingGlobalValueSetWarnings[0]).toContain('globalValueSets');
+
+        });
+
+        /*
+            The documented answer to a valueSettings entry naming a value its global value set does not
+            declare: the value is dropped from the spec and reported. No org exposes it, so asserting it
+            would generate a spec that must fail for a reason the spec cannot fix -- and a controlling
+            value left unlocking nothing becomes expectNone, which is what the metadata now says.
+        */
+        test('given a valueSettings entry naming a value the global value set does not declare, drops that value and reports it', async () => {
+
+            const collectionResult = await collectFromGlobalValueSetFixtures();
+
+            const orphanSpecDetail = collectionResult.specDetails.find(
+                specDetail => specDetail.fieldApiName === 'OrphanValueSettingDependent__c'
+            )!;
+
+            expect(orphanSpecDetail).toBeDefined();
+
+            const zoneAExpectation = orphanSpecDetail.expectations.find(expectation => expectation.controllingValue === 'Zone_A')!;
+            expect(zoneAExpectation.dependentValues).toEqual(['Territory_North']);
+            expect(zoneAExpectation.dependentValues).not.toContain('Territory_Retired');
+
+            // Zone_B UNLOCKED ONLY THE UNDECLARED VALUE, SO IT NOW UNLOCKS NOTHING RATHER THAN DISAPPEARING
+            const zoneBExpectation = orphanSpecDetail.expectations.find(expectation => expectation.controllingValue === 'Zone_B')!;
+            expect(zoneBExpectation.dependentValues).toBeEmpty();
+
+            // AND THE UNDECLARED VALUE IS IN NO COMPLEMENT EITHER, SINCE THE FIELD CANNOT EXPOSE IT AT ALL
+            expect(zoneAExpectation.forbiddenValues).not.toContain('Territory_Retired');
+
+            const undeclaredValueWarnings = collectionResult.skippedFieldWarnings.filter(
+                skippedFieldWarning => skippedFieldWarning.includes('OrphanValueSettingDependent__c')
+            );
+
+            expect(undeclaredValueWarnings).toHaveLength(1);
+            expect(undeclaredValueWarnings[0]).toContain('Territory_Retired');
 
         });
 

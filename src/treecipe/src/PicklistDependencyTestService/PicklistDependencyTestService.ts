@@ -1,3 +1,4 @@
+import { GlobalValueSetSingleton } from '../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { RecipeService } from '../RecipeService/RecipeService';
 import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
@@ -58,6 +59,18 @@ export interface IPicklistDependencySpecDetail {
 */
 export interface IRecordTypePicklistDependencySpecDetail extends IPicklistDependencySpecDetail {
     recordTypeDeveloperName: string;
+}
+
+/*
+    What a global-value-set-backed dependent picklist resolved to.
+
+    declaredDependentValues is undefined when the named global value set could not be read at all,
+    which is the one case where the field cannot be specced and is skipped.
+*/
+export interface IGlobalValueSetDependentValueResolution {
+    declaredDependentValues?: string[];
+    controllingValueToPicklistOptions: Record<string, string[]>;
+    warnings: string[];
 }
 
 export interface IPicklistDependencyCollectionResult {
@@ -343,7 +356,7 @@ export class PicklistDependencyTestService {
 
             }
 
-            const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(fieldDetail);
+            let controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(fieldDetail);
 
             if ( Object.keys(controllingValueToPicklistOptions).length === 0 ) {
 
@@ -352,8 +365,41 @@ export class PicklistDependencyTestService {
 
             }
 
+            /*
+                A dependent picklist backed by a GLOBAL value set declares its values in that set
+                rather than in its own file, so the universe the forbidden complement is taken
+                against has to be read from there. Without it the universe is only the values
+                carrying valueSettings, and every value the set declares that nothing unlocks --
+                exactly the values that belong in every complement -- would go unasserted.
+            */
+            let declaredDependentValues = this.buildDeclaredDependentValues(fieldDetail);
+
+            if ( fieldDetail.globalValueSetName ) {
+
+                const globalValueSetResolution = this.resolveGlobalValueSetDependentValues(objectApiName, fieldDetail, controllingValueToPicklistOptions);
+                skippedFieldWarnings = skippedFieldWarnings.concat(globalValueSetResolution.warnings);
+
+                if ( !globalValueSetResolution.declaredDependentValues ) {
+                    return;
+                }
+
+                declaredDependentValues = globalValueSetResolution.declaredDependentValues;
+                controllingValueToPicklistOptions = globalValueSetResolution.controllingValueToPicklistOptions;
+
+            }
+
             const controllingFieldDetail = fieldDetailByApiName[fieldDetail.controllingField];
-            const expectations = this.buildExpectations(controllingValueToPicklistOptions, controllingFieldDetail, fieldDetail);
+
+            /*
+                The controlling field can be global-value-set-backed too, and then ITS declared
+                values are not in its field file either. They are what the "unlocks nothing" sweep
+                reads, so without resolving them a controlling value that unlocks nothing gets no
+                expectNone -- the mirror of the dependent side, and reachable through the same
+                metadata.
+            */
+            const declaredControllingValues = this.buildDeclaredValuesByFieldDetail(controllingFieldDetail);
+
+            const expectations = this.buildExpectations(controllingValueToPicklistOptions, declaredDependentValues, declaredControllingValues);
 
             /*
                 A controlling field that is itself dependent makes this a link in a chain rather than
@@ -621,6 +667,123 @@ export class PicklistDependencyTestService {
     }
 
     /*
+        The values a global value set declares, or undefined when the set is not available.
+
+        Reads the singleton the recipe pipeline already populates rather than the globalValueSets
+        directory directly, so one read of that directory serves both commands. Undefined covers
+        both "no globalValueSets directory was read" and "that directory has no such set" -- the
+        caller cannot tell a spec apart from an unspeccable field on either, so both are the same
+        answer here.
+    */
+    static getGlobalValueSetPicklistValues(globalValueSetName: string): string[] | undefined {
+
+        if ( !globalValueSetName ) {
+            return undefined;
+        }
+
+        const picklistValuesByGlobalValueSetName = GlobalValueSetSingleton.getInstance().getPicklistValueMaps();
+
+        if ( !picklistValuesByGlobalValueSetName ) {
+            return undefined;
+        }
+
+        const globalValueSetPicklistValues = picklistValuesByGlobalValueSetName[globalValueSetName];
+
+        return Array.isArray(globalValueSetPicklistValues) ? globalValueSetPicklistValues : undefined;
+
+    }
+
+    /*
+        Resolves a global-value-set-backed dependent picklist against the set it names.
+
+        Two things can be wrong with such a field, and they are answered differently:
+
+        1. The named set cannot be read -- it is not in the project, or the globalValueSets
+           directory was never retrieved. Its declared values are then unknowable, and a spec built
+           without them would assert a complement of nothing while reading as though it covered the
+           field. The field is skipped and the reason is reported.
+
+        2. A valueSettings entry names a value the set does not declare -- most often a value an
+           admin removed from the set without cleaning up the field. That value does not exist in
+           any org the spec would run against, so asserting it would generate a spec that must fail
+           for a reason the spec cannot fix. It is dropped from the expectations and reported. A
+           controlling value left unlocking nothing keeps its place and becomes expectNone, which
+           is what the metadata now says about it.
+    */
+    static resolveGlobalValueSetDependentValues(objectApiName: string,
+                                                    fieldDetail: XMLFieldDetail,
+                                                    controllingValueToPicklistOptions: Record<string, string[]>): IGlobalValueSetDependentValueResolution {
+
+        let warnings: string[] = [];
+
+        const globalValueSetName = fieldDetail.globalValueSetName;
+        const declaredDependentValues = this.getGlobalValueSetPicklistValues(globalValueSetName);
+
+        if ( !declaredDependentValues ) {
+
+            warnings.push(`Skipped dependent picklist "${objectApiName}.${fieldDetail.apiName}": its values come from the global value set "${globalValueSetName}", which was not found in the project's "globalValueSets" directory. Retrieve that global value set and run the command again to have this field specced.`);
+            return { declaredDependentValues: undefined, controllingValueToPicklistOptions, warnings };
+
+        }
+
+        const declaredDependentValueSet = new Set(declaredDependentValues);
+
+        let undeclaredValueNames = new Set<string>();
+        let filteredControllingValueToPicklistOptions: Record<string, string[]> = {};
+
+        Object.entries(controllingValueToPicklistOptions).forEach(([controllingValue, dependentValues]) => {
+
+            dependentValues.forEach(dependentValue => {
+
+                if ( !declaredDependentValueSet.has(dependentValue) ) {
+                    undeclaredValueNames.add(dependentValue);
+                }
+
+            });
+
+            filteredControllingValueToPicklistOptions[controllingValue] = dependentValues.filter(
+                dependentValue => declaredDependentValueSet.has(dependentValue)
+            );
+
+        });
+
+        if ( undeclaredValueNames.size > 0 ) {
+
+            const sortedUndeclaredValueNames = [...undeclaredValueNames].sort();
+            warnings.push(`Dependent picklist "${objectApiName}.${fieldDetail.apiName}" has "valueSettings" for ${sortedUndeclaredValueNames.map(undeclaredValueName => `"${undeclaredValueName}"`).join(', ')}, which the global value set "${globalValueSetName}" does not declare. Those values were left out of the generated spec -- no org exposes them, so asserting them would fail for a reason the spec cannot fix.`);
+
+        }
+
+        return { declaredDependentValues, controllingValueToPicklistOptions: filteredControllingValueToPicklistOptions, warnings };
+
+    }
+
+    /*
+        Every value a field declares, wherever they live -- the global value set it names when it
+        names one, and its own markup otherwise. A global-value-set-backed field falls back to its
+        own values when the set cannot be read, which for a field whose values are only its
+        valueSettings is a partial list rather than a wrong one.
+    */
+    static buildDeclaredValuesByFieldDetail(fieldDetail: XMLFieldDetail | undefined): string[] {
+
+        if ( !fieldDetail ) {
+            return [];
+        }
+
+        if ( fieldDetail.globalValueSetName ) {
+
+            const globalValueSetPicklistValues = this.getGlobalValueSetPicklistValues(fieldDetail.globalValueSetName);
+            if ( globalValueSetPicklistValues ) {
+                return globalValueSetPicklistValues;
+            }
+
+        }
+
+        return this.buildDeclaredDependentValues(fieldDetail);
+
+    }
+
+    /*
         Every value the dependent field declares, which is the universe a forbidden list is the
         complement against. A value carrying no <valueSettings> entry at all is unreachable under
         every controlling value, and so belongs in every complement -- taking the universe from the
@@ -639,7 +802,13 @@ export class PicklistDependencyTestService {
     /*
         Controlling values that unlock dependent values come from the dependent field's own
         <valueSettings>. Controlling values that unlock nothing are only discoverable by diffing
-        against the controlling field's own picklist values, which live in its sibling field file.
+        against the values the CONTROLLING field declares.
+
+        Both declared value universes are passed in rather than read from an XMLFieldDetail here,
+        because where they live depends on the field: a locally defined picklist declares them in
+        its own markup and a global-value-set-backed one declares them in the set it names. Taking
+        them as lists keeps this a pure function of what it is given -- see
+        buildDeclaredValuesByFieldDetail, which is what resolves either shape.
 
         Each controlling value that unlocks something also gets the complement of what it unlocks,
         emitted as expectNotAllowed. expectAtLeast alone cannot catch a value drifting INTO a
@@ -651,10 +820,8 @@ export class PicklistDependencyTestService {
         unlock.
     */
     static buildExpectations(controllingValueToPicklistOptions: Record<string, string[]>,
-                                controllingFieldDetail: XMLFieldDetail | undefined,
-                                dependentFieldDetail?: XMLFieldDetail): IPicklistDependencyExpectation[] {
-
-        const declaredDependentValues = this.buildDeclaredDependentValues(dependentFieldDetail);
+                                declaredDependentValues: string[],
+                                declaredControllingValues: string[]): IPicklistDependencyExpectation[] {
 
         let expectations: IPicklistDependencyExpectation[] = Object.entries(controllingValueToPicklistOptions).map(
             ([controllingValue, dependentValues]) => {
@@ -667,13 +834,8 @@ export class PicklistDependencyTestService {
             }
         );
 
-        if ( !controllingFieldDetail || !controllingFieldDetail.picklistValues ) {
-            return expectations;
-        }
+        declaredControllingValues.forEach(controllingValue => {
 
-        controllingFieldDetail.picklistValues.forEach(controllingPicklistOption => {
-
-            const controllingValue = controllingPicklistOption.picklistOptionApiName;
             if ( controllingValue in controllingValueToPicklistOptions ) {
                 return;
             }
