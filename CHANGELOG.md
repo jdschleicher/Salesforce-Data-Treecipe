@@ -19,6 +19,10 @@ Generation read only the field file, so the declared-value universe was just the
 - Reading the sets never takes the calling command down with it. A `globalValueSets` directory that cannot be listed, or one malformed set file, costs that set rather than every other object's specs
 - Recipe YAML output is unchanged: recipe generation reads the same `valueSettings`-derived map it always did
 
+### The demo harness now exercises the global value set path it always claimed to
+
+`scripts/picklist-dependency-demo` writes a `Planets` global value set and a tier 3 `Planet__c` field backed by it, and its first drift phase rewires a value on exactly that field. The headless driver never initialized the global value set singleton, so `Planet__c` was skipped as "set not found" on every run: it never got a spec, the drift phase asserted against a spec that did not exist, and `-Step FullRun` stopped there. The driver now initializes the sets the same way the command does, so the global-value-set drift path is genuinely proven rather than silently absent.
+
 ### Dependency chains deeper than two links are covered
 
 The generator has always been depth-agnostic, but every test stopped at two links, so nothing proved the one link a deeper chain has that a shallower one does not: a spec that **has** an upstream and **is** one.

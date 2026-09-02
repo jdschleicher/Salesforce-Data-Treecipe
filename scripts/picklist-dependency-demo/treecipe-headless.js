@@ -93,6 +93,33 @@ async function generate(objectsDirectory, classesDirectory, apiVersion) {
         'PicklistDependencyTestService/PicklistDependencyTestService'
     );
 
+    const { GlobalValueSetSingleton } = requireCompiledService(
+        'GlobalValueSetSingleton/GlobalValueSetSingleton'
+    );
+
+    /*
+        A dependent picklist can take its values from a GLOBAL value set, whose values live beside
+        the objects directory rather than in the field file. Spec generation reads them from this
+        singleton, so the demo has to populate it for the same reason the command does -- without
+        this every global-value-set-backed field is skipped as "set not found", and the demo's own
+        tier 3 Planet__c field silently never gets a spec.
+
+        The second argument gates whether initialize does ANY work: it returns immediately when
+        false. The name reads like an "am I at startup" hint, so false looks like the value a caller
+        should pass -- it is the opposite, and passing it makes this call a silent no-op.
+    */
+    const shouldReadGlobalValueSetsNow = true;
+    const isMissingGlobalValueSetsDirectoryWarningShown = false;
+    /*
+        path.dirname rather than the service's getParentPath, which splits on '/' only: this driver
+        is invoked from PowerShell on Windows too, where Join-Path hands over backslashes.
+    */
+    await GlobalValueSetSingleton.getInstance().initialize(
+        path.dirname(objectsDirectory),
+        shouldReadGlobalValueSetsNow,
+        isMissingGlobalValueSetsDirectoryWarningShown
+    );
+
     const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
         VSCODE_STUB.Uri.file(objectsDirectory)
     );
