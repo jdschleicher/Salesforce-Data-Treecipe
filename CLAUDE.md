@@ -124,6 +124,13 @@ src/
     │   └── SnowfakeryRecipeFakerService/
     │       ├── SnowfakeryRecipeFakerService.ts # Snowfakery YAML recipe generation per field type
     │       └── tests/
+    ├── PicklistDependencyCheckService/
+    │   ├── PicklistDependencyCheckService.ts # Deploys and runs the generated picklist dependency tests against an org
+    │   └── tests/
+    ├── PicklistDependencyTestService/
+    │   ├── PicklistDependencyTestService.ts  # Emits SDT-prefixed per-object Apex spec classes from picklist dependency metadata
+    │   └── tests/
+    │       └── mocks/
     ├── RecipeService/
     │   ├── RecipeService.ts                 # Orchestrates recipe YAML file creation end-to-end
     │   └── tests/
@@ -168,6 +175,7 @@ User runs command (Cmd+Shift+P)
 ### Key Design Decisions
 
 - **`RecipeFakerService.ts` is a directory** — it contains both faker implementations as subfolders; this naming is intentional and must not be changed
+- **Apex written into a user's project is `SDT`-prefixed** — every class in `apexPicklistDependencyFramework/SDTPicklistDependencyFramework/` (the framework source shipped in the .vsix and scaffolded into the user's package directory), and every class the generator emits, starts with `SDT` so it cannot collide with the user's own Apex. Keep new Apex consistent with this
 - **Both faker backends must stay in sync** — whenever a new field type handler is added to `FakerJSRecipeFakerService`, add the equivalent to `SnowfakeryRecipeFakerService`
 - **Numeric/currency precision** — `<precision>` (total digits) and `<scale>` (decimal places) from XML drive `max` and `dec` parameters; `left_digits = precision - scale`
 - **Picklist handling** — special characters (`&`, `'`, etc.) in picklist values must be escaped before embedding in faker expressions
@@ -182,6 +190,8 @@ User runs command (Cmd+Shift+P)
 | `treecipe.runFakerByRecipe` | Run Faker by Recipe |
 | `treecipe.insertDataSetBySelectedDirectory` | Insert Data Set by Directory |
 | `treecipe.changeFakerImplementationService` | Select Faker Implementation |
+| `treecipe.generatePicklistDependencyTests` | Generate Picklist Dependency Tests |
+| `treecipe.runPicklistDependencyCheck` | Run Picklist Dependency Check |
 
 ---
 

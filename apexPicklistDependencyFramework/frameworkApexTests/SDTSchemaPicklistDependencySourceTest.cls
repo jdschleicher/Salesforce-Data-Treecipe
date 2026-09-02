@@ -7,14 +7,14 @@
  * since no org is guaranteed to have one.
  */
 @IsTest
-private class SchemaPicklistDependencySourceTest {
+private class SDTSchemaPicklistDependencySourceTest {
 
     @IsTest
     static void decodesASingleSetBitToItsControllingValueIndex() {
         // "gAAA" -> 0x80 0x00 0x00 -> only the high bit of the first byte
         Assert.areEqual(
             new List<Integer>{ 0 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 3)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 3)
         );
     }
 
@@ -23,7 +23,7 @@ private class SchemaPicklistDependencySourceTest {
         // "QAAA" -> 0x40 0x00 0x00 -> second-highest bit
         Assert.areEqual(
             new List<Integer>{ 1 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('QAAA', 3)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('QAAA', 3)
         );
     }
 
@@ -32,7 +32,7 @@ private class SchemaPicklistDependencySourceTest {
         // "wAAA" -> 0xC0 0x00 0x00 -> the two highest bits
         Assert.areEqual(
             new List<Integer>{ 0, 1 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('wAAA', 3)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('wAAA', 3)
         );
     }
 
@@ -41,7 +41,7 @@ private class SchemaPicklistDependencySourceTest {
         // "AIAA" -> 0x00 0x80 0x00 -> the high bit of the SECOND byte, i.e. index 8
         Assert.areEqual(
             new List<Integer>{ 8 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('AIAA', 12)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('AIAA', 12)
         );
     }
 
@@ -50,7 +50,7 @@ private class SchemaPicklistDependencySourceTest {
         // Only two controlling values exist, so the bit at index 2 is padding
         Assert.areEqual(
             new List<Integer>{ 0, 1 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('4AAA', 2)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('4AAA', 2)
         );
     }
 
@@ -58,12 +58,12 @@ private class SchemaPicklistDependencySourceTest {
     static void treatsANonDependentPicklistAsValidForNothing() {
         Assert.areEqual(
             new List<Integer>(),
-            SchemaPicklistDependencySource.decodeValidForIndexes(null, 3),
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes(null, 3),
             'a null validFor means the field is not dependent, not an error'
         );
         Assert.areEqual(
             new List<Integer>(),
-            SchemaPicklistDependencySource.decodeValidForIndexes('', 3)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('', 3)
         );
     }
 
@@ -71,7 +71,7 @@ private class SchemaPicklistDependencySourceTest {
     static void decodesNothingWhenThereAreNoControllingValues() {
         Assert.areEqual(
             new List<Integer>(),
-            SchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 0)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 0)
         );
     }
 
@@ -79,7 +79,7 @@ private class SchemaPicklistDependencySourceTest {
     static void stopsAtTheEndOfAShortBitmapInsteadOfThrowing() {
         Assert.areEqual(
             new List<Integer>{ 0 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 999)
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 999)
         );
     }
 
@@ -103,7 +103,7 @@ private class SchemaPicklistDependencySourceTest {
 
         Assert.areEqual(
             new List<String>{ 'false', 'true' },
-            SchemaPicklistDependencySource.controllingValuesInIndexOrder(booleanField),
+            SDTSchemaPicklistDependencySource.controllingValuesInIndexOrder(booleanField),
             'false must be index 0 and true index 1; reversing this inverts every checkbox-controlled result'
         );
     }
@@ -114,14 +114,14 @@ private class SchemaPicklistDependencySourceTest {
         // "QAAA" is what a value requiring the checkbox CHECKED serializes as in a live org
         Assert.areEqual(
             new List<Integer>{ 1 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('QAAA', 2),
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('QAAA', 2),
             'a checked-only value decodes to index 1, which is "true" in controllingValuesInIndexOrder'
         );
 
         // "gAAA" is what a value requiring the checkbox UNCHECKED serializes as
         Assert.areEqual(
             new List<Integer>{ 0 },
-            SchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 2),
+            SDTSchemaPicklistDependencySource.decodeValidForIndexes('gAAA', 2),
             'an unchecked-only value decodes to index 0, which is "false"'
         );
     }
@@ -143,7 +143,7 @@ private class SchemaPicklistDependencySourceTest {
 
         Assert.areEqual(
             expected,
-            SchemaPicklistDependencySource.controllingValuesInIndexOrder(industry),
+            SDTSchemaPicklistDependencySource.controllingValuesInIndexOrder(industry),
             'index order must be getPicklistValues() order — that is what validFor bits refer to'
         );
     }
@@ -152,7 +152,7 @@ private class SchemaPicklistDependencySourceTest {
     static void nonDependentPicklistSerializesValidForAsNull() {
         Schema.PicklistEntry industryEntry = Account.Industry.getDescribe().getPicklistValues()[0];
         Assert.isNull(
-            SchemaPicklistDependencySource.validForOf(industryEntry),
+            SDTSchemaPicklistDependencySource.validForOf(industryEntry),
             'a standard non-dependent picklist should serialize validFor as null'
         );
     }
@@ -167,14 +167,14 @@ private class SchemaPicklistDependencySourceTest {
     @IsTest
     static void repeatedFetchesReturnConsistentResultsThroughTheDescribeCache() {
 
-        SchemaPicklistDependencySource source = new SchemaPicklistDependencySource();
-        PicklistDependencySpec industry = PicklistDependencySpec.forField('Account', 'Industry');
+        SDTSchemaPicklistDependencySource source = new SDTSchemaPicklistDependencySource();
+        SDTPicklistDependencySpec industry = SDTPicklistDependencySpec.forField('Account', 'Industry');
 
         for (Integer attempt = 0; attempt < 2; attempt++) {
             try {
                 source.fetch(industry);
                 Assert.fail('attempt ' + attempt + ': a non-dependent picklist must be rejected every time');
-            } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+            } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
                 Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
             }
         }
@@ -198,7 +198,7 @@ private class SchemaPicklistDependencySourceTest {
         for (Integer pass = 0; pass < 2; pass++) {
             for (String fieldName : fieldNames) {
                 Schema.DescribeFieldResult describe =
-                    SchemaPicklistDependencySource.describeField('Account', fieldName);
+                    SDTSchemaPicklistDependencySource.describeField('Account', fieldName);
                 Assert.areEqual(
                     fieldName,
                     describe.getName(),
@@ -217,9 +217,9 @@ private class SchemaPicklistDependencySourceTest {
     static void objectCacheKeyIsCaseInsensitive() {
 
         Schema.DescribeFieldResult canonical =
-            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+            SDTSchemaPicklistDependencySource.describeField('Account', 'Industry');
         Schema.DescribeFieldResult lowerCased =
-            SchemaPicklistDependencySource.describeField('account', 'industry');
+            SDTSchemaPicklistDependencySource.describeField('account', 'industry');
 
         Assert.areEqual(
             canonical.getName(),
@@ -236,20 +236,20 @@ private class SchemaPicklistDependencySourceTest {
     static void clearCachesForcesAColdResolveWithoutChangingResults() {
 
         Schema.DescribeFieldResult warm =
-            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+            SDTSchemaPicklistDependencySource.describeField('Account', 'Industry');
 
-        SchemaPicklistDependencySource.clearCaches();
+        SDTSchemaPicklistDependencySource.clearCaches();
 
         Schema.DescribeFieldResult cold =
-            SchemaPicklistDependencySource.describeField('Account', 'Industry');
+            SDTSchemaPicklistDependencySource.describeField('Account', 'Industry');
 
         Assert.areEqual(warm.getName(), cold.getName(), 'a cold resolve must agree with the warm one');
 
         // The error paths must still behave after a clear
         try {
-            SchemaPicklistDependencySource.describeField('Treecipe_Not_A_Real_Object__c', 'Whatever__c');
+            SDTSchemaPicklistDependencySource.describeField('Treecipe_Not_A_Real_Object__c', 'Whatever__c');
             Assert.fail('an unknown object must still be rejected after clearCaches');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
             Assert.isTrue(e.getMessage().contains('Treecipe_Not_A_Real_Object__c'), e.getMessage());
         }
     }
@@ -257,29 +257,29 @@ private class SchemaPicklistDependencySourceTest {
     @IsTest
     static void cachingOneObjectDoesNotMaskAnUnknownObjectOrField() {
 
-        SchemaPicklistDependencySource source = new SchemaPicklistDependencySource();
+        SDTSchemaPicklistDependencySource source = new SDTSchemaPicklistDependencySource();
 
         // Warm the Account entry in both caches first. Asserted rather than swallowed: if this
         // ever stopped reaching describeField, the checks below would run against a cold cache
         // and still pass while testing nothing.
         try {
-            source.fetch(PicklistDependencySpec.forField('Account', 'Industry'));
+            source.fetch(SDTPicklistDependencySpec.forField('Account', 'Industry'));
             Assert.fail('precondition: Industry is not dependent and should have thrown');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
             Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
         }
 
         try {
-            source.fetch(PicklistDependencySpec.forField('Account', 'Treecipe_Not_A_Real_Field__c'));
+            source.fetch(SDTPicklistDependencySpec.forField('Account', 'Treecipe_Not_A_Real_Field__c'));
             Assert.fail('a cached object must still reject an unknown field on it');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
             Assert.isTrue(e.getMessage().contains('field-level security'), e.getMessage());
         }
 
         try {
-            source.fetch(PicklistDependencySpec.forField('Treecipe_Not_A_Real_Object__c', 'Industry'));
+            source.fetch(SDTPicklistDependencySpec.forField('Treecipe_Not_A_Real_Object__c', 'Industry'));
             Assert.fail('a warmed cache must still reject an unknown object');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
             Assert.isTrue(e.getMessage().contains('Treecipe_Not_A_Real_Object__c'), e.getMessage());
         }
     }
@@ -287,13 +287,13 @@ private class SchemaPicklistDependencySourceTest {
     @IsTest
     static void unknownObjectIsReportedByName() {
 
-        PicklistDependencySpec spec =
-            PicklistDependencySpec.forField('Treecipe_Not_A_Real_Object__c', 'Whatever__c');
+        SDTPicklistDependencySpec spec =
+            SDTPicklistDependencySpec.forField('Treecipe_Not_A_Real_Object__c', 'Whatever__c');
 
         try {
-            new SchemaPicklistDependencySource().fetch(spec);
+            new SDTSchemaPicklistDependencySource().fetch(spec);
             Assert.fail('expected an unknown object to be rejected');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
             Assert.isTrue(e.getMessage().contains('Treecipe_Not_A_Real_Object__c'), e.getMessage());
         }
     }
@@ -301,13 +301,13 @@ private class SchemaPicklistDependencySourceTest {
     @IsTest
     static void missingFieldMentionsFieldLevelSecurity() {
 
-        PicklistDependencySpec spec =
-            PicklistDependencySpec.forField('Account', 'Treecipe_Not_A_Real_Field__c');
+        SDTPicklistDependencySpec spec =
+            SDTPicklistDependencySpec.forField('Account', 'Treecipe_Not_A_Real_Field__c');
 
         try {
-            new SchemaPicklistDependencySource().fetch(spec);
+            new SDTSchemaPicklistDependencySource().fetch(spec);
             Assert.fail('expected an unknown field to be rejected');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
             Assert.isTrue(
                 e.getMessage().contains('field-level security'),
                 'an invisible field is absent from describe, so the message must say so: ' + e.getMessage()
@@ -318,12 +318,12 @@ private class SchemaPicklistDependencySourceTest {
     @IsTest
     static void nonDependentFieldIsRejectedRatherThanReportedAsEmpty() {
 
-        PicklistDependencySpec spec = PicklistDependencySpec.forField('Account', 'Industry');
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forField('Account', 'Industry');
 
         try {
-            new SchemaPicklistDependencySource().fetch(spec);
+            new SDTSchemaPicklistDependencySource().fetch(spec);
             Assert.fail('expected a non-dependent picklist to be rejected');
-        } catch (SchemaPicklistDependencySource.PicklistDependencyException e) {
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
             Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
         }
     }

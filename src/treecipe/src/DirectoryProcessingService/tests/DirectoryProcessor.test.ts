@@ -7,6 +7,7 @@ import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
+import { RecordTypeService } from "../../RecordTypeService/RecordTypeService";
 
 
 jest.mock('vscode', () => ({
@@ -86,6 +87,129 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
       expect(result).toEqual(objectInfoWrapper);  // the objectInfoWrapper for this test should be nothing but initialized
       expect(mockReadDirectory).toHaveBeenCalledWith(uri); 
       expect(mockReadDirectory).toHaveBeenCalledTimes(10); 
+
+    });
+
+  });
+
+  describe('object child directory pruning', () => {
+
+    /*
+        Once a directory is known to contain "fields" it is an object directory, and its other
+        children cannot contribute anything downstream. This prunes them -- which changes recipe
+        generation for every user, so the behaviour is pinned here rather than argued in a comment.
+    */
+
+    const objectsRootPath = '/fake/objects';
+    const objectDirectoryPath = `${objectsRootPath}/Example__c`;
+
+    function mockObjectDirectoryWithSiblingsOfFields() {
+
+      return jest.fn().mockImplementation((directoryUri: any) => {
+
+        switch ( directoryUri.fsPath ) {
+
+          case objectsRootPath:
+            return Promise.resolve([['Example__c', vscode.FileType.Directory]]);
+
+          case objectDirectoryPath:
+            return Promise.resolve([
+              ['fields', vscode.FileType.Directory],
+              ['listViews', vscode.FileType.Directory],
+              ['recordTypes', vscode.FileType.Directory],
+              ['compactLayouts', vscode.FileType.Directory],
+              ['Example__c.object-meta.xml', vscode.FileType.File]
+            ]);
+
+          default:
+            return Promise.resolve([]);
+
+        }
+
+      });
+
+    }
+
+    beforeEach(() => {
+      jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
+      jest.spyOn(RecordTypeService, 'getRecordTypeToApiFieldToRecordTypeWrapper').mockResolvedValue({} as any);
+    });
+
+    test('given an object directory containing fields, sibling child directories are never read', async () => {
+
+      const mockReadDirectory = mockObjectDirectoryWithSiblingsOfFields();
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+
+      await directoryProcessor.processDirectory(vscode.Uri.file(objectsRootPath), new ObjectInfoWrapper());
+
+      const readDirectoryPaths = mockReadDirectory.mock.calls.map(([directoryUri]: any) => directoryUri.fsPath);
+
+      expect(readDirectoryPaths).toContain(`${objectDirectoryPath}/fields`);
+      expect(readDirectoryPaths).not.toContain(`${objectDirectoryPath}/listViews`);
+      expect(readDirectoryPaths).not.toContain(`${objectDirectoryPath}/compactLayouts`);
+
+    });
+
+    /*
+        The pruning is only safe because RecordTypeService reaches record types from the FIELDS path
+        rather than relying on the walk to find the recordTypes directory. If that ever stops being
+        true, pruning silently drops record type driven picklist values from every recipe.
+    */
+    test('given record types are pruned from the walk, they are still resolved from the fields path', async () => {
+
+      const mockReadDirectory = mockObjectDirectoryWithSiblingsOfFields();
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+
+      const recordTypeLookupSpy = jest.spyOn(RecordTypeService, 'getRecordTypeToApiFieldToRecordTypeWrapper')
+        .mockResolvedValue({} as any);
+
+      await directoryProcessor.processDirectory(vscode.Uri.file(objectsRootPath), new ObjectInfoWrapper());
+
+      const readDirectoryPaths = mockReadDirectory.mock.calls.map(([directoryUri]: any) => directoryUri.fsPath);
+
+      expect(readDirectoryPaths).not.toContain(`${objectDirectoryPath}/recordTypes`);
+      expect(recordTypeLookupSpy).toHaveBeenCalledTimes(1);
+
+    });
+
+    test('given the object is registered, the pruned walk still names it from the parent directory', async () => {
+
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockObjectDirectoryWithSiblingsOfFields());
+
+      const objectInfoWrapper = new ObjectInfoWrapper();
+      await directoryProcessor.processDirectory(vscode.Uri.file(objectsRootPath), objectInfoWrapper);
+
+      expect(Object.keys(objectInfoWrapper.ObjectToObjectInfoMap)).toContain('Example__c');
+
+    });
+
+    // WITHOUT A FIELDS DIRECTORY THERE IS NOTHING TO PRUNE AGAINST, SO THE WALK MUST STILL DESCEND
+    test('given a directory with no fields child, every child directory is still walked', async () => {
+
+      const nestedRootPath = '/fake/nested';
+
+      const mockReadDirectory = jest.fn().mockImplementation((directoryUri: any) => {
+
+        if ( directoryUri.fsPath === nestedRootPath ) {
+          return Promise.resolve([
+            ['firstChild', vscode.FileType.Directory],
+            ['secondChild', vscode.FileType.Directory]
+          ]);
+        }
+
+        return Promise.resolve([]);
+
+      });
+
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(mockReadDirectory);
+      jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
+
+      await directoryProcessor.processDirectory(vscode.Uri.file(nestedRootPath), new ObjectInfoWrapper());
+
+      const readDirectoryPaths = mockReadDirectory.mock.calls.map(([directoryUri]: any) => directoryUri.fsPath);
+
+      expect(readDirectoryPaths).toContain(`${nestedRootPath}/firstChild`);
+      expect(readDirectoryPaths).toContain(`${nestedRootPath}/secondChild`);
 
     });
 

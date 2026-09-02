@@ -3,23 +3,23 @@
  * marker for the CI runner. Emitted from anonymous Apex; the Node runner keys its exit
  * code off the RESULT_MARKER line.
  */
-public class PicklistDependencyReport {
+public class SDTPicklistDependencyReport {
 
     public static final String RESULT_MARKER = 'PICKLIST_DEPENDENCY_CHECK_RESULT=';
 
     public Integer specCount;
     public Integer failureCount;
-    public List<PicklistDependencyValidator.Failure> failures;
+    public List<SDTPicklistDependencyValidator.Failure> failures;
 
-    private PicklistDependencyReport(Integer specCount, List<PicklistDependencyValidator.Failure> failures) {
+    private SDTPicklistDependencyReport(Integer specCount, List<SDTPicklistDependencyValidator.Failure> failures) {
         this.specCount = specCount;
-        this.failures = failures == null ? new List<PicklistDependencyValidator.Failure>() : failures;
+        this.failures = failures == null ? new List<SDTPicklistDependencyValidator.Failure>() : failures;
         this.failureCount = this.failures.size();
     }
 
-    public static PicklistDependencyReport build(List<PicklistDependencySpec> specs, List<PicklistDependencyValidator.Failure> failures) {
+    public static SDTPicklistDependencyReport build(List<SDTPicklistDependencySpec> specs, List<SDTPicklistDependencyValidator.Failure> failures) {
         Integer count = specs == null ? 0 : specs.size();
-        return new PicklistDependencyReport(count, failures);
+        return new SDTPicklistDependencyReport(count, failures);
     }
 
     public Boolean hasFailures() {
@@ -50,11 +50,11 @@ public class PicklistDependencyReport {
         lines.add('  failures:      ' + failureCount);
 
         if (isEmpty()) {
-            lines.add('  no specs registered — SFTreecipePicklistDependencySpecs.all() returned nothing,');
+            lines.add('  no specs registered — SDTPLDSpecs.all() returned nothing,');
             lines.add('  so this run verified nothing. Add specs by hand or generate them.');
         } else if (hasFailures()) {
             lines.add('');
-            for (PicklistDependencyValidator.Failure failure : failures) {
+            for (SDTPicklistDependencyValidator.Failure failure : failures) {
                 lines.add('  - ' + failure.toLine());
             }
         } else {

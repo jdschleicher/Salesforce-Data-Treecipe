@@ -2,6 +2,7 @@ import { RecipeService } from '../RecipeService/RecipeService';
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -10,6 +11,15 @@ export interface IPicklistDependencyExpectation {
     controllingValue: string;
     // AN EMPTY LIST INDICATES THE CONTROLLING VALUE UNLOCKS NOTHING AND SO EMITS "expectNone"
     dependentValues: string[];
+    /*
+        Values the dependent field declares that this controlling value does NOT unlock. Emitted
+        as expectNotAllowed, which is what catches a value drifting INTO a combination -- the
+        positive expectAtLeast line only catches one going missing.
+
+        Optional because a hand built expectation -- a test, or a caller assembling a spec detail
+        directly -- is entitled to assert only the positive half. The generator always populates it.
+    */
+    forbiddenValues?: string[];
 }
 
 export interface IPicklistDependencySpecDetail {
@@ -17,11 +27,23 @@ export interface IPicklistDependencySpecDetail {
     fieldApiName: string;
     controllingFieldApiName: string;
     expectations: IPicklistDependencyExpectation[];
+    /*
+        Set when this field's controlling field is ITSELF a dependent picklist, and names it.
+        A controlling field always lives on the same object, so the dependsOn call the generator
+        emits from this is always to a sibling method in the same per-object class.
+    */
+    upstreamFieldApiName?: string;
 }
 
 export interface IPicklistDependencyCollectionResult {
     specDetails: IPicklistDependencySpecDetail[];
     skippedFieldWarnings: string[];
+}
+
+export interface ISpecsClassWriteResult {
+    aggregatorClassFilePath: string;
+    perObjectClassFilePathsByObjectApiName: Record<string, string>;
+    removedStaleClassFilePaths: string[];
 }
 
 export interface IFrameworkScaffoldResult {
@@ -33,24 +55,48 @@ export interface IFrameworkScaffoldResult {
 export class PicklistDependencyTestService {
 
     /*
-        Prefixed so the class this command writes into a user's package directory is obviously not
-        theirs, and cannot collide with an existing SFTreecipePicklistDependencySpecs of their own. The test
-        class name derives from it, so both move together.
+        The "SDT" prefix marks every class this command writes into a user's package directory as
+        Salesforce Data Treecipe's rather than theirs, and removes any chance of colliding with a
+        PicklistDependencySpecs of their own. The aggregator, the per-object classes and the test
+        class all derive from it, so they move together.
     */
-    private static specsClassName = 'SFTreecipePicklistDependencySpecs';
+    private static specsClassName = 'SDTPLDSpecs';
 
     /*
-        The runtime classes the generated SFTreecipePicklistDependencySpecs.cls depends on. These ship in the
-        vsix via negation entries in .vscodeignore and are scaffolded into the user's package
-        directory when missing, otherwise the generated file would not compile in their org.
+        Salesforce caps an ApexClass name at 40 characters. The per-object classes are the only
+        generated names that embed a variable-length api name, so they are the only ones that can
+        breach it -- and the earlier "SDTPicklistDependencySpecs_" prefix spent 27 of the 40 before
+        the object name began, leaving 13 and failing the deploy for almost any custom object.
+        "PLD" is picklist-dependency abbreviated, which buys back 15 characters for the part of the
+        name that actually identifies the class.
+    */
+    private static maximumApexClassNameLength = 40;
+
+    /*
+        Class names this command generated under its previous naming, checked for so a user
+        upgrading from 2.12.x-2.14.x is told what to delete rather than silently ending up with
+        two frameworks deployed side by side.
+    */
+    private static legacySpecsClassNames: string[] = [
+        'SFTreecipePicklistDependencySpecs',
+        'SFTreecipePicklistDependencySpecsTest'
+    ];
+
+    private static legacyFrameworkDirectoryName = 'PicklistDependencyFramework';
+
+    /*
+        The runtime classes the generated SDTPLDSpecs.cls depends on. Their source lives in
+        apexPicklistDependencyFramework/, ships in the vsix via negation entries in .vscodeignore,
+        and is scaffolded into the user's package directory when missing, otherwise the generated
+        file would not compile in their org.
     */
     private static frameworkClassNames: string[] = [
-        'IPicklistDependencySource',
-        'PicklistDependencySpec',
-        'PicklistDependencySnapshot',
-        'PicklistDependencyReport',
-        'PicklistDependencyValidator',
-        'SchemaPicklistDependencySource'
+        'ISDTPicklistDependencySource',
+        'SDTPicklistDependencySpec',
+        'SDTPicklistDependencySnapshot',
+        'SDTPicklistDependencyReport',
+        'SDTPicklistDependencyValidator',
+        'SDTSchemaPicklistDependencySource'
     ];
 
     /*
@@ -237,13 +283,23 @@ export class PicklistDependencyTestService {
             }
 
             const controllingFieldDetail = fieldDetailByApiName[fieldDetail.controllingField];
-            const expectations = this.buildExpectations(controllingValueToPicklistOptions, controllingFieldDetail);
+            const expectations = this.buildExpectations(controllingValueToPicklistOptions, controllingFieldDetail, fieldDetail);
+
+            /*
+                A controlling field that is itself dependent makes this a link in a chain rather than
+                a root. Only a controlling field that survived the api name validation above can be
+                linked, since the emitted dependsOn call names its generated spec method.
+            */
+            const controllingFieldIsItselfDependent = !!( controllingFieldDetail
+                                                            && controllingFieldDetail.controllingField
+                                                            && this.isValidSalesforceApiName(controllingFieldDetail.apiName) );
 
             specDetails.push({
                 objectApiName: objectApiName,
                 fieldApiName: fieldDetail.apiName,
                 controllingFieldApiName: fieldDetail.controllingField,
-                expectations: expectations
+                expectations: expectations,
+                upstreamFieldApiName: controllingFieldIsItselfDependent ? controllingFieldDetail.apiName : undefined
             });
 
         });
@@ -253,15 +309,50 @@ export class PicklistDependencyTestService {
     }
 
     /*
+        Every value the dependent field declares, which is the universe a forbidden list is the
+        complement against. A value carrying no <valueSettings> entry at all is unreachable under
+        every controlling value, and so belongs in every complement -- taking the universe from the
+        declared values rather than from the valueSettings map is what makes that fall out.
+    */
+    static buildDeclaredDependentValues(dependentFieldDetail: XMLFieldDetail | undefined): string[] {
+
+        if ( !dependentFieldDetail || !dependentFieldDetail.picklistValues ) {
+            return [];
+        }
+
+        return dependentFieldDetail.picklistValues.map(picklistOption => picklistOption.picklistOptionApiName);
+
+    }
+
+    /*
         Controlling values that unlock dependent values come from the dependent field's own
         <valueSettings>. Controlling values that unlock nothing are only discoverable by diffing
         against the controlling field's own picklist values, which live in its sibling field file.
+
+        Each controlling value that unlocks something also gets the complement of what it unlocks,
+        emitted as expectNotAllowed. expectAtLeast alone cannot catch a value drifting INTO a
+        combination, and switching the generator to expectExactly would instead fire on any value
+        an admin legitimately adds to the field after generation.
+
+        A controlling value that unlocks nothing gets no complement: expectNone already asserts that
+        it unlocks nothing at all, which is strictly stronger than naming each value it must not
+        unlock.
     */
     static buildExpectations(controllingValueToPicklistOptions: Record<string, string[]>,
-                                controllingFieldDetail: XMLFieldDetail | undefined): IPicklistDependencyExpectation[] {
+                                controllingFieldDetail: XMLFieldDetail | undefined,
+                                dependentFieldDetail?: XMLFieldDetail): IPicklistDependencyExpectation[] {
+
+        const declaredDependentValues = this.buildDeclaredDependentValues(dependentFieldDetail);
 
         let expectations: IPicklistDependencyExpectation[] = Object.entries(controllingValueToPicklistOptions).map(
-            ([controllingValue, dependentValues]) => ({ controllingValue, dependentValues })
+            ([controllingValue, dependentValues]) => {
+
+                const allowedValues = new Set(dependentValues);
+                const forbiddenValues = declaredDependentValues.filter(declaredValue => !allowedValues.has(declaredValue));
+
+                return { controllingValue, dependentValues, forbiddenValues };
+
+            }
         );
 
         if ( !controllingFieldDetail || !controllingFieldDetail.picklistValues ) {
@@ -275,7 +366,7 @@ export class PicklistDependencyTestService {
                 return;
             }
 
-            expectations.push({ controllingValue: controllingValue, dependentValues: [] });
+            expectations.push({ controllingValue: controllingValue, dependentValues: [], forbiddenValues: [] });
 
         });
 
@@ -334,51 +425,132 @@ export class PicklistDependencyTestService {
 
     }
 
-    static buildSpecsApexClassBody(specDetails: IPicklistDependencySpecDetail[]): string {
+    /*
+        One spec class per object rather than one for the whole org. A registry covering every
+        dependent picklist in a real org is not something anyone reads; per object it is, and a
+        regeneration touching one object no longer rewrites a file the diff for every other object
+        also lands in.
+
+        Splitting per FIELD was considered and rejected: it multiplies files by the number of
+        dependent picklists for no gain in readability, and would separate a chained picklist from
+        the field that controls it.
+    */
+    static buildPerObjectSpecsClassName(objectApiName: string): string {
+
+        const collapsedUnderscores = objectApiName.replace(/_{2,}/g, '_');
+        const identifierSafeObjectApiName = /^[0-9]/.test(collapsedUnderscores) ? `object${collapsedUnderscores}` : collapsedUnderscores;
+
+        const classNamePrefix = `${this.specsClassName}_`;
+        const candidateClassName = `${classNamePrefix}${identifierSafeObjectApiName}`;
+
+        if ( candidateClassName.length <= this.maximumApexClassNameLength ) {
+            return candidateClassName;
+        }
+
+        /*
+            A custom object api name can itself reach 40 characters, so no prefix short enough to be
+            readable guarantees a legal name. The overflow is truncated and given a digest of the
+            FULL api name, which keeps the result unique and -- unlike a positional suffix -- stable
+            across runs. An unstable name would orphan the previously generated class in the org.
+        */
+        const objectApiNameDigest = crypto.createHash('sha256').update(objectApiName).digest('hex').slice(0, 6);
+        const truncatedLength = this.maximumApexClassNameLength - classNamePrefix.length - objectApiNameDigest.length - 1;
+
+        // A TRAILING UNDERSCORE WOULD MEET THE SEPARATOR AND FORM THE "__" APEX FORBIDS IN AN IDENTIFIER
+        const truncatedObjectApiName = identifierSafeObjectApiName.slice(0, truncatedLength).replace(/_+$/, '');
+
+        return `${classNamePrefix}${truncatedObjectApiName}_${objectApiNameDigest}`;
+
+    }
+
+    /*
+        Two object api names can collapse to one identifier ("Foo__c" and "Foo_c"), and two Apex
+        classes with the same name will not deploy, so later collisions take a numeric suffix. The
+        common case -- no collision -- keeps the unsuffixed name a reader expects.
+    */
+    static buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames: string[]): Record<string, string> {
+
+        let classNamesByObjectApiName: Record<string, string> = {};
+        let usedClassNames = new Set<string>();
+
+        objectApiNames.forEach(objectApiName => {
+
+            const baseClassName = this.buildPerObjectSpecsClassName(objectApiName);
+
+            let uniqueClassName = baseClassName;
+            let collisionSuffix = 2;
+            while ( usedClassNames.has(uniqueClassName) ) {
+                uniqueClassName = `${baseClassName}_${collisionSuffix}`;
+                collisionSuffix++;
+            }
+
+            usedClassNames.add(uniqueClassName);
+            classNamesByObjectApiName[objectApiName] = uniqueClassName;
+
+        });
+
+        return classNamesByObjectApiName;
+
+    }
+
+    static getDistinctObjectApiNames(specDetails: IPicklistDependencySpecDetail[]): string[] {
+        return [...new Set(specDetails.map(specDetail => specDetail.objectApiName))].sort();
+    }
+
+    static buildPerObjectSpecsApexClassBody(objectApiName: string,
+                                                perObjectClassName: string,
+                                                specDetails: IPicklistDependencySpecDetail[]): string {
 
         const specMethodNames = this.buildSpecMethodNamesBySpecDetail(specDetails);
 
         /*
-            One method per scenario rather than one long list literal. Each dependency becomes
-            individually addressable -- readable on its own, referenced by name from a hand written
-            test, and tightened to expectExactly without picking through a single expression.
+            A controlling field always lives on the same object as the field it controls, so the spec
+            a dependsOn names is always a sibling method in this same class and needs no qualifier.
         */
+        let specMethodNameByFieldApiName: Record<string, string> = {};
+        specDetails.forEach((specDetail, specDetailIndex) => {
+            specMethodNameByFieldApiName[specDetail.fieldApiName] = specMethodNames[specDetailIndex];
+        });
+
         const specMethods = specDetails.map((specDetail, specDetailIndex) => {
 
-            const specStatement = this.buildSpecStatement(specDetail)
-                .split('\n')
-                .map(statementLine => statementLine.replace(/^ {8}/, '        '))
-                .join('\n');
+            const upstreamSpecMethodName = specDetail.upstreamFieldApiName
+                ? specMethodNameByFieldApiName[specDetail.upstreamFieldApiName]
+                : undefined;
+
+            const specStatement = this.buildSpecStatement(specDetail, upstreamSpecMethodName);
 
             return `    // ${specDetail.objectApiName}.${specDetail.fieldApiName} controlled by ${specDetail.controllingFieldApiName}
-    public static PicklistDependencySpec ${specMethodNames[specDetailIndex]}() {
+    public static SDTPicklistDependencySpec ${specMethodNames[specDetailIndex]}() {
         return ${specStatement.trim()};
     }`;
 
         }).join('\n\n');
 
         const specsListMarkup = ( specDetails.length === 0 )
-            ? `        return new List<PicklistDependencySpec>();`
-            : `        return new List<PicklistDependencySpec>{\n${specMethodNames.map(specMethodName => `            ${specMethodName}()`).join(',\n')}\n        };`;
+            ? `        return new List<SDTPicklistDependencySpec>();`
+            : `        return new List<SDTPicklistDependencySpec>{\n${specMethodNames.map(specMethodName => `            ${specMethodName}()`).join(',\n')}\n        };`;
 
         const specMethodsBlock = ( specDetails.length === 0 ) ? '' : `\n${specMethods}\n`;
 
         return `/**
  * GENERATED FILE -- regenerating overwrites it.
  *
- * Created by the Salesforce Data Treecipe "Generate Picklist Dependency Tests" command from
- * the picklist dependency configuration in local source metadata.
+ * Picklist dependency specs for ${objectApiName}, created by the Salesforce Data Treecipe
+ * "Generate Picklist Dependency Tests" command from local source metadata.
  *
- * Each dependent picklist gets its own method, and all() returns the collection of them. A single
- * scenario can therefore be read, referenced from a hand written test, or tightened on its own.
+ * Each dependent picklist gets its own method, and all() returns the collection of them.
+ * ${this.specsClassName}.all() aggregates this class together with the other objects'.
  *
- * Every value is emitted as expectAtLeast: the combinations present in source metadata must
- * still exist in the org, and values the org has added since are tolerated. Tightening a line
- * to expectExactly is a deliberate edit by the spec owner and will be lost on regeneration.
+ * Every combination is asserted twice: expectAtLeast for the values the controlling value must
+ * unlock, and expectNotAllowed for the values it must not. The pair catches a value both
+ * disappearing from a combination and drifting into one, while still tolerating a value an admin
+ * adds to the field in the org after generation. Tightening a line to expectExactly is a
+ * deliberate edit by the spec owner and will be lost on regeneration.
  */
-public class ${this.specsClassName} {
+public class ${perObjectClassName} {
 ${specMethodsBlock}
-    public static List<PicklistDependencySpec> all() {
+    public static List<SDTPicklistDependencySpec> all() {
 ${specsListMarkup}
     }
 }
@@ -386,7 +558,46 @@ ${specsListMarkup}
 
     }
 
-    static buildSpecStatement(specDetail: IPicklistDependencySpecDetail): string {
+    /*
+        The aggregator is the one name the generated test class and any hand written caller depend
+        on, so it stays stable while the per-object classes behind it come and go with the metadata.
+    */
+    static buildAggregatorSpecsApexClassBody(classNamesByObjectApiName: Record<string, string>): string {
+
+        const objectApiNames = Object.keys(classNamesByObjectApiName).sort();
+
+        const aggregationMarkup = ( objectApiNames.length === 0 )
+            ? `        return new List<SDTPicklistDependencySpec>();`
+            : `        List<SDTPicklistDependencySpec> specs = new List<SDTPicklistDependencySpec>();\n`
+                + objectApiNames.map(objectApiName => `        specs.addAll(${classNamesByObjectApiName[objectApiName]}.all());`).join('\n')
+                + `\n        return specs;`;
+
+        const perObjectClassLines = objectApiNames.length === 0
+            ? ' * No object in the scanned metadata declares a dependent picklist.'
+            : objectApiNames.map(objectApiName => ` *   - ${objectApiName}: ${classNamesByObjectApiName[objectApiName]}`).join('\n');
+
+        return `/**
+ * GENERATED FILE -- regenerating overwrites it.
+ *
+ * Aggregates the per-object picklist dependency spec classes the Salesforce Data Treecipe
+ * "Generate Picklist Dependency Tests" command emits:
+ *
+${perObjectClassLines}
+ *
+ * Callers depend on this class rather than on the per-object ones, so a class appearing or
+ * disappearing as metadata changes does not ripple outwards.
+ */
+public class ${this.specsClassName} {
+
+    public static List<SDTPicklistDependencySpec> all() {
+${aggregationMarkup}
+    }
+}
+`;
+
+    }
+
+    static buildSpecStatement(specDetail: IPicklistDependencySpecDetail, upstreamSpecMethodName?: string): string {
 
         /*
             Api names are validated before a spec is built, so escaping them is a no-op for every
@@ -397,8 +608,16 @@ ${specsListMarkup}
         const fieldApiName = this.escapeApexStringLiteral(specDetail.fieldApiName);
         const controllingFieldApiName = this.escapeApexStringLiteral(specDetail.controllingFieldApiName);
 
-        let specStatement = `            PicklistDependencySpec.forField('${objectApiName}', '${fieldApiName}')`;
+        let specStatement = `            SDTPicklistDependencySpec.forField('${objectApiName}', '${fieldApiName}')`;
         specStatement += `\n                .controlledBy('${controllingFieldApiName}')`;
+
+        if ( upstreamSpecMethodName ) {
+            specStatement += `\n                .dependsOn(${upstreamSpecMethodName}())`;
+        }
+
+        const buildValueListMarkup = (values: string[]) => values
+            .map(value => `'${this.escapeApexStringLiteral(value)}'`)
+            .join(', ');
 
         specDetail.expectations.forEach(expectation => {
 
@@ -407,14 +626,18 @@ ${specsListMarkup}
             if ( expectation.dependentValues.length === 0 ) {
 
                 specStatement += `\n                .expectNone('${escapedControllingValue}')`;
+                return;
 
-            } else {
+            }
 
-                const joinedDependentValues = expectation.dependentValues
-                    .map(dependentValue => `'${this.escapeApexStringLiteral(dependentValue)}'`)
-                    .join(', ');
-                specStatement += `\n                .expectAtLeast('${escapedControllingValue}', new List<String>{ ${joinedDependentValues} })`;
+            specStatement += `\n                .expectAtLeast('${escapedControllingValue}', new List<String>{ ${buildValueListMarkup(expectation.dependentValues)} })`;
 
+            /*
+                An empty complement means the controlling value unlocks everything the field
+                declares, so there is nothing it must not unlock and the line would assert nothing.
+            */
+            if ( expectation.forbiddenValues && expectation.forbiddenValues.length > 0 ) {
+                specStatement += `\n                .expectNotAllowed('${escapedControllingValue}', new List<String>{ ${buildValueListMarkup(expectation.forbiddenValues)} })`;
             }
 
         });
@@ -541,11 +764,11 @@ ${specsListMarkup}
         nested folders, so a subdirectory deploys identically while keeping six files the user did not
         write clearly separated from the ones they did -- and making them removable in one action.
 
-        The generated SFTreecipePicklistDependencySpecs.cls and SFTreecipePicklistDependencySpecsTest.cls deliberately do
+        The generated SDTPLDSpecs.cls and SDTPLDSpecsTest.cls deliberately do
         NOT live here: those are the user's contract, expected to be read and sometimes hand-tightened,
         so they stay at the classes root where a developer would look for them.
     */
-    private static frameworkDirectoryName = 'PicklistDependencyFramework';
+    private static frameworkDirectoryName = 'SDTPicklistDependencyFramework';
 
     static getFrameworkDirectoryName(): string {
         return this.frameworkDirectoryName;
@@ -648,7 +871,7 @@ ${specsListMarkup}
     /*
         A test method per object rather than one for the whole registry. Each method gets its own
         transaction and so its own CPU and heap budget, which matters because the describe work in
-        SchemaPicklistDependencySource is what binds the limit -- and a failure names the object in
+        SDTSchemaPicklistDependencySource is what binds the limit -- and a failure names the object in
         the test results without the message having to be read.
     */
     static buildSpecsTestApexClassBody(specDetails: IPicklistDependencySpecDetail[]): string {
@@ -678,7 +901,7 @@ ${specsListMarkup}
  *
  * These assertions read the org's REAL metadata. Schema describe is not isolated by @IsTest, so no
  * @TestSetup data and no SeeAllData are involved -- the describe calls in
- * SchemaPicklistDependencySource return the same result they would outside a test.
+ * SDTSchemaPicklistDependencySource return the same result they would outside a test.
  *
  * A failure here means an admin has rewired or removed a dependency that local source metadata
  * still claims exists. Regenerate the specs if the org is now correct, or fix the org if it is not.
@@ -698,14 +921,14 @@ ${testMethods}
         Assert.isFalse(
             ${this.specsClassName}.all().isEmpty(),
             'No picklist dependency specs are registered, so this run verified nothing. '
-                + 'Re-run the "Generate Picklist Dependency Tests" command.'
+                + 'Re-run the Generate Picklist Dependency Tests command.'
         );
     }
 
     private static void assertNoPicklistDependencyFailuresForObject(String objectApiName) {
 
-        List<PicklistDependencySpec> specsForObject = new List<PicklistDependencySpec>();
-        for (PicklistDependencySpec spec : ${this.specsClassName}.all()) {
+        List<SDTPicklistDependencySpec> specsForObject = new List<SDTPicklistDependencySpec>();
+        for (SDTPicklistDependencySpec spec : ${this.specsClassName}.all()) {
             if (spec.objectApiName == objectApiName) {
                 specsForObject.add(spec);
             }
@@ -713,20 +936,20 @@ ${testMethods}
 
         Assert.isFalse(
             specsForObject.isEmpty(),
-            'No specs found for "' + objectApiName + '". This class is generated from the spec '
+            'No specs found for ' + objectApiName + '. This class is generated from the spec '
                 + 'registry, so the two are out of sync -- regenerate them together.'
         );
 
-        PicklistDependencyValidator validator =
-            new PicklistDependencyValidator(new SchemaPicklistDependencySource());
+        SDTPicklistDependencyValidator validator =
+            new SDTPicklistDependencyValidator(new SDTSchemaPicklistDependencySource());
 
-        List<PicklistDependencyValidator.Failure> failures = validator.validate(specsForObject);
+        List<SDTPicklistDependencyValidator.Failure> failures = validator.validate(specsForObject);
 
         Assert.isTrue(failures.isEmpty(), buildFailureMessage(objectApiName, failures));
 
     }
 
-    private static String buildFailureMessage(String objectApiName, List<PicklistDependencyValidator.Failure> failures) {
+    private static String buildFailureMessage(String objectApiName, List<SDTPicklistDependencyValidator.Failure> failures) {
 
         List<String> failureLines = new List<String>();
         failureLines.add(
@@ -734,7 +957,7 @@ ${testMethods}
                 + failures.size() + ' combination(s) no longer match local source metadata:'
         );
 
-        for (PicklistDependencyValidator.Failure failure : failures) {
+        for (SDTPicklistDependencyValidator.Failure failure : failures) {
             failureLines.add('  - ' + failure.toLine());
         }
 
@@ -747,15 +970,141 @@ ${testMethods}
 
     }
 
-    static writeSpecsClassFiles(classesDirectoryPath: string, apexClassBody: string, apiVersion: string): string {
+    static getPerObjectSpecsClassFilePath(classesDirectoryPath: string, perObjectClassName: string): string {
+        return path.join(classesDirectoryPath, `${perObjectClassName}.cls`);
+    }
+
+    /*
+        Matches the per-object classes this command emits and nothing else. The underscore is what
+        keeps SDTPLDSpecsTest.cls out of it -- deleting the generated test class as though it were a
+        stale per-object class would break the check command on the next run.
+    */
+    private static perObjectSpecsClassFilePattern = /^SDTPLDSpecs_[A-Za-z0-9_]+\.cls$/;
+
+    static isPerObjectSpecsClassFileName(fileName: string): boolean {
+        return this.perObjectSpecsClassFilePattern.test(fileName);
+    }
+
+    /*
+        An object losing its last dependent picklist, or being renamed, leaves behind a per-object
+        class the regenerated aggregator no longer calls. Left on disk it still deploys, so the org
+        keeps asserting a contract the source metadata no longer describes. Only files matching the
+        generated-class pattern and absent from this run are removed.
+    */
+    static removeStalePerObjectSpecsClassFiles(classesDirectoryPath: string, currentClassNames: string[]): string[] {
+
+        if ( !fs.existsSync(classesDirectoryPath) ) {
+            return [];
+        }
+
+        const currentClassFileNames = new Set(currentClassNames.map(className => `${className}.cls`));
+
+        let removedClassFilePaths: string[] = [];
+
+        fs.readdirSync(classesDirectoryPath).forEach(fileName => {
+
+            if ( !this.isPerObjectSpecsClassFileName(fileName) || currentClassFileNames.has(fileName) ) {
+                return;
+            }
+
+            const staleClassFilePath = path.join(classesDirectoryPath, fileName);
+            fs.rmSync(staleClassFilePath, { force: true });
+            fs.rmSync(`${staleClassFilePath}-meta.xml`, { force: true });
+            removedClassFilePaths.push(staleClassFilePath);
+
+        });
+
+        return removedClassFilePaths;
+
+    }
+
+    static writeSpecsClassFiles(classesDirectoryPath: string,
+                                    specDetails: IPicklistDependencySpecDetail[],
+                                    apiVersion: string): ISpecsClassWriteResult {
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
 
-        const specsClassFilePath = this.getSpecsClassFilePath(classesDirectoryPath);
-        fs.writeFileSync(specsClassFilePath, apexClassBody);
-        fs.writeFileSync(`${specsClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
+        const objectApiNames = this.getDistinctObjectApiNames(specDetails);
+        const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);
 
-        return specsClassFilePath;
+        let perObjectClassFilePathsByObjectApiName: Record<string, string> = {};
+
+        objectApiNames.forEach(objectApiName => {
+
+            const perObjectClassName = classNamesByObjectApiName[objectApiName];
+            const specDetailsForObject = specDetails.filter(specDetail => specDetail.objectApiName === objectApiName);
+
+            const perObjectClassBody = this.buildPerObjectSpecsApexClassBody(objectApiName, perObjectClassName, specDetailsForObject);
+            const perObjectClassFilePath = this.getPerObjectSpecsClassFilePath(classesDirectoryPath, perObjectClassName);
+
+            fs.writeFileSync(perObjectClassFilePath, perObjectClassBody);
+            fs.writeFileSync(`${perObjectClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
+
+            perObjectClassFilePathsByObjectApiName[objectApiName] = perObjectClassFilePath;
+
+        });
+
+        const removedStaleClassFilePaths = this.removeStalePerObjectSpecsClassFiles(
+            classesDirectoryPath,
+            objectApiNames.map(objectApiName => classNamesByObjectApiName[objectApiName])
+        );
+
+        const aggregatorClassFilePath = this.getSpecsClassFilePath(classesDirectoryPath);
+        fs.writeFileSync(aggregatorClassFilePath, this.buildAggregatorSpecsApexClassBody(classNamesByObjectApiName));
+        fs.writeFileSync(`${aggregatorClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
+
+        return {
+            aggregatorClassFilePath,
+            perObjectClassFilePathsByObjectApiName,
+            removedStaleClassFilePaths
+        };
+
+    }
+
+    /*
+        Versions 2.12.x-2.14.x wrote an unprefixed framework directory and SFTreecipe-prefixed spec
+        classes. Both still compile and still deploy, so a user upgrading in place would end up with
+        two copies of the framework in their org under different names. Nothing is deleted here --
+        these are files in the user's package directory that may well be committed and deployed, and
+        removing them is their call to make, not this command's.
+    */
+    static detectLegacyGeneratedArtifacts(classesDirectoryPath: string): string[] {
+
+        let legacyArtifactPaths: string[] = [];
+
+        const legacyFrameworkDirectoryPath = path.join(classesDirectoryPath, this.legacyFrameworkDirectoryName);
+        if ( fs.existsSync(legacyFrameworkDirectoryPath) ) {
+            legacyArtifactPaths.push(legacyFrameworkDirectoryPath);
+        }
+
+        this.legacySpecsClassNames.forEach(legacySpecsClassName => {
+
+            const legacySpecsClassFilePath = path.join(classesDirectoryPath, `${legacySpecsClassName}.cls`);
+            if ( fs.existsSync(legacySpecsClassFilePath) ) {
+                legacyArtifactPaths.push(legacySpecsClassFilePath);
+            }
+
+        });
+
+        return legacyArtifactPaths;
+
+    }
+
+    static buildLegacyArtifactWarning(legacyArtifactPaths: string[]): string {
+
+        const legacyOrgClassNames = [
+            ...this.legacySpecsClassNames,
+            'IPicklistDependencySource',
+            'PicklistDependencySpec',
+            'PicklistDependencySnapshot',
+            'PicklistDependencyReport',
+            'PicklistDependencyValidator',
+            'SchemaPicklistDependencySource'
+        ];
+
+        return `Picklist dependency classes from an earlier Treecipe version are still in this project: ${legacyArtifactPaths.join(', ')}. `
+            + `They have been left in place. Delete them locally, and delete these classes from any org they were deployed to, `
+            + `so the renamed SDT classes do not sit alongside a second copy of the framework: ${legacyOrgClassNames.join(', ')}.`;
 
     }
 
@@ -780,7 +1129,7 @@ ${testMethods}
     */
     static scaffoldMissingFrameworkClasses(extensionPath: string, classesDirectoryPath: string): IFrameworkScaffoldResult {
 
-        const shippedFrameworkClassesPath = path.join(extensionPath, 'force-app', 'main', 'default', 'classes', this.frameworkDirectoryName);
+        const shippedFrameworkClassesPath = path.join(extensionPath, 'apexPicklistDependencyFramework', this.frameworkDirectoryName);
 
         let scaffoldedClassNames: string[] = [];
         let unavailableClassNames: string[] = [];

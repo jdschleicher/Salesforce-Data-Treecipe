@@ -1,5 +1,5 @@
 /**
- * Production IPicklistDependencySource backed by Schema describe.
+ * Production ISDTPicklistDependencySource backed by Schema describe.
  *
  * Dependency data is read without a callout. Schema.PicklistEntry has no getValidFor()
  * accessor in Apex, but JSON.serialize(entry) does emit a "validFor" key: a base64-encoded
@@ -36,7 +36,7 @@
  * spec list, so a registry spanning many objects trades CPU for monotonically growing heap
  * against the 6 MB limit. Revisit if a registry ever spans dozens of objects.
  */
-public with sharing class SchemaPicklistDependencySource implements IPicklistDependencySource {
+public with sharing class SDTSchemaPicklistDependencySource implements ISDTPicklistDependencySource {
 
     public class PicklistDependencyException extends Exception {}
 
@@ -93,7 +93,7 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
      * not produce. The describe caching above is what the realistic distinct-field workload
      * actually benefits from. Revisit only if duplicate specs become legitimate.
      */
-    public PicklistDependencySnapshot fetch(PicklistDependencySpec spec) {
+    public SDTPicklistDependencySnapshot fetch(SDTPicklistDependencySpec spec) {
 
         Schema.DescribeFieldResult dependentDescribe = describeField(spec.objectApiName, spec.fieldApiName);
         Schema.SObjectField controllerToken = dependentDescribe.getController();
@@ -101,13 +101,13 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
         if (controllerToken == null) {
             throw new PicklistDependencyException(
                 spec.objectApiName + '.' + spec.fieldApiName + ' is not a dependent picklist '
-                    + '(the org reports no controlling field).'
+                    + '(the org has no controlling field for it).'
             );
         }
 
         Schema.DescribeFieldResult controllingDescribe = describeOf(controllerToken);
 
-        PicklistDependencySnapshot snapshot = new PicklistDependencySnapshot();
+        SDTPicklistDependencySnapshot snapshot = new SDTPicklistDependencySnapshot();
         snapshot.objectApiName = spec.objectApiName;
         snapshot.fieldApiName = spec.fieldApiName;
         snapshot.controllingFieldApiName = controllingDescribe.getName();
@@ -129,9 +129,9 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
             // like an admin deleted the dependency configuration.
             if (validFor == null) {
                 throw new PicklistDependencyException(
-                    'No "validFor" key in the serialized PicklistEntry for '
-                        + spec.objectApiName + '.' + spec.fieldApiName + ' value "' + entry.getValue() + '", '
-                        + 'even though the org reports this field as dependent. '
+                    'No validFor key in the serialized PicklistEntry for '
+                        + spec.objectApiName + '.' + spec.fieldApiName + ' value ' + entry.getValue() + ', '
+                        + 'even though the org has this field as dependent. '
                         + 'Schema.PicklistEntry exposes validFor only through JSON serialization, which is '
                         + 'undocumented — this most likely means that serialization contract has changed.'
                 );
@@ -182,7 +182,7 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
         Schema.SObjectField fieldToken = fieldMapFor(objectApiName).get(fieldApiName);
         if (fieldToken == null) {
             throw new PicklistDependencyException(
-                'Field "' + objectApiName + '.' + fieldApiName + '" was not found. It may not exist, '
+                'Field ' + objectApiName + '.' + fieldApiName + ' was not found. It may not exist, '
                     + 'or the running user may lack field-level security on it — an invisible field is '
                     + 'absent from describe entirely.'
             );
@@ -215,7 +215,7 @@ public with sharing class SchemaPicklistDependencySource implements IPicklistDep
 
         Schema.SObjectType objectType = globalDescribeCache.get(objectApiName);
         if (objectType == null) {
-            throw new PicklistDependencyException('Unknown object "' + objectApiName + '".');
+            throw new PicklistDependencyException('Unknown object ' + objectApiName + '.');
         }
 
         Map<String, Schema.SObjectField> fieldMap = objectType.getDescribe().fields.getMap();

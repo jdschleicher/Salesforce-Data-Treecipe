@@ -9,7 +9,7 @@ import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProce
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
-import { PicklistDependencyCheckService } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -254,9 +254,9 @@ export class ExtensionCommandService {
 
         const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
 
-        PicklistDependencyTestService.writeSpecsClassFiles(
+        const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
             classesDirectoryPath,
-            PicklistDependencyTestService.buildSpecsApexClassBody(collectionResult.specDetails),
+            collectionResult.specDetails,
             sourceApiVersion
         );
 
@@ -277,9 +277,23 @@ export class ExtensionCommandService {
             VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
         }
 
-        let generationSummary = `Generated ${specsClassName}.cls with ${collectionResult.specDetails.length} picklist dependency spec(s), and ${specsTestClassName}.cls to assert them, in "${classesDirectoryPath}".`;
+        const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
+
+        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}".`;
         if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
             generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
+        }
+        if ( specsClassWriteResult.removedStaleClassFilePaths.length > 0 ) {
+            generationSummary += ` Removed ${specsClassWriteResult.removedStaleClassFilePaths.length} generated class(es) for object(s) no longer declaring a dependent picklist: ${specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath)).join(', ')}.`;
+        }
+
+        /*
+            Surfaced after generation rather than before it: the new classes are written either way,
+            and the warning is about cleaning up what an earlier version left behind.
+        */
+        const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath);
+        if ( legacyArtifactPaths.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(PicklistDependencyTestService.buildLegacyArtifactWarning(legacyArtifactPaths));
         }
 
         return {
@@ -336,10 +350,14 @@ export class ExtensionCommandService {
 
             let deployRequired = alwaysDeploy;
 
+            // ALWAYS-DEPLOY ARRIVES HERE BECAUSE THE CLASSES WERE JUST REWRITTEN, NOT BECAUSE THE ORG WAS ASKED
+            let deployReason: PicklistDependencyDeployReason = 'specsClassesJustRegenerated';
+
             if ( !deployRequired ) {
 
                 progress.report({ message: `Checking ${targetOrgIdentifier} for the generated test class...` });
                 deployRequired = !(await PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg(targetOrgIdentifier));
+                deployReason = 'specsTestClassAbsentFromOrg';
 
                 if ( cancellationToken.isCancellationRequested ) {
                     return undefined;
@@ -349,8 +367,16 @@ export class ExtensionCommandService {
 
             if ( deployRequired ) {
 
+                /*
+                    Validated before the confirmation is built, because the confirmation lists the
+                    files that will be sent. A workspace where generation never ran would otherwise
+                    show an approval dialog offering zero files, and only produce the actionable
+                    "run Generate first" error once the user had approved it.
+                */
+                PicklistDependencyCheckService.assertDeployableClassesExist(classesDirectoryPath);
+
                 const confirmedDeploySelection = await vscode.window.showWarningMessage(
-                    PicklistDependencyCheckService.buildDeployConfirmationMessage(classesDirectoryPath, targetOrgIdentifier),
+                    PicklistDependencyCheckService.buildDeployConfirmationMessage(classesDirectoryPath, targetOrgIdentifier, deployReason),
                     { modal: true },
                     'Deploy and Run'
                 );

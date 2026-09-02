@@ -28,5 +28,64 @@
             "command": "pwsh ./developmentSupportScripts/resetAndRunCoverageReport.ps1",
             "problemMatcher": []
         },
-	]
+        {
+            // Stands up a scratch org, generates the contract, proves it passes, proves both drift
+            // paths fail, and puts the org back. Pauses for review at each point a human has to
+            // read something the script cannot grade.
+            "label": "PICKLIST: FULL RUN (interactive) - org, generate, pass, drift, fail, regenerate, pass",
+            "type": "shell",
+            "command": "pwsh ./scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step FullRun -Interactive -ScratchOrgAlias ${input:scratchOrgAlias} -DevHubAlias ${input:devHubAlias}",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            // Same run with no prompts, for an unattended check.
+            "label": "PICKLIST: FULL RUN (unattended)",
+            "type": "shell",
+            "command": "pwsh ./scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step FullRun -ScratchOrgAlias ${input:scratchOrgAlias} -DevHubAlias ${input:devHubAlias}",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "PICKLIST: VERIFY - print what the org actually believes each dependency is",
+            "type": "shell",
+            "command": "pwsh ./scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step Verify -ScratchOrgAlias ${input:scratchOrgAlias}",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "PICKLIST: DRIFT - prove the check catches a rewired dependency",
+            "type": "shell",
+            "command": "pwsh ./scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step Drift -Interactive -ScratchOrgAlias ${input:scratchOrgAlias}",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "PICKLIST: ACCEPT - pull the org drift into source, regenerate the contract, re-run",
+            "type": "shell",
+            "command": "pwsh ./scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step Accept -Interactive -ScratchOrgAlias ${input:scratchOrgAlias}",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "PICKLIST: TEARDOWN - delete the scratch org",
+            "type": "shell",
+            "command": "pwsh ./scripts/picklist-dependency-demo/Invoke-PicklistDependencyDemo.ps1 -Step Teardown -ScratchOrgAlias ${input:scratchOrgAlias}",
+            "problemMatcher": []
+        },
+	],
+    "inputs": [
+        {
+            "id": "scratchOrgAlias",
+            "type": "promptString",
+            "description": "Scratch org alias to create or reuse",
+            "default": "treecipe-picklist-demo"
+        },
+        {
+            "id": "devHubAlias",
+            "type": "promptString",
+            "description": "Dev Hub alias to create the scratch org against (leave blank to use the CLI's default Dev Hub)",
+            "default": ""
+        }
+    ]
 }

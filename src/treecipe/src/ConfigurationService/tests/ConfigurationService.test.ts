@@ -343,6 +343,33 @@ describe('Shared ConfigurationService Tests', () => {
 
     });
 
+    describe('getPicklistDependencyResultsFolderName', () => {
+
+        test('returns expected picklist dependency results folder name', () => {
+            const expectedFolderName = "PicklistDependencyResults";
+            const actualFolderName = ConfigurationService.getPicklistDependencyResultsFolderName();
+            expect(actualFolderName).toBe(expectedFolderName);
+        });
+
+    });
+
+    describe('getPicklistDependencyResultsFolderPath', () => {
+
+        // ARTIFACTS BELONG UNDER THE SAME treecipe/ ROOT AS EVERY OTHER GENERATED FOLDER
+        test('returns the results folder nested under the treecipe configuration folder', () => {
+            const expectedFolderPath = "treecipe/PicklistDependencyResults";
+            const actualFolderPath = ConfigurationService.getPicklistDependencyResultsFolderPath();
+            expect(actualFolderPath).toBe(expectedFolderPath);
+        });
+
+        test('composes the path from the folder name rather than hardcoding it', () => {
+            const actualFolderPath = ConfigurationService.getPicklistDependencyResultsFolderPath();
+            expect(actualFolderPath).toContain(ConfigurationService.getDefaultTreecipeConfigurationFolderName());
+            expect(actualFolderPath).toContain(ConfigurationService.getPicklistDependencyResultsFolderName());
+        });
+
+    });
+
     describe('getGeneratedRecipesDefaultFolderName', () => {
 
         test('returns expected generated recipe artifcats folder name', () => {

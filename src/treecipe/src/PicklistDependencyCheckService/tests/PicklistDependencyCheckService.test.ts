@@ -80,7 +80,7 @@ const failingTestMethods = [
     {
         MethodName: 'Account_picklistDependenciesMatchSourceMetadata',
         Outcome: 'Fail',
-        Message: 'Picklist dependency drift on Account -- 1 combination(s) no longer match local source metadata:\n  - MISSING_VALUES — Account.Type @ "Customer": expected Direct, Channel but org allows only Direct'
+        Message: 'Picklist dependency drift on Account -- 1 combination(s) no longer match local source metadata:\n  - MISSING_VALUES — Account.Type @ Customer: expected Direct, Channel but org allows only Direct'
     },
     { MethodName: 'specRegistryIsNotEmpty', Outcome: 'Pass' }
 ];
@@ -119,7 +119,7 @@ describe('shouldTranslateApexTestRunResults', () => {
 
         const failedMethodOutcome = checkOutcome.methodOutcomes.find(methodOutcome => !methodOutcome.passed);
 
-        expect(failedMethodOutcome.message).toContain('Account.Type @ "Customer"');
+        expect(failedMethodOutcome.message).toContain('Account.Type @ Customer');
 
     });
 
@@ -135,7 +135,7 @@ describe('shouldTranslateApexTestRunResults', () => {
     it('shouldThrowWhenNoTestMethodsRan', () => {
 
         expect(() => PicklistDependencyCheckService.buildCheckOutcomeByTestRunPayload(buildTestRunPayload([])))
-            .toThrow('No SFTreecipePicklistDependencySpecsTest test methods ran');
+            .toThrow('No SDTPLDSpecsTest test methods ran');
 
     });
 
@@ -288,7 +288,7 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
 
-        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'SFTreecipePicklistDependencySpecsTest']);
+        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'SDTPLDSpecsTest']);
         expect(salesforceCliArguments).toIncludeAllMembers(['--target-org', 'devHub']);
 
         /*
@@ -317,6 +317,7 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
     it('shouldBoundTheDeployWaitRatherThanUsingTheThirtyThreeMinuteDefault', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
         const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } }) });
 
         await PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
@@ -489,6 +490,7 @@ describe('shouldDeployPicklistDependencyClasses', () => {
     it('shouldReturnDeployedComponentSummaryOnSuccess', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
         stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } }) });
 
         const deploySummary = await PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
@@ -500,6 +502,7 @@ describe('shouldDeployPicklistDependencyClasses', () => {
     it('shouldDeployOnlyTheClassesThisCommandOwnsRatherThanTheWholeDirectory', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
         const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 8 } }) });
 
         await PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub');
@@ -507,7 +510,12 @@ describe('shouldDeployPicklistDependencyClasses', () => {
         const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
         const deployedPaths = salesforceCliArguments.filter(cliArgument => cliArgument.endsWith('.cls'));
 
-        expect(deployedPaths).toSatisfyAll((deployedPath: string) => deployedPath.includes('PicklistDependency'));
+        /*
+            Every class this command owns is SDT-prefixed -- that IS the ownership rule, and it is
+            what keeps a user's own Apex in the same directory out of a deploy they approved for the
+            check. Matching on "PicklistDependency" would miss the generated SDTPLDSpecs family.
+        */
+        expect(deployedPaths).toSatisfyAll((deployedPath: string) => /\/I?SDT[A-Za-z0-9_]*\.cls$/.test(deployedPath));
         expect(salesforceCliArguments).not.toContain('/workspace/classes');
 
     });
@@ -515,21 +523,23 @@ describe('shouldDeployPicklistDependencyClasses', () => {
     it('shouldThrowComponentFailureDetailWhenDeployFails', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
         stubSalesforceCli({
             stdout: JSON.stringify({
                 status: 1,
-                result: { success: false, details: { componentFailures: [{ fullName: 'SFTreecipePicklistDependencySpecsTest', problem: 'Method does not exist' }] } }
+                result: { success: false, details: { componentFailures: [{ fullName: 'SDTPLDSpecsTest', problem: 'Method does not exist' }] } }
             })
         });
 
         await expect(PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
-            .rejects.toThrow('SFTreecipePicklistDependencySpecsTest: Method does not exist');
+            .rejects.toThrow('SDTPLDSpecsTest: Method does not exist');
 
     });
 
     it('shouldThrowActionableGuidanceWhenSourceTrackingReportsConflicts', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
         stubSalesforceCli({ stdout: JSON.stringify({ status: 1, name: 'SourceConflictError', message: '16 conflicts detected' }) });
 
         await expect(PicklistDependencyCheckService.deployPicklistDependencyClasses('/workspace/classes', 'devHub'))
@@ -542,15 +552,41 @@ describe('shouldDeployPicklistDependencyClasses', () => {
 describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
 
     const classesDirectoryPath = '/workspace/classes';
-    const frameworkDirectoryPath = `${classesDirectoryPath}/PicklistDependencyFramework`;
+    const frameworkDirectoryPath = `${classesDirectoryPath}/SDTPicklistDependencyFramework`;
 
     it('shouldPreferTheScaffoldedFrameworkDirectory', () => {
 
         jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
         const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
 
-        expect(classFilePaths.some(p => p === `${frameworkDirectoryPath}/PicklistDependencyValidator.cls`)).toBeTrue();
+        expect(classFilePaths.some(p => p === `${frameworkDirectoryPath}/SDTPicklistDependencyValidator.cls`)).toBeTrue();
+
+    });
+
+    it('shouldIncludeEveryPerObjectSpecsClassTheAggregatorCallsInto', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([
+            'SDTPLDSpecs_Account.cls',
+            'SDTPLDSpecs_Dependency_Example_c.cls',
+            'SDTPLDSpecs.cls',
+            'SDTPLDSpecsTest.cls',
+            'SomeUnrelatedClass.cls'
+        ] as any);
+
+        const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
+
+        // WITHOUT THESE THE AGGREGATOR DEPLOYS AND FAILS TO COMPILE AGAINST CLASSES THAT ARE NOT THERE
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecs_Account.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecs_Dependency_Example_c.cls`);
+
+        // AND THE USER'S OWN APEX IS STILL LEFT OUT OF A DEPLOY THEY APPROVED FOR THE CHECK
+        expect(classFilePaths).not.toContain(`${classesDirectoryPath}/SomeUnrelatedClass.cls`);
+
+        // NO CLASS IS SENT TWICE -- SALESFORCE REJECTS A DUPLICATE ApexClass IN ONE DEPLOYMENT
+        expect(new Set(classFilePaths).size).toBe(classFilePaths.length);
 
     });
 
@@ -561,11 +597,12 @@ describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
     */
     it('shouldFallBackToTheClassesRootForAnUpgradedWorkspace', () => {
 
-        jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => !String(checkedPath).includes('PicklistDependencyFramework'));
+        jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => !String(checkedPath).includes('SDTPicklistDependencyFramework'));
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
         const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
 
-        expect(classFilePaths.some(p => p === `${classesDirectoryPath}/PicklistDependencyValidator.cls`)).toBeTrue();
+        expect(classFilePaths.some(p => p === `${classesDirectoryPath}/SDTPicklistDependencyValidator.cls`)).toBeTrue();
         expect(classFilePaths.some(p => p.includes('PicklistDependencyFramework'))).toBeFalse();
 
     });
@@ -573,6 +610,7 @@ describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
     it('shouldNeverEmitTheSameClassTwiceWhenBothLocationsHaveIt', () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
         const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
         const classFileNames = classFilePaths.map(p => p.split('/').pop());
@@ -584,11 +622,12 @@ describe('shouldResolveFrameworkClassesFromEitherLocation', () => {
     it('shouldKeepTheGeneratedContractAtTheClassesRoot', () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
         const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths(classesDirectoryPath);
 
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/SFTreecipePicklistDependencySpecs.cls`);
-        expect(classFilePaths).toContain(`${classesDirectoryPath}/SFTreecipePicklistDependencySpecsTest.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecs.cls`);
+        expect(classFilePaths).toContain(`${classesDirectoryPath}/SDTPLDSpecsTest.cls`);
 
     });
 
@@ -599,14 +638,80 @@ describe('shouldNameEveryFileInTheDeployConfirmation', () => {
     it('shouldListTheOwnedClassFileNamesAndTheTargetOrg', () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
-        const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub');
+        const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestClassAbsentFromOrg');
 
         expect(confirmationMessage).toContain('devHub');
-        expect(confirmationMessage).toContain('SFTreecipePicklistDependencySpecsTest.cls');
-        expect(confirmationMessage).toContain('PicklistDependencyValidator.cls');
+        expect(confirmationMessage).toContain('SDTPLDSpecsTest.cls');
+        expect(confirmationMessage).toContain('SDTPicklistDependencyValidator.cls');
         // THE USER MUST BE ABLE TO SEE THAT WORKSPACE COPIES ARE WHAT GETS SENT
         expect(confirmationMessage).toContain('as they exist in your workspace');
+
+    });
+
+    /*
+        The end to end command deploys because it just rewrote the classes, having never asked the
+        org anything. Telling that user the test class "was not found" is simply false, and invites
+        them to conclude their previous deploy failed.
+    */
+    it('shouldSayTheClassWasNotFoundOnlyWhenTheOrgWasActuallyAsked', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        const absentFromOrgMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestClassAbsentFromOrg');
+        const regeneratedMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsClassesJustRegenerated');
+
+        expect(absentFromOrgMessage).toContain('was not found in "devHub"');
+
+        expect(regeneratedMessage).not.toContain('was not found');
+        expect(regeneratedMessage).toContain('just regenerated');
+        expect(regeneratedMessage).toContain('devHub');
+
+    });
+
+});
+
+describe('shouldRefuseToProposeADeployWithNothingToSend', () => {
+
+    /*
+        The confirmation lists the files that will be sent, so this has to fail BEFORE the modal is
+        built -- otherwise the user approves a dialog offering zero files and only then learns they
+        needed to run Generate first.
+    */
+    it('shouldThrowAnActionableErrorWhenTheClassesDirectoryIsMissing', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('No classes directory found at "/workspace/classes"');
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('Generate Picklist Dependency Tests');
+
+    });
+
+    it('shouldThrowAnActionableErrorWhenNoOwnedClassesAreOnDisk', () => {
+
+        // THE DIRECTORY IS THERE, BUT NOTHING THE COMMAND OWNS HAS BEEN GENERATED INTO IT
+        jest.spyOn(fs, 'existsSync').mockImplementation((candidatePath: any) => candidatePath === '/workspace/classes');
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('No picklist dependency classes were found');
+
+    });
+
+    it('shouldReturnTheDeployableClassPathsWhenGenerationHasRun', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        const deployableClassPaths = PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes');
+
+        expect(deployableClassPaths.length).toBeGreaterThan(0);
+        expect(deployableClassPaths.some(classPath => classPath.includes('SDTPLDSpecsTest.cls'))).toBe(true);
 
     });
 
@@ -652,7 +757,7 @@ describe('shouldPersistCheckResultsToTheTreecipeDirectory', () => {
         expect(resultsJson.failureCount).toBe(1);
         expect(resultsJson.methodsRun).toBe(2);
         expect(resultsJson.methodOutcomes).toHaveLength(2);
-        expect(resultsJson.methodOutcomes[0].message).toContain('Account.Type @ "Customer"');
+        expect(resultsJson.methodOutcomes[0].message).toContain('Account.Type @ Customer');
 
     });
 

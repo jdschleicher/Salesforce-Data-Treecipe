@@ -1,5 +1,182 @@
 # Change Log
 
+## [3.0.0] - SDT-Prefixed Per-Object Picklist Dependency Specs with Negative Assertions
+
+Resolves [#72](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/72). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### BREAKING: every Apex class this extension writes is now `SDT`-prefixed
+
+The picklist dependency framework shipped unprefixed in 2.12.0 and the generated registry carried an `SFTreecipe` prefix. Both are renamed, so **anyone who deployed the framework between 2.12.0 and 2.14.0 has classes in their org that this version orphans**:
+
+| Was | Now |
+|---|---|
+| `PicklistDependencyFramework/` (folder) | `SDTPicklistDependencyFramework/` |
+| `IPicklistDependencySource` | `ISDTPicklistDependencySource` |
+| `PicklistDependencySpec` | `SDTPicklistDependencySpec` |
+| `PicklistDependencySnapshot` | `SDTPicklistDependencySnapshot` |
+| `PicklistDependencyReport` | `SDTPicklistDependencyReport` |
+| `PicklistDependencyValidator` | `SDTPicklistDependencyValidator` |
+| `SchemaPicklistDependencySource` | `SDTSchemaPicklistDependencySource` |
+| `SFTreecipePicklistDependencySpecs[Test]` | `SDTPicklistDependencySpecs[Test]` |
+
+- One prefix, applied to everything: a class in your package directory starting with `SDT` was put there by Salesforce Data Treecipe, not by you, and cannot collide with your own `PicklistDependencySpec`
+- **Generation detects the old layout and warns**, naming the exact paths to delete locally and the exact class names to delete from any org they reached. **Nothing is deleted for you** — these are files in your package directory that may well be committed and deployed, so removing them is your call
+- Left in place, the two frameworks deploy side by side under different names and both compile, which is why the warning names them rather than staying quiet
+
+### A dependent picklist backed by a global value set is now captured
+
+Found by running the generator against real-world metadata artifacts. `controllingField` was read only inside the `valueSetDefinition` branch of `XmlFileProcessor`, so a picklist whose values come from a **global value set** parsed as not dependent at all — even with `<controllingField>` and full `<valueSettings>` markup in the field file.
+
+Two consequences, both silent: no dependency spec was generated for such a field, and recipe generation treated it as a plain picklist rather than a dependent one.
+
+- `controllingField` is now read for a global-value-set picklist too, and `globalValueSetName` continues to be recorded — both facts are true of the field
+- Its dependency configuration is derived from `valueSettings`, which names every dependent value and the controlling values that unlock it. Only the value *definitions* live in the global value set; the dependency markup is local
+- The field therefore travels the same path as any other dependent picklist: it gets a generated spec with `expectAtLeast` / `expectNotAllowed`, a `dependsOn` link when its controlling field is itself dependent, and a dependency-aware recipe value with record type sections
+- **Limitation, deliberate:** the values captured are those carrying `valueSettings` configuration. A global value set value with no `valueSettings` entry is unlocked by no controlling value and does not appear — reading the global value set file to include it is not done, since generation reads the object metadata it was pointed at
+- A global value set picklist that is *not* dependent is unchanged, asserted by test
+
+### A dependent picklist absent from a record type no longer crashes recipe generation
+
+Also found through real-world artifacts, and present on `main` — unrelated to the picklist dependency spec work.
+
+A record type can expose the **controlling** field, with the controlling value available, and still not include the dependent field in its picklist sections. The controlling-field lookup was guarded; the dependent-field lookup two lines later was not, so the undefined dereference threw and took recipe generation down for the entire run rather than reporting a gap in one record type.
+
+- Present identically in **both** faker backends; fixed in both
+- Each now emits the same `### TODO: -- RecordType Options --` line it already emits when the controlling value is unavailable, and continues with the remaining record types
+- Tests added to both backends first, confirmed failing with `Cannot read properties of undefined (reading 'forEach')` before the fix
+
+### Generated class names fit the Salesforce 40-character ApexClass limit
+
+Found in scratch-org testing: the first per-object naming used a `SDTPicklistDependencySpecs_` prefix, which spent **27 of the 40 characters** before the object name began. `SDTPicklistDependencySpecs_Treecipe_Demo_c` is 42 characters and the deploy was rejected — almost any custom object breached it.
+
+- The generated registry family is now `SDTPLDSpecs`, `SDTPLDSpecsTest` and `SDTPLDSpecs_<Object>`. `PLD` is picklist-dependency abbreviated; the prefix drops to 12 characters, leaving 28 for the part of the name that identifies the class
+- The six framework classes keep their descriptive names — they are fixed-length, all fit comfortably, and they are the ones a human actually reads
+- A custom object api name can itself reach 40 characters, so a short prefix alone is not a guarantee. An over-long name is truncated and given a 6-character digest of the **full** api name: unique, and stable across runs. A positional suffix would have changed as metadata changed and orphaned the previously generated class in the org
+- Truncation strips a trailing underscore before appending, since `__` is not legal in an Apex identifier
+- Tests assert the invariant directly against a 40-character object api name, plus stability across runs and distinctness for two names sharing a truncated prefix
+
+### Negative assertions: drift is now caught in both directions
+
+Generated specs only ever asserted what a controlling value *must* unlock, so a value that drifted **into** a combination it does not belong in passed silently. Each controlling value now gets a second line:
+
+```apex
+.expectAtLeast('USA', new List<String>{ 'Ohio', 'Texas' })
+.expectNotAllowed('USA', new List<String>{ 'Ontario' })
+```
+
+- New `expectNotAllowed(controllingValue, values)` builder and a `FORBIDDEN_VALUES_PRESENT` failure kind naming the specific offending values
+- The forbidden list is the **complement** — every value the dependent field declares that this controlling value does not unlock — taken from the field's own `<valueSet>` rather than from its `valueSettings` map, so a value carrying no `valueSettings` entry at all (unreachable under every controlling value) lands in every complement
+- **This deliberately does not switch the generator to `expectExactly`.** Exact matching would fire on any value an admin legitimately adds to the field after generation; the complement tolerates that while still failing on a value in the wrong bucket. The `expectAtLeast` design decision from #62 stands
+- A controlling value whose complement is empty emits no line — it would assert nothing. A controlling value that unlocks nothing still emits `expectNone`, which is strictly stronger than listing what it must not unlock
+
+### One spec class per object, with an aggregator
+
+A registry covering every dependent picklist in a real org is not something anyone reads, and regenerating rewrote one file that every object's diff landed in.
+
+- One `SDTPicklistDependencySpecs_<Object>.cls` per object, each with one spec method per dependent picklist on that object
+- `SDTPicklistDependencySpecs.all()` becomes a thin aggregator calling each per-object `all()`. Callers depend on the aggregator, so a per-object class appearing or disappearing does not ripple outwards
+- **Splitting per field was considered and rejected** — it multiplies files by the number of dependent picklists for no gain in readability, and separates a chained picklist from the field that controls it
+- The generated test class keeps its existing one-`@IsTest`-method-per-object shape, so **Run Picklist Dependency Check** needs no change to how it invokes or parses results
+- Object api names collapsing to one Apex identifier (`Foo__c` and `Foo_c` both yield `Foo_c`) take a numeric suffix, as spec method names already did
+- **Stale classes are removed.** An object that loses its last dependent picklist leaves a generated class the new aggregator no longer calls — left on disk it still deploys, so the org keeps asserting a contract your metadata no longer describes. Only files matching the generated pattern and absent from the current run are removed, and the summary names them. The aggregator, the test class and your own Apex are never touched
+- The check command discovers per-object classes from disk and adds them to the deploy set — without them the aggregator deploys and fails to compile against classes that are not there
+
+### Chained dependencies are linked
+
+Where a dependent picklist is itself the controlling field of another (`Country__c` → `State__c` → `City__c`), the lower spec now carries `.dependsOn(specFor_Chain_Example_c_State_c())`.
+
+- The validator resolves the chain and reports a break **once at its source**; each downstream spec gets a single `UPSTREAM_FAILURE` naming the spec to fix first, instead of repeating the same describe mismatch for every dependent below it
+- Upstream specs are resolved **on demand and memoized**, not assumed present in the caller's list — the generated test class validates one object at a time, and a controlling field shared by several dependents costs one describe rather than one per dependent
+- A `CIRCULAR_DEPENDENCY` guard terminates a hand-edited cycle rather than exhausting the stack. Salesforce cannot express a cyclic picklist dependency; a hand-edited `dependsOn` can
+- A spec listed twice is reported once
+- **A controlling field always lives on the same object as the field it controls**, so an emitted `dependsOn` always names a sibling method in the same per-object class. There is no cross-object chain to link, and none is fabricated
+
+### Testing
+
+- New three-level chain fixture (`Chain_Example__c`: `Country__c` → `State__c` → `City__c`) drives complement, chain-linking and contract coverage
+- The contract test asserting that every emitted builder exists on the shipped Apex class now covers `dependsOn` and `expectNotAllowed`, and additionally asserts the validator exposes the new failure kinds and that every framework class the generator scaffolds is actually present in the shipped directory
+- Apex tests added for forbidden-value detection, tolerance of org-added values, unknown controlling values under a negative assertion, healthy and broken chains, upstream-not-in-list resolution, the cycle guard, and duplicate specs
+- Coverage: 83.07% → 83.58% statements, 77.67% → 78.08% branches, 85.15% → 85.83% functions
+
+### Deploy confirmation now states the real reason, and refuses when there is nothing to send
+
+Two defects in the deploy prompt, both found in review.
+
+- The confirmation opened with *"`SDTPLDSpecsTest` was not found in `<org>`"* on **both** paths. The end-to-end command deploys because it has just rewritten the classes, having never asked the org anything — so a user whose test class *was* deployed was told it was missing, and could reasonably conclude their previous deploy had failed. The opening line is the only thing anyone has to reason about before approving a deploy. It now names the real reason on each path
+- The confirmation was built **before** the check for anything to deploy, so a workspace where generation never ran got an approval dialog reading *"The following 0 file(s) will be deployed:"* with a blank list, and only received the actionable "run Generate first" error after approving it. The validation is now extracted and runs before the modal
+
+### Tests for three service files that changed without them
+
+Against CLAUDE.md's "update tests each change" mandate, three files had shipped untested.
+
+- **`DirectoryProcessor`** — the new object-child pruning changes recipe generation for *every* user, and its safety argument lived only in a comment. Pinned now: sibling directories are not read once `fields` is present, a directory with no `fields` child is still walked in full, the object is still registered, and — the load-bearing one — record types still resolve from the fields path even though `recordTypes` is pruned from the walk
+- **`VSCodeWorkspaceService`** — org quick pick labelling and dismissal, and the output channel's lazy creation, reuse, subscription registration, and clear-before-append ordering. Review raised that an org with an empty identifier would be indistinguishable from a dismissed picker; verification showed `buildAuthenticatedOrgDetails` already drops an unusable identifier upstream, so a test pins that invariant rather than adding a redundant guard
+- **`ConfigurationService`** — the two picklist dependency results path methods
+
+Coverage: 83.58% → 84.59% statements, 78.08% → 79.22% branches, 85.83% → 87.47% functions. `VSCodeWorkspaceService` moved from 75% to 85% statements and 61.5% to 84.6% functions.
+
+### A stray `undefined/` directory, and the bug that created it
+
+`undefined/treecipe/GeneratedRecipes/RecipeGenerationErrors/` was committed to this branch by accident, carrying two error captures from a debugging run. It was not excluded by `.vscodeignore`, so it would have shipped in the `.vsix`.
+
+The directory name was the symptom of a real defect. `VSCodeWorkspaceService.getWorkspaceRoot()` is declared to return a `string` but returns `undefined` when no workspace folder is open, and all three error-capture writers interpolated it straight into a template literal — producing the literal string `"undefined"` and silently creating an `undefined/treecipe/...` tree wherever the process happened to be running. Anything running outside an extension host, the headless demo driver included, hits this.
+
+- The three writers now resolve their target through a shared guard that returns `undefined` rather than a path built from a missing root, and each skips the capture with a warning instead of writing somewhere nobody will look
+- The committed directory is removed
+- Tests cover all three writers plus the guard: no directory is created, no file is written, a warning is raised, and the resolved path never contains `"undefined"`
+
+The wider issue is untouched and worth a separate look: `getWorkspaceRoot()` still lies about its return type, and nine other call sites interpolate its result the same way.
+
+### End-to-end scratch org verification
+
+Verified against a fresh scratch org: generation, deployment, a passing check, drift detection in both directions, and restore.
+
+- The demo scaffold (`scripts/picklist-dependency-demo/`) covered only a plain two-tier dependency with a local `valueSetDefinition`, so a real scratch org run never exercised the chained or global-value-set paths this release added. It now writes a `Planets` global value set plus a third tier: `Dressing__c` (chained, local values, and a value containing a space) and `Planet__c` (chained, **global value set**). Generation produces 3 specs for the object, and `Planet__c` correctly emits both a spec and a `dependsOn` link
+- **The Drift step could never have failed.** It broke a dependency by omitting a `valueSettings` entry, but Salesforce *merges* `valueSettings` on a `CustomField` deploy — the omitted entry stayed in the org, the deploy reported `Succeeded`, and the check correctly reported PASS against an org that never changed. Drift now *rewires* a value from one controlling value to another, which is what an admin actually does in Setup and asserts more: `MISSING_VALUES` on the old controlling value and `FORBIDDEN_VALUES_PRESENT` on the new one
+- Drift runs in two phases, because a broken controlling field short-circuits every spec below it into a single `UPSTREAM_FAILURE`. Phase 1 drifts only the global-value-set field, so its own expectations are actually evaluated; phase 2 drifts the controlling field as well, proving the chain reports the break once at its source
+- Fixed `.Count` on a single-element pipeline result failing under `Set-StrictMode -Version Latest`, which aborted `-Step Generate` whenever exactly one per-object spec class was produced — the demo's normal case
+
+### One-command orchestration for the end-to-end run
+
+The verification above took a dozen separate invocations plus hand-written anonymous Apex to root-cause. It is now a single command, and a VS Code task.
+
+- **`-Step Verify`** reads the live controlling-value map out of the org through `SDTSchemaPicklistDependencySource` — the same source the check uses — and prints it. This is the question a deploy result cannot answer, and it previously had no command at all
+- **`-Step FullRun`** chains `Preflight` → `Restore`, including both drift phases, in one invocation
+- **A drift guard.** `Drift` now calls `Verify` before and after its own deploy and refuses to run the check unless the org genuinely moved, exiting `1` with the reason. Without it, a no-op drift deploy produces a `PASS` indistinguishable from a healthy run — which is exactly how the omission bug above survived
+- **`-Interactive`** pauses at the three points a human has to judge something an assertion cannot: the generated contract before it deploys, and each drift report after it fails. Off by default, so the same script runs unattended in CI
+- **`-Step Accept`** closes the loop. Drift has two legitimate endings and only one existed: `Restore` rejects the change by putting the org back. `Accept` treats the org as correct — it retrieves the org state into local source, regenerates the contract, redeploys and re-runs. Retrieving *before* regenerating is the whole point: generation reads local metadata, and drift deliberately leaves local source at the original contract, so regenerating alone produces a byte-identical contract that fails again identically. `Accept` fingerprints the generated classes either side of regeneration and refuses to re-run if nothing changed
+- `-Step FullRun` now runs the complete lifecycle — stand up, pass, drift, fail, regenerate, pass — in one invocation
+- **Every run now starts from a new scratch org.** `CreateOrg` used to reuse a live org carrying the same alias, which meant a run inherited the previous run's drift, deployed classes and source-tracking history — a green result proved the feature worked *there* rather than from nothing, and the reuse is what produced this harness's source-conflict failures. It now replaces that org; `-ReuseExistingOrg` opts back in for iterating on a single step
+- Deploys pass `--ignore-conflicts`. The script authors every file it deploys, so local is authoritative by construction, and `Accept` creates a source-tracking conflict by design when it retrieves. Without this, every deploy after an `Accept` was refused
+- Six `PICKLIST:` tasks in `.vscode/tasks.json` wrap the script, prompting for the scratch org alias and Dev Hub
+
+### Removed: the anonymous-Apex CI runner
+
+`scripts/apex/runPicklistDependencyChecks.apex` and `scripts/apex/run-picklist-dependency-checks.js` (with the `npm run picklist-dependency-check` script) are deleted. Every picklist dependency check now runs one way: from generated Apex that has been **deployed** to the target environment and executed as a test class in system context. The anonymous-Apex path ran as the authenticated user, so its result could vary — misleadingly — with that user's field-level security, and nothing invoked it: no CI workflow called the runner, `.vscodeignore` already excluded it from the `.vsix`, and the end-to-end demo harness deploys the generated classes instead. The `PICKLIST_DEPENDENCY_CHECK_RESULT` marker is unaffected — `SDTPicklistDependencyReport` still emits it
+
+### Removed: the repository is no longer a Salesforce DX project
+
+`force-app/`, `sfdx-project.json`, `config/project-scratch-def.json` and `.forceignore` are gone. This repository is a VS Code extension; the only Salesforce metadata it carries is the Apex framework source, which now lives in a directory named for exactly that purpose:
+
+- **`apexPicklistDependencyFramework/SDTPicklistDependencyFramework/`** — the six runtime classes shipped in the `.vsix` and scaffolded into the user's package directory by Generate Picklist Dependency Tests. `scaffoldMissingFrameworkClasses` and the `.vscodeignore` negation both point here now
+- **`apexPicklistDependencyFramework/frameworkApexTests/`** — the framework's own Apex unit tests and stub source, dev-only, never shipped
+- **`apexPicklistDependencyFramework/README.md`** — documents what each half is for and how to deploy the tests
+- The committed `SDTPLDSpecs.cls` placeholder is deleted outright: generation always emits a fresh aggregator, so a tracked copy existed only to be overwritten
+
+The demo harness no longer deploys from the repository. `-Step Scaffold` generates a throwaway DX project under `scripts/picklist-dependency-demo/demoSalesforceProject/` (gitignored) — `sfdx-project.json` written on the fly, framework classes copied in from their source of truth, sample metadata and generated classes landing inside it — and every `sf` project command runs from that directory. This is also the more faithful demo: the extension's real consumers run it against their own DX project, and the staging project plays that role
+
+### New: `docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md`
+
+An org-side companion to the design record, written for the admin or developer looking at `SDTPLDSpecsTest` in a Salesforce org with no VS Code in front of them: what each deployed class is, how to read a generated spec line-by-line against the **Field Dependencies** grid in Setup, where the org side of the comparison actually comes from (including Execute Anonymous diagnostics that print the org's live view, flagged as diagnostics rather than the gate), the four ways to run the tests, the full failure-kind table, how to **trigger a failure on purpose** — and why omitting a `valueSettings` entry silently will not do it — and a decision tree for choosing between fixing the org and regenerating the specs. Linked from the README, the design record, and the demo runbook.
+
+### Design record: the `validFor` mechanism is now fully documented
+
+`docs/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md` §6 now captures the entire `validFor` story rather than only the decode: where the bitmap comes from (the admin's Field Dependencies matrix, compressed and served by Salesforce's describe engine), a mermaid sequence diagram of the full deserialize-and-parse walkthrough — Setup click → `fetch()` → the `JSON.serialize` loophole → base64/hex/bit decode → snapshot → validator verdict, including the fail-loud path for a missing key — a worked bitmap-examples table pinned to `SDTSchemaPicklistDependencySourceTest`, and direct links to the official Salesforce documentation per API (SOAP describe, Apex `Schema.PicklistEntry`, UI API picklist values, Metadata API `valueSettings`), stating plainly that the JSON serialization behaviour itself is documented nowhere. A new **Appendix B** gives a self-contained anonymous-Apex procedure reproducing the contract from a blank org, referenced from the §12 verification checklist
+
+### Cleaner assert messages
+
+Assertion failures surfaced in a Salesforce org escaped every embedded double quote as `&quot;`, which buried the field and value names the message exists to report. Every double quote is gone from the messages `SDTPicklistDependencyValidator`, `SDTSchemaPicklistDependencySource`, and the generated test class produce — `Account.Type @ "Customer"` now reads `Account.Type @ Customer`. The word "reports", which reads as Salesforce Reports to an admin, is replaced with "the org has" throughout those messages.
+
 ## [2.14.0] - Run Picklist Dependency Check Command
 
 Resolves [#69](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/69). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

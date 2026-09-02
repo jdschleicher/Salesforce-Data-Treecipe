@@ -183,17 +183,46 @@ The command:
 
 1. Walks the `salesforceObjectsPath` from `treecipe.config.json`
 2. Emits one spec per picklist field that declares a `controllingField`, derived from the `valueSettings` in its field metadata
-3. Writes `SFTreecipePicklistDependencySpecs.cls` (and its `-meta.xml`) into the `classes` folder of the default package directory resolved from `sfdx-project.json`
-4. Writes `SFTreecipePicklistDependencySpecsTest.cls`, an `@IsTest` class with one test method per object that asserts that object's specs against the org the test runs in, plus a guard method that fails when the spec registry is empty
-5. Scaffolds the Apex validation framework classes it depends on (`PicklistDependencySpec`, `PicklistDependencyValidator`, `SchemaPicklistDependencySource`, and supporting classes) into a `PicklistDependencyFramework` subfolder, if they are not already present. Keeping them in their own directory separates the six files you did not write from the generated contract you do engage with, and makes them removable in one action — Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the layout deploys identically
+3. Writes one `SDTPLDSpecs_<Object>.cls` per object that has dependent picklists, each holding one spec method per dependent picklist on that object
+4. Writes `SDTPLDSpecs.cls`, an aggregator whose `all()` pulls in every per-object class. Callers depend on the aggregator, so a per-object class appearing or disappearing as your metadata changes does not ripple outwards
+5. Writes `SDTPLDSpecsTest.cls`, an `@IsTest` class with one test method per object that asserts that object's specs against the org the test runs in, plus a guard method that fails when the spec registry is empty
+6. Scaffolds the Apex validation framework classes it depends on (`SDTPicklistDependencySpec`, `SDTPicklistDependencyValidator`, `SDTSchemaPicklistDependencySource`, and supporting classes) into a `SDTPicklistDependencyFramework` subfolder, if they are not already present. Keeping them in their own directory separates the six files you did not write from the generated contract you do engage with, and makes them removable in one action — Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the layout deploys identically
 
-Each controlling value is emitted as `expectAtLeast`, meaning the combinations found in your source metadata must still exist in the org while values the org has added since are tolerated. A controlling value that unlocks nothing is emitted as `expectNone`. Tightening a line to `expectExactly` is a deliberate edit — note that regenerating overwrites the file, so hand edits are lost.
+#### What each spec asserts
+
+Every controlling value gets **two** assertions, which together catch drift in both directions:
+
+| Emitted line | Catches |
+|---|---|
+| `expectAtLeast('USA', new List<String>{ 'Ohio', 'Texas' })` | A value **removed** from the combination |
+| `expectNotAllowed('USA', new List<String>{ 'Ontario' })` | A value that **drifted into** the combination |
+| `expectNone('Antarctica')` | A controlling value that must unlock nothing gaining values |
+
+The forbidden list is the complement: every value the dependent field declares that this controlling value does not unlock. That is deliberately weaker than `expectExactly` — a value an admin legitimately adds to the field after generation is tolerated, while a value moving into the wrong bucket still fails. Tightening a line to `expectExactly` is a deliberate edit — note that regenerating overwrites the file, so hand edits are lost.
+
+#### Chained dependencies
+
+Where a dependent picklist is itself the controlling field of another (`Country__c` → `State__c` → `City__c`), the generated spec for the lower link carries a `dependsOn` naming the spec above it:
+
+```apex
+public static SDTPicklistDependencySpec specFor_Chain_Example_c_City_c() {
+    return SDTPicklistDependencySpec.forField('Chain_Example__c', 'City__c')
+            .controlledBy('State__c')
+            .dependsOn(specFor_Chain_Example_c_State_c())
+            .expectAtLeast('Ohio', new List<String>{ 'Cleveland', 'Columbus' })
+            .expectNotAllowed('Ohio', new List<String>{ 'Austin', 'Toronto' });
+}
+```
+
+When the upstream spec fails, the break is reported once where it actually is, and the downstream spec reports a single `UPSTREAM_FAILURE` naming the spec to fix first — rather than repeating the same describe mismatch for every dependent below it.
 
 Notes:
 
 * A field with a `controllingField` but no `valueSettings` markup is reported as a warning and skipped; the rest of the run continues
 * If no dependent picklists are found, an informational message is shown and no file is written
-* If `SFTreecipePicklistDependencySpecs.cls` already exists, you are prompted before it is overwritten
+* If the generated classes already exist, you are prompted before they are overwritten
+* A per-object class left over from an object that no longer declares a dependent picklist is removed and named in the summary, so the org stops asserting a contract your metadata no longer describes
+* **Upgrading from 2.12.x–2.14.x:** the Apex classes were unprefixed then. If a `PicklistDependencyFramework` folder or an `SFTreecipePicklistDependencySpecs.cls` is still in your project, the command warns and names what to delete — locally and in any org you deployed them to. Nothing is deleted for you
 
 The generated assertions read the org's **real** metadata. Schema describe is not isolated by `@IsTest`, so no test setup data and no `SeeAllData` are involved.
 
@@ -207,6 +236,10 @@ This path **always deploys**, unlike "Run Picklist Dependency Check" below, whic
 
 Once generated, you can also run the check any time with "Run Picklist Dependency Check" below.
 
+#### Once the classes are in your org
+
+Everything above is the VS Code side. For the org side — what each deployed class is, how to read a generated spec against the **Field Dependencies** grid in Setup, how to run the tests from Setup or the Developer Console, how to trigger a failure on purpose to prove the gate works, and how to decide whether to fix the org or regenerate the specs — see the **[Picklist Dependency In-Org Guide](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md)**. It is written for an admin or developer looking at `SDTPLDSpecsTest` in an org, and assumes nothing about this extension.
+
 ---
 
 ### <a name="6-salesforce-treecipe-run-picklist-dependency-check"></a>6. **Salesforce Treecipe: Run Picklist Dependency Check**
@@ -218,7 +251,7 @@ This command deploys and runs the generated picklist dependency tests against an
 The command:
 
 1. Lists your authenticated orgs and prompts you to pick the target
-2. Checks whether `SFTreecipePicklistDependencySpecsTest` exists in that org, and offers to deploy the classes if it does not — nothing is deployed without explicit confirmation
+2. Checks whether `SDTPLDSpecsTest` exists in that org, and offers to deploy the classes if it does not — nothing is deployed without explicit confirmation
 3. Runs the test class with `sf apex run test`
 4. Writes a per-method report to the **Picklist Dependency Check** output channel and shows a pass/fail summary notification
 5. Saves the results into `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/` as `results.json` and `report.md`

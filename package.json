@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "2.14.0",
+  "version": "3.0.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -88,8 +88,7 @@
     "jest-test-summary": "jest --coverage --coverageReporters='json-summary' --json --outputFile=coverage/jest-results.json --config=jest.config.js",
     "jest-test": "jest --coverage",
     "e2e-test": "ts-node scripts/e2e-recipe-test.ts",
-    "apex-test": "sf apex run test --tests PicklistDependencyValidatorTest --tests SchemaPicklistDependencySourceTest --result-format human --code-coverage --wait 20",
-    "picklist-dependency-check": "node scripts/apex/run-picklist-dependency-checks.js"
+    "apex-test": "sf apex run test --tests SDTPicklistDependencyValidatorTest --tests SDTSchemaPicklistDependencySourceTest --result-format human --code-coverage --wait 20"
   },
   "devDependencies": {
     "@types/jest": "^29.5.13",

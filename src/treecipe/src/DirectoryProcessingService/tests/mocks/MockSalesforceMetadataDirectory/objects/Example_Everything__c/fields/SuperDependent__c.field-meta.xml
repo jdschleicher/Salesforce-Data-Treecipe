@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>SuperDependent__c</fullName>
+    <description>expected dependent picklist of the field dependentpicklist__c</description>
+    <inlineHelpText>expected dependent picklist of the field dependentpicklist__c</inlineHelpText>
+    <label>SuperDependent</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>DependentPicklist__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>ranch</fullName>
+                <default>false</default>
+                <label>ranch</label>
+            </value>
+            <value>
+                <fullName>blue cheese</fullName>
+                <default>false</default>
+                <label>blue cheese</label>
+            </value>
+            <value>
+                <fullName>french</fullName>
+                <default>false</default>
+                <label>french</label>
+            </value>
+            <value>
+                <fullName>balsamic</fullName>
+                <default>false</default>
+                <label>balsamic</label>
+            </value>
+            <value>
+                <fullName>caeser</fullName>
+                <default>false</default>
+                <label>caeser</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>tree</controllingFieldValue>
+            <controllingFieldValue>rocks</controllingFieldValue>
+            <valueName>blue cheese</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>tree</controllingFieldValue>
+            <controllingFieldValue>plant</controllingFieldValue>
+            <controllingFieldValue>mulch</controllingFieldValue>
+            <valueName>french</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>tree</controllingFieldValue>
+            <controllingFieldValue>plant</controllingFieldValue>
+            <controllingFieldValue>mulch</controllingFieldValue>
+            <valueName>balsamic</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>tree</controllingFieldValue>
+            <controllingFieldValue>mulch</controllingFieldValue>
+            <valueName>caeser</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>weed</controllingFieldValue>
+            <controllingFieldValue>rocks</controllingFieldValue>
+            <valueName>ranch</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

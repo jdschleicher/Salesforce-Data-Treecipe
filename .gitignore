@@ -8,3 +8,12 @@ coverage/
 
 .sfdx/*
 .sf/*
+
+# Output the picklist dependency demo harness writes. The harness generates a throwaway
+# Salesforce DX project (sfdx-project.json, scratch definition, sample metadata, copied
+# framework classes, generated contract classes) so this repository never needs to be one.
+# -Step Scaffold rewrites all of it deterministically, so none of it needs tracking — and a
+# stray "git add -A" must never commit demo-only Apex or a demo object. That is not
+# hypothetical: b6038c1 committed an "undefined/" capture directory exactly this way.
+treecipe/
+scripts/picklist-dependency-demo/demoSalesforceProject/

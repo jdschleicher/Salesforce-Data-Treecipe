@@ -57,7 +57,8 @@ describe('ExtensionCommandService', () => {
         const extensionPath = '/extension';
         const workspaceRoot = '/workspace';
         const classesDirectoryPath = '/workspace/force-app/main/default/classes';
-        const specsClassFilePath = `${classesDirectoryPath}/SFTreecipePicklistDependencySpecs.cls`;
+        const specsClassFilePath = `${classesDirectoryPath}/SDTPLDSpecs.cls`;
+        const perObjectSpecsClassFilePath = `${classesDirectoryPath}/SDTPLDSpecs_Dependency_Example_c.cls`;
 
         const specDetail: IPicklistDependencySpecDetail = {
             objectApiName: 'Dependency_Example__c',
@@ -66,7 +67,7 @@ describe('ExtensionCommandService', () => {
             expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'] }]
         };
 
-        const specsTestClassFilePath = `${classesDirectoryPath}/SFTreecipePicklistDependencySpecsTest.cls`;
+        const specsTestClassFilePath = `${classesDirectoryPath}/SDTPLDSpecsTest.cls`;
 
         let extensionCommandService: ExtensionCommandService;
         let writeSpecsClassFilesSpy: jest.SpyInstance;
@@ -103,7 +104,12 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
                 .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: [] });
 
-            writeSpecsClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue(specsClassFilePath);
+            writeSpecsClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue({
+                aggregatorClassFilePath: specsClassFilePath,
+                perObjectClassFilePathsByObjectApiName: { 'Dependency_Example__c': perObjectSpecsClassFilePath },
+                removedStaleClassFilePaths: []
+            });
+            jest.spyOn(PicklistDependencyTestService, 'detectLegacyGeneratedArtifacts').mockReturnValue([]);
             writeSpecsTestClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsTestClassFiles').mockReturnValue(specsTestClassFilePath);
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
@@ -131,21 +137,70 @@ describe('ExtensionCommandService', () => {
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
             /*
-                Asserted on real spec content, not on the class declaration: buildSpecsApexClassBody
-                emits "public class SFTreecipePicklistDependencySpecs" even for an empty spec list, so matching
-                the declaration would pass even if every spec had been dropped.
+                The collected spec details are handed to the writer, which owns turning them into one
+                class per object. Asserting on the details rather than on emitted markup keeps this
+                test about the command's wiring; the emitted Apex is asserted where it is built.
             */
             expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(
                 classesDirectoryPath,
-                expect.stringContaining(`forField('Dependency_Example__c', 'Neighborhood__c')`),
+                [specDetail],
                 '64.0'
             );
-            expect(writeSpecsClassFilesSpy.mock.calls[0][1]).toContain(`.expectAtLeast('cle', new List<String>{ 'ohiocity' })`);
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
 
             const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
             expect(informationMessage).toContain('1 picklist dependency spec(s)');
+            expect(informationMessage).toContain('1 per-object class(es)');
             expect(informationMessage).toContain(classesDirectoryPath);
+
+        });
+
+        test('given a workspace carrying classes from an earlier version, warns naming what to delete', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            const legacyFrameworkDirectoryPath = `${classesDirectoryPath}/PicklistDependencyFramework`;
+            jest.spyOn(PicklistDependencyTestService, 'detectLegacyGeneratedArtifacts').mockReturnValue([legacyFrameworkDirectoryPath]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(warningCall => String(warningCall[0]));
+            const legacyWarning = warningMessages.find(warningMessage => warningMessage.includes(legacyFrameworkDirectoryPath));
+
+            expect(legacyWarning).toBeDefined();
+            expect(legacyWarning).toContain('SFTreecipePicklistDependencySpecs');
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given no legacy classes, does not warn about them', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(warningCall => String(warningCall[0]));
+
+            expect(warningMessages.some(warningMessage => warningMessage.includes('earlier Treecipe version'))).toBeFalse();
+
+        });
+
+        test('given stale per-object classes removed, names them in the generation summary', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue({
+                aggregatorClassFilePath: specsClassFilePath,
+                perObjectClassFilePathsByObjectApiName: { 'Dependency_Example__c': perObjectSpecsClassFilePath },
+                removedStaleClassFilePaths: [`${classesDirectoryPath}/SDTPLDSpecs_Retired_Object_c.cls`]
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
+
+            expect(informationMessage).toContain('SDTPLDSpecs_Retired_Object_c.cls');
+            expect(informationMessage).toContain('no longer declaring a dependent picklist');
 
         });
 
@@ -162,11 +217,11 @@ describe('ExtensionCommandService', () => {
             );
 
             const emittedTestClassBody = writeSpecsTestClassFilesSpy.mock.calls[0][1];
-            expect(emittedTestClassBody).toContain('private class SFTreecipePicklistDependencySpecsTest {');
+            expect(emittedTestClassBody).toContain('private class SDTPLDSpecsTest {');
             expect(emittedTestClassBody).toContain('static void Dependency_Example_c_picklistDependenciesMatchSourceMetadata()');
             expect(emittedTestClassBody).toContain('static void specRegistryIsNotEmpty()');
 
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SFTreecipePicklistDependencySpecsTest.cls');
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SDTPLDSpecsTest.cls');
 
         });
 
@@ -208,6 +263,11 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts').mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-x');
 
             const isDeployedSpy = jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg');
+
+            // GENERATION JUST WROTE THESE CLASSES, SO THEY ARE ON DISK BY DEFINITION
+            jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist')
+                .mockReturnValue([`${classesDirectoryPath}/SDTPLDSpecsTest.cls`]);
+
             const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
                 .mockResolvedValue('Deployed 8 component(s) to the target org.');
             const runSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
@@ -312,7 +372,7 @@ describe('ExtensionCommandService', () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: ['PicklistDependencySpec', 'PicklistDependencyValidator'] });
+                .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: ['SDTPicklistDependencySpec', 'SDTPicklistDependencyValidator'] });
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
@@ -512,6 +572,15 @@ describe('ExtensionCommandService', () => {
             ]);
 
             jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(true);
+
+            /*
+                These scenarios all assume generation has already run. The deploy path now asserts
+                that before building its confirmation, so that a workspace with nothing to send gets
+                an actionable error instead of an approval dialog offering zero files.
+            */
+            jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist')
+                .mockReturnValue([`${classesDirectoryPath}/SDTPLDSpecsTest.cls`]);
+
             runPicklistDependencyTestsSpy = jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
                 .mockResolvedValue(passingCheckOutcome);
             deployPicklistDependencyClassesSpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
@@ -633,6 +702,33 @@ describe('ExtensionCommandService', () => {
 
             expect(deployPicklistDependencyClassesSpy).toHaveBeenCalledWith(classesDirectoryPath, 'devHub', expect.any(Function));
             expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub', expect.any(Function));
+
+        });
+
+        /*
+            The confirmation lists the files that will be sent, so a workspace where generation never
+            ran must fail BEFORE the modal. Otherwise the user approves a dialog offering zero files
+            and only then learns they needed to run Generate first.
+        */
+        test('given no generated classes on disk, refuses before showing the deploy confirmation', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(false);
+
+            jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist').mockImplementation(() => {
+                throw new Error('No picklist dependency classes were found in "/workspace/classes". Run "Generate Picklist Dependency Tests" first, then run the command again.');
+            });
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockClear();
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(deployPicklistDependencyClassesSpy).not.toHaveBeenCalled();
+            expect(runPicklistDependencyTestsSpy).not.toHaveBeenCalled();
+
+            const reportedError = handleCapturedErrorSpy.mock.calls[0][0] as Error;
+            expect(reportedError.message).toContain('Generate Picklist Dependency Tests');
 
         });
 
