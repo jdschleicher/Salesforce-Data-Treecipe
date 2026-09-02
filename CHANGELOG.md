@@ -1,5 +1,35 @@
 # Change Log
 
+## [3.3.1] - Global Value Sets Actually Load
+
+Resolves [#85](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/85).
+
+### Generate Treecipe now produces real values for global-value-set-backed picklists
+
+`GlobalValueSetSingleton.initialize` took a leading boolean that gated whether it did any work at all, returning immediately when `false`. **Generate Treecipe** passed `false`, so the sets were never loaded and every picklist backed by one fell through recipe generation with no values:
+
+```yaml
+# before
+Territory__c: '### TODO: This picklist field needs manually updated with either a standard value set list or global value set'
+
+# after
+Territory__c: ${{ faker.helpers.arrayElement([`Territory_North`,`Territory_South`]) }}
+```
+
+If your project uses global value sets, regenerating will replace those TODO placeholders with real generated values. That is the only output change.
+
+### The flag is gone rather than fixed
+
+The parameter is removed, not renamed. It guarded a case that never existed — nothing initializes these sets at extension startup, so there was never an "already initialized" run to skip — while its name, `isGlobalValuesInitializedOnExtensionStartUp`, described a **state** where the guard read it as a **command**.
+
+Three of its four callers reasoned from the name and passed the value that silently disabled the call: recipe generation, and both picklist dependency paths (fixed in 3.3.0). The demo harness was a fourth. A parameter no caller wants, and most callers get backwards, is not worth keeping — so it cannot be passed wrongly again.
+
+The call is also `await`ed now. Recipe generation started its objects walk without waiting, so even a corrected flag left a race that could empty the same picklists.
+
+### Coverage for the command that had none
+
+`generateRecipeFromConfigurationDetail` had no tests at all, which is why the defect survived being found and fixed on three sibling call sites. It now has two, both asserting what the command **achieves** rather than which arguments it passed: that the sets are loaded, and that loading finishes before the walk begins. The second fails if the `await` is removed.
+
 ## [3.3.0] - Deep Dependency Chains and Global-Value-Set-Backed Dependent Picklists
 
 Resolves [#76](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/76). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

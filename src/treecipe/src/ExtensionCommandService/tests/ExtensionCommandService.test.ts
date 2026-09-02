@@ -53,6 +53,8 @@ import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTy
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
 import { PicklistDependencyExplorerService } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
+import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
+import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 
 describe('ExtensionCommandService', () => {
 
@@ -544,6 +546,102 @@ describe('ExtensionCommandService', () => {
 
             expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
             expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('sfdx-project.json');
+
+        });
+
+    });
+
+    /*
+        generateRecipeFromConfigurationDetail had NO coverage at all, which is why a call that never
+        loaded the global value sets survived here after the same bug was found and fixed on three
+        other call sites. Both tests below assert what the command ACHIEVES rather than which
+        arguments it passed on, because an argument-tuple assertion is exactly what failed to catch
+        this elsewhere.
+    */
+    describe('generateRecipeFromConfigurationDetail', () => {
+
+        const workspaceRoot = '/workspace';
+
+        const territoryGlobalValueSetXml = `<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>Territory_North</fullName>
+        <label>Territory North</label>
+    </customValue>
+    <masterLabel>SDT Territory Values</masterLabel>
+</GlobalValueSet>`;
+
+        let extensionCommandService: ExtensionCommandService;
+
+        beforeEach(() => {
+
+            jest.clearAllMocks();
+
+            extensionCommandService = new ExtensionCommandService();
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration')
+                .mockReturnValue('./force-app/main/default/objects');
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            /*
+                The DirectoryProcessor CONSTRUCTOR resolves the configured faker service and throws
+                when there is no configuration, which would abort the command immediately after the
+                global value sets load -- silently, since the command catches. Stubbed so the run
+                actually reaches the walk these tests are about.
+            */
+            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+                .mockReturnValue(new FakerJSRecipeFakerService());
+
+            jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory').mockResolvedValue(undefined as any);
+
+            // A REAL globalValueSets DIRECTORY HOLDING ONE SET, READ THROUGH THE SAME CALL THE COMMAND MAKES
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([
+                ['SDT_Territory_Values.globalValueSet-meta.xml', 1]
+            ]);
+            jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getGlobalValueSetPicklistXMLFileContent')
+                .mockResolvedValue(territoryGlobalValueSetXml);
+
+        });
+
+        test('given the recipe command, loads the global value sets beside the objects directory', async () => {
+
+            const processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships')
+                .mockResolvedValue({} as any);
+
+            await extensionCommandService.generateRecipeFromConfigurationDetail();
+
+            const picklistValuesByGlobalValueSetName = GlobalValueSetSingleton.getInstance().getPicklistValueMaps();
+
+            expect(picklistValuesByGlobalValueSetName).toBeTruthy();
+            expect(picklistValuesByGlobalValueSetName['SDT_Territory_Values']).toEqual(['Territory_North']);
+
+            // THE COMMAND MUST HAVE RUN TO COMPLETION -- THE COMMAND BODY CATCHES, SO AN ABORTED RUN IS OTHERWISE INVISIBLE
+            expect(processAllObjectsSpy).toHaveBeenCalled();
+
+        });
+
+        /*
+            The missing await is a SEPARATE defect from the flag, and correcting the flag alone would
+            leave it: the walk could still start before the sets finished loading. Asserting the final
+            state cannot see that race, so this captures what the singleton held at the moment the walk
+            began -- the only point where the ordering is observable.
+        */
+        test('given the recipe command, finishes loading the sets before the objects walk begins', async () => {
+
+            let globalValueSetsAtTheMomentTheWalkBegan: Record<string, string[]> | null | undefined;
+
+            jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships')
+                .mockImplementation(async () => {
+                    globalValueSetsAtTheMomentTheWalkBegan = GlobalValueSetSingleton.getInstance().getPicklistValueMaps();
+                    return {} as any;
+                });
+
+            await extensionCommandService.generateRecipeFromConfigurationDetail();
+
+            expect(globalValueSetsAtTheMomentTheWalkBegan).toBeTruthy();
+            expect(globalValueSetsAtTheMomentTheWalkBegan['SDT_Territory_Values']).toEqual(['Territory_North']);
 
         });
 

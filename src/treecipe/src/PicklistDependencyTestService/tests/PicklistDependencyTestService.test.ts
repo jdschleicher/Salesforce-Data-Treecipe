@@ -2404,8 +2404,7 @@ describe('PicklistDependencyTestService', () => {
 
             pointMockedVSCodeFileSystemAtFixtures();
 
-            const isGlobalValuesInitializedOnExtensionStartUp = true;
-            await GlobalValueSetSingleton.getInstance().initialize(mockGlobalValueSetMetadataParentPath, isGlobalValuesInitializedOnExtensionStartUp);
+            await GlobalValueSetSingleton.getInstance().initialize(mockGlobalValueSetMetadataParentPath);
 
             return await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
                 vscode.Uri.file(mockGlobalValueSetObjectsPath)

@@ -63,8 +63,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             });
 
             const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
-            const mimicIsCalledFromExtensionCommandOfGenerateRecipe = true;
-            await globalValueSetSingleton.initialize(uri.fsPath, mimicIsCalledFromExtensionCommandOfGenerateRecipe);
+            await globalValueSetSingleton.initialize(uri.fsPath);
 
             const picklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
             expect(Object.keys(picklistApiNameToValues).length).toBe(2);
@@ -93,7 +92,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(updatedMockReadDirectory);
 
 
-            await globalValueSetSingleton.initialize(uri.fsPath, mimicIsCalledFromExtensionCommandOfGenerateRecipe);
+            await globalValueSetSingleton.initialize(uri.fsPath);
 
             const updatedPicklistApiNameToValues = globalValueSetSingleton.getPicklistValueMaps();
 
@@ -111,10 +110,8 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             const showWarningMessageSpy = jest.spyOn(vscode.window, 'showWarningMessage');
 
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-
-            const mimicIsCalledFromExtensionCommand = true;
             const isMissingDirectoryWarningShown = false;
-            await globalValueSetSingleton.initialize('./no/global/value/sets', mimicIsCalledFromExtensionCommand, isMissingDirectoryWarningShown);
+            await globalValueSetSingleton.initialize('./no/global/value/sets', isMissingDirectoryWarningShown);
 
             expect(globalValueSetSingleton.getPicklistValueMaps()).toBeNull();
             expect(showWarningMessageSpy).not.toHaveBeenCalled();
@@ -125,9 +122,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
             const showWarningMessageSpy = jest.spyOn(vscode.window, 'showWarningMessage');
-
-            const mimicIsCalledFromExtensionCommand = true;
-            await GlobalValueSetSingleton.getInstance().initialize('./no/global/value/sets', mimicIsCalledFromExtensionCommand);
+            await GlobalValueSetSingleton.getInstance().initialize('./no/global/value/sets');
 
             expect(showWarningMessageSpy).toHaveBeenCalledWith('No GlobalValueSets found in directory: ./no/global/value/sets/globalValueSets/');
 
@@ -149,7 +144,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
 
             const globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
-            await expect(globalValueSetSingleton.initialize('./unreadable', true)).resolves.toBeUndefined();
+            await expect(globalValueSetSingleton.initialize('./unreadable')).resolves.toBeUndefined();
             expect(globalValueSetSingleton.getPicklistValueMaps()).toBeNull();
 
         });
@@ -172,7 +167,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
                     return XMLMarkupMockService.getPlanetsGlobalValueSetXMLFileContent();
                 });
 
-            await globalValueSetSingleton.initialize('./partly-broken', true);
+            await globalValueSetSingleton.initialize('./partly-broken');
 
             const picklistValuesByGlobalValueSetName = globalValueSetSingleton.getPicklistValueMaps();
             expect(picklistValuesByGlobalValueSetName['Planets']).toBeTruthy();
@@ -190,7 +185,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
                 .mockResolvedValue('<?xml version="1.0" encoding="UTF-8"?><GlobalValueSet><masterLabel>Empty</masterLabel></GlobalValueSet>');
 
-            await expect(globalValueSetSingleton.initialize('./empty-set', true)).resolves.toBeUndefined();
+            await expect(globalValueSetSingleton.initialize('./empty-set')).resolves.toBeUndefined();
 
         });
 
@@ -232,7 +227,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
     <masterLabel>Territories</masterLabel>
 </GlobalValueSet>`);
 
-            await globalValueSetSingleton.initialize('./territories', true);
+            await globalValueSetSingleton.initialize('./territories');
 
             expect(globalValueSetSingleton.getPicklistValueMaps()['Territories'])
                 .toEqual(['Still_Active', 'No_Markup_Means_Active']);
@@ -267,7 +262,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
                     return '<?xml version="1.0"?><GlobalValueSet><customValue><fullName>impostor</fullName></customValue><masterLabel>Zone_Values</masterLabel></GlobalValueSet>';
                 });
 
-            await globalValueSetSingleton.initialize('./colliding', true);
+            await globalValueSetSingleton.initialize('./colliding');
 
             expect(globalValueSetSingleton.getPicklistValueMaps()['Zone_Values']).toEqual(['owned']);
 
@@ -325,9 +320,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
                 .mockResolvedValue(renamedGlobalValueSetXMLContent);
-
-            const mimicIsCalledFromExtensionCommandOfGenerateRecipe = true;
-            await globalValueSetSingleton.initialize('./any/metadata/parent', mimicIsCalledFromExtensionCommandOfGenerateRecipe);
+            await globalValueSetSingleton.initialize('./any/metadata/parent');
 
             const picklistValuesByGlobalValueSetName = globalValueSetSingleton.getPicklistValueMaps();
 
@@ -355,9 +348,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
                 .mockResolvedValue(noMasterLabelXMLContent);
-
-            const mimicIsCalledFromExtensionCommandOfGenerateRecipe = true;
-            await globalValueSetSingleton.initialize('./any/metadata/parent', mimicIsCalledFromExtensionCommandOfGenerateRecipe);
+            await globalValueSetSingleton.initialize('./any/metadata/parent');
 
             expect(Object.keys(globalValueSetSingleton.getPicklistValueMaps())).toEqual(['SDT_Territory_Values']);
 
@@ -374,9 +365,7 @@ describe("Shared GlobalValueSetSingletonService Tests", () => {
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(globalValueSetSingleton, 'getGlobalValueSetPicklistXMLFileContent')
                 .mockResolvedValue(cleGlobalValueSetXMLContent);
-
-            const mimicIsCalledFromExtensionCommandOfGenerateRecipe = true;
-            await globalValueSetSingleton.initialize('./any/metadata/parent', mimicIsCalledFromExtensionCommandOfGenerateRecipe);
+            await globalValueSetSingleton.initialize('./any/metadata/parent');
 
             expect(Object.keys(globalValueSetSingleton.getPicklistValueMaps())).toEqual(['CLEGlobal']);
 

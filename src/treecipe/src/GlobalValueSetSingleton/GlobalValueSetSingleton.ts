@@ -13,19 +13,23 @@ export class GlobalValueSetSingleton {
     private constructor() {}
 
     /*
-        isMissingDirectoryWarningShown lets a caller that does not NEED global value sets initialize
-        them anyway without telling the user off for not having any. Recipe generation warns, because
-        a missing directory there silently empties a picklist's options. Picklist dependency
+        This used to take a leading boolean that gated whether it did any work at all, returning
+        immediately when false. It is gone rather than renamed, because the guard protected a case
+        that never existed -- nothing initializes these sets at extension startup, so there was never
+        an "already initialized" run to skip -- while its name,
+        isGlobalValuesInitializedOnExtensionStartUp, described a STATE where the guard read it as a
+        COMMAND. Three of the four callers reasoned from the name and passed the value that silently
+        disabled the call: recipe generation, and both picklist dependency paths. A parameter that no
+        caller wants and that most callers get backwards is not a parameter worth keeping.
+
+        isMissingDirectoryWarningShown stays: it lets a caller that does not NEED global value sets
+        load them anyway without telling the user off for not having any. Recipe generation warns,
+        because a missing directory there silently empties a picklist's options. Picklist dependency
         generation does not: a field that actually needed a set is named individually in its own skip
         warning, so the directory-level notice is noise on every project without one.
     */
     async initialize(salesforceMetadataParentPath: string,
-                        isGlobalValuesInitializedOnExtensionStartUp: boolean,
                         isMissingDirectoryWarningShown: boolean = true): Promise<void> {
-
-        if ( !(isGlobalValuesInitializedOnExtensionStartUp) ) {
-            return;
-        }
 
         const globalValueSetDirectoryPath = '/globalValueSets/';
         const expectedGlobalValueSetDirectoriesPath = salesforceMetadataParentPath + globalValueSetDirectoryPath;
