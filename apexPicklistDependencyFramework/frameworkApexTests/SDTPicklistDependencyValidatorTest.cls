@@ -372,6 +372,152 @@ private class SDTPicklistDependencyValidatorTest {
         Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.UPSTREAM_FAILURE, failures[0].kind);
     }
 
+    /*
+        Everything above stops at two links, which cannot exercise the one link a deeper chain has
+        that a two link chain does not: a spec that has an upstream AND is one. City__c is that link
+        below -- Country__c -> Region__c -> City__c.
+    */
+    private static final String CITY = 'City__c';
+
+    private static SDTPicklistDependencySnapshot citySnapshot() {
+        SDTPicklistDependencySnapshot snapshot = new SDTPicklistDependencySnapshot();
+        snapshot.objectApiName = OBJ;
+        snapshot.fieldApiName = CITY;
+        snapshot.controllingFieldApiName = FIELD;
+        snapshot.controllerValues = new Map<String, Integer>{
+            'West' => 0,
+            'East' => 1,
+            'Ontario' => 2,
+            'Quebec' => 3
+        };
+        snapshot.dependentValueValidFor = new Map<String, List<Integer>>{
+            'San Francisco' => new List<Integer>{ 0 },
+            'New York' => new List<Integer>{ 1 },
+            'Toronto' => new List<Integer>{ 2 },
+            'Montreal' => new List<Integer>{ 3 }
+        };
+        return snapshot;
+    }
+
+    private static SDTStubPicklistDependencySource threeLinkChainSource() {
+        return new SDTStubPicklistDependencySource()
+            .withSnapshot(OBJ, CONTROLLING, countrySnapshot())
+            .withSnapshot(OBJ, FIELD, regionSnapshot())
+            .withSnapshot(OBJ, CITY, citySnapshot());
+    }
+
+    @IsTest
+    static void aHealthyThreeLinkChainValidatesEveryLink() {
+        SDTStubPicklistDependencySource source = threeLinkChainSource();
+
+        SDTPicklistDependencySpec countrySpec = SDTPicklistDependencySpec.forField(OBJ, CONTROLLING)
+            .expectAtLeast('North America', new List<String>{ 'United States', 'Canada' });
+
+        SDTPicklistDependencySpec regionSpec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .dependsOn(countrySpec)
+            .expectAtLeast('United States', new List<String>{ 'West', 'East' })
+            .expectNotAllowed('United States', new List<String>{ 'Ontario', 'Quebec' });
+
+        SDTPicklistDependencySpec citySpec = SDTPicklistDependencySpec.forField(OBJ, CITY)
+            .controlledBy(FIELD)
+            .dependsOn(regionSpec)
+            .expectAtLeast('West', new List<String>{ 'San Francisco' })
+            .expectNotAllowed('West', new List<String>{ 'New York', 'Toronto', 'Montreal' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(
+                new List<SDTPicklistDependencySpec>{ countrySpec, regionSpec, citySpec });
+
+        Assert.areEqual(0, failures.size(), 'all three links are intact');
+    }
+
+    /*
+        A break at the ROOT has to travel the whole chain. The middle link is where a naive
+        implementation goes wrong twice: by re-describing the root once per downstream link, and by
+        naming the ROOT as what the leaf must fix rather than the leaf's own immediate upstream.
+    */
+    @IsTest
+    static void aBreakAtTheChainRootGivesEachDownstreamLinkOneUpstreamFailureNamingItsImmediateUpstream() {
+        SDTStubPicklistDependencySource source = threeLinkChainSource();
+
+        SDTPicklistDependencySpec countrySpec = SDTPicklistDependencySpec.forField(OBJ, CONTROLLING)
+            .expectAtLeast('North America', new List<String>{ 'United States', 'Mexico' });
+
+        SDTPicklistDependencySpec regionSpec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .dependsOn(countrySpec)
+            .expectAtLeast('United States', new List<String>{ 'West' });
+
+        SDTPicklistDependencySpec citySpec = SDTPicklistDependencySpec.forField(OBJ, CITY)
+            .controlledBy(FIELD)
+            .dependsOn(regionSpec)
+            .expectAtLeast('West', new List<String>{ 'San Francisco' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(
+                new List<SDTPicklistDependencySpec>{ countrySpec, regionSpec, citySpec });
+
+        Assert.areEqual(3, failures.size(), 'one failure at the root and one pointer per downstream link');
+
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.MISSING_VALUES, failures[0].kind,
+            'the break is reported as what it actually is, at its source');
+        Assert.areEqual(CONTROLLING, failures[0].fieldApiName);
+
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.UPSTREAM_FAILURE, failures[1].kind);
+        Assert.areEqual(FIELD, failures[1].fieldApiName);
+        Assert.areEqual(new List<String>{ OBJ + '.' + CONTROLLING }, failures[1].details,
+            'the middle link names the root, which is ITS immediate upstream');
+
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.UPSTREAM_FAILURE, failures[2].kind);
+        Assert.areEqual(CITY, failures[2].fieldApiName);
+        Assert.areEqual(new List<String>{ OBJ + '.' + FIELD }, failures[2].details,
+            'the leaf names the MIDDLE link rather than the root -- fixing the chain is done one link at a time');
+
+        Assert.areEqual(new List<String>{ OBJ + '.' + CONTROLLING }, source.fetchedSpecLabels,
+            'the failing root is described once and the memoized result carries through the chain');
+    }
+
+    /*
+        A break in the MIDDLE leaves the root green, which is the case a chain-wide "something failed"
+        would lose: the root passes on its own terms, the middle reports its real mismatch, and only
+        the leaf is deferred.
+    */
+    @IsTest
+    static void aBreakInTheMiddleOfTheChainLeavesTheRootGreenAndDefersOnlyTheLeaf() {
+        SDTStubPicklistDependencySource source = threeLinkChainSource();
+
+        SDTPicklistDependencySpec countrySpec = SDTPicklistDependencySpec.forField(OBJ, CONTROLLING)
+            .expectAtLeast('North America', new List<String>{ 'United States', 'Canada' });
+
+        SDTPicklistDependencySpec regionSpec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .dependsOn(countrySpec)
+            .expectAtLeast('United States', new List<String>{ 'West', 'Central' });
+
+        SDTPicklistDependencySpec citySpec = SDTPicklistDependencySpec.forField(OBJ, CITY)
+            .controlledBy(FIELD)
+            .dependsOn(regionSpec)
+            .expectAtLeast('West', new List<String>{ 'San Francisco' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(
+                new List<SDTPicklistDependencySpec>{ countrySpec, regionSpec, citySpec });
+
+        Assert.areEqual(2, failures.size(), 'the root passes, so only the middle break and the leaf pointer are reported');
+
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.MISSING_VALUES, failures[0].kind);
+        Assert.areEqual(FIELD, failures[0].fieldApiName, 'the middle break is reported at its source');
+        Assert.areEqual(new List<String>{ 'Central' }, failures[0].details);
+
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.UPSTREAM_FAILURE, failures[1].kind);
+        Assert.areEqual(CITY, failures[1].fieldApiName);
+        Assert.areEqual(new List<String>{ OBJ + '.' + FIELD }, failures[1].details);
+
+        Assert.areEqual(new List<String>{ OBJ + '.' + CONTROLLING, OBJ + '.' + FIELD }, source.fetchedSpecLabels,
+            'the leaf is never described, and neither the root nor the middle is described twice');
+    }
+
     @IsTest
     static void aCircularDependsOnChainIsReportedRatherThanRecursingForever() {
         SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()

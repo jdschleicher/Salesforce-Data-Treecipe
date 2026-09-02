@@ -48,7 +48,10 @@ Apex unit tests for the framework itself (plus the stub dependency source they u
 repository's quality gate for the Apex it ships; they are excluded from the `.vsix` and are never
 scaffolded into a user's project.
 
-They need an org to run against. The demo harness deploys them for you, or by hand:
+They need an org to run against, and **nothing in this repository runs them automatically**. CI does
+not (the build workflow is compile, lint and Jest only), and neither does the demo harness — it copies
+only `SDTPicklistDependencyFramework/` into its staging project and never invokes `sf apex run test`.
+Until that changes, these tests only ever run when someone deploys them by hand:
 
 ```bash
 # stage a throwaway DX project and deploy framework + tests into a scratch org

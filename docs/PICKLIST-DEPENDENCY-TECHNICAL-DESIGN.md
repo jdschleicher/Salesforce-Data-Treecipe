@@ -285,6 +285,23 @@ flowchart LR
     POS -->|"unlocks nothing"| NN
 ```
 
+### Dependent picklists backed by a global value set
+
+A dependent picklist can take its values from a **global value set**. Its field file then carries the whole dependency configuration — `<controllingField>` and `<valueSettings>` — and none of the values, which live in `globalValueSets/<FullName>.globalValueSet-meta.xml` beside the objects directory.
+
+That split matters because the **declared dependent values** in the mapping rule above are what the forbidden complement is taken against. Read from the field file alone, the universe would be only the values carrying a `valueSettings` entry — and a global value set value that *no* controlling value unlocks, which belongs in **every** complement, would go unasserted. Generation therefore resolves the universe from the set itself, through the same `GlobalValueSetSingleton` recipe generation reads.
+
+A field references its set by **full name** (the file name), while the only name inside the set file is `<masterLabel>`, an admin-editable display label. The singleton registers each set under both names, collapsing to one entry wherever they agree, so a set whose label was renamed is still reachable from the field pointing at it.
+
+Two things can be wrong with such a field, and they are answered differently:
+
+| Situation | Behaviour | Why |
+|---|---|---|
+| The named global value set is not in the project | The field is **skipped** with a `skippedFieldWarnings` entry naming the set and the `globalValueSets` directory | Its declared values are unknowable, and a spec built without them would assert a complement of nothing while reading as though it covered the field |
+| A `valueSettings` entry names a value the set does not declare | That value is **dropped** from the spec and reported; a controlling value left unlocking nothing becomes `expectNone` | Usually a value an admin removed from the set without cleaning up the field. No org exposes it, so asserting it would generate a spec that must fail for a reason the spec cannot fix |
+
+Recipe generation is unaffected: it reads the same `valueSettings`-derived map it always did.
+
 ### Record-type-scoped specs
 
 A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than the field-level matrix. The field-level ("bones") specs are emitted exactly as before; the scoped ones are derived from them, which is what guarantees a scoped spec can only ever be a *subset* of the field-level one. The names and values in the diagram below are there to show the derivation — no org is expected to have this metadata.

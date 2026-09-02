@@ -1,5 +1,40 @@
 # Change Log
 
+## [3.3.0] - Deep Dependency Chains and Global-Value-Set-Backed Dependent Picklists
+
+Resolves [#76](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/76). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### A dependent picklist backed by a global value set now gets a correct spec
+
+A dependent picklist can take its values from a **global value set**. Its field file carries the whole dependency configuration — `<controllingField>` and `<valueSettings>` — while the values themselves live in `globalValueSets/` beside the objects directory.
+
+Generation read only the field file, so the declared-value universe was just the values carrying a `valueSettings` entry. Every `expectNotAllowed` complement was therefore taken against a partial universe, and a global value set value that **no** controlling value unlocks — the value that belongs in *every* complement — went unasserted entirely.
+
+**Generate Picklist Dependency Tests** and the **Picklist Dependency Explorer** now read the global value sets beside the objects directory, the same way recipe generation does, and take the complement against what the set actually declares.
+
+- A field references its set by **full name** (the file name), while the only name inside the set file is `<masterLabel>` — an admin-editable display label. Global value sets are now registered under **both** names, collapsing to one entry wherever they agree, so a set whose label was renamed is still reachable from the field pointing at it
+- A field naming a global value set that is **not in the project** is skipped with an explicit warning naming the set and the `globalValueSets` directory, rather than being specced against an empty universe
+- A `valueSettings` entry naming a value the set does **not** declare — usually a value removed from the set without cleaning up the field — is dropped from the spec and reported. No org exposes that value, so asserting it would generate a spec that must fail for a reason the spec cannot fix. A controlling value left unlocking nothing becomes `expectNone`, which is what the metadata now says about it
+- **Inactive** global value set values are excluded from the universe. An inactive value cannot be selected in any org, so leaving it in turned a controlling value that unlocks nothing into an `expectNone` line the org's describe can never satisfy — a generated spec that must fail against correct metadata
+- Reading the sets never takes the calling command down with it. A `globalValueSets` directory that cannot be listed, or one malformed set file, costs that set rather than every other object's specs
+- Recipe YAML output is unchanged: recipe generation reads the same `valueSettings`-derived map it always did
+
+### The demo harness now exercises the global value set path it always claimed to
+
+`scripts/picklist-dependency-demo` writes a `Planets` global value set and a tier 3 `Planet__c` field backed by it, and its first drift phase rewires a value on exactly that field. The headless driver never initialized the global value set singleton, so `Planet__c` was skipped as "set not found" on every run: it never got a spec, the drift phase asserted against a spec that did not exist, and `-Step FullRun` stopped there. The driver now initializes the sets the same way the command does, so the global-value-set drift path is genuinely proven rather than silently absent.
+
+### Dependency chains deeper than two links are covered
+
+The generator has always been depth-agnostic, but every test stopped at two links, so nothing proved the one link a deeper chain has that a shallower one does not: a spec that **has** an upstream and **is** one.
+
+The `Chain_Example__c` fixture now runs `Country__c → State__c → City__c → District__c` — four fields, three dependency links — and the Apex framework tests cover the three-link chain end to end:
+
+- A healthy three-link chain validates every link with zero failures
+- A break at the chain **root** yields one failure at its source plus exactly one `UPSTREAM_FAILURE` per downstream link, each naming its **immediate** upstream rather than the root — the chain is fixed one link at a time. The memoized result carries through, so the failing root is described once no matter how many links hang off it
+- A break in the **middle** leaves the root green, reports the middle failure at its source, and defers only the leaf
+
+`dependsOn` is emitted only where the controlling field is itself dependent, so a chain of three dependency links emits **two** `dependsOn` calls — the root of the `dependsOn` graph has nothing above it.
+
 ## [3.2.0] - Record-Type-Scoped Picklist Dependency Specs
 
 Resolves [#77](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/77). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

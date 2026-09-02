@@ -10,11 +10,17 @@
  *
  * Register a snapshot with withSnapshot or withRecordTypeSnapshot, or an exception with
  * withException to exercise the LOOKUP_ERROR path.
+ *
+ * fetchedSpecLabels records every fetch in order, which is how a test asserts that the validator
+ * memoized a shared upstream rather than describing it once per downstream link.
  */
 @IsTest
 public class SDTStubPicklistDependencySource implements ISDTPicklistDependencySource {
 
     public class StubSourceException extends Exception {}
+
+    /** Every spec label fetch was called with, in call order. Includes fetches that then threw. */
+    public final List<String> fetchedSpecLabels = new List<String>();
 
     private final Map<String, SDTPicklistDependencySnapshot> snapshotsByField = new Map<String, SDTPicklistDependencySnapshot>();
     private final Map<String, Exception> exceptionsByField = new Map<String, Exception>();
@@ -36,6 +42,8 @@ public class SDTStubPicklistDependencySource implements ISDTPicklistDependencySo
     }
 
     public SDTPicklistDependencySnapshot fetch(SDTPicklistDependencySpec spec) {
+
+        fetchedSpecLabels.add(spec.label());
 
         String fieldKey = key(spec.objectApiName, spec.fieldApiName);
         if (exceptionsByField.containsKey(fieldKey)) {

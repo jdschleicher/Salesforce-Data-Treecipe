@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>Territory_North</fullName>
+        <default>false</default>
+        <label>Territory North</label>
+    </customValue>
+    <customValue>
+        <fullName>Territory_South</fullName>
+        <default>false</default>
+        <label>Territory South</label>
+    </customValue>
+    <customValue>
+        <fullName>Territory_East</fullName>
+        <default>false</default>
+        <label>Territory East</label>
+    </customValue>
+    <customValue>
+        <fullName>Territory_Unassigned</fullName>
+        <default>false</default>
+        <label>Territory Unassigned</label>
+    </customValue>
+    <masterLabel>SDT Territory Values</masterLabel>
+    <sorted>false</sorted>
+</GlobalValueSet>

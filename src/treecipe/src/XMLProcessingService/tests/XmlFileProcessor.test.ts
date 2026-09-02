@@ -595,6 +595,63 @@ describe('isSalesforceRecordTypeMetadataFile', () => {
 
         });
 
+        /*
+            A dependent value can be listed in more than one valueSettings block. Merging rather than
+            letting the last block win is what keeps every controlling value that unlocks it in the
+            dependency map, and the merge has to be duplicate free or the generated expectAtLeast
+            would name the same controlling value twice.
+        */
+        test('given a dependent value named by more than one valueSettings block, merges the controlling values without duplicating them', async () => {
+
+            const repeatedValueSettingsMarkup = globalValueSetDependentPicklistMarkup.replace(
+                `        <valueSettings>
+            <controllingFieldValue>plant</controllingFieldValue>
+            <valueName>neptune</valueName>
+        </valueSettings>`,
+                `        <valueSettings>
+            <controllingFieldValue>plant</controllingFieldValue>
+            <valueName>neptune</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>plant</controllingFieldValue>
+            <controllingFieldValue>shrub</controllingFieldValue>
+            <valueName>neptune</valueName>
+        </valueSettings>`
+            );
+
+            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(repeatedValueSettingsMarkup, 'GlobalSuperDependent__c.field-meta.xml');
+
+            const neptunePicklistValue = fieldDetail.picklistValues.find(picklistValue => picklistValue.picklistOptionApiName === 'neptune');
+
+            expect(neptunePicklistValue.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection).toEqual(['plant', 'shrub']);
+
+        });
+
+        /*
+            The values a global value set backed field declares live in the SET, not in the field file,
+            so what parsing yields here is the dependency configuration only. The declared value
+            universe is resolved separately by whatever needs it -- see PicklistDependencyTestService.
+        */
+        test('given a global value set backed dependent picklist, yields only the values carrying dependency configuration', async () => {
+
+            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(globalValueSetDependentPicklistMarkup, 'GlobalSuperDependent__c.field-meta.xml');
+
+            expect(fieldDetail.picklistValues.map(picklistValue => picklistValue.picklistOptionApiName)).toEqual(['earth', 'neptune']);
+
+        });
+
+        test('given a controlling field but no valueSettings markup at all, records the controlling field with no picklist values', async () => {
+
+            const noValueSettingsMarkup = globalValueSetDependentPicklistMarkup
+                .replace(/<valueSettings>[\s\S]*<\/valueSettings>/, '');
+
+            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(noValueSettingsMarkup, 'GlobalNoValueSettings__c.field-meta.xml');
+
+            expect(fieldDetail.controllingField).toBe('DependentPicklist__c');
+            expect(fieldDetail.picklistValues).toEqual([]);
+
+        });
+
         test('given a global value set picklist that is NOT dependent, records no controlling field and no picklist values', async () => {
 
             const nonDependentMarkup = globalValueSetDependentPicklistMarkup

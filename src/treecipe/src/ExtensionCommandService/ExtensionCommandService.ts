@@ -199,6 +199,23 @@ export class ExtensionCommandService {
             throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
         }
 
+        /*
+            A dependent picklist can take its values from a GLOBAL value set, whose values live
+            beside the objects directory rather than in the field file. Spec generation reads them
+            from this singleton, so it is initialized here for the same reason recipe generation
+            initializes it -- the sets may have changed since the window opened.
+        */
+        /*
+            The second argument gates whether initialize does ANY work: it returns immediately when
+            false. The name reads like an "am I at startup" hint, so false looks like the value a
+            command should pass -- it is the opposite, and passing it makes this call a silent no-op
+            that leaves every global-value-set-backed field skipped as "set not found".
+        */
+        const shouldReadGlobalValueSetsNow = true;
+        const isMissingGlobalValueSetsDirectoryWarningShown = false;
+        const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+        await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, shouldReadGlobalValueSetsNow, isMissingGlobalValueSetsDirectoryWarningShown);
+
         const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
         const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
 
@@ -214,8 +231,13 @@ export class ExtensionCommandService {
 
         const remainingSkippedFieldCount = collectionResult.skippedFieldWarnings.length - maximumIndividualWarningsToShow;
         if ( remainingSkippedFieldCount > 0 ) {
-            // THE SUPPRESSED SKIPS MAY BE A MIX OF INVALID API NAMES AND MISSING VALUE SETTINGS, SO NO SINGLE REASON IS CLAIMED
-            VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) or record type combination(s) were skipped. Each was skipped for an invalid api name, for having no "valueSettings" markup, or for a record type that assigns no values to the field.`);
+            /*
+                The suppressed entries are a mix of reasons, and not all of them are skips: an
+                undeclared valueSettings value is DROPPED from a spec that is still generated. The
+                wording therefore names the list rather than claiming every entry was skipped, which
+                sent a reader looking for a field that was in fact specced.
+            */
+            VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more picklist dependency warning(s). Reasons include an invalid api name, no "valueSettings" markup, a record type that assigns no values to the field, a global value set that could not be found, and values a global value set does not declare.`);
         }
 
         if ( collectionResult.specDetails.length === 0 ) {
@@ -567,6 +589,13 @@ export class ExtensionCommandService {
             }
 
             const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+
+            // THE EXPLORER READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
+            // TRUE MEANS "DO THE WORK" -- SEE THE NOTE ON THE GENERATE PATH ABOVE; FALSE MAKES THIS A NO-OP
+            const shouldReadGlobalValueSetsNow = true;
+            const isMissingGlobalValueSetsDirectoryWarningShown = false;
+            const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+            await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, shouldReadGlobalValueSetsNow, isMissingGlobalValueSetsDirectoryWarningShown);
 
             /*
                 Walking a real org's objects directory parses every field file and takes seconds, so

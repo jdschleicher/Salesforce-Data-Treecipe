@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>District__c</fullName>
+    <externalId>false</externalId>
+    <label>District</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>City__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Tremont</fullName>
+                <default>false</default>
+                <label>Tremont</label>
+            </value>
+            <value>
+                <fullName>Ohio_City</fullName>
+                <default>false</default>
+                <label>Ohio City</label>
+            </value>
+            <value>
+                <fullName>Short_North</fullName>
+                <default>false</default>
+                <label>Short North</label>
+            </value>
+            <value>
+                <fullName>Distillery</fullName>
+                <default>false</default>
+                <label>Distillery</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>Cleveland</controllingFieldValue>
+            <valueName>Tremont</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>Cleveland</controllingFieldValue>
+            <valueName>Ohio_City</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>Columbus</controllingFieldValue>
+            <valueName>Short_North</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>Toronto</controllingFieldValue>
+            <valueName>Distillery</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>
