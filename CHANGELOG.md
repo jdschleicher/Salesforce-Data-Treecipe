@@ -1,5 +1,58 @@
 # Change Log
 
+## [3.2.0] - Record-Type-Scoped Picklist Dependency Specs
+
+Resolves [#77](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/77). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).
+
+### Generated specs now capture what each record type actually exposes
+
+The generated specs asserted the field-level dependency map — the "bones" from `valueSettings`. Record types sit on top of those bones: each assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable *through a record type* are narrower than the field-level map. Nothing captured them, so a value unassigned from a record type left every generated test passing.
+
+Where an object has a `recordTypes/` directory, **Generate Picklist Dependency Tests** now emits the field-level spec unchanged, plus one narrowed spec per record type:
+
+```apex
+public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c_recordType_Cleveland_Only() {
+    return SDTPicklistDependencySpec.forRecordType('Dependency_Example__c', 'Neighborhood__c', 'Cleveland_Only')
+            .controlledBy('City__c')
+            .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })
+            .expectNotAllowed('cle', new List<String>{ 'willowick' })
+            .expectUnavailable('eastlake');
+}
+```
+
+- Controlling values are the field's, intersected with what the record type assigns to the controlling field; each value's unlocked values are intersected with what it assigns to the dependent field
+- A controlling value the record type **does** assign but whose unlocked values it assigns none of becomes `expectNone`; one it does **not** assign becomes `expectUnavailable`. The two are different assertions — `expectNone` requires the value to exist, so using it for an unassigned value would fail against exactly the metadata that is correct
+- The forbidden complement is taken against **the record type's** assigned values rather than everything the field declares — a value the record type does not expose is already unreachable through it
+- A chained spec links to the upstream spec for the *same* record type, and the link is dropped when the record type assigns nothing to the upstream field, rather than naming a method that was never emitted
+- Scoped specs are collected by `recordTypeSpecs()` per object and `SDTPLDSpecs.allRecordTypeScoped()` on the aggregator
+- An object with **no** `recordTypes/` directory generates byte-identical output to 3.0.0
+
+### A field a record type never mentions is treated as unassigned, not as fully assigned
+
+The one genuinely ambiguous case in the metadata. Treating absence as "every value assigned" would assert a contract the metadata never stated, so the combination is skipped, a warning names the record type and the field, and the field-level spec still covers that field. This matches what recipe generation already does with the same markup.
+
+### The Apex framework understands record type scope
+
+- `SDTPicklistDependencySpec.forRecordType(object, field, recordTypeDeveloperName)` alongside `forField`, with `isRecordTypeScoped()` and a `label()` that carries the record type — the validator's dedupe and memoisation key, so a field's field-level spec never collapses onto its scoped ones
+- `expectUnavailable(controllingValue)` (`MatchMode.UNAVAILABLE`), the record-type equivalent of `expectNone`: it asserts the controlling value is not reachable at all, and fails with the new `UNEXPECTED_CONTROLLING_VALUE` kind — naming the values it wrongly unlocks — if a record type later gains it
+- Malformed record type markup is skipped with a warning rather than aborting generation: a `<picklistValues>` block missing its `<picklist>` child, nested markup where the developer name should be, and `<values>` entries with no `<fullName>` are all well-formed XML that previously threw part-way through the walk — one of them mid-write, leaving a half-regenerated class set on disk
+- `SDTPicklistDependencyValidator.Failure` carries `recordTypeDeveloperName` and renders it in the scope: `MISSING_VALUES — Account.Region__c [US_Only] @ United States: ...`
+- Record type developer names pass the same api name gate as object and field names before being embedded in Apex; an invalid one is skipped with a warning rather than emitted
+
+### The Explorer shows them too
+
+The Picklist Dependency Explorer (3.1.0) renders the field-level structure; record type scoping was invisible there, which would have left the panel quietly disagreeing with the Apex it sits beside.
+
+- Each record type's narrowed combinations are nested under the field they narrow, collapsed until opened, with the scope's own values as the universe its "must not unlock" list complements against — a value the record type does not expose is already unreachable through it
+- A controlling value the record type does not assign renders as **not available under this record type** rather than as unlocking nothing: a different claim, and the one `expectUnavailable` actually makes
+- Scoped rows are counted apart from field-level ones in the header, and stay "not checked" even after a passing run — the check validates `SDTPLDSpecs.all()`, which holds the field-level specs only, so calling them passed would report a scope nothing verified as green. Every scope says so beside its own rows
+- The Explorer's failure parser now understands the `[RecordType]` segment `SDTPicklistDependencyValidator` emits, so a scoped failure attributes to its record type instead of landing on the field-level row for the same controlling value — and a failure naming a record type the metadata no longer declares is reported with its scope rather than silently dropped
+
+### Known limitation: the scoped specs are captured, not yet verified against an org
+
+Apex `Schema` describe returns picklist values with **no** record type filtering, and the UI API that does is a REST callout that cannot run inside `@IsTest`. Rather than answer a scoped spec with field-level data — which would report a scope that was never checked as green — `SDTSchemaPicklistDependencySource` rejects one outright with a message saying why.
+
+So `SDTPLDSpecsTest` continues to assert `SDTPLDSpecs.all()` only, the scoped specs sit in `allRecordTypeScoped()` ready for an `ISDTPicklistDependencySource` that can read record-type-filtered values, and the generation summary says as much rather than leaving you to infer it. **Run Picklist Dependency Check** is unchanged: it reports what the Apex tests report.
 ## [3.1.0] - Picklist Dependency Explorer
 
 Resolves [#73](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/73). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

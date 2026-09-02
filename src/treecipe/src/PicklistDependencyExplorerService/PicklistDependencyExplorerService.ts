@@ -1,5 +1,6 @@
 import {
     IPicklistDependencySpecDetail,
+    IRecordTypePicklistDependencySpecDetail,
     PicklistDependencyTestService
 } from '../PicklistDependencyTestService/PicklistDependencyTestService';
 
@@ -37,9 +38,29 @@ export interface IPicklistDependencyCombinationViewModel {
         information content is their sum.
     */
     hasForbiddenAssertion: boolean;
+    /*
+        The controlling value is not reachable at all under this combination's scope -- emitted as
+        expectUnavailable rather than expectNone. Only ever true on a record-type scoped combination:
+        a record type that does not assign a controlling value does not expose it as an empty choice.
+    */
+    controllingValueUnavailable: boolean;
     status: PicklistDependencyCheckStatus;
     // EVERY FAILURE THE RUN REPORTED FOR THIS COMBINATION. THE VALIDATOR CAN RAISE MORE THAN ONE.
     failures: IPicklistDependencyFailureDetailViewModel[];
+}
+
+/*
+    One record type's view of a dependent field, drawn beneath the field-level combinations rather
+    than beside them: the record type narrows the same dependency, so nesting is what shows that a
+    scoped combination can only ever be a subset of the field-level one above it.
+*/
+export interface IPicklistDependencyRecordTypeScopeViewModel {
+    recordTypeDeveloperName: string;
+    // WHAT THE RECORD TYPE ASSIGNS TO THE DEPENDENT FIELD -- THE UNIVERSE ITS FORBIDDEN SETS COMPLEMENT AGAINST
+    declaredValues: string[];
+    combinations: IPicklistDependencyCombinationViewModel[];
+    status: PicklistDependencyCheckStatus;
+    failureCount: number;
 }
 
 export interface IPicklistDependencyNodeViewModel {
@@ -57,6 +78,8 @@ export interface IPicklistDependencyNodeViewModel {
     failureCount: number;
     // FAILURES THE VALIDATOR RAISED AGAINST THE FIELD RATHER THAN AGAINST ONE COMBINATION
     fieldLevelFailures: IPicklistDependencyFailureDetailViewModel[];
+    // ONE PER RECORD TYPE THAT NARROWS THIS FIELD, EMPTY WHERE THE OBJECT DECLARES NO RECORD TYPES
+    recordTypeScopes: IPicklistDependencyRecordTypeScopeViewModel[];
 }
 
 export interface IPicklistDependencyObjectViewModel {
@@ -64,6 +87,13 @@ export interface IPicklistDependencyObjectViewModel {
     rootNodes: IPicklistDependencyNodeViewModel[];
     dependentFieldCount: number;
     combinationCount: number;
+    /*
+        Counted apart from combinationCount rather than folded into it. combinationCount is what the
+        generated test class actually verifies; no source shipped with the framework can check a
+        record-type scoped combination, so adding them to one total would overstate what a green run
+        proves.
+    */
+    recordTypeCombinationCount: number;
     status: PicklistDependencyCheckStatus;
     failureCount: number;
     /*
@@ -94,6 +124,7 @@ export interface IPicklistDependencyExplorerViewModel {
     objects: IPicklistDependencyObjectViewModel[];
     dependentFieldCount: number;
     combinationCount: number;
+    recordTypeCombinationCount: number;
     runLoadState: PicklistDependencyRunLoadState;
     runSummary?: IPicklistDependencyRunSummary;
     // WHY A RUN COULD NOT BE LOADED, IN WORDS A READER CAN ACT ON
@@ -104,6 +135,11 @@ export interface IPicklistDependencyExplorerViewModel {
 export interface IParsedPicklistDependencyFailure {
     objectApiName: string;
     fieldApiName: string;
+    /*
+        Set when the failure line carried a "[RecordType]" scope, which SDTPicklistDependencyValidator
+        emits for a record-type scoped spec. Absent for a field-level failure.
+    */
+    recordTypeDeveloperName?: string;
     kind: string;
     /*
         The raw text after "@ " for a scoped failure, which is "<controllingValue>: <message>".
@@ -284,6 +320,13 @@ export class PicklistDependencyExplorerService {
     */
     private static failureLinePattern = /^\s*(?:-\s*)?([A-Z][A-Z0-9_]*)\s+(?:—|--|-)\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)([\s\S]*)$/;
 
+    /*
+        A record-type scoped failure names its scope between the field and the rest of the line:
+        "MISSING_VALUES — Account.Region__c [US_Only] @ United States: ...". Matched off the front of
+        the tail so a field-level line, which has no such segment, is untouched.
+    */
+    private static recordTypeScopeTailPattern = /^\s+\[([A-Za-z0-9_]+)\]([\s\S]*)$/;
+
     private static scopedFailureTailPattern = /^\s+@\s+([\s\S]+)$/;
 
     private static fieldLevelFailureTailPattern = /^\s*:\s*([\s\S]*)$/;
@@ -320,7 +363,11 @@ export class PicklistDependencyExplorerService {
                 return;
             }
 
-            const [, failureKind, objectApiName, fieldApiName, failureLineTail] = failureLineMatch;
+            const [, failureKind, objectApiName, fieldApiName, rawFailureLineTail] = failureLineMatch;
+
+            const recordTypeScopeMatch = this.recordTypeScopeTailPattern.exec(rawFailureLineTail);
+            const recordTypeDeveloperName = recordTypeScopeMatch ? recordTypeScopeMatch[1] : undefined;
+            const failureLineTail = recordTypeScopeMatch ? recordTypeScopeMatch[2] : rawFailureLineTail;
 
             const scopedTailMatch = this.scopedFailureTailPattern.exec(failureLineTail);
 
@@ -329,6 +376,7 @@ export class PicklistDependencyExplorerService {
                 parsedFailures.push({
                     objectApiName: objectApiName,
                     fieldApiName: fieldApiName,
+                    recordTypeDeveloperName: recordTypeDeveloperName,
                     kind: failureKind,
                     controllingValueAndMessage: scopedTailMatch[1]
                 });
@@ -347,6 +395,7 @@ export class PicklistDependencyExplorerService {
             parsedFailures.push({
                 objectApiName: objectApiName,
                 fieldApiName: fieldApiName,
+                recordTypeDeveloperName: recordTypeDeveloperName,
                 kind: failureKind,
                 fieldLevelMessage: fieldLevelTailMatch[1].trim()
             });
@@ -445,6 +494,7 @@ export class PicklistDependencyExplorerService {
                 is still an assertion -- it means this controlling value unlocks everything.
             */
             hasForbiddenAssertion: Array.isArray(expectation.forbiddenValues),
+            controllingValueUnavailable: !!expectation.controllingValueUnavailable,
             status: 'unknown' as PicklistDependencyCheckStatus,
             failures: []
         }));
@@ -457,6 +507,16 @@ export class PicklistDependencyExplorerService {
         declared value once per field instead of once per controlling value.
     */
     static buildForbiddenValues(declaredValues: string[], combination: IPicklistDependencyCombinationViewModel): string[] {
+
+        /*
+            An unavailable controlling value asserts nothing about values -- the emitted Apex is a
+            bare expectUnavailable line. Its empty allowed list would otherwise make the complement
+            every value the scope declares, rendering a struck-through universe the spec never
+            claimed and reading as the expectNone row it is deliberately not.
+        */
+        if ( combination.controllingValueUnavailable ) {
+            return [];
+        }
 
         if ( !combination.hasForbiddenAssertion ) {
             return [];
@@ -482,7 +542,20 @@ export class PicklistDependencyExplorerService {
     */
     static buildNodesByObjectSpecDetails(objectsDirectoryPath: string,
                                             objectApiName: string,
-                                            objectSpecDetails: IPicklistDependencySpecDetail[]): IPicklistDependencyNodeViewModel[] {
+                                            objectSpecDetails: IPicklistDependencySpecDetail[],
+                                            objectRecordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): IPicklistDependencyNodeViewModel[] {
+
+        /*
+            Grouped by field so a node can pick up its own scopes as it is built. Sorted by developer
+            name inside the builder so the panel lists a field's record types in a stable order
+            whatever order the collection returned them in.
+        */
+        let recordTypeSpecDetailsByFieldApiName: Record<string, IRecordTypePicklistDependencySpecDetail[]> = {};
+        objectRecordTypeSpecDetails.forEach(recordTypeSpecDetail => {
+            const fieldApiName = recordTypeSpecDetail.fieldApiName;
+            recordTypeSpecDetailsByFieldApiName[fieldApiName] = recordTypeSpecDetailsByFieldApiName[fieldApiName] || [];
+            recordTypeSpecDetailsByFieldApiName[fieldApiName].push(recordTypeSpecDetail);
+        });
 
         let downstreamSpecDetailsByUpstreamFieldApiName: Record<string, IPicklistDependencySpecDetail[]> = {};
         const specDetailFieldApiNames = new Set(objectSpecDetails.map(specDetail => specDetail.fieldApiName));
@@ -533,7 +606,8 @@ export class PicklistDependencyExplorerService {
                 downstreamNodes: downstreamSpecDetails.map(downstreamSpecDetail => buildNode(downstreamSpecDetail, alreadyVisitedFieldApiNames)),
                 status: 'unknown',
                 failureCount: 0,
-                fieldLevelFailures: []
+                fieldLevelFailures: [],
+                recordTypeScopes: this.buildRecordTypeScopeViewModels(recordTypeSpecDetailsByFieldApiName[specDetail.fieldApiName] || [])
             };
 
         };
@@ -575,6 +649,44 @@ export class PicklistDependencyExplorerService {
         });
 
         return rootNodes;
+
+    }
+
+    /*
+        One scope per record type that narrows this field. declaredValues is taken from the scoped
+        expectations rather than from the field, so the panel's forbidden complement is drawn against
+        what the RECORD TYPE assigns -- a value it does not expose is already unreachable through it,
+        and showing it struck through would claim the spec asserts something it does not.
+
+        Status stays "unknown" rather than inheriting the field's. Nothing shipped with the framework
+        can verify a scoped combination, so a green field-level run says nothing about these.
+    */
+    static buildRecordTypeScopeViewModels(recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[]): IPicklistDependencyRecordTypeScopeViewModel[] {
+
+        return [...recordTypeSpecDetails]
+            .sort((firstSpecDetail, secondSpecDetail) => firstSpecDetail.recordTypeDeveloperName.localeCompare(secondSpecDetail.recordTypeDeveloperName))
+            .map(recordTypeSpecDetail => ({
+                recordTypeDeveloperName: recordTypeSpecDetail.recordTypeDeveloperName,
+                declaredValues: this.buildDeclaredValuesByExpectations(recordTypeSpecDetail),
+                combinations: this.buildCombinationViewModels(recordTypeSpecDetail),
+                status: 'unknown' as PicklistDependencyCheckStatus,
+                failureCount: 0
+            }));
+
+    }
+
+    static countRecordTypeCombinations(nodes: IPicklistDependencyNodeViewModel[]): number {
+
+        return nodes.reduce((combinationCount, node) => {
+
+            const scopedCombinationCount = node.recordTypeScopes.reduce(
+                (scopeCombinationCount, recordTypeScope) => scopeCombinationCount + recordTypeScope.combinations.length,
+                0
+            );
+
+            return combinationCount + scopedCombinationCount + this.countRecordTypeCombinations(node.downstreamNodes);
+
+        }, 0);
 
     }
 
@@ -624,9 +736,16 @@ export class PicklistDependencyExplorerService {
 
         allNodes.forEach(node => {
 
-            const failuresForField = parsedFailures.filter(
+            const failuresForAnyScopeOfField = parsedFailures.filter(
                 parsedFailure => parsedFailure.objectApiName === node.objectApiName && parsedFailure.fieldApiName === node.fieldApiName
             );
+
+            /*
+                A failure naming a record type belongs to that scope, not to the field-level rows. Left
+                in this list it would attribute to the field-level combination with the same
+                controlling value and read as drift in a spec the run never evaluated.
+            */
+            const failuresForField = failuresForAnyScopeOfField.filter(parsedFailure => parsedFailure.recordTypeDeveloperName === undefined);
 
             let nodeFailureCount = 0;
 
@@ -674,6 +793,74 @@ export class PicklistDependencyExplorerService {
             });
 
             nodeFailureCount += node.fieldLevelFailures.length;
+
+            /*
+                Grouped once per node rather than re-scanned per scope. A field carrying many record
+                types and an object reporting many failures multiply otherwise, and this runs twice
+                per object -- once for the dry run that asks whether every failure can be placed.
+            */
+            let failuresByRecordTypeDeveloperName: Record<string, IParsedPicklistDependencyFailure[]> = {};
+            failuresForAnyScopeOfField.forEach(parsedFailure => {
+
+                if ( parsedFailure.recordTypeDeveloperName === undefined ) {
+                    return;
+                }
+
+                const recordTypeDeveloperName = parsedFailure.recordTypeDeveloperName;
+                failuresByRecordTypeDeveloperName[recordTypeDeveloperName] = failuresByRecordTypeDeveloperName[recordTypeDeveloperName] || [];
+                failuresByRecordTypeDeveloperName[recordTypeDeveloperName].push(parsedFailure);
+
+            });
+
+            node.recordTypeScopes.forEach(recordTypeScope => {
+
+                const failuresForScope = failuresByRecordTypeDeveloperName[recordTypeScope.recordTypeDeveloperName] || [];
+
+                let scopeFailureCount = 0;
+
+                recordTypeScope.combinations.forEach(combination => {
+
+                    let combinationFailures: IPicklistDependencyFailureDetailViewModel[] = [];
+
+                    failuresForScope.forEach(parsedFailure => {
+
+                        if ( parsedFailure.controllingValueAndMessage === undefined ) {
+                            return;
+                        }
+
+                        const failureMessage = this.extractFailureMessageForControllingValue(
+                            parsedFailure.controllingValueAndMessage,
+                            combination.controllingValue
+                        );
+
+                        if ( failureMessage === undefined ) {
+                            return;
+                        }
+
+                        combinationFailures.push({ kind: parsedFailure.kind, message: failureMessage });
+                        appliedFailures.add(parsedFailure);
+
+                    });
+
+                    combination.failures = combinationFailures;
+
+                    /*
+                        A scoped combination that was not named goes to "unknown" rather than
+                        "passed" even when the object ran. The run validates SDTPLDSpecs.all(), which
+                        holds the field-level specs only -- calling these passed would report a scope
+                        nothing checked as verified.
+                    */
+                    combination.status = combinationFailures.length > 0 ? 'failed' : 'unknown';
+                    scopeFailureCount += combinationFailures.length;
+
+                });
+
+                recordTypeScope.failureCount = scopeFailureCount;
+                recordTypeScope.status = scopeFailureCount > 0 ? 'failed' : 'unknown';
+                nodeFailureCount += scopeFailureCount;
+
+            });
+
             node.failureCount = nodeFailureCount;
 
             if ( nodeFailureCount > 0 ) {
@@ -692,7 +879,8 @@ export class PicklistDependencyExplorerService {
 
     static buildUnattributedFailureMessage(parsedFailure: IParsedPicklistDependencyFailure): string {
 
-        const failureScope = `${parsedFailure.objectApiName}.${parsedFailure.fieldApiName}`;
+        const recordTypeScope = parsedFailure.recordTypeDeveloperName ? ` [${parsedFailure.recordTypeDeveloperName}]` : '';
+        const failureScope = `${parsedFailure.objectApiName}.${parsedFailure.fieldApiName}${recordTypeScope}`;
         const failureDetail = parsedFailure.controllingValueAndMessage ?? parsedFailure.fieldLevelMessage ?? '';
 
         return `${parsedFailure.kind} — ${failureScope}${parsedFailure.controllingValueAndMessage !== undefined ? ' @ ' : ': '}${failureDetail}`;
@@ -726,11 +914,19 @@ export class PicklistDependencyExplorerService {
     static buildExplorerViewModel(objectsDirectoryPath: string,
                                     specDetails: IPicklistDependencySpecDetail[],
                                     skippedFieldWarnings: string[],
-                                    resultsLoad: IPicklistDependencyResultsLoad): IPicklistDependencyExplorerViewModel {
+                                    resultsLoad: IPicklistDependencyResultsLoad,
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): IPicklistDependencyExplorerViewModel {
 
         const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(specDetails);
         const testMethodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
         const specDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(specDetails);
+
+        /*
+            Grouped with the same helper as the field-level details. A scoped detail is always derived
+            from a field-level one, so every group here has an object above it -- an entry for an
+            object with no field-level specs would simply never be read, rather than misplacing a row.
+        */
+        const recordTypeSpecDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(recordTypeSpecDetails) as Record<string, IRecordTypePicklistDependencySpecDetail[]>;
 
         let methodOutcomesByMethodName: Record<string, IPicklistDependencyResultsMethodOutcome> = {};
         ( resultsLoad.results?.methodOutcomes || [] ).forEach(methodOutcome => {
@@ -740,7 +936,8 @@ export class PicklistDependencyExplorerService {
         const objects: IPicklistDependencyObjectViewModel[] = distinctObjectApiNames.map(objectApiName => {
 
             const objectSpecDetails = specDetailsByObjectApiName[objectApiName] || [];
-            const rootNodes = this.buildNodesByObjectSpecDetails(objectsDirectoryPath, objectApiName, objectSpecDetails);
+            const objectRecordTypeSpecDetails = recordTypeSpecDetailsByObjectApiName[objectApiName] || [];
+            const rootNodes = this.buildNodesByObjectSpecDetails(objectsDirectoryPath, objectApiName, objectSpecDetails, objectRecordTypeSpecDetails);
 
             const testMethodName = testMethodNamesByObjectApiName[objectApiName];
             const methodOutcome = methodOutcomesByMethodName[testMethodName];
@@ -785,6 +982,7 @@ export class PicklistDependencyExplorerService {
                 rootNodes: rootNodes,
                 dependentFieldCount: this.countNodes(rootNodes),
                 combinationCount: this.countCombinations(rootNodes),
+                recordTypeCombinationCount: this.countRecordTypeCombinations(rootNodes),
                 status: objectStatus,
                 failureCount: attributedFailureCount,
                 testMethodName: testMethodName,
@@ -809,6 +1007,10 @@ export class PicklistDependencyExplorerService {
             objects: objects,
             dependentFieldCount: objects.reduce((fieldCount, objectViewModel) => fieldCount + objectViewModel.dependentFieldCount, 0),
             combinationCount: objects.reduce((combinationCount, objectViewModel) => combinationCount + objectViewModel.combinationCount, 0),
+            recordTypeCombinationCount: objects.reduce(
+                (recordTypeCombinationCount, objectViewModel) => recordTypeCombinationCount + objectViewModel.recordTypeCombinationCount,
+                0
+            ),
             runLoadState: resultsLoad.state,
             runSummary: runSummary,
             runLoadMessage: resultsLoad.message,
@@ -996,6 +1198,22 @@ export class PicklistDependencyExplorerService {
         margin: 0.1rem 0.2rem 0.1rem 0;
     }
     .value.forbidden { text-decoration: line-through; color: var(--vscode-descriptionForeground); }
+    .recordTypeScopes { margin: 0.4rem 0 0.2rem 1rem; }
+    .recordTypeScope {
+        border: 1px dashed var(--vscode-panel-border);
+        padding: 0.35rem 0.5rem;
+        margin: 0.3rem 0;
+    }
+    .recordTypeScopeHeading {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        cursor: pointer;
+    }
+    .recordTypeName { font-weight: 600; }
+    .combination.unavailable { border-left-style: dashed; }
+    .scopeNote { font-size: 0.85rem; color: var(--vscode-descriptionForeground); margin: 0.2rem 0 0.3rem 0; }
     .failureDetail {
         margin-top: 0.35rem;
         padding: 0.35rem 0.5rem;
@@ -1068,12 +1286,15 @@ export class PicklistDependencyExplorerService {
         made the payload the product of the two picklists' sizes; the declared list plus each
         allowed list is their sum, and yields exactly the same rendering.
     */
-    function buildForbiddenValues(node, combination) {
+    function buildForbiddenValues(declaredValues, combination) {
+
+        // AN UNAVAILABLE CONTROLLING VALUE ASSERTS NOTHING ABOUT VALUES -- SEE THE SERVICE'S buildForbiddenValues
+        if (combination.controllingValueUnavailable) { return []; }
 
         if (!combination.hasForbiddenAssertion) { return []; }
 
         const allowedValues = new Set(combination.allowedValues);
-        return node.declaredValues.filter(function (declaredValue) { return !allowedValues.has(declaredValue); });
+        return declaredValues.filter(function (declaredValue) { return !allowedValues.has(declaredValue); });
 
     }
 
@@ -1083,22 +1304,30 @@ export class PicklistDependencyExplorerService {
         });
     }
 
-    function buildCombinationElement(node, combination) {
+    function buildCombinationElement(node, combination, declaredValues) {
 
-        const combinationElement = createElement('div', 'combination ' + combination.status);
+        const unavailableClass = combination.controllingValueUnavailable ? ' unavailable' : '';
+        const combinationElement = createElement('div', 'combination ' + combination.status + unavailableClass);
 
         const combinationHeading = createElement('div');
         combinationHeading.appendChild(createElement('span', 'fieldName', node.controllingFieldApiName + ' = ' + combination.controllingValue));
         appendStatusBadge(combinationHeading, combination.status);
         combinationElement.appendChild(combinationHeading);
 
-        if (combination.allowedValues.length) {
+        if (combination.controllingValueUnavailable) {
+            /*
+                Not the same statement as "unlocks nothing". This controlling value is not selectable
+                at all under this scope, which is what expectUnavailable asserts -- rendering it as an
+                empty unlock list would read as a value that exists and offers nothing.
+            */
+            combinationElement.appendChild(createElement('div', 'valueList muted', 'not available under this record type'));
+        } else if (combination.allowedValues.length) {
             appendValueList(combinationElement, 'unlocks', combination.allowedValues, 'value');
         } else {
             combinationElement.appendChild(createElement('div', 'valueList muted', 'unlocks nothing'));
         }
 
-        appendValueList(combinationElement, 'must not unlock', buildForbiddenValues(node, combination), 'value forbidden');
+        appendValueList(combinationElement, 'must not unlock', buildForbiddenValues(declaredValues, combination), 'value forbidden');
         appendFailureDetails(combinationElement, combination.failures);
 
         const sourceDetailElement = createElement('div', 'sourceDetail hidden');
@@ -1121,6 +1350,63 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    function buildRecordTypeScopeElement(node, recordTypeScope) {
+
+        const scopeElement = createElement('div', 'recordTypeScope');
+
+        const scopeHeading = createElement('div', 'recordTypeScopeHeading');
+        scopeHeading.appendChild(createElement('span', 'recordTypeName', 'record type: ' + recordTypeScope.recordTypeDeveloperName));
+        scopeHeading.appendChild(createElement('span', 'muted', recordTypeScope.combinations.length + ' combination(s)'));
+        appendStatusBadge(scopeHeading, recordTypeScope.status);
+        scopeElement.appendChild(scopeHeading);
+
+        const scopeBodyElement = createElement('div', 'hidden');
+        scopeElement.appendChild(scopeBodyElement);
+
+        /*
+            A scope's rows are built on first expand rather than at load. Every record type repeats
+            its field's combinations, so building them all up front multiplies the panel's element
+            count by the number of record types before anyone has asked to see one -- and scopes are
+            collapsed by default, so most are never opened. Collapsing alone saves layout, not the
+            elements themselves.
+        */
+        let scopeBodyBuilt = false;
+
+        const buildScopeBody = function () {
+
+            /*
+                Said on every scope rather than once at the top of the panel: these rows sit beside
+                field-level rows that a green run really does verify, and a reader scrolling to one of
+                them should not have to remember a note from elsewhere to know the difference.
+            */
+            scopeBodyElement.appendChild(createElement(
+                'div',
+                'scopeNote',
+                'Generated from source metadata and deployed with the contract, but not asserted by the check: '
+                    + 'Apex describe returns picklist values without record type filtering.'
+            ));
+
+            recordTypeScope.combinations.forEach(function (combination) {
+                scopeBodyElement.appendChild(buildCombinationElement(node, combination, recordTypeScope.declaredValues));
+            });
+
+        };
+
+        scopeHeading.addEventListener('click', function () {
+
+            if (!scopeBodyBuilt) {
+                buildScopeBody();
+                scopeBodyBuilt = true;
+            }
+
+            scopeBodyElement.classList.toggle('hidden');
+
+        });
+
+        return scopeElement;
+
+    }
+
     function buildNodeElement(node) {
 
         const nodeElement = createElement('div', 'node');
@@ -1134,8 +1420,20 @@ export class PicklistDependencyExplorerService {
         appendFailureDetails(nodeElement, node.fieldLevelFailures);
 
         node.combinations.forEach(function (combination) {
-            nodeElement.appendChild(buildCombinationElement(node, combination));
+            nodeElement.appendChild(buildCombinationElement(node, combination, node.declaredValues));
         });
+
+        if (node.recordTypeScopes.length) {
+
+            const recordTypeScopesElement = createElement('div', 'recordTypeScopes');
+
+            node.recordTypeScopes.forEach(function (recordTypeScope) {
+                recordTypeScopesElement.appendChild(buildRecordTypeScopeElement(node, recordTypeScope));
+            });
+
+            nodeElement.appendChild(recordTypeScopesElement);
+
+        }
 
         if (node.downstreamNodes.length) {
             const childrenElement = createElement('div', 'nodeChildren');
@@ -1197,7 +1495,10 @@ export class PicklistDependencyExplorerService {
 
         explorerRoot.appendChild(createElement('div', 'muted',
             explorerModel.objects.length + ' object(s), ' + explorerModel.dependentFieldCount
-                + ' dependent picklist(s), ' + explorerModel.combinationCount + ' combination(s)'));
+                + ' dependent picklist(s), ' + explorerModel.combinationCount + ' combination(s)'
+                + (explorerModel.recordTypeCombinationCount
+                    ? ' + ' + explorerModel.recordTypeCombinationCount + ' record-type-scoped'
+                    : '')));
 
         explorerModel.objects.forEach(function (objectViewModel) {
 

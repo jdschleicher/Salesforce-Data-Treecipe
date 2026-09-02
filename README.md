@@ -202,6 +202,28 @@ Every controlling value gets **two** assertions, which together catch drift in b
 
 The forbidden list is the complement: every value the dependent field declares that this controlling value does not unlock. That is deliberately weaker than `expectExactly` — a value an admin legitimately adds to the field after generation is tolerated, while a value moving into the wrong bucket still fails. Tightening a line to `expectExactly` is a deliberate edit — note that regenerating overwrites the file, so hand edits are lost.
 
+#### Record type scoped specs
+
+A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than what the field itself declares. Where an object has a `recordTypes/` directory, the per-object class gets those narrowed combinations too, alongside the field-level ones. The sample below shows the shape of what is emitted rather than metadata you should expect to see:
+
+```apex
+public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c_recordType_Cleveland_Only() {
+    return SDTPicklistDependencySpec.forRecordType('Dependency_Example__c', 'Neighborhood__c', 'Cleveland_Only')
+            .controlledBy('City__c')
+            .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })
+            .expectNotAllowed('cle', new List<String>{ 'willowick' })
+            .expectUnavailable('eastlake');
+}
+```
+
+* The controlling values are the field's, intersected with what the record type assigns to the controlling field; the unlocked values are intersected with what it assigns to the dependent field
+* A controlling value the record type **does** assign but whose unlocked values it assigns none of becomes `expectNone` — it must exist under that record type and unlock nothing
+* A controlling value the record type does **not** assign becomes `expectUnavailable` — under that record type the value is absent rather than empty, and `expectNone` would demand it exist
+* A field the record type's XML never mentions is treated as **unassigned** for that record type, not as fully assigned: the combination is skipped and reported as a warning, and the field-level spec still covers the field
+* The scoped specs are collected by `recordTypeSpecs()` on the per-object class and `SDTPLDSpecs.allRecordTypeScoped()` on the aggregator
+
+**They are not asserted by `SDTPLDSpecsTest`, and that is deliberate.** Apex `Schema` describe returns picklist values without any record type filtering, so the describe-backed source cannot answer a record-type-scoped spec — it rejects one outright rather than checking it against the whole field and reporting a scope it never verified as green. The scoped specs deploy with the rest of the contract and are ready for an `ISDTPicklistDependencySource` that can read record-type-filtered values; until then they are a captured contract, not a running one. An object with no `recordTypes/` directory generates exactly what it did before.
+
 #### Chained dependencies
 
 Where a dependent picklist is itself the controlling field of another (`Country__c` → `State__c` → `City__c`), the generated spec for the lower link carries a `dependsOn` naming the spec above it:
@@ -221,6 +243,7 @@ When the upstream spec fails, the break is reported once where it actually is, a
 Notes:
 
 * A field with a `controllingField` but no `valueSettings` markup is reported as a warning and skipped; the rest of the run continues
+* A record type that assigns no values to the controlling or the dependent field of a dependency is reported the same way, and only that combination is skipped
 * If no dependent picklists are found, an informational message is shown and no file is written
 * If the generated classes already exist, you are prompted before they are overwritten
 * A per-object class left over from an object that no longer declares a dependent picklist is removed and named in the summary, so the org stops asserting a contract your metadata no longer describes
@@ -240,7 +263,7 @@ Once generated, you can also run the check any time with "Run Picklist Dependenc
 
 #### Once the classes are in your org
 
-Everything above is the VS Code side. For the org side — what each deployed class is, how to read a generated spec against the **Field Dependencies** grid in Setup, how to run the tests from Setup or the Developer Console, how to trigger a failure on purpose to prove the gate works, and how to decide whether to fix the org or regenerate the specs — see the **[Picklist Dependency In-Org Guide](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md)**. It is written for an admin or developer looking at `SDTPLDSpecsTest` in an org, and assumes nothing about this extension.
+Everything above is the VS Code side. For the org side — what each deployed class is, how to read a generated spec against the **Field Dependencies** grid in Setup — including which argument is which, and how a record-type-scoped spec differs from the field-level one — how to run the tests from Setup or the Developer Console, how to trigger a failure on purpose to prove the gate works, and how to decide whether to fix the org or regenerate the specs — see the **[Picklist Dependency In-Org Guide](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md)**. It is written for an admin or developer looking at `SDTPLDSpecsTest` in an org, and assumes nothing about this extension.
 
 ---
 
@@ -282,6 +305,7 @@ The command:
 3. Finds the most recent run under `treecipe/PicklistDependencyResults/` and overlays it, marking each combination passed, failed, or not checked
 4. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination
 5. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`
+6. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
 
 Notes:
 
@@ -292,6 +316,8 @@ Notes:
 * **No dependent picklists at all?** You get an empty state naming the objects directory that was scanned
 * A combination is only shown as passed when the loaded run actually covered it. If **any** of an object's reported failures cannot be tied back to a specific combination, that text is surfaced on the object and its combinations stay "not checked" rather than being reported green
 * Where a combination did fail, **every** failure reported against it is shown — the validator raises `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT` independently, and both matter
+* **Record-type-scoped rows never go green, by design.** They are generated from source metadata and deployed with the contract, but Apex describe returns picklist values without record type filtering, so the check cannot verify them — see the record type section under [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests). Each scope says so beside its own rows rather than relying on a note elsewhere in the panel, and a value the record type does not assign is shown as *not available* rather than as unlocking nothing, which is a different claim
+* Scoped combinations are counted separately in the header (`N combination(s) + M record-type-scoped`) so a green run is never read as covering more than it did
 * **Known limitation:** results are recorded per object with no fingerprint of the specs they were generated from, so a combination added to `valueSettings` *after* the last check run shows as passed. Re-run the check after changing dependency metadata
 
 ---

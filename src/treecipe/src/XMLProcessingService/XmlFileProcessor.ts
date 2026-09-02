@@ -323,5 +323,26 @@ export class XmlFileProcessor {
 
   }
 
+  /*
+    The record type equivalent of the field convention above: source format names every record type
+    file "<DeveloperName>.recordType-meta.xml". A recordTypes directory holding a hand-saved copy of
+    one would otherwise be parsed as a second record type, and its picklist assignments would narrow
+    the generated combinations for a record type the org does not have.
+  */
+  private static salesforceRecordTypeMetadataSuffix = '.recordtype-meta.xml';
+
+  static isSalesforceRecordTypeMetadataFile(fileName: string, directoryItemTypeEnum: number): boolean {
+
+    if ( directoryItemTypeEnum !== vscode.FileType.File ) {
+      return false;
+    }
+
+    const normalizedFileName = fileName.toLowerCase();
+
+    return normalizedFileName.endsWith(this.salesforceRecordTypeMetadataSuffix)
+            && normalizedFileName.length > this.salesforceRecordTypeMetadataSuffix.length;
+
+  }
+
 
 }

@@ -327,4 +327,23 @@ private class SDTSchemaPicklistDependencySourceTest {
             Assert.isTrue(e.getMessage().contains('not a dependent picklist'), e.getMessage());
         }
     }
+
+    /**
+     * Describe has no record type filtering, so a record type scoped spec must be refused rather
+     * than answered with the whole field's values -- that answer would report a record type scope
+     * as verified when nothing about it was checked.
+     */
+    @IsTest
+    static void recordTypeScopedSpecIsRejectedRatherThanAnsweredWithFieldLevelData() {
+
+        SDTSchemaPicklistDependencySource source = new SDTSchemaPicklistDependencySource();
+
+        try {
+            source.fetch(SDTPicklistDependencySpec.forRecordType('Account', 'Industry', 'Some_Record_Type'));
+            Assert.fail('a record type scoped spec must be rejected by the describe based source');
+        } catch (SDTSchemaPicklistDependencySource.PicklistDependencyException e) {
+            Assert.isTrue(e.getMessage().contains('record type scoped'), e.getMessage());
+            Assert.isTrue(e.getMessage().contains('Some_Record_Type'), e.getMessage());
+        }
+    }
 }

@@ -4,7 +4,10 @@ import {
     IPicklistDependencyExplorerViewModel
 } from "../PicklistDependencyExplorerService";
 
-import { IPicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import {
+    IPicklistDependencySpecDetail,
+    IRecordTypePicklistDependencySpecDetail
+} from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -41,6 +44,40 @@ function buildChainExampleSpecDetails(): IPicklistDependencySpecDetail[] {
                 { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin', 'Toronto'] },
                 { controllingValue: 'Texas', dependentValues: ['Austin'], forbiddenValues: ['Columbus', 'Toronto'] },
                 { controllingValue: 'Ontario', dependentValues: [], forbiddenValues: [] }
+            ]
+        }
+    ];
+
+}
+
+/*
+    The Chain_Example__c specs as the North_America record type narrows them: it assigns only Ohio
+    and Ontario of the three states, and only Columbus and Toronto of the four cities, so Texas is
+    unreachable through it entirely.
+*/
+function buildChainExampleRecordTypeSpecDetails(): IRecordTypePicklistDependencySpecDetail[] {
+
+    return [
+        {
+            objectApiName: 'Chain_Example__c',
+            fieldApiName: 'State__c',
+            controllingFieldApiName: 'Country__c',
+            recordTypeDeveloperName: 'North_America',
+            expectations: [
+                { controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: ['Ontario'] },
+                { controllingValue: 'Canada', dependentValues: ['Ontario'], forbiddenValues: ['Ohio'] }
+            ]
+        },
+        {
+            objectApiName: 'Chain_Example__c',
+            fieldApiName: 'City__c',
+            controllingFieldApiName: 'State__c',
+            upstreamFieldApiName: 'State__c',
+            recordTypeDeveloperName: 'North_America',
+            expectations: [
+                { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Toronto'] },
+                { controllingValue: 'Texas', dependentValues: [], forbiddenValues: [], controllingValueUnavailable: true },
+                { controllingValue: 'Ontario', dependentValues: ['Toronto'], forbiddenValues: ['Columbus'] }
             ]
         }
     ];
@@ -621,6 +658,350 @@ describe('PicklistDependencyExplorerService', () => {
         service, kept as a regression test rather than only fixed. All three shared one failure
         mode: a combination the org had actually broken rendered as a green tick.
     */
+    describe('record type scoped combinations', () => {
+
+        function buildViewModelWithRecordTypeScopes(): IPicklistDependencyExplorerViewModel {
+
+            return PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                buildNoResultsLoad(),
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+        }
+
+        test('given record type scoped details, nests one scope per record type under the field it narrows', () => {
+
+            const viewModel = buildViewModelWithRecordTypeScopes();
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+            expect(stateNode.fieldApiName).toBe('State__c');
+            expect(stateNode.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName)).toEqual(['North_America']);
+
+            // THE CHAIN STILL NESTS, AND THE DOWNSTREAM FIELD CARRIES ITS OWN SCOPE
+            const cityNode = stateNode.downstreamNodes[0];
+            expect(cityNode.fieldApiName).toBe('City__c');
+            expect(cityNode.recordTypeScopes).toHaveLength(1);
+
+        });
+
+        test('given a record type that assigns a subset, the scope narrows what the field-level rows show', () => {
+
+            const viewModel = buildViewModelWithRecordTypeScopes();
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+            const fieldLevelUsa = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+            const scopedUsa = stateNode.recordTypeScopes[0].combinations.find(combination => combination.controllingValue === 'USA');
+
+            expect(fieldLevelUsa.allowedValues).toEqual(['Ohio', 'Texas']);
+            expect(scopedUsa.allowedValues).toEqual(['Ohio']);
+
+            // THE SCOPE'S UNIVERSE IS WHAT THE RECORD TYPE ASSIGNS, NOT WHAT THE FIELD DECLARES
+            expect(stateNode.declaredValues).toIncludeSameMembers(['Ohio', 'Texas', 'Ontario']);
+            expect(stateNode.recordTypeScopes[0].declaredValues).toIncludeSameMembers(['Ohio', 'Ontario']);
+
+        });
+
+        test('given an unavailable controlling value, marks it rather than showing it as unlocking nothing', () => {
+
+            const viewModel = buildViewModelWithRecordTypeScopes();
+
+            const cityNode = viewModel.objects[0].rootNodes[0].downstreamNodes[0];
+            const scopedTexas = cityNode.recordTypeScopes[0].combinations.find(combination => combination.controllingValue === 'Texas');
+
+            expect(scopedTexas.controllingValueUnavailable).toBeTrue();
+            expect(scopedTexas.allowedValues).toBeEmpty();
+
+            // THE FIELD-LEVEL ROW FOR THE SAME VALUE IS A DIFFERENT ASSERTION AND MUST NOT BE MARKED
+            const fieldLevelOntario = cityNode.combinations.find(combination => combination.controllingValue === 'Ontario');
+            expect(fieldLevelOntario.controllingValueUnavailable).toBeFalse();
+
+        });
+
+        test('counts scoped combinations apart from the ones the check actually verifies', () => {
+
+            const viewModel = buildViewModelWithRecordTypeScopes();
+
+            expect(viewModel.combinationCount).toBe(5);
+            expect(viewModel.recordTypeCombinationCount).toBe(5);
+            expect(viewModel.objects[0].recordTypeCombinationCount).toBe(5);
+
+            // WITHOUT SCOPED DETAILS NOTHING CHANGES FOR AN OBJECT THAT HAS NO RECORD TYPES
+            const withoutScopes = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+            expect(withoutScopes.recordTypeCombinationCount).toBe(0);
+            expect(withoutScopes.objects[0].rootNodes[0].recordTypeScopes).toBeEmpty();
+
+        });
+
+        /*
+            The run validates SDTPLDSpecs.all(), which holds the field-level specs only. Marking a
+            scoped combination "passed" off the back of that would report a scope nothing checked as
+            verified -- the exact failure mode the describe source refuses a scoped spec to avoid.
+        */
+        test('given a passing field level run, leaves scoped combinations unknown rather than claiming they passed', () => {
+
+            const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                resultsLoad,
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+            const scopedStatuses = stateNode.recordTypeScopes[0].combinations.map(combination => combination.status);
+
+            expect(scopedStatuses.every(status => status === 'unknown')).toBeTrue();
+            expect(stateNode.recordTypeScopes[0].status).toBe('unknown');
+
+        });
+
+    });
+
+    describe('buildForbiddenValues for an unavailable controlling value', () => {
+
+        /*
+            The emitted Apex for this case is a bare expectUnavailable line -- it asserts nothing
+            about values. Complementing its empty allowed list against the scope's declared values
+            would render the whole universe struck through, which is what an expectNone row shows,
+            and would display an assertion the generated spec does not contain.
+        */
+        test('given an unavailable combination, renders no must-not-unlock list', () => {
+
+            const forbiddenValues = PicklistDependencyExplorerService.buildForbiddenValues(
+                ['Cleveland', 'Toronto'],
+                {
+                    controllingValue: 'Texas',
+                    allowedValues: [],
+                    hasForbiddenAssertion: true,
+                    controllingValueUnavailable: true,
+                    status: 'unknown',
+                    failures: []
+                }
+            );
+
+            expect(forbiddenValues).toBeEmpty();
+
+        });
+
+        test('given a combination that unlocks nothing but IS available, still renders the complement', () => {
+
+            const forbiddenValues = PicklistDependencyExplorerService.buildForbiddenValues(
+                ['Cleveland', 'Toronto'],
+                {
+                    controllingValue: 'Ohio',
+                    allowedValues: [],
+                    hasForbiddenAssertion: true,
+                    controllingValueUnavailable: false,
+                    status: 'unknown',
+                    failures: []
+                }
+            );
+
+            expect(forbiddenValues).toEqual(['Cleveland', 'Toronto']);
+
+        });
+
+    });
+
+    describe('record type scope sorting and field level scoping', () => {
+
+        test('given record types in reverse order, lists a field\'s scopes by developer name', () => {
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Chain_Example__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: 'Zeta_Region',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+                },
+                {
+                    objectApiName: 'Chain_Example__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: 'Alpha_Region',
+                    expectations: [{ controllingValue: 'Canada', dependentValues: ['Ontario'], forbiddenValues: [] }]
+                }
+            ];
+
+            const scopes = PicklistDependencyExplorerService.buildRecordTypeScopeViewModels(recordTypeSpecDetails);
+
+            expect(scopes.map(scope => scope.recordTypeDeveloperName)).toEqual(['Alpha_Region', 'Zeta_Region']);
+
+        });
+
+        /*
+            A field-level failure carries no controlling value, so it must not be matched against a
+            scoped combination -- and a scoped FIELD-level failure belongs to its scope's rows rather
+            than to the field's.
+        */
+        test('given a record type scoped field level failure, does not attribute it to a scoped combination', () => {
+
+            const assertionMessage = '  - CONTROLLING_FIELD_MISMATCH — Chain_Example__c.State__c [North_America]: '
+                + 'Spec declares controlling field Country__c but the org has Region__c';
+
+            const resultsLoad: IPicklistDependencyResultsLoad = {
+                state: 'loaded',
+                message: 'loaded',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
+                results: {
+                    targetOrg: 'devOrg',
+                    ranAt: '2026-09-02T09:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
+                        passed: false,
+                        message: assertionMessage
+                    }]
+                }
+            };
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                resultsLoad,
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+
+            // NOT ON THE FIELD, WHOSE OWN SPEC THE RUN DID NOT REPORT AGAINST
+            expect(stateNode.fieldLevelFailures).toBeEmpty();
+
+            // AND NOT SILENTLY MATCHED ONTO A SCOPED COMBINATION EITHER -- IT NAMES NO CONTROLLING VALUE
+            const scopedCombinationFailures = stateNode.recordTypeScopes[0].combinations
+                .reduce((failureCount, combination) => failureCount + combination.failures.length, 0);
+            expect(scopedCombinationFailures).toBe(0);
+
+            expect(viewModel.objects[0].unattributedFailureMessages).toHaveLength(1);
+            expect(viewModel.objects[0].unattributedFailureMessages[0]).toContain('[North_America]');
+
+        });
+
+    });
+
+    describe('record type scoped failure attribution', () => {
+
+        test('parses the record type out of a scoped failure line', () => {
+
+            const parsedFailures = PicklistDependencyExplorerService.parseFailureLines(
+                '  - MISSING_VALUES — Chain_Example__c.State__c [North_America] @ USA: Expected values no longer valid: [Ohio]'
+            );
+
+            expect(parsedFailures).toHaveLength(1);
+            expect(parsedFailures[0].recordTypeDeveloperName).toBe('North_America');
+            expect(parsedFailures[0].fieldApiName).toBe('State__c');
+            expect(parsedFailures[0].controllingValueAndMessage).toBe('USA: Expected values no longer valid: [Ohio]');
+
+        });
+
+        test('leaves a field level failure line unscoped', () => {
+
+            const parsedFailures = PicklistDependencyExplorerService.parseFailureLines(
+                '  - MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]'
+            );
+
+            expect(parsedFailures[0].recordTypeDeveloperName).toBeUndefined();
+            expect(parsedFailures[0].controllingValueAndMessage).toBe('USA: Expected values no longer valid: [Ohio]');
+
+        });
+
+        /*
+            A scoped failure landing on the field-level row would report drift in a spec the run
+            never evaluated, and would do it on the row a reader trusts most.
+        */
+        test('attributes a scoped failure to its record type rather than to the field level row', () => {
+
+            const assertionMessage = 'Picklist dependency drift on Chain_Example__c -- 1 combination(s):\n'
+                + '  - MISSING_VALUES — Chain_Example__c.State__c [North_America] @ USA: Expected values no longer valid: [Ohio]';
+
+            const resultsLoad: IPicklistDependencyResultsLoad = {
+                state: 'loaded',
+                message: 'loaded',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
+                results: {
+                    targetOrg: 'devOrg',
+                    ranAt: '2026-09-02T09:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
+                        passed: false,
+                        message: assertionMessage
+                    }]
+                }
+            };
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                resultsLoad,
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+
+            const scopedUsa = stateNode.recordTypeScopes[0].combinations.find(combination => combination.controllingValue === 'USA');
+            expect(scopedUsa.status).toBe('failed');
+            expect(scopedUsa.failures).toHaveLength(1);
+            expect(scopedUsa.failures[0].kind).toBe('MISSING_VALUES');
+
+            const fieldLevelUsa = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+            expect(fieldLevelUsa.status).not.toBe('failed');
+            expect(fieldLevelUsa.failures).toBeEmpty();
+
+            // AND THE FAILURE IS NOT LEFT LOOKING UNPLACEABLE, WHICH WOULD HOLD THE OBJECT AT UNKNOWN
+            expect(viewModel.objects[0].unattributedFailureMessages).toBeEmpty();
+
+        });
+
+        test('given a scoped failure naming a record type the metadata no longer declares, reports it with its scope', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Chain_Example__c.State__c [Deleted_Record_Type] @ USA: Expected values no longer valid: [Ohio]';
+
+            const resultsLoad: IPicklistDependencyResultsLoad = {
+                state: 'loaded',
+                message: 'loaded',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
+                results: {
+                    targetOrg: 'devOrg',
+                    ranAt: '2026-09-02T09:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
+                        passed: false,
+                        message: assertionMessage
+                    }]
+                }
+            };
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                resultsLoad,
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            expect(viewModel.objects[0].unattributedFailureMessages).toHaveLength(1);
+            expect(viewModel.objects[0].unattributedFailureMessages[0]).toContain('[Deleted_Record_Type]');
+
+        });
+
+    });
+
     describe('failure attribution regressions', () => {
 
         function buildColonValuedSpecDetails(): IPicklistDependencySpecDetail[] {
@@ -907,6 +1288,118 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+    describe('record type scoped payload shape', () => {
+
+        /*
+            The scoped path adds a legitimate factor of R -- one scope per record type -- and that is
+            real data. What it must NOT do is reintroduce the controlling x dependent product the
+            complement optimisation removed: a scope carries its declared values once and each of its
+            combinations carries only what that controlling value unlocks.
+        */
+        it('keeps a record type scope linear in picklist size, like the field level payload', () => {
+
+            const controllingValueCount = 40;
+            const dependentValueCount = 120;
+
+            const declaredValues = Array.from({ length: dependentValueCount }, (unusedValue, valueIndex) => `Dependent_Value_${valueIndex}`);
+
+            const buildExpectations = () => Array.from({ length: controllingValueCount }, (unusedValue, controllingIndex) => {
+                const allowedValues = declaredValues.filter((unusedDeclaredValue, valueIndex) => valueIndex % controllingValueCount === controllingIndex);
+                const allowedValueSet = new Set(allowedValues);
+                return {
+                    controllingValue: `Controlling_Value_${controllingIndex}`,
+                    dependentValues: allowedValues,
+                    forbiddenValues: declaredValues.filter(declaredValue => !allowedValueSet.has(declaredValue))
+                };
+            });
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Big__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                expectations: buildExpectations()
+            };
+
+            const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
+                objectApiName: 'Big__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                recordTypeDeveloperName: 'Big_Record_Type',
+                expectations: buildExpectations()
+            };
+
+            const fieldLevelOnlyJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad())
+            ).length;
+
+            const withOneScopeJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad(), [recordTypeSpecDetail]
+                )
+            ).length;
+
+            /*
+                One scope repeating the whole field costs about one field's worth again. Quadratic
+                would be ~40 x 120 value strings inside the scope alone, so the bound below sits
+                between the two: comfortably above 2x linear, far under the product.
+            */
+            expect(withOneScopeJsonLength).toBeLessThan(fieldLevelOnlyJsonLength * 3);
+            expect(withOneScopeJsonLength).toBeLessThan(60000);
+
+        });
+
+        /*
+            An unavailable controlling value asserts nothing about the dependent field, so it must
+            stay a small stub. Carrying a per-value complement for it would put the product back into
+            the payload -- and into the DOM the panel builds from it.
+        */
+        it('keeps an unavailable controlling value from carrying the whole declared set', () => {
+
+            const dependentValueCount = 120;
+            const declaredValues = Array.from({ length: dependentValueCount }, (unusedValue, valueIndex) => `Dependent_Value_${valueIndex}`);
+
+            const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
+                objectApiName: 'Big__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                recordTypeDeveloperName: 'Sparse_Record_Type',
+                expectations: [
+                    { controllingValue: 'Assigned', dependentValues: declaredValues, forbiddenValues: [] },
+                    ...Array.from({ length: 39 }, (unusedValue, controllingIndex) => ({
+                        controllingValue: `Unassigned_${controllingIndex}`,
+                        dependentValues: [],
+                        forbiddenValues: [],
+                        controllingValueUnavailable: true
+                    }))
+                ]
+            };
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                [{
+                    objectApiName: 'Big__c',
+                    fieldApiName: 'Dependent__c',
+                    controllingFieldApiName: 'Controlling__c',
+                    expectations: [{ controllingValue: 'Assigned', dependentValues: declaredValues, forbiddenValues: [] }]
+                }],
+                [],
+                buildNoResultsLoad(),
+                [recordTypeSpecDetail]
+            );
+
+            const scope = viewModel.objects[0].rootNodes[0].recordTypeScopes[0];
+
+            scope.combinations
+                .filter(combination => combination.controllingValueUnavailable)
+                .forEach(combination => {
+                    expect(combination.allowedValues).toBeEmpty();
+                    expect(PicklistDependencyExplorerService.buildForbiddenValues(scope.declaredValues, combination)).toBeEmpty();
+                });
+
+        });
+
+    });
+
     describe('collectSourceFilePaths', () => {
 
         it('given a chained model, collects the source path of every node including nested ones', () => {
@@ -1014,6 +1507,41 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualWebviewHtml).toContain('<script id="explorerModel" type="application/json" nonce="testNonce">');
             expect(actualWebviewHtml).toContain('acquireVsCodeApi');
             expect(actualWebviewHtml).toContain('revealFieldSource');
+
+        });
+
+        it('given record type scoped combinations, carries them and their caveat into the shell', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                buildNoResultsLoad(),
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+
+            expect(actualWebviewHtml).toContain('North_America');
+            expect(actualWebviewHtml).toContain('buildRecordTypeScopeElement');
+            expect(actualWebviewHtml).toContain('not available under this record type');
+
+            /*
+                A scope's rows are built on first expand. Every record type repeats its field's
+                combinations, so building them at load multiplies the panel's element count by the
+                record type count before a reader has opened anything.
+            */
+            expect(actualWebviewHtml).toContain('scopeBodyBuilt');
+            expect(actualWebviewHtml).toContain('buildScopeBody');
+
+            // THE PANEL MUST SAY WHY A SCOPED ROW NEVER GOES GREEN, BESIDE THE ROWS THEMSELVES
+            expect(actualWebviewHtml).toContain('not asserted by the check');
+
+            /*
+                A record type developer name reaches the panel through the same embedded JSON as
+                every other model value, so the escaping that protects the rest protects it too.
+            */
+            expect(actualWebviewHtml).toContain('type="application/json"');
 
         });
 

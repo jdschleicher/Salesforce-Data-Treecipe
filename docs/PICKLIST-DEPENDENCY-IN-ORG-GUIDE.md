@@ -81,7 +81,9 @@ Everything is `SDT`-prefixed specifically so it cannot collide with your own Ape
 
 ## 3. Reading a spec class
 
-Open `SDTPLDSpecs_<Object>` in the Developer Console. A method looks like this:
+Open `SDTPLDSpecs_<Object>` in the Developer Console. A method looks like this.
+
+> The api names, picklist values and record type names throughout this section are invented to show the **shape** of a generated method. They are not drawn from any particular org, from the demo project, or from the test fixtures, and your generated classes will not match them line for line. What transfers is the structure: which argument sits where, and what each line asserts.
 
 ```apex
 // Treecipe_Demo__c.Dressing__c controlled by Neighborhood__c
@@ -107,10 +109,67 @@ Line by line:
 | `.expectAtLeast('ohiocity', {...})` | Selecting `ohiocity` must unlock **at least** `ranch` and `french`. Extra values the org has since added are tolerated |
 | `.expectNotAllowed('ohiocity', {...})` | Selecting `ohiocity` must unlock **none of** `blue cheese` |
 | `.expectNone('willowick')` | `willowick` must exist as a controlling value and unlock **nothing at all** |
+| `.expectUnavailable('tremont')` | Record type scoped specs only: `tremont` must **not be selectable** under this record type. The value being absent is the passing result |
 
 **Why every controlling value gets a pair of lines.** `expectAtLeast` alone would not notice a value *drifting into* a combination it does not belong in — usually a mistake, sometimes a compliance problem. `expectExactly` would fail every time an admin *deliberately* adds a value — usually intended. The `expectAtLeast` + `expectNotAllowed` pair catches removals and unintended additions while tolerating deliberate ones. The `expectNotAllowed` list is derived as *every value the dependent field declares, minus the ones this controlling value unlocks*.
 
 `expectExactly` exists and is stricter, but the generator never emits it. Using it is a deliberate hand edit — and is lost on the next generation.
+
+### Which argument is which
+
+The first two arguments are read as one pair — `Object.Field` — and the field is the **dependent** picklist, the one whose available values change. The controlling field is never an argument to `forField` or `forRecordType`: it arrives on the next line, in `controlledBy`. Values only ever appear inside the `expect...` lines.
+
+```mermaid
+flowchart TB
+    subgraph args["forRecordType — three arguments, in this order"]
+        direction LR
+        R1["1. object api name<br/>Treecipe_Demo__c"] --> R2["2. DEPENDENT field api name<br/>Dressing__c"]
+        R2 --> R3["3. record type developer name<br/>Ohio_Only"]
+    end
+
+    subgraph body["what follows, and what each line asserts"]
+        direction TB
+        C1["controlledBy<br/>the CONTROLLING field — not a value"]
+        C2["expectAtLeast<br/>controlling value, then values it must unlock"]
+        C3["expectNotAllowed<br/>controlling value, then values it must NOT unlock"]
+        C4["expectNone<br/>controlling value exists, unlocks nothing"]
+        C5["expectUnavailable<br/>controlling value is not selectable at all"]
+        C1 --> C2 --> C3 --> C4 --> C5
+    end
+
+    args --> body
+
+    note1["Read the pair as: object dot field,<br/>scoped to a record type"]
+    R3 -.-> note1
+```
+
+The mistake worth naming: `forRecordType('Treecipe_Demo__c', 'Dressing__c', 'Ohio_Only')` is object, **field**, record type. It is not object, record type, field — the record type is last, and it is a developer name rather than a label or an id.
+
+### A record type scoped spec
+
+Where an object has record types, each dependent picklist gets the field-level method above **plus** one method per record type, collected by `recordTypeSpecs()` on the same class:
+
+```apex
+// Treecipe_Demo__c.Dressing__c controlled by Neighborhood__c for record type Ohio_Only
+public static SDTPicklistDependencySpec specFor_Treecipe_Demo_c_Dressing_c_recordType_Ohio_Only() {
+    return SDTPicklistDependencySpec.forRecordType('Treecipe_Demo__c', 'Dressing__c', 'Ohio_Only')
+            .controlledBy('Neighborhood__c')
+            .expectAtLeast('ohiocity', new List<String>{ 'ranch' })
+            .expectNotAllowed('ohiocity', new List<String>{ 'blue cheese' })
+            .expectUnavailable('tremont');
+}
+```
+
+Set beside the field-level method above, the two illustrate the narrowing. In this example the record type assigns fewer values than the field declares, so `ohiocity` unlocks a shorter list; a value the record type does not assign drops out of the allowed **and** the forbidden list rather than becoming forbidden; and a controlling value it does not assign at all becomes `expectUnavailable`. Which values those are in your org depends entirely on your record type's picklist assignments.
+
+| Line | Asserts |
+|---|---|
+| `forRecordType(object, field, recordType)` | The same dependent picklist, narrowed to what one record type exposes |
+| `.expectUnavailable('tremont')` | The controlling value is **not selectable** under this record type. Different from `expectNone`, which requires the value to exist and unlock nothing |
+
+**Two rules that explain what you will not see.** A value the record type does not assign to the dependent field never appears — not in the allowed list, and not in the forbidden one, because the forbidden list is the complement against what the *record type* assigns, not against everything the field declares. And a field the record type's metadata never mentions produces no scoped method at all: it is treated as unassigned rather than as fully assigned, and the generation run reports it as a skipped combination.
+
+**These are not run by the generated test class, on purpose.** Apex `Schema` describe returns picklist values with no record type filtering, so nothing that ships with the framework can check a scoped spec against an org. `SDTPLDSpecsTest` asserts `SDTPLDSpecs.all()`, which holds the field-level specs only; the scoped ones sit in `SDTPLDSpecs.allRecordTypeScoped()`, and `SDTSchemaPicklistDependencySource` throws if handed one rather than answering it with field-level data and reporting a scope it never checked as green. They are a captured contract, readable and deployable, waiting on a record-type-aware source. The Picklist Dependency Explorer shows them for the same reason, and marks them "not checked" rather than green.
 
 > **Method naming.** The method is `..._Treecipe_Demo_c_...`, not `..._Treecipe_Demo__c_...`. Apex identifiers may not contain two consecutive underscores, so runs of underscores in an API name are collapsed. The API name itself is passed as a string literal and keeps its exact `__c` suffix, so describe still resolves the real object.
 
@@ -202,6 +261,12 @@ Every failure line follows one grammar:
 KIND — Object.Field @ controllingValue: message
 ```
 
+A record type scoped failure names its scope between the field and the controlling value, so the same drift under two record types cannot read as one repeated failure:
+
+```
+KIND — Object.Field [RecordTypeDeveloperName] @ controllingValue: message
+```
+
 A full assert message wraps those lines with a count:
 
 ```
@@ -220,6 +285,7 @@ Read that as: *`mars` used to be available under `ohiocity` and no longer is; it
 | `FORBIDDEN_VALUES_PRESENT` | The org unlocks a value the contract forbids for that controlling value | The same grid: a cell was checked that should not be |
 | `UNEXPECTED_VALUES` | Only from a hand-tightened `expectExactly` line: the org exposes values not listed | Either the org added a value legitimately, or the `expectExactly` should be relaxed |
 | `UNKNOWN_CONTROLLING_VALUE` | The contract names a controlling value the org does not have. The message lists what the org *does* have | The controlling picklist — a value was renamed, deactivated, or deleted |
+| `UNEXPECTED_CONTROLLING_VALUE` | An `expectUnavailable` line found the controlling value reachable after all. Record type scoped specs only | The record type's picklist assignments — it was given a controlling value it should not expose |
 | `CONTROLLING_FIELD_MISMATCH` | The org says a *different* field controls this one. Short-circuits the whole spec | The field's Controlling Field setting was changed |
 | `UPSTREAM_FAILURE` | This field's controlling field is itself a broken dependent picklist. **Not evaluated.** The message names which spec to fix first | Go fix the named upstream spec; this one will very likely resolve with it |
 | `CIRCULAR_DEPENDENCY` | A `dependsOn` chain loops. Salesforce cannot produce this — a hand edit did | The `dependsOn` lines in the generated classes |

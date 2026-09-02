@@ -1,4 +1,6 @@
 import { RecipeService } from '../RecipeService/RecipeService';
+import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
+import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 
@@ -20,6 +22,14 @@ export interface IPicklistDependencyExpectation {
         directly -- is entitled to assert only the positive half. The generator always populates it.
     */
     forbiddenValues?: string[];
+    /*
+        Set only on a record-type-scoped expectation for a controlling value the record type does
+        not assign at all. Such a value is ABSENT under that record type rather than present and
+        empty, and the two are different assertions: expectNone requires the value to exist, so
+        emitting it here would fail against exactly the metadata that is correct. Emitted as
+        expectUnavailable instead.
+    */
+    controllingValueUnavailable?: boolean;
 }
 
 export interface IPicklistDependencySpecDetail {
@@ -33,10 +43,46 @@ export interface IPicklistDependencySpecDetail {
         emits from this is always to a sibling method in the same per-object class.
     */
     upstreamFieldApiName?: string;
+    /*
+        Set only on a record-type-scoped detail, where it narrows the same (object, field) pair to
+        the combinations one record type actually exposes. Declared optional on the base so a single
+        emission path covers both kinds -- IRecordTypePicklistDependencySpecDetail requires it.
+    */
+    recordTypeDeveloperName?: string;
+}
+
+/*
+    The field-level expectations of one dependent picklist, narrowed to a single record type: the
+    controlling values that record type assigns intersected with the bones, and per controlling
+    value the unlocked values intersected with what the record type assigns to the dependent field.
+*/
+export interface IRecordTypePicklistDependencySpecDetail extends IPicklistDependencySpecDetail {
+    recordTypeDeveloperName: string;
 }
 
 export interface IPicklistDependencyCollectionResult {
     specDetails: IPicklistDependencySpecDetail[];
+    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[];
+    skippedFieldWarnings: string[];
+}
+
+/*
+    The two parts of a parsed RecordType file this service reads. xml2js gives every element as an
+    array, and RecordTypeService owns the shape of the picklistValues entries -- typing them here
+    would duplicate a contract that lives there.
+*/
+export interface IParsedRecordTypeXmlDetail {
+    fullName?: string[];
+    picklistValues?: unknown[];
+}
+
+export interface IRecordTypeCollectionResult {
+    recordTypeWrappers: RecordTypeWrapper[];
+    skippedRecordTypeWarnings: string[];
+}
+
+export interface IRecordTypeSpecDetailBuildResult {
+    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[];
     skippedFieldWarnings: string[];
 }
 
@@ -84,6 +130,9 @@ export class PicklistDependencyTestService {
 
     private static legacyFrameworkDirectoryName = 'PicklistDependencyFramework';
 
+    // SOURCE FORMAT PUTS RECORD TYPES IN A SIBLING OF THE OBJECT'S "fields" DIRECTORY
+    private static recordTypesDirectoryName = 'recordTypes';
+
     /*
         The runtime classes the generated SDTPLDSpecs.cls depends on. Their source lives in
         apexPicklistDependencyFramework/, ships in the vsix via negation entries in .vscodeignore,
@@ -129,6 +178,7 @@ export class PicklistDependencyTestService {
 
         let collectedResult: IPicklistDependencyCollectionResult = {
             specDetails: [],
+            recordTypeSpecDetails: [],
             skippedFieldWarnings: []
         };
 
@@ -178,6 +228,25 @@ export class PicklistDependencyTestService {
             collectedResult.specDetails = collectedResult.specDetails.concat(objectResult.specDetails);
             collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(objectResult.skippedFieldWarnings);
 
+            /*
+                Record types are a SIBLING of the fields directory, so they are read here rather than
+                in the recursion: this is the one point in the walk that has both the object api name
+                and the specs the record types narrow.
+            */
+            const objectHasRecordTypesDirectory = childDirectoryNames.some(childDirectoryName => childDirectoryName === this.recordTypesDirectoryName);
+
+            if ( objectHasRecordTypesDirectory && objectResult.specDetails.length > 0 ) {
+
+                const recordTypeCollectionResult = await this.getRecordTypeWrappersByObjectDirectory(objectsDirectoryUri, objectApiName);
+                const recordTypeResult = this.buildRecordTypeSpecDetails(objectResult.specDetails, recordTypeCollectionResult.recordTypeWrappers);
+
+                collectedResult.recordTypeSpecDetails = collectedResult.recordTypeSpecDetails.concat(recordTypeResult.recordTypeSpecDetails);
+                collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings
+                    .concat(recordTypeCollectionResult.skippedRecordTypeWarnings)
+                    .concat(recordTypeResult.skippedFieldWarnings);
+
+            }
+
             return collectedResult;
 
         }
@@ -188,6 +257,7 @@ export class PicklistDependencyTestService {
 
             const nestedResult = await this.collectSpecDetailsByObjectsDirectory(childDirectoryUri, visitedDirectoryPaths);
             collectedResult.specDetails = collectedResult.specDetails.concat(nestedResult.specDetails);
+            collectedResult.recordTypeSpecDetails = collectedResult.recordTypeSpecDetails.concat(nestedResult.recordTypeSpecDetails);
             collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(nestedResult.skippedFieldWarnings);
 
         }
@@ -304,7 +374,249 @@ export class PicklistDependencyTestService {
 
         });
 
-        return { specDetails, skippedFieldWarnings };
+        return { specDetails, recordTypeSpecDetails: [], skippedFieldWarnings };
+
+    }
+
+    /*
+        Reads the record types declared alongside an object's fields directory.
+
+        A record type file that cannot be parsed, or that carries no <fullName>, is reported and
+        skipped rather than aborting the run: the field-level specs for the object are already built
+        at this point, and losing all of them to one malformed sibling file would be a worse outcome
+        than generating without that record type.
+
+        Wrappers come back sorted by developer name so the emitted methods keep a stable order
+        whatever order the filesystem lists the directory in.
+    */
+    static async getRecordTypeWrappersByObjectDirectory(objectDirectoryUri: vscode.Uri,
+                                                        objectApiName: string): Promise<IRecordTypeCollectionResult> {
+
+        const recordTypesDirectoryUri = vscode.Uri.joinPath(objectDirectoryUri, this.recordTypesDirectoryName);
+
+        let recordTypeWrappers: RecordTypeWrapper[] = [];
+        let skippedRecordTypeWarnings: string[] = [];
+
+        const recordTypeDirectoryEntries = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
+
+        for ( const [fileName, directoryItemTypeEnum] of recordTypeDirectoryEntries ) {
+
+            if ( !XmlFileProcessor.isSalesforceRecordTypeMetadataFile(fileName, directoryItemTypeEnum) ) {
+                continue;
+            }
+
+            const recordTypeUri = vscode.Uri.joinPath(recordTypesDirectoryUri, fileName);
+            const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
+            const recordTypeXmlContent = Buffer.from(recordTypeContentUriData).toString('utf8');
+
+            let recordTypeXmlDetail: IParsedRecordTypeXmlDetail;
+
+            try {
+                recordTypeXmlDetail = RecordTypeService.convertRecordTypeXMLContentToXMLDetailObject(recordTypeXmlContent);
+            } catch {
+                /*
+                    The parser embeds the ENTIRE file in its exception message, and this warning is
+                    shown to the user as a notification, so the file name is reported and the message
+                    is not. What the parser would have added is "this file is not well-formed XML",
+                    which the wording below already says.
+                */
+                skippedRecordTypeWarnings.push(`Skipped record type file "${fileName}" under "${objectApiName}": its XML could not be parsed. Fix the markup in that file to have its record type scoped specs generated.`);
+                continue;
+            }
+
+            const parsedRecordTypeDeveloperName = recordTypeXmlDetail?.fullName?.[0];
+
+            /*
+                The TYPE is checked, not just the presence: nested markup under <fullName> parses to
+                an object rather than a string, and an object is truthy, so a presence check alone
+                would carry it into the wrapper and fail later at the sort below.
+            */
+            if ( typeof parsedRecordTypeDeveloperName !== 'string' || parsedRecordTypeDeveloperName.trim() === '' ) {
+                skippedRecordTypeWarnings.push(`Skipped record type file "${fileName}" under "${objectApiName}": no usable RecordType "fullName" markup was found, so the record type has no developer name to scope specs by.`);
+                continue;
+            }
+
+            /*
+                Wrapper construction is guarded rather than trusted. Building the picklist sections
+                indexes into the markup -- a <picklistValues> block missing its <picklist> child
+                throws a TypeError from RecordTypeService rather than returning something empty --
+                and unguarded that would unwind the whole walk, losing every object's specs to one
+                malformed sibling file. These messages come from the runtime, not from the file, so
+                they are safe to show.
+            */
+            try {
+                recordTypeWrappers.push(RecordTypeService.initiateRecordTypeWrapperByXMLDetail(recordTypeXmlDetail, parsedRecordTypeDeveloperName));
+            } catch (error) {
+                skippedRecordTypeWarnings.push(`Skipped record type "${parsedRecordTypeDeveloperName}" under "${objectApiName}": its picklist assignment markup could not be read (${error.message}). No record-type-scoped specs were generated for it.`);
+            }
+
+        }
+
+        recordTypeWrappers.sort((firstWrapper, secondWrapper) => firstWrapper.DeveloperName.localeCompare(secondWrapper.DeveloperName));
+
+        return { recordTypeWrappers, skippedRecordTypeWarnings };
+
+    }
+
+    /*
+        Narrows already-built field-level specs to the combinations each record type actually exposes.
+
+        The field-level spec is the "bones" -- what the dependent field's <valueSettings> declare --
+        and a record type assigns its own subset of values to the controlling and dependent fields on
+        top of them. Deriving from the bones rather than re-reading the field XML is what guarantees
+        a record-type spec can only ever be a SUBSET of the field-level one, which is the property
+        that makes the two safe to assert side by side.
+
+        A field the record type does not mention at all is treated as unassigned for that record type
+        rather than as "everything assigned": that is what the recipe generator already does with the
+        same markup (see FakerJSRecipeFakerService), and assuming the opposite would assert a contract
+        the metadata never stated. Such a combination is skipped with a warning.
+    */
+    static buildRecordTypeSpecDetails(specDetails: IPicklistDependencySpecDetail[],
+                                        recordTypeWrappers: RecordTypeWrapper[]): IRecordTypeSpecDetailBuildResult {
+
+        let recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [];
+        let skippedFieldWarnings: string[] = [];
+
+        recordTypeWrappers.forEach(recordTypeWrapper => {
+
+            const recordTypeDeveloperName = recordTypeWrapper.DeveloperName;
+
+            /*
+                The developer name is embedded in an Apex string literal and in the generated method
+                name, so it goes through the same gate the object and field api names do.
+            */
+            if ( !this.isValidSalesforceApiName(recordTypeDeveloperName) ) {
+                skippedFieldWarnings.push(`Skipped record type "${recordTypeDeveloperName}": the developer name is not a valid Salesforce api name (letters, numbers and underscores only). No record-type-scoped specs were generated for it.`);
+                return;
+            }
+
+            const picklistValuesByFieldApiName = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail ?? {};
+
+            let recordTypeSpecDetailsForRecordType: IRecordTypePicklistDependencySpecDetail[] = [];
+
+            specDetails.forEach(specDetail => {
+
+                const recordTypeControllingValues = this.getAssignedPicklistValues(picklistValuesByFieldApiName[specDetail.controllingFieldApiName]);
+                const recordTypeDependentValues = this.getAssignedPicklistValues(picklistValuesByFieldApiName[specDetail.fieldApiName]);
+
+                const unassignedFieldApiName = !recordTypeControllingValues
+                    ? specDetail.controllingFieldApiName
+                    : ( !recordTypeDependentValues ? specDetail.fieldApiName : undefined );
+
+                if ( unassignedFieldApiName ) {
+                    skippedFieldWarnings.push(`Skipped record type "${recordTypeDeveloperName}" for dependent picklist "${specDetail.objectApiName}.${specDetail.fieldApiName}": the record type assigns no values to "${unassignedFieldApiName}", so no combination is reachable through it. The field-level spec still covers this field.`);
+                    return;
+                }
+
+                recordTypeSpecDetailsForRecordType.push({
+                    objectApiName: specDetail.objectApiName,
+                    fieldApiName: specDetail.fieldApiName,
+                    controllingFieldApiName: specDetail.controllingFieldApiName,
+                    expectations: this.buildRecordTypeExpectations(specDetail.expectations, recordTypeControllingValues, recordTypeDependentValues),
+                    upstreamFieldApiName: specDetail.upstreamFieldApiName,
+                    recordTypeDeveloperName: recordTypeDeveloperName
+                });
+
+            });
+
+            /*
+                A chain link is only kept where the controlling field ALSO produced a spec for this
+                same record type -- the emitted dependsOn names a sibling method, and the upstream
+                method does not exist when that field was skipped above.
+            */
+            const scopedFieldKeys = new Set(recordTypeSpecDetailsForRecordType.map(
+                recordTypeSpecDetail => `${recordTypeSpecDetail.objectApiName}.${recordTypeSpecDetail.fieldApiName}`
+            ));
+
+            recordTypeSpecDetailsForRecordType.forEach(recordTypeSpecDetail => {
+
+                if ( recordTypeSpecDetail.upstreamFieldApiName
+                        && !scopedFieldKeys.has(`${recordTypeSpecDetail.objectApiName}.${recordTypeSpecDetail.upstreamFieldApiName}`) ) {
+                    recordTypeSpecDetail.upstreamFieldApiName = undefined;
+                }
+
+            });
+
+            recordTypeSpecDetails = recordTypeSpecDetails.concat(recordTypeSpecDetailsForRecordType);
+
+        });
+
+        return { recordTypeSpecDetails, skippedFieldWarnings };
+
+    }
+
+    /*
+        The values a record type assigns to one field, or undefined when it usefully assigns none.
+
+        The entries come from xml2js walking markup that nothing has validated: a <values> element
+        with no <fullName> yields undefined and one carrying nested markup yields an object. Left in,
+        they reach the Apex string escaper as non-strings and throw mid-write, after earlier objects'
+        class files have already been written. Filtering here means an unusable entry costs that one
+        value, and a field with nothing usable left takes the same "not assigned by this record type"
+        path as a field the record type never mentions.
+    */
+    static getAssignedPicklistValues(assignedPicklistValues: unknown): string[] | undefined {
+
+        if ( !Array.isArray(assignedPicklistValues) ) {
+            return undefined;
+        }
+
+        const usablePicklistValues = assignedPicklistValues.filter(
+            (assignedPicklistValue): assignedPicklistValue is string => typeof assignedPicklistValue === 'string'
+        );
+
+        return usablePicklistValues.length > 0 ? usablePicklistValues : undefined;
+
+    }
+
+    /*
+        One record type's view of a field-level expectation set.
+
+        The two empty cases are NOT the same assertion, and conflating them emits a spec that must
+        fail. A controlling value the record type does not assign is ABSENT under that record type,
+        so it becomes expectUnavailable; one the record type does assign but whose unlocked values it
+        assigns none of is present and empty, which is expectNone. expectNone requires the value to
+        exist -- emitting it for an unassigned value would report a failure against exactly the
+        metadata that is correct.
+
+        The forbidden complement is taken against the values the RECORD TYPE assigns rather than every
+        value the field declares: a value the record type does not expose at all is already
+        unreachable through it, so naming it would assert something about the field rather than about
+        this record type.
+    */
+    static buildRecordTypeExpectations(expectations: IPicklistDependencyExpectation[],
+                                        recordTypeControllingValues: string[],
+                                        recordTypeDependentValues: string[]): IPicklistDependencyExpectation[] {
+
+        const assignedControllingValues = new Set(recordTypeControllingValues);
+        const distinctAssignedDependentValues = [...new Set(recordTypeDependentValues)];
+        const assignedDependentValues = new Set(distinctAssignedDependentValues);
+
+        return expectations.map(expectation => {
+
+            if ( !assignedControllingValues.has(expectation.controllingValue) ) {
+                return {
+                    controllingValue: expectation.controllingValue,
+                    dependentValues: [],
+                    forbiddenValues: [],
+                    controllingValueUnavailable: true
+                };
+            }
+
+            const dependentValues = expectation.dependentValues.filter(dependentValue => assignedDependentValues.has(dependentValue));
+
+            // AN EMPTY LIST EMITS expectNone, WHICH ALREADY ASSERTS MORE THAN ANY COMPLEMENT COULD
+            if ( dependentValues.length === 0 ) {
+                return { controllingValue: expectation.controllingValue, dependentValues: [], forbiddenValues: [] };
+            }
+
+            const allowedValues = new Set(dependentValues);
+            const forbiddenValues = distinctAssignedDependentValues.filter(assignedValue => !allowedValues.has(assignedValue));
+
+            return { controllingValue: expectation.controllingValue, dependentValues, forbiddenValues };
+
+        });
 
     }
 
@@ -391,11 +703,28 @@ export class PicklistDependencyTestService {
         prefix keeps the identifier valid whatever the api name starts with, including a digit, and
         reads as a factory at the call site inside all().
     */
-    static buildSpecMethodName(objectApiName: string, fieldApiName: string): string {
+    static buildSpecMethodName(objectApiName: string, fieldApiName: string, recordTypeDeveloperName?: string): string {
 
-        const collapse = (apiName: string) => apiName.replace(/_{2,}/g, '_');
+        /*
+            A record type scoped method sits beside the field-level one for the same field, so the
+            developer name is what separates them. Apex class names are capped at 40 characters and
+            method names are not, so the longer identifier is spelled out rather than truncated.
+        */
+        const assembledMethodName = recordTypeDeveloperName
+            ? `specFor_${objectApiName}_${fieldApiName}_recordType_${recordTypeDeveloperName}`
+            : `specFor_${objectApiName}_${fieldApiName}`;
 
-        return `specFor_${collapse(objectApiName)}_${collapse(fieldApiName)}`;
+        /*
+            Every name reaching here is validated by the caller, so both steps below are no-ops for
+            real api names. They are applied anyway for the same reason buildSpecStatement escapes
+            already-validated names: an identifier is a sink that no escaping protects, so it stays
+            safe on its own terms rather than depending on a caller having validated first.
+
+            The collapse runs over the ASSEMBLED name rather than per segment -- collapsing each part
+            first still leaves a pair spanning the join, where a name ending or beginning with an
+            underscore meets the separator, and Apex rejects two underscores in a row.
+        */
+        return assembledMethodName.replace(/[^A-Za-z0-9_]/g, '').replace(/_{2,}/g, '_');
 
     }
 
@@ -409,7 +738,7 @@ export class PicklistDependencyTestService {
 
         return specDetails.map(specDetail => {
 
-            const baseMethodName = this.buildSpecMethodName(specDetail.objectApiName, specDetail.fieldApiName);
+            const baseMethodName = this.buildSpecMethodName(specDetail.objectApiName, specDetail.fieldApiName, specDetail.recordTypeDeveloperName);
 
             let uniqueMethodName = baseMethodName;
             let collisionSuffix = 2;
@@ -499,9 +828,19 @@ export class PicklistDependencyTestService {
 
     static buildPerObjectSpecsApexClassBody(objectApiName: string,
                                                 perObjectClassName: string,
-                                                specDetails: IPicklistDependencySpecDetail[]): string {
+                                                specDetails: IPicklistDependencySpecDetail[],
+                                                recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): string {
 
-        const specMethodNames = this.buildSpecMethodNamesBySpecDetail(specDetails);
+        /*
+            Names are assigned over BOTH kinds in one pass. Uniqueness has to hold across the whole
+            class -- a record type called after a field could otherwise collapse onto a field-level
+            method name -- and two Apex methods with the same name will not compile.
+        */
+        const allSpecDetails: IPicklistDependencySpecDetail[] = [...specDetails, ...recordTypeSpecDetails];
+        const allSpecMethodNames = this.buildSpecMethodNamesBySpecDetail(allSpecDetails);
+
+        const specMethodNames = allSpecMethodNames.slice(0, specDetails.length);
+        const recordTypeSpecMethodNames = allSpecMethodNames.slice(specDetails.length);
 
         /*
             A controlling field always lives on the same object as the field it controls, so the spec
@@ -512,18 +851,42 @@ export class PicklistDependencyTestService {
             specMethodNameByFieldApiName[specDetail.fieldApiName] = specMethodNames[specDetailIndex];
         });
 
+        // A RECORD TYPE SCOPED SPEC CHAINS TO THE UPSTREAM SPEC FOR THE SAME RECORD TYPE, NOT TO THE FIELD-LEVEL ONE
+        let recordTypeSpecMethodNameByScopedFieldKey: Record<string, string> = {};
+        recordTypeSpecDetails.forEach((recordTypeSpecDetail, recordTypeSpecDetailIndex) => {
+            const scopedFieldKey = `${recordTypeSpecDetail.recordTypeDeveloperName}.${recordTypeSpecDetail.fieldApiName}`;
+            recordTypeSpecMethodNameByScopedFieldKey[scopedFieldKey] = recordTypeSpecMethodNames[recordTypeSpecDetailIndex];
+        });
+
+        const buildSpecMethodMarkup = (specDetail: IPicklistDependencySpecDetail, specMethodName: string, upstreamSpecMethodName?: string) => {
+
+            const specStatement = this.buildSpecStatement(specDetail, upstreamSpecMethodName);
+            const recordTypeScopeComment = specDetail.recordTypeDeveloperName ? ` for record type ${specDetail.recordTypeDeveloperName}` : '';
+
+            return `    // ${specDetail.objectApiName}.${specDetail.fieldApiName} controlled by ${specDetail.controllingFieldApiName}${recordTypeScopeComment}
+    public static SDTPicklistDependencySpec ${specMethodName}() {
+        return ${specStatement.trim()};
+    }`;
+
+        };
+
         const specMethods = specDetails.map((specDetail, specDetailIndex) => {
 
             const upstreamSpecMethodName = specDetail.upstreamFieldApiName
                 ? specMethodNameByFieldApiName[specDetail.upstreamFieldApiName]
                 : undefined;
 
-            const specStatement = this.buildSpecStatement(specDetail, upstreamSpecMethodName);
+            return buildSpecMethodMarkup(specDetail, specMethodNames[specDetailIndex], upstreamSpecMethodName);
 
-            return `    // ${specDetail.objectApiName}.${specDetail.fieldApiName} controlled by ${specDetail.controllingFieldApiName}
-    public static SDTPicklistDependencySpec ${specMethodNames[specDetailIndex]}() {
-        return ${specStatement.trim()};
-    }`;
+        }).join('\n\n');
+
+        const recordTypeSpecMethods = recordTypeSpecDetails.map((recordTypeSpecDetail, recordTypeSpecDetailIndex) => {
+
+            const upstreamSpecMethodName = recordTypeSpecDetail.upstreamFieldApiName
+                ? recordTypeSpecMethodNameByScopedFieldKey[`${recordTypeSpecDetail.recordTypeDeveloperName}.${recordTypeSpecDetail.upstreamFieldApiName}`]
+                : undefined;
+
+            return buildSpecMethodMarkup(recordTypeSpecDetail, recordTypeSpecMethodNames[recordTypeSpecDetailIndex], upstreamSpecMethodName);
 
         }).join('\n\n');
 
@@ -532,6 +895,38 @@ export class PicklistDependencyTestService {
             : `        return new List<SDTPicklistDependencySpec>{\n${specMethodNames.map(specMethodName => `            ${specMethodName}()`).join(',\n')}\n        };`;
 
         const specMethodsBlock = ( specDetails.length === 0 ) ? '' : `\n${specMethods}\n`;
+
+        /*
+            Everything record type scoped is emitted ONLY when the object has record type
+            assignments to scope by, so an object without a recordTypes directory keeps exactly the
+            class body it had before record type support existed.
+        */
+        const recordTypeSpecMethodsBlock = ( recordTypeSpecDetails.length === 0 )
+            ? ''
+            : `\n${recordTypeSpecMethods}\n
+    /**
+     * The record type scoped specs for ${objectApiName}, kept out of all() because no source that
+     * ships with the framework can verify them: Schema describe returns picklist values without
+     * record type filtering, so SDTSchemaPicklistDependencySource rejects a record type scoped spec
+     * rather than answering it with field-level data. Pass these to a validator built on a record
+     * type aware ISDTPicklistDependencySource.
+     */
+    public static List<SDTPicklistDependencySpec> recordTypeSpecs() {
+        return new List<SDTPicklistDependencySpec>{\n${recordTypeSpecMethodNames.map(recordTypeSpecMethodName => `            ${recordTypeSpecMethodName}()`).join(',\n')}\n        };
+    }
+`;
+
+        const recordTypeHeaderMarkup = ( recordTypeSpecDetails.length === 0 )
+            ? ''
+            : `
+ *
+ * recordTypeSpecs() narrows those combinations to what each record type under ${objectApiName}
+ * assigns. A controlling value the record type does not assign becomes expectUnavailable -- under
+ * that record type the value is absent, not empty, and expectNone would demand it exist. One the
+ * record type does assign but whose unlocked values it assigns none of becomes expectNone, which
+ * is exactly that assertion. A field the record type does not mention at all is treated as
+ * unassigned rather than as fully assigned, so that combination is left out entirely and reported
+ * as a skipped field when the specs are generated.`;
 
         return `/**
  * GENERATED FILE -- regenerating overwrites it.
@@ -546,14 +941,14 @@ export class PicklistDependencyTestService {
  * unlock, and expectNotAllowed for the values it must not. The pair catches a value both
  * disappearing from a combination and drifting into one, while still tolerating a value an admin
  * adds to the field in the org after generation. Tightening a line to expectExactly is a
- * deliberate edit by the spec owner and will be lost on regeneration.
+ * deliberate edit by the spec owner and will be lost on regeneration.${recordTypeHeaderMarkup}
  */
 public class ${perObjectClassName} {
 ${specMethodsBlock}
     public static List<SDTPicklistDependencySpec> all() {
 ${specsListMarkup}
     }
-}
+${recordTypeSpecMethodsBlock}}
 `;
 
     }
@@ -562,9 +957,35 @@ ${specsListMarkup}
         The aggregator is the one name the generated test class and any hand written caller depend
         on, so it stays stable while the per-object classes behind it come and go with the metadata.
     */
-    static buildAggregatorSpecsApexClassBody(classNamesByObjectApiName: Record<string, string>): string {
+    static buildAggregatorSpecsApexClassBody(classNamesByObjectApiName: Record<string, string>,
+                                                objectApiNamesWithRecordTypeSpecs: string[] = []): string {
 
         const objectApiNames = Object.keys(classNamesByObjectApiName).sort();
+
+        /*
+            Only the objects that actually emitted a recordTypeSpecs() method are aggregated -- the
+            per-object classes emit it only where there is something to scope, so calling it
+            unconditionally would name a method that does not exist on most of them.
+        */
+        const recordTypeScopedObjectApiNames = objectApiNames.filter(
+            objectApiName => objectApiNamesWithRecordTypeSpecs.includes(objectApiName)
+        );
+
+        const recordTypeAggregationMarkup = ( recordTypeScopedObjectApiNames.length === 0 )
+            ? ''
+            : `
+    /**
+     * The record type scoped specs, aggregated separately from all() because no source shipped with
+     * the framework can verify them -- Schema describe is record type blind, so
+     * SDTSchemaPicklistDependencySource rejects them rather than answering with field-level data.
+     * Pass these to a validator built on a record type aware ISDTPicklistDependencySource.
+     */
+    public static List<SDTPicklistDependencySpec> allRecordTypeScoped() {
+        List<SDTPicklistDependencySpec> recordTypeScopedSpecs = new List<SDTPicklistDependencySpec>();
+${recordTypeScopedObjectApiNames.map(objectApiName => `        recordTypeScopedSpecs.addAll(${classNamesByObjectApiName[objectApiName]}.recordTypeSpecs());`).join('\n')}
+        return recordTypeScopedSpecs;
+    }
+`;
 
         const aggregationMarkup = ( objectApiNames.length === 0 )
             ? `        return new List<SDTPicklistDependencySpec>();`
@@ -592,7 +1013,7 @@ public class ${this.specsClassName} {
     public static List<SDTPicklistDependencySpec> all() {
 ${aggregationMarkup}
     }
-}
+${recordTypeAggregationMarkup}}
 `;
 
     }
@@ -608,7 +1029,10 @@ ${aggregationMarkup}
         const fieldApiName = this.escapeApexStringLiteral(specDetail.fieldApiName);
         const controllingFieldApiName = this.escapeApexStringLiteral(specDetail.controllingFieldApiName);
 
-        let specStatement = `            SDTPicklistDependencySpec.forField('${objectApiName}', '${fieldApiName}')`;
+        let specStatement = specDetail.recordTypeDeveloperName
+            ? `            SDTPicklistDependencySpec.forRecordType('${objectApiName}', '${fieldApiName}', '${this.escapeApexStringLiteral(specDetail.recordTypeDeveloperName)}')`
+            : `            SDTPicklistDependencySpec.forField('${objectApiName}', '${fieldApiName}')`;
+
         specStatement += `\n                .controlledBy('${controllingFieldApiName}')`;
 
         if ( upstreamSpecMethodName ) {
@@ -622,6 +1046,17 @@ ${aggregationMarkup}
         specDetail.expectations.forEach(expectation => {
 
             const escapedControllingValue = this.escapeApexStringLiteral(expectation.controllingValue);
+
+            /*
+                Checked before the empty case below: an unavailable controlling value also has no
+                dependent values, and expectNone would assert that it exists.
+            */
+            if ( expectation.controllingValueUnavailable ) {
+
+                specStatement += `\n                .expectUnavailable('${escapedControllingValue}')`;
+                return;
+
+            }
 
             if ( expectation.dependentValues.length === 0 ) {
 
@@ -1020,21 +1455,35 @@ ${testMethods}
 
     static writeSpecsClassFiles(classesDirectoryPath: string,
                                     specDetails: IPicklistDependencySpecDetail[],
-                                    apiVersion: string): ISpecsClassWriteResult {
+                                    apiVersion: string,
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): ISpecsClassWriteResult {
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
 
-        const objectApiNames = this.getDistinctObjectApiNames(specDetails);
+        /*
+            Both lists feed the object set. A scoped detail is always derived from a field-level one
+            today, so the union is the same set -- but writeSpecsClassFiles is public and callable
+            directly, and silently dropping a caller's scoped details would be the wrong failure.
+        */
+        const objectApiNames = this.getDistinctObjectApiNames([...specDetails, ...recordTypeSpecDetails]);
         const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);
 
         let perObjectClassFilePathsByObjectApiName: Record<string, string> = {};
+        let objectApiNamesWithRecordTypeSpecs: string[] = [];
 
         objectApiNames.forEach(objectApiName => {
 
             const perObjectClassName = classNamesByObjectApiName[objectApiName];
             const specDetailsForObject = specDetails.filter(specDetail => specDetail.objectApiName === objectApiName);
+            const recordTypeSpecDetailsForObject = recordTypeSpecDetails.filter(
+                recordTypeSpecDetail => recordTypeSpecDetail.objectApiName === objectApiName
+            );
 
-            const perObjectClassBody = this.buildPerObjectSpecsApexClassBody(objectApiName, perObjectClassName, specDetailsForObject);
+            if ( recordTypeSpecDetailsForObject.length > 0 ) {
+                objectApiNamesWithRecordTypeSpecs.push(objectApiName);
+            }
+
+            const perObjectClassBody = this.buildPerObjectSpecsApexClassBody(objectApiName, perObjectClassName, specDetailsForObject, recordTypeSpecDetailsForObject);
             const perObjectClassFilePath = this.getPerObjectSpecsClassFilePath(classesDirectoryPath, perObjectClassName);
 
             fs.writeFileSync(perObjectClassFilePath, perObjectClassBody);
@@ -1050,7 +1499,7 @@ ${testMethods}
         );
 
         const aggregatorClassFilePath = this.getSpecsClassFilePath(classesDirectoryPath);
-        fs.writeFileSync(aggregatorClassFilePath, this.buildAggregatorSpecsApexClassBody(classNamesByObjectApiName));
+        fs.writeFileSync(aggregatorClassFilePath, this.buildAggregatorSpecsApexClassBody(classNamesByObjectApiName, objectApiNamesWithRecordTypeSpecs));
         fs.writeFileSync(`${aggregatorClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
 
         return {

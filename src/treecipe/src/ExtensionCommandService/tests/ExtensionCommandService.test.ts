@@ -48,7 +48,7 @@ import { AuthInfo } from '@salesforce/core';
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
-import { PicklistDependencyTestService, IPicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
 import { PicklistDependencyExplorerService } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
@@ -77,9 +77,11 @@ describe('ExtensionCommandService', () => {
         let writeSpecsTestClassFilesSpy: jest.SpyInstance;
         let handleCapturedErrorSpy: jest.SpyInstance;
 
-        function stubCollectionResult(specDetails: IPicklistDependencySpecDetail[], skippedFieldWarnings: string[] = []) {
+        function stubCollectionResult(specDetails: IPicklistDependencySpecDetail[],
+                                        skippedFieldWarnings: string[] = [],
+                                        recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []) {
             jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
-                .mockResolvedValue({ specDetails, skippedFieldWarnings });
+                .mockResolvedValue({ specDetails, recordTypeSpecDetails, skippedFieldWarnings });
         }
 
         beforeEach(() => {
@@ -133,6 +135,39 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test('given record type scoped specs collected, hands them to the writer and says where they live', async () => {
+
+            const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
+                objectApiName: 'Dependency_Example__c',
+                fieldApiName: 'Neighborhood__c',
+                controllingFieldApiName: 'City__c',
+                recordTypeDeveloperName: 'Cleveland_Only',
+                expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'], forbiddenValues: [] }]
+            };
+
+            stubCollectionResult([specDetail], [], [recordTypeSpecDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(
+                classesDirectoryPath,
+                [specDetail],
+                '64.0',
+                [recordTypeSpecDetail]
+            );
+
+            /*
+                The scoped specs are deployable but not asserted by the generated test class, so the
+                summary has to say so -- otherwise a user would reasonably read a green check run as
+                covering them.
+            */
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
+            expect(informationMessage).toContain('1 record-type-scoped spec(s)');
+            expect(informationMessage).toContain('allRecordTypeScoped()');
+            expect(informationMessage).toContain('not asserted by');
+
+        });
+
         test('given dependent picklists found, writes the specs class and reports the destination', async () => {
 
             stubCollectionResult([specDetail]);
@@ -147,7 +182,8 @@ describe('ExtensionCommandService', () => {
             expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(
                 classesDirectoryPath,
                 [specDetail],
-                '64.0'
+                '64.0',
+                []
             );
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
 
@@ -414,7 +450,7 @@ describe('ExtensionCommandService', () => {
 
             expect(warningMessages).toHaveLength(4);
             expect(warningMessages.slice(0, 3)).toEqual(['skipped field 0', 'skipped field 1', 'skipped field 2']);
-            expect(warningMessages[3]).toContain('7 more dependent picklist field(s) were skipped');
+            expect(warningMessages[3]).toContain('7 more dependent picklist field(s) or record type combination(s) were skipped');
 
         });
 
@@ -787,7 +823,7 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
 
             jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
-                .mockResolvedValue({ specDetails: [chainSpecDetail], skippedFieldWarnings: [] });
+                .mockResolvedValue({ specDetails: [chainSpecDetail], recordTypeSpecDetails: [], skippedFieldWarnings: [] });
 
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
@@ -928,10 +964,39 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test('given record type scoped specs collected, hands them to the explorer view model', async () => {
+
+            const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'North_America',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+            };
+
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockResolvedValue({ specDetails: [chainSpecDetail], recordTypeSpecDetails: [recordTypeSpecDetail], skippedFieldWarnings: [] });
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const buildExplorerViewModelSpy = jest.spyOn(PicklistDependencyExplorerService, 'buildExplorerViewModel');
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(buildExplorerViewModelSpy).toHaveBeenCalledWith(
+                expect.any(String),
+                [chainSpecDetail],
+                [],
+                expect.anything(),
+                [recordTypeSpecDetail]
+            );
+
+        });
+
         test('given no dependent picklists at all, still opens the panel with the empty state', async () => {
 
             jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
-                .mockResolvedValue({ specDetails: [], skippedFieldWarnings: [] });
+                .mockResolvedValue({ specDetails: [], recordTypeSpecDetails: [], skippedFieldWarnings: [] });
             jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
                 .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
