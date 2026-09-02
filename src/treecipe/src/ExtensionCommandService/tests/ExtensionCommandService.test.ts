@@ -434,32 +434,148 @@ describe('ExtensionCommandService', () => {
 
         });
 
-        test('given an existing specs class and a declined overwrite prompt, writes nothing', async () => {
+        /*
+            The pre-write report replaced a blanket "these files already exist" modal. The
+            difference that matters: the old prompt fired on the mere PRESENCE of generated files,
+            so it fired on runs that would have written identical bytes, and it could not say what
+            was about to change. These tests pin the new gate -- something is actually lost -- and
+            the escape hatches out of it.
+        */
+        function stubExistingGeneratedFilesWithContent(existingFileContent: string) {
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => !String(checkedPath).includes('globalValueSets'));
+
+            // THE CLASSES DIRECTORY NOW READS AS PRESENT, SO THE STALE CLASS SWEEP ACTUALLY LISTS IT
+            jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any, ...readArguments: any[]) => {
+
+                const readPathText = String(readPath);
+                if ( readPathText.includes('classes') && (readPathText.endsWith('.cls') || readPathText.endsWith('-meta.xml')) ) {
+                    return existingFileContent;
+                }
+
+                return (jest.requireActual('fs') as typeof fs).readFileSync(readPath, ...readArguments);
+
+            });
+
+        }
+
+        test('given generated specs that would be replaced and a cancelled prompt, writes nothing', async () => {
 
             stubCollectionResult([specDetail]);
-            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            stubExistingGeneratedFilesWithContent('// A HAND EDITED SPEC THAT REGENERATION WOULD REPLACE');
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
             expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-                expect.stringContaining('already exist'),
+                expect.stringContaining('Overwritten:'),
                 { modal: true },
-                'Overwrite'
+                'Generate',
+                'Show Diff'
             );
             expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
 
         });
 
-        test('given an existing specs class and a confirmed overwrite, writes the file', async () => {
+        test('given generated specs that would be replaced and a confirmed prompt, writes the file', async () => {
 
             stubCollectionResult([specDetail]);
-            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Overwrite');
+            stubExistingGeneratedFilesWithContent('// A HAND EDITED SPEC THAT REGENERATION WOULD REPLACE');
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Generate');
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
             expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+
+        });
+
+        test('given nothing on disk yet, writes without prompting at all', async () => {
+
+            // THE SUITE DEFAULT ALREADY MEANS "THE OBJECTS DIRECTORY EXISTS, NOTHING IS GENERATED YET"
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const modalPrompts = (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(
+                call => call[1] && call[1].modal
+            );
+
+            expect(modalPrompts).toHaveLength(0);
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+
+        });
+
+        test('given generated files already matching this metadata, neither prompts nor shows a diff', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            /*
+                The plan is built from the same functions the writer uses, so handing back exactly
+                what would be written is what "unchanged" means. Reading it out of the plan rather
+                than restating the Apex keeps this test about the no-op guarantee.
+            */
+            const proposedContentByFilePath: Record<string, string> = {};
+            const realBuildPlannedSpecsFile = PicklistDependencyTestService.buildPlannedSpecsFile.bind(PicklistDependencyTestService);
+            jest.spyOn(PicklistDependencyTestService, 'buildPlannedSpecsFile').mockImplementation(
+                (filePath: string, proposedContent: string, objectApiName?: string) => {
+                    proposedContentByFilePath[filePath] = proposedContent;
+                    return { ...realBuildPlannedSpecsFile(filePath, proposedContent, objectApiName), changeType: 'unchanged' as const };
+                }
+            );
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const modalPrompts = (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(
+                call => call[1] && call[1].modal
+            );
+
+            expect(modalPrompts).toHaveLength(0);
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.diff', expect.anything(), expect.anything(), expect.anything());
+            expect(Object.keys(proposedContentByFilePath).length).toBeGreaterThan(0);
+
+        });
+
+        test('given a request to see the diff, opens it against the file on disk and then still asks', async () => {
+
+            stubCollectionResult([specDetail]);
+            stubExistingGeneratedFilesWithContent('// A HAND EDITED SPEC THAT REGENERATION WOULD REPLACE');
+
+            (vscode.window.showWarningMessage as jest.Mock)
+                .mockResolvedValueOnce('Show Diff')
+                .mockResolvedValueOnce('Generate');
+            (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (quickPickItems: any[]) => quickPickItems[0]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const diffCall = (vscode.commands.executeCommand as jest.Mock).mock.calls.find(call => call[0] === 'vscode.diff');
+            expect(diffCall).toBeDefined();
+
+            // THE ON DISK FILE IS THE LEFT HAND SIDE, SO THE DIFF READS AS "WHAT WOULD CHANGE"
+            expect(diffCall[1].fsPath).toContain('classes');
+
+            // ASKING FOR THE DIFF IS NOT A DECISION -- THE PROMPT COMES BACK, AND ONLY THEN IS ANYTHING WRITTEN
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+
+        });
+
+        test('given a stale per-object class, names it in the report before deleting it', async () => {
+
+            stubCollectionResult([specDetail]);
+            stubExistingGeneratedFilesWithContent('// A HAND EDITED SPEC THAT REGENERATION WOULD REPLACE');
+            jest.spyOn(PicklistDependencyTestService, 'findStalePerObjectSpecsClassFilePaths')
+                .mockReturnValue([`${classesDirectoryPath}/SDTPLDRetiredObjectSpecs.cls`]);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const promptMessage = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0];
+
+            expect(promptMessage).toContain('SDTPLDRetiredObjectSpecs.cls');
+            expect(promptMessage).toContain('Deleted');
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
 
         });
 

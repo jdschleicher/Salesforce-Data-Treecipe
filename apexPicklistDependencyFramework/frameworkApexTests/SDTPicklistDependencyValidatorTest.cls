@@ -751,4 +751,97 @@ private class SDTPicklistDependencyValidatorTest {
         Assert.isTrue(failing.resultMarker().endsWith('FAIL'));
         Assert.isTrue(failing.toDisplayString().contains('MISSING_VALUES'));
     }
+
+    @IsTest
+    static void contradictoryExpectationIsReportedWithoutDescribing() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withSnapshot(OBJ, FIELD, regionSnapshot());
+
+        // A HAND EDIT ADDING "Ontario" TO THE POSITIVE LIST WITHOUT REMOVING IT FROM THE COMPLEMENT
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'West', 'Ontario' })
+            .expectNotAllowed('United States', new List<String>{ 'Ontario', 'Quebec' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(1, failures.size(),
+            'The contradiction is one failure, not the MISSING_VALUES + FORBIDDEN_VALUES_PRESENT pair it used to be');
+
+        SDTPicklistDependencyValidator.Failure failure = failures[0];
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.CONTRADICTORY_EXPECTATION, failure.kind,
+            'A value both required and forbidden is a broken spec, not org drift');
+        Assert.areEqual(OBJ, failure.objectApiName, 'The failure names the object');
+        Assert.areEqual(FIELD, failure.fieldApiName, 'The failure names the field');
+        Assert.areEqual('United States', failure.controllingValue, 'The failure names the controlling value');
+        Assert.areEqual(new List<String>{ 'Ontario' }, failure.details,
+            'Only the overlapping value is named -- Quebec is forbidden and not required, which is consistent');
+        Assert.isTrue(failure.toLine().contains('Ontario'), 'The reported line names the overlapping value');
+
+        Assert.areEqual(0, source.fetchedSpecLabels.size(),
+            'An unsatisfiable spec is reported before source.fetch, so it costs no describe');
+    }
+
+    @IsTest
+    static void contradictoryExpectationIsReportedForExpectExactlyToo() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withSnapshot(OBJ, FIELD, regionSnapshot());
+
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .expectExactly('United States', new List<String>{ 'West', 'East' })
+            .expectNotAllowed('United States', new List<String>{ 'East' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(1, failures.size(), 'expectExactly carries required values too, so it traps the same way');
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.CONTRADICTORY_EXPECTATION, failures[0].kind,
+            'The mode carrying the required values does not change what the contradiction is');
+        Assert.areEqual(new List<String>{ 'East' }, failures[0].details, 'The overlapping value is named');
+    }
+
+    @IsTest
+    static void contradictionIsReportedOncePerControllingValue() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withSnapshot(OBJ, FIELD, regionSnapshot());
+
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'West', 'Ontario' })
+            .expectNotAllowed('United States', new List<String>{ 'Ontario' })
+            .expectAtLeast('Canada', new List<String>{ 'Ontario', 'West' })
+            .expectNotAllowed('Canada', new List<String>{ 'West' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(2, failures.size(), 'Each contradicting controlling value is reported once');
+        Assert.areEqual('United States', failures[0].controllingValue,
+            'Controlling values are reported in the order the spec declares them');
+        Assert.areEqual(new List<String>{ 'Ontario' }, failures[0].details, 'United States contradicts on Ontario');
+        Assert.areEqual('Canada', failures[1].controllingValue, 'The second contradiction is Canada');
+        Assert.areEqual(new List<String>{ 'West' }, failures[1].details, 'Canada contradicts on West');
+    }
+
+    @IsTest
+    static void generatedComplementShapeIsNotFlaggedAsContradictory() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withSnapshot(OBJ, FIELD, regionSnapshot());
+
+        // EXACTLY WHAT THE GENERATOR EMITS: expectNotAllowed IS THE COMPLEMENT OF expectAtLeast
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'East', 'West' })
+            .expectNotAllowed('United States', new List<String>{ 'Ontario', 'Quebec' })
+            .expectNone('Mexico');
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(0, failures.size(), 'Generated output must never trip the guard');
+        Assert.areEqual(1, source.fetchedSpecLabels.size(),
+            'A spec with no contradiction still reaches the source exactly once');
+    }
 }

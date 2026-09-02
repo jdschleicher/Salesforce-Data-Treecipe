@@ -105,6 +105,34 @@ export interface ISpecsClassWriteResult {
     removedStaleClassFilePaths: string[];
 }
 
+export type PlannedSpecsFileChangeType = 'added' | 'changed' | 'unchanged';
+
+export interface IPlannedSpecsFile {
+    filePath: string;
+    proposedContent: string;
+    changeType: PlannedSpecsFileChangeType;
+    /*
+        The object whose specs this file carries, or undefined for the aggregator and the test
+        class, which are not about any one object. What the pre-write report groups by.
+    */
+    objectApiName?: string;
+}
+
+/*
+    What regenerating WOULD do, resolved against what is on disk, before anything is written.
+
+    The generated classes are meant to be committed and reviewed as a diff -- that is the whole
+    point of emitting them deterministically -- and a blind overwrite defeats it: the workflow the
+    specs exist for is "edit the expectation you intend, watch it go red, fix the org", and that
+    only survives if the run that would replace a hand edit says so first.
+*/
+export interface ISpecsChangePlan {
+    plannedFiles: IPlannedSpecsFile[];
+    // GENERATED CLASSES FOR OBJECTS THIS RUN NO LONGER PRODUCES, NAMED RATHER THAN DELETED SILENTLY
+    staleClassFilePaths: string[];
+    hasChanges: boolean;
+}
+
 export interface IFrameworkScaffoldResult {
     scaffoldedClassNames: string[];
     // FRAMEWORK CLASSES NEITHER ALREADY IN THE WORKSPACE NOR AVAILABLE TO COPY FROM THE EXTENSION
@@ -420,6 +448,21 @@ export class PicklistDependencyTestService {
 
         });
 
+        /*
+            Sorted HERE rather than at emission so that one order reaches every consumer -- the
+            per-object Apex class, the generated test class and the Explorer all read this list, and
+            three independent sorts would be three chances to drift.
+
+            The walk that produced these follows vscode.workspace.fs.readDirectory, which is
+            filesystem order, so without this two developers regenerating from identical metadata
+            get different bytes. localeCompare is deliberately not used: its result depends on the
+            host's ICU locale data, which is the same portability problem in another form. Code unit
+            order is the same everywhere, which is what "byte identical on every machine" needs.
+        */
+        specDetails.sort((firstSpecDetail, secondSpecDetail) => (firstSpecDetail.fieldApiName < secondSpecDetail.fieldApiName) ? -1
+                                                                    : (firstSpecDetail.fieldApiName > secondSpecDetail.fieldApiName) ? 1
+                                                                    : 0);
+
         return { specDetails, recordTypeSpecDetails: [], skippedFieldWarnings };
 
     }
@@ -660,7 +703,16 @@ export class PicklistDependencyTestService {
             const allowedValues = new Set(dependentValues);
             const forbiddenValues = distinctAssignedDependentValues.filter(assignedValue => !allowedValues.has(assignedValue));
 
-            return { controllingValue: expectation.controllingValue, dependentValues, forbiddenValues };
+            /*
+                dependentValues is filtered from an already sorted list and so is still sorted, but
+                the complement is taken against the record type's assigned values, whose order is
+                the order the record type markup lists them in.
+            */
+            return {
+                controllingValue: expectation.controllingValue,
+                dependentValues,
+                forbiddenValues: this.sortValuesForEmission(forbiddenValues)
+            };
 
         });
 
@@ -829,7 +881,11 @@ export class PicklistDependencyTestService {
                 const allowedValues = new Set(dependentValues);
                 const forbiddenValues = declaredDependentValues.filter(declaredValue => !allowedValues.has(declaredValue));
 
-                return { controllingValue, dependentValues, forbiddenValues };
+                return {
+                    controllingValue,
+                    dependentValues: this.sortValuesForEmission(dependentValues),
+                    forbiddenValues: this.sortValuesForEmission(forbiddenValues)
+                };
 
             }
         );
@@ -844,8 +900,33 @@ export class PicklistDependencyTestService {
 
         });
 
+        /*
+            Two orders are erased here. Object.entries follows the insertion order of the
+            valueSettings markup, and the sweep above appends the controlling values that unlock
+            nothing after it -- so a value moving between those two groups reordered the whole
+            emitted block. Sorting also keeps the two groups interleaved by name rather than
+            segregated, which is how a reader looks a controlling value up.
+        */
+        expectations.sort((firstExpectation, secondExpectation) => (firstExpectation.controllingValue < secondExpectation.controllingValue) ? -1
+                                                                        : (firstExpectation.controllingValue > secondExpectation.controllingValue) ? 1
+                                                                        : 0);
+
         return expectations;
 
+    }
+
+    /*
+        A copy, sorted by code unit order. The forbidden list is the complement of what a controlling
+        value unlocks, taken in declaration order, so inserting one value into the middle of a
+        picklist shifted that value's position in EVERY forbidden list in the file -- a one value
+        change arriving as a diff across every combination. Sorted, the same edit touches only the
+        lines that actually changed.
+
+        Sorting a copy rather than in place matters: dependentValues is handed straight out of the
+        controllingValueToPicklistOptions map, which the caller may still read.
+    */
+    static sortValuesForEmission(values: string[]): string[] {
+        return [...values].sort((firstValue, secondValue) => (firstValue < secondValue) ? -1 : (firstValue > secondValue) ? 1 : 0);
     }
 
     static escapeApexStringLiteral(value: string): string {
@@ -1091,7 +1172,7 @@ export class PicklistDependencyTestService {
  * as a skipped field when the specs are generated.`;
 
         return `/**
- * GENERATED FILE -- regenerating overwrites it.
+ * GENERATED FILE -- commit it, and review each regeneration as a diff.
  *
  * Picklist dependency specs for ${objectApiName}, created by the Salesforce Data Treecipe
  * "Generate Picklist Dependency Tests" command from local source metadata.
@@ -1099,11 +1180,20 @@ export class PicklistDependencyTestService {
  * Each dependent picklist gets its own method, and all() returns the collection of them.
  * ${this.specsClassName}.all() aggregates this class together with the other objects'.
  *
+ * Emission is deterministic -- spec methods ordered by field api name, expectations by controlling
+ * value, and every value list sorted -- so regenerating from unchanged metadata rewrites this file
+ * byte for byte identically, and a real metadata change arrives as a diff of only the lines that
+ * changed. Edit an expectation to declare the dependency you INTEND, watch the test go red, and fix
+ * the org metadata until it goes green; regeneration then shows your edit as a diff to keep or
+ * revert per hunk, rather than silently replacing it.
+ *
  * Every combination is asserted twice: expectAtLeast for the values the controlling value must
  * unlock, and expectNotAllowed for the values it must not. The pair catches a value both
  * disappearing from a combination and drifting into one, while still tolerating a value an admin
- * adds to the field in the org after generation. Tightening a line to expectExactly is a
- * deliberate edit by the spec owner and will be lost on regeneration.${recordTypeHeaderMarkup}
+ * adds to the field in the org after generation. Adding a value to an expectAtLeast list without
+ * removing it from that controlling value's expectNotAllowed list makes the spec unsatisfiable;
+ * the validator reports that as CONTRADICTORY_EXPECTATION rather than as org
+ * drift.${recordTypeHeaderMarkup}
  */
 public class ${perObjectClassName} {
 ${specMethodsBlock}
@@ -1590,47 +1680,89 @@ ${testMethods}
     */
     static removeStalePerObjectSpecsClassFiles(classesDirectoryPath: string, currentClassNames: string[]): string[] {
 
+        const staleClassFilePaths = this.findStalePerObjectSpecsClassFilePaths(classesDirectoryPath, currentClassNames);
+
+        staleClassFilePaths.forEach(staleClassFilePath => {
+            fs.rmSync(staleClassFilePath, { force: true });
+            fs.rmSync(`${staleClassFilePath}-meta.xml`, { force: true });
+        });
+
+        return staleClassFilePaths;
+
+    }
+
+    /*
+        The same set removeStalePerObjectSpecsClassFiles deletes, without deleting it. Split out so
+        the pre-write report can NAME a class about to be removed: an object losing its last
+        dependent picklist and an object whose metadata simply was not read this run look identical
+        on disk, and only the user can tell them apart.
+
+        Sorted so the report reads the same on every machine, for the same reason emission is.
+    */
+    static findStalePerObjectSpecsClassFilePaths(classesDirectoryPath: string, currentClassNames: string[]): string[] {
+
         if ( !fs.existsSync(classesDirectoryPath) ) {
             return [];
         }
 
         const currentClassFileNames = new Set(currentClassNames.map(className => `${className}.cls`));
 
-        let removedClassFilePaths: string[] = [];
-
-        fs.readdirSync(classesDirectoryPath).forEach(fileName => {
-
-            if ( !this.isPerObjectSpecsClassFileName(fileName) || currentClassFileNames.has(fileName) ) {
-                return;
-            }
-
-            const staleClassFilePath = path.join(classesDirectoryPath, fileName);
-            fs.rmSync(staleClassFilePath, { force: true });
-            fs.rmSync(`${staleClassFilePath}-meta.xml`, { force: true });
-            removedClassFilePaths.push(staleClassFilePath);
-
-        });
-
-        return removedClassFilePaths;
+        return fs.readdirSync(classesDirectoryPath)
+            .filter(fileName => this.isPerObjectSpecsClassFileName(fileName) && !currentClassFileNames.has(fileName))
+            .sort()
+            .map(fileName => path.join(classesDirectoryPath, fileName));
 
     }
 
-    static writeSpecsClassFiles(classesDirectoryPath: string,
+    /*
+        Classified against what is on disk RIGHT NOW, so that a file whose proposed content matches
+        byte for byte is reported as unchanged and then skipped at write time. Skipping it is not
+        just cosmetic: rewriting identical bytes still moves the file's mtime, which is what a
+        watcher, a build cache or an incremental deploy keys off.
+
+        A file that cannot be read is treated as added rather than as an error -- the write that
+        follows will fail loudly and with a better message than a read here could give.
+    */
+    static buildPlannedSpecsFile(filePath: string, proposedContent: string, objectApiName?: string): IPlannedSpecsFile {
+
+        let changeType: PlannedSpecsFileChangeType = 'added';
+
+        if ( fs.existsSync(filePath) ) {
+
+            let existingContent: string | undefined;
+
+            try {
+                existingContent = fs.readFileSync(filePath, 'utf-8');
+            } catch {
+                existingContent = undefined;
+            }
+
+            changeType = ( existingContent === proposedContent ) ? 'unchanged' : 'changed';
+
+        }
+
+        return { filePath, proposedContent, changeType, objectApiName };
+
+    }
+
+    /*
+        Everything a regeneration would write, with its content resolved but nothing written.
+
+        The test class body is taken as a parameter rather than built here because the caller
+        already builds it, and building it twice would be two chances for the planned content and
+        the written content to differ -- which is the one thing a preview must never do.
+    */
+    static buildSpecsChangePlan(classesDirectoryPath: string,
                                     specDetails: IPicklistDependencySpecDetail[],
                                     apiVersion: string,
-                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): ISpecsClassWriteResult {
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
+                                    specsTestClassBody?: string): ISpecsChangePlan {
 
-        fs.mkdirSync(classesDirectoryPath, { recursive: true });
-
-        /*
-            Both lists feed the object set. A scoped detail is always derived from a field-level one
-            today, so the union is the same set -- but writeSpecsClassFiles is public and callable
-            directly, and silently dropping a caller's scoped details would be the wrong failure.
-        */
         const objectApiNames = this.getDistinctObjectApiNames([...specDetails, ...recordTypeSpecDetails]);
         const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);
+        const apexClassMetaXml = this.buildApexClassMetaXml(apiVersion);
 
-        let perObjectClassFilePathsByObjectApiName: Record<string, string> = {};
+        let plannedFiles: IPlannedSpecsFile[] = [];
         let objectApiNamesWithRecordTypeSpecs: string[] = [];
 
         objectApiNames.forEach(objectApiName => {
@@ -1645,14 +1777,141 @@ ${testMethods}
                 objectApiNamesWithRecordTypeSpecs.push(objectApiName);
             }
 
-            const perObjectClassBody = this.buildPerObjectSpecsApexClassBody(objectApiName, perObjectClassName, specDetailsForObject, recordTypeSpecDetailsForObject);
+            const perObjectClassBody = this.buildPerObjectSpecsApexClassBody(
+                objectApiName, perObjectClassName, specDetailsForObject, recordTypeSpecDetailsForObject
+            );
             const perObjectClassFilePath = this.getPerObjectSpecsClassFilePath(classesDirectoryPath, perObjectClassName);
 
-            fs.writeFileSync(perObjectClassFilePath, perObjectClassBody);
-            fs.writeFileSync(`${perObjectClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
+            plannedFiles.push(this.buildPlannedSpecsFile(perObjectClassFilePath, perObjectClassBody, objectApiName));
+            plannedFiles.push(this.buildPlannedSpecsFile(`${perObjectClassFilePath}-meta.xml`, apexClassMetaXml, objectApiName));
 
-            perObjectClassFilePathsByObjectApiName[objectApiName] = perObjectClassFilePath;
+        });
 
+        const aggregatorClassFilePath = this.getSpecsClassFilePath(classesDirectoryPath);
+        plannedFiles.push(this.buildPlannedSpecsFile(
+            aggregatorClassFilePath,
+            this.buildAggregatorSpecsApexClassBody(classNamesByObjectApiName, objectApiNamesWithRecordTypeSpecs)
+        ));
+        plannedFiles.push(this.buildPlannedSpecsFile(`${aggregatorClassFilePath}-meta.xml`, apexClassMetaXml));
+
+        if ( specsTestClassBody !== undefined ) {
+
+            const specsTestClassFilePath = this.getSpecsTestClassFilePath(classesDirectoryPath);
+            plannedFiles.push(this.buildPlannedSpecsFile(specsTestClassFilePath, specsTestClassBody));
+            plannedFiles.push(this.buildPlannedSpecsFile(`${specsTestClassFilePath}-meta.xml`, apexClassMetaXml));
+
+        }
+
+        const staleClassFilePaths = this.findStalePerObjectSpecsClassFilePaths(
+            classesDirectoryPath,
+            objectApiNames.map(objectApiName => classNamesByObjectApiName[objectApiName])
+        );
+
+        const hasChanges = plannedFiles.some(plannedFile => plannedFile.changeType !== 'unchanged')
+                            || staleClassFilePaths.length > 0;
+
+        return { plannedFiles, staleClassFilePaths, hasChanges };
+
+    }
+
+    /*
+        Whether the plan would destroy anything already on disk -- replace a file's content, or
+        delete a stale class. A plan that only ADDS files takes nothing away, so there is nothing to
+        review and nothing to lose by proceeding; asking anyway is the prompt fatigue that gets
+        every later prompt clicked through without reading.
+    */
+    static planReplacesExistingContent(changePlan: ISpecsChangePlan): boolean {
+
+        return changePlan.plannedFiles.some(plannedFile => plannedFile.changeType === 'changed')
+                || changePlan.staleClassFilePaths.length > 0;
+
+    }
+
+    /*
+        A single line per object saying what regenerating does to it, plus the classes it removes.
+        Kept here rather than in the command so the wording is testable without a vscode window.
+    */
+    static buildSpecsChangeReport(changePlan: ISpecsChangePlan): string {
+
+        const changedFiles = changePlan.plannedFiles.filter(plannedFile => plannedFile.changeType !== 'unchanged');
+
+        if ( changedFiles.length === 0 && changePlan.staleClassFilePaths.length === 0 ) {
+            return 'No changes: the generated specs already match this metadata.';
+        }
+
+        let reportLines: string[] = [];
+
+        const addedClassFiles = changedFiles.filter(changedFile => changedFile.changeType === 'added' && !changedFile.filePath.endsWith('-meta.xml'));
+        const updatedClassFiles = changedFiles.filter(changedFile => changedFile.changeType === 'changed' && !changedFile.filePath.endsWith('-meta.xml'));
+
+        if ( addedClassFiles.length > 0 ) {
+            reportLines.push(`New: ${addedClassFiles.map(addedFile => path.basename(addedFile.filePath)).join(', ')}`);
+        }
+
+        if ( updatedClassFiles.length > 0 ) {
+            reportLines.push(`Overwritten: ${updatedClassFiles.map(updatedFile => path.basename(updatedFile.filePath)).join(', ')}`);
+        }
+
+        if ( changePlan.staleClassFilePaths.length > 0 ) {
+            reportLines.push(`Deleted (no dependent picklist in this metadata): ${changePlan.staleClassFilePaths.map(staleFilePath => path.basename(staleFilePath)).join(', ')}`);
+        }
+
+        return reportLines.join('\n');
+
+    }
+
+    /*
+        Only what actually differs is written. Returns the paths touched, which is what a caller
+        reports -- an empty result means the run was a genuine no-op rather than that it failed.
+    */
+    static writePlannedSpecsFiles(plannedFiles: IPlannedSpecsFile[]): string[] {
+
+        let writtenFilePaths: string[] = [];
+
+        plannedFiles.forEach(plannedFile => {
+
+            if ( plannedFile.changeType === 'unchanged' ) {
+                return;
+            }
+
+            fs.writeFileSync(plannedFile.filePath, plannedFile.proposedContent);
+            writtenFilePaths.push(plannedFile.filePath);
+
+        });
+
+        return writtenFilePaths;
+
+    }
+
+    static writeSpecsClassFiles(classesDirectoryPath: string,
+                                    specDetails: IPicklistDependencySpecDetail[],
+                                    apiVersion: string,
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): ISpecsClassWriteResult {
+
+        fs.mkdirSync(classesDirectoryPath, { recursive: true });
+
+        /*
+            Both lists feed the object set. A scoped detail is always derived from a field-level one
+            today, so the union is the same set -- but writeSpecsClassFiles is public and callable
+            directly, and silently dropping a caller's scoped details would be the wrong failure.
+
+            The plan is rebuilt here rather than taken as a parameter so that this stays callable on
+            its own, as its tests and any direct caller do. A command that already previewed a plan
+            gets the same content back: buildSpecsChangePlan is a pure function of the details it
+            is given.
+        */
+        const changePlan = this.buildSpecsChangePlan(classesDirectoryPath, specDetails, apiVersion, recordTypeSpecDetails);
+
+        this.writePlannedSpecsFiles(changePlan.plannedFiles);
+
+        const objectApiNames = this.getDistinctObjectApiNames([...specDetails, ...recordTypeSpecDetails]);
+        const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);
+
+        let perObjectClassFilePathsByObjectApiName: Record<string, string> = {};
+        objectApiNames.forEach(objectApiName => {
+            perObjectClassFilePathsByObjectApiName[objectApiName] = this.getPerObjectSpecsClassFilePath(
+                classesDirectoryPath, classNamesByObjectApiName[objectApiName]
+            );
         });
 
         const removedStaleClassFilePaths = this.removeStalePerObjectSpecsClassFiles(
@@ -1660,12 +1919,8 @@ ${testMethods}
             objectApiNames.map(objectApiName => classNamesByObjectApiName[objectApiName])
         );
 
-        const aggregatorClassFilePath = this.getSpecsClassFilePath(classesDirectoryPath);
-        fs.writeFileSync(aggregatorClassFilePath, this.buildAggregatorSpecsApexClassBody(classNamesByObjectApiName, objectApiNamesWithRecordTypeSpecs));
-        fs.writeFileSync(`${aggregatorClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
-
         return {
-            aggregatorClassFilePath,
+            aggregatorClassFilePath: this.getSpecsClassFilePath(classesDirectoryPath),
             perObjectClassFilePathsByObjectApiName,
             removedStaleClassFilePaths
         };
@@ -1724,8 +1979,12 @@ ${testMethods}
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
 
         const specsTestClassFilePath = this.getSpecsTestClassFilePath(classesDirectoryPath);
-        fs.writeFileSync(specsTestClassFilePath, apexTestClassBody);
-        fs.writeFileSync(`${specsTestClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion));
+
+        // SKIPS A FILE ALREADY CARRYING THIS EXACT CONTENT, FOR THE MTIME REASON IN buildPlannedSpecsFile
+        this.writePlannedSpecsFiles([
+            this.buildPlannedSpecsFile(specsTestClassFilePath, apexTestClassBody),
+            this.buildPlannedSpecsFile(`${specsTestClassFilePath}-meta.xml`, this.buildApexClassMetaXml(apiVersion))
+        ]);
 
         return specsTestClassFilePath;
 

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import path = require('path');
 import * as fs from 'fs';
+import * as os from 'os';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 
@@ -349,6 +350,45 @@ export class VSCodeWorkspaceService {
     static showWarningMessage(message: string) {
 
         vscode.window.showWarningMessage(message);
+
+    }
+
+    /*
+        Opens VS Code's own diff editor between a file on disk and content that has not been written
+        yet, so a regeneration can be reviewed -- and cancelled -- before it replaces a hand edit.
+
+        The proposed side is staged in a temp file because vscode.diff takes two URIs, and the only
+        alternative is registering a TextDocumentContentProvider for a custom scheme at activation.
+        A temp file needs nothing from activation and gives the diff editor a real document. The
+        file name carries the generated class name so the diff tab reads as that class rather than
+        as a random temp path.
+
+        Returns whether the diff opened. A failure here must not abort generation: the diff is a
+        convenience on the way to a decision the user still gets to make from the report.
+    */
+    static async showDiffForProposedContent(existingFilePath: string, proposedContent: string, diffEditorTitle: string): Promise<boolean> {
+
+        try {
+
+            const proposedContentDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-proposed-'));
+            const proposedContentFilePath = path.join(proposedContentDirectoryPath, path.basename(existingFilePath));
+            fs.writeFileSync(proposedContentFilePath, proposedContent);
+
+            await vscode.commands.executeCommand(
+                'vscode.diff',
+                vscode.Uri.file(existingFilePath),
+                vscode.Uri.file(proposedContentFilePath),
+                diffEditorTitle
+            );
+
+            return true;
+
+        } catch (error) {
+
+            vscode.window.showErrorMessage(`Could not open a diff for "${existingFilePath}": ${error}`);
+            return false;
+
+        }
 
     }
 

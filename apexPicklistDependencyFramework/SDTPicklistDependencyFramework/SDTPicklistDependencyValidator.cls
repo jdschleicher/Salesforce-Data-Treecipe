@@ -10,6 +10,11 @@
  * spec's controlling field is itself a broken dependent picklist, repeating the same describe
  * mismatch once per downstream link buries the one fact that matters, so the break is reported
  * at its source and each downstream spec gets a single UPSTREAM_FAILURE naming it.
+ *
+ * A spec that contradicts itself -- the same value both required and forbidden under one
+ * controlling value, which is what a hand edit to a generated complement produces -- is reported
+ * as CONTRADICTORY_EXPECTATION before any describe runs. No org state can satisfy it, so there is
+ * nothing to look up.
  */
 public class SDTPicklistDependencyValidator {
 
@@ -20,6 +25,7 @@ public class SDTPicklistDependencyValidator {
         UNKNOWN_CONTROLLING_VALUE,
         UNEXPECTED_CONTROLLING_VALUE,
         CONTROLLING_FIELD_MISMATCH,
+        CONTRADICTORY_EXPECTATION,
         UPSTREAM_FAILURE,
         CIRCULAR_DEPENDENCY,
         LOOKUP_ERROR
@@ -159,6 +165,17 @@ public class SDTPicklistDependencyValidator {
 
         List<Failure> failures = new List<Failure>();
 
+        /*
+            Run before the describe below, because a spec that contradicts itself cannot be
+            satisfied by ANY org and so there is nothing to look up. Reporting it costs no describe,
+            which matters most on exactly the run where it fires -- the whole class is validated in
+            one transaction against the CPU limit.
+        */
+        List<Failure> contradictionFailures = resolveContradictionFailures(spec);
+        if (!contradictionFailures.isEmpty()) {
+            return contradictionFailures;
+        }
+
         SDTPicklistDependencySnapshot snapshot;
         try {
             snapshot = source.fetch(spec);
@@ -273,6 +290,77 @@ public class SDTPicklistDependencyValidator {
                     ));
                 }
             }
+        }
+
+        return failures;
+    }
+
+    /*
+        A value the spec both requires and forbids under the same controlling value.
+
+        The generator emits expectNotAllowed as the COMPLEMENT of expectAtLeast, so the two lists
+        can never overlap in generated output. A hand edit is what produces the overlap: adding a
+        value to the positive list without removing it from the forbidden one. That spec is
+        unsatisfiable -- no org edit can make it pass -- and without this guard it reports forever
+        as a paired MISSING_VALUES and FORBIDDEN_VALUES_PRESENT, which reads as two org problems
+        rather than as one broken expectation.
+
+        expectExactly is checked alongside expectAtLeast: it is the other mode carrying required
+        values, and it produces exactly the same unsatisfiable pairing.
+    */
+    private List<Failure> resolveContradictionFailures(SDTPicklistDependencySpec spec) {
+
+        List<Failure> failures = new List<Failure>();
+        if (spec.expectations == null) {
+            return failures;
+        }
+
+        // FIRST SEEN ORDER IS TRACKED SEPARATELY BECAUSE APEX MAP KEY ORDER IS NOT INSERTION ORDER
+        List<String> controllingValuesInOrder = new List<String>();
+        Map<String, Set<String>> requiredValuesByControllingValue = new Map<String, Set<String>>();
+        Map<String, Set<String>> forbiddenValuesByControllingValue = new Map<String, Set<String>>();
+
+        for (SDTPicklistDependencySpec.Expectation expectation : spec.expectations) {
+
+            if (expectation == null || expectation.controllingValue == null) {
+                continue;
+            }
+
+            String controllingValue = expectation.controllingValue;
+
+            if (!requiredValuesByControllingValue.containsKey(controllingValue)) {
+                controllingValuesInOrder.add(controllingValue);
+                requiredValuesByControllingValue.put(controllingValue, new Set<String>());
+                forbiddenValuesByControllingValue.put(controllingValue, new Set<String>());
+            }
+
+            if (expectation.mode == SDTPicklistDependencySpec.MatchMode.NOT_ALLOWED) {
+                forbiddenValuesByControllingValue.get(controllingValue).addAll(expectation.forbiddenValues);
+            } else if (expectation.mode == SDTPicklistDependencySpec.MatchMode.AT_LEAST
+                        || expectation.mode == SDTPicklistDependencySpec.MatchMode.EXACTLY) {
+                requiredValuesByControllingValue.get(controllingValue).addAll(expectation.expectedValues);
+            }
+        }
+
+        for (String controllingValue : controllingValuesInOrder) {
+
+            Set<String> contradictoryValues = new Set<String>(requiredValuesByControllingValue.get(controllingValue));
+            contradictoryValues.retainAll(forbiddenValuesByControllingValue.get(controllingValue));
+
+            if (contradictoryValues.isEmpty()) {
+                continue;
+            }
+
+            List<String> contradictoryValuesList = sortedList(contradictoryValues);
+            failures.add(new Failure(
+                spec,
+                controllingValue,
+                FailureKind.CONTRADICTORY_EXPECTATION,
+                'Spec both requires and forbids the same value(s) under this controlling value, so no org can satisfy it: ['
+                    + String.join(contradictoryValuesList, ', ')
+                    + ']. Remove them from either the expected list or the not-allowed list.',
+                contradictoryValuesList
+            ));
         }
 
         return failures;

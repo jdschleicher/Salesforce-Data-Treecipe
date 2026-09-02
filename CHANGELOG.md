@@ -1,5 +1,49 @@
 # Change Log
 
+## [3.4.0] - Diff-Friendly Picklist Dependency Specs
+
+Resolves [#78](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/78).
+
+The generated Apex specs are meant to be committed and code-reviewed, but nothing about them was built for that. This release makes them deterministic, shows you what a regeneration would change before it changes it, and teaches the Apex framework to recognise the one edit that can never pass.
+
+### Emission is deterministic, so a regeneration is a reviewable diff
+
+Output ordering used to follow the filesystem and the order values happened to appear in the metadata, so identical metadata could regenerate to different bytes on different machines, and adding one picklist value produced a diff far larger than the change.
+
+Three orders were erased:
+
+- **Spec methods** are ordered by field api name, independent of `readDirectory` order. Sorting happens where the spec details are built, so the Apex, the generated test class and the Explorer all inherit one order rather than three that can drift.
+- **Expectations** are ordered by controlling value, so a value moving between "unlocks something" and "unlocks nothing" no longer reorders the emitted block.
+- **Every value list** — `expectAtLeast`, `expectNotAllowed`, `expectNone` — is sorted. Previously the forbidden list was the complement taken in declaration order, so inserting one value into the middle of a picklist shifted that value's position in **every forbidden list under every controlling value**.
+
+Regenerating from unchanged metadata is now a byte-identical no-op, and a real metadata change arrives as a diff of only the lines that changed. Adding one value to one combination now touches three lines — the `expectAtLeast` that gains it and the two complements that gain it — instead of every list in the file.
+
+Sorting uses code unit order rather than `localeCompare`, whose result depends on the host's ICU locale data and so would reintroduce the same portability problem in another form.
+
+> **One-time reordering diff.** The first regeneration after upgrading reorders your existing generated classes. That diff is reviewable, which is the point — but review it on its own rather than mixed in with a metadata change.
+
+### The command shows what it would do before it does it
+
+**Generate Picklist Dependency Tests** now resolves the whole change against what is on disk before writing anything:
+
+- A run that would **replace or delete** something prompts with a report naming what is new, what is overwritten, and which stale per-object classes would be deleted. A stale class is now **named rather than removed silently**.
+- **Show Diff** opens VS Code's native diff editor between the file on disk and the content that would be written, then returns to the prompt. Cancelling writes nothing.
+- A run that only **adds** files does not prompt — nothing is lost — and a run that would change nothing neither prompts nor writes. Files already carrying their proposed content are skipped rather than rewritten, so an unchanged regeneration no longer moves their mtimes.
+
+This replaces the old blanket modal, which fired on the mere presence of generated files, could not say what was about to change, and warned that hand-tightened `expectExactly` lines "will be lost".
+
+That warning no longer describes how these files work. The workflow the specs exist for — **declare the dependency you intend, watch the test go red, fix the org metadata until it goes green** — now survives regeneration: git is the merge base, your edit shows up as a working-tree diff, and you keep or revert it per hunk. The generated class header says so.
+
+### A spec that contradicts itself is reported as a broken spec, not as org drift
+
+`expectNotAllowed` is emitted as the complement of `expectAtLeast`, so adding a value to the positive list without removing it from the forbidden one makes the spec **unsatisfiable** — no org edit can make it pass. That is exactly the trap a hand edit falls into, and it used to report forever as a paired `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT`, which reads as two org problems rather than one broken expectation.
+
+`SDTPicklistDependencyValidator` now raises `CONTRADICTORY_EXPECTATION`, naming the object, field, controlling value and the overlapping values. It runs **before** `source.fetch()`, so it costs no describe — which matters most on the run where it fires, since the whole class is validated in one transaction against the CPU limit. `expectExactly` is checked alongside `expectAtLeast`, being the other mode that carries required values and producing the same unsatisfiable pairing.
+
+### Recipe generation is unchanged
+
+No faker service was touched. `IRecipeFakerService`, `IFakerRecipeProcessor` and both backends' dependent-picklist recipe output are exactly as they were.
+
 ## [3.3.1] - Global Value Sets Actually Load
 
 Resolves [#85](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/85).
