@@ -16,12 +16,12 @@ public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhoo
             .controlledBy('City__c')
             .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })
             .expectNotAllowed('cle', new List<String>{ 'willowick' })
-            .expectNone('eastlake');
+            .expectUnavailable('eastlake');
 }
 ```
 
 - Controlling values are the field's, intersected with what the record type assigns to the controlling field; each value's unlocked values are intersected with what it assigns to the dependent field
-- A controlling value the record type does not assign, and one whose unlocked values it assigns none of, both become `expectNone`
+- A controlling value the record type **does** assign but whose unlocked values it assigns none of becomes `expectNone`; one it does **not** assign becomes `expectUnavailable`. The two are different assertions — `expectNone` requires the value to exist, so using it for an unassigned value would fail against exactly the metadata that is correct
 - The forbidden complement is taken against **the record type's** assigned values rather than everything the field declares — a value the record type does not expose is already unreachable through it
 - A chained spec links to the upstream spec for the *same* record type, and the link is dropped when the record type assigns nothing to the upstream field, rather than naming a method that was never emitted
 - Scoped specs are collected by `recordTypeSpecs()` per object and `SDTPLDSpecs.allRecordTypeScoped()` on the aggregator
@@ -34,6 +34,8 @@ The one genuinely ambiguous case in the metadata. Treating absence as "every val
 ### The Apex framework understands record type scope
 
 - `SDTPicklistDependencySpec.forRecordType(object, field, recordTypeDeveloperName)` alongside `forField`, with `isRecordTypeScoped()` and a `label()` that carries the record type — the validator's dedupe and memoisation key, so a field's field-level spec never collapses onto its scoped ones
+- `expectUnavailable(controllingValue)` (`MatchMode.UNAVAILABLE`), the record-type equivalent of `expectNone`: it asserts the controlling value is not reachable at all, and fails with the new `UNEXPECTED_CONTROLLING_VALUE` kind — naming the values it wrongly unlocks — if a record type later gains it
+- Malformed record type markup is skipped with a warning rather than aborting generation: a `<picklistValues>` block missing its `<picklist>` child, nested markup where the developer name should be, and `<values>` entries with no `<fullName>` are all well-formed XML that previously threw part-way through the walk — one of them mid-write, leaving a half-regenerated class set on disk
 - `SDTPicklistDependencyValidator.Failure` carries `recordTypeDeveloperName` and renders it in the scope: `MISSING_VALUES — Account.Region__c [US_Only] @ United States: ...`
 - Record type developer names pass the same api name gate as object and field names before being embedded in Apex; an invalid one is skipped with a warning rather than emitted
 

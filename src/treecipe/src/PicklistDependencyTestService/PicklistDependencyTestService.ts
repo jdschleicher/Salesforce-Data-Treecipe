@@ -22,6 +22,14 @@ export interface IPicklistDependencyExpectation {
         directly -- is entitled to assert only the positive half. The generator always populates it.
     */
     forbiddenValues?: string[];
+    /*
+        Set only on a record-type-scoped expectation for a controlling value the record type does
+        not assign at all. Such a value is ABSENT under that record type rather than present and
+        empty, and the two are different assertions: expectNone requires the value to exist, so
+        emitting it here would fail against exactly the metadata that is correct. Emitted as
+        expectUnavailable instead.
+    */
+    controllingValueUnavailable?: boolean;
 }
 
 export interface IPicklistDependencySpecDetail {
@@ -56,6 +64,16 @@ export interface IPicklistDependencyCollectionResult {
     specDetails: IPicklistDependencySpecDetail[];
     recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[];
     skippedFieldWarnings: string[];
+}
+
+/*
+    The two parts of a parsed RecordType file this service reads. xml2js gives every element as an
+    array, and RecordTypeService owns the shape of the picklistValues entries -- typing them here
+    would duplicate a contract that lives there.
+*/
+export interface IParsedRecordTypeXmlDetail {
+    fullName?: string[];
+    picklistValues?: unknown[];
 }
 
 export interface IRecordTypeCollectionResult {
@@ -391,23 +409,46 @@ export class PicklistDependencyTestService {
             const recordTypeContentUriData = await vscode.workspace.fs.readFile(recordTypeUri);
             const recordTypeXmlContent = Buffer.from(recordTypeContentUriData).toString('utf8');
 
-            let recordTypeXmlDetail: any;
+            let recordTypeXmlDetail: IParsedRecordTypeXmlDetail;
 
             try {
                 recordTypeXmlDetail = RecordTypeService.convertRecordTypeXMLContentToXMLDetailObject(recordTypeXmlContent);
+            } catch {
+                /*
+                    The parser embeds the ENTIRE file in its exception message, and this warning is
+                    shown to the user as a notification, so the file name is reported and the message
+                    is not. What the parser would have added is "this file is not well-formed XML",
+                    which the wording below already says.
+                */
+                skippedRecordTypeWarnings.push(`Skipped record type file "${fileName}" under "${objectApiName}": its XML could not be parsed. Fix the markup in that file to have its record type scoped specs generated.`);
+                continue;
+            }
+
+            const parsedRecordTypeDeveloperName = recordTypeXmlDetail?.fullName?.[0];
+
+            /*
+                The TYPE is checked, not just the presence: nested markup under <fullName> parses to
+                an object rather than a string, and an object is truthy, so a presence check alone
+                would carry it into the wrapper and fail later at the sort below.
+            */
+            if ( typeof parsedRecordTypeDeveloperName !== 'string' || parsedRecordTypeDeveloperName.trim() === '' ) {
+                skippedRecordTypeWarnings.push(`Skipped record type file "${fileName}" under "${objectApiName}": no usable RecordType "fullName" markup was found, so the record type has no developer name to scope specs by.`);
+                continue;
+            }
+
+            /*
+                Wrapper construction is guarded rather than trusted. Building the picklist sections
+                indexes into the markup -- a <picklistValues> block missing its <picklist> child
+                throws a TypeError from RecordTypeService rather than returning something empty --
+                and unguarded that would unwind the whole walk, losing every object's specs to one
+                malformed sibling file. These messages come from the runtime, not from the file, so
+                they are safe to show.
+            */
+            try {
+                recordTypeWrappers.push(RecordTypeService.initiateRecordTypeWrapperByXMLDetail(recordTypeXmlDetail, parsedRecordTypeDeveloperName));
             } catch (error) {
-                skippedRecordTypeWarnings.push(`Skipped record type file "${fileName}" under "${objectApiName}": its XML could not be parsed (${error.message}). No record-type-scoped specs were generated for it.`);
-                continue;
+                skippedRecordTypeWarnings.push(`Skipped record type "${parsedRecordTypeDeveloperName}" under "${objectApiName}": its picklist assignment markup could not be read (${error.message}). No record-type-scoped specs were generated for it.`);
             }
-
-            const recordTypeDeveloperName = recordTypeXmlDetail?.fullName?.[0];
-
-            if ( !recordTypeDeveloperName ) {
-                skippedRecordTypeWarnings.push(`Skipped record type file "${fileName}" under "${objectApiName}": no RecordType "fullName" markup was found, so the record type has no developer name to scope specs by.`);
-                continue;
-            }
-
-            recordTypeWrappers.push(RecordTypeService.initiateRecordTypeWrapperByXMLDetail(recordTypeXmlDetail, recordTypeDeveloperName));
 
         }
 
@@ -456,8 +497,8 @@ export class PicklistDependencyTestService {
 
             specDetails.forEach(specDetail => {
 
-                const recordTypeControllingValues = picklistValuesByFieldApiName[specDetail.controllingFieldApiName];
-                const recordTypeDependentValues = picklistValuesByFieldApiName[specDetail.fieldApiName];
+                const recordTypeControllingValues = this.getAssignedPicklistValues(picklistValuesByFieldApiName[specDetail.controllingFieldApiName]);
+                const recordTypeDependentValues = this.getAssignedPicklistValues(picklistValuesByFieldApiName[specDetail.fieldApiName]);
 
                 const unassignedFieldApiName = !recordTypeControllingValues
                     ? specDetail.controllingFieldApiName
@@ -506,11 +547,40 @@ export class PicklistDependencyTestService {
     }
 
     /*
+        The values a record type assigns to one field, or undefined when it usefully assigns none.
+
+        The entries come from xml2js walking markup that nothing has validated: a <values> element
+        with no <fullName> yields undefined and one carrying nested markup yields an object. Left in,
+        they reach the Apex string escaper as non-strings and throw mid-write, after earlier objects'
+        class files have already been written. Filtering here means an unusable entry costs that one
+        value, and a field with nothing usable left takes the same "not assigned by this record type"
+        path as a field the record type never mentions.
+    */
+    static getAssignedPicklistValues(assignedPicklistValues: unknown): string[] | undefined {
+
+        if ( !Array.isArray(assignedPicklistValues) ) {
+            return undefined;
+        }
+
+        const usablePicklistValues = assignedPicklistValues.filter(
+            (assignedPicklistValue): assignedPicklistValue is string => typeof assignedPicklistValue === 'string'
+        );
+
+        return usablePicklistValues.length > 0 ? usablePicklistValues : undefined;
+
+    }
+
+    /*
         One record type's view of a field-level expectation set.
 
-        A controlling value the record type does not assign, and one whose unlocked values the record
-        type assigns none of, both come out as an empty expectation -- expectNone at emission. The
-        forbidden complement is taken against the values the RECORD TYPE assigns rather than every
+        The two empty cases are NOT the same assertion, and conflating them emits a spec that must
+        fail. A controlling value the record type does not assign is ABSENT under that record type,
+        so it becomes expectUnavailable; one the record type does assign but whose unlocked values it
+        assigns none of is present and empty, which is expectNone. expectNone requires the value to
+        exist -- emitting it for an unassigned value would report a failure against exactly the
+        metadata that is correct.
+
+        The forbidden complement is taken against the values the RECORD TYPE assigns rather than every
         value the field declares: a value the record type does not expose at all is already
         unreachable through it, so naming it would assert something about the field rather than about
         this record type.
@@ -526,7 +596,12 @@ export class PicklistDependencyTestService {
         return expectations.map(expectation => {
 
             if ( !assignedControllingValues.has(expectation.controllingValue) ) {
-                return { controllingValue: expectation.controllingValue, dependentValues: [], forbiddenValues: [] };
+                return {
+                    controllingValue: expectation.controllingValue,
+                    dependentValues: [],
+                    forbiddenValues: [],
+                    controllingValueUnavailable: true
+                };
             }
 
             const dependentValues = expectation.dependentValues.filter(dependentValue => assignedDependentValues.has(dependentValue));
@@ -630,18 +705,26 @@ export class PicklistDependencyTestService {
     */
     static buildSpecMethodName(objectApiName: string, fieldApiName: string, recordTypeDeveloperName?: string): string {
 
-        const collapse = (apiName: string) => apiName.replace(/_{2,}/g, '_');
-
-        const baseMethodName = `specFor_${collapse(objectApiName)}_${collapse(fieldApiName)}`;
-
         /*
             A record type scoped method sits beside the field-level one for the same field, so the
             developer name is what separates them. Apex class names are capped at 40 characters and
             method names are not, so the longer identifier is spelled out rather than truncated.
         */
-        return recordTypeDeveloperName
-            ? `${baseMethodName}_recordType_${collapse(recordTypeDeveloperName)}`
-            : baseMethodName;
+        const assembledMethodName = recordTypeDeveloperName
+            ? `specFor_${objectApiName}_${fieldApiName}_recordType_${recordTypeDeveloperName}`
+            : `specFor_${objectApiName}_${fieldApiName}`;
+
+        /*
+            Every name reaching here is validated by the caller, so both steps below are no-ops for
+            real api names. They are applied anyway for the same reason buildSpecStatement escapes
+            already-validated names: an identifier is a sink that no escaping protects, so it stays
+            safe on its own terms rather than depending on a caller having validated first.
+
+            The collapse runs over the ASSEMBLED name rather than per segment -- collapsing each part
+            first still leaves a pair spanning the join, where a name ending or beginning with an
+            underscore meets the separator, and Apex rejects two underscores in a row.
+        */
+        return assembledMethodName.replace(/[^A-Za-z0-9_]/g, '').replace(/_{2,}/g, '_');
 
     }
 
@@ -838,10 +921,12 @@ export class PicklistDependencyTestService {
             : `
  *
  * recordTypeSpecs() narrows those combinations to what each record type under ${objectApiName}
- * assigns: a controlling value the record type does not assign, and one whose unlocked values it
- * assigns none of, both become expectNone. A field the record type does not mention at all is
- * treated as unassigned rather than as fully assigned, so that combination is left out entirely
- * and reported as a skipped field when the specs are generated.`;
+ * assigns. A controlling value the record type does not assign becomes expectUnavailable -- under
+ * that record type the value is absent, not empty, and expectNone would demand it exist. One the
+ * record type does assign but whose unlocked values it assigns none of becomes expectNone, which
+ * is exactly that assertion. A field the record type does not mention at all is treated as
+ * unassigned rather than as fully assigned, so that combination is left out entirely and reported
+ * as a skipped field when the specs are generated.`;
 
         return `/**
  * GENERATED FILE -- regenerating overwrites it.
@@ -961,6 +1046,17 @@ ${recordTypeAggregationMarkup}}
         specDetail.expectations.forEach(expectation => {
 
             const escapedControllingValue = this.escapeApexStringLiteral(expectation.controllingValue);
+
+            /*
+                Checked before the empty case below: an unavailable controlling value also has no
+                dependent values, and expectNone would assert that it exists.
+            */
+            if ( expectation.controllingValueUnavailable ) {
+
+                specStatement += `\n                .expectUnavailable('${escapedControllingValue}')`;
+                return;
+
+            }
 
             if ( expectation.dependentValues.length === 0 ) {
 
@@ -1364,7 +1460,12 @@ ${testMethods}
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
 
-        const objectApiNames = this.getDistinctObjectApiNames(specDetails);
+        /*
+            Both lists feed the object set. A scoped detail is always derived from a field-level one
+            today, so the union is the same set -- but writeSpecsClassFiles is public and callable
+            directly, and silently dropping a caller's scoped details would be the wrong failure.
+        */
+        const objectApiNames = this.getDistinctObjectApiNames([...specDetails, ...recordTypeSpecDetails]);
         const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);
 
         let perObjectClassFilePathsByObjectApiName: Record<string, string> = {};

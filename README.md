@@ -210,12 +210,13 @@ public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhoo
             .controlledBy('City__c')
             .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })
             .expectNotAllowed('cle', new List<String>{ 'willowick' })
-            .expectNone('eastlake');
+            .expectUnavailable('eastlake');
 }
 ```
 
 * The controlling values are the field's, intersected with what the record type assigns to the controlling field; the unlocked values are intersected with what it assigns to the dependent field
-* A controlling value the record type does not assign, and one whose unlocked values it assigns none of, both become `expectNone`
+* A controlling value the record type **does** assign but whose unlocked values it assigns none of becomes `expectNone` — it must exist under that record type and unlock nothing
+* A controlling value the record type does **not** assign becomes `expectUnavailable` — under that record type the value is absent rather than empty, and `expectNone` would demand it exist
 * A field the record type's XML never mentions is treated as **unassigned** for that record type, not as fully assigned: the combination is skipped and reported as a warning, and the field-level spec still covers the field
 * The scoped specs are collected by `recordTypeSpecs()` on the per-object class and `SDTPLDSpecs.allRecordTypeScoped()` on the aggregator
 

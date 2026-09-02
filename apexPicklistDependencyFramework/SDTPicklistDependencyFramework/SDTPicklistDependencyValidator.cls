@@ -18,6 +18,7 @@ public class SDTPicklistDependencyValidator {
         UNEXPECTED_VALUES,
         FORBIDDEN_VALUES_PRESENT,
         UNKNOWN_CONTROLLING_VALUE,
+        UNEXPECTED_CONTROLLING_VALUE,
         CONTROLLING_FIELD_MISMATCH,
         UPSTREAM_FAILURE,
         CIRCULAR_DEPENDENCY,
@@ -189,6 +190,27 @@ public class SDTPicklistDependencyValidator {
         for (SDTPicklistDependencySpec.Expectation expectation : spec.expectations) {
 
             Set<String> actual = snapshot.valuesValidFor(expectation.controllingValue);
+
+            /*
+                Checked before the absent-value branch below, because for this mode an absent
+                controlling value is the PASSING result rather than the failing one.
+            */
+            if (expectation.mode == SDTPicklistDependencySpec.MatchMode.UNAVAILABLE) {
+
+                if (actual != null) {
+                    List<String> reachableValues = sortedList(actual);
+                    failures.add(new Failure(
+                        spec,
+                        expectation.controllingValue,
+                        FailureKind.UNEXPECTED_CONTROLLING_VALUE,
+                        'Controlling value is available where it must not be, unlocking: ['
+                            + String.join(reachableValues, ', ') + ']',
+                        reachableValues
+                    ));
+                }
+
+                continue;
+            }
 
             if (actual == null) {
                 List<String> orgControllingValues = sortedList(snapshot.controllingValues());

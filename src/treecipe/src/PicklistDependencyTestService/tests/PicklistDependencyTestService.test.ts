@@ -823,7 +823,13 @@ describe('PicklistDependencyTestService', () => {
 
             });
 
-            test('given a controlling value the record type does not assign, builds an empty expectation for it', () => {
+            /*
+                The two empty cases are different assertions. expectNone requires the controlling
+                value to EXIST and unlock nothing, so emitting it for a value the record type never
+                assigns fails against exactly the metadata that is correct -- the value is absent
+                under that record type, which is what expectUnavailable asserts.
+            */
+            test('given a controlling value the record type does not assign, marks it unavailable rather than empty', () => {
 
                 const recordTypeExpectations = PicklistDependencyTestService.buildRecordTypeExpectations(
                     neighborhoodSpecDetail.expectations,
@@ -834,6 +840,7 @@ describe('PicklistDependencyTestService', () => {
                 const eastlakeExpectation = recordTypeExpectations.find(expectation => expectation.controllingValue === 'eastlake');
                 expect(eastlakeExpectation.dependentValues).toBeEmpty();
                 expect(eastlakeExpectation.forbiddenValues).toBeEmpty();
+                expect(eastlakeExpectation.controllingValueUnavailable).toBeTrue();
 
             });
 
@@ -848,6 +855,9 @@ describe('PicklistDependencyTestService', () => {
                 const cleExpectation = recordTypeExpectations.find(expectation => expectation.controllingValue === 'cle');
                 expect(cleExpectation.dependentValues).toBeEmpty();
                 expect(cleExpectation.forbiddenValues).toBeEmpty();
+
+                // THE RECORD TYPE DOES ASSIGN "cle", SO IT MUST EXIST AND UNLOCK NOTHING -- expectNone, NOT expectUnavailable
+                expect(cleExpectation.controllingValueUnavailable).toBeFalsy();
 
                 // AND THE COMBINATION THE RECORD TYPE DOES REACH IS STILL ASSERTED
                 const eastlakeExpectation = recordTypeExpectations.find(expectation => expectation.controllingValue === 'eastlake');
@@ -864,6 +874,48 @@ describe('PicklistDependencyTestService', () => {
                 );
 
                 expect(recordTypeExpectations).toEqual(neighborhoodSpecDetail.expectations);
+
+            });
+
+        });
+
+        describe('getAssignedPicklistValues', () => {
+
+            /*
+                These arrive from xml2js walking markup nothing has validated, so an entry can be
+                undefined (a <values> element with no <fullName>) or an object (one carrying nested
+                markup). Reaching the Apex string escaper, either throws mid-write.
+            */
+            test('given entries that are not strings, keeps only the usable values', () => {
+
+                const assignedPicklistValues = PicklistDependencyTestService.getAssignedPicklistValues(
+                    ['ohiocity', undefined, { nested: ['markup'] }, 'tremont']
+                );
+
+                expect(assignedPicklistValues).toEqual(['ohiocity', 'tremont']);
+
+            });
+
+            test('given nothing usable, reports the field as unassigned rather than as assigned nothing', () => {
+
+                expect(PicklistDependencyTestService.getAssignedPicklistValues([undefined, {}])).toBeUndefined();
+                expect(PicklistDependencyTestService.getAssignedPicklistValues([])).toBeUndefined();
+                expect(PicklistDependencyTestService.getAssignedPicklistValues(undefined)).toBeUndefined();
+                expect(PicklistDependencyTestService.getAssignedPicklistValues('not an array')).toBeUndefined();
+
+            });
+
+            test('given a record type whose assigned values are unusable, skips the combination instead of emitting a broken spec', () => {
+
+                const recordTypeWrapper = buildRecordTypeWrapper('Broken_Values', {
+                    City__c: ['cle'],
+                    Neighborhood__c: [undefined, { nested: ['markup'] }] as unknown as string[]
+                });
+
+                const recordTypeResult = PicklistDependencyTestService.buildRecordTypeSpecDetails([neighborhoodSpecDetail], [recordTypeWrapper]);
+
+                expect(recordTypeResult.recordTypeSpecDetails).toBeEmpty();
+                expect(recordTypeResult.skippedFieldWarnings).toHaveLength(1);
 
             });
 
@@ -1091,6 +1143,12 @@ describe('PicklistDependencyTestService', () => {
                 expect(recordTypeCollectionResult.skippedRecordTypeWarnings).toHaveLength(1);
                 expect(recordTypeCollectionResult.skippedRecordTypeWarnings[0]).toContain('Broken.recordType-meta.xml');
 
+                /*
+                    The parser embeds the whole file in its exception message and this warning is
+                    shown as a notification, so the message must name the file rather than quote it.
+                */
+                expect(recordTypeCollectionResult.skippedRecordTypeWarnings[0]).not.toContain('<fullName>Broken</fullName>');
+
             });
 
             test('given a file carrying markup that is not a RecordType, reports it rather than reading a name off nothing', async () => {
@@ -1110,6 +1168,82 @@ describe('PicklistDependencyTestService', () => {
 
                 expect(recordTypeCollectionResult.recordTypeWrappers).toBeEmpty();
                 expect(recordTypeCollectionResult.skippedRecordTypeWarnings[0]).toContain('Impostor.recordType-meta.xml');
+
+            });
+
+            /*
+                Each of these is well-formed XML that xml2js parses happily and that then throws a
+                TypeError further along. Unguarded, that aborts the whole walk -- and for the values
+                case it aborts DURING the write loop, leaving the user's package directory holding a
+                half-regenerated class set.
+            */
+            test('given a picklistValues block with no picklist child, skips that record type and keeps reading the rest', async () => {
+
+                (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([
+                    ['No_Picklist_Child.recordType-meta.xml', vscode.FileType.File],
+                    ['Working.recordType-meta.xml', vscode.FileType.File]
+                ]);
+
+                (vscode.workspace.fs.readFile as jest.Mock).mockImplementation(async (fileUri: any) => {
+
+                    if ( fileUri.fsPath.includes('No_Picklist_Child') ) {
+                        return Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>No_Picklist_Child</fullName>
+    <picklistValues>
+        <values>
+            <fullName>cle</fullName>
+        </values>
+    </picklistValues>
+</RecordType>`);
+                    }
+
+                    return Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Working</fullName>
+</RecordType>`);
+
+                });
+
+                const recordTypeCollectionResult = await PicklistDependencyTestService.getRecordTypeWrappersByObjectDirectory(
+                    vscode.Uri.file('/workspace/objects/Dependency_Example__c'),
+                    'Dependency_Example__c'
+                );
+
+                expect(recordTypeCollectionResult.recordTypeWrappers.map(recordTypeWrapper => recordTypeWrapper.DeveloperName)).toEqual(['Working']);
+                expect(recordTypeCollectionResult.skippedRecordTypeWarnings).toHaveLength(1);
+                expect(recordTypeCollectionResult.skippedRecordTypeWarnings[0]).toContain('No_Picklist_Child');
+
+            });
+
+            /*
+                Nested markup under <fullName> parses to an OBJECT, which is truthy -- a presence
+                check alone carries it into the wrapper, where the sort's localeCompare then throws.
+            */
+            test('given nested markup where the developer name should be, skips it rather than sorting on a non-string', async () => {
+
+                (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([
+                    ['Nested_Name.recordType-meta.xml', vscode.FileType.File],
+                    ['Working.recordType-meta.xml', vscode.FileType.File]
+                ]);
+
+                (vscode.workspace.fs.readFile as jest.Mock).mockImplementation(async (fileUri: any) => {
+
+                    if ( fileUri.fsPath.includes('Nested_Name') ) {
+                        return Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n<RecordType xmlns="http://soap.sforce.com/2006/04/metadata"><fullName><nested>Name</nested></fullName></RecordType>');
+                    }
+
+                    return Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n<RecordType xmlns="http://soap.sforce.com/2006/04/metadata"><fullName>Working</fullName></RecordType>');
+
+                });
+
+                const recordTypeCollectionResult = await PicklistDependencyTestService.getRecordTypeWrappersByObjectDirectory(
+                    vscode.Uri.file('/workspace/objects/Dependency_Example__c'),
+                    'Dependency_Example__c'
+                );
+
+                expect(recordTypeCollectionResult.recordTypeWrappers.map(recordTypeWrapper => recordTypeWrapper.DeveloperName)).toEqual(['Working']);
+                expect(recordTypeCollectionResult.skippedRecordTypeWarnings[0]).toContain('Nested_Name');
 
             });
 
@@ -1169,6 +1303,7 @@ describe('PicklistDependencyTestService', () => {
                 // eastlake IS DECLARED BY City__c BUT THE Cleveland_Only RECORD TYPE DOES NOT ASSIGN IT
                 const scopedEastlakeExpectation = scopedNeighborhoodSpecDetail.expectations.find(expectation => expectation.controllingValue === 'eastlake');
                 expect(scopedEastlakeExpectation.dependentValues).toBeEmpty();
+                expect(scopedEastlakeExpectation.controllingValueUnavailable).toBeTrue();
 
             });
 
@@ -1231,6 +1366,25 @@ describe('PicklistDependencyTestService', () => {
                 ]
             };
 
+            test('given an unavailable controlling value, emits expectUnavailable rather than expectNone', () => {
+
+                const specStatement = PicklistDependencyTestService.buildSpecStatement({
+                    ...clevelandOnlySpecDetail,
+                    expectations: [
+                        { controllingValue: 'cle', dependentValues: [], forbiddenValues: [] },
+                        { controllingValue: 'eastlake', dependentValues: [], forbiddenValues: [], controllingValueUnavailable: true }
+                    ]
+                });
+
+                // "cle" IS ASSIGNED BY THE RECORD TYPE AND UNLOCKS NOTHING -- IT MUST EXIST
+                expect(specStatement).toContain(`.expectNone('cle')`);
+
+                // "eastlake" IS NOT ASSIGNED AT ALL -- ASSERTING IT EXISTS WOULD FAIL ON CORRECT METADATA
+                expect(specStatement).toContain(`.expectUnavailable('eastlake')`);
+                expect(specStatement).not.toContain(`.expectNone('eastlake')`);
+
+            });
+
             test('given a record type scoped detail, emits forRecordType rather than forField', () => {
 
                 const specStatement = PicklistDependencyTestService.buildSpecStatement(clevelandOnlySpecDetail);
@@ -1250,6 +1404,37 @@ describe('PicklistDependencyTestService', () => {
 
                 expect(recordTypeMethodName).toBe(`${fieldLevelMethodName}_recordType_Cleveland_Only`);
                 // APEX IDENTIFIERS MAY NOT CONTAIN TWO CONSECUTIVE UNDERSCORES
+                expect(recordTypeMethodName).not.toContain('__');
+
+            });
+
+            /*
+                Collapsing each segment before the join leaves a pair spanning the separator, and
+                Apex rejects an identifier holding two underscores in a row.
+            */
+            test('given a record type developer name that meets the separator, produces no consecutive underscores', () => {
+
+                const recordTypeMethodName = PicklistDependencyTestService.buildSpecMethodName(
+                    'Dependency_Example__c',
+                    'Neighborhood__c',
+                    '_Leading_Underscore'
+                );
+
+                expect(recordTypeMethodName).not.toContain('__');
+                expect(recordTypeMethodName).toEndWith('_recordType_Leading_Underscore');
+
+            });
+
+            // AN IDENTIFIER IS A SINK NO ESCAPING PROTECTS, SO THE BUILDER DOES NOT RELY ON ITS CALLER HAVING VALIDATED
+            test('given a name that never passed the api name gate, strips what Apex could not parse', () => {
+
+                const recordTypeMethodName = PicklistDependencyTestService.buildSpecMethodName(
+                    'Dependency_Example__c',
+                    'Neighborhood__c',
+                    `Evil'); System.debug('`
+                );
+
+                expect(recordTypeMethodName).toMatch(/^[A-Za-z0-9_]+$/);
                 expect(recordTypeMethodName).not.toContain('__');
 
             });
@@ -1326,6 +1511,29 @@ describe('PicklistDependencyTestService', () => {
 
                 expect(specsTestClassBody).toContain('SDTPLDSpecs.all()');
                 expect(specsTestClassBody).not.toContain('allRecordTypeScoped');
+
+            });
+
+            test('given an object present only in the scoped details, still writes its class rather than dropping it', () => {
+
+                jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+                jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+                let writtenContentByFilePath: Record<string, string> = {};
+                jest.spyOn(fs, 'writeFileSync').mockImplementation((filePath: any, fileContent: any) => {
+                    writtenContentByFilePath[filePath] = fileContent;
+                });
+
+                const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
+                    '/workspace/force-app/main/default/classes',
+                    [],
+                    '64.0',
+                    [clevelandOnlySpecDetail]
+                );
+
+                const perObjectClassFilePath = specsClassWriteResult.perObjectClassFilePathsByObjectApiName['Dependency_Example__c'];
+                expect(perObjectClassFilePath).toBeDefined();
+                expect(writtenContentByFilePath[perObjectClassFilePath]).toContain('recordTypeSpecs()');
 
             });
 
@@ -2101,6 +2309,54 @@ describe('PicklistDependencyTestService', () => {
 
         const shippedFrameworkClassesPath = path.join(__dirname, '..', '..', '..', '..', '..', 'apexPicklistDependencyFramework', 'SDTPicklistDependencyFramework');
 
+        test('emitted record type scoped builder methods all exist on the shipped SDTPicklistDependencySpec class', async () => {
+
+            const cityFieldDetail = await getFieldDetailByFixtureFileName(mockDependencyExampleFieldsPath, 'City__c.field-meta.xml');
+            const neighborhoodFieldDetail = await getFieldDetailByFixtureFileName(mockDependencyExampleFieldsPath, 'Neighborhood__c.field-meta.xml');
+
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Dependency_Example__c',
+                [cityFieldDetail, neighborhoodFieldDetail]
+            );
+
+            /*
+                Assigns one of the two controlling values and two of the three dependent values, which
+                is what makes the scoped emission cover every builder it can reach: expectAtLeast and
+                expectNotAllowed for the reachable combination, and expectUnavailable for the
+                controlling value this record type does not assign.
+            */
+            let recordTypeWrapper = new RecordTypeWrapper();
+            recordTypeWrapper.DeveloperName = 'Cleveland_Only';
+            recordTypeWrapper.PicklistFieldSectionsToPicklistDetail = {
+                City__c: ['cle'],
+                Neighborhood__c: ['ohiocity', 'willowick']
+            };
+
+            const recordTypeResult = PicklistDependencyTestService.buildRecordTypeSpecDetails(collectionResult.specDetails, [recordTypeWrapper]);
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Dependency_Example__c',
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Dependency_Example__c'),
+                collectionResult.specDetails,
+                recordTypeResult.recordTypeSpecDetails
+            );
+
+            const shippedSpecClassBody = fs.readFileSync(path.join(shippedFrameworkClassesPath, 'SDTPicklistDependencySpec.cls'), 'utf-8');
+
+            const emittedBuilderMethodNames = [...apexClassBody.matchAll(/^\s+\.([a-zA-Z]+)\(/gm)].map(matchResult => matchResult[1]);
+            const uniqueEmittedBuilderMethodNames = [...new Set(emittedBuilderMethodNames)];
+
+            expect(uniqueEmittedBuilderMethodNames).toContain('expectUnavailable');
+
+            uniqueEmittedBuilderMethodNames.forEach(builderMethodName => {
+                expect(shippedSpecClassBody).toContain(`public SDTPicklistDependencySpec ${builderMethodName}(`);
+            });
+
+            expect(shippedSpecClassBody).toContain('public static SDTPicklistDependencySpec forRecordType(');
+            expect(apexClassBody).toContain('SDTPicklistDependencySpec.forRecordType(');
+
+        });
+
         test('emitted builder methods all exist on the shipped SDTPicklistDependencySpec class', async () => {
 
             /*
@@ -2135,6 +2391,16 @@ describe('PicklistDependencyTestService', () => {
             });
 
             expect(shippedSpecClassBody).toContain('public static SDTPicklistDependencySpec forField(');
+
+        });
+
+        test('the shipped validator exposes the failure kind the record type scoped assertions rely on', () => {
+
+            const shippedValidatorBody = fs.readFileSync(path.join(shippedFrameworkClassesPath, 'SDTPicklistDependencyValidator.cls'), 'utf-8');
+
+            // expectUnavailable IS ONLY MEANINGFUL IF THE VALIDATOR CAN REPORT THE CASE IT GUARDS AGAINST
+            expect(shippedValidatorBody).toContain('UNEXPECTED_CONTROLLING_VALUE');
+            expect(shippedValidatorBody).toContain('MatchMode.UNAVAILABLE');
 
         });
 

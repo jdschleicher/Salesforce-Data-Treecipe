@@ -304,7 +304,7 @@ flowchart LR
     subgraph out["Emitted scoped Apex"]
         O1[".expectAtLeast('cle',<br/>{ 'ohiocity', 'tremont' })"]
         O2[".expectNotAllowed('cle',<br/>{ 'willowick' })"]
-        O3[".expectNone('eastlake')"]
+        O3[".expectUnavailable('eastlake')"]
     end
 
     B1 --> O1
@@ -318,9 +318,11 @@ The derivation rules, per record type `RT` and dependent field `F` controlled by
 | Case | Emitted |
 |---|---|
 | Controlling value assigned to `RT`, with a non-empty intersection of unlocked values | `expectAtLeast` for the intersection, plus `expectNotAllowed` for the rest of what `RT` assigns to `F` |
-| Controlling value assigned to `RT`, but `RT` assigns none of the values it unlocks | `expectNone` |
-| Controlling value not assigned to `RT` | `expectNone` |
+| Controlling value assigned to `RT`, but `RT` assigns none of the values it unlocks | `expectNone` — it must exist under `RT` and unlock nothing |
+| Controlling value not assigned to `RT` | `expectUnavailable` — under `RT` the value is absent, not empty |
 | `RT` assigns no values to `C` **or** to `F` | Nothing — the combination is skipped and reported as a skipped field warning |
+
+**Why `expectUnavailable` rather than `expectNone` for an unassigned controlling value.** The two empty cases are different assertions. `expectNone` requires the controlling value to **exist** and unlock nothing, which is right for a value the record type assigns but starves. A value the record type never assigns is *absent* under it, so `expectNone` would fail against exactly the metadata that is correct — one guaranteed false failure per unassigned controlling value, the moment a record-type-aware source exists. `expectUnavailable` (`MatchMode.UNAVAILABLE`) asserts absence directly and fails with `UNEXPECTED_CONTROLLING_VALUE` if the record type later gains the value, which is real drift worth catching.
 
 **Absence means unassigned, not "everything".** A field a record type's XML never mentions is treated as unassigned for that record type rather than as fully assigned. That is what the recipe generator already does with the same markup, and the opposite reading would assert a contract the metadata never stated. The rule is repeated in the header of every generated class that carries scoped specs.
 
@@ -522,6 +524,7 @@ stateDiagram-v2
 | `UNEXPECTED_VALUES` | `expectExactly` line sees extra values | Admin added a value to a tightened combination | Deliberate tightening was violated — review |
 | `FORBIDDEN_VALUES_PRESENT` | A value drifted **into** a combination | Misconfigured `valueSettings` | Almost always an org defect |
 | `UNKNOWN_CONTROLLING_VALUE` | Controlling value absent from the org | Value renamed or deactivated | High blast radius — investigate first |
+| `UNEXPECTED_CONTROLLING_VALUE` | An `expectUnavailable` line found the controlling value reachable | A record type was assigned a controlling value it should not expose | Record-type scoped only; the failure names the values it wrongly unlocks |
 | `CONTROLLING_FIELD_MISMATCH` | Org reports a different controlling field | Dependency **rewired** | The most serious drift; the field's whole matrix is now unverified |
 | `UPSTREAM_FAILURE` | Controlling field's own spec failed | Chained dependency broken upstream | Fix the named upstream spec first |
 | `CIRCULAR_DEPENDENCY` | `dependsOn` chain loops | Hand-edited spec | Salesforce cannot express this — the spec file is wrong |

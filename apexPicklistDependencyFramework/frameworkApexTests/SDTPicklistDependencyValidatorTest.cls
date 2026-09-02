@@ -505,6 +505,64 @@ private class SDTPicklistDependencyValidatorTest {
         Assert.areEqual(new List<String>{ 'East' }, failures[0].details);
     }
 
+    /**
+     * The case the generator emits for a controlling value a record type does not assign. Under a
+     * record-type aware source that value is ABSENT from the snapshot, and expectNone would demand
+     * it exist -- so this must pass where expectNone would have failed with UNKNOWN_CONTROLLING_VALUE.
+     */
+    @IsTest
+    static void expectUnavailablePassesWhenTheControllingValueIsAbsent() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withRecordTypeSnapshot(OBJ, FIELD, 'US_Only', usOnlyRegionSnapshot());
+
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only')
+            .controlledBy(CONTROLLING)
+            .expectUnavailable('Canada');
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(0, failures.size(),
+            'Canada is not assigned to this record type, so its absence is the passing result');
+    }
+
+    @IsTest
+    static void expectNoneStillDemandsTheControllingValueExists() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withRecordTypeSnapshot(OBJ, FIELD, 'US_Only', usOnlyRegionSnapshot());
+
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only')
+            .controlledBy(CONTROLLING)
+            .expectNone('Canada');
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(1, failures.size(), 'expectNone requires the controlling value to be present');
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.UNKNOWN_CONTROLLING_VALUE, failures[0].kind,
+            'this is exactly why an unassigned controlling value must not be emitted as expectNone');
+    }
+
+    @IsTest
+    static void expectUnavailableFailsWhenTheRecordTypeGainsTheControllingValue() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withRecordTypeSnapshot(OBJ, FIELD, 'US_Only', regionSnapshot());
+
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only')
+            .controlledBy(CONTROLLING)
+            .expectUnavailable('Canada');
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(1, failures.size(), 'the record type now exposes a controlling value it must not');
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.UNEXPECTED_CONTROLLING_VALUE, failures[0].kind);
+        Assert.areEqual('US_Only', failures[0].recordTypeDeveloperName);
+        Assert.isTrue(failures[0].toLine().contains('Canada'), failures[0].toLine());
+        Assert.areEqual(new List<String>{ 'Ontario', 'Quebec' }, failures[0].details,
+            'the values it wrongly unlocks are named');
+    }
+
     @IsTest
     static void recordTypeScopedSpecChainsToItsUpstreamRecordTypeSpec() {
         SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()

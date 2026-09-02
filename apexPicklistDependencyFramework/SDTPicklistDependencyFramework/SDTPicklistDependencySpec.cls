@@ -24,6 +24,11 @@
  *   - expectExactly  : the controlling value must unlock EXACTLY the listed values
  *                      (a deliberate tightening by the spec owner).
  *   - expectNone     : the controlling value must exist and unlock nothing.
+ *   - expectUnavailable : the controlling value must NOT be available at all. Only meaningful
+ *                      for a record-type scoped spec, where a controlling value the record type
+ *                      does not assign is absent rather than empty -- expectNone would demand
+ *                      the value exist and so would fail on exactly the metadata that is
+ *                      correct. This is the record-type equivalent of expectNone.
  *
  * dependsOn links a spec to the spec for its controlling field, where that field is itself a
  * dependent picklist. The validator reports a break at its source rather than once per
@@ -39,17 +44,17 @@
  *   SDTPicklistDependencySpec.forRecordType('Account', 'Region__c', 'US_Only')
  *       .controlledBy('Country__c')
  *       .expectAtLeast('United States', new List<String>{ 'West' })
- *       .expectNone('Canada');
+ *       .expectUnavailable('Canada');
  */
 public class SDTPicklistDependencySpec {
 
-    public enum MatchMode { EXACTLY, AT_LEAST, NOT_ALLOWED }
+    public enum MatchMode { EXACTLY, AT_LEAST, NOT_ALLOWED, UNAVAILABLE }
 
     public class Expectation {
         public String controllingValue;
         public MatchMode mode;
 
-        /** Values the controlling value must unlock. Empty for NOT_ALLOWED. */
+        /** Values the controlling value must unlock. Empty for NOT_ALLOWED and UNAVAILABLE. */
         public Set<String> expectedValues;
 
         /** Values the controlling value must NOT unlock. Empty for every mode but NOT_ALLOWED. */
@@ -129,6 +134,18 @@ public class SDTPicklistDependencySpec {
 
     public SDTPicklistDependencySpec expectNone(String controllingValue) {
         expectations.add(new Expectation(controllingValue, MatchMode.EXACTLY, new Set<String>(), null));
+        return this;
+    }
+
+    /**
+     * The controlling value must not be reachable at all under this spec's scope.
+     *
+     * A record type that does not assign a controlling value does not expose it as an empty
+     * choice -- it does not expose it. Asserting that with expectNone would fail against a
+     * faithful record-type aware source, because expectNone requires the value to exist.
+     */
+    public SDTPicklistDependencySpec expectUnavailable(String controllingValue) {
+        expectations.add(new Expectation(controllingValue, MatchMode.UNAVAILABLE, null, null));
         return this;
     }
 
