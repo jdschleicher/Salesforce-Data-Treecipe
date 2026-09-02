@@ -4,9 +4,13 @@
  * One spec targets one dependent picklist (object + field) and its controlling field, and
  * carries one expectation per controlling value.
  *
- * Specs are not record-type scoped. Schema describe exposes no record-type-aware picklist
- * values, so the describe-based source could not honour such a scope; rather than offer a
- * builder method that always fails, none is provided.
+ * A spec is either field level (forField) or record-type scoped (forRecordType). A record-type
+ * scoped spec narrows the same combinations to what one record type assigns, and asserting it
+ * needs a source that can read record-type-filtered picklist values. Schema describe cannot:
+ * SDTSchemaPicklistDependencySource rejects a record-type scoped spec rather than answering it
+ * with field-level data, which would report a scope it never checked as green. The generated
+ * SDTPLDSpecs keeps them out of all() for that reason and exposes them through
+ * allRecordTypeScoped(), ready for a record-type aware ISDTPicklistDependencySource.
  *
  * Match modes are per controlling-value line, not per spec:
  *   - expectAtLeast  : the controlling value must unlock AT LEAST the listed values
@@ -31,6 +35,11 @@
  *       .expectAtLeast('United States', new List<String>{ 'West', 'East' })
  *       .expectNotAllowed('United States', new List<String>{ 'Ontario', 'Quebec' })
  *       .expectNone('Antarctica');
+ *
+ *   SDTPicklistDependencySpec.forRecordType('Account', 'Region__c', 'US_Only')
+ *       .controlledBy('Country__c')
+ *       .expectAtLeast('United States', new List<String>{ 'West' })
+ *       .expectNone('Canada');
  */
 public class SDTPicklistDependencySpec {
 
@@ -60,6 +69,13 @@ public class SDTPicklistDependencySpec {
     public List<Expectation> expectations;
 
     /**
+     * The record type this spec's combinations are scoped to, or null for a field-level spec.
+     * Part of label(), so a field's field-level spec and its record-type scoped ones are distinct
+     * to the validator rather than collapsing onto one another.
+     */
+    public String recordTypeDeveloperName;
+
+    /**
      * The spec for this spec's controlling field, when that field is itself a dependent
      * picklist. Null for the root of a chain, which is the common case.
      */
@@ -73,6 +89,17 @@ public class SDTPicklistDependencySpec {
 
     public static SDTPicklistDependencySpec forField(String objectApiName, String fieldApiName) {
         return new SDTPicklistDependencySpec(objectApiName, fieldApiName);
+    }
+
+    /**
+     * A spec covering only the combinations one record type exposes. The expectations are the
+     * field-level ones narrowed by that record type's picklist assignments, so they can only ever
+     * be a subset of what forField would assert for the same field.
+     */
+    public static SDTPicklistDependencySpec forRecordType(String objectApiName, String fieldApiName, String recordTypeDeveloperName) {
+        SDTPicklistDependencySpec spec = new SDTPicklistDependencySpec(objectApiName, fieldApiName);
+        spec.recordTypeDeveloperName = recordTypeDeveloperName;
+        return spec;
     }
 
     public SDTPicklistDependencySpec controlledBy(String controllingFieldApiName) {
@@ -105,8 +132,13 @@ public class SDTPicklistDependencySpec {
         return this;
     }
 
+    public Boolean isRecordTypeScoped() {
+        return recordTypeDeveloperName != null;
+    }
+
     public String label() {
-        return objectApiName + '.' + fieldApiName;
+        String fieldLabel = objectApiName + '.' + fieldApiName;
+        return isRecordTypeScoped() ? fieldLabel + ' [' + recordTypeDeveloperName + ']' : fieldLabel;
     }
 
     private static Set<String> toSet(List<String> values) {

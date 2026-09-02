@@ -95,6 +95,20 @@ public with sharing class SDTSchemaPicklistDependencySource implements ISDTPickl
      */
     public SDTPicklistDependencySnapshot fetch(SDTPicklistDependencySpec spec) {
 
+        /*
+            Describe returns every value a field declares, with no record type filtering anywhere in
+            the result. Answering a record-type scoped spec from it would compare that record type's
+            narrowed expectations against the whole field and pass -- reporting a scope that was
+            never checked as verified. Failing loudly is the only honest answer available here.
+        */
+        if (spec.isRecordTypeScoped()) {
+            throw new PicklistDependencyException(
+                spec.label() + ' is record type scoped, and Schema describe returns picklist values '
+                    + 'without record type filtering. Validate record type scoped specs with an '
+                    + 'ISDTPicklistDependencySource that can read record-type-filtered values.'
+            );
+        }
+
         Schema.DescribeFieldResult dependentDescribe = describeField(spec.objectApiName, spec.fieldApiName);
         Schema.SObjectField controllerToken = dependentDescribe.getController();
 

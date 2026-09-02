@@ -28,6 +28,10 @@ public class SDTPicklistDependencyValidator {
         public String objectApiName;
         public String fieldApiName;
         public String controllingValue;
+
+        /** The record type the failing spec was scoped to, or null when it was field level. */
+        public String recordTypeDeveloperName;
+
         public FailureKind kind;
         public String message;
         public List<String> details;
@@ -35,14 +39,23 @@ public class SDTPicklistDependencyValidator {
         public Failure(SDTPicklistDependencySpec spec, String controllingValue, FailureKind kind, String message, List<String> details) {
             this.objectApiName = spec.objectApiName;
             this.fieldApiName = spec.fieldApiName;
+            this.recordTypeDeveloperName = spec.recordTypeDeveloperName;
             this.controllingValue = controllingValue;
             this.kind = kind;
             this.message = message;
             this.details = details == null ? new List<String>() : details;
         }
 
+        /*
+            The record type is named in the scope rather than the message so that a reader scanning
+            failures sees which record type drifted without reading to the end of the line, and so
+            the same drift under two record types cannot read as one repeated failure.
+        */
         public String toLine() {
             String scope = objectApiName + '.' + fieldApiName;
+            if (recordTypeDeveloperName != null) {
+                scope += ' [' + recordTypeDeveloperName + ']';
+            }
             if (controllingValue != null) {
                 scope += ' @ ' + controllingValue;
             }

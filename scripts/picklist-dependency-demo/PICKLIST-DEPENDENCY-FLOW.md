@@ -178,7 +178,13 @@ sequenceDiagram
         Recipe-->>Gen: controllingValue → dependent values
         Gen->>Gen: buildExpectations, add expectNone for<br/>controlling values that unlock nothing
     end
-    Gen-->>Cmd: specDetails + skippedFieldWarnings
+
+    opt object has a recordTypes/ sibling
+        Gen->>Gen: getRecordTypeWrappersByObjectDirectory<br/>read *.recordType-meta.xml only
+        Gen->>Gen: buildRecordTypeSpecDetails<br/>narrow each spec per record type,<br/>skip a field the record type never assigns
+    end
+
+    Gen-->>Cmd: specDetails + recordTypeSpecDetails + skippedFieldWarnings
 
     Cmd-->>User: warn on up to 3 skipped fields, then a rollup
     Note over Cmd: 0 specs → info message, nothing written, return
@@ -188,7 +194,7 @@ sequenceDiagram
     Cmd-->>User: confirm overwrite of existing generated files
     Cmd->>Gen: getSourceApiVersion from sfdx-project.json
     Cmd->>Gen: buildPerObjectSpecsClassNamesByObjectApiName<br/>40-char cap, digest on overflow, suffix on collision
-    Cmd->>Disk: write one SDTPLDSpecs_{Object}.cls + meta.xml per object
+    Cmd->>Disk: write one SDTPLDSpecs_{Object}.cls + meta.xml per object<br/>recordTypeSpecs() included only where the object has scoped specs
     Cmd->>Disk: write SDTPLDSpecs.cls aggregator + meta.xml
     Cmd->>Disk: write SDTPLDSpecsTest.cls + meta.xml
     Cmd->>Gen: scaffoldMissingFrameworkClasses
@@ -400,7 +406,8 @@ flowchart TB
 
     C["buildControllingValueToPicklistOptions<br/>cle → ohiocity, tremont<br/>eastlake → willowick"]
     C --> D["buildExpectations<br/>complement each allowed set against the field's<br/>declared values → forbiddenValues<br/>akron unlocks nothing → expectNone, no complement"]
-    D --> E["buildSpecStatement<br/>api names validated, literals escaped"]
+    D --> D2["buildRecordTypeSpecDetails (only where recordTypes/ exists)<br/>controlling values ∩ record type's controlling assignments<br/>unlocked values ∩ record type's dependent assignments<br/>field the record type never assigns → skipped with a warning"]
+    D2 --> E["buildSpecStatement<br/>api names validated, literals escaped<br/>forRecordType when the detail is scoped"]
     E --> F["forField.controlledBy<br/>.expectAtLeast cle, ohiocity + tremont<br/>.expectNotAllowed cle, willowick<br/>.expectAtLeast eastlake, willowick<br/>.expectNotAllowed eastlake, ohiocity + tremont<br/>.expectNone akron"]
     F --> G["SDTPicklistDependencyValidator<br/>vs SDTSchemaPicklistDependencySource"]
     G --> H{"org still satisfies<br/>every expectation?"}

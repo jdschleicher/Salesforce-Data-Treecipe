@@ -410,6 +410,124 @@ private class SDTPicklistDependencyValidatorTest {
         Assert.areEqual(1, failures.size(), 'the same spec twice is still one set of failures');
     }
 
+    /**
+     * The record type narrowed snapshot: US_Only exposes only the United States controlling value
+     * and only West beneath it, which is a strict subset of what the field itself declares.
+     */
+    private static SDTPicklistDependencySnapshot usOnlyRegionSnapshot() {
+        SDTPicklistDependencySnapshot snapshot = new SDTPicklistDependencySnapshot();
+        snapshot.objectApiName = OBJ;
+        snapshot.fieldApiName = FIELD;
+        snapshot.controllingFieldApiName = CONTROLLING;
+        snapshot.controllerValues = new Map<String, Integer>{ 'United States' => 0 };
+        snapshot.dependentValueValidFor = new Map<String, List<Integer>>{
+            'West' => new List<Integer>{ 0 }
+        };
+        return snapshot;
+    }
+
+    @IsTest
+    static void recordTypeScopedSpecCarriesTheRecordTypeInItsLabel() {
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only');
+
+        Assert.isTrue(spec.isRecordTypeScoped(), 'forRecordType produces a record type scoped spec');
+        Assert.areEqual('US_Only', spec.recordTypeDeveloperName);
+        Assert.areEqual(OBJ + '.' + FIELD + ' [US_Only]', spec.label(),
+            'the label separates a record type scoped spec from the field level one');
+        Assert.isFalse(SDTPicklistDependencySpec.forField(OBJ, FIELD).isRecordTypeScoped(),
+            'forField is unchanged and stays unscoped');
+    }
+
+    @IsTest
+    static void recordTypeScopedSpecPassesAgainstTheRecordTypeNarrowedOrgState() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withSnapshot(OBJ, FIELD, regionSnapshot())
+            .withRecordTypeSnapshot(OBJ, FIELD, 'US_Only', usOnlyRegionSnapshot());
+
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only')
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'West' })
+            .expectNotAllowed('United States', new List<String>{ 'East' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(0, failures.size(),
+            'East is unreachable under this record type, so the narrowed expectations hold');
+    }
+
+    @IsTest
+    static void recordTypeScopedFailureNamesTheRecordType() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withRecordTypeSnapshot(OBJ, FIELD, 'US_Only', usOnlyRegionSnapshot());
+
+        SDTPicklistDependencySpec spec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only')
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'West', 'Central' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ spec });
+
+        Assert.areEqual(1, failures.size(), 'the missing value produces one failure');
+        Assert.areEqual('US_Only', failures[0].recordTypeDeveloperName,
+            'the failure carries the record type it was scoped to');
+
+        String failureLine = failures[0].toLine();
+        Assert.isTrue(failureLine.contains('[US_Only]'), failureLine);
+        Assert.isTrue(failureLine.contains(OBJ + '.' + FIELD), failureLine);
+        Assert.isTrue(failureLine.contains('United States'), failureLine);
+        Assert.isTrue(failureLine.contains('Central'), failureLine);
+    }
+
+    @IsTest
+    static void recordTypeScopedDriftIsReportedWhenTheFieldLevelSpecStillPasses() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withSnapshot(OBJ, FIELD, regionSnapshot())
+            .withRecordTypeSnapshot(OBJ, FIELD, 'US_Only', usOnlyRegionSnapshot());
+
+        SDTPicklistDependencySpec fieldLevelSpec = SDTPicklistDependencySpec.forField(OBJ, FIELD)
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'West', 'East' });
+
+        // East IS declared by the field but the record type no longer assigns it
+        SDTPicklistDependencySpec recordTypeSpec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only')
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'West', 'East' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source)
+                .validate(new List<SDTPicklistDependencySpec>{ fieldLevelSpec, recordTypeSpec });
+
+        Assert.areEqual(1, failures.size(),
+            'the two specs are validated separately rather than deduped onto one label');
+        Assert.areEqual('US_Only', failures[0].recordTypeDeveloperName,
+            'the record type scoped spec is the one that failed');
+        Assert.areEqual(new List<String>{ 'East' }, failures[0].details);
+    }
+
+    @IsTest
+    static void recordTypeScopedSpecChainsToItsUpstreamRecordTypeSpec() {
+        SDTStubPicklistDependencySource source = new SDTStubPicklistDependencySource()
+            .withRecordTypeSnapshot(OBJ, FIELD, 'US_Only', usOnlyRegionSnapshot())
+            .withRecordTypeSnapshot(OBJ, 'City__c', 'US_Only', usOnlyRegionSnapshot());
+
+        SDTPicklistDependencySpec upstreamSpec = SDTPicklistDependencySpec.forRecordType(OBJ, FIELD, 'US_Only')
+            .controlledBy(CONTROLLING)
+            .expectAtLeast('United States', new List<String>{ 'Central' });
+
+        SDTPicklistDependencySpec downstreamSpec = SDTPicklistDependencySpec.forRecordType(OBJ, 'City__c', 'US_Only')
+            .controlledBy(FIELD)
+            .dependsOn(upstreamSpec)
+            .expectAtLeast('United States', new List<String>{ 'West' });
+
+        List<SDTPicklistDependencyValidator.Failure> failures =
+            new SDTPicklistDependencyValidator(source).validate(new List<SDTPicklistDependencySpec>{ downstreamSpec });
+
+        Assert.areEqual(1, failures.size(), 'the downstream spec reports its upstream break once');
+        Assert.areEqual(SDTPicklistDependencyValidator.FailureKind.UPSTREAM_FAILURE, failures[0].kind);
+        Assert.isTrue(failures[0].message.contains('[US_Only]'), failures[0].message);
+    }
+
     @IsTest
     static void reportSummarisesPassAndFail() {
         List<SDTPicklistDependencySpec> specs = new List<SDTPicklistDependencySpec>{

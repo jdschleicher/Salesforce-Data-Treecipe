@@ -78,12 +78,13 @@ flowchart LR
 | G5 | No callouts, no Remote Site, no Named Credential | Dependency data is read via `Schema` describe only |
 | G6 | Tolerant of legitimate admin additions, intolerant of removals and drift | Paired `expectAtLeast` / `expectNotAllowed` per controlling value |
 | G7 | A broken chain reports once, at its source | `dependsOn` + `UPSTREAM_FAILURE` short-circuit in the validator |
+| G8 | A record type's own combinations are captured, and never silently reported as verified | `forRecordType` specs are emitted from `recordTypes/` and kept out of `all()`; the describe-based source refuses them outright |
 
 ### Non-goals
 
 | # | Non-goal | Rationale |
 |---|---|---|
-| N1 | Record-type-scoped assertions | `Schema` describe exposes no record-type-aware picklist values; a builder method that always fails is worse than no method. Explicitly documented in `SDTPicklistDependencySpec` |
+| N1 | **Org-side verification** of record-type-scoped assertions | Record-type-scoped specs are now *generated* (`forRecordType`, [§5](#record-type-scoped-specs)), but `Schema` describe exposes no record-type-aware picklist values, so no source shipped with the framework can check them against an org. `SDTSchemaPicklistDependencySource` rejects such a spec rather than answering it with field-level data, and the generated test class asserts only `all()` |
 | N2 | Repairing the org | The component reports drift. Remediation is a human decision — the org may be right and the source stale |
 | N3 | Validating picklist *values* generally | Scope is the **dependency matrix**, not value sets, defaults, or inactive values |
 | N4 | Acting as a data-access control | Nothing here enforces or evaluates FLS, sharing or record access. See [§9](#9-permissions-and-access-model) |
@@ -191,8 +192,8 @@ flowchart TB
 | `SDTPicklistDependencyValidator` | Framework | Scaffolded when absent | default | Compares specs to snapshots; memoises; guards cycles; never throws on mismatch |
 | `SDTSchemaPicklistDependencySource` | Framework | Scaffolded when absent | **`with sharing`** | Production source; `Schema` describe + `validFor` bitmap decode; per-transaction describe caches |
 | `SDTPicklistDependencyReport` | Framework | Scaffolded when absent | default | Human report + `PICKLIST_DEPENDENCY_CHECK_RESULT=PASS\|FAIL\|EMPTY` marker |
-| `SDTPLDSpecs_<Object>` | **Generated** | **Overwritten on every generation** | default | The declared matrix for one object, as executable Apex |
-| `SDTPLDSpecs` | **Generated** | **Overwritten on every generation** | default | Aggregator; the only class downstream code should reference |
+| `SDTPLDSpecs_<Object>` | **Generated** | **Overwritten on every generation** | default | The declared matrix for one object, as executable Apex. `all()` is the field-level matrix; `recordTypeSpecs()` — emitted only where the object has record types assigning both fields of a dependency — is the same matrix narrowed per record type |
+| `SDTPLDSpecs` | **Generated** | **Overwritten on every generation** | default | Aggregator; the only class downstream code should reference. `all()` aggregates the field-level specs; `allRecordTypeScoped()` is emitted only when at least one object produced scoped specs |
 | `SDTPLDSpecsTest` | **Generated** | **Overwritten on every generation** | `@IsTest private` | One test method per object + `specRegistryIsNotEmpty` |
 
 ### Naming and collision policy
@@ -234,6 +235,12 @@ sequenceDiagram
     Svc->>Svc: buildControllingValueToPicklistOptions()
     Svc->>Svc: buildExpectations() — expectAtLeast + complement as expectNotAllowed
     Svc->>Svc: link dependsOn where the controlling field is itself dependent
+
+    opt objects/<Object>/recordTypes/*.recordType-meta.xml exists
+        Svc->>Svc: getRecordTypeWrappersByObjectDirectory() — reuses RecordTypeService parsing
+        Svc->>Svc: buildRecordTypeSpecDetails() — narrow the bones per record type
+    end
+
     Svc->>Svc: buildPerObjectSpecsClassName() — 40-char cap, SHA-256 suffix
 
     Cmd->>Svc: assertClassesDirectoryContainedInWorkspace()
@@ -277,6 +284,49 @@ flowchart LR
     NEG --> NA
     POS -->|"unlocks nothing"| NN
 ```
+
+### Record-type-scoped specs
+
+A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than the field-level matrix. The field-level ("bones") specs are emitted exactly as before; the scoped ones are derived from them, which is what guarantees a scoped spec can only ever be a *subset* of the field-level one.
+
+```mermaid
+flowchart LR
+    subgraph bones["Field-level spec (the bones)"]
+        B1["cle → [ohiocity, tremont]"]
+        B2["eastlake → [willowick]"]
+    end
+
+    subgraph rt["recordTypes/Cleveland_Only.recordType-meta.xml"]
+        R1["City__c → [cle]"]
+        R2["Neighborhood__c → [ohiocity, tremont, willowick]"]
+    end
+
+    subgraph out["Emitted scoped Apex"]
+        O1[".expectAtLeast('cle',<br/>{ 'ohiocity', 'tremont' })"]
+        O2[".expectNotAllowed('cle',<br/>{ 'willowick' })"]
+        O3[".expectNone('eastlake')"]
+    end
+
+    B1 --> O1
+    R2 --> O2
+    B2 -->|"controlling value<br/>not assigned to the record type"| O3
+    R1 --> O1
+```
+
+The derivation rules, per record type `RT` and dependent field `F` controlled by `C`:
+
+| Case | Emitted |
+|---|---|
+| Controlling value assigned to `RT`, with a non-empty intersection of unlocked values | `expectAtLeast` for the intersection, plus `expectNotAllowed` for the rest of what `RT` assigns to `F` |
+| Controlling value assigned to `RT`, but `RT` assigns none of the values it unlocks | `expectNone` |
+| Controlling value not assigned to `RT` | `expectNone` |
+| `RT` assigns no values to `C` **or** to `F` | Nothing — the combination is skipped and reported as a skipped field warning |
+
+**Absence means unassigned, not "everything".** A field a record type's XML never mentions is treated as unassigned for that record type rather than as fully assigned. That is what the recipe generator already does with the same markup, and the opposite reading would assert a contract the metadata never stated. The rule is repeated in the header of every generated class that carries scoped specs.
+
+**The complement is taken against the record type's values**, not against everything the field declares: a value the record type does not expose is already unreachable through it, so naming it as forbidden would assert something about the field rather than about the record type.
+
+**Why they are kept out of `all()`.** Nothing shipped with the framework can verify a scoped spec — `Schema` describe is record-type-blind ([§6](#6-runtime-design-how-the-assertion-actually-works)), and `SDTSchemaPicklistDependencySource` therefore throws on one rather than answering it with field-level data, which would report a scope it never checked as green. They are aggregated separately through `SDTPLDSpecs.allRecordTypeScoped()`, ready for an `ISDTPicklistDependencySource` that can read record-type-filtered values.
 
 **Why the pair rather than `expectExactly`.** `expectExactly` fails when an administrator legitimately adds a new value to a combination — a change that is usually intended and should not break a pipeline. `expectAtLeast` alone fails to notice a value *drifting into* a combination it should not be in — a change that is usually a mistake and often a compliance problem. The complement pair catches removals **and** unintended additions while tolerating deliberate additions. `expectExactly` remains available as a **deliberate hand-tightening by the spec owner**, and — critically for change control — **that edit is lost on regeneration**. See [§11](#11-operational-governance).
 
@@ -477,9 +527,13 @@ stateDiagram-v2
 | `CIRCULAR_DEPENDENCY` | `dependsOn` chain loops | Hand-edited spec | Salesforce cannot express this — the spec file is wrong |
 | `LOOKUP_ERROR` | Source threw | Field missing, not dependent, or `validFor` contract changed | Read the message; it distinguishes these |
 
+Every `Failure` carries `recordTypeDeveloperName`, and `toLine()` renders it in the scope — `MISSING_VALUES — Account.Region__c [US_Only] @ United States: ...` — so the same drift under two record types cannot read as one repeated failure. A spec's `label()` includes the record type for the same reason: it is the validator's dedupe and memoisation key, and a field's field-level spec must not collapse onto its scoped ones.
+
 ### Chained dependencies
 
 Where a controlling field is itself a dependent picklist (`City__c` → `Neighborhood__c` → `Dressing__c`), the generator links the specs with `dependsOn`. The validator resolves upstream first and **short-circuits**: a broken `Neighborhood__c` produces one failure at its source plus one `UPSTREAM_FAILURE` per downstream spec, rather than the same describe mismatch repeated N times, which would bury the one fact that matters.
+
+A scoped spec chains to the scoped spec **for the same record type**, and only where that upstream field was itself scoped for that record type — if the record type assigns no values to the upstream field, the link is dropped rather than naming a method that was never emitted.
 
 Upstream specs are resolved **on demand** rather than required in the caller's list — a chain can cross objects while the generated test validates one object at a time. Results are memoised per spec label, so a controlling field shared by several dependent picklists costs one describe, not one per dependent.
 
@@ -785,7 +839,7 @@ A reviewer should not approve this design on the document alone. Confirm each it
 | **R5** | Result artefacts may contain a username | **Low** | When no alias is set, `results.json` records the username (an email address) | Prefer aliases; decide the `.gitignore` posture explicitly |
 | **R6** | `expectExactly` tightenings are silently reverted | **Low** | Regeneration overwrites the generated classes wholesale | Maintain the tightening register and consider a CI assertion ([§11](#11-operational-governance)) |
 | **R7** | Heap growth across many objects | **Low** | `FIELD_MAPS_BY_OBJECT` grows with distinct objects; ~43 KB per object is not a general figure | Measure before extending the registry to dozens of objects; consider batching by object |
-| **R8** | Record-type scoping unsupported | **Accepted** | Describe exposes no record-type-aware picklist values (**N1**) | Document the limitation for admins who assume record-type filtering is covered |
+| **R8** | Record-type-scoped specs are generated but not verified against an org | **Accepted** | The scoped combinations are captured from source metadata and deploy with the rest of the contract, but describe exposes no record-type-aware picklist values (**N1**), so nothing asserts them yet. `SDTSchemaPicklistDependencySource` refuses them, `SDTPLDSpecsTest` does not call `allRecordTypeScoped()`, and the generation summary says so | Supply an `ISDTPicklistDependencySource` backed by a record-type-aware source (UI API is REST-only and cannot run in `@IsTest`, so this most likely belongs on the check-command path rather than in the generated test class) |
 | **R9** | Stray `undefined/` output directory in the working tree | **Low** | The repository currently contains `undefined/treecipe/GeneratedRecipes/...`, indicating a code path that interpolated an undefined workspace path | Unrelated to this component's Apex, but should be traced and removed before release |
 
 ---

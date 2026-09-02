@@ -200,6 +200,27 @@ Every controlling value gets **two** assertions, which together catch drift in b
 
 The forbidden list is the complement: every value the dependent field declares that this controlling value does not unlock. That is deliberately weaker than `expectExactly` — a value an admin legitimately adds to the field after generation is tolerated, while a value moving into the wrong bucket still fails. Tightening a line to `expectExactly` is a deliberate edit — note that regenerating overwrites the file, so hand edits are lost.
 
+#### Record type scoped specs
+
+A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than what the field itself declares. Where an object has a `recordTypes/` directory, the per-object class gets those narrowed combinations too, alongside the field-level ones:
+
+```apex
+public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c_recordType_Cleveland_Only() {
+    return SDTPicklistDependencySpec.forRecordType('Dependency_Example__c', 'Neighborhood__c', 'Cleveland_Only')
+            .controlledBy('City__c')
+            .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' })
+            .expectNotAllowed('cle', new List<String>{ 'willowick' })
+            .expectNone('eastlake');
+}
+```
+
+* The controlling values are the field's, intersected with what the record type assigns to the controlling field; the unlocked values are intersected with what it assigns to the dependent field
+* A controlling value the record type does not assign, and one whose unlocked values it assigns none of, both become `expectNone`
+* A field the record type's XML never mentions is treated as **unassigned** for that record type, not as fully assigned: the combination is skipped and reported as a warning, and the field-level spec still covers the field
+* The scoped specs are collected by `recordTypeSpecs()` on the per-object class and `SDTPLDSpecs.allRecordTypeScoped()` on the aggregator
+
+**They are not asserted by `SDTPLDSpecsTest`, and that is deliberate.** Apex `Schema` describe returns picklist values without any record type filtering, so the describe-backed source cannot answer a record-type-scoped spec — it rejects one outright rather than checking it against the whole field and reporting a scope it never verified as green. The scoped specs deploy with the rest of the contract and are ready for an `ISDTPicklistDependencySource` that can read record-type-filtered values; until then they are a captured contract, not a running one. An object with no `recordTypes/` directory generates exactly what it did before.
+
 #### Chained dependencies
 
 Where a dependent picklist is itself the controlling field of another (`Country__c` → `State__c` → `City__c`), the generated spec for the lower link carries a `dependsOn` naming the spec above it:
@@ -219,6 +240,7 @@ When the upstream spec fails, the break is reported once where it actually is, a
 Notes:
 
 * A field with a `controllingField` but no `valueSettings` markup is reported as a warning and skipped; the rest of the run continues
+* A record type that assigns no values to the controlling or the dependent field of a dependency is reported the same way, and only that combination is skipped
 * If no dependent picklists are found, an informational message is shown and no file is written
 * If the generated classes already exist, you are prompted before they are overwritten
 * A per-object class left over from an object that no longer declares a dependent picklist is removed and named in the summary, so the org stops asserting a contract your metadata no longer describes

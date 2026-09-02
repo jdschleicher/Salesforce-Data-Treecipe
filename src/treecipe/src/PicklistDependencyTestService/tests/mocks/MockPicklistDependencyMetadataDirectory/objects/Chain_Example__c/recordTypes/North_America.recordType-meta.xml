@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>North_America</fullName>
+    <active>true</active>
+    <label>North America</label>
+    <picklistValues>
+        <picklist>Country__c</picklist>
+        <values>
+            <fullName>USA</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Canada</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>State__c</picklist>
+        <values>
+            <fullName>Ohio</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Ontario</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>City__c</picklist>
+        <values>
+            <fullName>Cleveland</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Toronto</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+</RecordType>

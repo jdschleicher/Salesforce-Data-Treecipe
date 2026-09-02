@@ -494,6 +494,40 @@ describe('isSalesforceFieldMetadataFile', () => {
         expect(XmlFileProcessor.isSalesforceFieldMetadataFile('Neighborhood__c.Field-Meta.XML', FILE)).toBe(true);
     });
 
+});
+describe('isSalesforceRecordTypeMetadataFile', () => {
+
+    const FILE = 1;
+    const DIRECTORY = 2;
+
+    test('given a real Salesforce record type file, returns true', () => {
+        expect(XmlFileProcessor.isSalesforceRecordTypeMetadataFile('Cleveland_Only.recordType-meta.xml', FILE)).toBe(true);
+    });
+
+    /*
+        The same hazard the field check exists for: a recordTypes directory can hold a hand-saved
+        copy carrying RecordType markup, and parsing it would narrow the generated combinations by
+        the picklist assignments of a record type the org does not have.
+    */
+    test('given an xml file without the recordType-meta suffix, returns false', () => {
+        expect(XmlFileProcessor.isSalesforceRecordTypeMetadataFile('Cleveland_Only.xml', FILE)).toBe(false);
+        expect(XmlFileProcessor.isSalesforceRecordTypeMetadataFile('Cleveland_Only.recordType-meta.xml.bak', FILE)).toBe(false);
+        expect(XmlFileProcessor.isSalesforceRecordTypeMetadataFile('Neighborhood__c.field-meta.xml', FILE)).toBe(false);
+    });
+
+    // A FILE NAMED EXACTLY THE SUFFIX HAS NO DEVELOPER NAME TO DERIVE, SO IT IS NOT A RECORD TYPE
+    test('given a file named exactly the suffix, returns false', () => {
+        expect(XmlFileProcessor.isSalesforceRecordTypeMetadataFile('.recordType-meta.xml', FILE)).toBe(false);
+    });
+
+    test('given a directory whose name ends in the suffix, returns false', () => {
+        expect(XmlFileProcessor.isSalesforceRecordTypeMetadataFile('Something.recordType-meta.xml', DIRECTORY)).toBe(false);
+    });
+
+    test('given mixed casing, still recognises the suffix', () => {
+        expect(XmlFileProcessor.isSalesforceRecordTypeMetadataFile('Cleveland_Only.RecordType-Meta.XML', FILE)).toBe(true);
+    });
+
     /*
         isXMLFileType keeps meaning "is an .xml file" -- GlobalValueSetSingleton and RecordTypeService
         rely on it for .globalValueSet-meta.xml and .recordType-meta.xml, so narrowing it would have

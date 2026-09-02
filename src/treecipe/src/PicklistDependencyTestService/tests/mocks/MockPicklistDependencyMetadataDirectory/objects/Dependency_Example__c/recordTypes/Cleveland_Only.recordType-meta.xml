@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cleveland_Only</fullName>
+    <active>true</active>
+    <label>Cleveland Only</label>
+    <picklistValues>
+        <picklist>City__c</picklist>
+        <values>
+            <fullName>cle</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Neighborhood__c</picklist>
+        <values>
+            <fullName>ohiocity</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>tremont</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>willowick</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>SpecialCharacterDependent__c</picklist>
+        <values>
+            <fullName>Bob's Diner</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Tom &amp; Jerry's</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>NoValueSettingsDependent__c</picklist>
+        <values>
+            <fullName>whatever</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+</RecordType>

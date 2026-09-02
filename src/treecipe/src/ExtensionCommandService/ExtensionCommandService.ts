@@ -211,7 +211,7 @@ export class ExtensionCommandService {
         const remainingSkippedFieldCount = collectionResult.skippedFieldWarnings.length - maximumIndividualWarningsToShow;
         if ( remainingSkippedFieldCount > 0 ) {
             // THE SUPPRESSED SKIPS MAY BE A MIX OF INVALID API NAMES AND MISSING VALUE SETTINGS, SO NO SINGLE REASON IS CLAIMED
-            VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) were skipped. Each was skipped either for an invalid api name or for having no "valueSettings" markup.`);
+            VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more dependent picklist field(s) or record type combination(s) were skipped. Each was skipped for an invalid api name, for having no "valueSettings" markup, or for a record type that assigns no values to the field.`);
         }
 
         if ( collectionResult.specDetails.length === 0 ) {
@@ -257,7 +257,8 @@ export class ExtensionCommandService {
         const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
             classesDirectoryPath,
             collectionResult.specDetails,
-            sourceApiVersion
+            sourceApiVersion,
+            collectionResult.recordTypeSpecDetails
         );
 
         PicklistDependencyTestService.writeSpecsTestClassFiles(
@@ -280,6 +281,10 @@ export class ExtensionCommandService {
         const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
 
         let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}".`;
+        if ( collectionResult.recordTypeSpecDetails.length > 0 ) {
+            // THE RECORD TYPE SCOPED SPECS ARE NOT IN all(), SO THE SUMMARY SAYS WHERE THEY ARE INSTEAD OF LEAVING THEM UNMENTIONED
+            generationSummary += ` Also generated ${collectionResult.recordTypeSpecDetails.length} record-type-scoped spec(s), aggregated by ${specsClassName}.allRecordTypeScoped(). These are not asserted by ${specsTestClassName}.cls: Schema describe returns picklist values without record type filtering, so they need a record-type-aware ISDTPicklistDependencySource.`;
+        }
         if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
             generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
         }
