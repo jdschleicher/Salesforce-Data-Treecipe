@@ -15,5 +15,10 @@ coverage/
 # -Step Scaffold rewrites all of it deterministically, so none of it needs tracking — and a
 # stray "git add -A" must never commit demo-only Apex or a demo object. That is not
 # hypothetical: b6038c1 committed an "undefined/" capture directory exactly this way.
-treecipe/
+#
+# ANCHORED to the repository root. Unanchored, "treecipe/" also matched "src/treecipe/" -- the
+# extension's own source tree -- so every new file added under it was silently ignored and a
+# "git add -A" staged nothing. The generated output this rule exists for is always written at the
+# workspace root, so anchoring loses none of its intent.
+/treecipe/
 scripts/picklist-dependency-demo/demoSalesforceProject/

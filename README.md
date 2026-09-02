@@ -30,6 +30,7 @@ Users have two choices of "Fake Data" implementations:
     - [4. **Salesforce Treecipe: Insert Data Set by Directory**](#4-salesforce-treecipe-insert-data-set-by-directory)
     - [5. **Salesforce Treecipe: Generate Picklist Dependency Tests**](#5-salesforce-treecipe-generate-picklist-dependency-tests)
     - [6. **Salesforce Treecipe: Run Picklist Dependency Check**](#6-salesforce-treecipe-run-picklist-dependency-check)
+    - [7. **Salesforce Treecipe: Open Picklist Dependency Explorer**](#7-salesforce-treecipe-open-picklist-dependency-explorer)
   - [VIDEO WALKTHROUGHS](#video-walkthroughs)
       - [Initiate Treecipe Configuration with expected Objects directory](#initiate-treecipe-configuration-with-expected-objects-directory)
       - [Generate Treecipe based on treecipe.config.jcon (keep an eye out for OOTB fields and "REMOVE ME" lines)](#generate-treecipe-based-on-treecipeconfigjcon-keep-an-eye-out-for-ootb-fields-and-remove-me-lines)
@@ -84,6 +85,7 @@ Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palet
 4. [Insert Data Set by Directory](#4-salesforce-treecipe-insert-data-set-by-directory)
 5. [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests)
 6. [Run Picklist Dependency Check](#6-salesforce-treecipe-run-picklist-dependency-check)
+7. [Open Picklist Dependency Explorer](#7-salesforce-treecipe-open-picklist-dependency-explorer)
 
 Note: **Select Faker Implementation** is also available from the Command Palette at any time to switch between the `faker-js` and `snowfakery` backends.
 
@@ -287,6 +289,33 @@ Notes:
 * Declining the deploy prompt exits cleanly and deploys nothing
 * The output channel is cleared on each run, so what you see always belongs to the run that just finished
 * Because the channel is cleared, every run is also written to disk under `treecipe/PicklistDependencyResults/` — one timestamped folder per run, so results stay committable and diffable between runs. Passing runs are saved too, not only failures
+
+---
+
+### <a name="7-salesforce-treecipe-open-picklist-dependency-explorer"></a>7. **Salesforce Treecipe: Open Picklist Dependency Explorer**
+
+This command opens a read-only visual view of your picklist dependency structure, with the most recent check's pass/fail state overlaid on it. It answers "which controlling value unlocks what, and which combination just broke" without you reading generated Apex or a markdown dump.
+
+**Prerequisite:** a `treecipe.config.json` pointing at your objects directory. Nothing else — no org, no CLI, and no previous check run are required.
+
+The command:
+
+1. Reads your local source metadata and builds the dependency structure: object → controlling field → controlling value → the values it unlocks, and the values it must *not* unlock where negative specs exist
+2. Renders chained dependencies as a connected graph — a field controlled by another dependent picklist is nested under it rather than repeated as a flat row
+3. Finds the most recent run under `treecipe/PicklistDependencyResults/` and overlays it, marking each combination passed, failed, or not checked
+4. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination
+5. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`
+
+Notes:
+
+* The panel is a **VS Code webview** — no local HTTP server, no open port, no extra runtime dependency. Its content security policy allows only the extension's own inline style and script, so it loads nothing from the network
+* It follows your active color theme, light, dark or high contrast
+* **No check has been run yet?** The structure still renders in full, marked "not checked" throughout, with the directory it looked in named
+* **A corrupt `results.json`?** You get a readable message and the structure without the overlay, not a blank panel
+* **No dependent picklists at all?** You get an empty state naming the objects directory that was scanned
+* A combination is only shown as passed when the loaded run actually covered it. If **any** of an object's reported failures cannot be tied back to a specific combination, that text is surfaced on the object and its combinations stay "not checked" rather than being reported green
+* Where a combination did fail, **every** failure reported against it is shown — the validator raises `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT` independently, and both matter
+* **Known limitation:** results are recorded per object with no fingerprint of the specs they were generated from, so a combination added to `valueSettings` *after* the last check run shows as passed. Re-run the check after changing dependency metadata
 
 ---
 
