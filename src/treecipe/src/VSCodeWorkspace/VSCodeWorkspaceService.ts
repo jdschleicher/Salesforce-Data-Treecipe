@@ -353,6 +353,25 @@ export class VSCodeWorkspaceService {
 
     }
 
+    // THE STAGING DIRECTORY BEHIND THE DIFF CURRENTLY OPEN, RECLAIMED WHEN THE NEXT ONE IS STAGED
+    private static previousProposedContentDirectoryPath: string | undefined;
+
+    private static reclaimPreviousProposedContentDirectory() {
+
+        if ( !this.previousProposedContentDirectoryPath ) {
+            return;
+        }
+
+        try {
+            fs.rmSync(this.previousProposedContentDirectoryPath, { recursive: true, force: true });
+        } catch {
+            // A TEMP DIRECTORY THAT WILL NOT DELETE IS NOT WORTH FAILING A DIFF OVER
+        }
+
+        this.previousProposedContentDirectoryPath = undefined;
+
+    }
+
     /*
         Opens VS Code's own diff editor between a file on disk and content that has not been written
         yet, so a regeneration can be reviewed -- and cancelled -- before it replaces a hand edit.
@@ -370,7 +389,18 @@ export class VSCodeWorkspaceService {
 
         try {
 
+            /*
+                The previous staging directory is reclaimed first. Without this, each press of
+                "Show Diff" left another one behind for the life of the machine, and the prompt
+                offering it loops -- so a user comparing several classes in one run accumulated one
+                per click. Only the directory this method itself created is removed, and only the
+                one before the diff now being opened, so no editor loses the document under it.
+            */
+            this.reclaimPreviousProposedContentDirectory();
+
             const proposedContentDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-proposed-'));
+            VSCodeWorkspaceService.previousProposedContentDirectoryPath = proposedContentDirectoryPath;
+
             const proposedContentFilePath = path.join(proposedContentDirectoryPath, path.basename(existingFilePath));
             fs.writeFileSync(proposedContentFilePath, proposedContent);
 

@@ -455,13 +455,9 @@ export class PicklistDependencyTestService {
 
             The walk that produced these follows vscode.workspace.fs.readDirectory, which is
             filesystem order, so without this two developers regenerating from identical metadata
-            get different bytes. localeCompare is deliberately not used: its result depends on the
-            host's ICU locale data, which is the same portability problem in another form. Code unit
-            order is the same everywhere, which is what "byte identical on every machine" needs.
+            get different bytes. See compareForEmission for why the comparison is what it is.
         */
-        specDetails.sort((firstSpecDetail, secondSpecDetail) => (firstSpecDetail.fieldApiName < secondSpecDetail.fieldApiName) ? -1
-                                                                    : (firstSpecDetail.fieldApiName > secondSpecDetail.fieldApiName) ? 1
-                                                                    : 0);
+        specDetails.sort((firstSpecDetail, secondSpecDetail) => this.compareForEmission(firstSpecDetail.fieldApiName, secondSpecDetail.fieldApiName));
 
         return { specDetails, recordTypeSpecDetails: [], skippedFieldWarnings };
 
@@ -541,7 +537,13 @@ export class PicklistDependencyTestService {
 
         }
 
-        recordTypeWrappers.sort((firstWrapper, secondWrapper) => firstWrapper.DeveloperName.localeCompare(secondWrapper.DeveloperName));
+        /*
+            This ordering reaches the emitted bytes -- it is the order recordTypeSpecs() lists its
+            methods in -- so it uses the same host-independent comparison as every other emission
+            sort. It was localeCompare until 3.4.0, which made the generated file depend on the
+            host's ICU locale data.
+        */
+        recordTypeWrappers.sort((firstWrapper, secondWrapper) => this.compareForEmission(firstWrapper.DeveloperName, secondWrapper.DeveloperName));
 
         return { recordTypeWrappers, skippedRecordTypeWarnings };
 
@@ -907,26 +909,35 @@ export class PicklistDependencyTestService {
             emitted block. Sorting also keeps the two groups interleaved by name rather than
             segregated, which is how a reader looks a controlling value up.
         */
-        expectations.sort((firstExpectation, secondExpectation) => (firstExpectation.controllingValue < secondExpectation.controllingValue) ? -1
-                                                                        : (firstExpectation.controllingValue > secondExpectation.controllingValue) ? 1
-                                                                        : 0);
+        expectations.sort((firstExpectation, secondExpectation) => this.compareForEmission(firstExpectation.controllingValue, secondExpectation.controllingValue));
 
         return expectations;
 
     }
 
     /*
-        A copy, sorted by code unit order. The forbidden list is the complement of what a controlling
-        value unlocks, taken in declaration order, so inserting one value into the middle of a
-        picklist shifted that value's position in EVERY forbidden list in the file -- a one value
-        change arriving as a diff across every combination. Sorted, the same edit touches only the
-        lines that actually changed.
+        The one comparison every ordering that reaches the emitted bytes goes through.
+
+        Code unit order, deliberately NOT localeCompare: localeCompare's result depends on the
+        host's ICU locale data, so the same metadata could emit different bytes on two machines --
+        the exact portability problem the sorting exists to remove.
+    */
+    static compareForEmission(firstValue: string, secondValue: string): number {
+        return ( firstValue < secondValue ) ? -1 : ( firstValue > secondValue ) ? 1 : 0;
+    }
+
+    /*
+        A copy, sorted. The forbidden list is the complement of what a controlling value unlocks,
+        taken in declaration order, so inserting one value into the middle of a picklist shifted
+        that value's position in EVERY forbidden list in the file -- a one value change arriving as
+        a diff across every combination. Sorted, the same edit touches only the lines that actually
+        changed.
 
         Sorting a copy rather than in place matters: dependentValues is handed straight out of the
         controllingValueToPicklistOptions map, which the caller may still read.
     */
     static sortValuesForEmission(values: string[]): string[] {
-        return [...values].sort((firstValue, secondValue) => (firstValue < secondValue) ? -1 : (firstValue > secondValue) ? 1 : 0);
+        return [...values].sort((firstValue, secondValue) => this.compareForEmission(firstValue, secondValue));
     }
 
     static escapeApexStringLiteral(value: string): string {
@@ -1067,6 +1078,19 @@ export class PicklistDependencyTestService {
 
     static getDistinctObjectApiNames(specDetails: IPicklistDependencySpecDetail[]): string[] {
         return [...new Set(specDetails.map(specDetail => specDetail.objectApiName))].sort();
+    }
+
+    static groupSpecDetailsByObjectApiName(specDetails: IPicklistDependencySpecDetail[]): Record<string, IPicklistDependencySpecDetail[]> {
+
+        let specDetailsByObjectApiName: Record<string, IPicklistDependencySpecDetail[]> = {};
+
+        specDetails.forEach(specDetail => {
+            specDetailsByObjectApiName[specDetail.objectApiName] = specDetailsByObjectApiName[specDetail.objectApiName] || [];
+            specDetailsByObjectApiName[specDetail.objectApiName].push(specDetail);
+        });
+
+        return specDetailsByObjectApiName;
+
     }
 
     static buildPerObjectSpecsApexClassBody(objectApiName: string,
@@ -1720,8 +1744,9 @@ ${testMethods}
         just cosmetic: rewriting identical bytes still moves the file's mtime, which is what a
         watcher, a build cache or an incremental deploy keys off.
 
-        A file that cannot be read is treated as added rather than as an error -- the write that
-        follows will fail loudly and with a better message than a read here could give.
+        A file that exists but cannot be read falls through as 'changed' rather than raising -- the
+        write that follows fails loudly and with a better message than a read here could give, and
+        reporting it as a change is the safer of the two wrong answers.
     */
     static buildPlannedSpecsFile(filePath: string, proposedContent: string, objectApiName?: string): IPlannedSpecsFile {
 
@@ -1737,12 +1762,31 @@ ${testMethods}
                 existingContent = undefined;
             }
 
-            changeType = ( existingContent === proposedContent ) ? 'unchanged' : 'changed';
+            changeType = ( existingContent !== undefined
+                            && this.normalizeLineEndingsForComparison(existingContent) === this.normalizeLineEndingsForComparison(proposedContent) )
+                            ? 'unchanged'
+                            : 'changed';
 
         }
 
         return { filePath, proposedContent, changeType, objectApiName };
 
+    }
+
+    /*
+        Compared without line endings so the no-op guarantee survives a CRLF working tree.
+
+        Emission always produces LF. On Windows, git's default core.autocrlf=true checks these
+        files out as CRLF, so a raw byte comparison would call every class "overwritten" on every
+        run -- turning the feature that exists to make regeneration quiet into a permanent false
+        alarm for every Windows contributor.
+
+        Only the COMPARISON is normalized. A file whose sole difference is its line endings is left
+        exactly as it is on disk rather than being rewritten to LF, which would be the same churn
+        from the other direction.
+    */
+    static normalizeLineEndingsForComparison(content: string): string {
+        return content.replace(/\r\n/g, '\n');
     }
 
     /*
@@ -1762,16 +1806,22 @@ ${testMethods}
         const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);
         const apexClassMetaXml = this.buildApexClassMetaXml(apiVersion);
 
+        /*
+            Grouped once rather than filtered inside the loop below, which walked the whole list per
+            object and so cost objects x specs. On an org where every object has a dependent
+            picklist that is quadratic in the same number.
+        */
+        const specDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(specDetails);
+        const recordTypeSpecDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(recordTypeSpecDetails);
+
         let plannedFiles: IPlannedSpecsFile[] = [];
         let objectApiNamesWithRecordTypeSpecs: string[] = [];
 
         objectApiNames.forEach(objectApiName => {
 
             const perObjectClassName = classNamesByObjectApiName[objectApiName];
-            const specDetailsForObject = specDetails.filter(specDetail => specDetail.objectApiName === objectApiName);
-            const recordTypeSpecDetailsForObject = recordTypeSpecDetails.filter(
-                recordTypeSpecDetail => recordTypeSpecDetail.objectApiName === objectApiName
-            );
+            const specDetailsForObject = specDetailsByObjectApiName[objectApiName] || [];
+            const recordTypeSpecDetailsForObject = (recordTypeSpecDetailsByObjectApiName[objectApiName] || []) as IRecordTypePicklistDependencySpecDetail[];
 
             if ( recordTypeSpecDetailsForObject.length > 0 ) {
                 objectApiNamesWithRecordTypeSpecs.push(objectApiName);
@@ -1856,6 +1906,16 @@ ${testMethods}
             reportLines.push(`Deleted (no dependent picklist in this metadata): ${changePlan.staleClassFilePaths.map(staleFilePath => path.basename(staleFilePath)).join(', ')}`);
         }
 
+        /*
+            Both lists above filter the meta xml out, because naming a -meta.xml beside every class
+            doubles the report without telling the reader anything. When the meta xml is the ONLY
+            thing changing -- which is what a sourceApiVersion bump produces -- that filtering left
+            the report empty, and the user got a confirmation dialog with a blank body.
+        */
+        if ( reportLines.length === 0 ) {
+            reportLines.push(`Overwritten: ${changedFiles.map(changedFile => path.basename(changedFile.filePath)).join(', ')}`);
+        }
+
         return reportLines.join('\n');
 
     }
@@ -1886,7 +1946,8 @@ ${testMethods}
     static writeSpecsClassFiles(classesDirectoryPath: string,
                                     specDetails: IPicklistDependencySpecDetail[],
                                     apiVersion: string,
-                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): ISpecsClassWriteResult {
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
+                                    previewedChangePlan?: ISpecsChangePlan): ISpecsClassWriteResult {
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
 
@@ -1895,14 +1956,27 @@ ${testMethods}
             today, so the union is the same set -- but writeSpecsClassFiles is public and callable
             directly, and silently dropping a caller's scoped details would be the wrong failure.
 
-            The plan is rebuilt here rather than taken as a parameter so that this stays callable on
-            its own, as its tests and any direct caller do. A command that already previewed a plan
-            gets the same content back: buildSpecsChangePlan is a pure function of the details it
-            is given.
+            A caller that already built a plan passes it back rather than having it rebuilt. That
+            saves constructing every object's Apex body a second time -- the dominant cost of a run,
+            and measurably so on an org with hundreds of objects -- and it makes "what was previewed
+            is what gets written" structural rather than a property of buildSpecsChangePlan being
+            pure. Omitting it stays supported so this remains callable on its own.
         */
-        const changePlan = this.buildSpecsChangePlan(classesDirectoryPath, specDetails, apiVersion, recordTypeSpecDetails);
+        const changePlan = previewedChangePlan
+                            ?? this.buildSpecsChangePlan(classesDirectoryPath, specDetails, apiVersion, recordTypeSpecDetails);
 
-        this.writePlannedSpecsFiles(changePlan.plannedFiles);
+        /*
+            A previewed plan may also carry the test class, which writeSpecsTestClassFiles owns.
+            Writing it here would be harmless -- same content, and the later call would find it
+            unchanged -- but it would put a file this method does not report in its result.
+        */
+        const specsTestClassFilePath = this.getSpecsTestClassFilePath(classesDirectoryPath);
+        const specsClassPlannedFiles = changePlan.plannedFiles.filter(
+            plannedFile => plannedFile.filePath !== specsTestClassFilePath
+                            && plannedFile.filePath !== `${specsTestClassFilePath}-meta.xml`
+        );
+
+        this.writePlannedSpecsFiles(specsClassPlannedFiles);
 
         const objectApiNames = this.getDistinctObjectApiNames([...specDetails, ...recordTypeSpecDetails]);
         const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);

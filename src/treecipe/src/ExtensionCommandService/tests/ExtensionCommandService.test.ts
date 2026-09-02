@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as fs from 'fs';
 
 import * as matchers from 'jest-extended';
@@ -205,11 +206,18 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
+            /*
+                The fifth argument is the plan built for the pre-write preview. Passing it is what
+                makes "what was previewed is what gets written" structural rather than a property of
+                the plan builder happening to be pure -- and it stops every object's Apex body being
+                built a second time.
+            */
             expect(writeSpecsClassFilesSpy).toHaveBeenCalledWith(
                 classesDirectoryPath,
                 [specDetail],
                 '64.0',
-                [recordTypeSpecDetail]
+                [recordTypeSpecDetail],
+                expect.objectContaining({ plannedFiles: expect.any(Array), staleClassFilePaths: expect.any(Array) })
             );
 
             /*
@@ -239,7 +247,8 @@ describe('ExtensionCommandService', () => {
                 classesDirectoryPath,
                 [specDetail],
                 '64.0',
-                []
+                [],
+                expect.objectContaining({ plannedFiles: expect.any(Array), staleClassFilePaths: expect.any(Array) })
             );
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
 
@@ -558,6 +567,100 @@ describe('ExtensionCommandService', () => {
             // ASKING FOR THE DIFF IS NOT A DECISION -- THE PROMPT COMES BACK, AND ONLY THEN IS ANYTHING WRITTEN
             expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
             expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+
+        });
+
+        /*
+            A VS Code modal blocks the entire workbench. The first version of the Show Diff loop
+            re-showed a MODAL prompt straight after opening the diff, which meant the user could not
+            read the diff without dismissing the dialog -- and dismissing cancels the run. The
+            feature was unusable in a single pass, and the test above did not catch it because the
+            mock answered 'Generate' on the second call regardless of how it was asked.
+        */
+        test('given a diff was opened, the follow up prompt is not modal so the diff stays readable', async () => {
+
+            stubCollectionResult([specDetail]);
+            stubExistingGeneratedFilesWithContent('// A HAND EDITED SPEC THAT REGENERATION WOULD REPLACE');
+
+            (vscode.window.showWarningMessage as jest.Mock)
+                .mockResolvedValueOnce('Show Diff')
+                .mockResolvedValueOnce('Generate');
+            (vscode.window.showQuickPick as jest.Mock).mockImplementation(async (quickPickItems: any[]) => quickPickItems[0]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const promptCalls = (vscode.window.showWarningMessage as jest.Mock).mock.calls;
+
+            // THE FIRST ASK IS A DESTRUCTIVE ACTION CONFIRMATION, WHICH SHOULD STILL INTERRUPT
+            expect(promptCalls[0][1]).toEqual({ modal: true });
+
+            /*
+                The second carries its actions as plain arguments with no options object, which is
+                a notification rather than a modal -- the editor behind it stays interactive.
+            */
+            expect(promptCalls[1].slice(1)).toEqual(['Generate', 'Show Another Diff']);
+            expect(promptCalls[1].some((promptArgument: any) => promptArgument && promptArgument.modal)).toBe(false);
+
+        });
+
+        test('given only one file would be replaced, does not offer a second diff of the same file', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            // ONLY THE AGGREGATOR DIFFERS, SO THERE IS EXACTLY ONE DIFFABLE FILE
+            const aggregatorClassFileName = path.basename(specsClassFilePath);
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => !String(checkedPath).includes('globalValueSets'));
+            jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+            jest.spyOn(PicklistDependencyTestService, 'buildPlannedSpecsFile').mockImplementation(
+                (filePath: string, proposedContent: string, objectApiName?: string) => ({
+                    filePath,
+                    proposedContent,
+                    objectApiName,
+                    changeType: path.basename(filePath) === aggregatorClassFileName ? 'changed' as const : 'unchanged' as const
+                })
+            );
+
+            (vscode.window.showWarningMessage as jest.Mock)
+                .mockResolvedValueOnce('Show Diff')
+                .mockResolvedValueOnce('Generate');
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const promptCalls = (vscode.window.showWarningMessage as jest.Mock).mock.calls;
+
+            // THERE IS NOTHING ELSE TO COMPARE, SO THE SECOND ASK IS DECIDE ONLY
+            expect(promptCalls[1].slice(1)).toEqual(['Generate']);
+
+        });
+
+        test('given only the meta xml would change, still reports what is being overwritten', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            // AN sourceApiVersion BUMP CHANGES THE meta xml AND NOTHING ELSE
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => !String(checkedPath).includes('globalValueSets'));
+            jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+            jest.spyOn(PicklistDependencyTestService, 'buildPlannedSpecsFile').mockImplementation(
+                (filePath: string, proposedContent: string, objectApiName?: string) => ({
+                    filePath,
+                    proposedContent,
+                    objectApiName,
+                    changeType: filePath.endsWith('-meta.xml') ? 'changed' as const : 'unchanged' as const
+                })
+            );
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const promptMessage = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0];
+
+            /*
+                Both report lists filter the meta xml out, so a meta-only change used to produce an
+                empty report -- a confirmation dialog with a blank body asking the user to approve
+                something it declined to name.
+            */
+            expect(promptMessage).toContain('-meta.xml');
+            expect(promptMessage).not.toContain('will:\n\n\n');
 
         });
 

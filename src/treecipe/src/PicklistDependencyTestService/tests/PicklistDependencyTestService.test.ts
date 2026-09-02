@@ -2412,6 +2412,43 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    describe('compareForEmission', () => {
+
+        /*
+            The rule the whole diff-friendliness guarantee rests on: every ordering that reaches the
+            emitted bytes compares by code unit, never by locale. localeCompare's result depends on
+            the host's ICU data, so two developers could emit different bytes from identical
+            metadata -- the exact problem the sorting exists to remove.
+        */
+        test('orders by code unit, which is where a locale aware comparison would disagree', () => {
+
+            expect(PicklistDependencyTestService.compareForEmission('B', 'a')).toBeLessThan(0);
+
+            // THE SAME PAIR THE OTHER WAY ROUND UNDER A LOCALE AWARE COMPARISON, WHICH IS WHY IT IS NOT USED
+            expect('B'.localeCompare('a')).toBeGreaterThan(0);
+
+            expect(PicklistDependencyTestService.compareForEmission('a', 'B')).toBeGreaterThan(0);
+            expect(PicklistDependencyTestService.compareForEmission('same', 'same')).toBe(0);
+
+        });
+
+        test('sorts every emitted value list through it', () => {
+
+            expect(PicklistDependencyTestService.sortValuesForEmission(['b', 'A', 'a', 'B'])).toEqual(['A', 'B', 'a', 'b']);
+
+        });
+
+        test('does not mutate the array it is given', () => {
+
+            const declaredValues = ['zulu', 'alpha'];
+            PicklistDependencyTestService.sortValuesForEmission(declaredValues);
+
+            expect(declaredValues).toEqual(['zulu', 'alpha']);
+
+        });
+
+    });
+
     describe('regeneration change plan', () => {
 
         /*
@@ -2560,6 +2597,91 @@ describe('PicklistDependencyTestService', () => {
 
             // BUILDING THE PLAN IS A READ -- THE CLASS IS STILL THERE UNTIL THE RUN IS CONFIRMED
             expect(fs.existsSync(retiredClassFilePath)).toBe(true);
+
+        });
+
+        test('given the same content with CRLF line endings on disk, treats it as unchanged and leaves it alone', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            const perObjectClassFilePath = PicklistDependencyTestService.getPerObjectSpecsClassFilePath(
+                temporaryClassesDirectoryPath,
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Account')
+            );
+
+            /*
+                What a Windows checkout with git's default core.autocrlf=true looks like. Emission
+                always produces LF, so a raw byte comparison called every class "overwritten" on
+                every run -- a permanent false alarm for every Windows contributor, in the feature
+                whose entire purpose is that an unchanged regeneration is quiet.
+            */
+            const lineFeedContent = fs.readFileSync(perObjectClassFilePath, 'utf-8');
+            const carriageReturnContent = lineFeedContent.replace(/\n/g, '\r\n');
+            fs.writeFileSync(perObjectClassFilePath, carriageReturnContent);
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            const plannedFile = changePlan.plannedFiles.find(candidateFile => candidateFile.filePath === perObjectClassFilePath);
+            expect(plannedFile.changeType).toBe('unchanged');
+
+            PicklistDependencyTestService.writePlannedSpecsFiles(changePlan.plannedFiles);
+
+            // LEFT AS IT IS ON DISK -- REWRITING IT TO LF WOULD BE THE SAME CHURN FROM THE OTHER DIRECTION
+            expect(fs.readFileSync(perObjectClassFilePath, 'utf-8')).toBe(carriageReturnContent);
+
+        });
+
+        test('given a previewed plan, writes exactly that plan rather than rebuilding it', () => {
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            const buildBodySpy = jest.spyOn(PicklistDependencyTestService, 'buildPerObjectSpecsApexClassBody');
+
+            PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0', [], changePlan
+            );
+
+            /*
+                The dominant cost of a run is building each object's Apex body. Handing the previewed
+                plan back means it happens once per run instead of once for the preview and again for
+                the write -- and it makes "what was shown in the diff is what got written" structural
+                rather than a property of the plan builder happening to be pure.
+            */
+            expect(buildBodySpy).not.toHaveBeenCalled();
+
+            const perObjectClassFilePath = PicklistDependencyTestService.getPerObjectSpecsClassFilePath(
+                temporaryClassesDirectoryPath,
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Account')
+            );
+            const plannedFile = changePlan.plannedFiles.find(candidateFile => candidateFile.filePath === perObjectClassFilePath);
+
+            expect(fs.readFileSync(perObjectClassFilePath, 'utf-8')).toBe(plannedFile.proposedContent);
+
+        });
+
+        test('given a previewed plan carrying the test class, leaves that file to writeSpecsTestClassFiles', () => {
+
+            const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0', [], specsTestClassBody
+            );
+
+            const writeResult = PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0', [], changePlan
+            );
+
+            const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(temporaryClassesDirectoryPath);
+
+            // NOT WRITTEN HERE -- THIS METHOD DOES NOT REPORT IT, SO IT MUST NOT SILENTLY PRODUCE IT
+            expect(fs.existsSync(specsTestClassFilePath)).toBe(false);
+            expect(writeResult.aggregatorClassFilePath).toBeDefined();
+
+            PicklistDependencyTestService.writeSpecsTestClassFiles(temporaryClassesDirectoryPath, specsTestClassBody, '64.0');
+            expect(fs.readFileSync(specsTestClassFilePath, 'utf-8')).toBe(specsTestClassBody);
 
         });
 

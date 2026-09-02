@@ -282,11 +282,17 @@ export class ExtensionCommandService {
             return undefined;
         }
 
+        /*
+            The plan built for the preview is handed to the writer rather than rebuilt, so what was
+            shown in the diff is literally what gets written -- and every object's Apex body is
+            constructed once per run instead of twice.
+        */
         const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
             classesDirectoryPath,
             collectionResult.specDetails,
             sourceApiVersion,
-            collectionResult.recordTypeSpecDetails
+            collectionResult.recordTypeSpecDetails,
+            specsChangePlan
         );
 
         PicklistDependencyTestService.writeSpecsTestClassFiles(
@@ -368,22 +374,40 @@ export class ExtensionCommandService {
 
         const promptMessage = `Regenerating picklist dependency specs in "${classesDirectoryPath}" will:\n\n${changeReport}\n\nCommitted files are best reviewed as a diff afterwards; anything uncommitted is replaced.`;
 
+        let hasOpenedDiff = false;
+
         while ( true ) {
 
-            const promptActions = ( diffableFiles.length > 0 ) ? ['Generate', 'Show Diff'] : ['Generate'];
+            const canOfferDiff = diffableFiles.length > 0 && ( !hasOpenedDiff || diffableFiles.length > 1 );
+            const diffActionLabel = hasOpenedDiff ? 'Show Another Diff' : 'Show Diff';
+            const promptActions = canOfferDiff ? ['Generate', diffActionLabel] : ['Generate'];
 
-            const selectedAction = await vscode.window.showWarningMessage(promptMessage, { modal: true }, ...promptActions);
+            /*
+                Modal ONLY until a diff has been opened.
+
+                A VS Code modal blocks the whole workbench, so re-showing one over the diff editor
+                would make the diff unreadable: the user would have to dismiss the dialog to look at
+                what they just asked to see, and dismissing cancels the run. Once a diff is open the
+                confirmation continues as a notification, which leaves the editor interactive while
+                still carrying the same two choices.
+            */
+            const selectedAction = hasOpenedDiff
+                ? await vscode.window.showWarningMessage(
+                    `Review the diff, then choose. ${changeReport.split('\n')[0]}`, ...promptActions
+                )
+                : await vscode.window.showWarningMessage(promptMessage, { modal: true }, ...promptActions);
 
             if ( selectedAction === 'Generate' ) {
                 return true;
             }
 
-            if ( selectedAction !== 'Show Diff' ) {
+            if ( selectedAction !== diffActionLabel ) {
                 // DISMISSED OR CANCELLED -- NOTHING IS WRITTEN
                 return false;
             }
 
             await this.showPicklistDependencySpecsDiff(diffableFiles);
+            hasOpenedDiff = true;
 
         }
 
