@@ -4,6 +4,22 @@
 
 You are assisting with **Salesforce Data Treecipe**, a **VS Code extension** (TypeScript) that auto-generates fake-data recipe YAML files from Salesforce object metadata (source format). It supports two faker backends: **faker-js** (built-in, no setup) and **snowfakery** (external Python CLI). The extension bridges Salesforce source-format XML metadata → YAML recipe files → Salesforce Collections API datasets.
 
+## Where We Are — v3.3.0, issue #76
+
+Status of the branch in flight. Each bullet links to where the detail lives.
+
+- **Done and pushed** — [issue #76](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/76) on branch [`claude/next-task-issue-76-rhgzrl`](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/claude/next-task-issue-76-rhgzrl). No PR opened yet — run `/pr-flow` to ship
+- **Dependency chains now go 3+ links deep** — `Country__c → State__c → City__c → District__c`, so a link that both *has* an upstream and *is* one is finally covered. See the [CHANGELOG entry](CHANGELOG.md#330---deep-dependency-chains-and-global-value-set-backed-dependent-picklists) and the [`Chain_Example__c` fixtures](src/treecipe/src/PicklistDependencyTestService/tests/mocks/MockPicklistDependencyMetadataDirectory/objects/Chain_Example__c/fields/)
+- **Three dependency links emit two `dependsOn` calls** — the link is emitted only where the controlling field is itself dependent, so the root of the `dependsOn` graph has nothing above it. Emission lives in [`PicklistDependencyTestService.buildSpecStatement`](src/treecipe/src/PicklistDependencyTestService/PicklistDependencyTestService.ts)
+- **Apex covers a break at the root and in the middle** — a break is reported once at its source, each downstream link gets one `UPSTREAM_FAILURE` naming its *immediate* upstream, and memoization keeps the failing spec from being described twice. See [`SDTPicklistDependencyValidatorTest.cls`](apexPicklistDependencyFramework/frameworkApexTests/SDTPicklistDependencyValidatorTest.cls) and the [validator itself](apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencyValidator.cls)
+- **Global-value-set-backed dependent picklists get correct specs** — the declared value universe now comes from the set, so a set value that nothing unlocks lands in every `expectNotAllowed` complement. Rationale and the two unhappy paths are in the [technical design doc](docs/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md#dependent-picklists-backed-by-a-global-value-set)
+- **Global value sets are keyed by full name *and* `masterLabel`** — a field references its set by full name (the file name) while the only name inside the file is the editable label. See [`GlobalValueSetSingleton.addGlobalValueSetUnderEveryNameItIsReferencedBy`](src/treecipe/src/GlobalValueSetSingleton/GlobalValueSetSingleton.ts)
+- **A missing set skips the field with a warning; an undeclared `valueSettings` value is dropped and reported** — never a silent drop, never a spec that must fail. Both live in [`PicklistDependencyTestService.resolveGlobalValueSetDependentValues`](src/treecipe/src/PicklistDependencyTestService/PicklistDependencyTestService.ts)
+- **The singleton is now initialized on the picklist-dependency command paths** — it previously ran only for recipe generation, so nothing would have resolved. See [`ExtensionCommandService`](src/treecipe/src/ExtensionCommandService/ExtensionCommandService.ts)
+- **Recipe YAML output is unchanged** — no faker service was touched, so the dual-backend rule in [Primary Objectives](#primary-objectives) is not triggered here
+- **Gates all green** — compile and lint clean, 734 tests passing, coverage up on every metric (statements 86.58 → 87.24, branches 82.22 → 82.89). Re-run them per [After Every Code Change](#after-every-code-change)
+- **Not verified by CI** — the Apex tests are reviewed by reading, not executed; the [build workflow](.github/workflows/build.yaml) runs compile, lint and Jest only. Running them needs a scratch org
+
 ### Key Project Files
 
 - `src/extension.ts` - VS Code extension entry point; registers all commands
