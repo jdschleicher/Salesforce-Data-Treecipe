@@ -5,6 +5,7 @@ import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -22,6 +23,9 @@ jest.mock('vscode', () => ({
         showInputBox: jest.fn(),
         createOutputChannel: jest.fn()
     },
+    commands: {
+        executeCommand: jest.fn()
+    },
     ThemeIcon: jest.fn().mockImplementation(
         (name) => ({ id: name })
     )
@@ -30,6 +34,54 @@ jest.mock('vscode', () => ({
 
 
 describe('Shared VSCodeWorkspaceService unit tests', () => {
+
+    describe('showDiffForProposedContent', () => {
+
+        test('given content that has not been written, opens vscode.diff with the file on disk on the left', async () => {
+
+            const existingFilePath = '/workspace/force-app/main/default/classes/SDTPLDAccountSpecs.cls';
+            const proposedContent = '// WHAT REGENERATION WOULD WRITE';
+
+            const diffOpened = await VSCodeWorkspaceService.showDiffForProposedContent(
+                existingFilePath, proposedContent, 'SDTPLDAccountSpecs.cls'
+            );
+
+            expect(diffOpened).toBe(true);
+
+            const [diffCommand, leftUri, rightUri, diffTitle] = (vscode.commands.executeCommand as jest.Mock).mock.calls[0];
+
+            expect(diffCommand).toBe('vscode.diff');
+            expect(leftUri.fsPath).toBe(existingFilePath);
+            expect(diffTitle).toBe('SDTPLDAccountSpecs.cls');
+
+            /*
+                The right hand side is a real file so the diff editor has a document to render, and
+                it keeps the generated class name so the tab does not read as a random temp path.
+            */
+            expect(path.basename(rightUri.fsPath)).toBe('SDTPLDAccountSpecs.cls');
+            expect(rightUri.fsPath).not.toBe(existingFilePath);
+            expect(fs.readFileSync(rightUri.fsPath, 'utf-8')).toBe(proposedContent);
+
+            fs.rmSync(path.dirname(rightUri.fsPath), { recursive: true, force: true });
+
+        });
+
+        test('given a diff that cannot be opened, reports it and does not throw', async () => {
+
+            (vscode.commands.executeCommand as jest.Mock).mockRejectedValueOnce(new Error('no diff editor'));
+
+            const diffOpened = await VSCodeWorkspaceService.showDiffForProposedContent('/workspace/some.cls', 'content', 'some.cls');
+
+            /*
+                A diff is a convenience on the way to a decision the user still gets to make from
+                the report, so failing to open one must not abort generation.
+            */
+            expect(diffOpened).toBe(false);
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('/workspace/some.cls'));
+
+        });
+
+    });
 
     describe('buildAuthenticatedOrgQuickPickItems', () => {
 

@@ -8,7 +8,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { PicklistDependencyTestService } from "../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { PicklistDependencyExplorerService, IPicklistDependencyExplorerViewModel } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 
@@ -259,42 +259,45 @@ export class ExtensionCommandService {
         const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(classesDirectoryPath);
         const specsTestClassName = PicklistDependencyTestService.getSpecsTestClassName();
 
-        // EVERY GENERATED FILE IS CONSIDERED SO A HAND EDITED meta xml CANNOT BE REPLACED WITHOUT A PROMPT
-        const existingGeneratedFilePaths = [
-            specsClassFilePath,
-            `${specsClassFilePath}-meta.xml`,
-            specsTestClassFilePath,
-            `${specsTestClassFilePath}-meta.xml`
-        ].filter(
-            generatedFilePath => fs.existsSync(generatedFilePath)
+        const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
+        const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody(collectionResult.specDetails);
+
+        /*
+            Resolved before anything is written, so the run can be cancelled with the generated
+            files exactly as they were. The generated classes are meant to be committed and edited
+            -- declare the dependency you intend, watch the test go red, fix the org -- and that
+            workflow does not survive a regeneration that silently replaces the edit.
+        */
+        const specsChangePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+            classesDirectoryPath,
+            collectionResult.specDetails,
+            sourceApiVersion,
+            collectionResult.recordTypeSpecDetails,
+            specsTestClassBody
         );
 
-        if ( existingGeneratedFilePaths.length > 0 ) {
+        const confirmedRegeneration = await this.confirmPicklistDependencySpecsChangePlan(specsChangePlan, classesDirectoryPath);
 
-            const confirmedOverwriteSelection = await vscode.window.showWarningMessage(
-                `${existingGeneratedFilePaths.map(existingFilePath => `"${path.basename(existingFilePath)}"`).join(' and ')} already exist(s) in "${classesDirectoryPath}". Regenerating overwrites them, and any spec lines tightened to "expectExactly" by hand will be lost.`,
-                { modal: true },
-                'Overwrite'
-            );
-
-            if ( confirmedOverwriteSelection !== 'Overwrite' ) {
-                return undefined;
-            }
-
+        if ( !confirmedRegeneration ) {
+            return undefined;
         }
 
-        const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
-
+        /*
+            The plan built for the preview is handed to the writer rather than rebuilt, so what was
+            shown in the diff is literally what gets written -- and every object's Apex body is
+            constructed once per run instead of twice.
+        */
         const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
             classesDirectoryPath,
             collectionResult.specDetails,
             sourceApiVersion,
-            collectionResult.recordTypeSpecDetails
+            collectionResult.recordTypeSpecDetails,
+            specsChangePlan
         );
 
         PicklistDependencyTestService.writeSpecsTestClassFiles(
             classesDirectoryPath,
-            PicklistDependencyTestService.buildSpecsTestApexClassBody(collectionResult.specDetails),
+            specsTestClassBody,
             sourceApiVersion
         );
 
@@ -346,6 +349,101 @@ export class ExtensionCommandService {
         first case is reported here, because an empty picker would leave the user with nothing to
         select and no indication that authentication is what is missing.
     */
+    /*
+        Whether to go ahead with a regeneration, given what it would do.
+
+        Returns true without prompting when the plan changes nothing: regenerating from unchanged
+        metadata is a no-op now that emission is deterministic, and a modal asking permission to
+        rewrite files with their own content is noise that trains the user to click through.
+    */
+    private async confirmPicklistDependencySpecsChangePlan(specsChangePlan: ISpecsChangePlan, classesDirectoryPath: string): Promise<boolean> {
+
+        /*
+            Two runs need no prompt: one that changes nothing (regenerating from unchanged metadata
+            is a no-op now that emission is deterministic), and one that only adds files, which
+            takes nothing away to review.
+        */
+        if ( !specsChangePlan.hasChanges || !PicklistDependencyTestService.planReplacesExistingContent(specsChangePlan) ) {
+            return true;
+        }
+
+        const changeReport = PicklistDependencyTestService.buildSpecsChangeReport(specsChangePlan);
+
+        // A NEW FILE HAS NO ON DISK SIDE TO COMPARE AGAINST, SO ONLY WHAT WOULD BE REPLACED IS OFFERED
+        const diffableFiles = specsChangePlan.plannedFiles.filter(plannedFile => plannedFile.changeType === 'changed');
+
+        const promptMessage = `Regenerating picklist dependency specs in "${classesDirectoryPath}" will:\n\n${changeReport}\n\nCommitted files are best reviewed as a diff afterwards; anything uncommitted is replaced.`;
+
+        let hasOpenedDiff = false;
+
+        while ( true ) {
+
+            const canOfferDiff = diffableFiles.length > 0 && ( !hasOpenedDiff || diffableFiles.length > 1 );
+            const diffActionLabel = hasOpenedDiff ? 'Show Another Diff' : 'Show Diff';
+            const promptActions = canOfferDiff ? ['Generate', diffActionLabel] : ['Generate'];
+
+            /*
+                Modal ONLY until a diff has been opened.
+
+                A VS Code modal blocks the whole workbench, so re-showing one over the diff editor
+                would make the diff unreadable: the user would have to dismiss the dialog to look at
+                what they just asked to see, and dismissing cancels the run. Once a diff is open the
+                confirmation continues as a notification, which leaves the editor interactive while
+                still carrying the same two choices.
+            */
+            const selectedAction = hasOpenedDiff
+                ? await vscode.window.showWarningMessage(
+                    `Review the diff, then choose. ${changeReport.split('\n')[0]}`, ...promptActions
+                )
+                : await vscode.window.showWarningMessage(promptMessage, { modal: true }, ...promptActions);
+
+            if ( selectedAction === 'Generate' ) {
+                return true;
+            }
+
+            if ( selectedAction !== diffActionLabel ) {
+                // DISMISSED OR CANCELLED -- NOTHING IS WRITTEN
+                return false;
+            }
+
+            await this.showPicklistDependencySpecsDiff(diffableFiles);
+            hasOpenedDiff = true;
+
+        }
+
+    }
+
+    private async showPicklistDependencySpecsDiff(diffableFiles: IPlannedSpecsFile[]) {
+
+        let fileToDiff = diffableFiles[0];
+
+        if ( diffableFiles.length > 1 ) {
+
+            const selectedFileItem = await vscode.window.showQuickPick(
+                diffableFiles.map(diffableFile => ({
+                    label: path.basename(diffableFile.filePath),
+                    description: diffableFile.objectApiName,
+                    detail: diffableFile.filePath
+                })),
+                { placeHolder: 'Select the generated file to compare against what would be written', ignoreFocusOut: true }
+            );
+
+            if ( !selectedFileItem ) {
+                return;
+            }
+
+            fileToDiff = diffableFiles.find(diffableFile => diffableFile.filePath === selectedFileItem.detail);
+
+        }
+
+        await VSCodeWorkspaceService.showDiffForProposedContent(
+            fileToDiff.filePath,
+            fileToDiff.proposedContent,
+            `${path.basename(fileToDiff.filePath)} (on disk) ↔ (would be generated)`
+        );
+
+    }
+
     private async promptForPicklistDependencyTargetOrg(): Promise<string | undefined> {
 
         const allAuthorizations = await AuthInfo.listAllAuthorizations();

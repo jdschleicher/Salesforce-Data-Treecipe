@@ -423,7 +423,7 @@ flowchart LR
     P3 -.->|"1 case"| T6["SDTSchemaPicklistDependencySourceTest.cls"]
 ```
 
-**Why the pair rather than `expectExactly`.** `expectExactly` fails when an administrator legitimately adds a new value to a combination — a change that is usually intended and should not break a pipeline. `expectAtLeast` alone fails to notice a value *drifting into* a combination it should not be in — a change that is usually a mistake and often a compliance problem. The complement pair catches removals **and** unintended additions while tolerating deliberate additions. `expectExactly` remains available as a **deliberate hand-tightening by the spec owner**, and — critically for change control — **that edit is lost on regeneration**. See [§11](#11-operational-governance).
+**Why the pair rather than `expectExactly`.** `expectExactly` fails when an administrator legitimately adds a new value to a combination — a change that is usually intended and should not break a pipeline. `expectAtLeast` alone fails to notice a value *drifting into* a combination it should not be in — a change that is usually a mistake and often a compliance problem. The complement pair catches removals **and** unintended additions while tolerating deliberate additions. `expectExactly` remains available as a **deliberate hand-tightening by the spec owner**. Since v3.4.0 that edit is no longer silently lost: emission is deterministic, so a regeneration is a reviewable working-tree diff rather than a blind overwrite, and the command reports and offers to diff anything it would replace before writing. See [§11](#11-operational-governance).
 
 ---
 
@@ -584,7 +584,10 @@ stateDiagram-v2
     Memo --> Upstream: first resolution
 
     Upstream --> UPSTREAM_FAILURE: dependsOn spec has failures
-    Upstream --> Fetch: upstream clean or absent
+    Upstream --> ContradictionCheck: upstream clean or absent
+
+    ContradictionCheck --> CONTRADICTORY_EXPECTATION: value both required and forbidden
+    ContradictionCheck --> Fetch: spec is satisfiable
 
     Fetch --> LOOKUP_ERROR: source threw / returned null
     Fetch --> ControllerCheck: snapshot obtained
@@ -603,6 +606,7 @@ stateDiagram-v2
     Pass --> [*]
     CIRCULAR_DEPENDENCY --> [*]
     UPSTREAM_FAILURE --> [*]
+    CONTRADICTORY_EXPECTATION --> [*]
     LOOKUP_ERROR --> [*]
     CONTROLLING_FIELD_MISMATCH --> [*]
     UNKNOWN_CONTROLLING_VALUE --> [*]
@@ -620,6 +624,7 @@ stateDiagram-v2
 | `UNEXPECTED_CONTROLLING_VALUE` | An `expectUnavailable` line found the controlling value reachable | A record type was assigned a controlling value it should not expose | Record-type scoped only; the failure names the values it wrongly unlocks |
 | `CONTROLLING_FIELD_MISMATCH` | Org reports a different controlling field | Dependency **rewired** | The most serious drift; the field's whole matrix is now unverified |
 | `UPSTREAM_FAILURE` | Controlling field's own spec failed | Chained dependency broken upstream | Fix the named upstream spec first |
+| `CONTRADICTORY_EXPECTATION` | The same value is both required and forbidden under one controlling value | Hand edit adding to `expectAtLeast` without removing from the complement | No org can satisfy it — fix the spec, not the org. Raised **before** any describe |
 | `CIRCULAR_DEPENDENCY` | `dependsOn` chain loops | Hand-edited spec | Salesforce cannot express this — the spec file is wrong |
 | `LOOKUP_ERROR` | Source threw | Field missing, not dependent, or `validFor` contract changed | Read the message; it distinguishes these |
 
@@ -863,27 +868,31 @@ Every CLI invocation is asynchronous. The VS Code extension host is single-threa
 
 ```mermaid
 flowchart TB
-    subgraph never["Never hand-edit — regenerating overwrites"]
+    subgraph generated["Generated — commit them, review each regeneration as a diff"]
         N1["SDTPLDSpecs.cls"]
         N2["SDTPLDSpecs_&lt;Object&gt;.cls"]
         N3["SDTPLDSpecsTest.cls"]
     end
-    subgraph deliberate["Hand-editable, at a cost"]
-        E1["expectExactly tightening<br/><i>lost on regeneration</i>"]
+    subgraph deliberate["Hand-editable — git is the merge base"]
+        E1["Declare the dependency you intend<br/><i>e.g. an expectExactly tightening</i>"]
     end
     subgraph stable["Scaffolded once, then owned by you"]
         S1["SDTPicklistDependencyFramework/<br/>6 runtime classes"]
     end
 
-    N2 -.->|"tightened by spec owner"| E1
-    E1 -.->|"⚠ regeneration reverts"| N2
+    N2 -.->|"edited by spec owner"| E1
+    E1 -.->|"regeneration shows a diff<br/>keep or revert per hunk"| N2
 
-    style never fill:#fee2e2,stroke:#b91c1c
+    style generated fill:#dbeafe,stroke:#1d4ed8
     style deliberate fill:#fef3c7,stroke:#92400e
     style stable fill:#dcfce7,stroke:#15803d
 ```
 
-Each generated file carries a `GENERATED FILE -- regenerating overwrites it` header. The framework classes are scaffolded **only when absent**, so a workspace carrying its own modified copy keeps it — which is why the deploy confirmation names every file: the user must be able to see which copy is about to be sent.
+Since v3.4.0 emission is **deterministic**: spec methods ordered by field api name, expectations by controlling value, every value list sorted. Regenerating from unchanged metadata is a byte-identical no-op, so the only thing a diff can show is a real change. That is what makes a hand edit survivable — it is a commit, a regeneration is a working-tree diff, and VS Code's SCM view keeps or reverts it per hunk. The command additionally reports and offers to diff anything it would replace, and writes nothing if cancelled.
+
+An edit that adds a value to an `expectAtLeast` list without removing it from that controlling value's `expectNotAllowed` complement is **unsatisfiable** — see `CONTRADICTORY_EXPECTATION` in [§7](#7-validation-semantics-and-failure-taxonomy).
+
+Each generated file carries a `GENERATED FILE -- commit it, and review each regeneration as a diff` header. The framework classes are scaffolded **only when absent**, so a workspace carrying its own modified copy keeps it — which is why the deploy confirmation names every file: the user must be able to see which copy is about to be sent.
 
 ### Recommended controls
 
@@ -892,7 +901,7 @@ Each generated file carries a `GENERATED FILE -- regenerating overwrites it` hea
 | **Code review** | Treat a diff in `SDTPLDSpecs_*.cls` as a **business-rule change**, not a code change. It should be reviewed by whoever owns the picklist taxonomy, not only by an engineer |
 | **CODEOWNERS** | Assign `**/SDTPLDSpecs*.cls` to the data-governance reviewer group |
 | **Regeneration discipline** | Regenerate in the same commit as the metadata change that motivated it. A spec file drifting from its `field-meta.xml` defeats the purpose |
-| **`expectExactly` register** | Maintain a short list of deliberately-tightened combinations, since regeneration silently reverts them. Consider a CI check that fails if a registered tightening is missing |
+| **Hand edits** | Commit them. Regeneration surfaces them as a diff rather than reverting them silently, so review the regeneration diff and revert the hunks you did not intend |
 | **CI placement** | Run the check on every deployment to a shared environment, after deploy, before the promotion gate |
 | **Result artefacts** | Decide explicitly whether `treecipe/PicklistDependencyResults/` is committed. If committed, apply a retention policy; if not, add it to `.gitignore` |
 | **Empty registry** | Never suppress the `EMPTY` verdict. A green check that verified nothing is worse than no check |

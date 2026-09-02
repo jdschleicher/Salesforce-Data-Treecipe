@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import path = require('path');
 import * as fs from 'fs';
+import * as os from 'os';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 
@@ -349,6 +350,75 @@ export class VSCodeWorkspaceService {
     static showWarningMessage(message: string) {
 
         vscode.window.showWarningMessage(message);
+
+    }
+
+    // THE STAGING DIRECTORY BEHIND THE DIFF CURRENTLY OPEN, RECLAIMED WHEN THE NEXT ONE IS STAGED
+    private static previousProposedContentDirectoryPath: string | undefined;
+
+    private static reclaimPreviousProposedContentDirectory() {
+
+        if ( !this.previousProposedContentDirectoryPath ) {
+            return;
+        }
+
+        try {
+            fs.rmSync(this.previousProposedContentDirectoryPath, { recursive: true, force: true });
+        } catch {
+            // A TEMP DIRECTORY THAT WILL NOT DELETE IS NOT WORTH FAILING A DIFF OVER
+        }
+
+        this.previousProposedContentDirectoryPath = undefined;
+
+    }
+
+    /*
+        Opens VS Code's own diff editor between a file on disk and content that has not been written
+        yet, so a regeneration can be reviewed -- and cancelled -- before it replaces a hand edit.
+
+        The proposed side is staged in a temp file because vscode.diff takes two URIs, and the only
+        alternative is registering a TextDocumentContentProvider for a custom scheme at activation.
+        A temp file needs nothing from activation and gives the diff editor a real document. The
+        file name carries the generated class name so the diff tab reads as that class rather than
+        as a random temp path.
+
+        Returns whether the diff opened. A failure here must not abort generation: the diff is a
+        convenience on the way to a decision the user still gets to make from the report.
+    */
+    static async showDiffForProposedContent(existingFilePath: string, proposedContent: string, diffEditorTitle: string): Promise<boolean> {
+
+        try {
+
+            /*
+                The previous staging directory is reclaimed first. Without this, each press of
+                "Show Diff" left another one behind for the life of the machine, and the prompt
+                offering it loops -- so a user comparing several classes in one run accumulated one
+                per click. Only the directory this method itself created is removed, and only the
+                one before the diff now being opened, so no editor loses the document under it.
+            */
+            this.reclaimPreviousProposedContentDirectory();
+
+            const proposedContentDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-proposed-'));
+            VSCodeWorkspaceService.previousProposedContentDirectoryPath = proposedContentDirectoryPath;
+
+            const proposedContentFilePath = path.join(proposedContentDirectoryPath, path.basename(existingFilePath));
+            fs.writeFileSync(proposedContentFilePath, proposedContent);
+
+            await vscode.commands.executeCommand(
+                'vscode.diff',
+                vscode.Uri.file(existingFilePath),
+                vscode.Uri.file(proposedContentFilePath),
+                diffEditorTitle
+            );
+
+            return true;
+
+        } catch (error) {
+
+            vscode.window.showErrorMessage(`Could not open a diff for "${existingFilePath}": ${error}`);
+            return false;
+
+        }
 
     }
 

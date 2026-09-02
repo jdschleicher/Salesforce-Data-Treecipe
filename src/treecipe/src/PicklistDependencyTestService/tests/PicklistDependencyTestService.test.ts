@@ -622,6 +622,261 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    describe('deterministic diff friendly emission', () => {
+
+        /*
+            Built inline rather than read from a fixture: these tests are about the ORDER values are
+            declared in, and expressing "declared in reverse alphabetical order" as markup makes the
+            property being tested harder to see than stating it directly.
+        */
+        function buildDependentFieldDetail(apiName: string,
+                                            controllingFieldApiName: string,
+                                            picklistOptionApiNameToControllingValues: Record<string, string[]>): XMLFieldDetail {
+
+            const fieldDetail = new XMLFieldDetail();
+            fieldDetail.apiName = apiName;
+            fieldDetail.fieldLabel = apiName;
+            fieldDetail.fieldType = 'Picklist';
+            fieldDetail.controllingField = controllingFieldApiName;
+            fieldDetail.xmlMarkup = '';
+            fieldDetail.picklistValues = Object.entries(picklistOptionApiNameToControllingValues).map(
+                ([picklistOptionApiName, controllingValues]) => ({
+                    picklistOptionApiName,
+                    label: picklistOptionApiName,
+                    controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: controllingValues
+                })
+            );
+
+            return fieldDetail;
+
+        }
+
+        function buildControllingFieldDetail(apiName: string, picklistOptionApiNames: string[]): XMLFieldDetail {
+
+            const fieldDetail = new XMLFieldDetail();
+            fieldDetail.apiName = apiName;
+            fieldDetail.fieldLabel = apiName;
+            fieldDetail.fieldType = 'Picklist';
+            fieldDetail.xmlMarkup = '';
+            fieldDetail.picklistValues = picklistOptionApiNames.map(picklistOptionApiName => ({
+                picklistOptionApiName,
+                label: picklistOptionApiName
+            }));
+
+            return fieldDetail;
+
+        }
+
+        test('given field details in two different orders, emits spec details ordered by field api name either way', () => {
+
+            const controllingFieldDetail = buildControllingFieldDetail('Country__c', ['usa', 'canada']);
+            const zebraFieldDetail = buildDependentFieldDetail('Zebra__c', 'Country__c', { zvalue: ['usa'] });
+            const appleFieldDetail = buildDependentFieldDetail('Apple__c', 'Country__c', { avalue: ['usa'] });
+            const mangoFieldDetail = buildDependentFieldDetail('Mango__c', 'Country__c', { mvalue: ['usa'] });
+
+            const filesystemOrderResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Ordering_Example__c',
+                [zebraFieldDetail, mangoFieldDetail, appleFieldDetail, controllingFieldDetail]
+            );
+
+            const reversedOrderResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Ordering_Example__c',
+                [controllingFieldDetail, appleFieldDetail, mangoFieldDetail, zebraFieldDetail]
+            );
+
+            const emittedFieldApiNames = filesystemOrderResult.specDetails.map(specDetail => specDetail.fieldApiName);
+            expect(emittedFieldApiNames).toEqual(['Apple__c', 'Mango__c', 'Zebra__c']);
+            expect(reversedOrderResult.specDetails.map(specDetail => specDetail.fieldApiName)).toEqual(emittedFieldApiNames);
+
+        });
+
+        test('given valueSettings declared out of alphabetical order, orders expectations by controlling value and sorts every value list', () => {
+
+            const controllingValueToPicklistOptions = {
+                usa: ['west', 'east'],
+                canada: ['quebec', 'ontario']
+            };
+
+            const expectations = PicklistDependencyTestService.buildExpectations(
+                controllingValueToPicklistOptions,
+                ['west', 'quebec', 'east', 'ontario', 'unreachable'],
+                ['usa', 'canada', 'mexico']
+            );
+
+            expect(expectations.map(expectation => expectation.controllingValue)).toEqual(['canada', 'mexico', 'usa']);
+
+            const usaExpectation = expectations.find(expectation => expectation.controllingValue === 'usa');
+            expect(usaExpectation.dependentValues).toEqual(['east', 'west']);
+            expect(usaExpectation.forbiddenValues).toEqual(['ontario', 'quebec', 'unreachable']);
+
+            const canadaExpectation = expectations.find(expectation => expectation.controllingValue === 'canada');
+            expect(canadaExpectation.dependentValues).toEqual(['ontario', 'quebec']);
+            expect(canadaExpectation.forbiddenValues).toEqual(['east', 'unreachable', 'west']);
+
+        });
+
+        test('does not sort the caller\'s controllingValueToPicklistOptions arrays in place', () => {
+
+            const controllingValueToPicklistOptions = { usa: ['west', 'east'] };
+
+            PicklistDependencyTestService.buildExpectations(controllingValueToPicklistOptions, ['west', 'east'], ['usa']);
+
+            expect(controllingValueToPicklistOptions.usa).toEqual(['west', 'east']);
+
+        });
+
+        test('given a fields directory listed in reverse order, produces a byte identical class body', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const forwardOrderResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                vscode.Uri.file(mockMetadataDirectoryPath)
+            );
+
+            const forwardOrderClassBodies = PicklistDependencyTestService.getDistinctObjectApiNames(forwardOrderResult.specDetails).map(
+                objectApiName => PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    objectApiName,
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName(objectApiName),
+                    forwardOrderResult.specDetails.filter(specDetail => specDetail.objectApiName === objectApiName)
+                )
+            );
+
+            // THE SAME FIXTURES, LISTED BACK TO FRONT -- WHICH IS WHAT A DIFFERENT FILESYSTEM CAN HAND BACK
+            const forwardReadDirectory = (vscode.workspace.fs.readDirectory as jest.Mock).getMockImplementation();
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockImplementation(async (directoryUri: any) => {
+                const directoryEntries = await forwardReadDirectory(directoryUri);
+                return [...directoryEntries].reverse();
+            });
+
+            const reversedOrderResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                vscode.Uri.file(mockMetadataDirectoryPath)
+            );
+
+            const reversedOrderClassBodies = PicklistDependencyTestService.getDistinctObjectApiNames(reversedOrderResult.specDetails).map(
+                objectApiName => PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    objectApiName,
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName(objectApiName),
+                    reversedOrderResult.specDetails.filter(specDetail => specDetail.objectApiName === objectApiName)
+                )
+            );
+
+            expect(forwardOrderClassBodies.length).toBeGreaterThan(0);
+            expect(reversedOrderClassBodies).toEqual(forwardOrderClassBodies);
+
+        });
+
+        test('given one picklist value added to one controlling value, only that combination\'s lines change', () => {
+
+            const controllingFieldDetail = buildControllingFieldDetail('Country__c', ['usa', 'canada', 'mexico']);
+
+            const beforeFieldDetail = buildDependentFieldDetail('Region__c', 'Country__c', {
+                west: ['usa'],
+                east: ['usa'],
+                ontario: ['canada'],
+                quebec: ['canada'],
+                baja: ['mexico']
+            });
+
+            // "central" IS INSERTED IN THE MIDDLE OF THE DECLARED VALUES, WHICH IS WHAT USED TO SHIFT EVERY FORBIDDEN LIST
+            const afterFieldDetail = buildDependentFieldDetail('Region__c', 'Country__c', {
+                west: ['usa'],
+                east: ['usa'],
+                central: ['usa'],
+                ontario: ['canada'],
+                quebec: ['canada'],
+                baja: ['mexico']
+            });
+
+            const buildClassBodyForFieldDetail = (dependentFieldDetail: XMLFieldDetail) => {
+
+                const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                    'Ordering_Example__c',
+                    [dependentFieldDetail, controllingFieldDetail]
+                );
+
+                return PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    'Ordering_Example__c',
+                    'SDTPLDOrderingExampleSpecs',
+                    collectionResult.specDetails
+                );
+
+            };
+
+            const beforeLines = buildClassBodyForFieldDetail(beforeFieldDetail).split('\n');
+            const afterLines = buildClassBodyForFieldDetail(afterFieldDetail).split('\n');
+
+            const beforeLineSet = new Set(beforeLines);
+            const afterLineSet = new Set(afterLines);
+
+            const removedLines = beforeLines.filter(line => !afterLineSet.has(line));
+            const addedLines = afterLines.filter(line => !beforeLineSet.has(line));
+
+            /*
+                Three lines legitimately change: the usa expectAtLeast gains the value, and the
+                canada and mexico expectNotAllowed complements gain it too -- a newly declared value
+                that those controlling values do not unlock genuinely belongs in their forbidden
+                lists. Nothing else may move.
+
+                Proving that is what stripping the new value does: if every added line reduces to
+                the line it replaced, then the only difference between the two files is the value
+                itself. A line that had merely been REORDERED would survive the strip as a
+                different string and fail here, which is exactly the noise this sorting removes.
+            */
+            expect(addedLines).toHaveLength(3);
+            expect(removedLines).toHaveLength(3);
+            expect(addedLines.every(addedLine => addedLine.includes(`'central'`))).toBe(true);
+
+            const addedLinesWithoutTheNewValue = addedLines.map(
+                addedLine => addedLine.replace(`'central', `, '').replace(`, 'central'`, '')
+            );
+            expect(addedLinesWithoutTheNewValue.sort()).toEqual([...removedLines].sort());
+
+            const usaAllowedLine = addedLines.find(addedLine => addedLine.includes(`expectAtLeast('usa'`));
+            expect(usaAllowedLine).toContain(`'central', 'east', 'west'`);
+
+            // THE COMBINATION THE NEW VALUE HAS NOTHING TO DO WITH IS BYTE FOR BYTE UNTOUCHED
+            const mexicoAllowedLine = beforeLines.find(beforeLine => beforeLine.includes(`expectAtLeast('mexico'`));
+            expect(mexicoAllowedLine).toBeDefined();
+            expect(afterLines).toContain(mexicoAllowedLine);
+
+        });
+
+        test('given a dependent field whose api name sorts before its controlling field, still resolves dependsOn to the later emitted method', () => {
+
+            const rootFieldDetail = buildControllingFieldDetail('Zulu__c', ['zvalue']);
+
+            // Yankee__c IS CONTROLLED BY Zulu__c AND SORTS BEFORE IT, SO ITS dependsOn NAMES A METHOD EMITTED LATER IN THE FILE
+            const middleFieldDetail = buildDependentFieldDetail('Yankee__c', 'Zulu__c', { yvalue: ['zvalue'] });
+            const leafFieldDetail = buildDependentFieldDetail('Alpha__c', 'Yankee__c', { avalue: ['yvalue'] });
+
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Chain_Ordering__c',
+                [rootFieldDetail, middleFieldDetail, leafFieldDetail]
+            );
+
+            expect(collectionResult.specDetails.map(specDetail => specDetail.fieldApiName)).toEqual(['Alpha__c', 'Yankee__c']);
+
+            const classBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Chain_Ordering__c',
+                'SDTPLDChainOrderingSpecs',
+                collectionResult.specDetails
+            );
+
+            const alphaSpecMethodName = 'specFor_Chain_Ordering_c_Alpha_c';
+            const yankeeSpecMethodName = 'specFor_Chain_Ordering_c_Yankee_c';
+
+            expect(classBody).toContain(`.dependsOn(${yankeeSpecMethodName}())`);
+
+            // THE dependsOn CALL APPEARS BEFORE THE METHOD IT NAMES IS DECLARED, WHICH APEX RESOLVES AT RUNTIME
+            expect(classBody.indexOf(`.dependsOn(${yankeeSpecMethodName}())`))
+                .toBeLessThan(classBody.indexOf(`public static SDTPicklistDependencySpec ${yankeeSpecMethodName}()`));
+            expect(classBody.indexOf(`public static SDTPicklistDependencySpec ${alphaSpecMethodName}()`))
+                .toBeLessThan(classBody.indexOf(`public static SDTPicklistDependencySpec ${yankeeSpecMethodName}()`));
+
+        });
+
+    });
+
     describe('buildPerObjectSpecsClassNamesByObjectApiName', () => {
 
         test('given an object api name, collapses underscore runs into a valid Apex class name', () => {
@@ -2152,6 +2407,363 @@ describe('PicklistDependencyTestService', () => {
             expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPLDSpecs.cls'));
             expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SDTPLDSpecsTest.cls'));
             expect(removedPaths).not.toContain(path.join(classesDirectoryPath, 'SomeUnrelatedClass.cls'));
+
+        });
+
+    });
+
+    describe('compareForEmission', () => {
+
+        /*
+            The rule the whole diff-friendliness guarantee rests on: every ordering that reaches the
+            emitted bytes compares by code unit, never by locale. localeCompare's result depends on
+            the host's ICU data, so two developers could emit different bytes from identical
+            metadata -- the exact problem the sorting exists to remove.
+        */
+        test('orders by code unit, which is where a locale aware comparison would disagree', () => {
+
+            expect(PicklistDependencyTestService.compareForEmission('B', 'a')).toBeLessThan(0);
+
+            // THE SAME PAIR THE OTHER WAY ROUND UNDER A LOCALE AWARE COMPARISON, WHICH IS WHY IT IS NOT USED
+            expect('B'.localeCompare('a')).toBeGreaterThan(0);
+
+            expect(PicklistDependencyTestService.compareForEmission('a', 'B')).toBeGreaterThan(0);
+            expect(PicklistDependencyTestService.compareForEmission('same', 'same')).toBe(0);
+
+        });
+
+        test('sorts every emitted value list through it', () => {
+
+            expect(PicklistDependencyTestService.sortValuesForEmission(['b', 'A', 'a', 'B'])).toEqual(['A', 'B', 'a', 'b']);
+
+        });
+
+        test('does not mutate the array it is given', () => {
+
+            const declaredValues = ['zulu', 'alpha'];
+            PicklistDependencyTestService.sortValuesForEmission(declaredValues);
+
+            expect(declaredValues).toEqual(['zulu', 'alpha']);
+
+        });
+
+    });
+
+    describe('regeneration change plan', () => {
+
+        /*
+            Written against a REAL temp directory rather than a mocked fs: the plan's whole job is
+            to compare proposed content against what is on disk, and a mocked readFileSync would be
+            asserting the mock rather than the comparison.
+        */
+        let temporaryClassesDirectoryPath: string;
+
+        const accountSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Account',
+            fieldApiName: 'Region__c',
+            controllingFieldApiName: 'Country__c',
+            expectations: [{ controllingValue: 'USA', dependentValues: ['West'], forbiddenValues: ['Ontario'] }]
+        };
+
+        const dependencyExampleSpecDetail: IPicklistDependencySpecDetail = {
+            objectApiName: 'Dependency_Example__c',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations: [{ controllingValue: 'cle', dependentValues: ['tremont'], forbiddenValues: ['willowick'] }]
+        };
+
+        beforeEach(() => {
+            temporaryClassesDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-change-plan-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(temporaryClassesDirectoryPath, { recursive: true, force: true });
+        });
+
+        test('given nothing generated yet, plans every file as added and reports changes', () => {
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            expect(changePlan.plannedFiles.length).toBeGreaterThan(0);
+            expect(changePlan.plannedFiles.every(plannedFile => plannedFile.changeType === 'added')).toBe(true);
+            expect(changePlan.hasChanges).toBe(true);
+
+            // NOTHING IS LOST BY WRITING FILES THAT DO NOT EXIST, SO THERE IS NOTHING TO CONFIRM
+            expect(PicklistDependencyTestService.planReplacesExistingContent(changePlan)).toBe(false);
+
+        });
+
+        test('given a plan, writes nothing to disk until it is written', () => {
+
+            PicklistDependencyTestService.buildSpecsChangePlan(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            expect(fs.readdirSync(temporaryClassesDirectoryPath)).toEqual([]);
+
+        });
+
+        test('given unchanged metadata, regenerating twice produces byte identical files and a no-op second plan', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            const firstRunContentByFileName: Record<string, string> = {};
+            fs.readdirSync(temporaryClassesDirectoryPath).forEach(fileName => {
+                firstRunContentByFileName[fileName] = fs.readFileSync(path.join(temporaryClassesDirectoryPath, fileName), 'utf-8');
+            });
+
+            const secondRunPlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            expect(secondRunPlan.plannedFiles.every(plannedFile => plannedFile.changeType === 'unchanged')).toBe(true);
+            expect(secondRunPlan.hasChanges).toBe(false);
+            expect(PicklistDependencyTestService.buildSpecsChangeReport(secondRunPlan)).toContain('No changes');
+
+            PicklistDependencyTestService.writeSpecsClassFiles(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            const secondRunContentByFileName: Record<string, string> = {};
+            fs.readdirSync(temporaryClassesDirectoryPath).forEach(fileName => {
+                secondRunContentByFileName[fileName] = fs.readFileSync(path.join(temporaryClassesDirectoryPath, fileName), 'utf-8');
+            });
+
+            expect(secondRunContentByFileName).toEqual(firstRunContentByFileName);
+
+        });
+
+        test('given a file already carrying the proposed content, leaves it untouched rather than rewriting it', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            const perObjectClassFilePath = PicklistDependencyTestService.getPerObjectSpecsClassFilePath(
+                temporaryClassesDirectoryPath,
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Account')
+            );
+
+            const modifiedTimeAfterFirstWrite = fs.statSync(perObjectClassFilePath).mtimeMs;
+
+            const unchangedPlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(unchangedPlan.plannedFiles);
+
+            expect(writtenFilePaths).toEqual([]);
+            expect(fs.statSync(perObjectClassFilePath).mtimeMs).toBe(modifiedTimeAfterFirstWrite);
+
+        });
+
+        test('given a hand edited generated class, plans it as changed and reports it as overwritten', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            const perObjectClassName = PicklistDependencyTestService.buildPerObjectSpecsClassName('Account');
+            const perObjectClassFilePath = PicklistDependencyTestService.getPerObjectSpecsClassFilePath(temporaryClassesDirectoryPath, perObjectClassName);
+            fs.writeFileSync(perObjectClassFilePath, '// A DELIBERATE EDIT DECLARING THE DEPENDENCY THE AUTHOR INTENDS');
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            const plannedEditedFile = changePlan.plannedFiles.find(plannedFile => plannedFile.filePath === perObjectClassFilePath);
+            expect(plannedEditedFile.changeType).toBe('changed');
+            expect(plannedEditedFile.objectApiName).toBe('Account');
+            expect(PicklistDependencyTestService.planReplacesExistingContent(changePlan)).toBe(true);
+
+            const changeReport = PicklistDependencyTestService.buildSpecsChangeReport(changePlan);
+            expect(changeReport).toContain('Overwritten:');
+            expect(changeReport).toContain(`${perObjectClassName}.cls`);
+
+        });
+
+        test('given an object that no longer declares a dependent picklist, names its stale class instead of deleting it', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
+            );
+
+            const retiredClassName = PicklistDependencyTestService.buildPerObjectSpecsClassName('Dependency_Example__c');
+            const retiredClassFilePath = PicklistDependencyTestService.getPerObjectSpecsClassFilePath(temporaryClassesDirectoryPath, retiredClassName);
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            expect(changePlan.staleClassFilePaths).toEqual([retiredClassFilePath]);
+            expect(PicklistDependencyTestService.planReplacesExistingContent(changePlan)).toBe(true);
+
+            const changeReport = PicklistDependencyTestService.buildSpecsChangeReport(changePlan);
+            expect(changeReport).toContain('Deleted');
+            expect(changeReport).toContain(`${retiredClassName}.cls`);
+
+            // BUILDING THE PLAN IS A READ -- THE CLASS IS STILL THERE UNTIL THE RUN IS CONFIRMED
+            expect(fs.existsSync(retiredClassFilePath)).toBe(true);
+
+        });
+
+        test('given the same content with CRLF line endings on disk, treats it as unchanged and leaves it alone', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            const perObjectClassFilePath = PicklistDependencyTestService.getPerObjectSpecsClassFilePath(
+                temporaryClassesDirectoryPath,
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Account')
+            );
+
+            /*
+                What a Windows checkout with git's default core.autocrlf=true looks like. Emission
+                always produces LF, so a raw byte comparison called every class "overwritten" on
+                every run -- a permanent false alarm for every Windows contributor, in the feature
+                whose entire purpose is that an unchanged regeneration is quiet.
+            */
+            const lineFeedContent = fs.readFileSync(perObjectClassFilePath, 'utf-8');
+            const carriageReturnContent = lineFeedContent.replace(/\n/g, '\r\n');
+            fs.writeFileSync(perObjectClassFilePath, carriageReturnContent);
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            const plannedFile = changePlan.plannedFiles.find(candidateFile => candidateFile.filePath === perObjectClassFilePath);
+            expect(plannedFile.changeType).toBe('unchanged');
+
+            PicklistDependencyTestService.writePlannedSpecsFiles(changePlan.plannedFiles);
+
+            // LEFT AS IT IS ON DISK -- REWRITING IT TO LF WOULD BE THE SAME CHURN FROM THE OTHER DIRECTION
+            expect(fs.readFileSync(perObjectClassFilePath, 'utf-8')).toBe(carriageReturnContent);
+
+        });
+
+        test('given a previewed plan, writes exactly that plan rather than rebuilding it', () => {
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            const buildBodySpy = jest.spyOn(PicklistDependencyTestService, 'buildPerObjectSpecsApexClassBody');
+
+            PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0', [], changePlan
+            );
+
+            /*
+                The dominant cost of a run is building each object's Apex body. Handing the previewed
+                plan back means it happens once per run instead of once for the preview and again for
+                the write -- and it makes "what was shown in the diff is what got written" structural
+                rather than a property of the plan builder happening to be pure.
+            */
+            expect(buildBodySpy).not.toHaveBeenCalled();
+
+            const perObjectClassFilePath = PicklistDependencyTestService.getPerObjectSpecsClassFilePath(
+                temporaryClassesDirectoryPath,
+                PicklistDependencyTestService.buildPerObjectSpecsClassName('Account')
+            );
+            const plannedFile = changePlan.plannedFiles.find(candidateFile => candidateFile.filePath === perObjectClassFilePath);
+
+            expect(fs.readFileSync(perObjectClassFilePath, 'utf-8')).toBe(plannedFile.proposedContent);
+
+        });
+
+        test('given a previewed plan carrying the test class, leaves that file to writeSpecsTestClassFiles', () => {
+
+            const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0', [], specsTestClassBody
+            );
+
+            const writeResult = PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0', [], changePlan
+            );
+
+            const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(temporaryClassesDirectoryPath);
+
+            // NOT WRITTEN HERE -- THIS METHOD DOES NOT REPORT IT, SO IT MUST NOT SILENTLY PRODUCE IT
+            expect(fs.existsSync(specsTestClassFilePath)).toBe(false);
+            expect(writeResult.aggregatorClassFilePath).toBeDefined();
+
+            PicklistDependencyTestService.writeSpecsTestClassFiles(temporaryClassesDirectoryPath, specsTestClassBody, '64.0');
+            expect(fs.readFileSync(specsTestClassFilePath, 'utf-8')).toBe(specsTestClassBody);
+
+        });
+
+        test('given a new object, reports its class as new rather than as overwritten', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(temporaryClassesDirectoryPath, [accountSpecDetail], '64.0');
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
+            );
+
+            const newClassName = PicklistDependencyTestService.buildPerObjectSpecsClassName('Dependency_Example__c');
+            const changeReport = PicklistDependencyTestService.buildSpecsChangeReport(changePlan);
+
+            expect(changeReport).toContain(`New: ${newClassName}.cls`);
+
+            /*
+                The aggregator gains a call to the new class, so it IS overwritten -- but the new
+                per-object class must not be reported as an overwrite of something that was never
+                there, which is the distinction the two lines exist to make.
+            */
+            expect(changeReport).toContain('Overwritten:');
+            expect(changeReport.split('\n').find(reportLine => reportLine.startsWith('Overwritten:'))).not.toContain(newClassName);
+
+        });
+
+        test('given the test class already carrying its proposed content, rewrites neither it nor its meta xml', () => {
+
+            const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            const specsTestClassFilePath = PicklistDependencyTestService.writeSpecsTestClassFiles(
+                temporaryClassesDirectoryPath, specsTestClassBody, '64.0'
+            );
+
+            expect(fs.readFileSync(specsTestClassFilePath, 'utf-8')).toBe(specsTestClassBody);
+            expect(fs.existsSync(`${specsTestClassFilePath}-meta.xml`)).toBe(true);
+
+            const modifiedTimeAfterFirstWrite = fs.statSync(specsTestClassFilePath).mtimeMs;
+
+            PicklistDependencyTestService.writeSpecsTestClassFiles(temporaryClassesDirectoryPath, specsTestClassBody, '64.0');
+
+            expect(fs.statSync(specsTestClassFilePath).mtimeMs).toBe(modifiedTimeAfterFirstWrite);
+
+        });
+
+        test('given a changed test class body, rewrites it', () => {
+
+            const specsTestClassFilePath = PicklistDependencyTestService.writeSpecsTestClassFiles(
+                temporaryClassesDirectoryPath, '// THE FIRST BODY', '64.0'
+            );
+
+            PicklistDependencyTestService.writeSpecsTestClassFiles(temporaryClassesDirectoryPath, '// A DIFFERENT BODY', '64.0');
+
+            expect(fs.readFileSync(specsTestClassFilePath, 'utf-8')).toBe('// A DIFFERENT BODY');
+
+        });
+
+        test('given the test class body, plans it alongside the spec classes', () => {
+
+            const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody([accountSpecDetail]);
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0', [], specsTestClassBody
+            );
+
+            const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(temporaryClassesDirectoryPath);
+            const plannedTestClassFile = changePlan.plannedFiles.find(plannedFile => plannedFile.filePath === specsTestClassFilePath);
+
+            expect(plannedTestClassFile).toBeDefined();
+            expect(plannedTestClassFile.proposedContent).toBe(specsTestClassBody);
+
+        });
+
+        test('given no test class body, plans only the spec classes', () => {
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(temporaryClassesDirectoryPath);
+
+            expect(changePlan.plannedFiles.some(plannedFile => plannedFile.filePath === specsTestClassFilePath)).toBe(false);
 
         });
 
