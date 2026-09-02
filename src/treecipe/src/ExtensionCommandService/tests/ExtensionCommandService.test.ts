@@ -577,6 +577,14 @@ describe('ExtensionCommandService', () => {
 
             jest.clearAllMocks();
 
+            /*
+                The singleton is module level and survives every test in this file. Without this reset
+                these tests pass on state a SIBLING test left behind: the ordering assertion below was
+                satisfied by a leftover map even with the await removed, which made it incapable of
+                failing on the defect it exists to catch.
+            */
+            (GlobalValueSetSingleton.getInstance() as any).globalValueSets = undefined;
+
             extensionCommandService = new ExtensionCommandService();
 
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
@@ -597,7 +605,8 @@ describe('ExtensionCommandService', () => {
 
             // A REAL globalValueSets DIRECTORY HOLDING ONE SET, READ THROUGH THE SAME CALL THE COMMAND MAKES
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValue([
+            // "Once" NOT "mockResolvedValue": the vscode factory's jest.fn is shared file-wide and clearAllMocks does not clear implementations
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValueOnce([
                 ['SDT_Territory_Values.globalValueSet-meta.xml', 1]
             ]);
             jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getGlobalValueSetPicklistXMLFileContent')
@@ -630,6 +639,25 @@ describe('ExtensionCommandService', () => {
         */
         test('given the recipe command, finishes loading the sets before the objects walk begins', async () => {
 
+            /*
+                A set name of its OWN, distinct from the sibling test's. Sharing one meant a leftover
+                map satisfied this assertion whether or not the load had finished, so it could not
+                fail on a missing await.
+            */
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockReset();
+            (vscode.workspace.fs.readDirectory as jest.Mock).mockResolvedValueOnce([
+                ['SDT_Region_Values.globalValueSet-meta.xml', 1]
+            ]);
+            jest.spyOn(GlobalValueSetSingleton.getInstance(), 'getGlobalValueSetPicklistXMLFileContent')
+                .mockResolvedValue(`<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>Region_West</fullName>
+        <label>Region West</label>
+    </customValue>
+    <masterLabel>SDT Region Values</masterLabel>
+</GlobalValueSet>`);
+
             let globalValueSetsAtTheMomentTheWalkBegan: Record<string, string[]> | null | undefined;
 
             jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships')
@@ -641,7 +669,7 @@ describe('ExtensionCommandService', () => {
             await extensionCommandService.generateRecipeFromConfigurationDetail();
 
             expect(globalValueSetsAtTheMomentTheWalkBegan).toBeTruthy();
-            expect(globalValueSetsAtTheMomentTheWalkBegan['SDT_Territory_Values']).toEqual(['Territory_North']);
+            expect(globalValueSetsAtTheMomentTheWalkBegan['SDT_Region_Values']).toEqual(['Region_West']);
 
         });
 
