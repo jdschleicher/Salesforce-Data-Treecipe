@@ -47,7 +47,7 @@ export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
                                                         associatedFieldApiName
                                                         ): string {
 
-        const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
+        const commaJoinedPicklistChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(availablePicklistChoices);
         let fakeMultiSelectRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
         
         const recordTypeBasedRecipeValues = this.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
@@ -126,6 +126,42 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
+    /*
+        A picklist option is UNTRUSTED text -- it comes from field metadata or a global value set in
+        whatever repository the user opened -- and it is embedded inside a SINGLE-QUOTED Jinja2 string
+        literal that the snowfakery CLI evaluates. Unescaped, a value containing an apostrophe closes
+        the literal and everything after it is evaluated as an expression rather than read as data.
+
+        This is deliberately NOT shared with the FakerJS escaper: that one targets a JavaScript
+        template literal, where the dangerous characters are the backtick and ${. The two backends
+        embed into different languages, so one escaper covering both would under-escape each.
+
+        Escaped, in this order:
+          \  first, or the escapes added below would themselves be re-escaped
+          '   ends the Jinja2 string literal
+          newlines, which would otherwise break the generated recipe's YAML structure
+    */
+    static escapePicklistOptionForJinjaStringLiteral(picklistOption: string): string {
+
+        return String(picklistOption)
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'")
+            .replace(/\r\n|\r|\n/g, '\\n');
+
+    }
+
+    /*
+        Every site that embeds options into random_choice(...) goes through this, so a new call site
+        cannot silently skip the escaping.
+    */
+    static buildEscapedCommaJoinedPicklistChoices(availablePicklistChoices: string[]): string {
+
+        return availablePicklistChoices
+            .map(picklistOption => SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(picklistOption))
+            .join("', '");
+
+    }
+
       buildPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[], 
                                                 recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                                 fieldApiName: string): string {
@@ -137,7 +173,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             return "### TODO: This picklist field needs manually updated with either a standard value set list or global value set";
         } 
 
-        const commaJoinedPicklistChoices = availablePicklistChoices.join("', '");
+        const commaJoinedPicklistChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(availablePicklistChoices);
         fakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
 
         const recordTypeBasedRecipeValues = this.buildRecordTypeBasedPicklistRecipeValue(recordTypeNameByRecordTypeWrapper, fieldApiName);
@@ -224,7 +260,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
             if ( availableRecordTypePicklistValuesForField ) {
 
-                const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");
+                const commaJoinedPicklistChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(availableRecordTypePicklistValuesForField);
                 const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} random_choice('${commaJoinedPicklistChoices}') ${this.closingRecipeSyntax}`;
     
                 let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
@@ -257,7 +293,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
             if ( availableRecordTypePicklistValuesForField ) {
 
-                const commaJoinedPicklistChoices = availableRecordTypePicklistValuesForField.join("', '");
+                const commaJoinedPicklistChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(availableRecordTypePicklistValuesForField);
                 const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
                 
                 let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the Multiselect faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;

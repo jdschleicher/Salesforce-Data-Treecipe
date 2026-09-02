@@ -1,5 +1,50 @@
 # Change Log
 
+## [3.3.1] - Global Value Sets Actually Load
+
+Resolves [#85](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/85).
+
+### Generate Treecipe now produces real values for global-value-set-backed picklists
+
+`GlobalValueSetSingleton.initialize` took a leading boolean that gated whether it did any work at all, returning immediately when `false`. **Generate Treecipe** passed `false`, so the sets were never loaded and every picklist backed by one fell through recipe generation with no values:
+
+```yaml
+# before
+Territory__c: '### TODO: This picklist field needs manually updated with either a standard value set list or global value set'
+
+# after
+Territory__c: ${{ faker.helpers.arrayElement([`Territory_North`,`Territory_South`]) }}
+```
+
+If your project uses global value sets, regenerating will replace those TODO placeholders with real generated values.
+
+**Generate Treecipe no longer warns when a project has no `globalValueSets` directory.** That notice never actually appeared before — the call returned at its guard before reaching the check — and it would now fire on every run for the majority of projects, which have no global value sets at all. A field that genuinely needs a set still generates a TODO naming that field exactly, which is more useful than a directory-level toast.
+
+### Security: picklist values are now escaped before being embedded in faker expressions
+
+A picklist option is untrusted text — it comes from field metadata, or a global value set, in whatever repository the user opened — and both backends embedded it into an executable expression with no escaping, contrary to the rule stated in `CLAUDE.md`.
+
+- **faker-js**: options are embedded in a JavaScript template literal that the recipe processor passes to `new Function()`. A value containing a backtick closed the literal, and the rest of the value was executed as code rather than read as data. A `${...}` interpolation did the same without needing a backtick.
+- **Snowfakery**: options are embedded in a single-quoted Jinja2 string literal evaluated by the `snowfakery` CLI. A value containing an apostrophe closed the literal the same way.
+
+Both backends now escape every option at every embedding site — backslash first, then the delimiter each language uses, then newlines, which also prevents a value from breaking the generated recipe's YAML structure. The two escapers are deliberately **separate**, because the backends embed into different languages and one escaper covering both would under-escape each.
+
+Values without special characters generate byte-identical output; only a value containing a backtick, apostrophe, backslash, `${`, or newline changes — and only to be emitted correctly as data.
+
+This flaw predates this release and was reachable through ordinary picklist values, not only global value sets. It was found by the security review on the PR that made global value sets reach recipe generation for the first time.
+
+### The flag is gone rather than fixed
+
+The parameter is removed, not renamed. It guarded a case that never existed — nothing initializes these sets at extension startup, so there was never an "already initialized" run to skip — while its name, `isGlobalValuesInitializedOnExtensionStartUp`, described a **state** where the guard read it as a **command**.
+
+Three of its four callers reasoned from the name and passed the value that silently disabled the call: recipe generation, and both picklist dependency paths (fixed in 3.3.0). The demo harness was a fourth. A parameter no caller wants, and most callers get backwards, is not worth keeping — so it cannot be passed wrongly again.
+
+The call is also `await`ed now. Recipe generation started its objects walk without waiting, so even a corrected flag left a race that could empty the same picklists.
+
+### Coverage for the command that had none
+
+`generateRecipeFromConfigurationDetail` had no tests at all, which is why the defect survived being found and fixed on three sibling call sites. It now has two, both asserting what the command **achieves** rather than which arguments it passed: that the sets are loaded, and that loading finishes before the walk begins. The second fails if the `await` is removed.
+
 ## [3.3.0] - Deep Dependency Chains and Global-Value-Set-Backed Dependent Picklists
 
 Resolves [#76](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/76). Part of epic [#62](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/62).

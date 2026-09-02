@@ -156,10 +156,22 @@ export class ExtensionCommandService {
                  at this point in the extension commands, where a command is entered to generate a reciipe, we should retrieve the globalvaluesets 
                  as there could be changes that have taken place throughout the vscode instance of the user
                 */
-                const isGlobalValuesInitializedOnExtensionStartUpOverride = false;
                 const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
                 let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
-                globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isGlobalValuesInitializedOnExtensionStartUpOverride);
+
+                /*
+                    Awaited: the walk below reads these sets, so starting it first is a race that
+                    empties every global-value-set-backed picklist in the generated recipe whenever
+                    the read loses.
+
+                    The directory-level notice is suppressed, matching the picklist dependency paths.
+                    Most projects have no global value sets and nothing is missing for them, while a
+                    field that DOES need one already generates a TODO naming that field exactly --
+                    strictly more useful than a toast on every run. Note this notice never actually
+                    appeared before: the call returned at its guard without reaching the check.
+                */
+                const isMissingGlobalValueSetsDirectoryWarningShown = false;
+                await globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
                 const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
@@ -205,16 +217,9 @@ export class ExtensionCommandService {
             from this singleton, so it is initialized here for the same reason recipe generation
             initializes it -- the sets may have changed since the window opened.
         */
-        /*
-            The second argument gates whether initialize does ANY work: it returns immediately when
-            false. The name reads like an "am I at startup" hint, so false looks like the value a
-            command should pass -- it is the opposite, and passing it makes this call a silent no-op
-            that leaves every global-value-set-backed field skipped as "set not found".
-        */
-        const shouldReadGlobalValueSetsNow = true;
         const isMissingGlobalValueSetsDirectoryWarningShown = false;
         const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
-        await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, shouldReadGlobalValueSetsNow, isMissingGlobalValueSetsDirectoryWarningShown);
+        await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
         const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
         const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
@@ -591,11 +596,9 @@ export class ExtensionCommandService {
             const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
 
             // THE EXPLORER READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
-            // TRUE MEANS "DO THE WORK" -- SEE THE NOTE ON THE GENERATE PATH ABOVE; FALSE MAKES THIS A NO-OP
-            const shouldReadGlobalValueSetsNow = true;
             const isMissingGlobalValueSetsDirectoryWarningShown = false;
             const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
-            await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, shouldReadGlobalValueSetsNow, isMissingGlobalValueSetsDirectoryWarningShown);
+            await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
             /*
                 Walking a real org's objects directory parses every field file and takes seconds, so

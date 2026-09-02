@@ -127,11 +127,9 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 .mockImplementation(async (globalValueSetURI, globalValueSetFileName) => {
                 return expectedGlobalValueSetFileNameToPicklistValuesSetMap[globalValueSetFileName] || Promise.resolve(null);
             });
-    
-            const generateRecipeOverride = true;
 
             const uri = vscode.Uri.file('./src/treecipe/src/DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory');
-            await globalValueSetSingleton.initialize(uri.fsPath, generateRecipeOverride);
+            await globalValueSetSingleton.initialize(uri.fsPath);
 
             const expectedPicklistXMLFieldDetail:XMLFieldDetail = XMLMarkupMockService.getExpectedGlobalValueSetCLEGlobalPicklistXMLFieldDetail();
             const expectedPicklistFakerJSValue = "\${{ faker.helpers.arrayElement([`guardians`,`cavs`,`browns`,`monsters`,`crunch`]) }}";

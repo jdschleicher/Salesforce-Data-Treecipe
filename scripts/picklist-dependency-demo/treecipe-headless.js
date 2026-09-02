@@ -104,11 +104,7 @@ async function generate(objectsDirectory, classesDirectory, apiVersion) {
         this every global-value-set-backed field is skipped as "set not found", and the demo's own
         tier 3 Planet__c field silently never gets a spec.
 
-        The second argument gates whether initialize does ANY work: it returns immediately when
-        false. The name reads like an "am I at startup" hint, so false looks like the value a caller
-        should pass -- it is the opposite, and passing it makes this call a silent no-op.
     */
-    const shouldReadGlobalValueSetsNow = true;
     const isMissingGlobalValueSetsDirectoryWarningShown = false;
     /*
         path.dirname rather than the service's getParentPath, which splits on '/' only: this driver
@@ -116,7 +112,6 @@ async function generate(objectsDirectory, classesDirectory, apiVersion) {
     */
     await GlobalValueSetSingleton.getInstance().initialize(
         path.dirname(objectsDirectory),
-        shouldReadGlobalValueSetsNow,
         isMissingGlobalValueSetsDirectoryWarningShown
     );
 

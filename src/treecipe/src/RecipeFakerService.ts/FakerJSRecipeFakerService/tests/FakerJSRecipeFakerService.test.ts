@@ -306,4 +306,77 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
         });
 
+
+    /*
+        Picklist options are untrusted text from field metadata or a global value set in whatever
+        repository the user opened, and they are embedded in a JS template literal that
+        FakerJSRecipeProcessor hands to new Function(). An unescaped backtick closes the literal and
+        turns the rest of the value into executable code.
+    */
+    describe('escapePicklistOptionForTemplateLiteral', () => {
+
+        const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+
+        test('given a value containing a backtick, escapes it so it cannot close the template literal', () => {
+
+            const breakoutAttempt = 'a`,globalThis.INJECTED,`b';
+            const generatedSyntax = fakerJSRecipeFakerService.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions([breakoutAttempt]);
+
+            expect(generatedSyntax).toContain('\\`');
+
+            /*
+                The text still APPEARS in the output -- escaped, it is inert data inside the literal.
+                What proves that is evaluating it: the expression must yield the original value
+                unchanged. Unescaped, the same input parses as a three-element list whose middle
+                element is executable code, and this returns something else or throws.
+            */
+            const stubFaker = { helpers: { arrayElement: (options: string[]) => options[0] } };
+            const evaluatedValue = new Function('faker', `return (${generatedSyntax})`)(stubFaker);
+
+            expect(evaluatedValue).toBe(breakoutAttempt);
+
+        });
+
+        test('given a value containing a template interpolation, escapes it so it cannot be evaluated', () => {
+
+            const generatedSyntax = fakerJSRecipeFakerService.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(['${process.env.SECRET}']);
+
+            expect(generatedSyntax).toContain('\\${');
+            expect(generatedSyntax).not.toMatch(/[^\\]\$\{process/);
+
+        });
+
+        test('given a value containing a backslash, escapes it first so it cannot re-escape the escaping', () => {
+
+            expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral('back\\slash')).toBe('back\\\\slash');
+            // A TRAILING BACKSLASH WOULD OTHERWISE ESCAPE THE CLOSING BACKTICK
+            expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral('trailing\\')).toBe('trailing\\\\');
+
+        });
+
+        test('given a value containing a newline, escapes it so the recipe YAML structure survives', () => {
+
+            expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral('a\nb')).toBe('a\\nb');
+
+        });
+
+        test('given ordinary values, leaves them byte-identical', () => {
+
+            const ordinaryOptions = ['guardians', 'cavs', 'Ohio_City', 'Some Value'];
+            ordinaryOptions.forEach(ordinaryOption => {
+                expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral(ordinaryOption)).toBe(ordinaryOption);
+            });
+
+        });
+
+        test('the escaped expression still parses as valid JavaScript', () => {
+
+            const generatedSyntax = fakerJSRecipeFakerService.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(['a`,INJECTED,`b', "quote'value"]);
+
+            expect(() => new Function('faker', `return (${generatedSyntax})`)).not.toThrow();
+
+        });
+
+    });
+
 });
