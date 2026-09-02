@@ -62,6 +62,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const openPicklistDependencyExplorer = vscode.commands.registerCommand("treecipe.openPicklistDependencyExplorer", () => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.openPicklistDependencyExplorer();
+
+	});
+
 	context.subscriptions.push(
 		generateTreecipe,
 		initiateConfiguration,
@@ -69,7 +76,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		insertDataSetBySelectedDirectory,
 		changeFakerImplementationService,
 		generatePicklistDependencyTests,
-		runPicklistDependencyCheck
+		runPicklistDependencyCheck,
+		openPicklistDependencyExplorer
 	);
 	
 }

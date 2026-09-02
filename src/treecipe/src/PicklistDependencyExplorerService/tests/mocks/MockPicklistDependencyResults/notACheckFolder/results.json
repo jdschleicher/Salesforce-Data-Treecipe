@@ -1,0 +1,2 @@
+this is deliberately not valid JSON -- the folder name carries no run timestamp, so the scan must
+skip it by name and never reach the point of parsing this file

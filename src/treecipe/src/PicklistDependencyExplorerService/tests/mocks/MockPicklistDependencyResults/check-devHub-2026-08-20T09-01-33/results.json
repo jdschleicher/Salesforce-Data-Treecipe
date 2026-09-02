@@ -1,0 +1,16 @@
+{
+  "targetOrg": "devHub",
+  "ranAt": "2026-08-20T09-01-33",
+  "passed": false,
+  "failureCount": 1,
+  "methodsRun": 3,
+  "methodOutcomes": [
+    {
+      "methodName": "Chain_Example_c_picklistDependenciesMatchSourceMetadata",
+      "passed": false,
+      "message": "System.AssertException: Assertion Failed: Picklist dependency drift on Chain_Example__c -- 2 combination(s) no longer match local source metadata:\n  - MISSING_VALUES — Chain_Example__c.State__c @ USA: expected value(s) not unlocked in the org: Texas\n  - FORBIDDEN_VALUES_PRESENT — Chain_Example__c.City__c @ Ohio: value(s) unlocked that local metadata forbids: Toronto"
+    },
+    { "methodName": "Dependency_Example_c_picklistDependenciesMatchSourceMetadata", "passed": true },
+    { "methodName": "specRegistryIsNotEmpty", "passed": true }
+  ]
+}
