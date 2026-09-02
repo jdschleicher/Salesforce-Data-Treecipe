@@ -287,7 +287,7 @@ flowchart LR
 
 ### Record-type-scoped specs
 
-A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than the field-level matrix. The field-level ("bones") specs are emitted exactly as before; the scoped ones are derived from them, which is what guarantees a scoped spec can only ever be a *subset* of the field-level one.
+A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than the field-level matrix. The field-level ("bones") specs are emitted exactly as before; the scoped ones are derived from them, which is what guarantees a scoped spec can only ever be a *subset* of the field-level one. The names and values in the diagram below are there to show the derivation — no org is expected to have this metadata.
 
 ```mermaid
 flowchart LR

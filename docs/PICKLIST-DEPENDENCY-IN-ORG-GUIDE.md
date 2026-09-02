@@ -81,7 +81,9 @@ Everything is `SDT`-prefixed specifically so it cannot collide with your own Ape
 
 ## 3. Reading a spec class
 
-Open `SDTPLDSpecs_<Object>` in the Developer Console. A method looks like this:
+Open `SDTPLDSpecs_<Object>` in the Developer Console. A method looks like this.
+
+> The api names, picklist values and record type names throughout this section are invented to show the **shape** of a generated method. They are not drawn from any particular org, from the demo project, or from the test fixtures, and your generated classes will not match them line for line. What transfers is the structure: which argument sits where, and what each line asserts.
 
 ```apex
 // Treecipe_Demo__c.Dressing__c controlled by Neighborhood__c
@@ -158,7 +160,7 @@ public static SDTPicklistDependencySpec specFor_Treecipe_Demo_c_Dressing_c_recor
 }
 ```
 
-Read against the field-level method above, that says: under `Ohio_Only`, `ohiocity` still unlocks `ranch` but no longer `french`, because this record type does not assign `french` to the field at all — so `french` is absent from both lists rather than being forbidden. And `tremont`, a controlling value the field itself declares, is not assigned to this record type, so it cannot be selected under it.
+Set beside the field-level method above, the two illustrate the narrowing. In this example the record type assigns fewer values than the field declares, so `ohiocity` unlocks a shorter list; a value the record type does not assign drops out of the allowed **and** the forbidden list rather than becoming forbidden; and a controlling value it does not assign at all becomes `expectUnavailable`. Which values those are in your org depends entirely on your record type's picklist assignments.
 
 | Line | Asserts |
 |---|---|

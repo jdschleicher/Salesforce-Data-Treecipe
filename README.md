@@ -204,7 +204,7 @@ The forbidden list is the complement: every value the dependent field declares t
 
 #### Record type scoped specs
 
-A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than what the field itself declares. Where an object has a `recordTypes/` directory, the per-object class gets those narrowed combinations too, alongside the field-level ones:
+A record type assigns its own subset of picklist values to the controlling and dependent fields, so the combinations reachable **through one record type** are narrower than what the field itself declares. Where an object has a `recordTypes/` directory, the per-object class gets those narrowed combinations too, alongside the field-level ones. The sample below shows the shape of what is emitted rather than metadata you should expect to see:
 
 ```apex
 public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c_recordType_Cleveland_Only() {
