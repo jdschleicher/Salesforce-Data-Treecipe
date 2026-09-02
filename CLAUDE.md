@@ -8,6 +8,8 @@ You are assisting with **Salesforce Data Treecipe**, a **VS Code extension** (Ty
 
 Status of the branch in flight. Each bullet links to where the detail lives.
 
+> **This section is point-in-time, unlike the rest of this file.** It describes one branch, not a standing rule. Delete it once #76 merges — [CHANGELOG.md](CHANGELOG.md) is the durable record of what shipped.
+
 - **Done and pushed** — [issue #76](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/76) on branch [`claude/next-task-issue-76-rhgzrl`](https://github.com/jdschleicher/Salesforce-Data-Treecipe/tree/claude/next-task-issue-76-rhgzrl). No PR opened yet — run `/pr-flow` to ship
 - **Dependency chains now go 3+ links deep** — `Country__c → State__c → City__c → District__c`, so a link that both *has* an upstream and *is* one is finally covered. See the [CHANGELOG entry](CHANGELOG.md#330---deep-dependency-chains-and-global-value-set-backed-dependent-picklists) and the [`Chain_Example__c` fixtures](src/treecipe/src/PicklistDependencyTestService/tests/mocks/MockPicklistDependencyMetadataDirectory/objects/Chain_Example__c/fields/)
 - **Three dependency links emit two `dependsOn` calls** — the link is emitted only where the controlling field is itself dependent, so the root of the `dependsOn` graph has nothing above it. Emission lives in [`PicklistDependencyTestService.buildSpecStatement`](src/treecipe/src/PicklistDependencyTestService/PicklistDependencyTestService.ts)
