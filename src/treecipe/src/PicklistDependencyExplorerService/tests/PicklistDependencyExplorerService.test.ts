@@ -762,6 +762,52 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+    describe('buildForbiddenValues for an unavailable controlling value', () => {
+
+        /*
+            The emitted Apex for this case is a bare expectUnavailable line -- it asserts nothing
+            about values. Complementing its empty allowed list against the scope's declared values
+            would render the whole universe struck through, which is what an expectNone row shows,
+            and would display an assertion the generated spec does not contain.
+        */
+        test('given an unavailable combination, renders no must-not-unlock list', () => {
+
+            const forbiddenValues = PicklistDependencyExplorerService.buildForbiddenValues(
+                ['Cleveland', 'Toronto'],
+                {
+                    controllingValue: 'Texas',
+                    allowedValues: [],
+                    hasForbiddenAssertion: true,
+                    controllingValueUnavailable: true,
+                    status: 'unknown',
+                    failures: []
+                }
+            );
+
+            expect(forbiddenValues).toBeEmpty();
+
+        });
+
+        test('given a combination that unlocks nothing but IS available, still renders the complement', () => {
+
+            const forbiddenValues = PicklistDependencyExplorerService.buildForbiddenValues(
+                ['Cleveland', 'Toronto'],
+                {
+                    controllingValue: 'Ohio',
+                    allowedValues: [],
+                    hasForbiddenAssertion: true,
+                    controllingValueUnavailable: false,
+                    status: 'unknown',
+                    failures: []
+                }
+            );
+
+            expect(forbiddenValues).toEqual(['Cleveland', 'Toronto']);
+
+        });
+
+    });
+
     describe('record type scope sorting and field level scoping', () => {
 
         test('given record types in reverse order, lists a field\'s scopes by developer name', () => {
@@ -1242,6 +1288,118 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+    describe('record type scoped payload shape', () => {
+
+        /*
+            The scoped path adds a legitimate factor of R -- one scope per record type -- and that is
+            real data. What it must NOT do is reintroduce the controlling x dependent product the
+            complement optimisation removed: a scope carries its declared values once and each of its
+            combinations carries only what that controlling value unlocks.
+        */
+        it('keeps a record type scope linear in picklist size, like the field level payload', () => {
+
+            const controllingValueCount = 40;
+            const dependentValueCount = 120;
+
+            const declaredValues = Array.from({ length: dependentValueCount }, (unusedValue, valueIndex) => `Dependent_Value_${valueIndex}`);
+
+            const buildExpectations = () => Array.from({ length: controllingValueCount }, (unusedValue, controllingIndex) => {
+                const allowedValues = declaredValues.filter((unusedDeclaredValue, valueIndex) => valueIndex % controllingValueCount === controllingIndex);
+                const allowedValueSet = new Set(allowedValues);
+                return {
+                    controllingValue: `Controlling_Value_${controllingIndex}`,
+                    dependentValues: allowedValues,
+                    forbiddenValues: declaredValues.filter(declaredValue => !allowedValueSet.has(declaredValue))
+                };
+            });
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Big__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                expectations: buildExpectations()
+            };
+
+            const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
+                objectApiName: 'Big__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                recordTypeDeveloperName: 'Big_Record_Type',
+                expectations: buildExpectations()
+            };
+
+            const fieldLevelOnlyJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad())
+            ).length;
+
+            const withOneScopeJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad(), [recordTypeSpecDetail]
+                )
+            ).length;
+
+            /*
+                One scope repeating the whole field costs about one field's worth again. Quadratic
+                would be ~40 x 120 value strings inside the scope alone, so the bound below sits
+                between the two: comfortably above 2x linear, far under the product.
+            */
+            expect(withOneScopeJsonLength).toBeLessThan(fieldLevelOnlyJsonLength * 3);
+            expect(withOneScopeJsonLength).toBeLessThan(60000);
+
+        });
+
+        /*
+            An unavailable controlling value asserts nothing about the dependent field, so it must
+            stay a small stub. Carrying a per-value complement for it would put the product back into
+            the payload -- and into the DOM the panel builds from it.
+        */
+        it('keeps an unavailable controlling value from carrying the whole declared set', () => {
+
+            const dependentValueCount = 120;
+            const declaredValues = Array.from({ length: dependentValueCount }, (unusedValue, valueIndex) => `Dependent_Value_${valueIndex}`);
+
+            const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
+                objectApiName: 'Big__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                recordTypeDeveloperName: 'Sparse_Record_Type',
+                expectations: [
+                    { controllingValue: 'Assigned', dependentValues: declaredValues, forbiddenValues: [] },
+                    ...Array.from({ length: 39 }, (unusedValue, controllingIndex) => ({
+                        controllingValue: `Unassigned_${controllingIndex}`,
+                        dependentValues: [],
+                        forbiddenValues: [],
+                        controllingValueUnavailable: true
+                    }))
+                ]
+            };
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                [{
+                    objectApiName: 'Big__c',
+                    fieldApiName: 'Dependent__c',
+                    controllingFieldApiName: 'Controlling__c',
+                    expectations: [{ controllingValue: 'Assigned', dependentValues: declaredValues, forbiddenValues: [] }]
+                }],
+                [],
+                buildNoResultsLoad(),
+                [recordTypeSpecDetail]
+            );
+
+            const scope = viewModel.objects[0].rootNodes[0].recordTypeScopes[0];
+
+            scope.combinations
+                .filter(combination => combination.controllingValueUnavailable)
+                .forEach(combination => {
+                    expect(combination.allowedValues).toBeEmpty();
+                    expect(PicklistDependencyExplorerService.buildForbiddenValues(scope.declaredValues, combination)).toBeEmpty();
+                });
+
+        });
+
+    });
+
     describe('collectSourceFilePaths', () => {
 
         it('given a chained model, collects the source path of every node including nested ones', () => {
@@ -1367,6 +1525,14 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualWebviewHtml).toContain('North_America');
             expect(actualWebviewHtml).toContain('buildRecordTypeScopeElement');
             expect(actualWebviewHtml).toContain('not available under this record type');
+
+            /*
+                A scope's rows are built on first expand. Every record type repeats its field's
+                combinations, so building them at load multiplies the panel's element count by the
+                record type count before a reader has opened anything.
+            */
+            expect(actualWebviewHtml).toContain('scopeBodyBuilt');
+            expect(actualWebviewHtml).toContain('buildScopeBody');
 
             // THE PANEL MUST SAY WHY A SCOPED ROW NEVER GOES GREEN, BESIDE THE ROWS THEMSELVES
             expect(actualWebviewHtml).toContain('not asserted by the check');

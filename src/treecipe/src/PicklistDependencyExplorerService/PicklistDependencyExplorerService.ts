@@ -508,6 +508,16 @@ export class PicklistDependencyExplorerService {
     */
     static buildForbiddenValues(declaredValues: string[], combination: IPicklistDependencyCombinationViewModel): string[] {
 
+        /*
+            An unavailable controlling value asserts nothing about values -- the emitted Apex is a
+            bare expectUnavailable line. Its empty allowed list would otherwise make the complement
+            every value the scope declares, rendering a struck-through universe the spec never
+            claimed and reading as the expectNone row it is deliberately not.
+        */
+        if ( combination.controllingValueUnavailable ) {
+            return [];
+        }
+
         if ( !combination.hasForbiddenAssertion ) {
             return [];
         }
@@ -784,11 +794,27 @@ export class PicklistDependencyExplorerService {
 
             nodeFailureCount += node.fieldLevelFailures.length;
 
+            /*
+                Grouped once per node rather than re-scanned per scope. A field carrying many record
+                types and an object reporting many failures multiply otherwise, and this runs twice
+                per object -- once for the dry run that asks whether every failure can be placed.
+            */
+            let failuresByRecordTypeDeveloperName: Record<string, IParsedPicklistDependencyFailure[]> = {};
+            failuresForAnyScopeOfField.forEach(parsedFailure => {
+
+                if ( parsedFailure.recordTypeDeveloperName === undefined ) {
+                    return;
+                }
+
+                const recordTypeDeveloperName = parsedFailure.recordTypeDeveloperName;
+                failuresByRecordTypeDeveloperName[recordTypeDeveloperName] = failuresByRecordTypeDeveloperName[recordTypeDeveloperName] || [];
+                failuresByRecordTypeDeveloperName[recordTypeDeveloperName].push(parsedFailure);
+
+            });
+
             node.recordTypeScopes.forEach(recordTypeScope => {
 
-                const failuresForScope = failuresForAnyScopeOfField.filter(
-                    parsedFailure => parsedFailure.recordTypeDeveloperName === recordTypeScope.recordTypeDeveloperName
-                );
+                const failuresForScope = failuresByRecordTypeDeveloperName[recordTypeScope.recordTypeDeveloperName] || [];
 
                 let scopeFailureCount = 0;
 
@@ -1262,6 +1288,9 @@ export class PicklistDependencyExplorerService {
     */
     function buildForbiddenValues(declaredValues, combination) {
 
+        // AN UNAVAILABLE CONTROLLING VALUE ASSERTS NOTHING ABOUT VALUES -- SEE THE SERVICE'S buildForbiddenValues
+        if (combination.controllingValueUnavailable) { return []; }
+
         if (!combination.hasForbiddenAssertion) { return []; }
 
         const allowedValues = new Set(combination.allowedValues);
@@ -1332,27 +1361,46 @@ export class PicklistDependencyExplorerService {
         scopeElement.appendChild(scopeHeading);
 
         const scopeBodyElement = createElement('div', 'hidden');
-
-        /*
-            Said on every scope rather than once at the top of the panel: these rows sit beside
-            field-level rows that a green run really does verify, and a reader scrolling to one of
-            them should not have to remember a note from elsewhere to know the difference.
-        */
-        scopeBodyElement.appendChild(createElement(
-            'div',
-            'scopeNote',
-            'Generated from source metadata and deployed with the contract, but not asserted by the check: '
-                + 'Apex describe returns picklist values without record type filtering.'
-        ));
-
-        recordTypeScope.combinations.forEach(function (combination) {
-            scopeBodyElement.appendChild(buildCombinationElement(node, combination, recordTypeScope.declaredValues));
-        });
-
         scopeElement.appendChild(scopeBodyElement);
 
+        /*
+            A scope's rows are built on first expand rather than at load. Every record type repeats
+            its field's combinations, so building them all up front multiplies the panel's element
+            count by the number of record types before anyone has asked to see one -- and scopes are
+            collapsed by default, so most are never opened. Collapsing alone saves layout, not the
+            elements themselves.
+        */
+        let scopeBodyBuilt = false;
+
+        const buildScopeBody = function () {
+
+            /*
+                Said on every scope rather than once at the top of the panel: these rows sit beside
+                field-level rows that a green run really does verify, and a reader scrolling to one of
+                them should not have to remember a note from elsewhere to know the difference.
+            */
+            scopeBodyElement.appendChild(createElement(
+                'div',
+                'scopeNote',
+                'Generated from source metadata and deployed with the contract, but not asserted by the check: '
+                    + 'Apex describe returns picklist values without record type filtering.'
+            ));
+
+            recordTypeScope.combinations.forEach(function (combination) {
+                scopeBodyElement.appendChild(buildCombinationElement(node, combination, recordTypeScope.declaredValues));
+            });
+
+        };
+
         scopeHeading.addEventListener('click', function () {
+
+            if (!scopeBodyBuilt) {
+                buildScopeBody();
+                scopeBodyBuilt = true;
+            }
+
             scopeBodyElement.classList.toggle('hidden');
+
         });
 
         return scopeElement;
