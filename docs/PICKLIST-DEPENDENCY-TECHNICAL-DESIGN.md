@@ -251,7 +251,7 @@ sequenceDiagram
     Svc->>FS: write SDTPLDSpecsTest.cls (+ -meta.xml)
     Svc->>FS: scaffold missing framework classes only
     Svc-->>Cmd: write result + legacy-artefact warnings
-    Cmd-->>Dev: summary; offer to run the check
+    Cmd-->>Dev: summary, then offer to run the check
 ```
 
 ### The mapping rule
@@ -332,6 +332,80 @@ The derivation rules, per record type `RT` and dependent field `F` controlled by
 
 **Why they are kept out of `all()`.** Nothing shipped with the framework can verify a scoped spec — `Schema` describe is record-type-blind ([§6](#6-runtime-design-how-the-assertion-actually-works)), and `SDTSchemaPicklistDependencySource` therefore throws on one rather than answering it with field-level data, which would report a scope it never checked as green. They are aggregated separately through `SDTPLDSpecs.allRecordTypeScoped()`, ready for an `ISDTPicklistDependencySource` that can read record-type-filtered values.
 
+#### The pipeline, before and after
+
+Where the scoped specs join the generation path, and where they deliberately stop. The field-level path is untouched: an object with no `recordTypes/` directory produces byte-identical output to 3.0.0.
+
+```mermaid
+flowchart TB
+    subgraph before["3.0.0 — field level only"]
+        direction TB
+        B1["fields/*.field-meta.xml"] --> B2["buildSpecDetailsByObjectFieldDetails"]
+        B2 --> B3["forField(...)<br/>expectAtLeast · expectNotAllowed · expectNone"]
+        B3 --> B4["SDTPLDSpecs.all()"]
+        B4 --> B5["SDTPLDSpecsTest<br/>describe-backed check"]
+    end
+
+    subgraph after["3.2.0 — record type scoping added"]
+        direction TB
+        A1["fields/*.field-meta.xml"] --> A2["buildSpecDetailsByObjectFieldDetails"]
+        A2 --> A3["forField(...)<br/>unchanged"]
+        A3 --> A4["SDTPLDSpecs.all()"]
+        A4 --> A5["SDTPLDSpecsTest<br/>describe-backed check"]
+
+        A6["recordTypes/*.recordType-meta.xml"] --> A7["buildRecordTypeSpecDetails<br/>bones ∩ record type assignments"]
+        A2 --> A7
+        A7 --> A8["forRecordType(...)<br/>expectAtLeast · expectNotAllowed · expectUnavailable"]
+        A8 --> A9["SDTPLDSpecs.allRecordTypeScoped()"]
+        A9 -.->|"describe is record type blind,<br/>so the source refuses these"| A5
+        A9 --> A10["Picklist Dependency Explorer<br/>scoped rows, never green"]
+    end
+
+    style A6 fill:#d4edda,stroke:#28a745
+    style A7 fill:#d4edda,stroke:#28a745
+    style A8 fill:#d4edda,stroke:#28a745
+    style A9 fill:#d4edda,stroke:#28a745
+    style A10 fill:#d4edda,stroke:#28a745
+```
+
+#### Where the behaviour lives, and where it is covered
+
+Dashed edges are test coverage, with the number of cases carried by each suite.
+
+```mermaid
+flowchart LR
+    subgraph gen["Generation — TypeScript"]
+        direction TB
+        G1["PicklistDependencyTestService<br/>reads recordTypes, narrows, emits"]
+        G2["XmlFileProcessor<br/>isSalesforceRecordTypeMetadataFile"]
+        G3["ExtensionCommandService<br/>threads scoped details"]
+    end
+
+    subgraph view["Presentation — TypeScript"]
+        direction TB
+        V1["PicklistDependencyExplorerService<br/>scope view model, failure routing, lazy rows"]
+    end
+
+    subgraph apex["Contract — Apex"]
+        direction TB
+        P1["SDTPicklistDependencySpec<br/>forRecordType · expectUnavailable"]
+        P2["SDTPicklistDependencyValidator<br/>UNAVAILABLE · UNEXPECTED_CONTROLLING_VALUE"]
+        P3["SDTSchemaPicklistDependencySource<br/>refuses a scoped spec"]
+    end
+
+    G1 --> V1
+    G1 --> P1
+    P1 --> P2
+    P2 --> P3
+
+    G1 -.->|"~40 cases"| T1["PicklistDependencyTestService.test.ts"]
+    G2 -.->|"5 cases"| T2["XmlFileProcessor.test.ts"]
+    G3 -.->|"2 cases"| T3["ExtensionCommandService.test.ts"]
+    V1 -.->|"18 cases"| T4["PicklistDependencyExplorerService.test.ts"]
+    P1 -.->|"9 cases"| T5["SDTPicklistDependencyValidatorTest.cls"]
+    P3 -.->|"1 case"| T6["SDTSchemaPicklistDependencySourceTest.cls"]
+```
+
 **Why the pair rather than `expectExactly`.** `expectExactly` fails when an administrator legitimately adds a new value to a combination — a change that is usually intended and should not break a pipeline. `expectAtLeast` alone fails to notice a value *drifting into* a combination it should not be in — a change that is usually a mistake and often a compliance problem. The complement pair catches removals **and** unintended additions while tolerating deliberate additions. `expectExactly` remains available as a **deliberate hand-tightening by the spec owner**, and — critically for change control — **that edit is lost on regeneration**. See [§11](#11-operational-governance).
 
 ---
@@ -377,7 +451,7 @@ sequenceDiagram
     participant Val as SDTPicklistDependencyValidator
 
     Admin->>SF: Setup → Field Dependencies:<br/>tick matrix (ohiocity unlocks ranch, french)
-    Note over SF: matrix stored; describe engine will serve<br/>each dependent value's row as a validFor bitmap
+    Note over SF: matrix stored, and the describe engine will serve<br/>each dependent value's row as a validFor bitmap
 
     Val->>Src: fetch(spec for Object.Dependent__c)
     Src->>Desc: describeField(object, field)
