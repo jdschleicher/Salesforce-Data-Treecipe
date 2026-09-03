@@ -24,9 +24,24 @@ Every combination also carries a **Copy reference** action. It copies the stable
 PR #80 measured roughly 1.8M DOM elements at 100 objects × 3 dependent picklists × 5 record types, on top of an unbounded embedded payload. Both are now bounded:
 
 - **An object's rows are built when you expand it**, not at load. Record type scopes already worked this way; the same rule now applies one level up, so opening the panel builds a heading per object and nothing else. Filtering runs against the model rather than the DOM, so it costs the same whether an object has been expanded or not
-- **A stated, tested ceiling on the model itself**: at most 250 objects, 200 combinations per field, and 25 record type scopes per field. Whatever the ceiling drops is counted and stated in a notice at the top of the panel — the declared counts keep describing the org while the notices describe what is on screen, rather than a truncated panel quietly reporting a smaller org
+- **A measured ceiling on the model itself.** Per-axis caps shape the panel — at most 250 objects, 25 dependent picklists per object, 200 combinations per field, 25 record type scopes per field, 200 declared values per field — and one **total budget of 20,000 rendered combinations** across the whole model is what actually bounds its size. The caps alone do not: their product is millions of rows
 
-The rule that decides what survives the ceiling is fixed: **a combination, scope or object the check reported a failure for is never what gets dropped**, and neither is an object carrying a skipped field. Where the retained rows alone exceed a cap, they are all kept anyway. A dropped row is absent and counted, never re-labelled — the three-state guarantee holds under the ceiling exactly as it holds under a filter.
+The per-axis numbers were chosen; the total was **measured**, by serializing synthetic models through the real builder:
+
+| Scenario | Objects | Combinations rendered | Embedded JSON |
+|---|---|---|---|
+| Healthy 100 × 3 × 50 (inside every cap) | 100 | 15,000 | 5.19 MB |
+| Healthy 400 × 3 × 400 (over every cap) | 250 | 20,000 | **9.67 MB** |
+| Every combination failing, 400 × 3 × 400 | 250 | 20,000 | **11.40 MB** |
+| Every combination failing, 100 × 3 × 300 | 100 | 20,000 | 9.06 MB |
+
+For reference, the unbounded payload this replaces reached about **17 MB** on a large org, and the same synthetic shapes measured **57 MB** and **144 MB** against an earlier draft of this ceiling that capped only the per-axis numbers.
+
+Getting there took bounding three axes, not one. Combinations were the obvious one. Dependent picklists per object were unbounded. And `declaredValues` — the value universe a field's forbidden complement is drawn against — grows with the picklist rather than with how many combinations survive the budget, which made it the dominant term once the other two were capped.
+
+Where that value universe is capped, the panel **stops drawing the "must not unlock" list** and says why: a complement of a partial universe understates what the spec forbids, which is a false claim rather than a shorter one.
+
+The rule that decides what survives is fixed: **a combination, scope or object the check reported a failure for is never dropped in favour of a passing one**, and neither is an object carrying a skipped field. Where retained rows alone exceed a per-axis cap, they are all kept. Past the *total* budget even a reported failure can be dropped — an unbounded payload is worse for the reader than a bounded one — and that case is counted and named on its own, pointing at the run's `report.md` as the complete record. A dropped row is absent and counted, never re-labelled: the three-state guarantee holds under the ceiling exactly as it holds under a filter.
 
 ### A failure tells you what to do about it
 
@@ -38,6 +53,8 @@ Every failed combination now carries a **likely cause** and a **next step** in t
 - `CONTRADICTORY_EXPECTATION` and `CIRCULAR_DEPENDENCY` → a hand edit to generated Apex, not org drift. **Do not change the org**: nothing in it caused this
 - `UPSTREAM_FAILURE` → this row was not evaluated at all; fix the named upstream spec first
 - A kind this version has never seen is **not** explained away — the panel says it has no explanation and points at the raw Apex message
+
+The prose is stored **once per failure kind** at the model root and looked up by kind in the panel, not copied onto every failure. Only an unrecognised kind carries its own text inline, because that text names the kind. Inlining it made the payload grow with how *broken* an org is rather than how large it is.
 
 ### Straight to the code and the run entry
 
@@ -53,6 +70,8 @@ Each is offered only where the model names the code behind it, so a metadata pre
 No external resource, no new runtime dependency, no local server. The content security policy is byte-for-byte what it was: `default-src 'none'` with the extension's own nonced inline style and script only, and every metadata-derived value still goes through `escapeHtml` or `escapeJsonForScriptBlock`.
 
 Each new panel action is gated by **its own allow-list**, built from the model the panel was rendered from. The spec and report lists key on the file *and* the method together, so a message cannot pair a file the model named with a method name of its own choosing; **Copy reference** is matched against the combination keys the model actually declares.
+
+An allow-list is only as trustworthy as the text it was built from, and `manifest.json` is a file on disk that a hand edit — or someone else's commit — controls. **Open spec method** is the first thing to turn a manifest-recorded path into a file the extension host actually reads, so `generatedClassFilePath` and `classesDirectoryPath` are now brought back inside the workspace before they can become openable targets, exactly as the objects directory already was. A path outside the workspace resolves to empty, which renders no button and contributes no allow-list entry — the same way a metadata preview already behaves.
 
 ## [3.5.0] - The Spec Manifest: the Explorer and the generated Apex become one artifact
 
