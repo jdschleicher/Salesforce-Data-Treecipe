@@ -242,6 +242,17 @@ export interface IPicklistDependencyExplorerContext {
     classesDirectoryPath: string;
     generatedNamesByObjectApiName: Record<string, IPicklistDependencyGeneratedNames>;
     generatedClassFilePathsByObjectApiName: Record<string, string>;
+    /*
+        The generated test method per object, as the MANIFEST recorded it.
+
+        Read rather than re-derived, because this name is what the run outcome is looked up by: a
+        re-derivation would be a second derivation of exactly the kind this artifact exists to
+        remove, and the two inputs are not identical -- the manifest's name was computed from the
+        pre-serialization object set, and a re-derivation would use the set rebuilt through the
+        parse boundary. Those differ the moment an entry is dropped on load, and a shifted
+        collision suffix would attribute one object's pass or fail to another.
+    */
+    testMethodNamesByObjectApiName: Record<string, string>;
     skippedFields: IPicklistDependencySkippedField[];
 }
 
@@ -1058,8 +1069,22 @@ export class PicklistDependencyExplorerService {
                                     recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
                                     explorerContext: IPicklistDependencyExplorerContext = this.buildMetadataPreviewContext()): IPicklistDependencyExplorerViewModel {
 
-        const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(specDetails);
-        const testMethodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
+        /*
+            The UNION of both kinds, mirroring the object set the manifest and the Apex writer use.
+            An object that produced only record-type-scoped specs still has a generated class and a
+            manifest entry, so it has to reach the panel rather than being dropped for having no
+            field-level spec to key off.
+        */
+        const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(
+            [...specDetails, ...recordTypeSpecDetails]
+        );
+
+        /*
+            Derived ONLY as the fallback for a metadata preview, which has no manifest to read from
+            and no generated test class for the name to refer to either. Whenever a manifest is the
+            source, the name it recorded wins -- see IPicklistDependencyExplorerContext.
+        */
+        const derivedTestMethodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
         const specDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(specDetails);
 
         /*
@@ -1090,7 +1115,8 @@ export class PicklistDependencyExplorerService {
                 generatedNames
             );
 
-            const testMethodName = testMethodNamesByObjectApiName[objectApiName];
+            const testMethodName = explorerContext.testMethodNamesByObjectApiName[objectApiName]
+                                        ?? derivedTestMethodNamesByObjectApiName[objectApiName];
             const methodOutcome = methodOutcomesByMethodName[testMethodName];
 
             const parsedFailures = methodOutcome && !methodOutcome.passed
@@ -1232,6 +1258,8 @@ export class PicklistDependencyExplorerService {
             classesDirectoryPath: '',
             generatedNamesByObjectApiName: {},
             generatedClassFilePathsByObjectApiName: {},
+            // A PREVIEW HAS NO GENERATED TEST CLASS, SO THESE ARE DERIVED RATHER THAN READ -- SEE buildExplorerViewModel
+            testMethodNamesByObjectApiName: {},
             skippedFields: []
         };
 
@@ -1243,6 +1271,7 @@ export class PicklistDependencyExplorerService {
 
         let generatedNamesByObjectApiName: Record<string, IPicklistDependencyGeneratedNames> = {};
         let generatedClassFilePathsByObjectApiName: Record<string, string> = {};
+        let testMethodNamesByObjectApiName: Record<string, string> = {};
 
         manifest.objects.forEach(manifestObject => {
 
@@ -1268,6 +1297,7 @@ export class PicklistDependencyExplorerService {
             };
 
             generatedClassFilePathsByObjectApiName[manifestObject.objectApiName] = manifestObject.generatedClassFilePath;
+            testMethodNamesByObjectApiName[manifestObject.objectApiName] = manifestObject.testMethodName;
 
         });
 
@@ -1285,6 +1315,7 @@ export class PicklistDependencyExplorerService {
             classesDirectoryPath: manifest.classesDirectoryPath,
             generatedNamesByObjectApiName: generatedNamesByObjectApiName,
             generatedClassFilePathsByObjectApiName: generatedClassFilePathsByObjectApiName,
+            testMethodNamesByObjectApiName: testMethodNamesByObjectApiName,
             skippedFields: manifest.skippedFields
         };
 
@@ -1330,7 +1361,8 @@ export class PicklistDependencyExplorerService {
     static buildExplorerViewModelByManifest(manifestLoad: IPicklistDependencyManifestLoad,
                                                 objectsDirectoryPath: string,
                                                 resultsLoad: IPicklistDependencyResultsLoad,
-                                                freshnessResult: IPicklistDependencyManifestFreshnessResult): IPicklistDependencyExplorerViewModel {
+                                                freshnessResult: IPicklistDependencyManifestFreshnessResult,
+                                                workspaceRoot?: string): IPicklistDependencyExplorerViewModel {
 
         const manifest = manifestLoad.manifest;
 
@@ -1342,19 +1374,55 @@ export class PicklistDependencyExplorerService {
         const explorerContext = this.buildContextByManifest(manifest, manifestLoad, freshnessResult);
 
         return this.buildExplorerViewModel(
-            /*
-                The directory the manifest was RECORDED against, not the one configured now. The two
-                differing is what the staleness banner reports, and rendering paths from the current
-                configuration under specs generated from another directory would produce reveal
-                targets that do not correspond to the specs on screen.
-            */
-            manifest.objectsDirectoryPath || objectsDirectoryPath,
+            this.resolveRenderableObjectsDirectoryPath(manifest.objectsDirectoryPath, objectsDirectoryPath, workspaceRoot),
             manifestSpecDetails.specDetails,
             manifest.skippedFieldWarnings,
             resultsLoad,
             manifestSpecDetails.recordTypeSpecDetails,
             explorerContext
         );
+
+    }
+
+    /*
+        Which objects directory the rendered node paths are built under.
+
+        Normally the directory the manifest was RECORDED against, not the one configured now: the
+        two differing is what the staleness banner reports, and building paths from the current
+        configuration under specs generated elsewhere would produce reveal targets that do not
+        correspond to the specs on screen.
+
+        But the manifest is a json file on disk, and this is the only string in it that reaches the
+        filesystem. Every node's sourceFilePath is built under it, and those paths become the
+        allow-list the panel's reveal handler trusts -- so a manifest committed into a repo someone
+        clones could otherwise seed that list with an absolute path anywhere on their machine and
+        have a click open it. The api names below it are already gated to letters, numbers and
+        underscores, which forces the shape of the suffix; this gates the prefix, so the guarantee
+        the allow-list rests on is about a real directory rather than an attacker-named one.
+
+        Falling back to the configured directory rather than refusing outright keeps an out-of-tree
+        manifest readable: the structure it declares is still shown, and only the reveal targets are
+        brought back inside the workspace.
+    */
+    static resolveRenderableObjectsDirectoryPath(manifestObjectsDirectoryPath: string,
+                                                    configuredObjectsDirectoryPath: string,
+                                                    workspaceRoot?: string): string {
+
+        if ( !manifestObjectsDirectoryPath ) {
+            return configuredObjectsDirectoryPath;
+        }
+
+        // NO WORKSPACE TO CHECK AGAINST -- CALLERS THAT HAVE ONE ALWAYS PASS IT, AND TESTS THAT DO NOT ARE NOT RENDERING A PANEL
+        if ( !workspaceRoot ) {
+            return manifestObjectsDirectoryPath;
+        }
+
+        const isContainedInWorkspace = PicklistDependencyTestService.isPathContainedInWorkspace(
+            path.resolve(manifestObjectsDirectoryPath),
+            path.resolve(workspaceRoot)
+        );
+
+        return isContainedInWorkspace ? manifestObjectsDirectoryPath : configuredObjectsDirectoryPath;
 
     }
 

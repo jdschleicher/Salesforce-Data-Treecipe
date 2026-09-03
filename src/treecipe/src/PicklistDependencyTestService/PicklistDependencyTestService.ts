@@ -1309,6 +1309,25 @@ export class PicklistDependencyTestService {
             specMethodNameByFieldApiName[specDetail.fieldApiName] = specMethodNames[specDetailIndex];
         });
 
+        /*
+            A field naming ITSELF as its controlling field resolves to its own method, and emitting
+            the dependsOn would make the spec call itself. Source metadata can declare that -- a
+            picklist whose controllingField is the picklist -- and the Explorer already treats such
+            a field as a root rather than nesting it under itself, so without this the panel would
+            draw a root while the class it names contained a self-recursive spec.
+        */
+        const resolveUpstreamSpecMethodName = (specDetail: IPicklistDependencySpecDetail,
+                                                specMethodNamesByKey: Record<string, string>,
+                                                upstreamKey: string | undefined): string | undefined => {
+
+            if ( !specDetail.upstreamFieldApiName || specDetail.upstreamFieldApiName === specDetail.fieldApiName ) {
+                return undefined;
+            }
+
+            return upstreamKey === undefined ? undefined : specMethodNamesByKey[upstreamKey];
+
+        };
+
         // A RECORD TYPE SCOPED SPEC CHAINS TO THE UPSTREAM SPEC FOR THE SAME RECORD TYPE, NOT TO THE FIELD-LEVEL ONE
         let recordTypeSpecMethodNameByScopedFieldKey: Record<string, string> = {};
         recordTypeSpecDetails.forEach((recordTypeSpecDetail, recordTypeSpecDetailIndex) => {
@@ -1334,9 +1353,11 @@ export class PicklistDependencyTestService {
 
         const specMethods = specDetails.map((specDetail, specDetailIndex) => {
 
-            const upstreamSpecMethodName = specDetail.upstreamFieldApiName
-                ? specMethodNameByFieldApiName[specDetail.upstreamFieldApiName]
-                : undefined;
+            const upstreamSpecMethodName = resolveUpstreamSpecMethodName(
+                specDetail,
+                specMethodNameByFieldApiName,
+                specDetail.upstreamFieldApiName
+            );
 
             return buildSpecMethodMarkup(specDetail, specMethodNames[specDetailIndex], upstreamSpecMethodName);
 
@@ -1344,9 +1365,13 @@ export class PicklistDependencyTestService {
 
         const recordTypeSpecMethods = recordTypeSpecDetails.map((recordTypeSpecDetail, recordTypeSpecDetailIndex) => {
 
-            const upstreamSpecMethodName = recordTypeSpecDetail.upstreamFieldApiName
-                ? recordTypeSpecMethodNameByScopedFieldKey[`${recordTypeSpecDetail.recordTypeDeveloperName}.${recordTypeSpecDetail.upstreamFieldApiName}`]
-                : undefined;
+            const upstreamSpecMethodName = resolveUpstreamSpecMethodName(
+                recordTypeSpecDetail,
+                recordTypeSpecMethodNameByScopedFieldKey,
+                recordTypeSpecDetail.upstreamFieldApiName
+                    ? `${recordTypeSpecDetail.recordTypeDeveloperName}.${recordTypeSpecDetail.upstreamFieldApiName}`
+                    : undefined
+            );
 
             return buildSpecMethodMarkup(recordTypeSpecDetail, recordTypeSpecMethodNames[recordTypeSpecDetailIndex], upstreamSpecMethodName);
 

@@ -262,6 +262,133 @@ describe('PicklistDependencyManifestService', () => {
 
     });
 
+    /*
+        The parity claim rests on the GROUPING step, which a single-object fixture never exercises.
+        These drive multiple objects, each with record types, so an ordering or naming divergence
+        between the manifest and the emitted Apex would show up as a missing method here.
+    */
+    describe('manifest and Apex agree across MULTIPLE objects', () => {
+
+        function buildMultiObjectCollectionResult(): IPicklistDependencyCollectionResult {
+
+            const buildObjectSpecs = (objectApiName: string): IPicklistDependencySpecDetail[] => ([
+                {
+                    objectApiName,
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    upstreamFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin'] }]
+                },
+                {
+                    objectApiName,
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: ['Ontario'] }]
+                }
+            ]);
+
+            const buildObjectRecordTypeSpecs = (objectApiName: string): IRecordTypePicklistDependencySpecDetail[] => ([
+                {
+                    objectApiName,
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: 'US_Only',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+                }
+            ]);
+
+            return {
+                specDetails: [
+                    ...buildObjectSpecs('Alpha__c'),
+                    ...buildObjectSpecs('Beta__c'),
+                    ...buildObjectSpecs('Gamma__c')
+                ],
+                recordTypeSpecDetails: [
+                    ...buildObjectRecordTypeSpecs('Alpha__c'),
+                    ...buildObjectRecordTypeSpecs('Beta__c'),
+                    ...buildObjectRecordTypeSpecs('Gamma__c')
+                ],
+                skippedFieldWarnings: [],
+                skippedFields: []
+            };
+
+        }
+
+        test('every spec method the manifest names is declared by that object\'s generated class', () => {
+
+            const collectionResult = buildMultiObjectCollectionResult();
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+
+            expect(manifest.objects).toHaveLength(3);
+
+            const specDetailsByObject = PicklistDependencyTestService.groupSpecDetailsByObjectApiName(collectionResult.specDetails);
+            const recordTypeSpecDetailsByObject = PicklistDependencyTestService
+                .groupSpecDetailsByObjectApiName(collectionResult.recordTypeSpecDetails) as Record<string, IRecordTypePicklistDependencySpecDetail[]>;
+
+            manifest.objects.forEach(manifestObject => {
+
+                const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    manifestObject.objectApiName,
+                    manifestObject.generatedClassName,
+                    specDetailsByObject[manifestObject.objectApiName],
+                    recordTypeSpecDetailsByObject[manifestObject.objectApiName]
+                );
+
+                manifestObject.fields.forEach(manifestField => {
+                    expect(apexClassBody).toContain(`public static SDTPicklistDependencySpec ${manifestField.specMethodName}()`);
+                });
+
+                manifestObject.recordTypeScopedFields.forEach(manifestScopedField => {
+                    expect(apexClassBody).toContain(`public static SDTPicklistDependencySpec ${manifestScopedField.specMethodName}()`);
+                });
+
+            });
+
+        });
+
+        test('each object gets its own class name and test method name, none shared', () => {
+
+            const manifest = buildManifestFromCollectionResult(buildMultiObjectCollectionResult());
+
+            const classNames = manifest.objects.map(manifestObject => manifestObject.generatedClassName);
+            const testMethodNames = manifest.objects.map(manifestObject => manifestObject.testMethodName);
+
+            expect(new Set(classNames).size).toBe(3);
+            expect(new Set(testMethodNames).size).toBe(3);
+
+        });
+
+        /*
+            An object that produced ONLY record-type-scoped specs still gets a generated class, so it
+            must get a manifest entry too. Deriving the object set from the field-level details alone
+            would leave its Apex on disk with nothing in the panel describing it.
+        */
+        test('given an object with only record type scoped specs, still records it', () => {
+
+            const collectionResult = buildMultiObjectCollectionResult();
+
+            collectionResult.recordTypeSpecDetails.push({
+                objectApiName: 'ScopedOnly__c',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'US_Only',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: [] }]
+            });
+
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+
+            const scopedOnlyObject = manifest.objects.find(manifestObject => manifestObject.objectApiName === 'ScopedOnly__c');
+
+            expect(scopedOnlyObject).toBeDefined();
+            expect(scopedOnlyObject.fields).toBeEmpty();
+            expect(scopedOnlyObject.recordTypeScopedFields).toHaveLength(1);
+            expect(scopedOnlyObject.generatedClassName).not.toBe('');
+            expect(scopedOnlyObject.testMethodName).not.toBe('');
+
+        });
+
+    });
+
     describe('buildCombinationKey', () => {
 
         test('shapes a field level key to match the failure lines the validator emits', () => {
@@ -593,9 +720,151 @@ describe('PicklistDependencyManifestService', () => {
 
         });
 
+        /*
+            The short-circuit is an optimisation of the WALK, not of the answer. Proving the digest is
+            unchanged by the directories it skips is what makes it safe -- a faster fingerprint that
+            reported different bytes would raise a staleness banner on metadata nobody touched.
+        */
+        test('given sibling metadata directories under an object, skips them without changing the digest', () => {
+
+            const objectsDirectoryPath = buildObjectsDirectory();
+
+            const beforeEntries = PicklistDependencyManifestService.collectSourceFingerprintEntries(objectsDirectoryPath);
+            const beforeFingerprint = PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath);
+
+            ['listViews', 'compactLayouts', 'webLinks', 'validationRules'].forEach(siblingDirectoryName => {
+                const siblingDirectoryPath = path.join(objectsDirectoryPath, 'Account', siblingDirectoryName);
+                fs.mkdirSync(siblingDirectoryPath, { recursive: true });
+                fs.writeFileSync(path.join(siblingDirectoryPath, `Thing.${siblingDirectoryName}-meta.xml`), '<Any/>');
+            });
+
+            expect(PicklistDependencyManifestService.collectSourceFingerprintEntries(objectsDirectoryPath)).toEqual(beforeEntries);
+            expect(PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)).toBe(beforeFingerprint);
+
+        });
+
+        test('still digests record type files, which live beside fields rather than under it', () => {
+
+            const objectsDirectoryPath = buildObjectsDirectory();
+            const recordTypesDirectoryPath = path.join(objectsDirectoryPath, 'Account', 'recordTypes');
+            fs.mkdirSync(recordTypesDirectoryPath, { recursive: true });
+            fs.writeFileSync(path.join(recordTypesDirectoryPath, 'US_Only.recordType-meta.xml'), '<RecordType/>');
+
+            const fingerprintEntries = PicklistDependencyManifestService.collectSourceFingerprintEntries(objectsDirectoryPath);
+
+            expect(fingerprintEntries).toHaveLength(2);
+            expect(fingerprintEntries.some(entry => entry.includes('recordTypes/US_Only.recordType-meta.xml'))).toBe(true);
+
+        });
+
+        /*
+            A symlinked field file answers false to Dirent.isDirectory(), so treating a symlink as a
+            directory sent it to readdirSync, which threw ENOTDIR and dropped it. Edits to it would
+            then never move the digest -- a staleness blind spot rather than a crash.
+        */
+        test('given a field file reached through a symlink, includes it in the fingerprint', () => {
+
+            const objectsDirectoryPath = buildObjectsDirectory();
+            const realFieldFilePath = path.join(objectsDirectoryPath, 'Account', 'fields', 'Region__c.field-meta.xml');
+            const symlinkedFieldFilePath = path.join(objectsDirectoryPath, 'Account', 'fields', 'Linked__c.field-meta.xml');
+
+            try {
+                fs.symlinkSync(realFieldFilePath, symlinkedFieldFilePath);
+            } catch {
+                // A FILESYSTEM THAT DISALLOWS SYMLINKS HAS NOTHING TO ASSERT HERE
+                return;
+            }
+
+            const fingerprintEntries = PicklistDependencyManifestService.collectSourceFingerprintEntries(objectsDirectoryPath);
+
+            expect(fingerprintEntries).toHaveLength(2);
+            expect(fingerprintEntries.some(entry => entry.includes('Linked__c.field-meta.xml'))).toBe(true);
+
+        });
+
+        test('given a broken symlink, skips it rather than throwing', () => {
+
+            const objectsDirectoryPath = buildObjectsDirectory();
+            const brokenSymlinkPath = path.join(objectsDirectoryPath, 'Account', 'fields', 'Missing__c.field-meta.xml');
+
+            try {
+                fs.symlinkSync(path.join(objectsDirectoryPath, 'nowhere', 'Nothing.field-meta.xml'), brokenSymlinkPath);
+            } catch {
+                return;
+            }
+
+            expect(() => PicklistDependencyManifestService.collectSourceFingerprintEntries(objectsDirectoryPath)).not.toThrow();
+            expect(PicklistDependencyManifestService.collectSourceFingerprintEntries(objectsDirectoryPath)).toHaveLength(1);
+
+        });
+
+        test('given a symlink cycle, terminates rather than recursing forever', () => {
+
+            const objectsDirectoryPath = buildObjectsDirectory();
+            const nestedDirectoryPath = path.join(objectsDirectoryPath, 'nested');
+            fs.mkdirSync(nestedDirectoryPath, { recursive: true });
+
+            try {
+                fs.symlinkSync(objectsDirectoryPath, path.join(nestedDirectoryPath, 'loop'));
+            } catch {
+                return;
+            }
+
+            expect(() => PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)).not.toThrow();
+
+        });
+
         test('given an unreadable directory, returns a fingerprint rather than throwing', () => {
 
             expect(() => PicklistDependencyManifestService.buildSourceFingerprint('/no/such/directory/anywhere')).not.toThrow();
+
+        });
+
+    });
+
+    describe('manifest load rejects api names the generator could never have emitted', () => {
+
+        /*
+            buildFieldSourceFilePath throws on a name outside /^[A-Za-z0-9_]+$/, and an entry that
+            reached it would abort the whole Explorer command rather than costing one row. Dropping
+            it at the boundary is how every other malformed entry is already handled.
+        */
+        test('given an object api name carrying path syntax, drops the entry rather than loading it', () => {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                {
+                    manifestVersion: PicklistDependencyManifestService.getManifestVersion(),
+                    objects: [
+                        { objectApiName: '../../../etc', fields: [], recordTypeScopedFields: [] },
+                        { objectApiName: 'Account', fields: [], recordTypeScopedFields: [] }
+                    ]
+                },
+                '/tmp/manifest.json'
+            );
+
+            expect(manifestLoad.state).toBe('loaded');
+            expect(manifestLoad.manifest.objects.map(manifestObject => manifestObject.objectApiName)).toEqual(['Account']);
+
+        });
+
+        test('given a field api name carrying path syntax, drops that field and keeps the object', () => {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                {
+                    manifestVersion: PicklistDependencyManifestService.getManifestVersion(),
+                    objects: [{
+                        objectApiName: 'Account',
+                        fields: [
+                            { fieldApiName: '../secret', controllingFieldApiName: 'Country__c', specMethodName: 'x', expectations: [] },
+                            { fieldApiName: 'Region__c', controllingFieldApiName: 'Country__c', specMethodName: 'y', expectations: [] }
+                        ],
+                        recordTypeScopedFields: []
+                    }]
+                },
+                '/tmp/manifest.json'
+            );
+
+            expect(manifestLoad.manifest.objects[0].fields.map(field => field.fieldApiName)).toEqual(['Region__c']);
 
         });
 

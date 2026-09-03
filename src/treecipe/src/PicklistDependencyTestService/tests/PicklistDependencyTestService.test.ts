@@ -3537,6 +3537,59 @@ describe('PicklistDependencyTestService', () => {
         });
 
         /*
+            Source XML can name a picklist as its own controllingField. The Explorer already treats
+            such a field as a root rather than nesting it under itself, so without the same guard
+            here the panel would draw a root while the class it names contained a spec that called
+            itself -- the panel and the Apex disagreeing about the same field.
+        */
+        test('given a field that names itself as its controlling field, emits no self-recursive dependsOn', () => {
+
+            const classBody = buildClassBody([{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Region__c',
+                upstreamFieldApiName: 'Region__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: [] }]
+            }]);
+
+            expect(classBody).not.toContain('.dependsOn(');
+            expect(classBody).toContain(`.expectAtLeast('USA', new List<String>{ 'East' })`);
+
+        });
+
+        test('given a record type scoped field that names itself, emits no self-recursive dependsOn either', () => {
+
+            const classBody = buildClassBody(
+                [{
+                    objectApiName: 'Account',
+                    fieldApiName: 'Region__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: [] }]
+                }],
+                [{
+                    objectApiName: 'Account',
+                    fieldApiName: 'Region__c',
+                    controllingFieldApiName: 'Region__c',
+                    upstreamFieldApiName: 'Region__c',
+                    recordTypeDeveloperName: 'US_Only',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: [] }]
+                }]
+            );
+
+            expect(classBody).not.toContain('.dependsOn(');
+
+        });
+
+        // A GENUINE CHAIN STILL LINKS -- THE GUARD MUST NOT SUPPRESS THE CASE IT EXISTS FOR
+        test('given a genuine upstream field, still emits the dependsOn link', () => {
+
+            const classBody = buildClassBody();
+
+            expect(classBody).toContain('.dependsOn(');
+
+        });
+
+        /*
             A picklist value carrying a newline or a block comment terminator is not producible
             through the Salesforce UI, which is exactly why nothing else in the pipeline would catch
             one. Left unescaped it would end the comment and leave the remainder of the value sitting

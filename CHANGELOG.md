@@ -40,6 +40,13 @@ Adding a value to a combination now shows as six changed lines rather than three
 ### Also in this release
 
 - Skipped fields are now carried as structured entries (object, field, record type) alongside the warning prose, so the panel can group them without scraping a free-text message
+- The staleness fingerprint stops descending at a directory holding `fields`, exactly as the collection walk does — the sibling metadata directories under an object (`listViews`, `compactLayouts`, `webLinks`, and the rest) cannot contain a spec-contributing file, so skipping them removes roughly seven in ten of the directories visited while producing a byte-identical digest
+- A field file reached through a **symlink** is now digested rather than dropped. A symlink reports itself, not its target, so one pointing at a `.field-meta.xml` was previously treated as a directory and silently left out — edits to it never moved the fingerprint, and the staleness banner never fired
+- The manifest's `objectsDirectoryPath` is checked for workspace containment before any node path is built under it. It is the only string in the manifest that reaches the filesystem, and those paths become the allow-list the panel's reveal action trusts, so a manifest committed into a cloned repo cannot point that list outside the workspace
+- Object and field api names in a manifest are held to the same gate the generator applies before emitting. An edited name outside that shape now costs its own entry instead of aborting the whole Explorer command
+- The Explorer reads each object's test method name **from the manifest** rather than re-deriving it — re-deriving was itself a second derivation of the kind this release removes, and the two inputs diverge the moment an entry is dropped at the parse boundary
+- The manifest's object set is the union of field-level and record-type-scoped specs, matching the set the Apex writer emits classes for, so an object producing only scoped specs cannot get a generated class with no manifest entry describing it
+- A picklist naming **itself** as its controlling field no longer emits a self-recursive `dependsOn`. The Explorer already treated such a field as a root; the emitter now agrees
 - Fixed an intermittent test failure where temp directory cleanup on some container filesystems returned `ENOTEMPTY` and failed a test whose assertions had all already passed
 
 ## [3.4.0] - Diff-Friendly Picklist Dependency Specs

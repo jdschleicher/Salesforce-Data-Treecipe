@@ -1768,6 +1768,74 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
+        /*
+            The manifest is a json file on disk and objectsDirectoryPath is the only string in it
+            that reaches the filesystem -- every node's sourceFilePath is built under it, and those
+            become the allow-list the reveal handler trusts. A manifest committed into a cloned repo
+            must not be able to seed that list with a path outside the workspace.
+        */
+        it('given a manifest naming an objects directory outside the workspace, falls back to the configured one', () => {
+
+            const manifestLoad = buildManifestLoad();
+            manifestLoad.manifest.objectsDirectoryPath = '/etc/somewhere-else/objects';
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                manifestLoad, mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult, '/workspace'
+            );
+
+            expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
+
+            PicklistDependencyExplorerService.collectSourceFilePaths(actualViewModel).forEach(sourceFilePath => {
+                expect(sourceFilePath.startsWith('/etc')).toBe(false);
+            });
+
+        });
+
+        it('given a manifest naming an objects directory inside the workspace, renders paths under it', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult, '/workspace'
+            );
+
+            expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
+
+        });
+
+        /*
+            The test method the run outcome is looked up by comes from the manifest rather than being
+            re-derived. Re-deriving it is the second derivation this whole artifact exists to remove,
+            and the two inputs differ the moment an entry is dropped at the parse boundary.
+        */
+        it('looks up the run outcome by the test method name the manifest recorded', () => {
+
+            const manifestLoad = buildManifestLoad();
+            manifestLoad.manifest.objects[0].testMethodName = 'aDeliberatelyDifferentTestMethodName';
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: true,
+                    failureCount: 0,
+                    methodsRun: 1,
+                    methodOutcomes: [{ methodName: 'aDeliberatelyDifferentTestMethodName', passed: true }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                manifestLoad, mockObjectsDirectoryPath, resultsLoad, freshResult
+            );
+
+            expect(actualViewModel.objects[0].testMethodName).toBe('aDeliberatelyDifferentTestMethodName');
+
+            // THE RUN WAS ACTUALLY MATCHED, RATHER THAN THE OBJECT FALLING BACK TO "NOT CHECKED"
+            expect(actualViewModel.objects[0].status).toBe('passed');
+
+        });
+
         it('given a manifest load with no manifest, refuses rather than rendering an empty panel', () => {
 
             expect(() => PicklistDependencyExplorerService.buildExplorerViewModelByManifest(

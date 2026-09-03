@@ -228,7 +228,17 @@ export class PicklistDependencyManifestService {
                             generatedAt: string,
                             sourceFingerprint: string): IPicklistDependencyManifest {
 
-        const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(collectionResult.specDetails);
+        /*
+            The object set is the UNION of both kinds, which is what writeSpecsClassFiles emits
+            classes for. Taking it from the field-level details alone would leave an object that
+            produced only record-type-scoped specs with a generated .cls and no manifest entry at
+            all -- the panel would not render an object whose Apex exists, which is the disagreement
+            this artifact exists to prevent. The two sides of a parity contract have to agree about
+            which objects they are describing, not only about the names within one.
+        */
+        const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(
+            [...collectionResult.specDetails, ...collectionResult.recordTypeSpecDetails]
+        );
         const perObjectClassNamesByObjectApiName = PicklistDependencyTestService.buildPerObjectSpecsClassNamesByObjectApiName(distinctObjectApiNames);
         const testMethodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
 
@@ -560,7 +570,19 @@ export class PicklistDependencyManifestService {
 
         const objectRecord = objectEntry as Record<string, unknown> | null;
 
-        if ( !objectRecord || typeof objectRecord.objectApiName !== 'string' || objectRecord.objectApiName.length === 0 ) {
+        /*
+            The api name is held to the same gate the generator applies before emitting anything.
+
+            Dropping the entry here rather than downstream is what keeps a hand-edited manifest from
+            taking the whole command with it: buildFieldSourceFilePath throws on a name outside this
+            shape, and an entry that reached it would abort the Explorer into the error handler --
+            surfacing the edited string in a pre-filled issue template -- instead of rendering the
+            objects that are perfectly readable. Every other malformed entry is already dropped;
+            this one was the exception.
+        */
+        if ( !objectRecord
+                || typeof objectRecord.objectApiName !== 'string'
+                || !PicklistDependencyTestService.isValidSalesforceApiName(objectRecord.objectApiName) ) {
             return undefined;
         }
 
@@ -593,12 +615,18 @@ export class PicklistDependencyManifestService {
 
         const fieldRecord = fieldEntry as Record<string, unknown> | null;
 
-        if ( !fieldRecord || typeof fieldRecord.fieldApiName !== 'string' || fieldRecord.fieldApiName.length === 0 ) {
+        // SAME GATE AS THE OBJECT ABOVE, FOR THE SAME REASON
+        if ( !fieldRecord
+                || typeof fieldRecord.fieldApiName !== 'string'
+                || !PicklistDependencyTestService.isValidSalesforceApiName(fieldRecord.fieldApiName) ) {
             return undefined;
         }
 
+        // HOISTED SO THE NARROWED TYPE SURVIVES INTO THE CLOSURE BELOW RATHER THAN NEEDING A CAST
+        const fieldApiName = fieldRecord.fieldApiName;
+
         let manifestField: IPicklistDependencyManifestField = {
-            fieldApiName: fieldRecord.fieldApiName,
+            fieldApiName: fieldApiName,
             controllingFieldApiName: typeof fieldRecord.controllingFieldApiName === 'string' ? fieldRecord.controllingFieldApiName : '',
             specMethodName: typeof fieldRecord.specMethodName === 'string' ? fieldRecord.specMethodName : '',
             expectations: Array.isArray(fieldRecord.expectations)
@@ -606,7 +634,7 @@ export class PicklistDependencyManifestService {
                     .map((expectationEntry: unknown) => this.buildManifestExpectationByEntry(
                         expectationEntry,
                         objectApiName,
-                        fieldRecord.fieldApiName as string,
+                        fieldApiName,
                         typeof fieldRecord.recordTypeDeveloperName === 'string' ? fieldRecord.recordTypeDeveloperName : undefined
                     ))
                     .filter((manifestExpectation): manifestExpectation is IPicklistDependencyManifestExpectation => manifestExpectation !== undefined)
@@ -723,18 +751,89 @@ export class PicklistDependencyManifestService {
 
     private static recordTypeFileSuffix = '.recordType-meta.xml';
 
+    private static objectFieldsDirectoryName = 'fields';
+
+    private static objectRecordTypesDirectoryName = 'recordTypes';
+
     /*
         Every source file that could contribute a spec, as "relativePath|mtimeMs|size" lines.
 
-        Stat only -- no file is opened. The walk visits the same tree the collection walk does and
-        stops descending at a directory holding "fields", for the same reason: nothing below an
-        object's sibling metadata directories can produce a dependent picklist, and the record types
-        that narrow one are read from the object directory itself.
+        Stat only -- no file is opened. The walk stops descending at a directory holding "fields",
+        exactly as collectSpecDetailsByObjectsDirectory does and for the same reason: that directory
+        IS an object directory, so its other children are metadata types that cannot hold a field --
+        listViews, compactLayouts, webLinks and the rest -- and the record types that narrow a
+        dependency are read from the recordTypes sibling rather than from below them.
+
+        Skipping them is not an optimisation of the answer, it is an optimisation of the walk: the
+        entries those directories could contribute are none, so the digest is byte for byte the same
+        either way. Without the stop, roughly seven in ten of the directories visited on a real org
+        cannot contain a spec-contributing file at all.
     */
     static collectSourceFingerprintEntries(objectsDirectoryPath: string): string[] {
 
         let fingerprintEntries: string[] = [];
         let visitedDirectoryPaths = new Set<string>();
+
+        const collectFileEntry = (entryPath: string) => {
+
+            try {
+
+                const entryStats = fs.statSync(entryPath);
+                const relativeEntryPath = path.relative(objectsDirectoryPath, entryPath).split(path.sep).join('/');
+
+                fingerprintEntries.push(`${relativeEntryPath}|${entryStats.mtimeMs}|${entryStats.size}`);
+
+            } catch {
+                // A FILE THAT VANISHED BETWEEN READDIR AND STAT IS SIMPLY NOT PART OF THIS FINGERPRINT
+            }
+
+        };
+
+        /*
+            Directory entries with symlinks resolved to what they actually are.
+
+            A symlink is not asked whether it is a directory -- Dirent reports the LINK, not its
+            target, so a symlinked ".field-meta.xml" answers false to isDirectory() and, treated as a
+            directory, would be handed to readdirSync, throw ENOTDIR, and drop out of the fingerprint
+            entirely. That is a staleness blind spot rather than a crash: edits to that field would
+            never move the digest. stat follows the link and answers about the target.
+        */
+        const readResolvedDirectoryEntries = (directoryPath: string) => {
+
+            let directoryEntries: fs.Dirent[];
+
+            try {
+                directoryEntries = fs.readdirSync(directoryPath, { withFileTypes: true });
+            } catch {
+                // AN UNREADABLE DIRECTORY CONTRIBUTES NOTHING RATHER THAN FAILING THE WHOLE FINGERPRINT
+                return [];
+            }
+
+            return directoryEntries.map(directoryEntry => {
+
+                const entryPath = path.join(directoryPath, directoryEntry.name);
+
+                let isDirectoryEntry = directoryEntry.isDirectory();
+
+                if ( directoryEntry.isSymbolicLink() ) {
+
+                    try {
+                        isDirectoryEntry = fs.statSync(entryPath).isDirectory();
+                    } catch {
+                        // A BROKEN SYMLINK IS NEITHER A DIRECTORY TO DESCEND NOR A FILE TO DIGEST
+                        return undefined;
+                    }
+
+                }
+
+                return { entryName: directoryEntry.name, entryPath, isDirectoryEntry };
+
+            }).filter((resolvedEntry): resolvedEntry is { entryName: string; entryPath: string; isDirectoryEntry: boolean } => resolvedEntry !== undefined);
+
+        };
+
+        const isSpecContributingFileName = (fileName: string) => fileName.endsWith(this.fieldFileSuffix)
+                                                                    || fileName.endsWith(this.recordTypeFileSuffix);
 
         const collectEntriesByDirectory = (directoryPath: string) => {
 
@@ -744,41 +843,55 @@ export class PicklistDependencyManifestService {
             }
             visitedDirectoryPaths.add(realDirectoryPath);
 
-            let directoryEntries: fs.Dirent[];
+            const resolvedEntries = readResolvedDirectoryEntries(directoryPath);
 
-            try {
-                directoryEntries = fs.readdirSync(directoryPath, { withFileTypes: true });
-            } catch {
-                // AN UNREADABLE DIRECTORY CONTRIBUTES NOTHING RATHER THAN FAILING THE WHOLE FINGERPRINT
+            const childDirectoryNames = resolvedEntries
+                .filter(resolvedEntry => resolvedEntry.isDirectoryEntry)
+                .map(resolvedEntry => resolvedEntry.entryName);
+
+            /*
+                A directory holding "fields" is an object directory. Only its fields and recordTypes
+                children can carry a file this digest is about, so the rest of the object's metadata
+                is not descended into.
+            */
+            if ( childDirectoryNames.includes(this.objectFieldsDirectoryName) ) {
+
+                [this.objectFieldsDirectoryName, this.objectRecordTypesDirectoryName].forEach(contributingDirectoryName => {
+
+                    if ( !childDirectoryNames.includes(contributingDirectoryName) ) {
+                        return;
+                    }
+
+                    const contributingDirectoryPath = path.join(directoryPath, contributingDirectoryName);
+
+                    readResolvedDirectoryEntries(contributingDirectoryPath).forEach(resolvedEntry => {
+
+                        if ( resolvedEntry.isDirectoryEntry || !isSpecContributingFileName(resolvedEntry.entryName) ) {
+                            return;
+                        }
+
+                        collectFileEntry(resolvedEntry.entryPath);
+
+                    });
+
+                });
+
                 return;
+
             }
 
-            directoryEntries.forEach(directoryEntry => {
+            resolvedEntries.forEach(resolvedEntry => {
 
-                const entryPath = path.join(directoryPath, directoryEntry.name);
-
-                if ( directoryEntry.isDirectory() || directoryEntry.isSymbolicLink() ) {
-                    collectEntriesByDirectory(entryPath);
+                if ( resolvedEntry.isDirectoryEntry ) {
+                    collectEntriesByDirectory(resolvedEntry.entryPath);
                     return;
                 }
 
-                const isSpecContributingFile = directoryEntry.name.endsWith(this.fieldFileSuffix)
-                                                    || directoryEntry.name.endsWith(this.recordTypeFileSuffix);
-
-                if ( !isSpecContributingFile ) {
+                if ( !isSpecContributingFileName(resolvedEntry.entryName) ) {
                     return;
                 }
 
-                try {
-
-                    const entryStats = fs.statSync(entryPath);
-                    const relativeEntryPath = path.relative(objectsDirectoryPath, entryPath).split(path.sep).join('/');
-
-                    fingerprintEntries.push(`${relativeEntryPath}|${entryStats.mtimeMs}|${entryStats.size}`);
-
-                } catch {
-                    // A FILE THAT VANISHED BETWEEN READDIR AND STAT IS SIMPLY NOT PART OF THIS FINGERPRINT
-                }
+                collectFileEntry(resolvedEntry.entryPath);
 
             });
 

@@ -759,7 +759,8 @@ export class ExtensionCommandService {
                         manifestLoad,
                         fullPathToObjectsDirectory,
                         resultsLoad,
-                        freshnessResult
+                        freshnessResult,
+                        workspaceRoot
                     );
 
                 });
