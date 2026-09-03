@@ -1,5 +1,78 @@
 # Change Log
 
+## [3.7.0] - Picklist Dependency Explorer UX: find it, understand it, jump to it
+
+Resolves [#83](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/83).
+
+3.1.0 shipped the Explorer as one flat scroll of every dependent picklist in the org. It rendered the data correctly, and it was not usable at org scale: finding a field meant scrolling, a failed combination showed you the raw Apex failure kind without telling you what to do about it, and the whole model was built into the DOM up front. This release makes the panel somewhere you diagnose drift rather than somewhere you look once.
+
+### Find a field without scrolling
+
+A toolbar above the structure, sticky to the top of the panel:
+
+- **Find object or field** — matches on object, field, controlling field, record type and generated method name. Searching for a field name reaches the object holding it, so you do not have to know which object that was. When exactly one object matches, it opens by itself
+- **Status** — *any status* / *failed* / *passed* / *not checked*, so "what broke" is one selection rather than a scan
+- **Jump to object** — every object by name; picking one opens and scrolls to it, even when the filter was hiding it
+- **Expand all / Collapse all**, bounded: past 25 visible objects the panel says so and asks for a narrower filter rather than freezing
+
+Filtering only ever hides. No status is recomputed and none is inferred from a row being hidden — an unverified combination stays unverified whether or not the filter is showing it.
+
+Every combination also carries a **Copy reference** action. It copies the stable combination key the manifest recorded — `Object__c.Field__c [RecordType] @ Controlling Value` — and pasting that back into the find box reopens exactly that combination, in that object, under that record type. It survives a re-render in a way a scroll position does not, so it is something you can put in a review comment or a ticket.
+
+### Opens and stays responsive at the pathological shape
+
+PR #80 measured roughly 1.8M DOM elements at 100 objects × 3 dependent picklists × 5 record types, on top of an unbounded embedded payload. Both are now bounded:
+
+- **An object's rows are built when you expand it**, not at load. Record type scopes already worked this way; the same rule now applies one level up, so opening the panel builds a heading per object and nothing else. Filtering runs against the model rather than the DOM, so it costs the same whether an object has been expanded or not
+- **A measured ceiling on the model itself.** Per-axis caps shape the panel — at most 250 objects, 25 dependent picklists per object, 200 combinations per field, 25 record type scopes per field, 200 declared values per field — and one **total budget of 20,000 rendered combinations** across the whole model is what actually bounds its size. The caps alone do not: their product is millions of rows
+
+The per-axis numbers were chosen; the total was **measured**, by serializing synthetic models through the real builder:
+
+| Scenario | Objects | Combinations rendered | Embedded JSON |
+|---|---|---|---|
+| Healthy 100 × 3 × 50 (inside every cap) | 100 | 15,000 | 5.19 MB |
+| Healthy 400 × 3 × 400 (over every cap) | 250 | 20,000 | **9.67 MB** |
+| Every combination failing, 400 × 3 × 400 | 250 | 20,000 | **11.40 MB** |
+| Every combination failing, 100 × 3 × 300 | 100 | 20,000 | 9.06 MB |
+
+For reference, the unbounded payload this replaces reached about **17 MB** on a large org, and the same synthetic shapes measured **57 MB** and **144 MB** against an earlier draft of this ceiling that capped only the per-axis numbers.
+
+Getting there took bounding three axes, not one. Combinations were the obvious one. Dependent picklists per object were unbounded. And `declaredValues` — the value universe a field's forbidden complement is drawn against — grows with the picklist rather than with how many combinations survive the budget, which made it the dominant term once the other two were capped.
+
+Where that value universe is capped, the panel **stops drawing the "must not unlock" list** and says why: a complement of a partial universe understates what the spec forbids, which is a false claim rather than a shorter one.
+
+The rule that decides what survives is fixed: **a combination, scope or object the check reported a failure for is never dropped in favour of a passing one**, and neither is an object carrying a skipped field. Where retained rows alone exceed a per-axis cap, they are all kept. Past the *total* budget even a reported failure can be dropped — an unbounded payload is worse for the reader than a bounded one — and that case is counted and named on its own, pointing at the run's `report.md` as the complete record. A dropped row is absent and counted, never re-labelled: the three-state guarantee holds under the ceiling exactly as it holds under a filter.
+
+### A failure tells you what to do about it
+
+Every failed combination now carries a **likely cause** and a **next step** in the words of someone who administers the org, alongside the Apex kind and message — never instead of them. All ten `SDTPicklistDependencyValidator` failure kinds are covered, and the two that no org state can cause say so explicitly:
+
+- `MISSING_VALUES` → a value was unassigned from the dependent field, or the matrix was re-drawn; re-tick it in Setup, or re-generate to re-baseline
+- `FORBIDDEN_VALUES_PRESENT` → the dependency was widened in the org, which is the direction that silently lets bad data in
+- `CONTROLLING_FIELD_MISMATCH` → the dependency was re-pointed at another controlling field, which invalidates every combination for that field at once
+- `CONTRADICTORY_EXPECTATION` and `CIRCULAR_DEPENDENCY` → a hand edit to generated Apex, not org drift. **Do not change the org**: nothing in it caused this
+- `UPSTREAM_FAILURE` → this row was not evaluated at all; fix the named upstream spec first
+- A kind this version has never seen is **not** explained away — the panel says it has no explanation and points at the raw Apex message
+
+The prose is stored **once per failure kind** at the model root and looked up by kind in the panel, not copied onto every failure. Only an unrecognised kind carries its own text inline, because that text names the kind. Inlining it made the payload grow with how *broken* an org is rather than how large it is.
+
+### Straight to the code and the run entry
+
+A failed combination opens with its detail already showing, because it is the row you came for. Beside **Reveal in Explorer**:
+
+- **Open spec method** — opens the generated `.cls` at the *declaration* of the spec method that asserts this row. A generated class names each method twice, at its declaration and inside `all()`; the declaration is the one you wanted
+- **Open run report entry** — opens the run's `report.md` at that object's `### ` entry, which is the entry carrying the message
+
+Each is offered only where the model names the code behind it, so a metadata preview offers neither — nothing asserts a preview row, and a link into a class that does not exist would contradict the banner above it.
+
+### Webview posture unchanged
+
+No external resource, no new runtime dependency, no local server. The content security policy is byte-for-byte what it was: `default-src 'none'` with the extension's own nonced inline style and script only, and every metadata-derived value still goes through `escapeHtml` or `escapeJsonForScriptBlock`.
+
+Each new panel action is gated by **its own allow-list**, built from the model the panel was rendered from. The spec and report lists key on the file *and* the method together, so a message cannot pair a file the model named with a method name of its own choosing; **Copy reference** is matched against the combination keys the model actually declares.
+
+An allow-list is only as trustworthy as the text it was built from, and `manifest.json` is a file on disk that a hand edit — or someone else's commit — controls. **Open spec method** is the first thing to turn a manifest-recorded path into a file the extension host actually reads, so `generatedClassFilePath` and `classesDirectoryPath` are now brought back inside the workspace before they can become openable targets, exactly as the objects directory already was. A path outside the workspace resolves to empty, which renders no button and contributes no allow-list entry — the same way a metadata preview already behaves.
+
 ## [3.6.0] - Update Picklist Dependency Metadata: writing spec intent back into source
 
 Resolves [#81](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/81).
@@ -55,6 +128,7 @@ Field API names are not unique across objects — `Status__c` on Account and on 
 The write sink checks containment itself: a field file resolving outside the configured objects directory — a symlink out of the tree included — is refused rather than written, independent of the API-name validation upstream.
 
 Chain links survive the round trip. `.dependsOn(...)` names a spec *method*, and method names are deliberately lossy, so the link is derived from the parsed set — a field whose controlling field is itself specced in the same class — rather than reverse-engineered from the identifier. A field naming itself as its controlling field stays a root.
+
 
 ## [3.5.0] - The Spec Manifest: the Explorer and the generated Apex become one artifact
 

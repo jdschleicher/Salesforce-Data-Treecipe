@@ -39,9 +39,30 @@ export type PicklistDependencyRunLoadState = 'loaded' | 'noResultsFound' | 'unre
 */
 export type PicklistDependencyExplorerModelSource = 'manifest' | 'metadataPreview';
 
+/*
+    A failure kind restated as a likely cause and a next step, in the words of someone who
+    administers the org rather than someone who reads the validator.
+
+    Carried ALONGSIDE the Apex kind and message and never instead of them. The kind is what
+    SDTPicklistDependencyValidator actually reported, and is the string a reader greps the framework
+    source for; the triage is this extension's reading of it. Replacing one with the other would
+    leave the panel describing a failure in words that appear nowhere else in the toolchain.
+*/
+export interface IPicklistDependencyFailureTriage {
+    likelyCause: string;
+    nextStep: string;
+}
+
 export interface IPicklistDependencyFailureDetailViewModel {
     kind: string;
     message: string;
+    /*
+        Present ONLY for a kind this version does not recognise, whose triage text names the kind
+        and so cannot be shared. Every recognised kind is looked up in the model's
+        failureTriageByKind instead: the triage is two sentences of prose, and inlining it on every
+        failure made the panel's payload grow with the org's drift rather than with its size.
+    */
+    triage?: IPicklistDependencyFailureTriage;
 }
 
 export interface IPicklistDependencyCombinationViewModel {
@@ -87,6 +108,10 @@ export interface IPicklistDependencyRecordTypeScopeViewModel {
     combinations: IPicklistDependencyCombinationViewModel[];
     status: PicklistDependencyCheckStatus;
     failureCount: number;
+    // COMBINATIONS DROPPED BY THE RENDERING CEILING, NEVER ONES THE CHECK REPORTED A FAILURE FOR
+    truncatedCombinationCount: number;
+    // SEE IPicklistDependencyNodeViewModel.declaredValuesTruncated
+    declaredValuesTruncated: boolean;
 }
 
 export interface IPicklistDependencyNodeViewModel {
@@ -113,6 +138,22 @@ export interface IPicklistDependencyNodeViewModel {
     fieldLevelFailures: IPicklistDependencyFailureDetailViewModel[];
     // ONE PER RECORD TYPE THAT NARROWS THIS FIELD, EMPTY WHERE THE OBJECT DECLARES NO RECORD TYPES
     recordTypeScopes: IPicklistDependencyRecordTypeScopeViewModel[];
+    /*
+        Everything about this node the panel's find box matches against, lowercased once here rather
+        than rebuilt per keystroke in the webview. Held in the model so the matching rule is a tested
+        service concern and the panel is left with an "indexOf" -- the filter logic does not become a
+        second implementation living only inside a script string.
+    */
+    searchText: string;
+    // COMBINATIONS AND SCOPES DROPPED BY THE RENDERING CEILING, FAILING ONES LAST -- SEE applyModelLimits
+    truncatedCombinationCount: number;
+    truncatedRecordTypeScopeCount: number;
+    /*
+        The declared value list was capped, so the panel must NOT draw the "must not unlock"
+        complement against it: a complement of a partial universe understates what the spec forbids,
+        which is a false claim rather than a shorter one. The panel says so instead.
+    */
+    declaredValuesTruncated: boolean;
 }
 
 /*
@@ -162,6 +203,14 @@ export interface IPicklistDependencyObjectViewModel {
         Its presence is what holds the object's combinations at "unknown".
     */
     unattributedFailureMessages: string[];
+    // THE FIND BOX HAYSTACK FOR THIS OBJECT AND EVERY NODE BENEATH IT -- SEE IPicklistDependencyNodeViewModel.searchText
+    searchText: string;
+    /*
+        Dependent picklists dropped by the rendering ceiling, counted as FIELDS rather than as root
+        chains: a chain is dropped whole, because half a chain drawn as a graph is a lie about what
+        controls what.
+    */
+    truncatedNodeCount: number;
 }
 
 export interface IPicklistDependencyRunSummary {
@@ -171,6 +220,12 @@ export interface IPicklistDependencyRunSummary {
     failureCount: number;
     methodsRun: number;
     resultsFilePath: string;
+    /*
+        The human-readable "report.md" written beside results.json by the same run, so a failed
+        combination can link to the entry that reported it. Empty when the run folder holds no
+        report -- an artifact written by an older version, or one that was pruned.
+    */
+    reportFilePath: string;
 }
 
 export interface IPicklistDependencyExplorerViewModel {
@@ -203,7 +258,86 @@ export interface IPicklistDependencyExplorerViewModel {
     aggregatorClassName: string;
     specsTestClassName: string;
     classesDirectoryPath: string;
+    /*
+        Objects dropped by the rendering ceiling. The counts above are NOT reduced by it: they
+        describe what the manifest declares, and the notices below describe what is on screen.
+        Collapsing the two would leave a truncated panel quietly reporting a smaller org.
+    */
+    truncatedObjectCount: number;
+    // WHAT THE CEILING DROPPED, IN WORDS, RENDERED AT THE TOP OF THE PANEL. EMPTY WHEN NOTHING WAS DROPPED.
+    truncationNotices: string[];
+    /*
+        Combinations the check reported a failure for that the TOTAL budget still could not fit.
+
+        Held apart from every other truncation count because it is the one drop the panel would
+        rather not make: past this point the run report is the complete record and the panel is not,
+        which the notice says in those words.
+    */
+    truncatedFailedCombinationCount: number;
+    /*
+        The triage prose, once per failure KIND rather than once per failure. The panel looks a
+        failure's kind up in here; a kind absent from it carries its own inline triage.
+    */
+    failureTriageByKind: Record<string, IPicklistDependencyFailureTriage>;
 }
+
+/*
+    What the panel will render before it starts dropping rows.
+
+    An unbounded payload was the ceiling before this existed: the model is serialized into the html
+    in full, so a large org's panel was a multi-megabyte document whose size nothing stated. These
+    are deliberately generous -- they are a backstop against a pathological org, not a page size --
+    and the rule that decides what survives them is fixed: a combination, scope or object the check
+    reported a failure for is never the thing dropped.
+*/
+export interface IPicklistDependencyExplorerModelLimits {
+    maxObjects: number;
+    maxNodesPerObject: number;
+    maxCombinationsPerNode: number;
+    maxRecordTypeScopesPerNode: number;
+    /*
+        The bound that actually bounds the payload.
+
+        The per-axis caps above shape the panel -- no one field dominating, no one object running
+        away -- but their PRODUCT is not a size: 250 objects x 25 fields x 200 combinations is
+        millions of rows, so caps alone left the embedded json as large as the org happened to be.
+        This is the total, across every object, field and record type scope, and it is the number
+        the measured payload figures in the changelog are derived from.
+    */
+    maxRenderedCombinations: number;
+    /*
+        The value UNIVERSE one field may render.
+
+        Measured its way onto this list: capping combinations alone still left a ~20MB payload,
+        because declaredValues holds every value the field declares and grows with the picklist
+        rather than with how many combinations survived the budget. It is the third axis, and it was
+        the dominant term once the other two were bounded.
+    */
+    maxDeclaredValuesPerNode: number;
+}
+
+/*
+    Measured rather than guessed: at roughly 350 bytes of serialized json per rendered combination,
+    20,000 combinations is an embedded model of about 7MB, against the 17MB an unbounded large org
+    produced before any ceiling existed. See CHANGELOG 3.6.0 for the measurement table.
+*/
+export const DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS: IPicklistDependencyExplorerModelLimits = {
+    maxObjects: 250,
+    maxNodesPerObject: 25,
+    maxCombinationsPerNode: 200,
+    maxRecordTypeScopesPerNode: 25,
+    maxRenderedCombinations: 20000,
+    maxDeclaredValuesPerNode: 200
+};
+
+/*
+    How many objects "Expand all" will open at once.
+
+    Expanding is what builds an object's rows, so an unguarded "expand all" is the 1.8M element
+    render this ceiling exists to prevent -- offered as a button rather than reached by accident.
+    Past this the panel says so and asks for a narrower filter instead of freezing.
+*/
+export const PICKLIST_DEPENDENCY_EXPLORER_EXPAND_ALL_OBJECT_LIMIT = 25;
 
 /*
     The generated Apex names for one object, so a node can say which class and method assert it.
@@ -562,6 +696,102 @@ export class PicklistDependencyExplorerService {
         that it cannot produce a path outside the objects directory belongs to it rather than to a
         caller that happens to check first.
     */
+
+    /*
+        Every FailureKind SDTPicklistDependencyValidator can raise, restated as a cause and a step.
+
+        Keyed by the enum name the Apex emits rather than by anything re-derived here, so a kind the
+        framework stops raising simply stops being looked up, and a kind it starts raising falls
+        through to the default below instead of being silently explained as something else. The two
+        hand-edit kinds -- CONTRADICTORY_EXPECTATION and CIRCULAR_DEPENDENCY -- say so explicitly:
+        pointing an admin at the org for a spec no org can satisfy is the most expensive wrong turn
+        this panel could send someone on.
+    */
+    private static failureTriageByKind: Record<string, IPicklistDependencyFailureTriage> = {
+        MISSING_VALUES: {
+            likelyCause: 'A value this controlling value used to unlock is no longer valid for it in the org. Usually the value was unassigned from the dependent field, or the dependency matrix was re-drawn for this controlling value.',
+            nextStep: 'Open Setup > Object Manager > this field > Field Dependencies, select the controlling value named below, and re-tick the missing values -- or, if the org is now correct, re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" to re-baseline the spec.'
+        },
+        UNEXPECTED_VALUES: {
+            likelyCause: 'The org unlocks values this combination\'s exact expectation does not list. Values were added to the dependency matrix for this controlling value after the spec was generated.',
+            nextStep: 'Compare the values below against the field dependency matrix in Setup. Untick them there if the addition was unintended, or re-generate the specs to accept the org as the new baseline.'
+        },
+        FORBIDDEN_VALUES_PRESENT: {
+            likelyCause: 'A value the spec asserts this controlling value must NOT unlock is now reachable through it. The dependency was widened in the org -- this is the direction that silently lets bad data in.',
+            nextStep: 'Untick the values below for this controlling value in Setup > Field Dependencies, or re-generate the specs if widening the dependency was deliberate.'
+        },
+        UNKNOWN_CONTROLLING_VALUE: {
+            likelyCause: 'The controlling value itself no longer exists on the controlling field -- it was renamed, deactivated, or deleted. Nothing about the dependent values could be checked, because there is no controlling value to check them under.',
+            nextStep: 'Check the controlling field\'s value set in Setup against the values the message below lists as present in the org. A rename needs the spec re-generated; a deactivation needs the value reactivated or the dependency retired.'
+        },
+        UNEXPECTED_CONTROLLING_VALUE: {
+            likelyCause: 'A controlling value the spec asserts is unreachable under this record type is now available. The record type was widened to assign it, or the value was added to the record type\'s picklist.',
+            nextStep: 'Check this record type\'s picklist value assignment for the controlling field in Setup. Re-generate the specs if the record type was meant to be widened.'
+        },
+        CONTROLLING_FIELD_MISMATCH: {
+            likelyCause: 'The dependent field is now controlled by a different field than the spec declares. The dependency was re-pointed at another controlling field in the org, which invalidates every combination for this field at once.',
+            nextStep: 'Confirm the intended controlling field in Setup > Field Dependencies, then re-run the generate command so the spec targets the field the org actually uses. Nothing under this field is verified until it is re-pointed.'
+        },
+        CONTRADICTORY_EXPECTATION: {
+            likelyCause: 'The spec requires and forbids the same value under one controlling value, so no org can satisfy it. This is a hand edit to generated Apex rather than org drift -- the generator emits the forbidden list as the complement of the expected one, and the two cannot overlap in generated output.',
+            nextStep: 'Edit the generated spec method and remove the values below from either the expected list or the not-allowed list -- or re-run the generate command to replace the hand edit. Do not change the org: nothing in it caused this.'
+        },
+        UPSTREAM_FAILURE: {
+            likelyCause: 'This combination was not evaluated at all. The controlling field is itself a dependent picklist, and its own spec failed first, so anything reported here would be an echo of that break rather than a fact about this field.',
+            nextStep: 'Fix the upstream spec named in the message below and re-run the check. This row stays unverified until the upstream one passes.'
+        },
+        CIRCULAR_DEPENDENCY: {
+            likelyCause: 'The dependsOn chain loops back on itself, so the spec cannot be validated. Salesforce cannot express a cyclic picklist dependency, which makes this a hand edit to the generated dependsOn wiring rather than something the org did.',
+            nextStep: 'Open the generated spec method and remove the dependsOn link that closes the loop, or re-run the generate command to replace the hand edit.'
+        },
+        LOOKUP_ERROR: {
+            likelyCause: 'The describe call for this field failed in the target org. The field or object may not exist there, may not be deployed yet, or may not be visible to the user the check ran as.',
+            nextStep: 'Confirm the object and field are deployed to the target org and readable by the running user, then re-run "Salesforce Treecipe: Run Picklist Dependency Check". The Apex message below carries the org\'s own error text.'
+        }
+    };
+
+    /*
+        The triage for a kind, or an honest default for one this version has never heard of.
+
+        A kind with no entry is NOT explained away: the default says so, and points at the raw
+        message, which is the only thing that can still be trusted about a failure the panel does
+        not recognise.
+    */
+    static buildFailureTriage(failureKind: string): IPicklistDependencyFailureTriage {
+
+        return this.failureTriageByKind[failureKind] ?? {
+            likelyCause: `This version of the Explorer has no explanation for a "${failureKind}" failure -- it was raised by a picklist dependency framework newer or older than the panel.`,
+            nextStep: 'Read the Apex message below, which is reported exactly as the check received it, and re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" so the deployed framework and this extension are the same version.'
+        };
+
+    }
+
+    /*
+        A failure detail carries its triage INLINE only when the kind is one this version does not
+        recognise -- that text names the kind, so it cannot be shared. Every recognised kind is
+        resolved through the model's failureTriageByKind, which holds each prose pair once.
+    */
+    static buildFailureDetailViewModel(failureKind: string, failureMessage: string): IPicklistDependencyFailureDetailViewModel {
+
+        if ( this.failureTriageByKind[failureKind] ) {
+            return { kind: failureKind, message: failureMessage };
+        }
+
+        return {
+            kind: failureKind,
+            message: failureMessage,
+            triage: this.buildFailureTriage(failureKind)
+        };
+
+    }
+
+    // THE SHARED PROSE THE PANEL LOOKS A RECOGNISED KIND UP IN, COPIED SO THE PRIVATE MAP IS NOT HANDED OUT
+    static buildFailureTriageByKind(): Record<string, IPicklistDependencyFailureTriage> {
+
+        return { ...this.failureTriageByKind };
+
+    }
+
     static buildFieldSourceFilePath(objectsDirectoryPath: string, objectApiName: string, fieldApiName: string): string {
 
         const invalidApiName = [objectApiName, fieldApiName].find(apiName => !PicklistDependencyTestService.isValidSalesforceApiName(apiName));
@@ -732,7 +962,7 @@ export class PicklistDependencyExplorerService {
             const downstreamSpecDetails = (downstreamSpecDetailsByUpstreamFieldApiName[specDetail.fieldApiName] || [])
                 .filter(downstreamSpecDetail => !alreadyVisitedFieldApiNames.has(downstreamSpecDetail.fieldApiName));
 
-            return {
+            const nodeViewModel: IPicklistDependencyNodeViewModel = {
                 objectApiName: specDetail.objectApiName,
                 fieldApiName: specDetail.fieldApiName,
                 controllingFieldApiName: specDetail.controllingFieldApiName,
@@ -750,8 +980,17 @@ export class PicklistDependencyExplorerService {
                 recordTypeScopes: this.buildRecordTypeScopeViewModels(
                     recordTypeSpecDetailsByFieldApiName[specDetail.fieldApiName] || [],
                     generatedNames
-                )
+                ),
+                searchText: '',
+                truncatedCombinationCount: 0,
+                truncatedRecordTypeScopeCount: 0,
+                declaredValuesTruncated: false
             };
+
+            // ASSIGNED AFTER CONSTRUCTION BECAUSE IT IS BUILT FROM THE NODE'S OWN SCOPES, WHICH ARE BUILT ABOVE
+            nodeViewModel.searchText = this.buildNodeSearchText(nodeViewModel);
+
+            return nodeViewModel;
 
         };
 
@@ -821,8 +1060,58 @@ export class PicklistDependencyExplorerService {
                 declaredValues: this.buildDeclaredValuesByExpectations(recordTypeSpecDetail),
                 combinations: this.buildCombinationViewModels(recordTypeSpecDetail),
                 status: 'unknown' as PicklistDependencyCheckStatus,
-                failureCount: 0
+                failureCount: 0,
+                truncatedCombinationCount: 0,
+                declaredValuesTruncated: false
             }));
+
+    }
+
+    /*
+        The haystack the panel's find box matches one node against.
+
+        Lowercased once here rather than per keystroke in the webview, and built from the names a
+        reader would actually type: the field, what controls it, the object it belongs to, the
+        generated method that asserts it, and every record type that narrows it. Downstream nodes
+        are deliberately absent -- each is its own row with its own haystack, and folding a child's
+        names into its parent would make a parent match a search for a field it merely controls.
+    */
+    static buildNodeSearchText(node: IPicklistDependencyNodeViewModel): string {
+
+        const searchableValues = [
+            node.objectApiName,
+            node.fieldApiName,
+            node.controllingFieldApiName,
+            node.generatedClassName,
+            node.specMethodName,
+            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName),
+            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.specMethodName)
+        ];
+
+        return searchableValues.filter(searchableValue => !!searchableValue).join(' ').toLowerCase();
+
+    }
+
+    /*
+        The haystack for a whole object section, which is what the find box hides or shows.
+
+        It includes every node beneath the object, so searching for a FIELD name reaches the object
+        holding it rather than requiring the reader to know which object that was -- which is the
+        whole point of the box. Skipped fields are in it too: a field that was skipped is the one
+        thing on the panel nothing asserts, and it must not become unfindable as well.
+    */
+    static buildObjectSearchText(objectViewModel: IPicklistDependencyObjectViewModel): string {
+
+        const searchableValues = [
+            objectViewModel.objectApiName,
+            objectViewModel.generatedClassName,
+            objectViewModel.testMethodName,
+            ...this.flattenNodes(objectViewModel.rootNodes).map(node => node.searchText),
+            ...objectViewModel.skippedFields.map(skippedField => skippedField.fieldApiName),
+            ...objectViewModel.skippedFields.map(skippedField => skippedField.recordTypeDeveloperName)
+        ];
+
+        return searchableValues.filter(searchableValue => !!searchableValue).join(' ').toLowerCase();
 
     }
 
@@ -919,7 +1208,7 @@ export class PicklistDependencyExplorerService {
                         return;
                     }
 
-                    combinationFailures.push({ kind: parsedFailure.kind, message: failureMessage });
+                    combinationFailures.push(this.buildFailureDetailViewModel(parsedFailure.kind, failureMessage));
                     appliedFailures.add(parsedFailure);
 
                 });
@@ -940,7 +1229,7 @@ export class PicklistDependencyExplorerService {
 
             node.fieldLevelFailures = fieldLevelFailures.map(parsedFailure => {
                 appliedFailures.add(parsedFailure);
-                return { kind: parsedFailure.kind, message: parsedFailure.fieldLevelMessage };
+                return this.buildFailureDetailViewModel(parsedFailure.kind, parsedFailure.fieldLevelMessage);
             });
 
             nodeFailureCount += node.fieldLevelFailures.length;
@@ -988,7 +1277,7 @@ export class PicklistDependencyExplorerService {
                             return;
                         }
 
-                        combinationFailures.push({ kind: parsedFailure.kind, message: failureMessage });
+                        combinationFailures.push(this.buildFailureDetailViewModel(parsedFailure.kind, failureMessage));
                         appliedFailures.add(parsedFailure);
 
                     });
@@ -1166,9 +1455,15 @@ export class PicklistDependencyExplorerService {
                 generatedClassName: generatedNames.generatedClassName,
                 generatedClassFilePath: explorerContext.generatedClassFilePathsByObjectApiName[objectApiName] ?? '',
                 skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName] ?? [],
-                unattributedFailureMessages: unattributedFailureMessages
+                unattributedFailureMessages: unattributedFailureMessages,
+                searchText: '',
+                truncatedNodeCount: 0
             };
 
+        });
+
+        objects.forEach(objectViewModel => {
+            objectViewModel.searchText = this.buildObjectSearchText(objectViewModel);
         });
 
         /*
@@ -1192,7 +1487,12 @@ export class PicklistDependencyExplorerService {
             generatedClassName: '',
             generatedClassFilePath: '',
             skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName],
-            unattributedFailureMessages: []
+            unattributedFailureMessages: [],
+            truncatedNodeCount: 0,
+            searchText: [objectApiName, ...skippedFieldViewModelsByObjectApiName[objectApiName].map(skippedField => skippedField.fieldApiName)]
+                            .filter(searchableValue => !!searchableValue)
+                            .join(' ')
+                            .toLowerCase()
         }));
 
         const allObjects = objects.concat(skipOnlyObjects);
@@ -1204,11 +1504,12 @@ export class PicklistDependencyExplorerService {
                 passed: resultsLoad.results.passed,
                 failureCount: resultsLoad.results.failureCount,
                 methodsRun: resultsLoad.results.methodsRun,
-                resultsFilePath: resultsLoad.resultsFilePath ?? ''
+                resultsFilePath: resultsLoad.resultsFilePath ?? '',
+                reportFilePath: this.resolveRunReportFilePath(resultsLoad.resultsFilePath ?? '')
             }
             : undefined;
 
-        return {
+        const explorerViewModel: IPicklistDependencyExplorerViewModel = {
             scannedObjectsDirectoryPath: objectsDirectoryPath,
             objects: allObjects,
             dependentFieldCount: allObjects.reduce((fieldCount, objectViewModel) => fieldCount + objectViewModel.dependentFieldCount, 0),
@@ -1231,8 +1532,19 @@ export class PicklistDependencyExplorerService {
             generatorVersion: explorerContext.generatorVersion,
             aggregatorClassName: explorerContext.aggregatorClassName,
             specsTestClassName: explorerContext.specsTestClassName,
-            classesDirectoryPath: explorerContext.classesDirectoryPath
+            classesDirectoryPath: explorerContext.classesDirectoryPath,
+            truncatedObjectCount: 0,
+            truncationNotices: [],
+            truncatedFailedCombinationCount: 0,
+            failureTriageByKind: this.buildFailureTriageByKind()
         };
+
+        /*
+            The ceiling is applied HERE rather than at render time, and after every count above has
+            been taken. The counts then keep describing the org while the panel describes what it is
+            showing, and the two are reconciled by the notices the ceiling writes.
+        */
+        return this.applyModelLimits(explorerViewModel);
 
     }
 
@@ -1265,9 +1577,48 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        A path read from the manifest that the extension host may be asked to OPEN, or empty.
+
+        The manifest is a json file on disk that a hand edit -- or a commit from someone else --
+        controls, and loadManifest accepts these paths as bare strings. Every one of them that
+        becomes an openable target has to be brought back inside the workspace first, exactly as
+        resolveRenderableObjectsDirectoryPath already does for the objects directory: an allow-list
+        is only as trustworthy as the text it was built from, and "the model named it" stops being
+        a safety property once the model can name anything on the disk.
+
+        Returning EMPTY rather than falling back to a guess is what makes this safe by default
+        downstream: an object with no generated class file path contributes no spec target and
+        renders no "Open spec method" button, which is already how a metadata preview behaves.
+    */
+    static resolveOpenableManifestFilePath(manifestFilePath: string, workspaceRoot?: string): string {
+
+        if ( !manifestFilePath ) {
+            return '';
+        }
+
+        /*
+            No workspace to check against. Callers rendering a panel always pass one -- the command
+            throws before this point without it -- so this is the test-only path, and the honest
+            answer there is the path as recorded rather than a silent empty.
+        */
+        if ( !workspaceRoot ) {
+            return manifestFilePath;
+        }
+
+        const isContainedInWorkspace = PicklistDependencyTestService.isPathContainedInWorkspace(
+            path.resolve(manifestFilePath),
+            path.resolve(workspaceRoot)
+        );
+
+        return isContainedInWorkspace ? manifestFilePath : '';
+
+    }
+
     static buildContextByManifest(manifest: IPicklistDependencyManifest,
                                     manifestLoad: IPicklistDependencyManifestLoad,
-                                    freshnessResult: IPicklistDependencyManifestFreshnessResult): IPicklistDependencyExplorerContext {
+                                    freshnessResult: IPicklistDependencyManifestFreshnessResult,
+                                    workspaceRoot?: string): IPicklistDependencyExplorerContext {
 
         let generatedNamesByObjectApiName: Record<string, IPicklistDependencyGeneratedNames> = {};
         let generatedClassFilePathsByObjectApiName: Record<string, string> = {};
@@ -1296,7 +1647,10 @@ export class PicklistDependencyExplorerService {
                 specMethodNamesByFieldKey: specMethodNamesByFieldKey
             };
 
-            generatedClassFilePathsByObjectApiName[manifestObject.objectApiName] = manifestObject.generatedClassFilePath;
+            generatedClassFilePathsByObjectApiName[manifestObject.objectApiName] = this.resolveOpenableManifestFilePath(
+                manifestObject.generatedClassFilePath,
+                workspaceRoot
+            );
             testMethodNamesByObjectApiName[manifestObject.objectApiName] = manifestObject.testMethodName;
 
         });
@@ -1312,7 +1666,7 @@ export class PicklistDependencyExplorerService {
             generatorVersion: manifest.generatorVersion,
             aggregatorClassName: manifest.aggregatorClassName,
             specsTestClassName: manifest.specsTestClassName,
-            classesDirectoryPath: manifest.classesDirectoryPath,
+            classesDirectoryPath: this.resolveOpenableManifestFilePath(manifest.classesDirectoryPath, workspaceRoot),
             generatedNamesByObjectApiName: generatedNamesByObjectApiName,
             generatedClassFilePathsByObjectApiName: generatedClassFilePathsByObjectApiName,
             testMethodNamesByObjectApiName: testMethodNamesByObjectApiName,
@@ -1371,7 +1725,7 @@ export class PicklistDependencyExplorerService {
         }
 
         const manifestSpecDetails = PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest);
-        const explorerContext = this.buildContextByManifest(manifest, manifestLoad, freshnessResult);
+        const explorerContext = this.buildContextByManifest(manifest, manifestLoad, freshnessResult, workspaceRoot);
 
         return this.buildExplorerViewModel(
             this.resolveRenderableObjectsDirectoryPath(manifest.objectsDirectoryPath, objectsDirectoryPath, workspaceRoot),
@@ -1450,6 +1804,494 @@ export class PicklistDependencyExplorerService {
         failure messages all reach the panel unmodified from metadata an admin controls, so none of
         it is interpolated raw. The JSON payload takes the same treatment below.
     */
+
+    /*
+        Keeps at most "cap" items, and never drops one the caller marked as retained.
+
+        Retained items are taken FIRST and the remainder fills what is left, but the result is
+        returned in the caller's original order rather than with the retained ones hoisted -- a
+        combination list that reorders itself once an org drifts is a list a reader can no longer
+        scan against the field it came from. When the retained items alone exceed the cap they are
+        all kept anyway: the cap exists to bound a pathological render, and dropping a reported
+        failure to honour it would break the one promise the panel makes.
+    */
+    static selectWithinCap<TItem>(items: TItem[], cap: number, isRetained: (item: TItem) => boolean): TItem[] {
+
+        if ( cap <= 0 || items.length <= cap ) {
+            return items;
+        }
+
+        let selectedItemIndexes = new Set<number>();
+
+        items.forEach((item, itemIndex) => {
+            if ( isRetained(item) ) {
+                selectedItemIndexes.add(itemIndex);
+            }
+        });
+
+        items.forEach((item, itemIndex) => {
+
+            if ( selectedItemIndexes.has(itemIndex) || selectedItemIndexes.size >= cap ) {
+                return;
+            }
+
+            selectedItemIndexes.add(itemIndex);
+
+        });
+
+        return items.filter((item, itemIndex) => selectedItemIndexes.has(itemIndex));
+
+    }
+
+    /*
+        Brings the model under a stated ceiling, and says in words what it dropped.
+
+        The payload is serialized into the panel html in full, so before this existed the panel's
+        size was whatever the org happened to be -- around 17MB of embedded JSON for a large one,
+        with no number anywhere saying so. Truncation is preferred to a silently enormous document,
+        but only on the axis that costs nothing to lose: anything the check reported a failure for,
+        and any object carrying a skipped field, is retained regardless of the cap.
+
+        Nothing here changes a status. A dropped row is ABSENT and counted in a notice, never
+        rendered as something it was not -- the three-state guarantee holds under the ceiling exactly
+        as it holds under a filter.
+    */
+    static applyModelLimits(viewModel: IPicklistDependencyExplorerViewModel,
+                                limits: IPicklistDependencyExplorerModelLimits = DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS): IPicklistDependencyExplorerViewModel {
+
+        let truncationNotices: string[] = [];
+
+        const declaredObjectCount = viewModel.objects.length;
+
+        viewModel.objects = this.selectWithinCap(
+            viewModel.objects,
+            limits.maxObjects,
+            objectViewModel => objectViewModel.status === 'failed'
+                                || objectViewModel.failureCount > 0
+                                || objectViewModel.unattributedFailureMessages.length > 0
+                                || objectViewModel.skippedFields.length > 0
+        );
+
+        /*
+            Accumulated rather than assigned. Nothing calls this twice today, but the total budget
+            below makes a second tightening pass a reasonable thing to do, and a counter that
+            overwrote the first pass would under-report what is missing from the panel -- which is
+            the exact failure mode the counts exist to prevent.
+        */
+        const truncatedObjectCount = declaredObjectCount - viewModel.objects.length;
+        viewModel.truncatedObjectCount += truncatedObjectCount;
+
+        if ( truncatedObjectCount > 0 ) {
+            truncationNotices.push(
+                `Showing ${viewModel.objects.length} of ${declaredObjectCount} objects. `
+                    + `${truncatedObjectCount} object(s) with no reported failure and no skipped field are not rendered, `
+                    + 'so they cannot be found with the filter above either. '
+                    + 'Every object the check reported on, and every object carrying a skipped field, is shown. '
+                    + 'Generate against a narrower objects directory to bring the rest onto the panel.'
+            );
+        }
+
+        let truncatedCombinationCount = 0;
+        let truncatedRecordTypeScopeCount = 0;
+        let truncatedNodeCount = 0;
+
+        const isFailedCombination = (combination: IPicklistDependencyCombinationViewModel) =>
+            combination.status === 'failed' || combination.failures.length > 0;
+
+        viewModel.objects.forEach(objectViewModel => {
+
+            /*
+                Whole ROOT chains are dropped rather than individual nodes. A chain is drawn by
+                containment, and rendering a downstream field without the field that controls it
+                would misstate the dependency rather than merely shorten the list.
+            */
+            const declaredNodeCount = this.countNodes(objectViewModel.rootNodes);
+
+            objectViewModel.rootNodes = this.selectWithinCap(
+                objectViewModel.rootNodes,
+                limits.maxNodesPerObject,
+                rootNode => this.flattenNodes([rootNode]).some(node => node.status === 'failed' || node.failureCount > 0)
+            );
+
+            const objectTruncatedNodeCount = declaredNodeCount - this.countNodes(objectViewModel.rootNodes);
+            objectViewModel.truncatedNodeCount += objectTruncatedNodeCount;
+            truncatedNodeCount += objectTruncatedNodeCount;
+
+            this.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+
+                if ( node.declaredValues.length > limits.maxDeclaredValuesPerNode ) {
+                    node.declaredValues = node.declaredValues.slice(0, limits.maxDeclaredValuesPerNode);
+                    node.declaredValuesTruncated = true;
+                }
+
+                const declaredCombinationCount = node.combinations.length;
+                node.combinations = this.selectWithinCap(node.combinations, limits.maxCombinationsPerNode, isFailedCombination);
+                node.truncatedCombinationCount += declaredCombinationCount - node.combinations.length;
+                truncatedCombinationCount += declaredCombinationCount - node.combinations.length;
+
+                const declaredRecordTypeScopeCount = node.recordTypeScopes.length;
+                node.recordTypeScopes = this.selectWithinCap(
+                    node.recordTypeScopes,
+                    limits.maxRecordTypeScopesPerNode,
+                    recordTypeScope => recordTypeScope.status === 'failed' || recordTypeScope.failureCount > 0
+                );
+                node.truncatedRecordTypeScopeCount += declaredRecordTypeScopeCount - node.recordTypeScopes.length;
+                truncatedRecordTypeScopeCount += declaredRecordTypeScopeCount - node.recordTypeScopes.length;
+
+                node.recordTypeScopes.forEach(recordTypeScope => {
+
+                    if ( recordTypeScope.declaredValues.length > limits.maxDeclaredValuesPerNode ) {
+                        recordTypeScope.declaredValues = recordTypeScope.declaredValues.slice(0, limits.maxDeclaredValuesPerNode);
+                        recordTypeScope.declaredValuesTruncated = true;
+                    }
+
+                    const declaredScopeCombinationCount = recordTypeScope.combinations.length;
+                    recordTypeScope.combinations = this.selectWithinCap(recordTypeScope.combinations, limits.maxCombinationsPerNode, isFailedCombination);
+                    recordTypeScope.truncatedCombinationCount += declaredScopeCombinationCount - recordTypeScope.combinations.length;
+                    truncatedCombinationCount += declaredScopeCombinationCount - recordTypeScope.combinations.length;
+
+                });
+
+            });
+
+        });
+
+        const totalBudgetResult = this.applyTotalCombinationBudget(viewModel, limits.maxRenderedCombinations);
+        truncatedCombinationCount += totalBudgetResult.truncatedCombinationCount;
+
+        if ( truncatedNodeCount > 0 ) {
+            truncationNotices.push(
+                `${truncatedNodeCount} dependent picklist(s) are not rendered: no object shows more than `
+                    + `${limits.maxNodesPerObject} at once. Every chain the check reported a failure in is shown.`
+            );
+        }
+
+        if ( truncatedCombinationCount > 0 ) {
+            truncationNotices.push(
+                `${truncatedCombinationCount} combination(s) are not rendered, against a panel total of `
+                    + `${limits.maxRenderedCombinations} and a per-field limit of ${limits.maxCombinationsPerNode}. `
+                    + 'Combinations the check reported a failure for are kept ahead of every passing one.'
+            );
+        }
+
+        if ( truncatedRecordTypeScopeCount > 0 ) {
+            truncationNotices.push(
+                `${truncatedRecordTypeScopeCount} record type scope(s) are not rendered: no field shows more than `
+                    + `${limits.maxRecordTypeScopesPerNode} at once. Every scope the check reported a failure for is shown.`
+            );
+        }
+
+        /*
+            Said separately and last, because it is the only drop that costs the reader something
+            the panel cannot give back: past the total budget even a reported failure is not on
+            screen, and the run report is then the complete record while the panel is not.
+        */
+        if ( totalBudgetResult.truncatedFailedCombinationCount > 0 ) {
+            viewModel.truncatedFailedCombinationCount += totalBudgetResult.truncatedFailedCombinationCount;
+            truncationNotices.push(
+                `${totalBudgetResult.truncatedFailedCombinationCount} combination(s) the check reported a FAILURE for are not `
+                    + `rendered either: there are more failures than the panel's total of ${limits.maxRenderedCombinations} rows can hold. `
+                    + 'The run report beside results.json lists every one of them -- treat it, not this panel, as the complete record of this run.'
+            );
+        }
+
+        viewModel.truncationNotices = viewModel.truncationNotices.concat(truncationNotices);
+
+        return viewModel;
+
+    }
+
+    /*
+        Brings the TOTAL number of rendered combinations under one budget, across every object,
+        field and record type scope.
+
+        This is what makes the ceiling a size rather than a shape. The per-axis caps above bound
+        each axis independently, and their product is millions of rows -- so before this existed a
+        drifted org still serialized a payload as large as the org, which is the condition the
+        ceiling was introduced to remove.
+
+        Failing combinations fill the budget FIRST, in document order, so a failure is never dropped
+        in favour of a passing row. Past the budget they are dropped too and counted separately: an
+        unbounded payload is worse for the reader than a bounded one that says what is missing and
+        where the complete list lives.
+    */
+    static applyTotalCombinationBudget(viewModel: IPicklistDependencyExplorerViewModel,
+                                        maxRenderedCombinations: number): { truncatedCombinationCount: number; truncatedFailedCombinationCount: number } {
+
+        if ( maxRenderedCombinations <= 0 ) {
+            return { truncatedCombinationCount: 0, truncatedFailedCombinationCount: 0 };
+        }
+
+        type CombinationHolder = { combinations: IPicklistDependencyCombinationViewModel[] };
+
+        let combinationHolders: CombinationHolder[] = [];
+
+        viewModel.objects.forEach(objectViewModel => {
+            this.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+                combinationHolders.push(node);
+                node.recordTypeScopes.forEach(recordTypeScope => combinationHolders.push(recordTypeScope));
+            });
+        });
+
+        const isFailedCombination = (combination: IPicklistDependencyCombinationViewModel) =>
+            combination.status === 'failed' || combination.failures.length > 0;
+
+        const renderedCombinationCount = combinationHolders.reduce(
+            (combinationCount, combinationHolder) => combinationCount + combinationHolder.combinations.length,
+            0
+        );
+
+        if ( renderedCombinationCount <= maxRenderedCombinations ) {
+            return { truncatedCombinationCount: 0, truncatedFailedCombinationCount: 0 };
+        }
+
+        const failedCombinationCount = combinationHolders.reduce(
+            (combinationCount, combinationHolder) => combinationCount + combinationHolder.combinations.filter(isFailedCombination).length,
+            0
+        );
+
+        /*
+            Two budgets rather than one pass: how many FAILING rows fit, and how much is left over
+            for the rest. Spending the remainder on passing rows only after every failure that fits
+            has been placed is what keeps "a failure is never dropped for a passing row" true
+            without needing to reorder anything on screen.
+        */
+        let failedBudgetRemaining = Math.min(failedCombinationCount, maxRenderedCombinations);
+        let passingBudgetRemaining = maxRenderedCombinations - failedBudgetRemaining;
+
+        let truncatedCombinationCount = 0;
+        let truncatedFailedCombinationCount = 0;
+
+        combinationHolders.forEach(combinationHolder => {
+
+            let keptCombinations: IPicklistDependencyCombinationViewModel[] = [];
+
+            combinationHolder.combinations.forEach(combination => {
+
+                if ( isFailedCombination(combination) ) {
+
+                    if ( failedBudgetRemaining > 0 ) {
+                        failedBudgetRemaining--;
+                        keptCombinations.push(combination);
+                        return;
+                    }
+
+                    truncatedFailedCombinationCount++;
+                    truncatedCombinationCount++;
+                    return;
+
+                }
+
+                if ( passingBudgetRemaining > 0 ) {
+                    passingBudgetRemaining--;
+                    keptCombinations.push(combination);
+                    return;
+                }
+
+                truncatedCombinationCount++;
+
+            });
+
+            combinationHolder.combinations = keptCombinations;
+
+        });
+
+        return {
+            truncatedCombinationCount: truncatedCombinationCount,
+            truncatedFailedCombinationCount: truncatedFailedCombinationCount
+        };
+
+    }
+
+    /*
+        The "report.md" the same run wrote beside its results.json, when it wrote one.
+
+        Resolved from the results path rather than searched for, because the two are written into
+        the same run folder in one call -- and returned empty rather than guessed at when the file
+        is not there, so the panel offers the link only where following it would land somewhere.
+    */
+    static resolveRunReportFilePath(resultsFilePath: string): string {
+
+        if ( !resultsFilePath ) {
+            return '';
+        }
+
+        const runReportFilePath = path.join(path.dirname(resultsFilePath), 'report.md');
+
+        return fs.existsSync(runReportFilePath) ? runReportFilePath : '';
+
+    }
+
+    /*
+        One allow-list entry: a file the panel may open, paired with the method inside it the panel
+        may scroll to. The pair is the unit rather than the path alone, so a panel message cannot
+        combine a legitimate file with a method name of its own choosing and have the host go
+        looking for it.
+    */
+    static buildOpenTargetKey(filePath: string, methodName: string): string {
+        return `${filePath}::${methodName}`;
+    }
+
+    /*
+        Every generated spec method the model names, keyed by the class file it lives in. An object
+        whose class file path is unknown -- every object in a metadata preview -- contributes
+        nothing, which is correct: no generated code asserts it, so there is nothing to open.
+    */
+    static collectOpenableSpecTargets(viewModel: IPicklistDependencyExplorerViewModel): string[] {
+
+        let openableSpecTargets: string[] = [];
+
+        viewModel.objects.forEach(objectViewModel => {
+
+            if ( !objectViewModel.generatedClassFilePath ) {
+                return;
+            }
+
+            this.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+
+                if ( node.specMethodName ) {
+                    openableSpecTargets.push(this.buildOpenTargetKey(objectViewModel.generatedClassFilePath, node.specMethodName));
+                }
+
+                node.recordTypeScopes.forEach(recordTypeScope => {
+
+                    if ( recordTypeScope.specMethodName ) {
+                        openableSpecTargets.push(this.buildOpenTargetKey(objectViewModel.generatedClassFilePath, recordTypeScope.specMethodName));
+                    }
+
+                });
+
+            });
+
+        });
+
+        return openableSpecTargets;
+
+    }
+
+    /*
+        Every run report entry the model names. There is exactly one report file, so the pair is
+        what constrains this: the panel may scroll to the entry for an object the model rendered,
+        and to nothing else in the file.
+    */
+    static collectOpenableRunReportTargets(viewModel: IPicklistDependencyExplorerViewModel): string[] {
+
+        const runReportFilePath = viewModel.runSummary?.reportFilePath;
+
+        if ( !runReportFilePath ) {
+            return [];
+        }
+
+        return viewModel.objects
+            .filter(objectViewModel => !!objectViewModel.testMethodName)
+            .map(objectViewModel => this.buildOpenTargetKey(runReportFilePath, objectViewModel.testMethodName));
+
+    }
+
+    /*
+        Every combination key the model declares, which is what the panel may ask to be copied. A
+        key is metadata-derived text and reaches the clipboard verbatim, so it is matched against
+        this set rather than trusted -- the panel cannot make the host copy something it never
+        rendered.
+    */
+    static collectCombinationKeys(viewModel: IPicklistDependencyExplorerViewModel): string[] {
+
+        let combinationKeys: string[] = [];
+
+        viewModel.objects.forEach(objectViewModel => {
+
+            this.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+
+                node.combinations.forEach(combination => combinationKeys.push(combination.combinationKey));
+
+                node.recordTypeScopes.forEach(recordTypeScope => {
+                    recordTypeScope.combinations.forEach(combination => combinationKeys.push(combination.combinationKey));
+                });
+
+            });
+
+        });
+
+        return combinationKeys;
+
+    }
+
+    /*
+        The 1-based line a generated Apex method is DECLARED on, or 0 when the file does not declare
+        it.
+
+        A generated class names each spec method twice -- once where it is declared and once in the
+        aggregate that returns them all -- so the first textual hit is as likely to be the call site
+        as the declaration. A line opening with a modifier or an annotation is taken as the
+        declaration; the first hit is the fallback, which still lands the reader inside the right
+        class rather than nowhere.
+    */
+    static findApexMethodDeclarationLineNumber(apexClassContent: string, methodName: string): number {
+
+        if ( !apexClassContent || !methodName ) {
+            return 0;
+        }
+
+        const apexClassLines = apexClassContent.split(/\r?\n/);
+        let firstMentionLineNumber = 0;
+
+        for ( let lineIndex = 0; lineIndex < apexClassLines.length; lineIndex++ ) {
+
+            const apexClassLine = apexClassLines[lineIndex];
+
+            if ( apexClassLine.indexOf(`${methodName}(`) === -1 ) {
+                continue;
+            }
+
+            if ( firstMentionLineNumber === 0 ) {
+                firstMentionLineNumber = lineIndex + 1;
+            }
+
+            if ( /^\s*(?:@|public\b|private\b|protected\b|global\b|static\b|testmethod\b)/i.test(apexClassLine) ) {
+                return lineIndex + 1;
+            }
+
+        }
+
+        return firstMentionLineNumber;
+
+    }
+
+    /*
+        The 1-based line the run report describes a test method on, or 0 when it describes none.
+
+        "report.md" names a method twice: once in the methods table and once as a "### " heading
+        under the failure detail. The heading is preferred because it is the entry that carries the
+        message, and the table row is the fallback for a run where the method passed and no heading
+        was written.
+    */
+    static findRunReportEntryLineNumber(runReportContent: string, methodName: string): number {
+
+        if ( !runReportContent || !methodName ) {
+            return 0;
+        }
+
+        const runReportLines = runReportContent.split(/\r?\n/);
+        let methodsTableLineNumber = 0;
+
+        for ( let lineIndex = 0; lineIndex < runReportLines.length; lineIndex++ ) {
+
+            const runReportLine = runReportLines[lineIndex];
+
+            if ( runReportLine.trim() === `### ${methodName}` ) {
+                return lineIndex + 1;
+            }
+
+            if ( methodsTableLineNumber === 0 && runReportLine.indexOf(`\`${methodName}\``) !== -1 ) {
+                methodsTableLineNumber = lineIndex + 1;
+            }
+
+        }
+
+        return methodsTableLineNumber;
+
+    }
+
     static escapeHtml(value: string): string {
 
         return String(value)
@@ -1568,7 +2410,22 @@ export class PicklistDependencyExplorerService {
     .runBanner.unknown { border-left-color: var(--vscode-testing-iconQueued); }
     .muted { color: var(--vscode-descriptionForeground); }
     .objectSection { margin-bottom: 1.5rem; }
-    .objectHeading { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .objectHeading {
+        font-size: 1.05rem;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        cursor: pointer;
+    }
+    .objectHeading:hover { background-color: var(--vscode-list-hoverBackground); }
+    .disclosure {
+        font-family: var(--vscode-editor-font-family);
+        color: var(--vscode-descriptionForeground);
+        width: 1ch;
+    }
     /* THE LEFT RULE AND ELBOW ARE WHAT DRAW A CHAIN AS ONE CONNECTED GRAPH RATHER THAN REPEATED ROWS */
     .nodeChildren {
         margin-left: 0.9rem;
@@ -1599,6 +2456,7 @@ export class PicklistDependencyExplorerService {
     .combination.passed { border-left-color: var(--vscode-testing-iconPassed); }
     .combination.failed { border-left-color: var(--vscode-testing-iconFailed); }
     .combination.unknown { border-left-color: var(--vscode-testing-iconQueued); }
+    .combination.focused { outline: 2px solid var(--vscode-focusBorder); }
     .statusBadge {
         font-size: 0.75rem;
         text-transform: uppercase;
@@ -1642,7 +2500,16 @@ export class PicklistDependencyExplorerService {
         font-family: var(--vscode-editor-font-family);
         font-size: 0.85em;
     }
+    /* THE TRIAGE SITS BENEATH THE APEX TEXT, NEVER IN PLACE OF IT -- SEE IPicklistDependencyFailureTriage */
+    .triage {
+        border-left: 3px solid var(--vscode-testing-iconFailed);
+        padding: 0.3rem 0.6rem;
+        margin: 0 0 0.35rem 0;
+    }
+    .triageLine { margin: 0.15rem 0; }
+    .triageLabel { font-weight: 600; margin-right: 0.35rem; }
     .sourceDetail { margin-top: 0.4rem; }
+    .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
     .sourcePath {
         font-family: var(--vscode-editor-font-family);
         font-size: 0.85em;
@@ -1660,7 +2527,39 @@ export class PicklistDependencyExplorerService {
         font-size: 0.85em;
     }
     button:hover { background-color: var(--vscode-button-hoverBackground); }
+    .toolbar {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        padding: 0.5rem 0 0.75rem 0;
+        border-bottom: 1px solid var(--vscode-panel-border);
+        margin-bottom: 0.75rem;
+        position: sticky;
+        top: 0;
+        background-color: var(--vscode-editor-background);
+        z-index: 1;
+    }
+    .toolbarField { display: flex; flex-direction: column; gap: 0.15rem; }
+    .toolbarLabel { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-descriptionForeground); }
+    .toolbar input, .toolbar select {
+        color: var(--vscode-input-foreground);
+        background-color: var(--vscode-input-background);
+        border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+        padding: 0.2rem 0.35rem;
+        font-family: inherit;
+        font-size: inherit;
+    }
+    .toolbar input { min-width: 22rem; }
+    .matchCount { flex-basis: 100%; color: var(--vscode-descriptionForeground); font-size: 0.85em; }
     .warningList { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; }
+    .truncationNotice {
+        border-left: 3px solid var(--vscode-testing-iconQueued);
+        padding: 0.3rem 0.75rem;
+        margin: 0.25rem 0;
+        color: var(--vscode-descriptionForeground);
+        font-size: 0.9em;
+    }
     .emptyState { padding: 1rem; border: 1px dashed var(--vscode-panel-border); }
     .specOrigin { font-family: var(--vscode-editor-font-family); font-size: 0.8rem; color: var(--vscode-descriptionForeground); margin: 0.1rem 0 0.3rem 0; }
     .provenanceBanner { padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; border-left: 3px solid var(--vscode-panel-border); }
@@ -1682,6 +2581,29 @@ export class PicklistDependencyExplorerService {
     const vscodeApi = acquireVsCodeApi();
     const explorerModel = JSON.parse(document.getElementById('explorerModel').textContent);
     const explorerRoot = document.getElementById('explorerRoot');
+
+    const EXPAND_ALL_OBJECT_LIMIT = ${PICKLIST_DEPENDENCY_EXPLORER_EXPAND_ALL_OBJECT_LIMIT};
+
+    /*
+        One record per object section. An object's ROWS are not built until it is expanded, so what
+        the panel holds at load is this list and a heading each -- the pathological org measured in
+        #80 built every row of every record type up front, which is where the element count came
+        from. Filtering runs against the model on these records rather than against the DOM, so it
+        costs the same whether an object has been expanded or not.
+    */
+    let objectSectionRecords = [];
+
+    let filterText = '';
+    let filterStatus = 'all';
+    /*
+        A pasted combination reference addresses ONE row, and the row it addresses does not match the
+        reference as ordinary search text -- the key carries a controlling value no field name
+        contains. Node filtering is suspended while one is active, or the deep link would scroll to a
+        row its own query had just hidden.
+    */
+    let isDeepLinkActive = false;
+    let matchCountElement;
+    let focusedCombinationElement;
 
     function createElement(tagName, className, textContent) {
         const element = document.createElement(tagName);
@@ -1724,13 +2646,58 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    function appendTriage(parentElement, triage) {
+
+        if (!triage) { return; }
+
+        const triageElement = createElement('div', 'triage');
+
+        const likelyCauseElement = createElement('div', 'triageLine');
+        likelyCauseElement.appendChild(createElement('span', 'triageLabel', 'Likely cause'));
+        likelyCauseElement.appendChild(createElement('span', undefined, triage.likelyCause));
+        triageElement.appendChild(likelyCauseElement);
+
+        const nextStepElement = createElement('div', 'triageLine');
+        nextStepElement.appendChild(createElement('span', 'triageLabel', 'Next step'));
+        nextStepElement.appendChild(createElement('span', undefined, triage.nextStep));
+        triageElement.appendChild(nextStepElement);
+
+        parentElement.appendChild(triageElement);
+
+    }
+
+    /*
+        The Apex kind and message FIRST, the plain-language reading beneath it. A reader who already
+        knows what MISSING_VALUES means should not have to scroll past a paragraph to find the values
+        it names, and a reader who does not should not have to look the kind up elsewhere.
+    */
+    /*
+        A recognised kind's triage lives once in the model, keyed by kind; only an unrecognised kind
+        carries its own, because that text names the kind. Looked up here rather than inlined per
+        failure so the payload grows with the org's SIZE rather than with its drift.
+    */
+    function resolveTriage(failure) {
+        return failure.triage || explorerModel.failureTriageByKind[failure.kind];
+    }
+
     function appendFailureDetails(parentElement, failures) {
         failures.forEach(function (failure) {
             parentElement.appendChild(createElement('div', 'failureDetail', failure.kind + '\\n' + failure.message));
+            appendTriage(parentElement, resolveTriage(failure));
         });
     }
 
-    function buildCombinationElement(node, combination, declaredValues) {
+    function appendTruncationNotice(parentElement, truncatedCount, itemLabel) {
+
+        if (!truncatedCount) { return; }
+
+        parentElement.appendChild(createElement('div', 'truncationNotice',
+            truncatedCount + ' ' + itemLabel + ' not shown at this panel\\'s rendering limit. '
+                + 'Every one the check reported a failure for is shown.'));
+
+    }
+
+    function buildCombinationElement(node, objectViewModel, combination, declaredValues, declaredValuesTruncated, specMethodName, sectionRecord) {
 
         const unavailableClass = combination.controllingValueUnavailable ? ' unavailable' : '';
         const combinationElement = createElement('div', 'combination ' + combination.status + unavailableClass);
@@ -1753,30 +2720,106 @@ export class PicklistDependencyExplorerService {
             combinationElement.appendChild(createElement('div', 'valueList muted', 'unlocks nothing'));
         }
 
-        appendValueList(combinationElement, 'must not unlock', buildForbiddenValues(declaredValues, combination), 'value forbidden');
+        /*
+            The complement is drawn only against a COMPLETE declared list. Where the ceiling capped
+            that universe, a complement of it would understate what the spec forbids -- a false
+            claim rather than a shorter one -- so the row says the list is not shown instead.
+        */
+        if (declaredValuesTruncated) {
+            combinationElement.appendChild(createElement('div', 'valueList muted',
+                'must not unlock: not shown — this field declares more values than the panel renders, '
+                    + 'and a complement of a partial list would understate what the spec forbids'));
+        } else {
+            appendValueList(combinationElement, 'must not unlock', buildForbiddenValues(declaredValues, combination), 'value forbidden');
+        }
         appendFailureDetails(combinationElement, combination.failures);
 
-        const sourceDetailElement = createElement('div', 'sourceDetail hidden');
-        sourceDetailElement.appendChild(createElement('div', 'sourcePath', node.sourceFilePath));
+        const detailElement = createElement('div', 'sourceDetail');
+        detailElement.appendChild(createElement('div', 'sourcePath', node.sourceFilePath));
+
+        const actionsElement = createElement('div', 'actions');
 
         const revealButton = createElement('button', undefined, 'Reveal in Explorer');
         revealButton.addEventListener('click', function (clickEvent) {
             clickEvent.stopPropagation();
             vscodeApi.postMessage({ command: 'revealFieldSource', sourceFilePath: node.sourceFilePath });
         });
-        sourceDetailElement.appendChild(revealButton);
+        actionsElement.appendChild(revealButton);
 
-        combinationElement.appendChild(sourceDetailElement);
+        /*
+            Offered only where the model NAMES the generated code. A metadata preview names none of
+            it, and a button that opened nothing would suggest a spec exists for a row nothing
+            asserts -- the exact confusion the provenance banner exists to prevent.
+        */
+        if (specMethodName && objectViewModel.generatedClassFilePath) {
+
+            const specMethodButton = createElement('button', undefined, 'Open spec method');
+            specMethodButton.addEventListener('click', function (clickEvent) {
+                clickEvent.stopPropagation();
+                vscodeApi.postMessage({
+                    command: 'openSpecMethod',
+                    specFilePath: objectViewModel.generatedClassFilePath,
+                    methodName: specMethodName
+                });
+            });
+            actionsElement.appendChild(specMethodButton);
+
+        }
+
+        const runReportFilePath = explorerModel.runSummary ? explorerModel.runSummary.reportFilePath : '';
+
+        if (runReportFilePath && objectViewModel.testMethodName) {
+
+            const runReportButton = createElement('button', undefined, 'Open run report entry');
+            runReportButton.addEventListener('click', function (clickEvent) {
+                clickEvent.stopPropagation();
+                vscodeApi.postMessage({
+                    command: 'openRunReport',
+                    reportFilePath: runReportFilePath,
+                    methodName: objectViewModel.testMethodName
+                });
+            });
+            actionsElement.appendChild(runReportButton);
+
+        }
+
+        /*
+            The combination key is the panel's address for one row: pasting it back into the find box
+            above reopens exactly this combination, in this object, under this record type. It is the
+            same key the manifest recorded and failures are attributed by, so it is stable across
+            re-renders in a way a scroll position is not.
+        */
+        const copyReferenceButton = createElement('button', undefined, 'Copy reference');
+        copyReferenceButton.addEventListener('click', function (clickEvent) {
+            clickEvent.stopPropagation();
+            vscodeApi.postMessage({ command: 'copyCombinationReference', combinationKey: combination.combinationKey });
+        });
+        actionsElement.appendChild(copyReferenceButton);
+
+        detailElement.appendChild(actionsElement);
+        combinationElement.appendChild(detailElement);
+
+        /*
+            A FAILED combination opens with its detail already showing. It is the row the reader came
+            for, and the links to the spec method and the run entry are what turns "what broke" into
+            "where do I go" -- putting them behind a click on a row already marked failed is a step
+            with nothing on the other side of it.
+        */
+        if (combination.status !== 'failed') {
+            detailElement.classList.add('hidden');
+        }
 
         combinationElement.addEventListener('click', function () {
-            sourceDetailElement.classList.toggle('hidden');
+            detailElement.classList.toggle('hidden');
         });
+
+        sectionRecord.combinationElementsByKey[combination.combinationKey.toLowerCase()] = combinationElement;
 
         return combinationElement;
 
     }
 
-    function buildRecordTypeScopeElement(node, recordTypeScope) {
+    function buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord) {
 
         const scopeElement = createElement('div', 'recordTypeScope');
 
@@ -1805,6 +2848,9 @@ export class PicklistDependencyExplorerService {
 
         const buildScopeBody = function () {
 
+            if (scopeBodyBuilt) { return; }
+            scopeBodyBuilt = true;
+
             /*
                 Said on every scope rather than once at the top of the panel: these rows sit beside
                 field-level rows that a green run really does verify, and a reader scrolling to one of
@@ -1818,27 +2864,37 @@ export class PicklistDependencyExplorerService {
             ));
 
             recordTypeScope.combinations.forEach(function (combination) {
-                scopeBodyElement.appendChild(buildCombinationElement(node, combination, recordTypeScope.declaredValues));
+                scopeBodyElement.appendChild(buildCombinationElement(
+                    node,
+                    objectViewModel,
+                    combination,
+                    recordTypeScope.declaredValues,
+                    recordTypeScope.declaredValuesTruncated,
+                    recordTypeScope.specMethodName,
+                    sectionRecord
+                ));
             });
+
+            appendTruncationNotice(scopeBodyElement, recordTypeScope.truncatedCombinationCount, 'combination(s) in this scope are');
 
         };
 
+        // BUILDS AND SHOWS THE SCOPE, FOR A DEEP LINK THAT LANDS INSIDE IT RATHER THAN ON A FIELD LEVEL ROW
+        sectionRecord.scopeRevealers.push(function () {
+            buildScopeBody();
+            scopeBodyElement.classList.remove('hidden');
+        });
+
         scopeHeading.addEventListener('click', function () {
-
-            if (!scopeBodyBuilt) {
-                buildScopeBody();
-                scopeBodyBuilt = true;
-            }
-
+            buildScopeBody();
             scopeBodyElement.classList.toggle('hidden');
-
         });
 
         return scopeElement;
 
     }
 
-    function buildNodeElement(node) {
+    function buildNodeElement(node, objectViewModel, sectionRecord) {
 
         const nodeElement = createElement('div', 'node');
 
@@ -1860,28 +2916,34 @@ export class PicklistDependencyExplorerService {
         appendFailureDetails(nodeElement, node.fieldLevelFailures);
 
         node.combinations.forEach(function (combination) {
-            nodeElement.appendChild(buildCombinationElement(node, combination, node.declaredValues));
+            nodeElement.appendChild(buildCombinationElement(node, objectViewModel, combination, node.declaredValues, node.declaredValuesTruncated, node.specMethodName, sectionRecord));
         });
+
+        appendTruncationNotice(nodeElement, node.truncatedCombinationCount, 'combination(s) are');
 
         if (node.recordTypeScopes.length) {
 
             const recordTypeScopesElement = createElement('div', 'recordTypeScopes');
 
             node.recordTypeScopes.forEach(function (recordTypeScope) {
-                recordTypeScopesElement.appendChild(buildRecordTypeScopeElement(node, recordTypeScope));
+                recordTypeScopesElement.appendChild(buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord));
             });
 
             nodeElement.appendChild(recordTypeScopesElement);
 
         }
 
+        appendTruncationNotice(nodeElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are');
+
         if (node.downstreamNodes.length) {
             const childrenElement = createElement('div', 'nodeChildren');
             node.downstreamNodes.forEach(function (downstreamNode) {
-                childrenElement.appendChild(buildNodeElement(downstreamNode));
+                childrenElement.appendChild(buildNodeElement(downstreamNode, objectViewModel, sectionRecord));
             });
             nodeElement.appendChild(childrenElement);
         }
+
+        sectionRecord.nodeRecords.push({ node: node, element: nodeElement });
 
         return nodeElement;
 
@@ -1963,6 +3025,19 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        What the rendering ceiling dropped, at the top rather than beside the rows that survived it.
+        A reader who cannot find a field needs to know the panel is not showing everything before
+        they conclude the field has no dependency.
+    */
+    function renderTruncationNotices() {
+
+        explorerModel.truncationNotices.forEach(function (truncationNotice) {
+            explorerRoot.appendChild(createElement('div', 'truncationNotice', truncationNotice));
+        });
+
+    }
+
     function renderSkippedFieldWarnings() {
 
         if (!explorerModel.skippedFieldWarnings.length) { return; }
@@ -1975,6 +3050,371 @@ export class PicklistDependencyExplorerService {
             warningsElement.appendChild(createElement('div', 'muted', skippedFieldWarning));
         });
         explorerRoot.appendChild(warningsElement);
+
+    }
+
+    function buildObjectBody(sectionRecord) {
+
+        if (sectionRecord.built) { return; }
+        sectionRecord.built = true;
+
+        const objectViewModel = sectionRecord.objectViewModel;
+        const bodyElement = sectionRecord.bodyElement;
+
+        /*
+            Rendered BEFORE the nodes rather than after them. A skipped field is the one thing on
+            this panel that no assertion covers, and putting it below a long list of green rows
+            is how it gets missed.
+        */
+        objectViewModel.skippedFields.forEach(function (skippedField) {
+
+            const skippedElement = createElement('div', 'skippedField');
+
+            const skippedHeading = createElement('div', 'nodeHeading');
+            const skippedLabel = skippedField.fieldApiName
+                || (skippedField.recordTypeDeveloperName
+                    ? 'record type ' + skippedField.recordTypeDeveloperName
+                    : 'this object');
+            skippedHeading.appendChild(createElement('span', 'fieldName', skippedLabel));
+            skippedHeading.appendChild(createElement('span', 'skippedBadge', 'not asserted'));
+            skippedElement.appendChild(skippedHeading);
+
+            skippedElement.appendChild(createElement('div', 'muted', skippedField.warning));
+
+            bodyElement.appendChild(skippedElement);
+
+        });
+
+        if (objectViewModel.unattributedFailureMessages.length) {
+            bodyElement.appendChild(createElement('div', 'failureDetail',
+                'This object\\'s check reported failures that could not be tied to a specific combination below, '
+                    + 'so those combinations are shown as not checked rather than passed.\\n\\n'
+                    + objectViewModel.unattributedFailureMessages.join('\\n')));
+        }
+
+        objectViewModel.rootNodes.forEach(function (rootNode) {
+            bodyElement.appendChild(buildNodeElement(rootNode, objectViewModel, sectionRecord));
+        });
+
+        appendTruncationNotice(bodyElement, objectViewModel.truncatedNodeCount, 'dependent picklist(s) on this object are');
+
+    }
+
+    function expandObject(sectionRecord) {
+
+        buildObjectBody(sectionRecord);
+        sectionRecord.bodyElement.classList.remove('hidden');
+        sectionRecord.disclosureElement.textContent = '▾';
+        applyNodeFilter(sectionRecord);
+
+    }
+
+    function collapseObject(sectionRecord) {
+
+        sectionRecord.bodyElement.classList.add('hidden');
+        sectionRecord.disclosureElement.textContent = '▸';
+
+    }
+
+    function buildObjectSectionRecord(objectViewModel) {
+
+        const sectionElement = createElement('div', 'objectSection');
+
+        const sectionRecord = {
+            objectViewModel: objectViewModel,
+            sectionElement: sectionElement,
+            bodyElement: createElement('div', 'objectBody hidden'),
+            disclosureElement: createElement('span', 'disclosure', '▸'),
+            built: false,
+            nodeRecords: [],
+            scopeRevealers: [],
+            /*
+                Object.create(null) rather than {}: the keys are metadata-derived text, and a bare
+                object literal makes "__proto__" and "constructor" mean something other than a key.
+                buildCombinationKey's format happens to make that unreachable today, but that is an
+                invariant in another file rather than a property of this lookup.
+            */
+            combinationElementsByKey: Object.create(null)
+        };
+
+        const objectHeading = createElement('div', 'objectHeading');
+        objectHeading.appendChild(sectionRecord.disclosureElement);
+        objectHeading.appendChild(createElement('span', undefined, objectViewModel.objectApiName));
+        objectHeading.appendChild(createElement('span', 'muted',
+            objectViewModel.dependentFieldCount + ' dependent picklist(s), ' + objectViewModel.combinationCount + ' combination(s)'
+                + (objectViewModel.recordTypeCombinationCount ? ' + ' + objectViewModel.recordTypeCombinationCount + ' record-type-scoped' : '')));
+        appendStatusBadge(objectHeading, objectViewModel.status);
+
+        if (objectViewModel.skippedFields.length) {
+            objectHeading.appendChild(createElement('span', 'skippedBadge', objectViewModel.skippedFields.length + ' not asserted'));
+        }
+
+        objectHeading.addEventListener('click', function () {
+
+            if (sectionRecord.bodyElement.classList.contains('hidden')) {
+                expandObject(sectionRecord);
+                return;
+            }
+
+            collapseObject(sectionRecord);
+
+        });
+
+        sectionElement.appendChild(objectHeading);
+
+        if (objectViewModel.generatedClassName) {
+            sectionElement.appendChild(createElement('div', 'specOrigin',
+                objectViewModel.generatedClassName + '.cls'
+                    + (objectViewModel.testMethodName ? ' — test method ' + objectViewModel.testMethodName + '()' : '')));
+        }
+
+        sectionElement.appendChild(sectionRecord.bodyElement);
+
+        return sectionRecord;
+
+    }
+
+    function objectMatchesFilter(objectViewModel) {
+
+        if (filterStatus !== 'all' && objectViewModel.status !== filterStatus) { return false; }
+
+        if (!filterText) { return true; }
+
+        return objectViewModel.searchText.indexOf(filterText) !== -1;
+
+    }
+
+    /*
+        A node stays visible when it matches OR when anything beneath it does. A chain is drawn by
+        containment, so hiding a parent whose child matches would take the matching row off the panel
+        along with it.
+
+        Filtering only ever toggles visibility. No status is recomputed here, and none is inferred
+        from a row being hidden: an unverified combination stays unverified whether or not the filter
+        is showing it.
+    */
+    function nodeMatchesFilter(node, isObjectNameMatch) {
+
+        const textMatches = isObjectNameMatch || !filterText || node.searchText.indexOf(filterText) !== -1;
+        const statusMatches = filterStatus === 'all' || node.status === filterStatus;
+
+        if (textMatches && statusMatches) { return true; }
+
+        for (let downstreamIndex = 0; downstreamIndex < node.downstreamNodes.length; downstreamIndex++) {
+            if (nodeMatchesFilter(node.downstreamNodes[downstreamIndex], isObjectNameMatch)) { return true; }
+        }
+
+        return false;
+
+    }
+
+    function showEveryNode(sectionRecord) {
+
+        sectionRecord.nodeRecords.forEach(function (nodeRecord) {
+            nodeRecord.element.classList.remove('hidden');
+        });
+
+    }
+
+    function applyNodeFilter(sectionRecord) {
+
+        if (!sectionRecord.built) { return; }
+
+        if (isDeepLinkActive) {
+            showEveryNode(sectionRecord);
+            return;
+        }
+
+        const isObjectNameMatch = !filterText
+            || sectionRecord.objectViewModel.objectApiName.toLowerCase().indexOf(filterText) !== -1;
+
+        sectionRecord.nodeRecords.forEach(function (nodeRecord) {
+            nodeRecord.element.classList.toggle('hidden', !nodeMatchesFilter(nodeRecord.node, isObjectNameMatch));
+        });
+
+    }
+
+    /*
+        A pasted combination reference, resolved to the object that declares it.
+
+        The key is "Object.Field [RecordType] @ ControllingValue", so the object name is everything
+        before the first dot and the " @ " is what distinguishes a reference from someone typing a
+        field name. Guarded on that separator so an ordinary search never walks the model looking for
+        a key that was never pasted.
+    */
+    function resolveCombinationDeepLinkRecord(queryText) {
+
+        if (queryText.indexOf(' @ ') === -1) { return undefined; }
+
+        const objectApiNameSeparatorIndex = queryText.indexOf('.');
+        if (objectApiNameSeparatorIndex === -1) { return undefined; }
+
+        const objectApiName = queryText.slice(0, objectApiNameSeparatorIndex);
+
+        return objectSectionRecords.filter(function (sectionRecord) {
+            return sectionRecord.objectViewModel.objectApiName.toLowerCase() === objectApiName;
+        })[0];
+
+    }
+
+    function focusCombination(sectionRecord, combinationKey) {
+
+        expandObject(sectionRecord);
+
+        // A REFERENCE CAN NAME A RECORD TYPE SCOPED ROW, WHICH IS NOT BUILT UNTIL ITS SCOPE IS OPENED
+        sectionRecord.scopeRevealers.forEach(function (revealScopeBody) { revealScopeBody(); });
+
+        const combinationElement = sectionRecord.combinationElementsByKey[combinationKey];
+        if (!combinationElement) { return; }
+
+        if (focusedCombinationElement) { focusedCombinationElement.classList.remove('focused'); }
+
+        combinationElement.classList.add('focused');
+        focusedCombinationElement = combinationElement;
+        combinationElement.scrollIntoView({ block: 'center' });
+
+    }
+
+    function applyFilter() {
+
+        const deepLinkRecord = resolveCombinationDeepLinkRecord(filterText);
+
+        // SET BEFORE ANY SECTION IS TOUCHED: applyNodeFilter READS IT, AND expandObject CALLS THAT
+        isDeepLinkActive = !!deepLinkRecord;
+
+        let visibleSectionRecords = [];
+
+        objectSectionRecords.forEach(function (sectionRecord) {
+
+            const isVisible = deepLinkRecord
+                ? sectionRecord === deepLinkRecord
+                : objectMatchesFilter(sectionRecord.objectViewModel);
+
+            sectionRecord.sectionElement.classList.toggle('hidden', !isVisible);
+
+            if (isVisible) { visibleSectionRecords.push(sectionRecord); }
+
+            applyNodeFilter(sectionRecord);
+
+        });
+
+        if (deepLinkRecord) {
+            focusCombination(deepLinkRecord, filterText);
+        } else if (visibleSectionRecords.length === 1 && (filterText || filterStatus !== 'all')) {
+            // ONE MATCH IS AN ANSWER, NOT A LIST -- OPENING IT IS WHAT MAKES A NAMED FIELD REACHABLE WITHOUT SCROLLING
+            expandObject(visibleSectionRecords[0]);
+        }
+
+        matchCountElement.textContent = visibleSectionRecords.length + ' of ' + objectSectionRecords.length
+            + ' object(s) shown' + (deepLinkRecord ? ' — showing the object that declares the pasted reference' : '');
+
+    }
+
+    function expandAllVisibleObjects() {
+
+        const visibleSectionRecords = objectSectionRecords.filter(function (sectionRecord) {
+            return !sectionRecord.sectionElement.classList.contains('hidden');
+        });
+
+        /*
+            Expanding is what BUILDS an object's rows, so an unbounded "expand all" is the render
+            this panel's ceiling exists to prevent. Past the limit it says so rather than freezing.
+        */
+        if (visibleSectionRecords.length > EXPAND_ALL_OBJECT_LIMIT) {
+            matchCountElement.textContent = visibleSectionRecords.length + ' object(s) shown — more than the '
+                + EXPAND_ALL_OBJECT_LIMIT + ' this panel will expand at once. Filter to fewer objects first.';
+            return;
+        }
+
+        visibleSectionRecords.forEach(expandObject);
+
+    }
+
+    function renderToolbar() {
+
+        const toolbarElement = createElement('div', 'toolbar');
+
+        const findFieldElement = createElement('label', 'toolbarField');
+        findFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Find object or field'));
+
+        const findInputElement = document.createElement('input');
+        findInputElement.type = 'search';
+        findInputElement.placeholder = 'object, field, record type, or a pasted combination reference';
+        findInputElement.addEventListener('input', function () {
+            filterText = findInputElement.value.trim().toLowerCase();
+            applyFilter();
+        });
+        findFieldElement.appendChild(findInputElement);
+        toolbarElement.appendChild(findFieldElement);
+
+        const statusFieldElement = createElement('label', 'toolbarField');
+        statusFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Status'));
+
+        const statusSelectElement = document.createElement('select');
+        [['all', 'any status'], ['failed', 'failed'], ['passed', 'passed'], ['unknown', 'not checked']].forEach(function (statusOption) {
+            const statusOptionElement = document.createElement('option');
+            statusOptionElement.value = statusOption[0];
+            statusOptionElement.textContent = statusOption[1];
+            statusSelectElement.appendChild(statusOptionElement);
+        });
+        statusSelectElement.addEventListener('change', function () {
+            filterStatus = statusSelectElement.value;
+            applyFilter();
+        });
+        statusFieldElement.appendChild(statusSelectElement);
+        toolbarElement.appendChild(statusFieldElement);
+
+        const jumpFieldElement = createElement('label', 'toolbarField');
+        jumpFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Jump to object'));
+
+        const jumpSelectElement = document.createElement('select');
+        const jumpPlaceholderElement = document.createElement('option');
+        jumpPlaceholderElement.value = '';
+        jumpPlaceholderElement.textContent = 'select an object…';
+        jumpSelectElement.appendChild(jumpPlaceholderElement);
+
+        explorerModel.objects.forEach(function (objectViewModel) {
+            const jumpOptionElement = document.createElement('option');
+            jumpOptionElement.value = objectViewModel.objectApiName;
+            jumpOptionElement.textContent = objectViewModel.objectApiName;
+            jumpSelectElement.appendChild(jumpOptionElement);
+        });
+
+        jumpSelectElement.addEventListener('change', function () {
+
+            const selectedSectionRecord = objectSectionRecords.filter(function (sectionRecord) {
+                return sectionRecord.objectViewModel.objectApiName === jumpSelectElement.value;
+            })[0];
+
+            jumpSelectElement.selectedIndex = 0;
+
+            if (!selectedSectionRecord) { return; }
+
+            // JUMPING TO AN OBJECT THE FILTER IS HIDING SHOWS IT, ROWS AND ALL: THE READER NAMED IT, WHICH OUTRANKS THE FILTER
+            selectedSectionRecord.sectionElement.classList.remove('hidden');
+            expandObject(selectedSectionRecord);
+            showEveryNode(selectedSectionRecord);
+            selectedSectionRecord.sectionElement.scrollIntoView({ block: 'start' });
+
+        });
+
+        jumpFieldElement.appendChild(jumpSelectElement);
+        toolbarElement.appendChild(jumpFieldElement);
+
+        const expandAllButton = createElement('button', undefined, 'Expand all');
+        expandAllButton.addEventListener('click', expandAllVisibleObjects);
+        toolbarElement.appendChild(expandAllButton);
+
+        const collapseAllButton = createElement('button', undefined, 'Collapse all');
+        collapseAllButton.addEventListener('click', function () {
+            objectSectionRecords.forEach(collapseObject);
+        });
+        toolbarElement.appendChild(collapseAllButton);
+
+        matchCountElement = createElement('div', 'matchCount');
+        toolbarElement.appendChild(matchCountElement);
+
+        explorerRoot.appendChild(toolbarElement);
 
     }
 
@@ -1992,64 +3432,21 @@ export class PicklistDependencyExplorerService {
                     ? ' + ' + explorerModel.recordTypeCombinationCount + ' record-type-scoped'
                     : '')));
 
+        renderToolbar();
+
         explorerModel.objects.forEach(function (objectViewModel) {
-
-            const objectElement = createElement('div', 'objectSection');
-
-            const objectHeading = createElement('div', 'objectHeading');
-            objectHeading.appendChild(createElement('span', undefined, objectViewModel.objectApiName));
-            appendStatusBadge(objectHeading, objectViewModel.status);
-            objectElement.appendChild(objectHeading);
-
-            if (objectViewModel.generatedClassName) {
-                objectElement.appendChild(createElement('div', 'specOrigin',
-                    objectViewModel.generatedClassName + '.cls'
-                        + (objectViewModel.testMethodName ? ' — test method ' + objectViewModel.testMethodName + '()' : '')));
-            }
-
-            /*
-                Rendered BEFORE the nodes rather than after them. A skipped field is the one thing on
-                this panel that no assertion covers, and putting it below a long list of green rows
-                is how it gets missed.
-            */
-            objectViewModel.skippedFields.forEach(function (skippedField) {
-
-                const skippedElement = createElement('div', 'skippedField');
-
-                const skippedHeading = createElement('div', 'nodeHeading');
-                const skippedLabel = skippedField.fieldApiName
-                    || (skippedField.recordTypeDeveloperName
-                        ? 'record type ' + skippedField.recordTypeDeveloperName
-                        : 'this object');
-                skippedHeading.appendChild(createElement('span', 'fieldName', skippedLabel));
-                skippedHeading.appendChild(createElement('span', 'skippedBadge', 'not asserted'));
-                skippedElement.appendChild(skippedHeading);
-
-                skippedElement.appendChild(createElement('div', 'muted', skippedField.warning));
-
-                objectElement.appendChild(skippedElement);
-
-            });
-
-            if (objectViewModel.unattributedFailureMessages.length) {
-                objectElement.appendChild(createElement('div', 'failureDetail',
-                    'This object\\'s check reported failures that could not be tied to a specific combination below, '
-                        + 'so those combinations are shown as not checked rather than passed.\\n\\n'
-                        + objectViewModel.unattributedFailureMessages.join('\\n')));
-            }
-
-            objectViewModel.rootNodes.forEach(function (rootNode) {
-                objectElement.appendChild(buildNodeElement(rootNode));
-            });
-
-            explorerRoot.appendChild(objectElement);
-
+            const sectionRecord = buildObjectSectionRecord(objectViewModel);
+            objectSectionRecords.push(sectionRecord);
+            explorerRoot.appendChild(sectionRecord.sectionElement);
         });
+
+        applyFilter();
 
     }
 
     renderProvenanceBanner();
     renderRunBanner();
+    renderTruncationNotices();
     renderSkippedFieldWarnings();
     renderObjects();
 

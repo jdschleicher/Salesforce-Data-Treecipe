@@ -522,4 +522,94 @@ The two model sources differ in exactly what they are allowed to claim:
 | Node names a spec method | yes — the one that asserts it | no, and the banner says nothing asserts it |
 | Failure attribution | resolved against manifest combination keys | no run can correspond to these rows |
 | Skipped fields | rendered as rows, marked *not asserted* | rendered as rows, marked *not asserted* |
+| Spec method / run report links | offered — the model names the code | not offered — nothing asserts these rows |
 | Reached by | opening the panel after generating | the explicit opt-in only |
+
+### 8.1 What reaches the DOM, and what the ceiling drops
+
+The model is serialized into the panel html in full, and an object's rows are built into the DOM only
+when that object is expanded. Both sides of that are bounded by `applyModelLimits`, which runs at the
+END of `buildExplorerViewModel` — after every count has been taken, so the counts keep describing the
+org while the notices describe what is on screen.
+
+```mermaid
+flowchart TD
+    VM["view model, counts taken"] --> LIMITS["applyModelLimits"]
+
+    LIMITS --> OBJ["selectWithinCap objects<br/>cap 250"]
+    OBJ --> NODE["selectWithinCap root chains<br/>cap 25 fields per object"]
+    NODE --> VALUES["slice declaredValues<br/>cap 200 per field<br/>sets declaredValuesTruncated"]
+    VALUES --> COMBO["selectWithinCap combinations<br/>cap 200 per field"]
+    COMBO --> SCOPE["selectWithinCap record type scopes<br/>cap 25 per field"]
+    SCOPE --> BUDGET["applyTotalCombinationBudget<br/>TOTAL 20,000 rendered combinations"]
+
+    BUDGET --> NOTICE["truncationNotices<br/>rendered at the top of the panel"]
+
+    NOTICE --> HEADINGS["panel builds ONE heading per object"]
+    HEADINGS --> EXPAND{"reader expands<br/>an object?"}
+    EXPAND -- no --> IDLE["no rows built"]
+    EXPAND -- yes --> ROWS["buildObjectBody:<br/>nodes, combinations"]
+    ROWS --> SCOPEEXPAND{"reader expands<br/>a record type scope?"}
+    SCOPEEXPAND -- no --> IDLE2["scope rows not built"]
+    SCOPEEXPAND -- yes --> SCOPEROWS["buildScopeBody"]
+```
+
+`selectWithinCap` takes the retained items first and fills the remainder in declared order, then
+returns everything in the caller's original order. What counts as retained is fixed:
+
+| Level | Always retained |
+|---|---|
+| Object | `status === 'failed'`, any `failureCount`, any unattributed failure text, any skipped field |
+| Root chain | any node in the chain with `status === 'failed'` or a `failureCount` |
+| Combination | `status === 'failed'` or any attributed failure |
+| Record type scope | `status === 'failed'` or any `failureCount` |
+
+A chain is dropped **whole**: it is drawn by containment, so rendering a downstream field without the
+field that controls it would misstate the dependency rather than shorten the list.
+
+Where the retained items alone exceed a **per-axis** cap, they are all kept — the cap bounds a
+pathological render, and dropping a reported failure to honour it would break the panel's promise.
+The **total budget** is the exception, and it is the only thing that actually bounds the payload: the
+per-axis caps multiply out to millions of rows, so `applyTotalCombinationBudget` spends 20,000 rows on
+failing combinations first, in document order, then on passing ones. Past that, failures are dropped
+too — counted in `truncatedFailedCombinationCount` and named in their own notice, which points at the
+run's `report.md` as the complete record. An unbounded payload is worse for the reader than a bounded
+one that says what is missing and where to find it.
+
+A dropped row is **absent and counted**, never re-labelled, so the three-state guarantee holds under
+the ceiling exactly as it holds under a filter. One drop changes what a surviving row may CLAIM rather
+than whether it appears: where `declaredValues` was capped, `declaredValuesTruncated` makes the panel
+withhold the "must not unlock" list entirely, because a complement of a partial universe understates
+what the spec forbids.
+
+### 8.3 Manifest paths that reach the filesystem
+
+`manifest.json` is a file on disk that a hand edit controls, and `loadManifest` accepts its paths as
+bare strings. Two of them now reach the filesystem rather than only the screen, so both go through a
+containment check first:
+
+| Manifest field | Reaches | Contained by |
+|---|---|---|
+| `objectsDirectoryPath` | every node's `sourceFilePath`, the reveal allow-list | `resolveRenderableObjectsDirectoryPath` (falls back to the configured directory) |
+| `generatedClassFilePath` | the open-spec-method allow-list | `resolveOpenableManifestFilePath` (falls back to empty) |
+| `classesDirectoryPath` | rendered, and the same allow-list lineage | `resolveOpenableManifestFilePath` (falls back to empty) |
+
+Empty is the safe fallback rather than a guess: an object with no class file path contributes no spec
+target and renders no button, which is already exactly how a metadata preview behaves.
+
+### 8.2 Panel messages and their allow-lists
+
+The webview is the one surface this feature exposes to content it did not author, so every message it
+can post is matched against a set built from the model that render was built from. The spec and report
+sets key on the file **and** the method together, via `buildOpenTargetKey`.
+
+| Panel command | Allow-list | Host action |
+|---|---|---|
+| `revealFieldSource` | `collectSourceFilePaths` | `revealInExplorer`, then open the `.field-meta.xml` |
+| `openSpecMethod` | `collectOpenableSpecTargets` (`filePath::methodName`) | open the generated `.cls` at `findApexMethodDeclarationLineNumber` |
+| `openRunReport` | `collectOpenableRunReportTargets` (`filePath::methodName`) | open `report.md` at `findRunReportEntryLineNumber` |
+| `copyCombinationReference` | `collectCombinationKeys` | write the key to the clipboard |
+
+A metadata preview contributes nothing to the spec set: no generated code asserts its rows, so there
+is no method to open. A run that wrote no `report.md` contributes nothing to the report set, so the
+panel offers the link only where following it would land somewhere.
