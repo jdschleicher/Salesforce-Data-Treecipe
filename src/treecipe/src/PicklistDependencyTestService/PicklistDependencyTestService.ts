@@ -31,6 +31,20 @@ export interface IPicklistDependencyExpectation {
         expectUnavailable instead.
     */
     controllingValueUnavailable?: boolean;
+    /*
+        Set by the PARSER when the spec stated its dependent list exhaustively -- expectNone, which
+        claims the controlling value unlocks nothing, and expectExactly, which claims it unlocks
+        precisely these.
+
+        Writeback needs it because an empty dependentValues list is otherwise indistinguishable from
+        a controlling value the spec never mentioned, and those two mean opposite things: silence is
+        "no claim, leave the metadata alone", while expectNone is "remove everything". Without the
+        flag the strictly stronger statement is the one that does nothing.
+
+        The generator never sets it -- it emits expectAtLeast plus a complement -- so this changes
+        nothing about generation.
+    */
+    dependentValuesAreExhaustive?: boolean;
 }
 
 export interface IPicklistDependencySpecDetail {
@@ -1668,6 +1682,91 @@ ${recordTypeAggregationMarkup}}
     }
 
     /*
+        Every Apex comment replaced by spaces of the same length, so offsets are unchanged.
+
+        Without this a single apostrophe in a comment -- "// don't touch this one", which is exactly
+        what a hand annotated spec file contains -- flips the literal-parity toggle every scanner
+        here depends on. The terminating semicolon then reads as being inside a string, the statement
+        is never closed, and the whole spec is dropped with no diagnostic at all. Silently losing a
+        spec is the worst outcome available to writeback: it would reconcile metadata against an
+        intent the developer wrote and the parser never saw.
+
+        String literals are tracked while blanking, so a picklist value containing "//" or "/*" is
+        left alone. Newlines inside a block comment are preserved so line based indexing still holds.
+    */
+    static blankApexComments(apexClassBody: string): string {
+
+        let blankedCharacters: string[] = [];
+        let isInsideLiteral = false;
+        let characterIndex = 0;
+
+        while ( characterIndex < apexClassBody.length ) {
+
+            const currentCharacter = apexClassBody[characterIndex];
+            const nextCharacter = apexClassBody[characterIndex + 1];
+
+            if ( isInsideLiteral ) {
+
+                blankedCharacters.push(currentCharacter);
+
+                if ( currentCharacter === '\\' && characterIndex < apexClassBody.length - 1 ) {
+                    blankedCharacters.push(nextCharacter);
+                    characterIndex += 2;
+                    continue;
+                }
+
+                if ( currentCharacter === `'` ) {
+                    isInsideLiteral = false;
+                }
+
+                characterIndex++;
+                continue;
+
+            }
+
+            if ( currentCharacter === `'` ) {
+                isInsideLiteral = true;
+                blankedCharacters.push(currentCharacter);
+                characterIndex++;
+                continue;
+            }
+
+            if ( currentCharacter === '/' && nextCharacter === '/' ) {
+
+                while ( characterIndex < apexClassBody.length && apexClassBody[characterIndex] !== '\n' ) {
+                    blankedCharacters.push(' ');
+                    characterIndex++;
+                }
+
+                continue;
+
+            }
+
+            if ( currentCharacter === '/' && nextCharacter === '*' ) {
+
+                const commentEndIndex = apexClassBody.indexOf('*/', characterIndex + 2);
+                // AN UNTERMINATED BLOCK COMMENT RUNS TO END OF FILE, WHICH IS HOW A COMPILER READS IT TOO
+                const blankUntilIndex = commentEndIndex === -1 ? apexClassBody.length : commentEndIndex + 2;
+
+                while ( characterIndex < blankUntilIndex ) {
+                    blankedCharacters.push(apexClassBody[characterIndex] === '\n' ? '\n' : ' ');
+                    characterIndex++;
+                }
+
+                continue;
+
+            }
+
+            blankedCharacters.push(currentCharacter);
+            characterIndex++;
+
+        }
+
+        return blankedCharacters.join('');
+
+    }
+
+    /*
         A generated class body read back into the spec details it declares.
 
         This is the inverse of buildSpecStatement, and it lives beside it deliberately: writeback
@@ -1685,7 +1784,8 @@ ${recordTypeAggregationMarkup}}
 
         let specDetails: IPicklistDependencySpecDetail[] = [];
 
-        const specMethodBodies = this.collectSpecMethodBodies(apexClassBody);
+        // COMMENTS CARRY NOTHING THE PARSER NEEDS, AND CARRY APOSTROPHES THAT BREAK IT -- SEE blankApexComments
+        const specMethodBodies = this.collectSpecMethodBodies(this.blankApexComments(apexClassBody));
 
         specMethodBodies.forEach(specMethodBody => {
 
@@ -1738,8 +1838,13 @@ ${recordTypeAggregationMarkup}}
             const statementStartIndex = factoryCallMatch.index;
             const statementEndIndex = this.findStatementEndIndex(apexClassBody, statementStartIndex);
 
+            /*
+                A statement with no terminating semicolon outside a literal is unclosed, and every
+                later factory match would re-scan to end of file looking for one. Stopping here
+                bounds that to a single scan rather than one per remaining statement.
+            */
             if ( statementEndIndex === -1 ) {
-                continue;
+                break;
             }
 
             specStatements.push(apexClassBody.slice(statementStartIndex, statementEndIndex));
@@ -1812,6 +1917,26 @@ ${recordTypeAggregationMarkup}}
             return undefined;
         }
 
+        /*
+            The api names are held to the same gate the generator applies before emitting them.
+
+            A .cls is a hand-edited file -- that is the entire premise of writeback -- so these two
+            strings are untrusted input, and they are the two that decide which file on disk gets
+            written. Every other path in this pipeline validates them before letting them reach a
+            path join; without it here, a spec declaring forField('../../../..', 'anything') would
+            produce a detail that flows toward a file path unchecked. Refusing at extraction keeps
+            the check in front of every consumer rather than relying on each one to remember.
+        */
+        const parsedApiNames = [factoryArguments[0], factoryArguments[1]];
+
+        if ( isRecordTypeScoped ) {
+            parsedApiNames.push(factoryArguments[2]);
+        }
+
+        if ( parsedApiNames.some(parsedApiName => !this.isValidSalesforceApiName(parsedApiName)) ) {
+            return undefined;
+        }
+
         let specDetail: IPicklistDependencySpecDetail = {
             objectApiName: factoryArguments[0],
             fieldApiName: factoryArguments[1],
@@ -1828,7 +1953,14 @@ ${recordTypeAggregationMarkup}}
             expectAtLeast and expectNotAllowed are two calls describing ONE combination -- the
             positive half and its complement -- and the spec detail carries them as one expectation.
         */
-        let expectationsByControllingValue: Record<string, IPicklistDependencyExpectation> = {};
+        /*
+            Null prototyped because the keys are picklist values, which are metadata an admin
+            controls. A controlling value of "constructor" makes an ordinary object literal answer
+            true to an "in" check and hand back Object.prototype.constructor, which then gets mutated
+            as though it were an expectation -- so both expectations vanish and the global Object is
+            damaged on the way past.
+        */
+        let expectationsByControllingValue: Record<string, IPicklistDependencyExpectation> = Object.create(null);
         let controllingValueOrder: string[] = [];
 
         const resolveExpectation = (controllingValue: string): IPicklistDependencyExpectation => {
@@ -1863,8 +1995,15 @@ ${recordTypeAggregationMarkup}}
             const builderCallName = builderCallMatch[1];
 
             if ( builderCallName === 'controlledBy' ) {
+
+                // THE CONTROLLING FIELD NAMES A FILE TOO -- THE WRITEBACK MAY ADD A VALUE TO IT
+                if ( !this.isValidSalesforceApiName(callArguments[0]) ) {
+                    return undefined;
+                }
+
                 specDetail.controllingFieldApiName = callArguments[0];
                 continue;
+
             }
 
             const expectation = resolveExpectation(callArguments[0]);
@@ -1873,15 +2012,19 @@ ${recordTypeAggregationMarkup}}
             switch ( builderCallName ) {
 
                 case 'expectAtLeast':
+                    // "AT LEAST" IS A FLOOR, NOT A COMPLETE LIST, SO IT ADDS WITHOUT REMOVING
+                    expectation.dependentValues = listedValues;
+                    break;
+
                 case 'expectExactly':
                     /*
-                        expectExactly is read as the positive half exactly as expectAtLeast is. The
-                        two differ in what the ORG is allowed to add beyond the list, which is a
-                        question for the validator; the metadata this writes back is the same either
-                        way, so treating them differently here would encode a distinction that has
-                        no expression in valueSettings.
+                        "Exactly" is a complete list, so writeback must be able to remove what is not
+                        in it. Read as the same positive half as expectAtLeast plus the exhaustive
+                        flag -- the two calls differ for the validator in what the ORG may add beyond
+                        the list, and differ here in whether the METADATA may keep anything else.
                     */
                     expectation.dependentValues = listedValues;
+                    expectation.dependentValuesAreExhaustive = true;
                     break;
 
                 case 'expectNotAllowed':
@@ -1889,7 +2032,9 @@ ${recordTypeAggregationMarkup}}
                     break;
 
                 case 'expectNone':
+                    // A CLAIM THAT THIS CONTROLLING VALUE UNLOCKS NOTHING -- EXHAUSTIVELY EMPTY, NOT SILENT
                     expectation.dependentValues = [];
+                    expectation.dependentValuesAreExhaustive = true;
                     break;
 
                 case 'expectUnavailable':

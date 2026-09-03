@@ -197,6 +197,82 @@ describe('PicklistDependencyMetadataWriterService', () => {
 
         });
 
+        /*
+            expectNone is the strictly stronger claim -- "this controlling value unlocks nothing" --
+            and it used to be the one that did nothing, because an empty dependent list is
+            indistinguishable from silence unless the spec marks it exhaustive.
+        */
+        it('given expectNone, removes every entry for that controlling value', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Example__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                expectations: [{ controllingValue: 'cle', dependentValues: [], dependentValuesAreExhaustive: true }]
+            };
+
+            const desired = PicklistDependencyMetadataWriterService
+                .buildDesiredControllingValuesByDependentValue(specDetail, currentSettings);
+
+            expect(desired.ohiocity).toBeEmpty();
+            expect(desired.tremont).toBeEmpty();
+
+            // A CONTROLLING VALUE THE CLAIM DOES NOT CONCERN IS UNTOUCHED
+            expect(desired.willowick).toEqual(['eastlake']);
+
+        });
+
+        it('given expectExactly, narrows to exactly the values named', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Example__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity'], dependentValuesAreExhaustive: true }]
+            };
+
+            const desired = PicklistDependencyMetadataWriterService
+                .buildDesiredControllingValuesByDependentValue(specDetail, currentSettings);
+
+            expect(desired.ohiocity).toEqual(['cle']);
+            expect(desired.tremont).toBeEmpty();
+            expect(desired.willowick).toEqual(['eastlake']);
+
+        });
+
+        // WITHOUT THE FLAG THE SAME EMPTY LIST MUST STAY INERT -- SILENCE IS "NO CLAIM"
+        it('given an empty dependent list that is NOT exhaustive, changes nothing', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Example__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                expectations: [{ controllingValue: 'cle', dependentValues: [] }]
+            };
+
+            expect(PicklistDependencyMetadataWriterService
+                .buildDesiredControllingValuesByDependentValue(specDetail, currentSettings)).toEqual(currentSettings);
+
+        });
+
+        it('given a dependent value that collides with an Object prototype key, does not throw', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Example__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Controlling__c',
+                expectations: [{ controllingValue: 'cle', dependentValues: ['toString', 'constructor'] }]
+            };
+
+            const desired = PicklistDependencyMetadataWriterService
+                .buildDesiredControllingValuesByDependentValue(specDetail, { valueOf: ['eastlake'] });
+
+            expect(desired.toString).toEqual(['cle']);
+            expect(desired.constructor).toEqual(['cle']);
+            expect(desired.valueOf).toEqual(['eastlake']);
+
+        });
+
         it('summarises changes as pairs, in the words the failure message uses', () => {
 
             const desired = { ohiocity: ['cle'], tremont: [], plant: ['cle'], willowick: ['eastlake'] };
@@ -206,6 +282,92 @@ describe('PicklistDependencyMetadataWriterService', () => {
 
             expect(addedPairs).toEqual(['cle unlocks plant']);
             expect(removedPairs).toEqual(['cle no longer unlocks tremont']);
+
+        });
+
+    });
+
+    /*
+        Decode and encode have to be inverses. Skipping a form on the way in while escaping it on the
+        way out is not conservative, it silently rewrites the value: the encoder cannot tell one of
+        its own escapes from data, so anything the decoder leaves as literal "&..." comes back
+        double-escaped and changes what Salesforce stores.
+    */
+    describe('xml entity round trip', () => {
+
+        const roundTrip = (sourceText: string) => PicklistDependencyMetadataWriterService
+            .encodeXmlText(PicklistDependencyMetadataWriterService.decodeXmlText(sourceText));
+
+        it('round trips the five named entities without changing them', () => {
+
+            expect(roundTrip('Tom &amp; Jerry')).toBe('Tom &amp; Jerry');
+            expect(roundTrip('a &lt; b')).toBe('a &lt; b');
+            expect(roundTrip('a &gt; b')).toBe('a &gt; b');
+
+        });
+
+        it('round trips a decimal character reference without double escaping it', () => {
+
+            expect(PicklistDependencyMetadataWriterService.decodeXmlText('Bob&#39;s')).toBe(`Bob's`);
+            expect(roundTrip('Bob&#39;s')).not.toContain('&amp;');
+
+        });
+
+        it('round trips a hexadecimal character reference', () => {
+
+            expect(PicklistDependencyMetadataWriterService.decodeXmlText('Bob&#x27;s')).toBe(`Bob's`);
+            expect(PicklistDependencyMetadataWriterService.decodeXmlText('caf&#xE9;')).toBe('caf\u00e9');
+
+        });
+
+        // AN ALREADY ESCAPED ENTITY IS TEXT, NOT AN ENTITY -- IT MUST NOT COLLAPSE A SECOND TIME
+        it('does not double decode an escaped entity', () => {
+
+            expect(PicklistDependencyMetadataWriterService.decodeXmlText('&amp;lt;')).toBe('&lt;');
+            expect(roundTrip('&amp;lt;')).toBe('&amp;lt;');
+            expect(roundTrip('&amp;amp;')).toBe('&amp;amp;');
+
+        });
+
+        it('leaves a reference outside the code point range exactly as written', () => {
+
+            expect(PicklistDependencyMetadataWriterService.decodeXmlText('&#1114112;')).toBe('&#1114112;');
+
+        });
+
+        it('does not escape quotes, which need it only inside an attribute value', () => {
+
+            expect(PicklistDependencyMetadataWriterService.encodeXmlText(`Bob's "Diner"`)).toBe(`Bob's "Diner"`);
+
+        });
+
+    });
+
+    describe('commented out markup is not markup', () => {
+
+        it('given a valueSettings block inside an xml comment, does not collect it', () => {
+
+            const contentWithCommentedBlock = readMock('FlatShape.field-meta.xml').replace(
+                '        <valueSettings>\n            <controllingFieldValue>cle</controllingFieldValue>\n            <valueName>ohiocity</valueName>\n        </valueSettings>',
+                '        <!-- <valueSettings>\n            <controllingFieldValue>cle</controllingFieldValue>\n            <valueName>commented</valueName>\n        </valueSettings> -->'
+            );
+
+            const blocks = PicklistDependencyMetadataWriterService.collectValueSettingsBlocks(contentWithCommentedBlock);
+
+            expect(blocks.map(block => block.valueName)).not.toContain('commented');
+
+        });
+
+        it('keeps reported indexes pointing at the original content', () => {
+
+            const contentWithLeadingComment = readMock('FlatShape.field-meta.xml')
+                .replace('        <valueSettings>', '        <!-- a note -->\n        <valueSettings>');
+
+            const blocks = PicklistDependencyMetadataWriterService.collectValueSettingsBlocks(contentWithLeadingComment);
+
+            blocks.forEach(block => {
+                expect(contentWithLeadingComment.slice(block.startIndex, block.endIndex)).toStartWith('<valueSettings>');
+            });
 
         });
 
@@ -246,6 +408,31 @@ describe('PicklistDependencyMetadataWriterService', () => {
 
         });
 
+        it('emits the file\'s own line ending rather than always LF', () => {
+
+            const crlfMarkup = PicklistDependencyMetadataWriterService.buildValueSettingsMarkup(
+                { tree: ['cle'] }, 'flat', '        ', '\r\n'
+            );
+
+            expect(crlfMarkup).toContain('\r\n');
+            expect(crlfMarkup.replace(/\r\n/g, '')).not.toContain('\n');
+
+        });
+
+        it('detects the line ending from the file, treating a mixed file as LF', () => {
+
+            const lfContent = readMock('FlatShape.field-meta.xml');
+            const crlfContent = lfContent.replace(/\n/g, '\r\n');
+
+            expect(PicklistDependencyMetadataWriterService.resolveValueSettingsRegion(lfContent).lineEnding).toBe('\n');
+            expect(PicklistDependencyMetadataWriterService.resolveValueSettingsRegion(crlfContent).lineEnding).toBe('\r\n');
+
+            // ONE LONE LF MAKES IT MIXED, AND MIXED MUST NOT EMIT CRLF
+            const mixedContent = crlfContent.replace('\r\n', '\n');
+            expect(PicklistDependencyMetadataWriterService.resolveValueSettingsRegion(mixedContent).lineEnding).toBe('\n');
+
+        });
+
         it('drops a dependent value no controlling value unlocks, rather than emitting an empty block', () => {
 
             const markup = PicklistDependencyMetadataWriterService.buildValueSettingsMarkup(
@@ -254,6 +441,37 @@ describe('PicklistDependencyMetadataWriterService', () => {
 
             expect(markup).not.toContain('orphaned');
             expect(markup.match(/<valueSettings>/g)).toHaveLength(1);
+
+        });
+
+        /*
+            The values emitted here are admin-controlled metadata, and the markup this produces is
+            deployed to an org. A value that could close its own element would inject a sibling into
+            a field file.
+        */
+        it('given a value that tries to close its own element, escapes it rather than emitting markup', () => {
+
+            const markup = PicklistDependencyMetadataWriterService.buildValueSettingsMarkup(
+                { '</valueName><fullName>Hacked</fullName>': ['cle'] }, 'flat', '        '
+            );
+
+            expect(markup).not.toContain('<fullName>Hacked</fullName>');
+            expect(markup).toContain('&lt;/valueName&gt;&lt;fullName&gt;Hacked&lt;/fullName&gt;');
+
+            // AND IT STILL READS BACK AS THE ONE VALUE IT ACTUALLY IS
+            const reReadBlocks = PicklistDependencyMetadataWriterService.collectValueSettingsBlocks(markup);
+            expect(reReadBlocks).toHaveLength(1);
+            expect(reReadBlocks[0].valueName).toBe('</valueName><fullName>Hacked</fullName>');
+
+        });
+
+        it('given a value containing the CDATA terminator, escapes it', () => {
+
+            const markup = PicklistDependencyMetadataWriterService.buildValueSettingsMarkup(
+                { 'ends]]> here': ['cle'] }, 'flat', '        '
+            );
+
+            expect(markup).toContain('ends]]&gt; here');
 
         });
 

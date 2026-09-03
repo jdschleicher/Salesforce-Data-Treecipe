@@ -25,6 +25,12 @@ export interface IPicklistDependencyValueSettingsRegion {
     startIndex: number;
     endIndex: number;
     indentation: string;
+    /*
+        The line ending the file already uses. Emitting "\n" into a CRLF file leaves the rewritten
+        region with different endings from every line around it, which shows up as a whole-region
+        diff on a Windows checkout -- the noise deterministic emission exists to remove.
+    */
+    lineEnding: string;
 }
 
 /*
@@ -65,10 +71,21 @@ export class PicklistDependencyMetadataWriterService {
 
         let blocks: IPicklistDependencyValueSettingsBlock[] = [];
 
+        /*
+            Commented-out markup is not markup. A valueSettings block inside an XML comment would
+            otherwise be collected as real, and -- because the region is replaced as one span -- a
+            comment opening just before the first real block would put the span's start inside it
+            and strand a dangling "<!--" in the written file.
+
+            Blanked to spaces rather than removed so every index this function reports still refers
+            to the caller's original string.
+        */
+        const scannableContent = this.blankXmlComments(fieldFileContent);
+
         const blockPattern = /<valueSettings>([\s\S]*?)<\/valueSettings>/g;
         let blockMatch: RegExpExecArray | null;
 
-        while ( ( blockMatch = blockPattern.exec(fieldFileContent) ) !== null ) {
+        while ( ( blockMatch = blockPattern.exec(scannableContent) ) !== null ) {
 
             const blockBody = blockMatch[1];
 
@@ -96,6 +113,18 @@ export class PicklistDependencyMetadataWriterService {
         }
 
         return blocks;
+
+    }
+
+    /*
+        Every XML comment replaced by spaces of the same length, so offsets are unchanged.
+
+        An unterminated comment blanks to end of file, which is the safe reading: markup after a
+        "<!--" with no "-->" is inside the comment as far as any parser is concerned.
+    */
+    static blankXmlComments(fieldFileContent: string): string {
+
+        return fieldFileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, commentMarkup => ' '.repeat(commentMarkup.length));
 
     }
 
@@ -150,8 +179,22 @@ export class PicklistDependencyMetadataWriterService {
             shape: this.resolveValueSettingsShape(blocks),
             startIndex,
             endIndex,
-            indentation: this.resolveIndentationAtIndex(fieldFileContent, startIndex)
+            indentation: this.resolveIndentationAtIndex(fieldFileContent, startIndex),
+            lineEnding: this.resolveLineEnding(fieldFileContent)
         };
+
+    }
+
+    /*
+        CRLF only when the file is consistently CRLF. A file with even one lone LF is treated as LF,
+        because emitting CRLF into it would introduce the mixed endings this is here to prevent.
+    */
+    static resolveLineEnding(fieldFileContent: string): string {
+
+        const lineFeedCount = ( fieldFileContent.match(/\n/g) || [] ).length;
+        const carriageReturnLineFeedCount = ( fieldFileContent.match(/\r\n/g) || [] ).length;
+
+        return lineFeedCount > 0 && lineFeedCount === carriageReturnLineFeedCount ? '\r\n' : '\n';
 
     }
 
@@ -175,7 +218,8 @@ export class PicklistDependencyMetadataWriterService {
     */
     static buildControllingValuesByDependentValue(specDetail: IPicklistDependencySpecDetail): Record<string, string[]> {
 
-        let controllingValuesByDependentValue: Record<string, string[]> = {};
+        // NULL PROTOTYPED: THE KEYS ARE PICKLIST VALUES, AND "toString" AS A KEY OTHERWISE RETURNS A FUNCTION
+        let controllingValuesByDependentValue: Record<string, string[]> = Object.create(null);
 
         specDetail.expectations.forEach(expectation => {
 
@@ -201,7 +245,7 @@ export class PicklistDependencyMetadataWriterService {
 
     static buildControllingValuesByDependentValueFromBlocks(blocks: IPicklistDependencyValueSettingsBlock[]): Record<string, string[]> {
 
-        let controllingValuesByDependentValue: Record<string, string[]> = {};
+        let controllingValuesByDependentValue: Record<string, string[]> = Object.create(null);
 
         blocks.forEach(block => {
 
@@ -235,7 +279,8 @@ export class PicklistDependencyMetadataWriterService {
 
     static buildValueSettingsMarkup(controllingValuesByDependentValue: Record<string, string[]>,
                                         shape: PicklistDependencyValueSettingsShape,
-                                        indentation: string): string {
+                                        indentation: string,
+                                        lineEnding: string = '\n'): string {
 
         const childIndentation = `${indentation}    `;
 
@@ -254,9 +299,9 @@ export class PicklistDependencyMetadataWriterService {
 
                 const controllingValueLines = blockControllingValues
                     .map(controllingValue => `${childIndentation}<controllingFieldValue>${this.encodeXmlText(controllingValue)}</controllingFieldValue>`)
-                    .join('\n');
+                    .join(lineEnding);
 
-                return `${indentation}<valueSettings>\n${controllingValueLines}\n${childIndentation}<valueName>${this.encodeXmlText(dependentValue)}</valueName>\n${indentation}</valueSettings>`;
+                return `${indentation}<valueSettings>${lineEnding}${controllingValueLines}${lineEnding}${childIndentation}<valueName>${this.encodeXmlText(dependentValue)}</valueName>${lineEnding}${indentation}</valueSettings>`;
 
             };
 
@@ -269,7 +314,7 @@ export class PicklistDependencyMetadataWriterService {
 
         });
 
-        return blockMarkups.join('\n');
+        return blockMarkups.join(lineEnding);
 
     }
 
@@ -290,11 +335,21 @@ export class PicklistDependencyMetadataWriterService {
     static buildDesiredControllingValuesByDependentValue(specDetail: IPicklistDependencySpecDetail,
                                                             currentControllingValuesByDependentValue: Record<string, string[]>): Record<string, string[]> {
 
-        let desiredControllingValuesByDependentValue: Record<string, string[]> = {};
+        let desiredControllingValueSets: Record<string, Set<string>> = Object.create(null);
 
         Object.keys(currentControllingValuesByDependentValue).forEach(dependentValue => {
-            desiredControllingValuesByDependentValue[dependentValue] = [...currentControllingValuesByDependentValue[dependentValue]];
+            desiredControllingValueSets[dependentValue] = new Set(currentControllingValuesByDependentValue[dependentValue]);
         });
+
+        const resolveControllingValueSet = (dependentValue: string): Set<string> => {
+
+            if ( !desiredControllingValueSets[dependentValue] ) {
+                desiredControllingValueSets[dependentValue] = new Set<string>();
+            }
+
+            return desiredControllingValueSets[dependentValue];
+
+        };
 
         specDetail.expectations.forEach(expectation => {
 
@@ -306,27 +361,48 @@ export class PicklistDependencyMetadataWriterService {
                 return;
             }
 
-            expectation.dependentValues.forEach(dependentValue => {
-
-                desiredControllingValuesByDependentValue[dependentValue] = desiredControllingValuesByDependentValue[dependentValue] || [];
-
-                if ( !desiredControllingValuesByDependentValue[dependentValue].includes(expectation.controllingValue) ) {
-                    desiredControllingValuesByDependentValue[dependentValue].push(expectation.controllingValue);
-                }
-
-            });
+            expectation.dependentValues.forEach(dependentValue => resolveControllingValueSet(dependentValue).add(expectation.controllingValue));
 
             ( expectation.forbiddenValues || [] ).forEach(dependentValue => {
 
-                if ( !desiredControllingValuesByDependentValue[dependentValue] ) {
-                    return;
+                if ( desiredControllingValueSets[dependentValue] ) {
+                    desiredControllingValueSets[dependentValue].delete(expectation.controllingValue);
                 }
-
-                desiredControllingValuesByDependentValue[dependentValue] = desiredControllingValuesByDependentValue[dependentValue]
-                    .filter(controllingValue => controllingValue !== expectation.controllingValue);
 
             });
 
+            /*
+                An EXHAUSTIVE list is the only thing that removes what the spec did not name.
+
+                expectNone and expectExactly both state their dependent list completely, so anything
+                else the metadata unlocks under this controlling value contradicts the spec and has
+                to go. Everything else -- expectAtLeast, and any controlling value the spec never
+                mentions -- is a floor rather than a complete list, and leaves the rest alone. Without
+                this branch expectNone removes nothing at all, which makes the strictly stronger
+                claim the one that does nothing.
+            */
+            if ( !expectation.dependentValuesAreExhaustive ) {
+                return;
+            }
+
+            const exhaustiveDependentValues = new Set(expectation.dependentValues);
+
+            Object.keys(desiredControllingValueSets).forEach(dependentValue => {
+
+                if ( exhaustiveDependentValues.has(dependentValue) ) {
+                    return;
+                }
+
+                desiredControllingValueSets[dependentValue].delete(expectation.controllingValue);
+
+            });
+
+        });
+
+        let desiredControllingValuesByDependentValue: Record<string, string[]> = Object.create(null);
+
+        Object.keys(desiredControllingValueSets).forEach(dependentValue => {
+            desiredControllingValuesByDependentValue[dependentValue] = Array.from(desiredControllingValueSets[dependentValue]);
         });
 
         return desiredControllingValuesByDependentValue;
@@ -353,13 +429,17 @@ export class PicklistDependencyMetadataWriterService {
             const currentControllingValues = currentControllingValuesByDependentValue[dependentValue] || [];
             const desiredControllingValues = desiredControllingValuesByDependentValue[dependentValue] || [];
 
+            // SETS RATHER THAN includes: BOTH LISTS CAN BE HUNDREDS LONG ON A LARGE PICKLIST
+            const currentControllingValueSet = new Set(currentControllingValues);
+            const desiredControllingValueSet = new Set(desiredControllingValues);
+
             desiredControllingValues
-                .filter(controllingValue => !currentControllingValues.includes(controllingValue))
+                .filter(controllingValue => !currentControllingValueSet.has(controllingValue))
                 .sort((firstValue, secondValue) => this.compareForEmission(firstValue, secondValue))
                 .forEach(controllingValue => addedPairs.push(`${controllingValue} unlocks ${dependentValue}`));
 
             currentControllingValues
-                .filter(controllingValue => !desiredControllingValues.includes(controllingValue))
+                .filter(controllingValue => !desiredControllingValueSet.has(controllingValue))
                 .sort((firstValue, secondValue) => this.compareForEmission(firstValue, secondValue))
                 .forEach(controllingValue => removedPairs.push(`${controllingValue} no longer unlocks ${dependentValue}`));
 
@@ -370,15 +450,25 @@ export class PicklistDependencyMetadataWriterService {
     }
 
     /*
-        Decoded and encoded only for the five entities XML defines.
+        Decoded for the five named entities AND for numeric character references.
 
-        Deliberately not a general entity decoder: a picklist value is text Salesforce round trips,
-        and inventing decodings for numeric or named entities it never emits would change values on
-        the way through.
+        Numeric references have to be decoded because the encoder below re-escapes every bare "&".
+        Skipping them on the way in while escaping them on the way out is not conservative, it is
+        lossy: "&#39;" is well formed XML for an apostrophe, so a value Salesforce stores as "Bob's"
+        would be read as the literal text "&#39;" and written back as "&amp;#39;", which parses as
+        seven characters and changes the value on deploy. Refusing to decode a form is only safe if
+        you also refuse to re-encode it, and the encoder cannot tell an escape from data.
+
+        The "&amp;" replacement runs LAST so an already-escaped entity is not decoded twice --
+        "&amp;lt;" is the text "&lt;", not "<".
     */
     static decodeXmlText(value: string): string {
 
         return value
+            .replace(/&#[xX]([0-9a-fA-F]+);/g, (wholeReference, hexadecimalCodePoint) =>
+                this.decodeCharacterReference(wholeReference, parseInt(hexadecimalCodePoint, 16)))
+            .replace(/&#([0-9]+);/g, (wholeReference, decimalCodePoint) =>
+                this.decodeCharacterReference(wholeReference, parseInt(decimalCodePoint, 10)))
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/&quot;/g, '"')
@@ -387,6 +477,40 @@ export class PicklistDependencyMetadataWriterService {
 
     }
 
+    /*
+        A reference outside what a code point can represent is left exactly as written rather than
+        turned into a replacement character: it is not something Salesforce emits, and silently
+        substituting a different character is the corruption this decoder exists to avoid.
+    */
+    static decodeCharacterReference(wholeReference: string, codePoint: number): string {
+
+        if ( !Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10FFFF ) {
+            return wholeReference;
+        }
+
+        try {
+            return String.fromCodePoint(codePoint);
+        } catch {
+            return wholeReference;
+        }
+
+    }
+
+    /*
+        Escaped for ELEMENT TEXT CONTENT only, which is the one context these values are emitted in.
+
+        XML requires escaping just "<" and "&" in character data; ">" is escaped too because it is
+        required inside the "]]>" sequence and unconditional is simpler than conditional. Quotes are
+        deliberately NOT escaped -- they only need it inside an attribute value, and a picklist value
+        never lands in one here.
+
+        That contract is the reason this is safe. Interpolating the output of this function into an
+        attribute would make it an injection primitive, so if a caller ever needs that, it needs a
+        different function rather than an extra replacement bolted onto this one.
+
+        The "&" replacement runs FIRST so the escapes this function itself produces are not escaped
+        a second time.
+    */
     static encodeXmlText(value: string): string {
 
         return value
