@@ -31,6 +31,7 @@ Users have two choices of "Fake Data" implementations:
     - [5. **Salesforce Treecipe: Generate Picklist Dependency Tests**](#5-salesforce-treecipe-generate-picklist-dependency-tests)
     - [6. **Salesforce Treecipe: Run Picklist Dependency Check**](#6-salesforce-treecipe-run-picklist-dependency-check)
     - [7. **Salesforce Treecipe: Open Picklist Dependency Explorer**](#7-salesforce-treecipe-open-picklist-dependency-explorer)
+    - [8. **Salesforce Treecipe: Update Picklist Dependency Metadata from Specs**](#8-salesforce-treecipe-update-picklist-dependency-metadata-from-specs)
   - [VIDEO WALKTHROUGHS](#video-walkthroughs)
       - [Initiate Treecipe Configuration with expected Objects directory](#initiate-treecipe-configuration-with-expected-objects-directory)
       - [Generate Treecipe based on treecipe.config.jcon (keep an eye out for OOTB fields and "REMOVE ME" lines)](#generate-treecipe-based-on-treecipeconfigjcon-keep-an-eye-out-for-ootb-fields-and-remove-me-lines)
@@ -86,6 +87,7 @@ Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palet
 5. [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests)
 6. [Run Picklist Dependency Check](#6-salesforce-treecipe-run-picklist-dependency-check)
 7. [Open Picklist Dependency Explorer](#7-salesforce-treecipe-open-picklist-dependency-explorer)
+8. [Update Picklist Dependency Metadata from Specs](#8-salesforce-treecipe-update-picklist-dependency-metadata-from-specs)
 
 Note: **Select Faker Implementation** is also available from the Command Palette at any time to switch between the `faker-js` and `snowfakery` backends.
 
@@ -351,6 +353,35 @@ Notes:
 * Scoped combinations are counted separately in the header (`N combination(s) + M record-type-scoped`) so a green run is never read as covering more than it did
 * **Commit `manifest.json`** alongside your generated `.cls` files. It is the record of what was generated, and reviewing it as a diff shows dependency changes in the same commit as the Apex that asserts them
 * Results are still recorded per object rather than per combination, so a combination added to `valueSettings` *after* the last check run shows as not checked rather than passed once you regenerate. The staleness banner is what tells you the two are out of step — re-run the check after regenerating
+
+---
+
+### <a name="8-salesforce-treecipe-update-picklist-dependency-metadata-from-specs"></a>8. **Salesforce Treecipe: Update Picklist Dependency Metadata from Specs**
+
+This command runs **opposite** to Generate. It reads your generated Apex specs — including whatever you edited into them — and reconciles your source metadata to match, so you can deploy the change and watch a failing dependency check go green.
+
+**Prerequisite:** [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests) must have been run, so there are specs to read.
+
+**Why it exists.** The check tells you `Account.Region__c @ cle: missing [plant]`. That failure is indexed by **controlling** value; your metadata is indexed by **dependent** value. So unlocking `plant` under `cle` means editing the **`plant` block** — nowhere near where the message points. That transpose is what this command does for you.
+
+The command:
+
+1. Reads every generated `SDTPLDSpecs_<Object>.cls` and parses the specs back out
+2. Transposes each one into the `valueSettings` shape your metadata stores
+3. **Shows you every pair it would add or remove**, in the words the failure used — `cle unlocks plant` — before writing anything
+4. Writes only if you approve; declining leaves every file untouched
+5. Offers to deploy the changed files to an org. Declining says explicitly that the changes are in your working tree and were **not** deployed
+
+Notes:
+
+* **Your spec's silences are respected.** A spec asserts what a controlling value must unlock and what it must not. Anything it names neither way — and any controlling value it never mentions — it makes no claim about, and the command leaves it alone. `expectNone` and `expectExactly` are the exception: both state their list completely, so anything else under that controlling value is removed
+* **Your formatting survives.** Only the `valueSettings` region and, where needed, `valueSetDefinition` are rewritten. The XML declaration, indentation, unrelated markup and trailing newline are preserved. Both `<valueSettings>` layouts are supported and whichever your file uses is kept
+* **Reconciling twice changes nothing the second time**, and after a writeback, running Generate produces byte-identical Apex — the two directions agree
+* **The controlling field is reconciled too.** A `valueSettings` entry can only name a controlling value the controlling picklist actually offers, so when a spec asserts a value that field does not declare, it is added to that field's own `valueSetDefinition` in the same run — otherwise the write would describe a combination nobody can reach, and you would find out on deploy
+* **A global-value-set-backed field** can be rewired, but adding a *new* value is refused with a message naming the set to add it to first. The shared `.globalValueSet-meta.xml` is never edited — its blast radius reaches every field pointing at it. The same rule applies to a controlling field
+* **An orphaning cascade** — removing a value that is itself another picklist's controlling field — names the downstream field and skips that field. Every unaffected field still writes
+* **A spec class that cannot be parsed** aborts naming the file and writes nothing. An unparseable class is never treated as "this object has no dependencies"
+* **Record-type-scoped specs are not written back.** A record type narrows what it exposes; applying that to `valueSettings` would assert the narrowing against every record type
 
 ---
 

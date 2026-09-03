@@ -46,7 +46,7 @@ jest.mock('@salesforce/core', () => ({
 
 import { AuthInfo } from '@salesforce/core';
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -55,6 +55,7 @@ import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckSer
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
 import { PicklistDependencyExplorerService } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../../PicklistDependencyManifestService/PicklistDependencyManifestService";
+import { PicklistDependencyMetadataWriterService } from "../../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 
@@ -1706,6 +1707,280 @@ describe('ExtensionCommandService', () => {
 
             expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
             expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('openPicklistDependencyExplorer');
+
+        });
+
+    });
+
+    /*
+        The writeback command. It runs OPPOSITE to Generate, and it is the only command in this
+        extension that rewrites a developer's source metadata -- so the thing worth pinning down is
+        that nothing reaches disk before the user has seen what would change and agreed to it.
+    */
+    describe('updatePicklistDependencyMetadata', () => {
+
+        const workspaceRoot = '/workspace';
+        const objectsDirectoryPath = '/workspace/force-app/main/default/objects';
+        const classesDirectoryPath = '/workspace/force-app/main/default/classes';
+        const fieldFilePath = `${objectsDirectoryPath}/Dependency_Example__c/fields/Neighborhood__c.field-meta.xml`;
+
+        const fieldFileContent = `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Neighborhood__c</fullName>
+    <valueSet>
+        <controllingField>City__c</controllingField>
+        <valueSetDefinition>
+            <value>
+                <fullName>ohiocity</fullName>
+                <default>false</default>
+                <label>ohiocity</label>
+            </value>
+            <value>
+                <fullName>tremont</fullName>
+                <default>false</default>
+                <label>tremont</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <valueName>ohiocity</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>
+`;
+
+        /*
+            The CONTROLLING field's own file. Writeback reads it to check that every controlling
+            value the specs name is a value this picklist actually offers, so a mock returning the
+            dependent field's markup for it would make "cle" look undeclared.
+        */
+        const controllingFieldFileContent = `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>City__c</fullName>
+    <valueSet>
+        <valueSetDefinition>
+            <value>
+                <fullName>cle</fullName>
+                <default>false</default>
+                <label>cle</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
+`;
+
+        const apexClassBody = `public class SDTPLDSpecs_Dependency_Example_c {
+    public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c() {
+        return SDTPicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')
+                .controlledBy('City__c')
+                .expectAtLeast('cle', new List<String>{ 'ohiocity', 'tremont' });
+    }
+}`;
+
+        let extensionCommandService: ExtensionCommandService;
+        let handleCapturedErrorSpy: jest.SpyInstance;
+        let writeFileSyncSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+
+            extensionCommandService = new ExtensionCommandService();
+
+            (vscode.window.showInformationMessage as jest.Mock).mockClear();
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockClear();
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration')
+                .mockReturnValue('./force-app/main/default/objects');
+            jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
+
+            jest.spyOn(PicklistDependencyTestService, 'resolveDefaultPackageDirectoryPath').mockReturnValue('/workspace/force-app/main/default');
+            jest.spyOn(PicklistDependencyTestService, 'getClassesDirectoryPath').mockReturnValue(classesDirectoryPath);
+            jest.spyOn(PicklistDependencyTestService, 'assertClassesDirectoryContainedInWorkspace').mockImplementation(() => undefined);
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readdirSync').mockReturnValue(['SDTPLDSpecs_Dependency_Example_c.cls'] as any);
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) => {
+
+                if ( String(readPath).endsWith('.cls') ) {
+                    return apexClassBody as any;
+                }
+
+                return ( String(readPath).includes('City__c') ? controllingFieldFileContent : fieldFileContent ) as any;
+
+            });
+
+            /*
+                The write sink resolves both paths before writing, to refuse a field file that is a
+                symlink out of the objects directory. Identity here is what a tree with no symlinks
+                resolves to, so the containment check still runs against these fake paths.
+            */
+            jest.spyOn(fs, 'realpathSync').mockImplementation((resolvedPath: any) => String(resolvedPath) as any);
+
+            // THE ONE CALL THAT TOUCHES A DEVELOPER'S METADATA -- STUBBED SO NO TEST EVER WRITES ONE
+            writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+
+            handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+        });
+
+        it('shows what would change and writes nothing until the user agrees', async () => {
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            const confirmationMessage = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0];
+
+            expect(confirmationMessage).toContain('cle unlocks tremont');
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('given the update declined, writes nothing and says so', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.flat().join(' '))
+                .toContain('No files were changed');
+
+        });
+
+        it('given the update accepted, writes the transposed metadata', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(UPDATE_METADATA_ACTION_LABEL);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(writeFileSyncSpy).toHaveBeenCalledTimes(1);
+
+            const [writtenPath, writtenContent] = writeFileSyncSpy.mock.calls[0];
+
+            expect(writtenPath).toBe(fieldFilePath);
+
+            // THE TRANSPOSE LANDED ON THE tremont BLOCK, WHICH THE FAILURE MESSAGE WOULD NOT HAVE POINTED AT
+            expect(writtenContent).toContain('<valueName>tremont</valueName>');
+
+        });
+
+        it('given the deploy declined, leaves the working tree changed and says so explicitly', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(UPDATE_METADATA_ACTION_LABEL);
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(writeFileSyncSpy).toHaveBeenCalled();
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.flat().join(' '))
+                .toContain('NOT deployed');
+
+        });
+
+        it('given the deploy accepted, deploys exactly the files it wrote', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(UPDATE_METADATA_ACTION_LABEL);
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(DEPLOY_UPDATED_METADATA_ACTION_LABEL);
+
+            jest.spyOn(ExtensionCommandService.prototype as any, 'promptForPicklistDependencyTargetOrg').mockResolvedValue('devHub');
+            const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deploySourcePaths').mockResolvedValue('Deployed 1 component(s) to the target org.');
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(deploySpy).toHaveBeenCalledWith([fieldFilePath], 'devHub', expect.any(Function));
+
+        });
+
+        /*
+            The spec asserts "cle unlocks tremont", and the controlling field above declares only
+            "cle" -- so the dependent field's write is fine, but nothing is missing on the
+            controlling side. Naming a controlling value the picklist does NOT offer is the case
+            that has to reach its own file.
+        */
+        it('given a spec naming a controlling value the controlling field does not declare, writes that field too', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(UPDATE_METADATA_ACTION_LABEL);
+
+            jest.spyOn(PicklistDependencyTestService, 'parseSpecDetailsByApexClassBody').mockReturnValue([{
+                objectApiName: 'Dependency_Example__c',
+                fieldApiName: 'Neighborhood__c',
+                controllingFieldApiName: 'City__c',
+                expectations: [{ controllingValue: 'madison', dependentValues: ['ohiocity'] }]
+            }]);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            const writtenControllingFieldCall = writeFileSyncSpy.mock.calls
+                .find(writeCall => String(writeCall[0]).includes('City__c'));
+
+            expect(writtenControllingFieldCall).toBeDefined();
+            expect(String(writtenControllingFieldCall[1])).toContain('<fullName>madison</fullName>');
+
+            // AND THE DEPENDENT FIELD IS STILL WRITTEN IN THE SAME RUN
+            expect(writeFileSyncSpy.mock.calls.some(writeCall => String(writeCall[0]).includes('Neighborhood__c'))).toBe(true);
+
+        });
+
+        it('given the apex and metadata already agreeing, reports already in sync and writes nothing', async () => {
+
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) =>
+                String(readPath).endsWith('.cls')
+                    ? apexClassBody.replace(`, 'tremont'`, '') as any
+                    : fieldFileContent as any);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.flat().join(' '))
+                .toContain('already matches');
+
+        });
+
+        /*
+            A class that declares specs but yields none did not parse. Treating that as "no
+            dependencies" would silently skip the fields the developer edited -- the exact opposite
+            of what they asked for.
+        */
+        it('given a spec class that cannot be parsed, aborts naming the file and writes nothing', async () => {
+
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) =>
+                String(readPath).endsWith('.cls')
+                    ? `public class X { SDTPicklistDependencySpec.forField('Bad Name!', 'Nope') }` as any
+                    : fieldFileContent as any);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+
+            const capturedError = handleCapturedErrorSpy.mock.calls[0][0];
+            expect(capturedError.message).toContain('could not be parsed');
+            expect(capturedError.message).toContain('Nothing was written');
+
+        });
+
+        it('given no generated spec classes, names the generate command and writes nothing', async () => {
+
+            jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.flat().join(' '))
+                .toContain('Generate Picklist Dependency Tests');
+
+        });
+
+        it('given no workspace, routes the error through ErrorHandlingService', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
 
         });
 

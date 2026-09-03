@@ -131,6 +131,10 @@ src/
     │   ├── PicklistDependencyExplorerService.ts # Builds the explorer view model (from the spec manifest, or an explicit metadata preview) and the webview html shell
     │   └── tests/
     │       └── mocks/
+    ├── PicklistDependencyMetadataWriterService/
+    │   ├── PicklistDependencyMetadataWriterService.ts # Transposes Apex spec intent back into valueSettings and writes field metadata
+    │   └── tests/
+    │       └── mocks/
     ├── PicklistDependencyManifestService/
     │   ├── PicklistDependencyManifestService.ts # Builds/reads treecipe/PicklistDependencySpecs/manifest.json, stable combination keys, stat-based staleness fingerprint
     │   └── tests/
@@ -186,6 +190,9 @@ User runs command (Cmd+Shift+P)
 - **Both faker backends must stay in sync** — whenever a new field type handler is added to `FakerJSRecipeFakerService`, add the equivalent to `SnowfakeryRecipeFakerService`
 - **Numeric/currency precision** — `<precision>` (total digits) and `<scale>` (decimal places) from XML drive `max` and `dec` parameters; `left_digits = precision - scale`
 - **Picklist handling** — special characters (`&`, `'`, etc.) in picklist values must be escaped before embedding in faker expressions
+- **The transpose is the writeback's whole reason to exist** — a validator failure is indexed by *controlling* value (`cle @ missing [plant]`) while `valueSettings` is indexed by *dependent* value (`plant ← cle`), so acting on a failure by hand means editing a block the message never names. `PicklistDependencyMetadataWriterService` owns that direction; keep it one function with one direction
+- **Anything spanning a run is keyed by object AND field** — a run reconciles every per-object spec class at once, and field api names repeat across objects (`Status__c` on Account and on Case). `PicklistDependencyMetadataWriterService.buildFieldKey` is the one place that shape is defined; use it for every path map, dependency-graph key and report line rather than the bare field api name
+- **Writeback merges intent, it does not substitute for it** — a spec asserts what a controlling value must and must not unlock; anything it names neither way it makes no claim about. Only `expectNone` and `expectExactly` are exhaustive and may remove. Reading silence as deletion would let a one-line spec strip a file
 - **The spec manifest is the single source for the Explorer** — `Generate Picklist Dependency Tests` emits the Apex classes and `treecipe/PicklistDependencySpecs/manifest.json` from one in-memory model in one run, and the Explorer renders the manifest rather than re-walking the source XML. Anything that changes what the generator emits must flow through the manifest too, or the panel and the Apex become two derivations again. The manifest never goes in a package directory — a stray `.json` there breaks `sf project deploy`
 - **The explorer panel is a webview, and renders no unescaped metadata** — picklist values, api names and Apex failure messages all originate in metadata the extension does not control, so every one of them goes through `escapeHtml` or `escapeJsonForScriptBlock` before reaching the panel. Its CSP admits only the extension's own nonced inline style and script, and the `Reveal in Explorer` handler opens a path only when the built view model itself named it
 - **Relationship grouping** — `RelationshipService` determines which objects belong in the same Treecipe file and in what insertion order
@@ -202,6 +209,7 @@ User runs command (Cmd+Shift+P)
 | `treecipe.generatePicklistDependencyTests` | Generate Picklist Dependency Tests |
 | `treecipe.runPicklistDependencyCheck` | Run Picklist Dependency Check |
 | `treecipe.openPicklistDependencyExplorer` | Open Picklist Dependency Explorer |
+| `treecipe.updatePicklistDependencyMetadata` | Update Picklist Dependency Metadata from Specs |
 
 ---
 
