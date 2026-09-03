@@ -3665,4 +3665,184 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    /*
+        The parser is the inverse of buildSpecStatement, and writeback reconciles metadata against
+        whatever it reads. If the two drift, the command would write metadata matching a spec nobody
+        authored -- so the round trip is asserted rather than assumed.
+    */
+    describe('parsing generated Apex back into spec details', () => {
+
+        const roundTrip = (specDetail: IPicklistDependencySpecDetail) => {
+            const specStatement = PicklistDependencyTestService.buildSpecStatement(specDetail);
+            return PicklistDependencyTestService.parseSpecDetailByStatement(`${specStatement};`);
+        };
+
+        test('given a field level spec, round trips to an equivalent detail', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [
+                    { controllingValue: 'USA', dependentValues: ['East', 'West'], forbiddenValues: ['Baja'] },
+                    { controllingValue: 'Mexico', dependentValues: ['Baja'], forbiddenValues: ['East', 'West'] }
+                ]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        test('given a record type scoped spec, round trips including the scope', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'US_Only',
+                expectations: [
+                    { controllingValue: 'Canada', dependentValues: [], controllingValueUnavailable: true },
+                    { controllingValue: 'USA', dependentValues: ['East'] }
+                ]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        test('given a controlling value that unlocks nothing, round trips as expectNone', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'Antarctica', dependentValues: [] }]
+            };
+
+            const specStatement = PicklistDependencyTestService.buildSpecStatement(specDetail);
+
+            expect(specStatement).toContain('.expectNone(');
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        /*
+            The case a regex over '([^']*)' gets wrong. Apostrophes in picklist values are ordinary
+            Salesforce data, not an exotic input.
+        */
+        test('given picklist values carrying quotes and backslashes, round trips them intact', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{
+                    controllingValue: `Bob's Region`,
+                    dependentValues: [`Bob's Diner`, 'Back\\Slash', `Tom & Jerry's`],
+                    forbiddenValues: [`O'Hare`]
+                }]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        test('given a picklist value containing a semicolon, does not cut the statement short', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [
+                    { controllingValue: 'North; South', dependentValues: ['East'] },
+                    { controllingValue: 'Later', dependentValues: ['West'] }
+                ]
+            };
+
+            expect(roundTrip(specDetail).expectations).toHaveLength(2);
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        test('reads expectExactly as the positive half, the same as expectAtLeast', () => {
+
+            const specStatement = `SDTPicklistDependencySpec.forField('Account', 'Region__c')
+                .controlledBy('Country__c')
+                .expectExactly('USA', new List<String>{ 'East', 'West' });`;
+
+            const specDetail = PicklistDependencyTestService.parseSpecDetailByStatement(specStatement);
+
+            expect(specDetail.expectations[0].dependentValues).toEqual(['East', 'West']);
+
+        });
+
+        test('parses a whole generated class body, and skips record type scoped specs', () => {
+
+            const fieldLevelSpecDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: ['Baja'] }]
+            }];
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'US_Only',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'] }]
+            }];
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Account', 'SDTPLDSpecs_Account', fieldLevelSpecDetails, recordTypeSpecDetails
+            );
+
+            const parsedSpecDetails = PicklistDependencyTestService.parseSpecDetailsByApexClassBody(apexClassBody);
+
+            /*
+                Both specs are in the class body, but only the field-level one describes what the
+                field itself declares. Writing a record type's narrowing back into valueSettings
+                would assert it against every record type.
+            */
+            expect(parsedSpecDetails).toHaveLength(1);
+            expect(parsedSpecDetails[0].recordTypeDeveloperName).toBeUndefined();
+            expect(parsedSpecDetails[0]).toEqual(fieldLevelSpecDetails[0]);
+
+        });
+
+        test('given a class body describing another object, returns nothing for the object asked for', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Account',
+                'SDTPLDSpecs_Account',
+                [{
+                    objectApiName: 'Account',
+                    fieldApiName: 'Region__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['East'] }]
+                }]
+            );
+
+            expect(PicklistDependencyTestService.parseSpecDetailsByApexClassBody(apexClassBody, 'Contact')).toBeEmpty();
+
+        });
+
+        test('given markup that declares no spec, returns nothing rather than throwing', () => {
+
+            expect(PicklistDependencyTestService.parseSpecDetailsByApexClassBody('public class Empty {}')).toBeEmpty();
+            expect(() => PicklistDependencyTestService.parseSpecDetailsByApexClassBody('')).not.toThrow();
+
+        });
+
+        test('given a spec with no controlledBy, refuses it rather than returning a detail with no controlling field', () => {
+
+            const specStatement = `SDTPicklistDependencySpec.forField('Account', 'Region__c')
+                .expectAtLeast('USA', new List<String>{ 'East' });`;
+
+            expect(PicklistDependencyTestService.parseSpecDetailByStatement(specStatement)).toBeUndefined();
+
+        });
+
+    });
+
 });
