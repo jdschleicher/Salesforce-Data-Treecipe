@@ -16,6 +16,7 @@ and `Invoke-PicklistDependencyDemo.ps1`.
 | [5. The deployment set](#5-the-deployment-set) | Why the framework, the aggregator and every per-object class ship in one transaction |
 | [6. Drift detection](#6-drift-detection-the-step-that-proves-it) | How a rewired org gets caught |
 | [7. Metadata to assertion](#7-metadata-to-assertion) | XML → Apex → verdict, value by value |
+| [8. Explorer open path](#8-explorer-open-path) | How the panel decides what it is allowed to claim |
 
 ---
 
@@ -149,7 +150,8 @@ flowchart LR
 
 `treecipe.generatePicklistDependencyTests` → `ExtensionCommandService.generatePicklistDependencyTests`.
 Generation reads local source metadata — a `readDirectory` per directory and a `readFile` plus xml2js
-parse per `*.field-meta.xml`, scaling with the size of the objects tree. It writes the Apex classes.
+parse per `*.field-meta.xml`, scaling with the size of the objects tree. It writes the Apex classes
+and the spec manifest that describes them, both from one in-memory model in one run.
 It never reads the org: org contact happens only if you accept the deploy prompt at the end.
 
 ```mermaid
@@ -159,6 +161,7 @@ sequenceDiagram
     participant Cmd as ExtensionCommandService
     participant Config as ConfigurationService
     participant Gen as PicklistDependencyTestService
+    participant Man as PicklistDependencyManifestService
     participant Recipe as RecipeService
     participant Disk as Workspace files
 
@@ -184,7 +187,7 @@ sequenceDiagram
         Gen->>Gen: buildRecordTypeSpecDetails<br/>narrow each spec per record type,<br/>skip a field the record type never assigns
     end
 
-    Gen-->>Cmd: specDetails + recordTypeSpecDetails + skippedFieldWarnings
+    Gen-->>Cmd: specDetails + recordTypeSpecDetails +<br/>skippedFieldWarnings + skippedFields
 
     Cmd-->>User: warn on up to 3 skipped fields, then a rollup
     Note over Cmd: 0 specs → info message, nothing written, return
@@ -197,6 +200,10 @@ sequenceDiagram
     Cmd->>Disk: write one SDTPLDSpecs_{Object}.cls + meta.xml per object<br/>recordTypeSpecs() included only where the object has scoped specs
     Cmd->>Disk: write SDTPLDSpecs.cls aggregator + meta.xml
     Cmd->>Disk: write SDTPLDSpecsTest.cls + meta.xml
+    Cmd->>Man: buildManifest from the SAME collectionResult
+    Man->>Man: buildSourceFingerprint (stat only, no parse)
+    Man->>Disk: write treecipe/PicklistDependencySpecs/manifest.json
+    Note over Man,Disk: under treecipe/, never the package dir --<br/>a stray .json there fails sf project deploy
     Cmd->>Gen: scaffoldMissingFrameworkClasses
     Gen->>Disk: copy any of the 6 framework classes not already present
     Gen-->>Cmd: scaffoldedClassNames + unavailableClassNames
@@ -467,3 +474,52 @@ UI: that the quick pick shows alias and username as it should, that the progress
 renders a Cancel button, that the deploy modal is modal, and that the output channel opens and indents
 multi-line assertion messages. The manual checklist in
 [`README.md`](./README.md#testing-through-the-vs-code-ui-instead) is what covers those.
+
+---
+
+## 8. Explorer open path
+
+`treecipe.openPicklistDependencyExplorer` → `ExtensionCommandService.openPicklistDependencyExplorer`.
+
+The panel's central promise is that what it renders is what the generated tests assert. That is only
+true when it renders the manifest, so the manifest is read first and the metadata scan is reachable
+only as an explicit opt-in that banners every row as asserted by nothing.
+
+```mermaid
+flowchart TD
+    START["Open Picklist Dependency Explorer"] --> ROOT{"workspace root?"}
+    ROOT -- no --> THROW1["throw"]
+    ROOT -- yes --> OBJDIR{"objects directory<br/>on disk?"}
+    OBJDIR -- no --> THROW2["throw naming treecipe.config.json"]
+    OBJDIR -- yes --> LOAD["PicklistDependencyManifestService<br/>loadManifest"]
+
+    LOAD --> STATE{"manifest state"}
+
+    STATE -- loaded --> FRESH["resolveManifestFreshness<br/>stat walk, no XML parse"]
+    FRESH --> VERDICT{"fingerprint and<br/>objects dir match?"}
+    VERDICT -- yes --> MODEL["buildExplorerViewModelByManifest<br/>modelSource = manifest"]
+    VERDICT -- no --> STALE["same model,<br/>staleness banner"]
+    STALE --> MODEL
+
+    STATE -- noManifestFound --> OFFER["message naming<br/>Generate Picklist Dependency Tests"]
+    STATE -- unreadableManifest --> OFFER
+
+    OFFER --> CHOICE{"Preview from metadata<br/>(not generated)?"}
+    CHOICE -- dismissed --> STOP["no panel opened"]
+    CHOICE -- accepted --> SCAN["collectSpecDetailsByObjectsDirectory<br/>the only path that walks source XML"]
+    SCAN --> PREVIEW["buildExplorerViewModel with<br/>buildMetadataPreviewContext<br/>modelSource = metadataPreview"]
+
+    MODEL --> RESULTS["loadLatestResults<br/>overlay pass/fail"]
+    PREVIEW --> RESULTS
+    RESULTS --> PANEL["render webview"]
+```
+
+The two model sources differ in exactly what they are allowed to claim:
+
+| | `manifest` | `metadataPreview` |
+|---|---|---|
+| Source | `treecipe/PicklistDependencySpecs/manifest.json` | a fresh walk of `salesforceObjectsPath` |
+| Node names a spec method | yes — the one that asserts it | no, and the banner says nothing asserts it |
+| Failure attribution | resolved against manifest combination keys | no run can correspond to these rows |
+| Skipped fields | rendered as rows, marked *not asserted* | rendered as rows, marked *not asserted* |
+| Reached by | opening the panel after generating | the explicit opt-in only |

@@ -33,6 +33,21 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 
+/*
+    Best effort removal of a directory a test created under the os temp directory. Never throws:
+    losing a temp directory is a housekeeping problem, and failing an otherwise green test over it
+    reports a defect that does not exist.
+*/
+function removeTemporaryDirectoryQuietly(temporaryDirectoryPath: string) {
+
+    try {
+        fs.rmSync(temporaryDirectoryPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 20 });
+    } catch {
+        // INTENTIONALLY IGNORED -- SEE ABOVE
+    }
+
+}
+
 describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     describe('showDiffForProposedContent', () => {
@@ -62,7 +77,13 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             expect(rightUri.fsPath).not.toBe(existingFilePath);
             expect(fs.readFileSync(rightUri.fsPath, 'utf-8')).toBe(proposedContent);
 
-            fs.rmSync(path.dirname(rightUri.fsPath), { recursive: true, force: true });
+            /*
+                Cleanup is housekeeping, not an assertion, so a filesystem that refuses the rmdir
+                must not fail a test whose assertions have all already passed. Some filesystems --
+                overlayfs in a container among them -- return ENOTEMPTY for a recursive remove of a
+                directory whose entries were only just unlinked, and retries do not settle it.
+            */
+            removeTemporaryDirectoryQuietly(path.dirname(rightUri.fsPath));
 
         });
 

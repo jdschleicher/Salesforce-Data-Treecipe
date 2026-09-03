@@ -370,6 +370,38 @@ describe('Shared ConfigurationService Tests', () => {
 
     });
 
+    describe('getPicklistDependencySpecsFolderPath', () => {
+
+        // ARTIFACTS BELONG UNDER THE SAME treecipe/ ROOT AS EVERY OTHER GENERATED FOLDER
+        test('returns the specs folder nested under the treecipe configuration folder', () => {
+            const expectedFolderPath = "treecipe/PicklistDependencySpecs";
+            const actualFolderPath = ConfigurationService.getPicklistDependencySpecsFolderPath();
+            expect(actualFolderPath).toBe(expectedFolderPath);
+        });
+
+        test('composes the path from the folder name rather than hardcoding it', () => {
+            const actualFolderPath = ConfigurationService.getPicklistDependencySpecsFolderPath();
+            expect(actualFolderPath).toContain(ConfigurationService.getDefaultTreecipeConfigurationFolderName());
+            expect(actualFolderPath).toContain(ConfigurationService.getPicklistDependencySpecsFolderName());
+        });
+
+        /*
+            The manifest is json, and a json file inside a Salesforce package directory is not valid
+            metadata -- it would be picked up by "sf project deploy" and fail the deploy of the very
+            classes it describes. Keeping it beside the results folder is what prevents that, so the
+            two living apart is asserted rather than left to convention.
+        */
+        test('sits beside the results folder rather than inside a package directory', () => {
+            const specsFolderPath = ConfigurationService.getPicklistDependencySpecsFolderPath();
+            const resultsFolderPath = ConfigurationService.getPicklistDependencyResultsFolderPath();
+
+            expect(specsFolderPath).not.toBe(resultsFolderPath);
+            expect(specsFolderPath.split('/')[0]).toBe(resultsFolderPath.split('/')[0]);
+            expect(specsFolderPath).not.toContain('classes');
+        });
+
+    });
+
     describe('getGeneratedRecipesDefaultFolderName', () => {
 
         test('returns expected generated recipe artifcats folder name', () => {

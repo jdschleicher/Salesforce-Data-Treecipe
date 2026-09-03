@@ -1,5 +1,47 @@
 # Change Log
 
+## [3.5.0] - The Spec Manifest: the Explorer and the generated Apex become one artifact
+
+Resolves [#82](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/82).
+
+The Explorer and the generated Apex were two independent derivations of the same thing. The panel re-walked your source XML every time it opened, while the Apex in your package directory had been generated at some earlier moment from whatever the metadata looked like *then*. Nothing guaranteed a row in the panel corresponded to a spec method that actually existed, and a failure was attributed by matching free text against combinations the panel had just re-derived rather than against the ones the spec declared.
+
+This release makes them one artifact.
+
+### Generation writes a manifest, from the same model, in the same run
+
+**Generate Picklist Dependency Tests** now writes `treecipe/PicklistDependencySpecs/manifest.json` alongside the `.cls` files it emits, built from the same in-memory model — so the two cannot disagree by construction. It records, per object, the generated class name and file path and the test method name; per field, the spec method name, controlling field, upstream field and every expectation; plus `generatedAt`, the generator version, the objects directory scanned, and the skipped fields.
+
+It goes under `treecipe/` rather than beside the `.cls` files on purpose: a stray `.json` inside a Salesforce package directory is not valid metadata, and would ride along into `sf project deploy` and fail the deploy of the very classes it describes.
+
+### The Explorer renders the manifest, and never re-derives
+
+Opening the panel now reads the manifest and does not walk the source metadata at all. What you see is what your tests assert:
+
+- **Every node names the generated class and spec method that asserts it**, and every object names its test method
+- **Every combination carries a stable key**, and failure attribution resolves against those keys. A failure naming a combination the manifest does not declare is still surfaced as unattributed — the three-state guarantee is unchanged, and an unverified combination is still never rendered as verified
+- **A field the generator skipped now appears as its own row, marked *not asserted*, with the warning text**, instead of being absent. A field missing from both the Apex and the panel was indistinguishable from one with no dependency at all, which is the more dangerous of the two readings. An object whose every field was skipped is rendered too, rather than vanishing
+- **A manifest recorded against a different objects directory, or against metadata that has since changed, renders with a staleness banner** naming the generate command — never a silent re-derivation. Staleness is a stat-only walk (path, mtime, size) rather than a re-parse, so it keeps the cost the manifest was introduced to avoid
+- **No manifest** gives an empty state naming the generate command, plus an explicit **"Preview from metadata (not generated)"** action. The preview keeps 3.1.0's "no setup required" property, honestly: its banner says nothing asserts any row below it, and no row claims a spec method
+- **A malformed manifest** reports the parse failure and offers the same preview, handled exactly as an unreadable `results.json` already was — never a blank panel
+
+### The generated Apex reads at a glance
+
+The point of emitting specs is that reading one beats clicking through the Salesforce dependency matrix UI, so the Apex is a deliverable here too:
+
+- Each per-object class header lists the object's dependent picklists and the controlling field for each
+- Each spec method is preceded by a comment stating its combinations in plain language — `"USA" unlocks East, West -- and must not unlock Baja`, `"Ontario" unlocks nothing`, `"Canada" is not available under record type US_Only`
+- The comment and the assertions are built from one spec detail, so they cannot drift apart
+
+A picklist value carrying a newline or a block comment terminator is neutralised before it reaches a comment. Neither is producible through the Salesforce UI, which is exactly why nothing else in the pipeline would have caught one.
+
+Adding a value to a combination now shows as six changed lines rather than three — the three assertions and the three comments that describe them. The diff stays proportional to the change rather than to the file, and a comment that did *not* move when its assertion did would be the drift the comments exist to rule out.
+
+### Also in this release
+
+- Skipped fields are now carried as structured entries (object, field, record type) alongside the warning prose, so the panel can group them without scraping a free-text message
+- Fixed an intermittent test failure where temp directory cleanup on some container filesystems returned `ENOTEMPTY` and failed a test whose assertions had all already passed
+
 ## [3.4.0] - Diff-Friendly Picklist Dependency Specs
 
 Resolves [#78](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/78).

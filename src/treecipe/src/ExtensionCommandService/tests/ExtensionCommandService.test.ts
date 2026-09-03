@@ -46,14 +46,15 @@ jest.mock('@salesforce/core', () => ({
 
 import { AuthInfo } from '@salesforce/core';
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, IPicklistDependencySkippedField } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
 import { PicklistDependencyExplorerService } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
+import { PicklistDependencyManifestService } from "../../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 
@@ -83,9 +84,10 @@ describe('ExtensionCommandService', () => {
 
         function stubCollectionResult(specDetails: IPicklistDependencySpecDetail[],
                                         skippedFieldWarnings: string[] = [],
-                                        recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []) {
+                                        recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
+                                        skippedFields: IPicklistDependencySkippedField[] = []) {
             jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
-                .mockResolvedValue({ specDetails, recordTypeSpecDetails, skippedFieldWarnings });
+                .mockResolvedValue({ specDetails, recordTypeSpecDetails, skippedFieldWarnings, skippedFields });
         }
 
         beforeEach(() => {
@@ -1200,6 +1202,33 @@ describe('ExtensionCommandService', () => {
             expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: ['Ontario'] }]
         };
 
+        const manifestFilePath = '/workspace/treecipe/PicklistDependencySpecs/manifest.json';
+
+        function buildStubManifest(specDetails: IPicklistDependencySpecDetail[] = [chainSpecDetail],
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
+                                    skippedFields: IPicklistDependencySkippedField[] = []) {
+
+            return PicklistDependencyManifestService.buildManifest(
+                { specDetails, recordTypeSpecDetails, skippedFieldWarnings: skippedFields.map(skippedField => skippedField.warning), skippedFields },
+                objectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '9.9.9',
+                '2026-01-01T00:00:00Z',
+                'stub-fingerprint'
+            );
+
+        }
+
+        function stubLoadedManifest(manifest = buildStubManifest()) {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'loaded', message: '', manifest, manifestFilePath });
+
+            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({ freshness: 'fresh', message: '' });
+
+        }
+
         let extensionCommandService: ExtensionCommandService;
         let handleCapturedErrorSpy: jest.SpyInstance;
         let createdWebviewPanel: any;
@@ -1218,13 +1247,25 @@ describe('ExtensionCommandService', () => {
             (vscode.window.createWebviewPanel as jest.Mock).mockClear();
             (vscode.commands.executeCommand as jest.Mock).mockClear();
 
+            // THE PREVIEW OPT IN IS OFFERED THROUGH THIS ONE, SO ITS CALL HISTORY WOULD CARRY BETWEEN TESTS TOO
+            (vscode.window.showInformationMessage as jest.Mock).mockClear();
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration')
                 .mockReturnValue('./force-app/main/default/objects');
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
 
             jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
-                .mockResolvedValue({ specDetails: [chainSpecDetail], recordTypeSpecDetails: [], skippedFieldWarnings: [] });
+                .mockResolvedValue({ specDetails: [chainSpecDetail], recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] });
+
+            /*
+                The manifest is the panel's normal source now, so it is stubbed for every test here
+                and overridden by the few that assert the no-manifest paths. It is built through the
+                real buildManifest rather than hand written, so these tests exercise the same shape
+                the generate command writes rather than one that could drift from it.
+            */
+            stubLoadedManifest();
 
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
@@ -1365,7 +1406,7 @@ describe('ExtensionCommandService', () => {
 
         });
 
-        test('given record type scoped specs collected, hands them to the explorer view model', async () => {
+        test('given a manifest carrying record type scopes, renders them from the manifest rather than from metadata', async () => {
 
             const recordTypeSpecDetail: IRecordTypePicklistDependencySpecDetail = {
                 objectApiName: 'Chain_Example__c',
@@ -1375,37 +1416,175 @@ describe('ExtensionCommandService', () => {
                 expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
             };
 
-            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
-                .mockResolvedValue({ specDetails: [chainSpecDetail], recordTypeSpecDetails: [recordTypeSpecDetail], skippedFieldWarnings: [] });
+            stubLoadedManifest(buildStubManifest([chainSpecDetail], [recordTypeSpecDetail]));
+
             jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
                 .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
-            const buildExplorerViewModelSpy = jest.spyOn(PicklistDependencyExplorerService, 'buildExplorerViewModel');
+            const collectSpecDetailsSpy = jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory');
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
-            expect(buildExplorerViewModelSpy).toHaveBeenCalledWith(
-                expect.any(String),
-                [chainSpecDetail],
-                [],
-                expect.anything(),
-                [recordTypeSpecDetail]
-            );
+            expect(createdWebviewPanel.webview.html).toContain('North_America');
+
+            // THE POINT OF THE MANIFEST: THE OPEN PATH DOES NOT RE-WALK THE SOURCE XML AT ALL
+            expect(collectSpecDetailsSpy).not.toHaveBeenCalled();
 
         });
 
-        test('given no dependent picklists at all, still opens the panel with the empty state', async () => {
+        /*
+            The open path reads the manifest and stops. Proving the scan does not happen is the
+            acceptance criterion itself -- a panel that still re-derived from metadata would render
+            the same rows here and pass every other assertion in this file.
+        */
+        test('given a manifest, never re-walks the source metadata to build the panel', async () => {
 
-            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
-                .mockResolvedValue({ specDetails: [], recordTypeSpecDetails: [], skippedFieldWarnings: [] });
             jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
                 .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const collectSpecDetailsSpy = jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory');
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(collectSpecDetailsSpy).not.toHaveBeenCalled();
+            expect(createdWebviewPanel.webview.html).toContain('State__c');
+
+        });
+
+        test('given a manifest, every node names the generated class and spec method that asserts it', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            const specMethodName = PicklistDependencyTestService.buildSpecMethodName('Chain_Example__c', 'State__c');
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
+
+            expect(createdWebviewPanel.webview.html).toContain(specMethodName);
+            expect(createdWebviewPanel.webview.html).toContain(testMethodName);
+
+        });
+
+        test('given a manifest recorded against changed metadata, renders a staleness banner naming the generate command', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({
+                    freshness: 'staleMetadata',
+                    message: 'The object metadata has changed since these specs were generated. Run "Salesforce Treecipe: Generate Picklist Dependency Tests" to regenerate.'
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(createdWebviewPanel.webview.html).toContain('your metadata has changed since they were generated');
+            expect(createdWebviewPanel.webview.html).toContain('Generate Picklist Dependency Tests');
+
+            // NEVER SILENTLY RE-DERIVED: A STALE MANIFEST IS STILL THE MANIFEST, BANNERED
+            expect(PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory).not.toHaveBeenCalled();
+
+        });
+
+        test('given no manifest and the preview declined, opens no panel at all', async () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+            expect(PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given no manifest and the preview accepted, scans metadata and banners every row un-asserted', async () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory).toHaveBeenCalled();
+            expect(createdWebviewPanel.webview.html).toContain('State__c');
+            expect(createdWebviewPanel.webview.html).toContain('Preview from metadata');
+            expect(createdWebviewPanel.webview.html).toContain('nothing asserts any combination below');
+
+        });
+
+        /*
+            Handled exactly as an unreadable results.json is: a readable message and the structure
+            the user CAN be offered, never a blank panel and never a silent fall back that would
+            render un-asserted rows as though specs existed for them.
+        */
+        test('given a malformed manifest, reports it and offers the metadata preview rather than blanking', async () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({
+                    state: 'unreadableManifest',
+                    message: 'the manifest could not be read as JSON',
+                    manifestFilePath: manifestFilePath
+                });
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0])
+                .toContain('could not be read as JSON');
+            expect(createdWebviewPanel.webview.html).toContain('Preview from metadata');
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given no dependent picklists at all, the preview still opens the panel with the empty state', async () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockResolvedValue({ specDetails: [], recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] });
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
             expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
             expect(createdWebviewPanel.webview.html).toContain('No dependent picklists were found in');
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a manifest carrying a skipped field, renders it as not asserted rather than omitting it', async () => {
+
+            const skippedField: IPicklistDependencySkippedField = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'Unspecced__c',
+                warning: 'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Unspecced__c" controlled by "Country__c" -- no spec was generated for this field.'
+            };
+
+            stubLoadedManifest(buildStubManifest([chainSpecDetail], [], [skippedField]));
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(createdWebviewPanel.webview.html).toContain('Unspecced__c');
+            expect(createdWebviewPanel.webview.html).toContain('not asserted');
+            expect(createdWebviewPanel.webview.html).toContain('valueSettings');
 
         });
 

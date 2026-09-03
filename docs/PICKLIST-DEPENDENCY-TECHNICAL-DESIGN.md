@@ -147,7 +147,7 @@ flowchart TB
 
 ## 4. Generated artefact catalogue
 
-Two categories of Apex land in the customer's package directory. The distinction is deliberate and load-bearing for change control.
+Two categories of Apex land in the customer's package directory, plus one non-Apex artefact outside it. The distinction is deliberate and load-bearing for change control.
 
 ```mermaid
 flowchart TB
@@ -170,6 +170,12 @@ flowchart TB
         end
     end
 
+    subgraph treecipe["treecipe/ — <b>outside the package directory</b>"]
+        direction TB
+        MAN["PicklistDependencySpecs/manifest.json<br/><i>what was generated, for the Explorer</i>"]
+        RES["PicklistDependencyResults/<br/><i>what the last check found</i>"]
+    end
+
     SRC -.implements.-> I
     VAL -->|"consumes"| I
     VAL -->|"reads"| SPEC
@@ -179,6 +185,9 @@ flowchart TB
     PER -->|"builds"| SPEC
     AGG -->|"aggregates"| PER
     TST -->|"validates"| AGG
+    PER -.->|"same model, same run"| MAN
+
+    style treecipe fill:#ecfdf5,stroke:#047857
 
     style fw fill:#f1f5f9,stroke:#475569
     style gen fill:#fef9c3,stroke:#a16207
@@ -195,6 +204,26 @@ flowchart TB
 | `SDTPLDSpecs_<Object>` | **Generated** | **Overwritten on every generation** | default | The declared matrix for one object, as executable Apex. `all()` is the field-level matrix; `recordTypeSpecs()` — emitted only where the object has record types assigning both fields of a dependency — is the same matrix narrowed per record type |
 | `SDTPLDSpecs` | **Generated** | **Overwritten on every generation** | default | Aggregator; the only class downstream code should reference. `all()` aggregates the field-level specs; `allRecordTypeScoped()` is emitted only when at least one object produced scoped specs |
 | `SDTPLDSpecsTest` | **Generated** | **Overwritten on every generation** | `@IsTest private` | One test method per object + `specRegistryIsNotEmpty` |
+
+### The spec manifest — the one artefact that is not Apex
+
+`treecipe/PicklistDependencySpecs/manifest.json` is written by the same run, from the same in-memory `IPicklistDependencyCollectionResult`, as the classes above.
+
+| Property | Value |
+|---|---|
+| Location | `treecipe/PicklistDependencySpecs/manifest.json`, **outside** any package directory |
+| Lifecycle | Overwritten on every generation |
+| Written by | `PicklistDependencyManifestService.buildManifest` + `writeManifest` |
+| Read by | `PicklistDependencyExplorerService.buildExplorerViewModelByManifest` |
+| Format version | `manifestVersion`, refused rather than parsed hopefully when unrecognised |
+
+**Why not beside the `.cls` files.** A `.json` inside a Salesforce package directory is not valid metadata. `sf project deploy` would pick it up and fail the deploy of the very classes the manifest describes. Living under `treecipe/` — beside `PicklistDependencyResults/` — costs co-location and buys a deploy that works; the manifest records `classesDirectoryPath` and a per-object `generatedClassFilePath` so every panel row still resolves to its class on disk.
+
+**Why it exists at all.** Before it, the Explorer re-walked the source XML at panel-open time while the Apex had been generated at some earlier moment from whatever the metadata was then. Nothing tied a panel row to a spec method that actually existed, and failure attribution matched free text against combinations the panel had just re-derived. Emitting both from one model removes the second derivation rather than trying to keep two in step.
+
+**Stable combination keys.** Each expectation carries `Object.Field @ ControllingValue`, or `Object.Field [RecordType] @ ControllingValue` — shaped to match the failure lines `SDTPicklistDependencyValidator` emits, so attribution is a lookup rather than a second parser for a format that already has one. Keys are **rebuilt from the entry's own object, field and controlling value on load**, never trusted as written: the manifest is an editable JSON file, and a key taken at face value could point a failure at a combination it does not describe.
+
+**Staleness is a stat walk, not a re-parse.** `sourceFingerprint` digests every `*.field-meta.xml` and `*.recordType-meta.xml` as `relativePath|mtimeMs|size`. Recomputing it opens no file, so the check keeps the cost the manifest was introduced to avoid. It reports *possible* drift rather than certain drift — touching a file without editing it moves its mtime — which is why the banner says "regenerate to be sure" rather than naming a change. A manifest recorded against a **different objects directory** is reported separately from changed metadata: it is not stale, it describes something else, and telling the reader their metadata changed would send them hunting an edit they never made.
 
 ### Naming and collision policy
 

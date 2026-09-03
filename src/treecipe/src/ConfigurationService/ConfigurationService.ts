@@ -238,6 +238,24 @@ export class ConfigurationService {
 
     }
 
+    static getPicklistDependencySpecsFolderName() {
+        const picklistDependencySpecsFolderName = 'PicklistDependencySpecs';
+        return picklistDependencySpecsFolderName;
+    }
+
+    /*
+        Sibling to the results folder, and deliberately NOT the Apex "classes" directory. The
+        manifest is a json file, and a stray json in a package directory is not valid Salesforce
+        metadata -- it would ride along into "sf project deploy" and fail the deploy it describes.
+    */
+    static getPicklistDependencySpecsFolderPath() {
+
+        const defaultTreecipeConfigurationFolder = this.getDefaultTreecipeConfigurationFolderName();
+        const picklistDependencySpecsFolderName = this.getPicklistDependencySpecsFolderName();
+        return (`${defaultTreecipeConfigurationFolder}/${picklistDependencySpecsFolderName}`);
+
+    }
+
     static getTreecipeObjectsWrapperName() {
 
         const treecipeObjectsWrapperPrefix = 'treecipeObjectsWrapper';

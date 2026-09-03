@@ -128,9 +128,12 @@ src/
     │   ├── PicklistDependencyCheckService.ts # Deploys and runs the generated picklist dependency tests against an org
     │   └── tests/
     ├── PicklistDependencyExplorerService/
-    │   ├── PicklistDependencyExplorerService.ts # Builds the explorer view model (structure + last check results) and the webview html shell
+    │   ├── PicklistDependencyExplorerService.ts # Builds the explorer view model (from the spec manifest, or an explicit metadata preview) and the webview html shell
     │   └── tests/
     │       └── mocks/
+    ├── PicklistDependencyManifestService/
+    │   ├── PicklistDependencyManifestService.ts # Builds/reads treecipe/PicklistDependencySpecs/manifest.json, stable combination keys, stat-based staleness fingerprint
+    │   └── tests/
     ├── PicklistDependencyTestService/
     │   ├── PicklistDependencyTestService.ts  # Emits SDT-prefixed per-object Apex spec classes from picklist dependency metadata
     │   └── tests/
@@ -183,6 +186,7 @@ User runs command (Cmd+Shift+P)
 - **Both faker backends must stay in sync** — whenever a new field type handler is added to `FakerJSRecipeFakerService`, add the equivalent to `SnowfakeryRecipeFakerService`
 - **Numeric/currency precision** — `<precision>` (total digits) and `<scale>` (decimal places) from XML drive `max` and `dec` parameters; `left_digits = precision - scale`
 - **Picklist handling** — special characters (`&`, `'`, etc.) in picklist values must be escaped before embedding in faker expressions
+- **The spec manifest is the single source for the Explorer** — `Generate Picklist Dependency Tests` emits the Apex classes and `treecipe/PicklistDependencySpecs/manifest.json` from one in-memory model in one run, and the Explorer renders the manifest rather than re-walking the source XML. Anything that changes what the generator emits must flow through the manifest too, or the panel and the Apex become two derivations again. The manifest never goes in a package directory — a stray `.json` there breaks `sf project deploy`
 - **The explorer panel is a webview, and renders no unescaped metadata** — picklist values, api names and Apex failure messages all originate in metadata the extension does not control, so every one of them goes through `escapeHtml` or `escapeJsonForScriptBlock` before reaching the panel. Its CSP admits only the extension's own nonced inline style and script, and the `Reveal in Explorer` handler opens a path only when the built view model itself named it
 - **Relationship grouping** — `RelationshipService` determines which objects belong in the same Treecipe file and in what insertion order
 

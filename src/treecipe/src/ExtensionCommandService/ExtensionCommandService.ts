@@ -11,6 +11,7 @@ import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueS
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { PicklistDependencyExplorerService, IPicklistDependencyExplorerViewModel } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
+import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -25,11 +26,15 @@ export const RUN_AGAINST_ORG_ACTION_LABEL = 'Deploy and Run Against Org';
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE = 'treecipe.picklistDependencyExplorer';
 
+// SHARED WITH THE TESTS SO THE OPT IN LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
+export const PREVIEW_FROM_METADATA_ACTION_LABEL = 'Preview from metadata (not generated)';
+
 interface IPicklistDependencyGenerationResult {
     classesDirectoryPath: string;
     specsClassFilePath: string;
     specCount: number;
     generationSummary: string;
+    manifestFilePath: string;
 }
 
 export class ExtensionCommandService {
@@ -301,6 +306,29 @@ export class ExtensionCommandService {
             sourceApiVersion
         );
 
+        /*
+            Written from the SAME collectionResult the Apex above was emitted from, in the same run,
+            after the write the user approved. That is the whole point of the artifact: the Explorer
+            reads this instead of re-walking the source XML at panel-open time, so the panel and the
+            generated specs cannot be two derivations of metadata that has moved between them.
+
+            It goes under the treecipe directory rather than beside the .cls files: a stray json in a
+            package directory is not valid Salesforce metadata and would ride into "sf project
+            deploy" and fail the deploy it describes.
+        */
+        const specsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencySpecsFolderPath());
+
+        const manifest = PicklistDependencyManifestService.buildManifest(
+            collectionResult,
+            fullPathToObjectsDirectory,
+            classesDirectoryPath,
+            PicklistDependencyManifestService.getGeneratorVersion(extensionPath),
+            VSCodeWorkspaceService.getNowIsoDateTimestamp(),
+            PicklistDependencyManifestService.buildSourceFingerprint(fullPathToObjectsDirectory)
+        );
+
+        const manifestFilePath = PicklistDependencyManifestService.writeManifest(specsFolderPath, manifest);
+
         const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
         /*
@@ -314,7 +342,7 @@ export class ExtensionCommandService {
 
         const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
 
-        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}".`;
+        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}". The Picklist Dependency Explorer reads "${manifestFilePath}" to render exactly these specs.`;
         if ( collectionResult.recordTypeSpecDetails.length > 0 ) {
             // THE RECORD TYPE SCOPED SPECS ARE NOT IN all(), SO THE SUMMARY SAYS WHERE THEY ARE INSTEAD OF LEAVING THEM UNMENTIONED
             generationSummary += ` Also generated ${collectionResult.recordTypeSpecDetails.length} record-type-scoped spec(s), aggregated by ${specsClassName}.allRecordTypeScoped(). These are not asserted by ${specsTestClassName}.cls: Schema describe returns picklist values without record type filtering, so they need a record-type-aware ISDTPicklistDependencySource.`;
@@ -339,7 +367,8 @@ export class ExtensionCommandService {
             classesDirectoryPath,
             specsClassFilePath,
             specCount: collectionResult.specDetails.length,
-            generationSummary
+            generationSummary,
+            manifestFilePath
         };
 
     }
@@ -691,9 +720,73 @@ export class ExtensionCommandService {
                 throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
             }
 
+            const resultsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencyResultsFolderPath());
+            const specsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencySpecsFolderPath());
+
+            /*
+                The manifest is read FIRST, and the source metadata is not walked at all when one
+                exists. That is the point of the artifact: the panel renders the specs that were
+                generated and run, rather than a second derivation from metadata that may have moved
+                since. Reading it is a single file read, so it needs no progress notification.
+            */
+            const manifestLoad = PicklistDependencyManifestService.loadManifest(specsFolderPath);
+
+            if ( manifestLoad.state === 'loaded' && manifestLoad.manifest ) {
+
+                const explorerViewModel = await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Picklist Dependency Explorer',
+                    cancellable: false
+                }, async (progress) => {
+
+                    /*
+                        Staleness is a stat walk over the objects directory, not a parse of it -- it
+                        answers "could this have changed since generation", which is all the banner
+                        claims. It still touches every field file, so it is reported like the scan it
+                        replaced rather than left looking inert on a large org.
+                    */
+                    progress.report({ message: 'Checking whether the generated specs still match your metadata...' });
+                    const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                        manifestLoad.manifest,
+                        fullPathToObjectsDirectory
+                    );
+
+                    progress.report({ message: 'Loading the most recent picklist dependency check results...' });
+                    const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
+
+                    progress.report({ message: 'Building the dependency view...' });
+                    return PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                        manifestLoad,
+                        fullPathToObjectsDirectory,
+                        resultsLoad,
+                        freshnessResult
+                    );
+
+                });
+
+                this.showPicklistDependencyExplorerPanel(explorerViewModel);
+                return;
+
+            }
+
+            /*
+                No manifest, or one that could not be read. Both are reported with the generate
+                command named, and the metadata scan the panel used to do unconditionally is offered
+                as an EXPLICIT action rather than performed silently -- 3.1.0's "no setup required"
+                property is kept, but honestly: every row it produces is banner-marked un-asserted.
+            */
+            const previewFromMetadataSelection = await vscode.window.showInformationMessage(
+                manifestLoad.message,
+                PREVIEW_FROM_METADATA_ACTION_LABEL
+            );
+
+            if ( previewFromMetadataSelection !== PREVIEW_FROM_METADATA_ACTION_LABEL ) {
+                return;
+            }
+
             const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
 
-            // THE EXPLORER READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
+            // THE PREVIEW READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
             const isMissingGlobalValueSetsDirectoryWarningShown = false;
             const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
             await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
@@ -703,7 +796,7 @@ export class ExtensionCommandService {
                 it runs under a progress notification rather than leaving the command looking inert.
                 The check command already reports its long phase the same way.
             */
-            const explorerViewModel = await vscode.window.withProgress({
+            const previewViewModel = await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: 'Picklist Dependency Explorer',
                 cancellable: false
@@ -713,21 +806,25 @@ export class ExtensionCommandService {
                 const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
 
                 progress.report({ message: 'Loading the most recent picklist dependency check results...' });
-                const resultsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencyResultsFolderPath());
                 const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
 
                 progress.report({ message: 'Building the dependency view...' });
+
+                const previewContext = PicklistDependencyExplorerService.buildMetadataPreviewContext(manifestLoad);
+                previewContext.skippedFields = collectionResult.skippedFields;
+
                 return PicklistDependencyExplorerService.buildExplorerViewModel(
                     fullPathToObjectsDirectory,
                     collectionResult.specDetails,
                     collectionResult.skippedFieldWarnings,
                     resultsLoad,
-                    collectionResult.recordTypeSpecDetails
+                    collectionResult.recordTypeSpecDetails,
+                    previewContext
                 );
 
             });
 
-            this.showPicklistDependencyExplorerPanel(explorerViewModel);
+            this.showPicklistDependencyExplorerPanel(previewViewModel);
 
         } catch(error) {
 
