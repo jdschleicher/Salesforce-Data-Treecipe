@@ -330,14 +330,29 @@ The command:
 2. Renders chained dependencies as a connected graph — a field controlled by another dependent picklist is nested under it rather than repeated as a flat row
 3. Names the generated class and spec method asserting each field, and the test method covering each object
 4. Finds the most recent run under `treecipe/PicklistDependencyResults/` and overlays it, marking each combination passed, failed, or not checked
-5. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination, attributed by the manifest's stable combination keys
+5. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination, attributed by the manifest's stable combination keys — and beneath it, a **likely cause** and a **next step** in plain language
 6. Lists any field the generator **skipped** as its own row marked *not asserted*, with the reason — rather than leaving it out, where it would be indistinguishable from a field with no dependency
-7. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`
+7. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`, an **Open spec method** action that opens the generated `.cls` at the method asserting that row, an **Open run report entry** action that opens the run's `report.md` at that object's entry, and a **Copy reference** action
 8. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
+
+**Finding your way around a large org:**
+
+A toolbar sits above the structure:
+
+* **Find object or field** matches on object, field, controlling field, record type and generated method name. Searching for a field name reaches the object holding it, so you do not have to know which object that was — and when exactly one object matches, it opens by itself
+* **Status** filters to *failed*, *passed* or *not checked*
+* **Jump to object** opens and scrolls to any object by name, even one the filter is hiding
+* **Expand all / Collapse all**, bounded at 25 visible objects — past that the panel asks for a narrower filter rather than freezing
+
+Filtering only ever hides rows. No status is recomputed, and none is inferred from a row being hidden.
+
+**Copy reference** on any combination copies its stable key — `Object__c.Field__c [RecordType] @ Controlling Value` — and pasting that back into the find box reopens exactly that combination. It is stable across re-renders, so it is something you can put in a review comment or a ticket.
 
 Notes:
 
 * The panel is a **VS Code webview** — no local HTTP server, no open port, no extra runtime dependency. Its content security policy allows only the extension's own inline style and script, so it loads nothing from the network
+* **Built as you open it.** An object's rows are built when you expand it, not when the panel loads, and the model itself is bounded: at most 250 objects, 200 combinations per field and 25 record type scopes per field. Anything the ceiling drops is counted and stated in a notice at the top — and a combination, scope or object the check reported a failure for is never what gets dropped
+* **Every failed combination explains itself.** All ten validator failure kinds carry a likely cause and a next step. The two that no org state can cause — `CONTRADICTORY_EXPECTATION` and `CIRCULAR_DEPENDENCY` — say so, and tell you to fix the generated spec rather than the org. A kind this version has never seen is not explained away: the panel says it has no explanation and points you at the raw Apex message
 * It follows your active color theme, light, dark or high contrast
 * **No check has been run yet?** The structure still renders in full, marked "not checked" throughout, with the directory it looked in named
 * **A corrupt `results.json`?** You get a readable message and the structure without the overlay, not a blank panel

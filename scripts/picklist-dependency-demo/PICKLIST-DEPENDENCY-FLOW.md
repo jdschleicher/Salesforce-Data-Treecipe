@@ -522,4 +522,62 @@ The two model sources differ in exactly what they are allowed to claim:
 | Node names a spec method | yes — the one that asserts it | no, and the banner says nothing asserts it |
 | Failure attribution | resolved against manifest combination keys | no run can correspond to these rows |
 | Skipped fields | rendered as rows, marked *not asserted* | rendered as rows, marked *not asserted* |
+| Spec method / run report links | offered — the model names the code | not offered — nothing asserts these rows |
 | Reached by | opening the panel after generating | the explicit opt-in only |
+
+### 8.1 What reaches the DOM, and what the ceiling drops
+
+The model is serialized into the panel html in full, and an object's rows are built into the DOM only
+when that object is expanded. Both sides of that are bounded by `applyModelLimits`, which runs at the
+END of `buildExplorerViewModel` — after every count has been taken, so the counts keep describing the
+org while the notices describe what is on screen.
+
+```mermaid
+flowchart TD
+    VM["view model, counts taken"] --> LIMITS["applyModelLimits"]
+
+    LIMITS --> OBJ["selectWithinCap objects<br/>cap 250"]
+    OBJ --> COMBO["selectWithinCap combinations<br/>cap 200 per field"]
+    COMBO --> SCOPE["selectWithinCap record type scopes<br/>cap 25 per field"]
+
+    SCOPE --> NOTICE["truncationNotices<br/>rendered at the top of the panel"]
+
+    NOTICE --> HEADINGS["panel builds ONE heading per object"]
+    HEADINGS --> EXPAND{"reader expands<br/>an object?"}
+    EXPAND -- no --> IDLE["no rows built"]
+    EXPAND -- yes --> ROWS["buildObjectBody:<br/>nodes, combinations"]
+    ROWS --> SCOPEEXPAND{"reader expands<br/>a record type scope?"}
+    SCOPEEXPAND -- no --> IDLE2["scope rows not built"]
+    SCOPEEXPAND -- yes --> SCOPEROWS["buildScopeBody"]
+```
+
+`selectWithinCap` takes the retained items first and fills the remainder in declared order, then
+returns everything in the caller's original order. What counts as retained is fixed:
+
+| Level | Always retained |
+|---|---|
+| Object | `status === 'failed'`, any `failureCount`, any unattributed failure text, any skipped field |
+| Combination | `status === 'failed'` or any attributed failure |
+| Record type scope | `status === 'failed'` or any `failureCount` |
+
+Where the retained items alone exceed a cap, they are all kept anyway — the cap bounds a pathological
+render, and dropping a reported failure to honour it would break the panel's one promise. A dropped
+row is **absent and counted**, never re-labelled, so the three-state guarantee holds under the ceiling
+exactly as it holds under a filter.
+
+### 8.2 Panel messages and their allow-lists
+
+The webview is the one surface this feature exposes to content it did not author, so every message it
+can post is matched against a set built from the model that render was built from. The spec and report
+sets key on the file **and** the method together, via `buildOpenTargetKey`.
+
+| Panel command | Allow-list | Host action |
+|---|---|---|
+| `revealFieldSource` | `collectSourceFilePaths` | `revealInExplorer`, then open the `.field-meta.xml` |
+| `openSpecMethod` | `collectOpenableSpecTargets` (`filePath::methodName`) | open the generated `.cls` at `findApexMethodDeclarationLineNumber` |
+| `openRunReport` | `collectOpenableRunReportTargets` (`filePath::methodName`) | open `report.md` at `findRunReportEntryLineNumber` |
+| `copyCombinationReference` | `collectCombinationKeys` | write the key to the clipboard |
+
+A metadata preview contributes nothing to the spec set: no generated code asserts its rows, so there
+is no method to open. A run that wrote no `report.md` contributes nothing to the report set, so the
+panel offers the link only where following it would land somewhere.

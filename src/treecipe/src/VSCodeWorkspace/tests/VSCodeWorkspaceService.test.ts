@@ -13,16 +13,28 @@ jest.mock('vscode', () => ({
         fs: {
             readFile: jest.fn()
         },
+        openTextDocument: jest.fn()
     },
     Uri: {
         file: (path: string) => ({ fsPath: path })
     },
     window: {
         showErrorMessage: jest.fn(),
+        showInformationMessage: jest.fn(),
         showQuickPick: jest.fn(),
         showInputBox: jest.fn(),
-        createOutputChannel: jest.fn()
+        createOutputChannel: jest.fn(),
+        showTextDocument: jest.fn()
     },
+    env: {
+        clipboard: {
+            writeText: jest.fn()
+        }
+    },
+    Position: jest.fn().mockImplementation((line: number, character: number) => ({ line, character })),
+    Selection: jest.fn().mockImplementation((anchor: unknown, active: unknown) => ({ anchor, active })),
+    Range: jest.fn().mockImplementation((start: unknown, end: unknown) => ({ start, end })),
+    TextEditorRevealType: { InCenter: 2 },
     commands: {
         executeCommand: jest.fn()
     },
@@ -49,6 +61,65 @@ function removeTemporaryDirectoryQuietly(temporaryDirectoryPath: string) {
 }
 
 describe('Shared VSCodeWorkspaceService unit tests', () => {
+
+    /*
+        The explorer panel links into a generated class and a run report at a specific method, so the
+        editor has to land on the line rather than at the top of the file. A line of 0 is what the
+        panel's line finders return for "this file does not declare it" -- opening at the top is then
+        the right answer, and moving the cursor to a line that merely happens to be first is not.
+    */
+    describe('openFileInEditor', () => {
+
+        let revealedTextEditor: { selection: unknown; revealRange: jest.Mock };
+
+        beforeEach(() => {
+
+            revealedTextEditor = { selection: undefined, revealRange: jest.fn() };
+
+            (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue({});
+            (vscode.window.showTextDocument as jest.Mock).mockResolvedValue(revealedTextEditor);
+
+        });
+
+        test('given a one based line number, selects and reveals that line', async () => {
+
+            await VSCodeWorkspaceService.openFileInEditor('/workspace/classes/SDTSpecs.cls', 7);
+
+            expect(vscode.Position).toHaveBeenCalledWith(6, 0);
+            expect(revealedTextEditor.revealRange).toHaveBeenCalled();
+
+        });
+
+        test('given no line number, opens the file and moves nothing', async () => {
+
+            await VSCodeWorkspaceService.openFileInEditor('/workspace/classes/SDTSpecs.cls');
+
+            expect(revealedTextEditor.revealRange).not.toHaveBeenCalled();
+
+        });
+
+        test('given a line number of 0, opens at the top rather than at the first line', async () => {
+
+            await VSCodeWorkspaceService.openFileInEditor('/workspace/classes/SDTSpecs.cls', 0);
+
+            expect(revealedTextEditor.revealRange).not.toHaveBeenCalled();
+
+        });
+
+    });
+
+    describe('copyTextToClipboard', () => {
+
+        test('given a combination reference, writes exactly that text to the clipboard', async () => {
+
+            await VSCodeWorkspaceService.copyTextToClipboard('Chain_Example__c.State__c @ USA');
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('Chain_Example__c.State__c @ USA');
+
+        });
+
+    });
+
 
     describe('showDiffForProposedContent', () => {
 

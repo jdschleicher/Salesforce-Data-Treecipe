@@ -53,7 +53,7 @@ import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalVal
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, IPicklistDependencySkippedField } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
-import { PicklistDependencyExplorerService } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
+import { PicklistDependencyExplorerService, IPicklistDependencyExplorerViewModel } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
@@ -1438,6 +1438,196 @@ describe('ExtensionCommandService', () => {
             (fs.existsSync as unknown as jest.Mock).mockReturnValue(false);
 
             await receivedMessageHandler({ command: 'revealFieldSource', sourceFilePath: stateFieldSourceFilePath });
+
+            expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('no longer exists'));
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            Slice 3 of #83: a failed combination links to the code that generated it and to the run
+            entry that reported it. Each handler below is gated by its OWN allow-list, built from the
+            model this render was built from -- a file the model names cannot be combined with a
+            method name the model never named.
+        */
+        test('given an open spec method message the model names, opens the generated class at the declaration', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(
+                'public class SDTChainExampleSpecs {\n\n    public static SDTPicklistDependencySpec specForState() {\n    }\n}'
+            );
+
+            let renderedViewModel: IPicklistDependencyExplorerViewModel;
+            jest.spyOn(PicklistDependencyExplorerService, 'buildWebviewHtml')
+                .mockImplementation((viewModel: IPicklistDependencyExplorerViewModel) => {
+                    renderedViewModel = viewModel;
+                    return '';
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            const objectViewModel = renderedViewModel.objects[0];
+            const specMethodName = objectViewModel.rootNodes[0].specMethodName;
+
+            await receivedMessageHandler({
+                command: 'openSpecMethod',
+                specFilePath: objectViewModel.generatedClassFilePath,
+                methodName: specMethodName
+            });
+
+            expect(openFileInEditorSpy).toHaveBeenCalledWith(objectViewModel.generatedClassFilePath, expect.any(Number));
+
+        });
+
+        test('given an open spec method message pairing a real file with a method the model never named, opens nothing', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            let renderedViewModel: IPicklistDependencyExplorerViewModel;
+            jest.spyOn(PicklistDependencyExplorerService, 'buildWebviewHtml')
+                .mockImplementation((viewModel: IPicklistDependencyExplorerViewModel) => {
+                    renderedViewModel = viewModel;
+                    return '';
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({
+                command: 'openSpecMethod',
+                specFilePath: renderedViewModel.objects[0].generatedClassFilePath,
+                methodName: 'deleteEverything'
+            });
+
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given an open run report message the model names, opens the report at that method entry', async () => {
+
+            const reportFilePath = '/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-09-03T09-00-00/report.md';
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({
+                    state: 'loaded',
+                    message: '',
+                    resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-09-03T09-00-00/results.json',
+                    results: {
+                        targetOrg: 'devHub',
+                        ranAt: '2026-09-03T09:00:00Z',
+                        passed: true,
+                        failureCount: 0,
+                        methodsRun: 1,
+                        methodOutcomes: []
+                    }
+                });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            let renderedViewModel: IPicklistDependencyExplorerViewModel;
+            jest.spyOn(PicklistDependencyExplorerService, 'buildWebviewHtml')
+                .mockImplementation((viewModel: IPicklistDependencyExplorerViewModel) => {
+                    renderedViewModel = viewModel;
+                    return '';
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            const testMethodName = renderedViewModel.objects[0].testMethodName;
+
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(`# Picklist Dependency Check\n\n### ${testMethodName}\n`);
+
+            await receivedMessageHandler({
+                command: 'openRunReport',
+                reportFilePath: renderedViewModel.runSummary.reportFilePath,
+                methodName: testMethodName
+            });
+
+            expect(renderedViewModel.runSummary.reportFilePath).toBe(reportFilePath);
+            expect(openFileInEditorSpy).toHaveBeenCalledWith(reportFilePath, 3);
+
+        });
+
+        test('given an open run report message naming a file the model never named, opens nothing', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({
+                command: 'openRunReport',
+                reportFilePath: '/etc/passwd',
+                methodName: 'anything'
+            });
+
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a copy reference message naming a combination the model declares, copies exactly that key', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const copyTextToClipboardSpy = jest.spyOn(VSCodeWorkspaceService, 'copyTextToClipboard').mockResolvedValue(undefined);
+            jest.spyOn(VSCodeWorkspaceService, 'showInformationMessage').mockImplementation(() => undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'copyCombinationReference', combinationKey: 'Chain_Example__c.State__c @ USA' });
+
+            expect(copyTextToClipboardSpy).toHaveBeenCalledWith('Chain_Example__c.State__c @ USA');
+
+        });
+
+        test('given a copy reference message naming a combination the model never declared, copies nothing', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const copyTextToClipboardSpy = jest.spyOn(VSCodeWorkspaceService, 'copyTextToClipboard').mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'copyCombinationReference', combinationKey: 'Anything__c.Else__c @ Whatever' });
+
+            expect(copyTextToClipboardSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given the generated class has since been deleted, warns rather than opening a missing path', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            let renderedViewModel: IPicklistDependencyExplorerViewModel;
+            jest.spyOn(PicklistDependencyExplorerService, 'buildWebviewHtml')
+                .mockImplementation((viewModel: IPicklistDependencyExplorerViewModel) => {
+                    renderedViewModel = viewModel;
+                    return '';
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            (fs.existsSync as unknown as jest.Mock).mockReturnValue(false);
+
+            await receivedMessageHandler({
+                command: 'openSpecMethod',
+                specFilePath: renderedViewModel.objects[0].generatedClassFilePath,
+                methodName: renderedViewModel.objects[0].rootNodes[0].specMethodName
+            });
 
             expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('no longer exists'));
             expect(openFileInEditorSpy).not.toHaveBeenCalled();

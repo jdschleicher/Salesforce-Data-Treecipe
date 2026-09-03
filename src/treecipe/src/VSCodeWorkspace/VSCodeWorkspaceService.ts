@@ -332,13 +332,27 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async openFileInEditor(filePath: string) {
+    /*
+        oneBasedLineNumber is optional and ignored when it is 0, which is what the panel's line
+        finders return for "the file does not declare this". Opening the file at the top is the
+        right answer there -- the reader still lands in the class or report they asked for, rather
+        than at a line that happens to be first.
+    */
+    static async openFileInEditor(filePath: string, oneBasedLineNumber?: number) {
 
         try {
 
           const uri = vscode.Uri.file(filePath);
           const document = await vscode.workspace.openTextDocument(uri); 
-          await vscode.window.showTextDocument(document);     
+          const textEditor = await vscode.window.showTextDocument(document);     
+
+          if ( !oneBasedLineNumber || oneBasedLineNumber < 1 ) {
+            return;
+          }
+
+          const targetPosition = new vscode.Position(oneBasedLineNumber - 1, 0);
+          textEditor.selection = new vscode.Selection(targetPosition, targetPosition);
+          textEditor.revealRange(new vscode.Range(targetPosition, targetPosition), vscode.TextEditorRevealType.InCenter);
 
         } catch (error) {
 
@@ -347,9 +361,21 @@ export class VSCodeWorkspaceService {
         }
     }
 
+    static async copyTextToClipboard(textToCopy: string) {
+
+        await vscode.env.clipboard.writeText(textToCopy);
+
+    }
+
     static showWarningMessage(message: string) {
 
         vscode.window.showWarningMessage(message);
+
+    }
+
+    static showInformationMessage(message: string) {
+
+        vscode.window.showInformationMessage(message);
 
     }
 

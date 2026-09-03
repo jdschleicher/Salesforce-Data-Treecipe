@@ -29,6 +29,22 @@ export const PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE = 'treecipe.picklistDependen
 // SHARED WITH THE TESTS SO THE OPT IN LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
 export const PREVIEW_FROM_METADATA_ACTION_LABEL = 'Preview from metadata (not generated)';
 
+/*
+    Everything the explorer webview can post back, as ONE shape with every field optional.
+
+    Typed here rather than inline so each handler below states which fields its command requires and
+    the compiler holds it to them. Nothing in this shape is trusted: every value is checked against
+    an allow-list built from the rendered model before it reaches the file system or the clipboard.
+*/
+interface IPicklistDependencyExplorerPanelMessage {
+    command?: string;
+    sourceFilePath?: string;
+    specFilePath?: string;
+    reportFilePath?: string;
+    methodName?: string;
+    combinationKey?: string;
+}
+
 interface IPicklistDependencyGenerationResult {
     classesDirectoryPath: string;
     specsClassFilePath: string;
@@ -891,33 +907,96 @@ export class ExtensionCommandService {
         explorerPanel.webview.html = PicklistDependencyExplorerService.buildWebviewHtml(explorerViewModel, nonce);
 
         /*
-            The panel may only reveal a field file the model it was built from actually names. The
-            posted path is matched against that set rather than being validated as a path, so a
-            message arriving from anywhere else cannot make the extension host open an arbitrary
-            file on the user's disk.
+            One allow-list per panel command, each built from the model this render was built from.
+
+            Every one of them matches the posted value against what the model NAMES rather than
+            validating it as a path, so a message arriving from anywhere else cannot make the
+            extension host open an arbitrary file on the user's disk. The spec and report lists are
+            keyed on the file AND the method together, so a legitimate file cannot be combined with
+            a method name of the sender's choosing either.
         */
         const revealableSourceFilePaths = new Set(PicklistDependencyExplorerService.collectSourceFilePaths(explorerViewModel));
+        const openableSpecTargets = new Set(PicklistDependencyExplorerService.collectOpenableSpecTargets(explorerViewModel));
+        const openableRunReportTargets = new Set(PicklistDependencyExplorerService.collectOpenableRunReportTargets(explorerViewModel));
+        const copyableCombinationKeys = new Set(PicklistDependencyExplorerService.collectCombinationKeys(explorerViewModel));
 
         ExtensionCommandService.picklistDependencyExplorerMessageSubscription?.dispose();
 
-        ExtensionCommandService.picklistDependencyExplorerMessageSubscription = explorerPanel.webview.onDidReceiveMessage(async (panelMessage: { command?: string; sourceFilePath?: string }) => {
+        ExtensionCommandService.picklistDependencyExplorerMessageSubscription = explorerPanel.webview.onDidReceiveMessage(async (panelMessage: IPicklistDependencyExplorerPanelMessage) => {
 
-            if ( panelMessage?.command !== 'revealFieldSource' || !panelMessage.sourceFilePath ) {
+            if ( panelMessage?.command === 'revealFieldSource' && panelMessage.sourceFilePath ) {
+
+                if ( !revealableSourceFilePaths.has(panelMessage.sourceFilePath) ) {
+                    return;
+                }
+
+                if ( !fs.existsSync(panelMessage.sourceFilePath) ) {
+                    VSCodeWorkspaceService.showWarningMessage(`The field metadata file "${panelMessage.sourceFilePath}" no longer exists. Re-open the explorer to rebuild it from the current metadata.`);
+                    return;
+                }
+
+                const fieldSourceUri = vscode.Uri.file(panelMessage.sourceFilePath);
+                await vscode.commands.executeCommand('revealInExplorer', fieldSourceUri);
+                await VSCodeWorkspaceService.openFileInEditor(panelMessage.sourceFilePath);
+
                 return;
+
             }
 
-            if ( !revealableSourceFilePaths.has(panelMessage.sourceFilePath) ) {
+            if ( panelMessage?.command === 'openSpecMethod' && panelMessage.specFilePath && panelMessage.methodName ) {
+
+                const openTargetKey = PicklistDependencyExplorerService.buildOpenTargetKey(panelMessage.specFilePath, panelMessage.methodName);
+
+                if ( !openableSpecTargets.has(openTargetKey) ) {
+                    return;
+                }
+
+                if ( !fs.existsSync(panelMessage.specFilePath) ) {
+                    VSCodeWorkspaceService.showWarningMessage(`The generated class "${panelMessage.specFilePath}" no longer exists. Re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" to write it again.`);
+                    return;
+                }
+
+                const specClassContent = fs.readFileSync(panelMessage.specFilePath, 'utf-8');
+                const specMethodLineNumber = PicklistDependencyExplorerService.findApexMethodDeclarationLineNumber(specClassContent, panelMessage.methodName);
+
+                await VSCodeWorkspaceService.openFileInEditor(panelMessage.specFilePath, specMethodLineNumber);
+
                 return;
+
             }
 
-            if ( !fs.existsSync(panelMessage.sourceFilePath) ) {
-                VSCodeWorkspaceService.showWarningMessage(`The field metadata file "${panelMessage.sourceFilePath}" no longer exists. Re-open the explorer to rebuild it from the current metadata.`);
+            if ( panelMessage?.command === 'openRunReport' && panelMessage.reportFilePath && panelMessage.methodName ) {
+
+                const openTargetKey = PicklistDependencyExplorerService.buildOpenTargetKey(panelMessage.reportFilePath, panelMessage.methodName);
+
+                if ( !openableRunReportTargets.has(openTargetKey) ) {
+                    return;
+                }
+
+                if ( !fs.existsSync(panelMessage.reportFilePath) ) {
+                    VSCodeWorkspaceService.showWarningMessage(`The check report "${panelMessage.reportFilePath}" no longer exists. Re-run "Salesforce Treecipe: Run Picklist Dependency Check" to write a new run.`);
+                    return;
+                }
+
+                const runReportContent = fs.readFileSync(panelMessage.reportFilePath, 'utf-8');
+                const runReportEntryLineNumber = PicklistDependencyExplorerService.findRunReportEntryLineNumber(runReportContent, panelMessage.methodName);
+
+                await VSCodeWorkspaceService.openFileInEditor(panelMessage.reportFilePath, runReportEntryLineNumber);
+
                 return;
+
             }
 
-            const fieldSourceUri = vscode.Uri.file(panelMessage.sourceFilePath);
-            await vscode.commands.executeCommand('revealInExplorer', fieldSourceUri);
-            await VSCodeWorkspaceService.openFileInEditor(panelMessage.sourceFilePath);
+            if ( panelMessage?.command === 'copyCombinationReference' && panelMessage.combinationKey ) {
+
+                if ( !copyableCombinationKeys.has(panelMessage.combinationKey) ) {
+                    return;
+                }
+
+                await VSCodeWorkspaceService.copyTextToClipboard(panelMessage.combinationKey);
+                VSCodeWorkspaceService.showInformationMessage(`Copied "${panelMessage.combinationKey}". Paste it into the explorer's find box to come back to this combination.`);
+
+            }
 
         });
 
