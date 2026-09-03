@@ -49,13 +49,24 @@ export interface IPicklistDependencyFieldWritebackPlan {
     objectApiName: string;
     fieldApiName: string;
     fieldFilePath: string;
-    currentContent: string;
     proposedContent: string;
     hasChanges: boolean;
     // PAIRS AS THE READER THINKS OF THEM -- "cle unlocks plant" -- RATHER THAN AS BLOCKS
     addedPairs: string[];
     removedPairs: string[];
     addedPicklistValues: string[];
+}
+
+/*
+    One field's outcome: either something to write, or a reason it was left alone.
+
+    Exactly one of the two is set. A refusal is not an error -- the command reports it and carries
+    on with the fields that can be reconciled, because one field that cannot be written safely
+    should not cost the ones that can.
+*/
+export interface IPicklistDependencyFieldWritebackOutcome {
+    plan?: IPicklistDependencyFieldWritebackPlan;
+    refusal?: IPicklistDependencyWritebackRefusal;
 }
 
 export class PicklistDependencyMetadataWriterService {
@@ -161,7 +172,17 @@ export class PicklistDependencyMetadataWriterService {
             return undefined;
         }
 
-        const startIndex = blocks[0].startIndex;
+        const indentation = this.resolveIndentationAtIndex(fieldFileContent, blocks[0].startIndex);
+
+        /*
+            The span starts at the beginning of the first block's LINE, not at its "<".
+
+            Emission writes each block with its own indentation, so a span starting at the tag would
+            leave the original indentation in front of the replacement and double it. Taking the
+            whitespace into the span makes the replacement responsible for the whole line, which is
+            also what lets an emptied region remove its line rather than leave it blank.
+        */
+        const startIndex = blocks[0].startIndex - indentation.length;
         const endIndex = blocks[blocks.length - 1].endIndex;
 
         for ( let blockIndex = 0; blockIndex < blocks.length - 1; blockIndex++ ) {
@@ -179,7 +200,7 @@ export class PicklistDependencyMetadataWriterService {
             shape: this.resolveValueSettingsShape(blocks),
             startIndex,
             endIndex,
-            indentation: this.resolveIndentationAtIndex(fieldFileContent, startIndex),
+            indentation,
             lineEnding: this.resolveLineEnding(fieldFileContent)
         };
 
@@ -446,6 +467,290 @@ export class PicklistDependencyMetadataWriterService {
         });
 
         return { addedPairs, removedPairs };
+
+    }
+
+    /*
+        Dependent values this writeback would stop unlocking entirely, per field.
+
+        A value that no controlling value unlocks any more is unreachable. That is fine in itself --
+        it is what expectNone asks for -- but it matters when the value is ALSO the controlling field
+        of another dependent picklist, because every valueSettings entry downstream that names it
+        becomes unreachable too, and the org ends up with combinations nothing can select.
+    */
+    static collectOrphanedDependentValues(currentControllingValuesByDependentValue: Record<string, string[]>,
+                                            desiredControllingValuesByDependentValue: Record<string, string[]>): string[] {
+
+        return Object.keys(currentControllingValuesByDependentValue)
+            .filter(dependentValue => currentControllingValuesByDependentValue[dependentValue].length > 0)
+            .filter(dependentValue => ( desiredControllingValuesByDependentValue[dependentValue] || [] ).length === 0)
+            .sort((firstValue, secondValue) => this.compareForEmission(firstValue, secondValue));
+
+    }
+
+    /*
+        The fields downstream of one field, keyed by the value each of them is controlled through.
+
+        Built from the spec details the whole run is reconciling, so the cascade check needs no
+        second read of the metadata: a field whose controllingFieldApiName is this field is, by
+        definition, the thing that breaks when a value here stops being selectable.
+    */
+    static buildDownstreamFieldApiNamesByControllingField(specDetails: IPicklistDependencySpecDetail[]): Record<string, string[]> {
+
+        let downstreamFieldApiNamesByControllingField: Record<string, string[]> = Object.create(null);
+
+        specDetails.forEach(specDetail => {
+
+            const controllingFieldApiName = specDetail.controllingFieldApiName;
+
+            downstreamFieldApiNamesByControllingField[controllingFieldApiName] =
+                downstreamFieldApiNamesByControllingField[controllingFieldApiName] || [];
+
+            if ( !downstreamFieldApiNamesByControllingField[controllingFieldApiName].includes(specDetail.fieldApiName) ) {
+                downstreamFieldApiNamesByControllingField[controllingFieldApiName].push(specDetail.fieldApiName);
+            }
+
+        });
+
+        return downstreamFieldApiNamesByControllingField;
+
+    }
+
+    /*
+        Whether the dependent field takes its values from a GLOBAL value set."""
+
+        Such a field has no local valueSetDefinition to add a value to -- the values live in a
+        .globalValueSet-meta.xml shared across every object that uses it. Rewiring which controlling
+        values unlock an existing value is safe and stays in this file; introducing a NEW value is
+        not, because the only place to add it is the shared set, whose blast radius reaches every
+        other field pointing at it.
+    */
+    static isGlobalValueSetBacked(fieldFileContent: string): boolean {
+        return /<valueSetName>[\s\S]*?<\/valueSetName>/.test(fieldFileContent);
+    }
+
+    static resolveGlobalValueSetName(fieldFileContent: string): string {
+
+        const valueSetNameMatch = /<valueSetName>([\s\S]*?)<\/valueSetName>/.exec(fieldFileContent);
+
+        return valueSetNameMatch ? this.decodeXmlText(valueSetNameMatch[1]).trim() : '';
+
+    }
+
+    /*
+        Every value the field's own valueSetDefinition declares.
+
+        Read so writeback can tell a value it must ADD to the definition from one already there --
+        a spec naming a value the field does not declare is exactly the case where the metadata is
+        incomplete rather than merely mis-wired.
+    */
+    static collectDeclaredPicklistValues(fieldFileContent: string): string[] {
+
+        const definitionMatch = /<valueSetDefinition>([\s\S]*?)<\/valueSetDefinition>/.exec(this.blankXmlComments(fieldFileContent));
+
+        if ( !definitionMatch ) {
+            return [];
+        }
+
+        let declaredValues: string[] = [];
+        const fullNamePattern = /<fullName>([\s\S]*?)<\/fullName>/g;
+        let fullNameMatch: RegExpExecArray | null;
+
+        while ( ( fullNameMatch = fullNamePattern.exec(definitionMatch[1]) ) !== null ) {
+            declaredValues.push(this.decodeXmlText(fullNameMatch[1]));
+        }
+
+        return declaredValues;
+
+    }
+
+    /*
+        What writeback would do to one field file, or why it will not touch it.
+
+        Nothing is written here. The plan carries the proposed content so the command can show what
+        would change and let the user decline -- the same shape the generate command already uses,
+        for the same reason: a developer's source metadata is not something to rewrite behind them.
+    */
+    static buildFieldWritebackOutcome(specDetail: IPicklistDependencySpecDetail,
+                                        fieldFilePath: string,
+                                        currentContent: string,
+                                        downstreamFieldApiNames: string[] = []): IPicklistDependencyFieldWritebackOutcome {
+
+        const buildRefusal = (reason: string): IPicklistDependencyFieldWritebackOutcome => ({
+            refusal: { objectApiName: specDetail.objectApiName, fieldApiName: specDetail.fieldApiName, reason }
+        });
+
+        const region = this.resolveValueSettingsRegion(currentContent);
+
+        if ( !region ) {
+            return buildRefusal(
+                `"${fieldFilePath}" has no readable "valueSettings" markup to reconcile -- either the field declares none, or unrelated markup sits between the blocks and a safe edit could not be identified. Nothing was written.`
+            );
+        }
+
+        const currentControllingValuesByDependentValue = this.buildControllingValuesByDependentValueFromBlocks(region.blocks);
+        const desiredControllingValuesByDependentValue = this.buildDesiredControllingValuesByDependentValue(
+            specDetail, currentControllingValuesByDependentValue
+        );
+
+        const { addedPairs, removedPairs } = this.buildChangedPairSummaries(
+            currentControllingValuesByDependentValue, desiredControllingValuesByDependentValue
+        );
+
+        /*
+            Values the spec unlocks that the field has no way to offer yet.
+
+            Known values are the local valueSetDefinition PLUS everything the file's own
+            valueSettings already name. The union matters for a global-value-set-backed field: it
+            has no local definition to read, so the definition alone reports every value as new --
+            including ones already wired up. A value the file already references must exist in the
+            global set, because metadata naming a value the set does not declare would not deploy.
+        */
+        const knownPicklistValues = new Set([
+            ...this.collectDeclaredPicklistValues(currentContent),
+            ...region.blocks.map(block => block.valueName)
+        ]);
+
+        const addedPicklistValues = Object.keys(desiredControllingValuesByDependentValue)
+            .filter(dependentValue => desiredControllingValuesByDependentValue[dependentValue].length > 0)
+            .filter(dependentValue => !knownPicklistValues.has(dependentValue))
+            .sort((firstValue, secondValue) => this.compareForEmission(firstValue, secondValue));
+
+        /*
+            Reported and skipped rather than written, and the field's own write is abandoned with it.
+
+            Writing the field would leave every downstream valueSettings entry naming the orphaned
+            value pointing at something unselectable -- metadata that deploys but describes
+            combinations no user can reach. Resolving that means editing the downstream field too,
+            which is a decision about intent this command has no basis to make on its own, so it
+            names the cascade and leaves both files alone. Every OTHER field in the run still writes.
+        */
+        const orphanedDependentValues = this.collectOrphanedDependentValues(
+            currentControllingValuesByDependentValue, desiredControllingValuesByDependentValue
+        );
+
+        if ( orphanedDependentValues.length > 0 && downstreamFieldApiNames.length > 0 ) {
+
+            return buildRefusal(
+                `"${specDetail.objectApiName}.${specDetail.fieldApiName}" would stop unlocking ${orphanedDependentValues.map(value => `"${value}"`).join(', ')} entirely, and ${downstreamFieldApiNames.map(fieldApiName => `"${fieldApiName}"`).join(', ')} ${downstreamFieldApiNames.length === 1 ? 'is controlled' : 'are controlled'} by this field -- their entries for ${orphanedDependentValues.length === 1 ? 'that value' : 'those values'} would become unreachable. Nothing was written for this field. Reconcile the downstream field first, or keep the value unlocked.`
+            );
+
+        }
+
+        if ( this.isGlobalValueSetBacked(currentContent) && addedPicklistValues.length > 0 ) {
+
+            const globalValueSetName = this.resolveGlobalValueSetName(currentContent);
+
+            /*
+                Rewiring a global-value-set-backed field is fine and stays in this file. Adding a
+                value is refused rather than attempted, because the only place it could go is the
+                shared .globalValueSet-meta.xml, and editing that changes every other field pointing
+                at the same set -- a blast radius the user did not ask for and cannot see from here.
+            */
+            return buildRefusal(
+                `"${specDetail.objectApiName}.${specDetail.fieldApiName}" takes its values from the global value set "${globalValueSetName}", which this command never edits. Add ${addedPicklistValues.map(value => `"${value}"`).join(', ')} to that global value set first, then run this again to wire it up. The field's existing values can be rewired without this.`
+            );
+
+        }
+
+        const proposedContent = this.buildProposedContent(
+            currentContent, region, desiredControllingValuesByDependentValue, addedPicklistValues
+        );
+
+        return {
+            plan: {
+                objectApiName: specDetail.objectApiName,
+                fieldApiName: specDetail.fieldApiName,
+                fieldFilePath,
+                proposedContent,
+                hasChanges: proposedContent !== currentContent,
+                addedPairs,
+                removedPairs,
+                addedPicklistValues
+            }
+        };
+
+    }
+
+    /*
+        The file as it would be written: the valueSettings region replaced, and any value the spec
+        names that the field does not declare added to valueSetDefinition.
+
+        Only those two spans are touched. Everything else -- the xml declaration, indentation,
+        unrelated markup, the presence or absence of a trailing newline -- is carried through
+        untouched by construction, because it is never rebuilt.
+
+        The definition is edited FIRST so the region indexes, which were resolved against the
+        original string, are still valid when the region is spliced.
+    */
+    static buildProposedContent(currentContent: string,
+                                    region: IPicklistDependencyValueSettingsRegion,
+                                    desiredControllingValuesByDependentValue: Record<string, string[]>,
+                                    addedPicklistValues: string[]): string {
+
+        const valueSettingsMarkup = this.buildValueSettingsMarkup(
+            desiredControllingValuesByDependentValue, region.shape, region.indentation, region.lineEnding
+        );
+
+        /*
+            An emptied region takes its trailing line ending with it. The span already covers the
+            whole line, so leaving the newline behind would leave a blank line where the blocks were.
+        */
+        const followsRegionIndex = valueSettingsMarkup === '' && currentContent.startsWith(region.lineEnding, region.endIndex)
+            ? region.endIndex + region.lineEnding.length
+            : region.endIndex;
+
+        const proposedContent = currentContent.slice(0, region.startIndex)
+                                + valueSettingsMarkup
+                                + currentContent.slice(followsRegionIndex);
+
+        if ( addedPicklistValues.length === 0 ) {
+            return proposedContent;
+        }
+
+        return this.addPicklistValuesToDefinition(proposedContent, addedPicklistValues, region.indentation, region.lineEnding);
+
+    }
+
+    /*
+        New values appended to valueSetDefinition, in the shape the file already uses.
+
+        Appended rather than inserted alphabetically: valueSetDefinition order is what a picklist
+        shows a user, and reordering it silently would change the org's UI as a side effect of
+        wiring up a dependency.
+    */
+    static addPicklistValuesToDefinition(fieldFileContent: string,
+                                            addedPicklistValues: string[],
+                                            indentation: string,
+                                            lineEnding: string): string {
+
+        const definitionCloseTag = '</valueSetDefinition>';
+        const definitionCloseIndex = fieldFileContent.lastIndexOf(definitionCloseTag);
+
+        if ( definitionCloseIndex === -1 ) {
+            return fieldFileContent;
+        }
+
+        const valueIndentation = `${indentation}    `;
+        const valueChildIndentation = `${valueIndentation}    `;
+
+        const addedValueMarkup = addedPicklistValues.map(addedPicklistValue => {
+
+            const encodedValue = this.encodeXmlText(addedPicklistValue);
+
+            return `${valueIndentation}<value>${lineEnding}`
+                    + `${valueChildIndentation}<fullName>${encodedValue}</fullName>${lineEnding}`
+                    + `${valueChildIndentation}<default>false</default>${lineEnding}`
+                    + `${valueChildIndentation}<label>${encodedValue}</label>${lineEnding}`
+                    + `${valueIndentation}</value>${lineEnding}`;
+
+        }).join('');
+
+        const definitionLineStartIndex = fieldFileContent.lastIndexOf(lineEnding, definitionCloseIndex - 1) + lineEnding.length;
+
+        return fieldFileContent.slice(0, definitionLineStartIndex)
+                + addedValueMarkup
+                + fieldFileContent.slice(definitionLineStartIndex);
 
     }
 

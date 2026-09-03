@@ -490,4 +490,260 @@ describe('PicklistDependencyMetadataWriterService', () => {
 
     });
 
+    /*
+        The plan builder. Nothing here writes -- a plan carries the content that WOULD be written, so
+        the command can show it and let the user decline, the same way generation already does.
+    */
+    describe('building a field writeback plan', () => {
+
+        const buildSpecDetail = (expectations): IPicklistDependencySpecDetail => ({
+            objectApiName: 'Dependency_Example__c',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations
+        });
+
+        it('adds a valueSettings entry for a pair the spec unlocks and the metadata does not', () => {
+
+            const currentContent = readMock('FlatShape.field-meta.xml');
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                buildSpecDetail([{ controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont', 'willowick'] }]),
+                '/objects/Dependency_Example__c/fields/Neighborhood__c.field-meta.xml',
+                currentContent
+            );
+
+            expect(outcome.refusal).toBeUndefined();
+            expect(outcome.plan.hasChanges).toBe(true);
+            expect(outcome.plan.addedPairs).toEqual(['cle unlocks willowick']);
+
+            // THE TRANSPOSE LANDED ON THE willowick BLOCK, WHICH NOW CARRIES BOTH CONTROLLING VALUES
+            const reReadBlocks = PicklistDependencyMetadataWriterService.collectValueSettingsBlocks(outcome.plan.proposedContent);
+            const willowickBlocks = reReadBlocks.filter(block => block.valueName === 'willowick');
+
+            expect(willowickBlocks.flatMap(block => block.controllingValues).sort()).toEqual(['cle', 'eastlake']);
+
+        });
+
+        it('preserves the xml declaration, unrelated markup and the trailing newline', () => {
+
+            const currentContent = readMock('FlatShape.field-meta.xml');
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                buildSpecDetail([{ controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont', 'willowick'] }]),
+                '/fields/Neighborhood__c.field-meta.xml',
+                currentContent
+            );
+
+            const proposedContent = outcome.plan.proposedContent;
+
+            expect(proposedContent).toStartWith('<?xml version="1.0" encoding="UTF-8"?>');
+            expect(proposedContent).toContain('<controllingField>City__c</controllingField>');
+            expect(proposedContent).toContain('<restricted>true</restricted>');
+            expect(proposedContent.endsWith('\n')).toBe(currentContent.endsWith('\n'));
+
+        });
+
+        // THE PROPERTY THAT MAKES THESE FILES REVIEWABLE: RECONCILING TWICE CHANGES NOTHING THE SECOND TIME
+        it('given a second writeback with no spec change, produces zero diff', () => {
+
+            const specDetail = buildSpecDetail([{ controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont', 'willowick'] }]);
+
+            const firstOutcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                specDetail, '/fields/Neighborhood__c.field-meta.xml', readMock('FlatShape.field-meta.xml')
+            );
+
+            const secondOutcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                specDetail, '/fields/Neighborhood__c.field-meta.xml', firstOutcome.plan.proposedContent
+            );
+
+            expect(secondOutcome.plan.hasChanges).toBe(false);
+            expect(secondOutcome.plan.proposedContent).toBe(firstOutcome.plan.proposedContent);
+
+        });
+
+        it('given the apex and the metadata already agreeing, reports no changes and rewrites nothing', () => {
+
+            const currentContent = readMock('FlatShape.field-meta.xml');
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                buildSpecDetail([
+                    { controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont'] },
+                    { controllingValue: 'eastlake', dependentValues: ['willowick'] }
+                ]),
+                '/fields/Neighborhood__c.field-meta.xml',
+                currentContent
+            );
+
+            expect(outcome.plan.hasChanges).toBe(false);
+            expect(outcome.plan.addedPairs).toBeEmpty();
+            expect(outcome.plan.removedPairs).toBeEmpty();
+
+        });
+
+        it('adds a value the spec names that the field does not declare', () => {
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                buildSpecDetail([{ controllingValue: 'cle', dependentValues: ['ohiocity', 'plant'] }]),
+                '/fields/Neighborhood__c.field-meta.xml',
+                readMock('FlatShape.field-meta.xml')
+            );
+
+            expect(outcome.plan.addedPicklistValues).toEqual(['plant']);
+            expect(outcome.plan.proposedContent).toContain('<fullName>plant</fullName>');
+            expect(outcome.plan.proposedContent).toContain('<label>plant</label>');
+
+            // ADDED TO THE DEFINITION, NOT REORDERING IT -- DEFINITION ORDER IS WHAT THE PICKLIST SHOWS A USER
+            expect(outcome.plan.proposedContent.indexOf('<fullName>ohiocity</fullName>'))
+                .toBeLessThan(outcome.plan.proposedContent.indexOf('<fullName>plant</fullName>'));
+
+        });
+
+        it('given markup interleaved between blocks, refuses the field rather than risking a delete', () => {
+
+            const interleavedContent = readMock('FlatShape.field-meta.xml')
+                .replace('</valueSettings>\n        <valueSettings>', '</valueSettings>\n        <keepMe>x</keepMe>\n        <valueSettings>');
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                buildSpecDetail([{ controllingValue: 'cle', dependentValues: ['ohiocity'] }]),
+                '/fields/Neighborhood__c.field-meta.xml',
+                interleavedContent
+            );
+
+            expect(outcome.plan).toBeUndefined();
+            expect(outcome.refusal.reason).toContain('Nothing was written');
+
+        });
+
+    });
+
+    /*
+        A global-value-set-backed field can be REWIRED here, but a new value cannot be added: the
+        only place it could go is the shared .globalValueSet-meta.xml, whose blast radius reaches
+        every other field pointing at the same set.
+    */
+    describe('global value set backed fields', () => {
+
+        const buildGlobalSpecDetail = (expectations): IPicklistDependencySpecDetail => ({
+            objectApiName: 'Example__c',
+            fieldApiName: 'GlobalDependent__c',
+            controllingFieldApiName: 'City__c',
+            expectations
+        });
+
+        it('detects a field backed by a global value set', () => {
+
+            expect(PicklistDependencyMetadataWriterService.isGlobalValueSetBacked(readMock('GlobalValueSetBacked.field-meta.xml'))).toBe(true);
+            expect(PicklistDependencyMetadataWriterService.isGlobalValueSetBacked(readMock('FlatShape.field-meta.xml'))).toBe(false);
+
+        });
+
+        it('allows an existing value to be rewired to a different controlling value', () => {
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                buildGlobalSpecDetail([{ controllingValue: 'cle', dependentValues: ['earth', 'mars'] }]),
+                '/fields/GlobalDependent__c.field-meta.xml',
+                readMock('GlobalValueSetBacked.field-meta.xml')
+            );
+
+            expect(outcome.refusal).toBeUndefined();
+            expect(outcome.plan.addedPairs).toEqual(['cle unlocks mars']);
+
+        });
+
+        it('refuses to add a new value, naming the global value set it must be added to first', () => {
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                buildGlobalSpecDetail([{ controllingValue: 'cle', dependentValues: ['earth', 'pluto'] }]),
+                '/fields/GlobalDependent__c.field-meta.xml',
+                readMock('GlobalValueSetBacked.field-meta.xml')
+            );
+
+            expect(outcome.plan).toBeUndefined();
+            expect(outcome.refusal.reason).toContain('Planets');
+            expect(outcome.refusal.reason).toContain('pluto');
+            expect(outcome.refusal.fieldApiName).toBe('GlobalDependent__c');
+
+        });
+
+    });
+
+    /*
+        Removing a value that is itself the controlling field of another picklist would leave every
+        downstream entry naming it unreachable. Resolved as: report it, skip that field, and still
+        write every unaffected field -- the same posture generation takes toward a skipped field.
+    */
+    describe('orphaning cascade', () => {
+
+        const chainedSpecDetails: IPicklistDependencySpecDetail[] = [
+            {
+                objectApiName: 'Chain__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: []
+            },
+            {
+                objectApiName: 'Chain__c',
+                fieldApiName: 'City__c',
+                controllingFieldApiName: 'State__c',
+                expectations: []
+            }
+        ];
+
+        it('maps a field to the fields it controls', () => {
+
+            const downstream = PicklistDependencyMetadataWriterService
+                .buildDownstreamFieldApiNamesByControllingField(chainedSpecDetails);
+
+            expect(downstream['State__c']).toEqual(['City__c']);
+
+        });
+
+        it('given a removal that orphans a value another picklist is controlled by, refuses the field', () => {
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                {
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'usa', dependentValues: ['ohio'], dependentValuesAreExhaustive: true }]
+                },
+                '/fields/State__c.field-meta.xml',
+                readMock('ChainedControlling.field-meta.xml'),
+                ['City__c']
+            );
+
+            expect(outcome.plan).toBeUndefined();
+            expect(outcome.refusal.reason).toContain('texas');
+            expect(outcome.refusal.reason).toContain('City__c');
+            expect(outcome.refusal.reason).toContain('Nothing was written for this field');
+
+        });
+
+        // THE SAME REMOVAL IS FINE WHEN NOTHING IS CONTROLLED BY THE FIELD
+        it('given the same removal with no downstream field, writes it', () => {
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                {
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'usa', dependentValues: ['ohio'], dependentValuesAreExhaustive: true }]
+                },
+                '/fields/State__c.field-meta.xml',
+                readMock('ChainedControlling.field-meta.xml'),
+                []
+            );
+
+            expect(outcome.refusal).toBeUndefined();
+            expect(outcome.plan.removedPairs).toEqual(['usa no longer unlocks texas']);
+            expect(outcome.plan.proposedContent).not.toContain('<valueName>texas</valueName>');
+
+            // THE VALUE STAYS DECLARED -- IT IS UNREACHABLE, NOT DELETED
+            expect(outcome.plan.proposedContent).toContain('<fullName>texas</fullName>');
+
+        });
+
+    });
+
 });
