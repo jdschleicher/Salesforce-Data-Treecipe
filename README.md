@@ -189,6 +189,32 @@ The command:
 4. Writes `SDTPLDSpecs.cls`, an aggregator whose `all()` pulls in every per-object class. Callers depend on the aggregator, so a per-object class appearing or disappearing as your metadata changes does not ripple outwards
 5. Writes `SDTPLDSpecsTest.cls`, an `@IsTest` class with one test method per object that asserts that object's specs against the org the test runs in, plus a guard method that fails when the spec registry is empty
 6. Scaffolds the Apex validation framework classes it depends on (`SDTPicklistDependencySpec`, `SDTPicklistDependencyValidator`, `SDTSchemaPicklistDependencySource`, and supporting classes) into a `SDTPicklistDependencyFramework` subfolder, if they are not already present. Keeping them in their own directory separates the six files you did not write from the generated contract you do engage with, and makes them removable in one action — Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the layout deploys identically
+7. Writes `treecipe/PicklistDependencySpecs/manifest.json`, a machine-readable description of everything it just generated — built from the same model as the Apex, in the same run, so the two cannot disagree
+
+#### The spec manifest
+
+The manifest records, per object, the generated class name and file path and the test method name; per field, the spec method name, controlling field, upstream field and every expectation with a stable key; plus when it was generated, by which version, which objects directory was scanned, and every field that was skipped and why.
+
+[Open Picklist Dependency Explorer](#7-salesforce-treecipe-open-picklist-dependency-explorer) renders this file rather than re-reading your source metadata, which is what makes the panel's rows and your generated tests the same thing rather than two derivations that can drift.
+
+It lives under `treecipe/` rather than beside the `.cls` files deliberately: a `.json` inside a Salesforce package directory is not valid metadata, and would be picked up by `sf project deploy` and fail the deploy of the classes it describes. Commit it alongside the generated Apex.
+
+#### The generated Apex is meant to be read
+
+Each per-object class opens by naming the object's dependent picklists and the controlling field for each, and every spec method is preceded by a comment stating its combinations in plain language:
+
+```apex
+/**
+ * Region__c depends on Country__c.
+ *
+ * Combinations:
+ *   "Canada" unlocks Ontario, Quebec -- and must not unlock Baja, East, West
+ *   "USA" unlocks East, West -- and must not unlock Baja, Ontario, Quebec
+ */
+public static SDTPicklistDependencySpec specFor_Account_Region_c() {
+```
+
+The comment and the assertions below it are built from one model, so they cannot describe different things — which is the point: reading the generated spec should beat clicking through the Salesforce dependency matrix UI.
 
 #### What each spec asserts
 
@@ -296,16 +322,18 @@ Notes:
 
 This command opens a read-only visual view of your picklist dependency structure, with the most recent check's pass/fail state overlaid on it. It answers "which controlling value unlocks what, and which combination just broke" without you reading generated Apex or a markdown dump.
 
-**Prerequisite:** a `treecipe.config.json` pointing at your objects directory. Nothing else — no org, no CLI, and no previous check run are required.
+**Prerequisite:** run [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests) first. The panel renders the **spec manifest** that command writes, so what you see is exactly what your generated tests assert. No org, no CLI and no previous check run are required — and if you have not generated yet, the panel offers a metadata preview instead (see below).
 
 The command:
 
-1. Reads your local source metadata and builds the dependency structure: object → controlling field → controlling value → the values it unlocks, and the values it must *not* unlock where negative specs exist
+1. Reads `treecipe/PicklistDependencySpecs/manifest.json` — the machine-readable description of the specs that were generated — and builds the dependency structure from it: object → controlling field → controlling value → the values it unlocks, and the values it must *not* unlock. Your source metadata is **not** re-walked, so a panel row always corresponds to a spec method that exists
 2. Renders chained dependencies as a connected graph — a field controlled by another dependent picklist is nested under it rather than repeated as a flat row
-3. Finds the most recent run under `treecipe/PicklistDependencyResults/` and overlays it, marking each combination passed, failed, or not checked
-4. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination
-5. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`
-6. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
+3. Names the generated class and spec method asserting each field, and the test method covering each object
+4. Finds the most recent run under `treecipe/PicklistDependencyResults/` and overlays it, marking each combination passed, failed, or not checked
+5. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination, attributed by the manifest's stable combination keys
+6. Lists any field the generator **skipped** as its own row marked *not asserted*, with the reason — rather than leaving it out, where it would be indistinguishable from a field with no dependency
+7. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`
+8. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
 
 Notes:
 
@@ -313,12 +341,16 @@ Notes:
 * It follows your active color theme, light, dark or high contrast
 * **No check has been run yet?** The structure still renders in full, marked "not checked" throughout, with the directory it looked in named
 * **A corrupt `results.json`?** You get a readable message and the structure without the overlay, not a blank panel
+* **Not generated yet?** You get a message naming the generate command, plus a **"Preview from metadata (not generated)"** action. The preview scans your source metadata exactly as previous versions did, and banners every row as asserted by nothing — because nothing has been generated for it, so no check can have run against it. No row in a preview claims a spec method
+* **A corrupt `manifest.json`?** The parse failure is reported and the same preview is offered — never a blank panel
+* **Metadata changed since you generated?** The panel says so in a banner naming the generate command, and keeps showing what the generated Apex actually asserts. It never silently re-derives the structure from metadata your tests have not been regenerated against
 * **No dependent picklists at all?** You get an empty state naming the objects directory that was scanned
 * A combination is only shown as passed when the loaded run actually covered it. If **any** of an object's reported failures cannot be tied back to a specific combination, that text is surfaced on the object and its combinations stay "not checked" rather than being reported green
 * Where a combination did fail, **every** failure reported against it is shown — the validator raises `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT` independently, and both matter
 * **Record-type-scoped rows never go green, by design.** They are generated from source metadata and deployed with the contract, but Apex describe returns picklist values without record type filtering, so the check cannot verify them — see the record type section under [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests). Each scope says so beside its own rows rather than relying on a note elsewhere in the panel, and a value the record type does not assign is shown as *not available* rather than as unlocking nothing, which is a different claim
 * Scoped combinations are counted separately in the header (`N combination(s) + M record-type-scoped`) so a green run is never read as covering more than it did
-* **Known limitation:** results are recorded per object with no fingerprint of the specs they were generated from, so a combination added to `valueSettings` *after* the last check run shows as passed. Re-run the check after changing dependency metadata
+* **Commit `manifest.json`** alongside your generated `.cls` files. It is the record of what was generated, and reviewing it as a diff shows dependency changes in the same commit as the Apex that asserts them
+* Results are still recorded per object rather than per combination, so a combination added to `valueSettings` *after* the last check run shows as not checked rather than passed once you regenerate. The staleness banner is what tells you the two are out of step — re-run the check after regenerating
 
 ---
 

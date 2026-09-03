@@ -5,9 +5,17 @@ import {
 } from "../PicklistDependencyExplorerService";
 
 import {
+    IPicklistDependencyCollectionResult,
     IPicklistDependencySpecDetail,
-    IRecordTypePicklistDependencySpecDetail
+    IPicklistDependencySkippedField,
+    IRecordTypePicklistDependencySpecDetail,
+    PicklistDependencyTestService
 } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+
+import {
+    IPicklistDependencyManifestLoad,
+    PicklistDependencyManifestService
+} from "../../PicklistDependencyManifestService/PicklistDependencyManifestService";
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -775,6 +783,7 @@ describe('PicklistDependencyExplorerService', () => {
             const forbiddenValues = PicklistDependencyExplorerService.buildForbiddenValues(
                 ['Cleveland', 'Toronto'],
                 {
+                    combinationKey: 'Chain_Example__c.City__c @ Texas',
                     controllingValue: 'Texas',
                     allowedValues: [],
                     hasForbiddenAssertion: true,
@@ -793,6 +802,7 @@ describe('PicklistDependencyExplorerService', () => {
             const forbiddenValues = PicklistDependencyExplorerService.buildForbiddenValues(
                 ['Cleveland', 'Toronto'],
                 {
+                    combinationKey: 'Chain_Example__c.City__c @ Ohio',
                     controllingValue: 'Ohio',
                     allowedValues: [],
                     hasForbiddenAssertion: true,
@@ -1568,6 +1578,432 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(actualWebviewHtml).not.toContain('<script>alert(1)</script>');
             expect(actualWebviewHtml).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+
+        });
+
+    });
+
+    /*
+        The manifest-driven path: the panel renders the specs that were generated, not a fresh
+        derivation from source metadata. Every test here builds its manifest through the real
+        buildManifest so the shapes under test are the ones the generate command writes.
+    */
+    describe('buildExplorerViewModelByManifest', () => {
+
+        const manifestFilePath = '/workspace/treecipe/PicklistDependencySpecs/manifest.json';
+
+        function buildCollectionResult(overrides: Partial<IPicklistDependencyCollectionResult> = {}): IPicklistDependencyCollectionResult {
+
+            return {
+                specDetails: buildChainExampleSpecDetails(),
+                recordTypeSpecDetails: [],
+                skippedFieldWarnings: [],
+                skippedFields: [],
+                ...overrides
+            };
+
+        }
+
+        function buildManifestLoad(collectionResult: IPicklistDependencyCollectionResult = buildCollectionResult()): IPicklistDependencyManifestLoad {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                collectionResult,
+                mockObjectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '3.5.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            return { state: 'loaded', message: '', manifest, manifestFilePath };
+
+        }
+
+        const freshResult = { freshness: 'fresh' as const, message: '' };
+
+        it('marks the model as manifest sourced, so the panel can promise what it renders is asserted', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+            );
+
+            expect(actualViewModel.modelSource).toBe('manifest');
+            expect(actualViewModel.manifestFilePath).toBe(manifestFilePath);
+            expect(actualViewModel.generatedAt).toBe('2026-09-03T12:00:00Z');
+            expect(actualViewModel.generatorVersion).toBe('3.5.0');
+
+        });
+
+        it('renders exactly the objects and fields the manifest declares', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+            );
+
+            expect(actualViewModel.objects).toHaveLength(1);
+            expect(actualViewModel.objects[0].objectApiName).toBe('Chain_Example__c');
+            expect(actualViewModel.dependentFieldCount).toBe(2);
+
+        });
+
+        it('names the generated class and spec method on every node', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+            );
+
+            const objectViewModel = actualViewModel.objects[0];
+            expect(objectViewModel.generatedClassName)
+                .toBe(PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain_Example__c'));
+            expect(objectViewModel.testMethodName)
+                .toBe(PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c'));
+
+            const allNodes = PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes);
+            expect(allNodes.length).toBeGreaterThan(0);
+
+            allNodes.forEach(node => {
+                expect(node.specMethodName).not.toBe('');
+                expect(node.generatedClassName).toBe(objectViewModel.generatedClassName);
+            });
+
+        });
+
+        it('gives every combination the stable key the manifest recorded for it', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+            );
+
+            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .find(node => node.fieldApiName === 'State__c');
+
+            expect(stateNode.combinations.map(combination => combination.combinationKey)).toEqual([
+                'Chain_Example__c.State__c @ USA',
+                'Chain_Example__c.State__c @ Canada'
+            ]);
+
+        });
+
+        it('keeps a record type scoped combination key distinct from the field level one', () => {
+
+            const manifestLoad = buildManifestLoad(buildCollectionResult({
+                recordTypeSpecDetails: buildChainExampleRecordTypeSpecDetails()
+            }));
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                manifestLoad, mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+            );
+
+            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .find(node => node.fieldApiName === 'State__c');
+
+            const scopedKeys = stateNode.recordTypeScopes[0].combinations.map(combination => combination.combinationKey);
+
+            scopedKeys.forEach(scopedKey => expect(scopedKey).toContain('['));
+            expect(scopedKeys).not.toContain('Chain_Example__c.State__c @ USA');
+
+        });
+
+        it('renders a skipped field as its own row under its object rather than omitting it', () => {
+
+            const skippedField: IPicklistDependencySkippedField = {
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'Unspecced__c',
+                warning: 'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Unspecced__c"'
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(buildCollectionResult({ skippedFields: [skippedField], skippedFieldWarnings: [skippedField.warning] })),
+                mockObjectsDirectoryPath,
+                buildNoResultsLoad(),
+                freshResult
+            );
+
+            const objectViewModel = actualViewModel.objects[0];
+            expect(objectViewModel.skippedFields).toHaveLength(1);
+            expect(objectViewModel.skippedFields[0].fieldApiName).toBe('Unspecced__c');
+            expect(objectViewModel.skippedFields[0].warning).toContain('valueSettings');
+
+        });
+
+        /*
+            An object whose every dependent picklist was skipped produces no specs at all. Dropping
+            it would render an empty panel that reads as "this object has no dependent picklists",
+            which is the opposite of what happened.
+        */
+        it('given an object with only skips and no specs, still renders the object', () => {
+
+            const skippedField: IPicklistDependencySkippedField = {
+                objectApiName: 'Only_Skips__c',
+                fieldApiName: 'Broken__c',
+                warning: 'No "valueSettings" markup found for dependent picklist "Only_Skips__c.Broken__c"'
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(buildCollectionResult({ skippedFields: [skippedField], skippedFieldWarnings: [skippedField.warning] })),
+                mockObjectsDirectoryPath,
+                buildNoResultsLoad(),
+                freshResult
+            );
+
+            const skipOnlyObject = actualViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Only_Skips__c');
+
+            expect(skipOnlyObject).toBeDefined();
+            expect(skipOnlyObject.rootNodes).toBeEmpty();
+            expect(skipOnlyObject.skippedFields).toHaveLength(1);
+
+        });
+
+        it('carries the staleness verdict and its message onto the model', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(),
+                mockObjectsDirectoryPath,
+                buildNoResultsLoad(),
+                { freshness: 'staleMetadata', message: 'metadata changed since generation' }
+            );
+
+            expect(actualViewModel.manifestFreshness).toBe('staleMetadata');
+            expect(actualViewModel.manifestFreshnessMessage).toBe('metadata changed since generation');
+
+        });
+
+        /*
+            The manifest is a json file on disk and objectsDirectoryPath is the only string in it
+            that reaches the filesystem -- every node's sourceFilePath is built under it, and those
+            become the allow-list the reveal handler trusts. A manifest committed into a cloned repo
+            must not be able to seed that list with a path outside the workspace.
+        */
+        it('given a manifest naming an objects directory outside the workspace, falls back to the configured one', () => {
+
+            const manifestLoad = buildManifestLoad();
+            manifestLoad.manifest.objectsDirectoryPath = '/etc/somewhere-else/objects';
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                manifestLoad, mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult, '/workspace'
+            );
+
+            expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
+
+            PicklistDependencyExplorerService.collectSourceFilePaths(actualViewModel).forEach(sourceFilePath => {
+                expect(sourceFilePath.startsWith('/etc')).toBe(false);
+            });
+
+        });
+
+        it('given a manifest naming an objects directory inside the workspace, renders paths under it', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult, '/workspace'
+            );
+
+            expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
+
+        });
+
+        /*
+            The test method the run outcome is looked up by comes from the manifest rather than being
+            re-derived. Re-deriving it is the second derivation this whole artifact exists to remove,
+            and the two inputs differ the moment an entry is dropped at the parse boundary.
+        */
+        it('looks up the run outcome by the test method name the manifest recorded', () => {
+
+            const manifestLoad = buildManifestLoad();
+            manifestLoad.manifest.objects[0].testMethodName = 'aDeliberatelyDifferentTestMethodName';
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: true,
+                    failureCount: 0,
+                    methodsRun: 1,
+                    methodOutcomes: [{ methodName: 'aDeliberatelyDifferentTestMethodName', passed: true }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                manifestLoad, mockObjectsDirectoryPath, resultsLoad, freshResult
+            );
+
+            expect(actualViewModel.objects[0].testMethodName).toBe('aDeliberatelyDifferentTestMethodName');
+
+            // THE RUN WAS ACTUALLY MATCHED, RATHER THAN THE OBJECT FALLING BACK TO "NOT CHECKED"
+            expect(actualViewModel.objects[0].status).toBe('passed');
+
+        });
+
+        it('given a manifest load with no manifest, refuses rather than rendering an empty panel', () => {
+
+            expect(() => PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                { state: 'unreadableManifest', message: 'broken' },
+                mockObjectsDirectoryPath,
+                buildNoResultsLoad(),
+                freshResult
+            )).toThrow('carries no manifest');
+
+        });
+
+        /*
+            The three-state guarantee, held through the manifest path. A failure that names a
+            combination the manifest does not declare must not be forced onto a row that looks
+            similar -- the object goes to "unknown" and the text is surfaced unattributed.
+        */
+        it('given a failure naming a combination the manifest never declared, holds the object at unknown', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: testMethodName,
+                        passed: false,
+                        message: 'MISSING_VALUES — Chain_Example__c.Nonexistent__c @ Mars: nothing here'
+                    }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, resultsLoad, freshResult
+            );
+
+            const objectViewModel = actualViewModel.objects[0];
+
+            expect(objectViewModel.unattributedFailureMessages).not.toBeEmpty();
+
+            PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+                node.combinations.forEach(combination => expect(combination.status).toBe('unknown'));
+            });
+
+        });
+
+        it('given a failure naming a combination the manifest DOES declare, attributes it to that row', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: testMethodName,
+                        passed: false,
+                        message: 'MISSING_VALUES — Chain_Example__c.State__c @ USA: Ohio is no longer available'
+                    }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(), mockObjectsDirectoryPath, resultsLoad, freshResult
+            );
+
+            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .find(node => node.fieldApiName === 'State__c');
+
+            const usaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+
+            expect(usaCombination.status).toBe('failed');
+            expect(usaCombination.combinationKey).toBe('Chain_Example__c.State__c @ USA');
+            expect(actualViewModel.objects[0].unattributedFailureMessages).toBeEmpty();
+
+        });
+
+    });
+
+    describe('metadata preview context', () => {
+
+        it('marks a model built without a manifest as a preview, with no generated names on it', () => {
+
+            const previewContext = PicklistDependencyExplorerService.buildMetadataPreviewContext();
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                buildNoResultsLoad(),
+                [],
+                previewContext
+            );
+
+            expect(actualViewModel.modelSource).toBe('metadataPreview');
+
+            PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes).forEach(node => {
+                expect(node.specMethodName).toBe('');
+                expect(node.generatedClassName).toBe('');
+            });
+
+        });
+
+        /*
+            A skipped field's warning is built from metadata the extension does not control -- it
+            embeds the object and field api names straight from the XML -- so it reaches the panel
+            on the same footing as a picklist value, and goes through the same escaping.
+        */
+        it('given a skipped field warning carrying markup, escapes it into the panel', () => {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                {
+                    specDetails: buildChainExampleSpecDetails(),
+                    recordTypeSpecDetails: [],
+                    skippedFieldWarnings: ['<script>alert(1)</script>'],
+                    skippedFields: [{
+                        objectApiName: 'Chain_Example__c',
+                        fieldApiName: 'Broken__c',
+                        warning: '<script>alert(1)</script>'
+                    }]
+                },
+                mockObjectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '3.5.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
+                mockObjectsDirectoryPath,
+                buildNoResultsLoad(),
+                { freshness: 'fresh', message: '' }
+            );
+
+            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+
+            expect(actualWebviewHtml).not.toContain('<script>alert(1)</script>');
+
+        });
+
+        it('renders the preview banner saying nothing asserts the rows below', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                buildNoResultsLoad(),
+                [],
+                PicklistDependencyExplorerService.buildMetadataPreviewContext()
+            );
+
+            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+
+            expect(actualWebviewHtml).toContain('Preview from metadata');
+            expect(actualWebviewHtml).toContain('nothing asserts any combination below');
 
         });
 

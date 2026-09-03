@@ -1,8 +1,18 @@
 import {
+    IPicklistDependencySkippedField,
     IPicklistDependencySpecDetail,
     IRecordTypePicklistDependencySpecDetail,
     PicklistDependencyTestService
 } from '../PicklistDependencyTestService/PicklistDependencyTestService';
+
+import {
+    IPicklistDependencyManifest,
+    IPicklistDependencyManifestFreshnessResult,
+    IPicklistDependencyManifestLoad,
+    PicklistDependencyManifestLoadState,
+    PicklistDependencyManifestFreshness,
+    PicklistDependencyManifestService
+} from '../PicklistDependencyManifestService/PicklistDependencyManifestService';
 
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -22,12 +32,26 @@ export type PicklistDependencyCheckStatus = 'passed' | 'failed' | 'unknown';
 */
 export type PicklistDependencyRunLoadState = 'loaded' | 'noResultsFound' | 'unreadableResults';
 
+/*
+    Where the structure on screen came from. Kept as an explicit field rather than inferred from the
+    presence of a manifest, because the panel's central promise -- that what is rendered is what the
+    generated tests assert -- is only true for one of these two, and a reader has to be told which.
+*/
+export type PicklistDependencyExplorerModelSource = 'manifest' | 'metadataPreview';
+
 export interface IPicklistDependencyFailureDetailViewModel {
     kind: string;
     message: string;
 }
 
 export interface IPicklistDependencyCombinationViewModel {
+    /*
+        The stable identity this combination is attributed by, from the spec manifest. Failure
+        attribution resolves against these rather than against freshly re-derived metadata, so a
+        failure either lands on the combination the generated spec declared or is surfaced as
+        unattributed -- there is no path by which it lands on a row it is not about.
+    */
+    combinationKey: string;
     controllingValue: string;
     allowedValues: string[];
     /*
@@ -56,6 +80,8 @@ export interface IPicklistDependencyCombinationViewModel {
 */
 export interface IPicklistDependencyRecordTypeScopeViewModel {
     recordTypeDeveloperName: string;
+    // THE GENERATED APEX METHOD THAT RETURNS THIS SCOPE'S SPEC, EMPTY WHERE THE MODEL DID NOT COME FROM A MANIFEST
+    specMethodName: string;
     // WHAT THE RECORD TYPE ASSIGNS TO THE DEPENDENT FIELD -- THE UNIVERSE ITS FORBIDDEN SETS COMPLEMENT AGAINST
     declaredValues: string[];
     combinations: IPicklistDependencyCombinationViewModel[];
@@ -67,6 +93,13 @@ export interface IPicklistDependencyNodeViewModel {
     objectApiName: string;
     fieldApiName: string;
     controllingFieldApiName: string;
+    /*
+        The generated class and method that assert this field, so every panel node names the code
+        behind it. Empty when the model was built as a metadata preview rather than from a manifest,
+        which is exactly the case where no generated code asserts the node at all.
+    */
+    generatedClassName: string;
+    specMethodName: string;
     // ABSOLUTE PATH TO THE ".field-meta.xml" THAT GENERATED THIS NODE, FOR THE REVEAL ACTION
     sourceFilePath: string;
     // EVERY VALUE THE DEPENDENT FIELD DECLARES. THE UNIVERSE EACH COMBINATION'S FORBIDDEN SET IS THE COMPLEMENT AGAINST.
@@ -80,6 +113,17 @@ export interface IPicklistDependencyNodeViewModel {
     fieldLevelFailures: IPicklistDependencyFailureDetailViewModel[];
     // ONE PER RECORD TYPE THAT NARROWS THIS FIELD, EMPTY WHERE THE OBJECT DECLARES NO RECORD TYPES
     recordTypeScopes: IPicklistDependencyRecordTypeScopeViewModel[];
+}
+
+/*
+    A dependent picklist the generator did not spec, with the reason in the words the generate
+    command reported. Its status is neither passed nor failed nor unknown -- nothing asserts it, and
+    saying "unknown" would imply a spec exists whose result has not been seen.
+*/
+export interface IPicklistDependencySkippedFieldViewModel {
+    fieldApiName: string;
+    recordTypeDeveloperName: string;
+    warning: string;
 }
 
 export interface IPicklistDependencyObjectViewModel {
@@ -102,6 +146,16 @@ export interface IPicklistDependencyObjectViewModel {
         the loaded run is distinguishable from one that ran and passed.
     */
     testMethodName: string;
+    // THE GENERATED PER-OBJECT CLASS CARRYING THIS OBJECT'S SPECS, EMPTY IN A METADATA PREVIEW
+    generatedClassName: string;
+    generatedClassFilePath: string;
+    /*
+        Dependent picklists on this object that the generator declined to spec. Rendered as rows in
+        their own right rather than omitted: a field absent from both the Apex and the panel is
+        indistinguishable from one that has no dependency at all, which is the more dangerous of the
+        two readings.
+    */
+    skippedFields: IPicklistDependencySkippedFieldViewModel[];
     /*
         Failure text from the run that could NOT be tied to a combination in this object -- either
         the message named no combination at all, or it named one this metadata no longer describes.
@@ -130,6 +184,76 @@ export interface IPicklistDependencyExplorerViewModel {
     // WHY A RUN COULD NOT BE LOADED, IN WORDS A READER CAN ACT ON
     runLoadMessage: string;
     skippedFieldWarnings: string[];
+    /*
+        How this model was sourced. "manifest" is the honest rendering -- these are the specs that
+        were generated and are what the tests assert. "metadataPreview" is the explicit opt-in for a
+        workspace that has never generated, and every row it produces is un-asserted by definition:
+        nothing has been emitted for it, so nothing can have run against it.
+    */
+    modelSource: PicklistDependencyExplorerModelSource;
+    manifestLoadState: PicklistDependencyManifestLoadState;
+    // WHY NO MANIFEST COULD BE READ, IN WORDS NAMING THE COMMAND THAT WRITES ONE
+    manifestLoadMessage: string;
+    manifestFreshness: PicklistDependencyManifestFreshness;
+    // THE STALENESS BANNER, EMPTY WHEN THE MANIFEST STILL DESCRIBES THE METADATA ON DISK
+    manifestFreshnessMessage: string;
+    manifestFilePath: string;
+    generatedAt: string;
+    generatorVersion: string;
+    aggregatorClassName: string;
+    specsTestClassName: string;
+    classesDirectoryPath: string;
+}
+
+/*
+    The generated Apex names for one object, so a node can say which class and method assert it.
+
+    Passed in rather than recomputed: the manifest already recorded the names the generator used,
+    and deriving them a second time here is how the panel and the Apex came to disagree in the
+    first place. A model built without them renders empty names, which is the correct answer for a
+    metadata preview -- no generated code asserts it.
+*/
+export interface IPicklistDependencyGeneratedNames {
+    generatedClassName: string;
+    specMethodNamesByFieldKey: Record<string, string>;
+}
+
+export const EMPTY_GENERATED_NAMES: IPicklistDependencyGeneratedNames = {
+    generatedClassName: '',
+    specMethodNamesByFieldKey: {}
+};
+
+/*
+    Everything about a view model that comes from the spec manifest rather than from the dependency
+    structure itself. Defaulted so a metadata preview -- the explicit "not generated" path -- reads
+    as exactly that without every caller having to spell it out.
+*/
+export interface IPicklistDependencyExplorerContext {
+    modelSource: PicklistDependencyExplorerModelSource;
+    manifestLoadState: PicklistDependencyManifestLoadState;
+    manifestLoadMessage: string;
+    manifestFreshness: PicklistDependencyManifestFreshness;
+    manifestFreshnessMessage: string;
+    manifestFilePath: string;
+    generatedAt: string;
+    generatorVersion: string;
+    aggregatorClassName: string;
+    specsTestClassName: string;
+    classesDirectoryPath: string;
+    generatedNamesByObjectApiName: Record<string, IPicklistDependencyGeneratedNames>;
+    generatedClassFilePathsByObjectApiName: Record<string, string>;
+    /*
+        The generated test method per object, as the MANIFEST recorded it.
+
+        Read rather than re-derived, because this name is what the run outcome is looked up by: a
+        re-derivation would be a second derivation of exactly the kind this artifact exists to
+        remove, and the two inputs are not identical -- the manifest's name was computed from the
+        pre-serialization object set, and a re-derivation would use the set rebuilt through the
+        parse boundary. Those differ the moment an entry is dropped on load, and a shifted
+        collision suffix would attribute one object's pass or fail to another.
+    */
+    testMethodNamesByObjectApiName: Record<string, string>;
+    skippedFields: IPicklistDependencySkippedField[];
 }
 
 export interface IParsedPicklistDependencyFailure {
@@ -486,6 +610,17 @@ export class PicklistDependencyExplorerService {
     static buildCombinationViewModels(specDetail: IPicklistDependencySpecDetail): IPicklistDependencyCombinationViewModel[] {
 
         return specDetail.expectations.map(expectation => ({
+            /*
+                Built by the manifest service rather than formatted here, so the key a combination
+                carries is the same string the manifest recorded for it. Two builders producing
+                "the same" key is precisely the kind of parallel derivation this feature removes.
+            */
+            combinationKey: PicklistDependencyManifestService.buildCombinationKey(
+                specDetail.objectApiName,
+                specDetail.fieldApiName,
+                expectation.controllingValue,
+                specDetail.recordTypeDeveloperName
+            ),
             controllingValue: expectation.controllingValue,
             allowedValues: [...expectation.dependentValues],
             /*
@@ -543,7 +678,8 @@ export class PicklistDependencyExplorerService {
     static buildNodesByObjectSpecDetails(objectsDirectoryPath: string,
                                             objectApiName: string,
                                             objectSpecDetails: IPicklistDependencySpecDetail[],
-                                            objectRecordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): IPicklistDependencyNodeViewModel[] {
+                                            objectRecordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
+                                            generatedNames: IPicklistDependencyGeneratedNames = EMPTY_GENERATED_NAMES): IPicklistDependencyNodeViewModel[] {
 
         /*
             Grouped by field so a node can pick up its own scopes as it is built. Sorted by developer
@@ -600,6 +736,10 @@ export class PicklistDependencyExplorerService {
                 objectApiName: specDetail.objectApiName,
                 fieldApiName: specDetail.fieldApiName,
                 controllingFieldApiName: specDetail.controllingFieldApiName,
+                generatedClassName: generatedNames.generatedClassName,
+                specMethodName: generatedNames.specMethodNamesByFieldKey[
+                    PicklistDependencyManifestService.buildFieldKey(specDetail.objectApiName, specDetail.fieldApiName)
+                ] ?? '',
                 sourceFilePath: this.buildFieldSourceFilePath(objectsDirectoryPath, specDetail.objectApiName, specDetail.fieldApiName),
                 declaredValues: this.buildDeclaredValuesByExpectations(specDetail),
                 combinations: this.buildCombinationViewModels(specDetail),
@@ -607,7 +747,10 @@ export class PicklistDependencyExplorerService {
                 status: 'unknown',
                 failureCount: 0,
                 fieldLevelFailures: [],
-                recordTypeScopes: this.buildRecordTypeScopeViewModels(recordTypeSpecDetailsByFieldApiName[specDetail.fieldApiName] || [])
+                recordTypeScopes: this.buildRecordTypeScopeViewModels(
+                    recordTypeSpecDetailsByFieldApiName[specDetail.fieldApiName] || [],
+                    generatedNames
+                )
             };
 
         };
@@ -661,12 +804,20 @@ export class PicklistDependencyExplorerService {
         Status stays "unknown" rather than inheriting the field's. Nothing shipped with the framework
         can verify a scoped combination, so a green field-level run says nothing about these.
     */
-    static buildRecordTypeScopeViewModels(recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[]): IPicklistDependencyRecordTypeScopeViewModel[] {
+    static buildRecordTypeScopeViewModels(recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[],
+                                            generatedNames: IPicklistDependencyGeneratedNames = EMPTY_GENERATED_NAMES): IPicklistDependencyRecordTypeScopeViewModel[] {
 
         return [...recordTypeSpecDetails]
             .sort((firstSpecDetail, secondSpecDetail) => firstSpecDetail.recordTypeDeveloperName.localeCompare(secondSpecDetail.recordTypeDeveloperName))
             .map(recordTypeSpecDetail => ({
                 recordTypeDeveloperName: recordTypeSpecDetail.recordTypeDeveloperName,
+                specMethodName: generatedNames.specMethodNamesByFieldKey[
+                    PicklistDependencyManifestService.buildFieldKey(
+                        recordTypeSpecDetail.objectApiName,
+                        recordTypeSpecDetail.fieldApiName,
+                        recordTypeSpecDetail.recordTypeDeveloperName
+                    )
+                ] ?? '',
                 declaredValues: this.buildDeclaredValuesByExpectations(recordTypeSpecDetail),
                 combinations: this.buildCombinationViewModels(recordTypeSpecDetail),
                 status: 'unknown' as PicklistDependencyCheckStatus,
@@ -915,10 +1066,25 @@ export class PicklistDependencyExplorerService {
                                     specDetails: IPicklistDependencySpecDetail[],
                                     skippedFieldWarnings: string[],
                                     resultsLoad: IPicklistDependencyResultsLoad,
-                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): IPicklistDependencyExplorerViewModel {
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
+                                    explorerContext: IPicklistDependencyExplorerContext = this.buildMetadataPreviewContext()): IPicklistDependencyExplorerViewModel {
 
-        const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(specDetails);
-        const testMethodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
+        /*
+            The UNION of both kinds, mirroring the object set the manifest and the Apex writer use.
+            An object that produced only record-type-scoped specs still has a generated class and a
+            manifest entry, so it has to reach the panel rather than being dropped for having no
+            field-level spec to key off.
+        */
+        const distinctObjectApiNames = PicklistDependencyTestService.getDistinctObjectApiNames(
+            [...specDetails, ...recordTypeSpecDetails]
+        );
+
+        /*
+            Derived ONLY as the fallback for a metadata preview, which has no manifest to read from
+            and no generated test class for the name to refer to either. Whenever a manifest is the
+            source, the name it recorded wins -- see IPicklistDependencyExplorerContext.
+        */
+        const derivedTestMethodNamesByObjectApiName = PicklistDependencyTestService.buildTestMethodNamesByObjectApiName(distinctObjectApiNames);
         const specDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(specDetails);
 
         /*
@@ -927,6 +1093,8 @@ export class PicklistDependencyExplorerService {
             object with no field-level specs would simply never be read, rather than misplacing a row.
         */
         const recordTypeSpecDetailsByObjectApiName = this.groupSpecDetailsByObjectApiName(recordTypeSpecDetails) as Record<string, IRecordTypePicklistDependencySpecDetail[]>;
+
+        const skippedFieldViewModelsByObjectApiName = this.groupSkippedFieldViewModelsByObjectApiName(explorerContext.skippedFields);
 
         let methodOutcomesByMethodName: Record<string, IPicklistDependencyResultsMethodOutcome> = {};
         ( resultsLoad.results?.methodOutcomes || [] ).forEach(methodOutcome => {
@@ -937,9 +1105,18 @@ export class PicklistDependencyExplorerService {
 
             const objectSpecDetails = specDetailsByObjectApiName[objectApiName] || [];
             const objectRecordTypeSpecDetails = recordTypeSpecDetailsByObjectApiName[objectApiName] || [];
-            const rootNodes = this.buildNodesByObjectSpecDetails(objectsDirectoryPath, objectApiName, objectSpecDetails, objectRecordTypeSpecDetails);
+            const generatedNames = explorerContext.generatedNamesByObjectApiName[objectApiName] ?? EMPTY_GENERATED_NAMES;
 
-            const testMethodName = testMethodNamesByObjectApiName[objectApiName];
+            const rootNodes = this.buildNodesByObjectSpecDetails(
+                objectsDirectoryPath,
+                objectApiName,
+                objectSpecDetails,
+                objectRecordTypeSpecDetails,
+                generatedNames
+            );
+
+            const testMethodName = explorerContext.testMethodNamesByObjectApiName[objectApiName]
+                                        ?? derivedTestMethodNamesByObjectApiName[objectApiName];
             const methodOutcome = methodOutcomesByMethodName[testMethodName];
 
             const parsedFailures = methodOutcome && !methodOutcome.passed
@@ -986,10 +1163,39 @@ export class PicklistDependencyExplorerService {
                 status: objectStatus,
                 failureCount: attributedFailureCount,
                 testMethodName: testMethodName,
+                generatedClassName: generatedNames.generatedClassName,
+                generatedClassFilePath: explorerContext.generatedClassFilePathsByObjectApiName[objectApiName] ?? '',
+                skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName] ?? [],
                 unattributedFailureMessages: unattributedFailureMessages
             };
 
         });
+
+        /*
+            An object that produced NO specs at all but did produce a skip is still an object the
+            reader needs to see -- it is precisely the case where the panel would otherwise render
+            nothing and imply the object has no dependent picklists.
+        */
+        const objectApiNamesWithSkipsOnly = Object.keys(skippedFieldViewModelsByObjectApiName)
+            .filter(objectApiName => !distinctObjectApiNames.includes(objectApiName))
+            .sort();
+
+        const skipOnlyObjects: IPicklistDependencyObjectViewModel[] = objectApiNamesWithSkipsOnly.map(objectApiName => ({
+            objectApiName: objectApiName,
+            rootNodes: [],
+            dependentFieldCount: 0,
+            combinationCount: 0,
+            recordTypeCombinationCount: 0,
+            status: 'unknown' as PicklistDependencyCheckStatus,
+            failureCount: 0,
+            testMethodName: '',
+            generatedClassName: '',
+            generatedClassFilePath: '',
+            skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName],
+            unattributedFailureMessages: []
+        }));
+
+        const allObjects = objects.concat(skipOnlyObjects);
 
         const runSummary: IPicklistDependencyRunSummary | undefined = ( resultsLoad.state === 'loaded' && resultsLoad.results )
             ? {
@@ -1004,18 +1210,219 @@ export class PicklistDependencyExplorerService {
 
         return {
             scannedObjectsDirectoryPath: objectsDirectoryPath,
-            objects: objects,
-            dependentFieldCount: objects.reduce((fieldCount, objectViewModel) => fieldCount + objectViewModel.dependentFieldCount, 0),
-            combinationCount: objects.reduce((combinationCount, objectViewModel) => combinationCount + objectViewModel.combinationCount, 0),
-            recordTypeCombinationCount: objects.reduce(
+            objects: allObjects,
+            dependentFieldCount: allObjects.reduce((fieldCount, objectViewModel) => fieldCount + objectViewModel.dependentFieldCount, 0),
+            combinationCount: allObjects.reduce((combinationCount, objectViewModel) => combinationCount + objectViewModel.combinationCount, 0),
+            recordTypeCombinationCount: allObjects.reduce(
                 (recordTypeCombinationCount, objectViewModel) => recordTypeCombinationCount + objectViewModel.recordTypeCombinationCount,
                 0
             ),
             runLoadState: resultsLoad.state,
             runSummary: runSummary,
             runLoadMessage: resultsLoad.message,
-            skippedFieldWarnings: [...skippedFieldWarnings]
+            skippedFieldWarnings: [...skippedFieldWarnings],
+            modelSource: explorerContext.modelSource,
+            manifestLoadState: explorerContext.manifestLoadState,
+            manifestLoadMessage: explorerContext.manifestLoadMessage,
+            manifestFreshness: explorerContext.manifestFreshness,
+            manifestFreshnessMessage: explorerContext.manifestFreshnessMessage,
+            manifestFilePath: explorerContext.manifestFilePath,
+            generatedAt: explorerContext.generatedAt,
+            generatorVersion: explorerContext.generatorVersion,
+            aggregatorClassName: explorerContext.aggregatorClassName,
+            specsTestClassName: explorerContext.specsTestClassName,
+            classesDirectoryPath: explorerContext.classesDirectoryPath
         };
+
+    }
+
+    /*
+        The context for a model built WITHOUT a manifest.
+
+        Every generated name is empty and the source is "metadataPreview", which is the truthful
+        description of that model: the structure is real, and nothing whatsoever asserts it.
+    */
+    static buildMetadataPreviewContext(manifestLoad?: IPicklistDependencyManifestLoad): IPicklistDependencyExplorerContext {
+
+        return {
+            modelSource: 'metadataPreview',
+            manifestLoadState: manifestLoad?.state ?? 'noManifestFound',
+            manifestLoadMessage: manifestLoad?.message ?? '',
+            manifestFreshness: 'fresh',
+            manifestFreshnessMessage: '',
+            manifestFilePath: manifestLoad?.manifestFilePath ?? '',
+            generatedAt: '',
+            generatorVersion: '',
+            aggregatorClassName: '',
+            specsTestClassName: '',
+            classesDirectoryPath: '',
+            generatedNamesByObjectApiName: {},
+            generatedClassFilePathsByObjectApiName: {},
+            // A PREVIEW HAS NO GENERATED TEST CLASS, SO THESE ARE DERIVED RATHER THAN READ -- SEE buildExplorerViewModel
+            testMethodNamesByObjectApiName: {},
+            skippedFields: []
+        };
+
+    }
+
+    static buildContextByManifest(manifest: IPicklistDependencyManifest,
+                                    manifestLoad: IPicklistDependencyManifestLoad,
+                                    freshnessResult: IPicklistDependencyManifestFreshnessResult): IPicklistDependencyExplorerContext {
+
+        let generatedNamesByObjectApiName: Record<string, IPicklistDependencyGeneratedNames> = {};
+        let generatedClassFilePathsByObjectApiName: Record<string, string> = {};
+        let testMethodNamesByObjectApiName: Record<string, string> = {};
+
+        manifest.objects.forEach(manifestObject => {
+
+            let specMethodNamesByFieldKey: Record<string, string> = {};
+
+            manifestObject.fields.forEach(manifestField => {
+                const fieldKey = PicklistDependencyManifestService.buildFieldKey(manifestObject.objectApiName, manifestField.fieldApiName);
+                specMethodNamesByFieldKey[fieldKey] = manifestField.specMethodName;
+            });
+
+            manifestObject.recordTypeScopedFields.forEach(manifestRecordTypeScopedField => {
+                const fieldKey = PicklistDependencyManifestService.buildFieldKey(
+                    manifestObject.objectApiName,
+                    manifestRecordTypeScopedField.fieldApiName,
+                    manifestRecordTypeScopedField.recordTypeDeveloperName
+                );
+                specMethodNamesByFieldKey[fieldKey] = manifestRecordTypeScopedField.specMethodName;
+            });
+
+            generatedNamesByObjectApiName[manifestObject.objectApiName] = {
+                generatedClassName: manifestObject.generatedClassName,
+                specMethodNamesByFieldKey: specMethodNamesByFieldKey
+            };
+
+            generatedClassFilePathsByObjectApiName[manifestObject.objectApiName] = manifestObject.generatedClassFilePath;
+            testMethodNamesByObjectApiName[manifestObject.objectApiName] = manifestObject.testMethodName;
+
+        });
+
+        return {
+            modelSource: 'manifest',
+            manifestLoadState: manifestLoad.state,
+            manifestLoadMessage: manifestLoad.message,
+            manifestFreshness: freshnessResult.freshness,
+            manifestFreshnessMessage: freshnessResult.message,
+            manifestFilePath: manifestLoad.manifestFilePath ?? '',
+            generatedAt: manifest.generatedAt,
+            generatorVersion: manifest.generatorVersion,
+            aggregatorClassName: manifest.aggregatorClassName,
+            specsTestClassName: manifest.specsTestClassName,
+            classesDirectoryPath: manifest.classesDirectoryPath,
+            generatedNamesByObjectApiName: generatedNamesByObjectApiName,
+            generatedClassFilePathsByObjectApiName: generatedClassFilePathsByObjectApiName,
+            testMethodNamesByObjectApiName: testMethodNamesByObjectApiName,
+            skippedFields: manifest.skippedFields
+        };
+
+    }
+
+    static groupSkippedFieldViewModelsByObjectApiName(skippedFields: IPicklistDependencySkippedField[]): Record<string, IPicklistDependencySkippedFieldViewModel[]> {
+
+        let skippedFieldViewModelsByObjectApiName: Record<string, IPicklistDependencySkippedFieldViewModel[]> = {};
+
+        skippedFields.forEach(skippedField => {
+
+            const objectApiName = skippedField.objectApiName;
+            skippedFieldViewModelsByObjectApiName[objectApiName] = skippedFieldViewModelsByObjectApiName[objectApiName] || [];
+
+            skippedFieldViewModelsByObjectApiName[objectApiName].push({
+                /*
+                    Empty rather than a placeholder where the skip is about a record type file
+                    rather than one field. The panel renders the record type name in that case, and
+                    inventing a field name here would put a field on screen that does not exist.
+                */
+                fieldApiName: skippedField.fieldApiName ?? '',
+                recordTypeDeveloperName: skippedField.recordTypeDeveloperName ?? '',
+                warning: skippedField.warning
+            });
+
+        });
+
+        return skippedFieldViewModelsByObjectApiName;
+
+    }
+
+    /*
+        The whole view model, sourced from the spec manifest rather than from a fresh walk of the
+        source metadata.
+
+        This is the path the panel takes whenever a manifest exists, and it is what makes the
+        panel's promise true: every row here was emitted into the generated Apex by the same run
+        that wrote this manifest, so a node on screen always corresponds to a spec method that
+        exists. The structure builder underneath is the same one the preview path uses -- the
+        manifest carries the model, not a rendering of it, so there is no second implementation of
+        the graph logic to drift.
+    */
+    static buildExplorerViewModelByManifest(manifestLoad: IPicklistDependencyManifestLoad,
+                                                objectsDirectoryPath: string,
+                                                resultsLoad: IPicklistDependencyResultsLoad,
+                                                freshnessResult: IPicklistDependencyManifestFreshnessResult,
+                                                workspaceRoot?: string): IPicklistDependencyExplorerViewModel {
+
+        const manifest = manifestLoad.manifest;
+
+        if ( !manifest ) {
+            throw new Error('A picklist dependency explorer view model cannot be built from a manifest load that carries no manifest.');
+        }
+
+        const manifestSpecDetails = PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest);
+        const explorerContext = this.buildContextByManifest(manifest, manifestLoad, freshnessResult);
+
+        return this.buildExplorerViewModel(
+            this.resolveRenderableObjectsDirectoryPath(manifest.objectsDirectoryPath, objectsDirectoryPath, workspaceRoot),
+            manifestSpecDetails.specDetails,
+            manifest.skippedFieldWarnings,
+            resultsLoad,
+            manifestSpecDetails.recordTypeSpecDetails,
+            explorerContext
+        );
+
+    }
+
+    /*
+        Which objects directory the rendered node paths are built under.
+
+        Normally the directory the manifest was RECORDED against, not the one configured now: the
+        two differing is what the staleness banner reports, and building paths from the current
+        configuration under specs generated elsewhere would produce reveal targets that do not
+        correspond to the specs on screen.
+
+        But the manifest is a json file on disk, and this is the only string in it that reaches the
+        filesystem. Every node's sourceFilePath is built under it, and those paths become the
+        allow-list the panel's reveal handler trusts -- so a manifest committed into a repo someone
+        clones could otherwise seed that list with an absolute path anywhere on their machine and
+        have a click open it. The api names below it are already gated to letters, numbers and
+        underscores, which forces the shape of the suffix; this gates the prefix, so the guarantee
+        the allow-list rests on is about a real directory rather than an attacker-named one.
+
+        Falling back to the configured directory rather than refusing outright keeps an out-of-tree
+        manifest readable: the structure it declares is still shown, and only the reveal targets are
+        brought back inside the workspace.
+    */
+    static resolveRenderableObjectsDirectoryPath(manifestObjectsDirectoryPath: string,
+                                                    configuredObjectsDirectoryPath: string,
+                                                    workspaceRoot?: string): string {
+
+        if ( !manifestObjectsDirectoryPath ) {
+            return configuredObjectsDirectoryPath;
+        }
+
+        // NO WORKSPACE TO CHECK AGAINST -- CALLERS THAT HAVE ONE ALWAYS PASS IT, AND TESTS THAT DO NOT ARE NOT RENDERING A PANEL
+        if ( !workspaceRoot ) {
+            return manifestObjectsDirectoryPath;
+        }
+
+        const isContainedInWorkspace = PicklistDependencyTestService.isPathContainedInWorkspace(
+            path.resolve(manifestObjectsDirectoryPath),
+            path.resolve(workspaceRoot)
+        );
+
+        return isContainedInWorkspace ? manifestObjectsDirectoryPath : configuredObjectsDirectoryPath;
 
     }
 
@@ -1109,6 +1516,19 @@ export class PicklistDependencyExplorerService {
     }
 
     static buildEmptyStateMessage(viewModel: IPicklistDependencyExplorerViewModel): string {
+
+        /*
+            An empty panel has two quite different causes, and telling them apart is the difference
+            between "you have nothing to check" and "you have not generated yet". The manifest state
+            is what separates them, so the message is keyed off it rather than off the empty list.
+        */
+        if ( viewModel.modelSource === 'metadataPreview' && viewModel.manifestLoadState !== 'loaded' ) {
+            return `${viewModel.manifestLoadMessage} No dependent picklists were found in "${viewModel.scannedObjectsDirectoryPath}" either, so there would be nothing to generate. A picklist becomes generatable once its field metadata declares a "controllingField" and the "valueSettings" markup that maps controlling values to dependent values.`;
+        }
+
+        if ( viewModel.modelSource === 'manifest' ) {
+            return `The picklist dependency spec manifest at "${viewModel.manifestFilePath}" declares no generated specs. Re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" against a metadata directory that declares dependent picklists.`;
+        }
 
         return `No dependent picklists were found in "${viewModel.scannedObjectsDirectoryPath}". A picklist appears here once its field metadata declares a "controllingField" and the "valueSettings" markup that maps controlling values to dependent values.`;
 
@@ -1242,6 +1662,12 @@ export class PicklistDependencyExplorerService {
     button:hover { background-color: var(--vscode-button-hoverBackground); }
     .warningList { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; }
     .emptyState { padding: 1rem; border: 1px dashed var(--vscode-panel-border); }
+    .specOrigin { font-family: var(--vscode-editor-font-family); font-size: 0.8rem; color: var(--vscode-descriptionForeground); margin: 0.1rem 0 0.3rem 0; }
+    .provenanceBanner { padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; border-left: 3px solid var(--vscode-panel-border); }
+    .provenanceBanner.stale { border-left-color: var(--vscode-testing-iconQueued); }
+    .provenanceBanner.preview { border-left-color: var(--vscode-testing-iconQueued); }
+    .skippedField { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; margin: 0.35rem 0; }
+    .skippedBadge { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-testing-iconQueued); margin-left: 0.5rem; }
     .hidden { display: none; }
 </style>
 </head>
@@ -1360,6 +1786,11 @@ export class PicklistDependencyExplorerService {
         appendStatusBadge(scopeHeading, recordTypeScope.status);
         scopeElement.appendChild(scopeHeading);
 
+        if (recordTypeScope.specMethodName) {
+            scopeElement.appendChild(createElement('div', 'specOrigin',
+                'asserted by ' + node.generatedClassName + '.' + recordTypeScope.specMethodName + '()'));
+        }
+
         const scopeBodyElement = createElement('div', 'hidden');
         scopeElement.appendChild(scopeBodyElement);
 
@@ -1417,6 +1848,15 @@ export class PicklistDependencyExplorerService {
         appendStatusBadge(nodeHeading, node.status);
         nodeElement.appendChild(nodeHeading);
 
+        /*
+            The generated method that asserts this node, named on the row itself. Absent only in a
+            metadata preview, where no generated code asserts it and naming one would be a lie.
+        */
+        if (node.specMethodName) {
+            nodeElement.appendChild(createElement('div', 'specOrigin',
+                'asserted by ' + node.generatedClassName + '.' + node.specMethodName + '()'));
+        }
+
         appendFailureDetails(nodeElement, node.fieldLevelFailures);
 
         node.combinations.forEach(function (combination) {
@@ -1444,6 +1884,57 @@ export class PicklistDependencyExplorerService {
         }
 
         return nodeElement;
+
+    }
+
+    /*
+        What the reader is looking at, before anything else on the panel.
+
+        The distinction this banner carries is the whole point of the manifest: rows sourced from a
+        manifest ARE what the generated tests assert, and rows sourced from a metadata preview are
+        asserted by nothing at all. Rendering both the same way and letting the reader assume would
+        undo the guarantee the artifact exists to provide.
+    */
+    function renderProvenanceBanner() {
+
+        const isPreview = explorerModel.modelSource === 'metadataPreview';
+        const isStale = explorerModel.manifestFreshness !== 'fresh';
+
+        const bannerElement = createElement('div',
+            'provenanceBanner' + (isPreview ? ' preview' : (isStale ? ' stale' : '')));
+
+        if (isPreview) {
+
+            bannerElement.appendChild(createElement('div', 'fieldName', 'Preview from metadata — not generated'));
+            bannerElement.appendChild(createElement('div', 'muted',
+                'These rows were read from your source metadata. No Apex specs have been generated for them, '
+                    + 'so nothing asserts any combination below and no check can have run against them. '
+                    + 'Run "Salesforce Treecipe: Generate Picklist Dependency Tests" to generate the specs.'));
+
+            if (explorerModel.manifestLoadMessage) {
+                bannerElement.appendChild(createElement('div', 'muted', explorerModel.manifestLoadMessage));
+            }
+
+            explorerRoot.appendChild(bannerElement);
+            return;
+
+        }
+
+        bannerElement.appendChild(createElement('div', 'fieldName',
+            isStale
+                ? 'Generated specs — your metadata has changed since they were generated'
+                : 'Generated specs'));
+
+        if (isStale) {
+            bannerElement.appendChild(createElement('div', undefined, explorerModel.manifestFreshnessMessage));
+        }
+
+        bannerElement.appendChild(createElement('div', 'muted',
+            'Generated at ' + explorerModel.generatedAt + ' by Treecipe ' + explorerModel.generatorVersion
+                + ' — asserted by ' + explorerModel.specsTestClassName + '.cls'));
+        bannerElement.appendChild(createElement('div', 'sourcePath', explorerModel.manifestFilePath));
+
+        explorerRoot.appendChild(bannerElement);
 
     }
 
@@ -1478,7 +1969,8 @@ export class PicklistDependencyExplorerService {
 
         const warningsElement = createElement('div', 'warningList');
         warningsElement.appendChild(createElement('div', 'fieldName',
-            explorerModel.skippedFieldWarnings.length + ' field(s) were skipped and are not shown below'));
+            explorerModel.skippedFieldWarnings.length
+                + ' item(s) were skipped and are asserted by nothing — each is also listed under its object below'));
         explorerModel.skippedFieldWarnings.forEach(function (skippedFieldWarning) {
             warningsElement.appendChild(createElement('div', 'muted', skippedFieldWarning));
         });
@@ -1509,6 +2001,36 @@ export class PicklistDependencyExplorerService {
             appendStatusBadge(objectHeading, objectViewModel.status);
             objectElement.appendChild(objectHeading);
 
+            if (objectViewModel.generatedClassName) {
+                objectElement.appendChild(createElement('div', 'specOrigin',
+                    objectViewModel.generatedClassName + '.cls'
+                        + (objectViewModel.testMethodName ? ' — test method ' + objectViewModel.testMethodName + '()' : '')));
+            }
+
+            /*
+                Rendered BEFORE the nodes rather than after them. A skipped field is the one thing on
+                this panel that no assertion covers, and putting it below a long list of green rows
+                is how it gets missed.
+            */
+            objectViewModel.skippedFields.forEach(function (skippedField) {
+
+                const skippedElement = createElement('div', 'skippedField');
+
+                const skippedHeading = createElement('div', 'nodeHeading');
+                const skippedLabel = skippedField.fieldApiName
+                    || (skippedField.recordTypeDeveloperName
+                        ? 'record type ' + skippedField.recordTypeDeveloperName
+                        : 'this object');
+                skippedHeading.appendChild(createElement('span', 'fieldName', skippedLabel));
+                skippedHeading.appendChild(createElement('span', 'skippedBadge', 'not asserted'));
+                skippedElement.appendChild(skippedHeading);
+
+                skippedElement.appendChild(createElement('div', 'muted', skippedField.warning));
+
+                objectElement.appendChild(skippedElement);
+
+            });
+
             if (objectViewModel.unattributedFailureMessages.length) {
                 objectElement.appendChild(createElement('div', 'failureDetail',
                     'This object\\'s check reported failures that could not be tied to a specific combination below, '
@@ -1526,6 +2048,7 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    renderProvenanceBanner();
     renderRunBanner();
     renderSkippedFieldWarnings();
     renderObjects();

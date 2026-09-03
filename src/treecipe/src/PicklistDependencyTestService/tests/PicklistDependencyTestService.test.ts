@@ -812,24 +812,48 @@ describe('PicklistDependencyTestService', () => {
             const addedLines = afterLines.filter(line => !beforeLineSet.has(line));
 
             /*
-                Three lines legitimately change: the usa expectAtLeast gains the value, and the
-                canada and mexico expectNotAllowed complements gain it too -- a newly declared value
-                that those controlling values do not unlock genuinely belongs in their forbidden
-                lists. Nothing else may move.
+                Six lines legitimately change, in matched pairs: the usa expectAtLeast gains the
+                value, the canada and mexico expectNotAllowed complements gain it too -- a newly
+                declared value those controlling values do not unlock genuinely belongs in their
+                forbidden lists -- and each of those three combinations' plain language comment
+                gains it alongside the assertion it describes.
 
-                Proving that is what stripping the new value does: if every added line reduces to
-                the line it replaced, then the only difference between the two files is the value
-                itself. A line that had merely been REORDERED would survive the strip as a
-                different string and fail here, which is exactly the noise this sorting removes.
+                The comment lines are counted as part of the diff rather than excluded from it. A
+                comment that did NOT move when its assertion did would be the drift the comments
+                exist to rule out, so the two changing together is the property under test, not an
+                inflation of it. What still may not happen is a combination the new value has
+                nothing to do with moving, which the assertions below pin down.
+
+                Proving the change is only the value is what stripping it does: if every added line
+                reduces to the line it replaced, then the only difference between the two files is
+                the value itself. A line that had merely been REORDERED would survive the strip as
+                a different string and fail here, which is exactly the noise this sorting removes.
             */
-            expect(addedLines).toHaveLength(3);
-            expect(removedLines).toHaveLength(3);
-            expect(addedLines.every(addedLine => addedLine.includes(`'central'`))).toBe(true);
+            const addedAssertionLines = addedLines.filter(addedLine => !addedLine.trimStart().startsWith('*'));
+            const removedAssertionLines = removedLines.filter(removedLine => !removedLine.trimStart().startsWith('*'));
 
-            const addedLinesWithoutTheNewValue = addedLines.map(
+            const addedCommentLines = addedLines.filter(addedLine => addedLine.trimStart().startsWith('*'));
+            const removedCommentLines = removedLines.filter(removedLine => removedLine.trimStart().startsWith('*'));
+
+            expect(addedAssertionLines).toHaveLength(3);
+            expect(removedAssertionLines).toHaveLength(3);
+            expect(addedCommentLines).toHaveLength(3);
+            expect(removedCommentLines).toHaveLength(3);
+
+            expect(addedLines).toHaveLength(6);
+            expect(removedLines).toHaveLength(6);
+            expect(addedLines.every(addedLine => addedLine.includes('central'))).toBe(true);
+
+            const addedAssertionLinesWithoutTheNewValue = addedAssertionLines.map(
                 addedLine => addedLine.replace(`'central', `, '').replace(`, 'central'`, '')
             );
-            expect(addedLinesWithoutTheNewValue.sort()).toEqual([...removedLines].sort());
+            expect(addedAssertionLinesWithoutTheNewValue.sort()).toEqual([...removedAssertionLines].sort());
+
+            // THE SAME STRIP AGAINST THE COMMENT LINES, WHOSE VALUE LISTS CARRY NO APEX QUOTING
+            const addedCommentLinesWithoutTheNewValue = addedCommentLines.map(
+                addedLine => addedLine.replace('central, ', '').replace(', central', '')
+            );
+            expect(addedCommentLinesWithoutTheNewValue.sort()).toEqual([...removedCommentLines].sort());
 
             const usaAllowedLine = addedLines.find(addedLine => addedLine.includes(`expectAtLeast('usa'`));
             expect(usaAllowedLine).toContain(`'central', 'east', 'west'`);
@@ -3406,6 +3430,236 @@ describe('PicklistDependencyTestService', () => {
                 expect(fs.existsSync(path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls`))).toBeTrue();
                 expect(fs.existsSync(path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls-meta.xml`))).toBeTrue();
             });
+
+        });
+
+    });
+
+    /*
+        The generated Apex is a deliverable in its own right: the point of emitting specs is that
+        reading one beats clicking through the Salesforce dependency matrix UI, and that only holds
+        if the file says what each dependency IS above the builder calls that check it.
+    */
+    describe('generated Apex reads at a glance', () => {
+
+        const specDetails: IPicklistDependencySpecDetail[] = [
+            {
+                objectApiName: 'Account',
+                fieldApiName: 'City__c',
+                controllingFieldApiName: 'Region__c',
+                upstreamFieldApiName: 'Region__c',
+                expectations: [
+                    { controllingValue: 'East', dependentValues: ['Boston'], forbiddenValues: ['Tijuana'] },
+                    { controllingValue: 'Ontario', dependentValues: [], forbiddenValues: [] }
+                ]
+            },
+            {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [
+                    { controllingValue: 'USA', dependentValues: ['East', 'West'], forbiddenValues: ['Baja'] }
+                ]
+            }
+        ];
+
+        const buildClassBody = (details = specDetails, recordTypeDetails: IRecordTypePicklistDependencySpecDetail[] = []) =>
+            PicklistDependencyTestService.buildPerObjectSpecsApexClassBody('Account', 'SDTPLDSpecs_Account', details, recordTypeDetails);
+
+        test('the class header names every dependent field and the field controlling it', () => {
+
+            const classBody = buildClassBody();
+
+            expect(classBody).toContain('Dependent picklists on Account:');
+            expect(classBody).toContain('City__c depends on Region__c');
+            expect(classBody).toContain('Region__c depends on Country__c');
+
+        });
+
+        test('each spec method is preceded by a comment naming the field and its controlling field', () => {
+
+            const classBody = buildClassBody();
+
+            expect(classBody).toContain('* Region__c depends on Country__c.');
+            expect(classBody).toContain('* City__c depends on Region__c.');
+
+        });
+
+        test('each spec method comment states its combinations in plain language', () => {
+
+            const classBody = buildClassBody();
+
+            expect(classBody).toContain('"USA" unlocks East, West -- and must not unlock Baja');
+            expect(classBody).toContain('"Ontario" unlocks nothing');
+
+        });
+
+        test('a chained dependency says so in the comment, not only in the dependsOn call', () => {
+
+            const classBody = buildClassBody();
+
+            expect(classBody).toContain('Region__c is itself a dependent picklist, so this spec chains off it.');
+
+        });
+
+        test('a record type scoped spec comment names the scope and its unavailable values', () => {
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'US_Only',
+                expectations: [
+                    { controllingValue: 'Canada', dependentValues: [], forbiddenValues: [], controllingValueUnavailable: true }
+                ]
+            }];
+
+            const classBody = buildClassBody(specDetails, recordTypeSpecDetails);
+
+            expect(classBody).toContain('Narrowed to what record type US_Only assigns.');
+            expect(classBody).toContain('"Canada" is not available under record type US_Only');
+
+        });
+
+        /*
+            The comment and the assertions are built from ONE spec detail, so they cannot describe
+            different things. Asserting that every value named in a comment also appears in the
+            builder calls beneath it is what pins that down.
+        */
+        test('every value a comment names also appears in the assertions below it', () => {
+
+            const classBody = buildClassBody();
+
+            expect(classBody).toContain(`.expectAtLeast('USA', new List<String>{ 'East', 'West' })`);
+            expect(classBody).toContain(`.expectNotAllowed('USA', new List<String>{ 'Baja' })`);
+            expect(classBody).toContain(`.expectNone('Ontario')`);
+
+        });
+
+        /*
+            Source XML can name a picklist as its own controllingField. The Explorer already treats
+            such a field as a root rather than nesting it under itself, so without the same guard
+            here the panel would draw a root while the class it names contained a spec that called
+            itself -- the panel and the Apex disagreeing about the same field.
+        */
+        test('given a field that names itself as its controlling field, emits no self-recursive dependsOn', () => {
+
+            const classBody = buildClassBody([{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Region__c',
+                upstreamFieldApiName: 'Region__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: [] }]
+            }]);
+
+            expect(classBody).not.toContain('.dependsOn(');
+            expect(classBody).toContain(`.expectAtLeast('USA', new List<String>{ 'East' })`);
+
+        });
+
+        test('given a record type scoped field that names itself, emits no self-recursive dependsOn either', () => {
+
+            const classBody = buildClassBody(
+                [{
+                    objectApiName: 'Account',
+                    fieldApiName: 'Region__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: [] }]
+                }],
+                [{
+                    objectApiName: 'Account',
+                    fieldApiName: 'Region__c',
+                    controllingFieldApiName: 'Region__c',
+                    upstreamFieldApiName: 'Region__c',
+                    recordTypeDeveloperName: 'US_Only',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: [] }]
+                }]
+            );
+
+            expect(classBody).not.toContain('.dependsOn(');
+
+        });
+
+        // A GENUINE CHAIN STILL LINKS -- THE GUARD MUST NOT SUPPRESS THE CASE IT EXISTS FOR
+        test('given a genuine upstream field, still emits the dependsOn link', () => {
+
+            const classBody = buildClassBody();
+
+            expect(classBody).toContain('.dependsOn(');
+
+        });
+
+        /*
+            A picklist value carrying a newline or a block comment terminator is not producible
+            through the Salesforce UI, which is exactly why nothing else in the pipeline would catch
+            one. Left unescaped it would end the comment and leave the remainder of the value sitting
+            in the class as code.
+        */
+        test('given a picklist value carrying comment syntax, neutralises it rather than breaking the class', () => {
+
+            const classBody = buildClassBody([{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [
+                    { controllingValue: 'USA', dependentValues: ['East*/ public static Integer hacked;'], forbiddenValues: [] }
+                ]
+            }]);
+
+            /*
+                Scoped to the COMMENT lines. The same characters inside the Apex string literal
+                below are perfectly legal there -- a quoted string does not end a block comment --
+                so asserting against the whole class body would demand an escape that is not needed
+                and would corrupt the value the spec actually asserts.
+            */
+            const commentLines = classBody.split('\n').filter(line => line.trimStart().startsWith('*'));
+
+            expect(commentLines.some(commentLine => commentLine.includes('*/ public static Integer hacked;'))).toBe(false);
+            expect(commentLines.some(commentLine => commentLine.includes('* / public static Integer hacked;'))).toBe(true);
+
+            // AND THE VALUE ITSELF REACHES THE ASSERTION UNCHANGED, BECAUSE A STRING LITERAL NEEDS NO SUCH ESCAPE
+            expect(classBody).toContain(`'East*/ public static Integer hacked;'`);
+
+        });
+
+        test('given a picklist value carrying a newline, keeps the comment on one line', () => {
+
+            const classBody = buildClassBody([{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [
+                    { controllingValue: 'USA', dependentValues: ['East\nWest'], forbiddenValues: [] }
+                ]
+            }]);
+
+            const commentLines = classBody.split('\n').filter(line => line.includes('"USA" unlocks'));
+
+            expect(commentLines).toHaveLength(1);
+            expect(commentLines[0]).toContain('East West');
+
+        });
+
+        /*
+            The comment summarises; the assertions beneath it carry every value. An uncapped list on
+            a large picklist produces a comment nobody reads, which defeats the reason for emitting
+            one at all.
+        */
+        test('given a very long value list, summarises the tail rather than emitting an unreadable line', () => {
+
+            const manyValues = Array.from({ length: 30 }, (unusedEntry, valueIndex) => `Value_${valueIndex}`);
+
+            const classBody = buildClassBody([{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: manyValues, forbiddenValues: [] }]
+            }]);
+
+            expect(classBody).toContain('...and 18 more');
+
+            // THE ASSERTION ITSELF IS NEVER TRUNCATED -- ONLY THE PROSE SUMMARY IS
+            expect(classBody).toContain(`'Value_29'`);
 
         });
 
