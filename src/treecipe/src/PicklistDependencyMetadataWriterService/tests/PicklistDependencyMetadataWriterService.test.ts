@@ -1,5 +1,6 @@
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService";
-import { IPicklistDependencySpecDetail } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { IPicklistDependencySpecDetail, PicklistDependencyTestService } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { XmlFileProcessor } from "../../XMLProcessingService/XmlFileProcessor";
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -741,6 +742,107 @@ describe('PicklistDependencyMetadataWriterService', () => {
 
             // THE VALUE STAYS DECLARED -- IT IS UNREACHABLE, NOT DELETED
             expect(outcome.plan.proposedContent).toContain('<fullName>texas</fullName>');
+
+        });
+
+    });
+
+    /*
+        The round trip that proves the two directions agree.
+
+        Generate reads metadata and emits Apex; writeback reads that Apex and reconciles the
+        metadata. If they disagree anywhere, running one after the other reports drift that nobody
+        introduced -- and a developer chasing a phantom diff has no way to tell it from a real one.
+    */
+    describe('round trip with Generate', () => {
+
+        const buildApexFromFieldFile = async (fieldFileContent: string, objectApiName: string) => {
+
+            const fieldDetail = await XmlFileProcessor.processXmlFieldContent(fieldFileContent, 'Neighborhood__c.field-meta.xml');
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(objectApiName, [fieldDetail]);
+
+            return {
+                collectionResult,
+                apexClassBody: PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    objectApiName,
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName(objectApiName),
+                    collectionResult.specDetails
+                )
+            };
+
+        };
+
+        it('given a writeback, regenerating produces byte-identical Apex', async () => {
+
+            const objectApiName = 'Dependency_Example__c';
+            const originalContent = readMock('FlatShape.field-meta.xml');
+
+            const beforeGeneration = await buildApexFromFieldFile(originalContent, objectApiName);
+            expect(beforeGeneration.collectionResult.specDetails).toHaveLength(1);
+
+            // WRITE THE APEX'S OWN INTENT BACK, WHICH SHOULD CHANGE NOTHING SEMANTICALLY
+            const parsedSpecDetails = PicklistDependencyTestService.parseSpecDetailsByApexClassBody(beforeGeneration.apexClassBody);
+            expect(parsedSpecDetails).toHaveLength(1);
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                parsedSpecDetails[0], '/fields/Neighborhood__c.field-meta.xml', originalContent
+            );
+
+            expect(outcome.refusal).toBeUndefined();
+
+            const afterGeneration = await buildApexFromFieldFile(outcome.plan.proposedContent, objectApiName);
+
+            expect(afterGeneration.apexClassBody).toBe(beforeGeneration.apexClassBody);
+
+        });
+
+        it('given a spec edited to unlock a new pair, the regenerated Apex matches the edit', async () => {
+
+            const objectApiName = 'Dependency_Example__c';
+            const originalContent = readMock('FlatShape.field-meta.xml');
+
+            const editedSpecDetail: IPicklistDependencySpecDetail = {
+                objectApiName,
+                fieldApiName: 'Neighborhood__c',
+                controllingFieldApiName: 'City__c',
+                expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont', 'willowick'] }]
+            };
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                editedSpecDetail, '/fields/Neighborhood__c.field-meta.xml', originalContent
+            );
+
+            const regenerated = await buildApexFromFieldFile(outcome.plan.proposedContent, objectApiName);
+            const regeneratedExpectations = regenerated.collectionResult.specDetails[0].expectations;
+
+            const cleExpectation = regeneratedExpectations.find(expectation => expectation.controllingValue === 'cle');
+
+            // THE EDIT SURVIVED THE TRANSPOSE AND CAME BACK OUT OF THE METADATA
+            expect(cleExpectation.dependentValues.sort()).toEqual(['ohiocity', 'tremont', 'willowick']);
+
+        });
+
+        // AND THE METADATA THE SECOND GENERATION READS IS STABLE, NOT MERELY EQUIVALENT
+        it('given a second writeback of the regenerated spec, the field file stops changing', async () => {
+
+            const objectApiName = 'Dependency_Example__c';
+            const originalContent = readMock('FlatShape.field-meta.xml');
+
+            const firstGeneration = await buildApexFromFieldFile(originalContent, objectApiName);
+            const firstParsed = PicklistDependencyTestService.parseSpecDetailsByApexClassBody(firstGeneration.apexClassBody);
+
+            const firstOutcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                firstParsed[0], '/fields/Neighborhood__c.field-meta.xml', originalContent
+            );
+
+            const secondGeneration = await buildApexFromFieldFile(firstOutcome.plan.proposedContent, objectApiName);
+            const secondParsed = PicklistDependencyTestService.parseSpecDetailsByApexClassBody(secondGeneration.apexClassBody);
+
+            const secondOutcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                secondParsed[0], '/fields/Neighborhood__c.field-meta.xml', firstOutcome.plan.proposedContent
+            );
+
+            expect(secondOutcome.plan.hasChanges).toBe(false);
 
         });
 

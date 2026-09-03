@@ -1,5 +1,45 @@
 # Change Log
 
+## [3.6.0] - Update Picklist Dependency Metadata: writing spec intent back into source
+
+Resolves [#81](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/81).
+
+v3.4.0 made the generated Apex specs a durable statement of intent: edit a spec, the test goes red, fix the org, it goes green. But *"fix the org"* was entirely manual. You read a failure saying `Account.Region__c @ cle: missing [plant]` and hand-translated it into XML.
+
+That translation is a **transpose**, which is what made it error-prone. The failure is indexed by **controlling** value; the metadata is indexed by **dependent** value — so making `cle` also unlock `plant` means editing the **`plant` block**, nowhere near where the failure message points you.
+
+### The new command
+
+**Update Picklist Dependency Metadata from Specs** (`treecipe.updatePicklistDependencyMetadata`) reads the generated Apex — including whatever you edited into it — and reconciles your source metadata to match. It runs opposite to Generate, and closes the loop the check opens.
+
+| Command | Direction |
+|---|---|
+| Generate Picklist Dependency Tests | metadata → Apex specs |
+| **Update Picklist Dependency Metadata from Specs** *(new)* | **Apex specs → metadata** |
+| Run Picklist Dependency Check | Apex specs → org (assert) |
+
+Nothing is written before you see it. The command reports every pair it would add or remove, in the words the failure used — `cle unlocks plant` — and declining leaves every file untouched. After writing, it offers to deploy the changed files to an org; declining that says explicitly that the changes are in your working tree and were not deployed.
+
+### Intent is merged into your metadata, not substituted for it
+
+A spec asserts what a controlling value **must** unlock (`expectAtLeast`) and what it **must not** (`expectNotAllowed`). Anything it names neither way — and any controlling value it never mentions — it makes no claim about, and writeback leaves alone. Reading those silences as deletions would let a one-line hand-written spec strip the rest of the file.
+
+`expectNone` and `expectExactly` are the exception, and deliberately so: both state their dependent list *completely*, so anything else the metadata unlocks under that controlling value contradicts the spec and is removed.
+
+### Three things it refuses to do
+
+- **A global-value-set-backed field** can be rewired, but a new value is refused with a message naming the set to add it to first. The only place a new value could go is the shared `.globalValueSet-meta.xml`, whose blast radius reaches every other field pointing at it. That file is never edited.
+- **An orphaning cascade** — removing a value that is itself the controlling field of another picklist — names the downstream field and skips that field's write. Every unaffected field still writes. Resolving it means editing the downstream field too, which is a decision about intent this command has no basis to make alone.
+- **A spec class that cannot be parsed** aborts naming the file, and writes nothing at all. Treating an unparseable class as "this object has no dependencies" would silently skip the fields you edited.
+
+### Your file's formatting survives
+
+Only two spans of a field file are ever rewritten: the `valueSettings` region, and `valueSetDefinition` when a spec names a value the field cannot offer yet. The XML declaration, indentation, unrelated markup and trailing newline are preserved because they are never rebuilt.
+
+Both `<valueSettings>` shapes are supported and preserved — grouped by `valueName` with repeated `controllingFieldValue`, and one pair per block. Rewriting a file into the other shape would make the first reconciliation a restructure of every block.
+
+Order is normalized alphabetically on both axes on the first writeback, so a second writeback with no spec change produces **zero diff** — and after a writeback, running Generate produces byte-identical Apex. The two directions agree, and neither reports drift the other introduced.
+
 ## [3.5.0] - The Spec Manifest: the Explorer and the generated Apex become one artifact
 
 Resolves [#82](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/82).

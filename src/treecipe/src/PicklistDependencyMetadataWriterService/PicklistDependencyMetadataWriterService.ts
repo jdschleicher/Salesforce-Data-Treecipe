@@ -1,5 +1,7 @@
 import { IPicklistDependencySpecDetail } from '../PicklistDependencyTestService/PicklistDependencyTestService';
 
+import * as fs from 'fs';
+
 /*
     How a field file lays its valueSettings out.
 
@@ -67,6 +69,13 @@ export interface IPicklistDependencyFieldWritebackPlan {
 export interface IPicklistDependencyFieldWritebackOutcome {
     plan?: IPicklistDependencyFieldWritebackPlan;
     refusal?: IPicklistDependencyWritebackRefusal;
+}
+
+export interface IPicklistDependencyWritebackResult {
+    plans: IPicklistDependencyFieldWritebackPlan[];
+    refusals: IPicklistDependencyWritebackRefusal[];
+    // FIELDS WHOSE APEX AND METADATA ALREADY AGREE, SO THE COMMAND CAN SAY "ALREADY IN SYNC" HONESTLY
+    unchangedFieldApiNames: string[];
 }
 
 export class PicklistDependencyMetadataWriterService {
@@ -751,6 +760,127 @@ export class PicklistDependencyMetadataWriterService {
         return fieldFileContent.slice(0, definitionLineStartIndex)
                 + addedValueMarkup
                 + fieldFileContent.slice(definitionLineStartIndex);
+
+    }
+
+    /*
+        Every field of one object reconciled against the specs its generated class declares.
+
+        The downstream map is built ONCE from the whole spec set rather than per field, because the
+        orphaning cascade is a question about the object's dependency graph, not about the field in
+        hand -- a field only orphans something if another field is controlled through it.
+
+        A field whose file cannot be read is refused rather than skipped silently: writeback that
+        quietly did nothing for a field the user asked it to fix would be worse than one that says
+        it could not.
+    */
+    static buildWritebackResult(specDetails: IPicklistDependencySpecDetail[],
+                                    fieldFilePathsByFieldApiName: Record<string, string>,
+                                    readFieldFileContent: (fieldFilePath: string) => string): IPicklistDependencyWritebackResult {
+
+        const downstreamFieldApiNamesByControllingField = this.buildDownstreamFieldApiNamesByControllingField(specDetails);
+
+        let plans: IPicklistDependencyFieldWritebackPlan[] = [];
+        let refusals: IPicklistDependencyWritebackRefusal[] = [];
+        let unchangedFieldApiNames: string[] = [];
+
+        specDetails.forEach(specDetail => {
+
+            const fieldFilePath = fieldFilePathsByFieldApiName[specDetail.fieldApiName];
+
+            if ( !fieldFilePath ) {
+                refusals.push({
+                    objectApiName: specDetail.objectApiName,
+                    fieldApiName: specDetail.fieldApiName,
+                    reason: `No field metadata file was found for "${specDetail.objectApiName}.${specDetail.fieldApiName}". The Apex spec names a field this objects directory does not contain. Nothing was written for it.`
+                });
+                return;
+            }
+
+            let currentContent: string;
+
+            try {
+                currentContent = readFieldFileContent(fieldFilePath);
+            } catch (error) {
+                refusals.push({
+                    objectApiName: specDetail.objectApiName,
+                    fieldApiName: specDetail.fieldApiName,
+                    reason: `"${fieldFilePath}" could not be read (${error.message}). Nothing was written for this field.`
+                });
+                return;
+            }
+
+            const outcome = this.buildFieldWritebackOutcome(
+                specDetail,
+                fieldFilePath,
+                currentContent,
+                downstreamFieldApiNamesByControllingField[specDetail.fieldApiName] || []
+            );
+
+            if ( outcome.refusal ) {
+                refusals.push(outcome.refusal);
+                return;
+            }
+
+            if ( !outcome.plan.hasChanges ) {
+                unchangedFieldApiNames.push(specDetail.fieldApiName);
+                return;
+            }
+
+            plans.push(outcome.plan);
+
+        });
+
+        return { plans, refusals, unchangedFieldApiNames };
+
+    }
+
+    /*
+        The only function in this service that touches disk.
+
+        Kept apart from every planning function above so the whole decision -- what would change,
+        what is refused, what is already in sync -- is computable and testable without a filesystem,
+        and so a caller can show it and be declined before anything is written.
+    */
+    static writeFieldWritebackPlans(plans: IPicklistDependencyFieldWritebackPlan[]): string[] {
+
+        return plans.map(plan => {
+            fs.writeFileSync(plan.fieldFilePath, plan.proposedContent);
+            return plan.fieldFilePath;
+        });
+
+    }
+
+    /*
+        What the run would do, in the words the failure that sent the user here used.
+
+        Shown BEFORE anything is written, so a reader can decline. Pairs rather than blocks: "cle
+        unlocks plant" is what the validator said, and echoing its vocabulary is what makes the
+        change recognisable as the fix for the failure they are looking at.
+    */
+    static buildWritebackReport(result: IPicklistDependencyWritebackResult): string {
+
+        let reportLines: string[] = [];
+
+        result.plans.forEach(plan => {
+
+            reportLines.push(`${plan.objectApiName}.${plan.fieldApiName}`);
+
+            plan.addedPairs.forEach(addedPair => reportLines.push(`    + ${addedPair}`));
+            plan.removedPairs.forEach(removedPair => reportLines.push(`    - ${removedPair}`));
+
+            plan.addedPicklistValues.forEach(addedPicklistValue =>
+                reportLines.push(`    + adds "${addedPicklistValue}" to the field's picklist values`));
+
+        });
+
+        if ( result.unchangedFieldApiNames.length > 0 ) {
+            reportLines.push(`Already in sync: ${result.unchangedFieldApiNames.join(', ')}`);
+        }
+
+        result.refusals.forEach(refusal => reportLines.push(`Skipped ${refusal.objectApiName}.${refusal.fieldApiName}: ${refusal.reason}`));
+
+        return reportLines.join('\n');
 
     }
 

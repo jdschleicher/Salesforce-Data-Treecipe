@@ -457,6 +457,47 @@ export class PicklistDependencyCheckService {
 
     }
 
+    /*
+        Deploys named source paths to an org.
+
+        Split out of deployPicklistDependencyClasses so the metadata writeback command can reuse the
+        CLI plumbing, the wait, the json parsing and the source-tracking conflict wording without
+        pretending its changed field files are Apex classes. That method now supplies the class paths
+        and this one does the deploy, so there is one place that knows how a deploy is invoked.
+    */
+    static async deploySourcePaths(sourceFilePaths: string[],
+                                    targetOrgIdentifier: string,
+                                    registerCancellation?: (killChildProcess: () => void) => void): Promise<string> {
+
+        this.assertValidTargetOrgIdentifier(targetOrgIdentifier);
+
+        if ( sourceFilePaths.length === 0 ) {
+            throw new Error('There are no source files to deploy.');
+        }
+
+        const sourceDirArguments = sourceFilePaths.flatMap(sourceFilePath => ['--source-dir', sourceFilePath]);
+
+        const salesforceCliArguments = [
+            'project', 'deploy', 'start',
+            ...sourceDirArguments,
+            '--target-org', targetOrgIdentifier,
+            '--wait', this.deployWaitMinutes,
+            '--json'
+        ];
+
+        const invocationResult = await this.runSalesforceCli(salesforceCliArguments, registerCancellation);
+        const parsedCliOutput = this.parseSalesforceCliJsonOutput(invocationResult);
+        const deployResult = parsedCliOutput?.result;
+
+        if ( deployResult?.success === true ) {
+            const deployedComponentCount = deployResult.numberComponentsDeployed ?? deployResult.details?.componentSuccesses?.length ?? 0;
+            return `Deployed ${deployedComponentCount} component(s) to the target org.`;
+        }
+
+        throw new Error(this.buildDeployFailureMessage(parsedCliOutput, targetOrgIdentifier, 'The changed field metadata'));
+
+    }
+
     static async deployPicklistDependencyClasses(classesDirectoryPath: string,
                                                  targetOrgIdentifier: string,
                                                  registerCancellation?: (killChildProcess: () => void) => void): Promise<string> {
@@ -494,22 +535,42 @@ export class PicklistDependencyCheckService {
             what to do about it. Conflicts are not forced past automatically -- the org copy may hold
             edits worth keeping, and this command exists to report drift rather than overwrite it.
         */
+        throw new Error(this.buildDeployFailureMessage(parsedCliOutput, targetOrgIdentifier, 'The picklist dependency classes'));
+
+    }
+
+    /*
+        Why a deploy failed, in the CLI's terms plus what to do about it.
+
+        Shared by both deploy entry points and phrased around what was being deployed, so the
+        writeback command can report a failed field-metadata deploy without claiming Apex classes
+        were involved.
+    */
+    static buildDeployFailureMessage(parsedCliOutput: any, targetOrgIdentifier: string, deployedSubject: string): string {
+
+        /*
+            An org with source tracking rejects the deploy outright when it sees the source as
+            changed on both sides, and the CLI's own wording ("N conflicts detected") does not say
+            what to do about it. Conflicts are not forced past automatically -- the org copy may hold
+            edits worth keeping, and these commands exist to report drift rather than overwrite it.
+        */
         if ( parsedCliOutput?.name === 'SourceConflictError' ) {
-            throw new Error(`The picklist dependency classes conflict with the copies already in "${targetOrgIdentifier}". Retrieve or resolve them first, or deploy manually with "sf project deploy start --ignore-conflicts" if the local copies should win.`);
+            return `${deployedSubject} conflict with the copies already in "${targetOrgIdentifier}". Retrieve or resolve them first, or deploy manually with "sf project deploy start --ignore-conflicts" if the local copies should win.`;
         }
 
-        const componentFailures = deployResult?.details?.componentFailures;
+        const componentFailures = parsedCliOutput?.result?.details?.componentFailures;
         const normalizedComponentFailures = Array.isArray(componentFailures) ? componentFailures : [componentFailures].filter(Boolean);
 
         if ( normalizedComponentFailures.length > 0 ) {
             const failureSummary = normalizedComponentFailures
                 .map(componentFailure => `${componentFailure.fullName}: ${componentFailure.problem}`)
                 .join('; ');
-            throw new Error(`The picklist dependency classes failed to deploy: ${failureSummary}`);
+            return `${deployedSubject} failed to deploy: ${failureSummary}`;
         }
 
         const cliErrorDetail = [parsedCliOutput?.name, parsedCliOutput?.message].filter(Boolean).join(': ');
-        throw new Error(cliErrorDetail || 'The picklist dependency classes failed to deploy for an unknown reason.');
+
+        return cliErrorDetail || `${deployedSubject} failed to deploy for an unknown reason.`;
 
     }
 
