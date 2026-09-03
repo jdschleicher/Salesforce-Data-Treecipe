@@ -12,14 +12,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /*
-    One expectation as the manifest records it: the spec detail's own expectation, plus the stable
-    key failure attribution resolves against.
+    One expectation as the manifest records it: the spec detail's own expectation, plus a stable key
+    naming the combination.
 
-    The key is what makes the manifest an ATTRIBUTION TARGET rather than a description. Before it,
-    a failure line was matched against combinations the panel had just re-derived from source XML,
-    so a metadata edit between generation and panel-open silently moved what a failure appeared to
-    be about. Keyed off the manifest, a failure either names a combination the specs declared or is
-    surfaced as unattributed -- there is no third outcome where it lands on the wrong row.
+    What makes the manifest an ATTRIBUTION TARGET rather than a description is that the combinations
+    failures are matched against are built FROM it. Before that, a failure line was matched against
+    combinations the panel had just re-derived from source XML, so a metadata edit between
+    generation and panel-open silently moved what a failure appeared to be about. Sourced from the
+    manifest, a failure either names a combination the specs declared or is surfaced as
+    unattributed -- there is no third outcome where it lands on the wrong row.
+
+    The key materializes that identity as one string so a row can be named and linked to. See
+    buildCombinationKey for what does and does not currently read it.
 */
 export interface IPicklistDependencyManifestExpectation {
     combinationKey: string;
@@ -158,9 +162,15 @@ export class PicklistDependencyManifestService {
     /*
         The stable identity of one combination.
 
-        Shaped to match the failure lines SDTPicklistDependencyValidator emits -- "Object.Field" and
-        "Object.Field [RecordType]" -- so attribution is a map lookup rather than a second parse of
-        a format that already has one parser.
+        Composed from exactly the tuple attribution matches on -- object, field, record type scope,
+        controlling value -- and shaped to match the failure lines SDTPicklistDependencyValidator
+        emits, "Object.Field" and "Object.Field [RecordType]".
+
+        applyFailuresToNodes compares that tuple directly rather than looking this string up, so the
+        key is not itself the matching mechanism today: it is the identity the match is defined by,
+        materialized on every combination so the panel can name, link and deep-link a row by
+        something stable. Keeping the two in one function is what stops them diverging the moment
+        anything does key off the string.
     */
     static buildCombinationKey(objectApiName: string,
                                 fieldApiName: string,

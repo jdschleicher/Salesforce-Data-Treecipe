@@ -76,10 +76,12 @@ describe('ExtensionCommandService', () => {
         };
 
         const specsTestClassFilePath = `${classesDirectoryPath}/SDTPLDSpecsTest.cls`;
+        const manifestFilePath = `${workspaceRoot}/treecipe/PicklistDependencySpecs/manifest.json`;
 
         let extensionCommandService: ExtensionCommandService;
         let writeSpecsClassFilesSpy: jest.SpyInstance;
         let writeSpecsTestClassFilesSpy: jest.SpyInstance;
+        let writeManifestSpy: jest.SpyInstance;
         let handleCapturedErrorSpy: jest.SpyInstance;
 
         function stubCollectionResult(specDetails: IPicklistDependencySpecDetail[],
@@ -122,6 +124,17 @@ describe('ExtensionCommandService', () => {
             });
             jest.spyOn(PicklistDependencyTestService, 'detectLegacyGeneratedArtifacts').mockReturnValue([]);
             writeSpecsTestClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsTestClassFiles').mockReturnValue(specsTestClassFilePath);
+
+            /*
+                Stubbed for the same reason every other writer here is: this describe drives the real
+                command against a workspace root that does not exist on disk, so an unstubbed write
+                would be a genuine filesystem write to "/workspace". That throws for any user who
+                cannot create a directory at the filesystem root -- which is every CI runner, while
+                passing locally for anyone running as root. The failure then lands in the command's
+                catch and every later assertion in this describe sees a call that never happened.
+            */
+            writeManifestSpy = jest.spyOn(PicklistDependencyManifestService, 'writeManifest').mockReturnValue(manifestFilePath);
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint').mockReturnValue('stub-fingerprint');
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
             // THE OBJECTS DIRECTORY EXISTS AND NOTHING HAS BEEN GENERATED YET UNLESS A TEST SAYS OTHERWISE
@@ -355,6 +368,31 @@ describe('ExtensionCommandService', () => {
             expect(deploySpy).not.toHaveBeenCalled();
             expect(runSpy).not.toHaveBeenCalled();
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            The manifest is the artifact the Explorer reads, so a generation that wrote the Apex and
+            not the manifest would leave the panel describing the previous run's specs. Asserting the
+            write happens -- and lands under treecipe/ rather than in the package directory, where a
+            stray json breaks "sf project deploy" -- is what pins that down.
+        */
+        test('writes the spec manifest under the treecipe directory, from the same run as the Apex', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeManifestSpy).toHaveBeenCalled();
+
+            const [specsFolderPathArgument, manifestArgument] = writeManifestSpy.mock.calls[0];
+
+            expect(specsFolderPathArgument).toContain('treecipe');
+            expect(specsFolderPathArgument).toContain('PicklistDependencySpecs');
+            expect(specsFolderPathArgument).not.toContain('classes');
+
+            expect(manifestArgument.objects).toHaveLength(1);
+            expect(manifestArgument.objects[0].objectApiName).toBe('Dependency_Example__c');
 
         });
 
