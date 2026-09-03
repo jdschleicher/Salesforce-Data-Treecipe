@@ -1,6 +1,7 @@
 import { IPicklistDependencySpecDetail } from '../PicklistDependencyTestService/PicklistDependencyTestService';
 
 import * as fs from 'fs';
+import * as path from 'path';
 
 /*
     How a field file lays its valueSettings out.
@@ -74,11 +75,28 @@ export interface IPicklistDependencyFieldWritebackOutcome {
 export interface IPicklistDependencyWritebackResult {
     plans: IPicklistDependencyFieldWritebackPlan[];
     refusals: IPicklistDependencyWritebackRefusal[];
-    // FIELDS WHOSE APEX AND METADATA ALREADY AGREE, SO THE COMMAND CAN SAY "ALREADY IN SYNC" HONESTLY
-    unchangedFieldApiNames: string[];
+    /*
+        Fields whose Apex and metadata already agree, so the command can say "already in sync"
+        honestly. Object-qualified like every other name the report prints, because a run spans
+        objects and a bare field api name does not say which one is in sync.
+    */
+    unchangedFieldKeys: string[];
 }
 
 export class PicklistDependencyMetadataWriterService {
+
+    /*
+        The identity of one field across a run: object AND field, never field alone.
+
+        A run reconciles the spec details of every per-object class at once, and field api names are
+        not unique across objects -- "Status__c" on Account and on Case are routine and different.
+        Keying anything by the bare field api name collides them, which is how one object's
+        dependency metadata ends up written into another object's file. One function so the map and
+        every lookup against it are built the same way.
+    */
+    static buildFieldKey(objectApiName: string, fieldApiName: string): string {
+        return `${objectApiName}.${fieldApiName}`;
+    }
 
     /*
         Every valueSettings block in a field file, with where it sits.
@@ -184,14 +202,25 @@ export class PicklistDependencyMetadataWriterService {
         const indentation = this.resolveIndentationAtIndex(fieldFileContent, blocks[0].startIndex);
 
         /*
-            The span starts at the beginning of the first block's LINE, not at its "<".
+            The span starts at the beginning of the first block's LINE, not at its "<" -- but only
+            when that line holds nothing but whitespace before the tag.
 
             Emission writes each block with its own indentation, so a span starting at the tag would
             leave the original indentation in front of the replacement and double it. Taking the
             whitespace into the span makes the replacement responsible for the whole line, which is
             also what lets an emptied region remove its line rather than leave it blank.
+
+            When the first block does NOT start its own line -- "<valueSet><valueSettings>" in a file
+            that is not pretty printed -- the span is clamped to the tag. Extending it back over
+            real markup would splice out characters that have nothing to do with valueSettings, and
+            since resolveIndentationAtIndex falls back to a fixed width in exactly that case, the
+            number of characters removed would be arbitrary. Well formed output that indents oddly
+            beats a file that no longer parses.
         */
-        const startIndex = blocks[0].startIndex - indentation.length;
+        const lineStartIndex = fieldFileContent.lastIndexOf('\n', blocks[0].startIndex - 1) + 1;
+        const firstBlockOwnsItsLine = /^[ \t]*$/.test(fieldFileContent.slice(lineStartIndex, blocks[0].startIndex));
+
+        const startIndex = firstBlockOwnsItsLine ? lineStartIndex : blocks[0].startIndex;
         const endIndex = blocks[blocks.length - 1].endIndex;
 
         for ( let blockIndex = 0; blockIndex < blocks.length - 1; blockIndex++ ) {
@@ -498,11 +527,16 @@ export class PicklistDependencyMetadataWriterService {
     }
 
     /*
-        The fields downstream of one field, keyed by the value each of them is controlled through.
+        The fields downstream of one field, keyed by the field key of the field controlling them.
 
         Built from the spec details the whole run is reconciling, so the cascade check needs no
         second read of the metadata: a field whose controllingFieldApiName is this field is, by
         definition, the thing that breaks when a value here stops being selectable.
+
+        Keyed by OBJECT AND controlling field. A controlling field always lives on the same object as
+        the field it controls, so scoping the key to that object is what the relationship already
+        means -- and without it "Account.Type__c" would be read as controlling "Case.Sub_Type__c" and
+        refuse an unrelated object's write for a cascade that does not exist.
     */
     static buildDownstreamFieldApiNamesByControllingField(specDetails: IPicklistDependencySpecDetail[]): Record<string, string[]> {
 
@@ -510,13 +544,13 @@ export class PicklistDependencyMetadataWriterService {
 
         specDetails.forEach(specDetail => {
 
-            const controllingFieldApiName = specDetail.controllingFieldApiName;
+            const controllingFieldKey = this.buildFieldKey(specDetail.objectApiName, specDetail.controllingFieldApiName);
 
-            downstreamFieldApiNamesByControllingField[controllingFieldApiName] =
-                downstreamFieldApiNamesByControllingField[controllingFieldApiName] || [];
+            downstreamFieldApiNamesByControllingField[controllingFieldKey] =
+                downstreamFieldApiNamesByControllingField[controllingFieldKey] || [];
 
-            if ( !downstreamFieldApiNamesByControllingField[controllingFieldApiName].includes(specDetail.fieldApiName) ) {
-                downstreamFieldApiNamesByControllingField[controllingFieldApiName].push(specDetail.fieldApiName);
+            if ( !downstreamFieldApiNamesByControllingField[controllingFieldKey].includes(specDetail.fieldApiName) ) {
+                downstreamFieldApiNamesByControllingField[controllingFieldKey].push(specDetail.fieldApiName);
             }
 
         });
@@ -526,7 +560,7 @@ export class PicklistDependencyMetadataWriterService {
     }
 
     /*
-        Whether the dependent field takes its values from a GLOBAL value set."""
+        Whether the dependent field takes its values from a GLOBAL value set.
 
         Such a field has no local valueSetDefinition to add a value to -- the values live in a
         .globalValueSet-meta.xml shared across every object that uses it. Rewiring which controlling
@@ -689,8 +723,10 @@ export class PicklistDependencyMetadataWriterService {
         unrelated markup, the presence or absence of a trailing newline -- is carried through
         untouched by construction, because it is never rebuilt.
 
-        The definition is edited FIRST so the region indexes, which were resolved against the
-        original string, are still valid when the region is spliced.
+        The region is spliced FIRST and the definition edited on the result, which is safe because
+        addPicklistValuesToDefinition re-derives its own indexes from the string it is handed and
+        carries none from the original -- so it is equally correct whether valueSetDefinition sits
+        before or after the region.
     */
     static buildProposedContent(currentContent: string,
                                     region: IPicklistDependencyValueSettingsRegion,
@@ -733,8 +769,14 @@ export class PicklistDependencyMetadataWriterService {
                                             indentation: string,
                                             lineEnding: string): string {
 
+        /*
+            Located against the comment blanked copy, which preserves offsets, so a commented out
+            "</valueSetDefinition>" later in the file cannot pull the insertion point into dead text
+            -- where the values would be written but never parsed, while the report still claimed
+            them.
+        */
         const definitionCloseTag = '</valueSetDefinition>';
-        const definitionCloseIndex = fieldFileContent.lastIndexOf(definitionCloseTag);
+        const definitionCloseIndex = this.blankXmlComments(fieldFileContent).lastIndexOf(definitionCloseTag);
 
         if ( definitionCloseIndex === -1 ) {
             return fieldFileContent;
@@ -755,7 +797,8 @@ export class PicklistDependencyMetadataWriterService {
 
         }).join('');
 
-        const definitionLineStartIndex = fieldFileContent.lastIndexOf(lineEnding, definitionCloseIndex - 1) + lineEnding.length;
+        const precedingLineEndingIndex = fieldFileContent.lastIndexOf(lineEnding, definitionCloseIndex - 1);
+        const definitionLineStartIndex = precedingLineEndingIndex === -1 ? 0 : precedingLineEndingIndex + lineEnding.length;
 
         return fieldFileContent.slice(0, definitionLineStartIndex)
                 + addedValueMarkup
@@ -775,18 +818,18 @@ export class PicklistDependencyMetadataWriterService {
         it could not.
     */
     static buildWritebackResult(specDetails: IPicklistDependencySpecDetail[],
-                                    fieldFilePathsByFieldApiName: Record<string, string>,
+                                    fieldFilePathsByFieldKey: Record<string, string>,
                                     readFieldFileContent: (fieldFilePath: string) => string): IPicklistDependencyWritebackResult {
 
         const downstreamFieldApiNamesByControllingField = this.buildDownstreamFieldApiNamesByControllingField(specDetails);
 
         let plans: IPicklistDependencyFieldWritebackPlan[] = [];
         let refusals: IPicklistDependencyWritebackRefusal[] = [];
-        let unchangedFieldApiNames: string[] = [];
+        let unchangedFieldKeys: string[] = [];
 
         specDetails.forEach(specDetail => {
 
-            const fieldFilePath = fieldFilePathsByFieldApiName[specDetail.fieldApiName];
+            const fieldFilePath = fieldFilePathsByFieldKey[this.buildFieldKey(specDetail.objectApiName, specDetail.fieldApiName)];
 
             if ( !fieldFilePath ) {
                 refusals.push({
@@ -814,7 +857,7 @@ export class PicklistDependencyMetadataWriterService {
                 specDetail,
                 fieldFilePath,
                 currentContent,
-                downstreamFieldApiNamesByControllingField[specDetail.fieldApiName] || []
+                downstreamFieldApiNamesByControllingField[this.buildFieldKey(specDetail.objectApiName, specDetail.fieldApiName)] || []
             );
 
             if ( outcome.refusal ) {
@@ -823,7 +866,7 @@ export class PicklistDependencyMetadataWriterService {
             }
 
             if ( !outcome.plan.hasChanges ) {
-                unchangedFieldApiNames.push(specDetail.fieldApiName);
+                unchangedFieldKeys.push(this.buildFieldKey(specDetail.objectApiName, specDetail.fieldApiName));
                 return;
             }
 
@@ -831,7 +874,196 @@ export class PicklistDependencyMetadataWriterService {
 
         });
 
-        return { plans, refusals, unchangedFieldApiNames };
+        /*
+            A dependent field's valueSettings can only name a controlling value the CONTROLLING field
+            actually offers. Wiring up "texas unlocks cle" while State__c declares no "texas" writes
+            metadata describing a combination no user can reach, so the controlling side is
+            reconciled in the same run rather than left for the developer to notice on deploy.
+        */
+        const controllingFieldOutcomes = this.buildControllingFieldValueOutcomes(
+            specDetails, plans, fieldFilePathsByFieldKey, readFieldFileContent
+        );
+
+        return {
+            plans: controllingFieldOutcomes.plans,
+            refusals: refusals.concat(controllingFieldOutcomes.refusals),
+            unchangedFieldKeys
+        };
+
+    }
+
+    /*
+        The values each controlling field must gain for the writes this run is about to make.
+
+        Scoped to spec details that produced a PLAN, deliberately. A controlling value missing from
+        the controlling field is only this command's business because it is about to write a
+        valueSettings entry naming it -- reaching further would turn a targeted fix into an audit of
+        metadata the run was never asked to touch.
+
+        A controlling field that already has a plan of its own -- the chained case, where it is also
+        somebody's dependent field -- has the values folded into THAT plan rather than given a second
+        one, because two plans for one path would write the file twice and the second would win.
+    */
+    static buildControllingFieldValueOutcomes(specDetails: IPicklistDependencySpecDetail[],
+                                                plans: IPicklistDependencyFieldWritebackPlan[],
+                                                fieldFilePathsByFieldKey: Record<string, string>,
+                                                readFieldFileContent: (fieldFilePath: string) => string):
+                                                { plans: IPicklistDependencyFieldWritebackPlan[], refusals: IPicklistDependencyWritebackRefusal[] } {
+
+        const plannedFieldKeys = new Set(plans.map(plan => this.buildFieldKey(plan.objectApiName, plan.fieldApiName)));
+
+        let controllingValuesByControllingFieldKey: Record<string, string[]> = Object.create(null);
+        let controllingFieldsByKey: Record<string, { objectApiName: string, fieldApiName: string }> = Object.create(null);
+
+        specDetails.forEach(specDetail => {
+
+            if ( !plannedFieldKeys.has(this.buildFieldKey(specDetail.objectApiName, specDetail.fieldApiName)) ) {
+                return;
+            }
+
+            const controllingFieldKey = this.buildFieldKey(specDetail.objectApiName, specDetail.controllingFieldApiName);
+
+            controllingValuesByControllingFieldKey[controllingFieldKey] =
+                controllingValuesByControllingFieldKey[controllingFieldKey] || [];
+            controllingFieldsByKey[controllingFieldKey] =
+                { objectApiName: specDetail.objectApiName, fieldApiName: specDetail.controllingFieldApiName };
+
+            specDetail.expectations.forEach(expectation => {
+
+                /*
+                    Only a value the spec asserts is USABLE names something the controlling field has
+                    to offer. A forbidden combination asserts the opposite, so an expectNotAllowed on
+                    a value the controlling field does not declare is already satisfied.
+                */
+                if ( expectation.dependentValues.length === 0 && !expectation.dependentValuesAreExhaustive ) {
+                    return;
+                }
+
+                if ( !controllingValuesByControllingFieldKey[controllingFieldKey].includes(expectation.controllingValue) ) {
+                    controllingValuesByControllingFieldKey[controllingFieldKey].push(expectation.controllingValue);
+                }
+
+            });
+
+        });
+
+        let resultingPlans = plans.slice();
+        let refusals: IPicklistDependencyWritebackRefusal[] = [];
+
+        Object.keys(controllingValuesByControllingFieldKey).forEach(controllingFieldKey => {
+
+            const controllingField = controllingFieldsByKey[controllingFieldKey];
+            const existingPlanIndex = resultingPlans.findIndex(plan =>
+                this.buildFieldKey(plan.objectApiName, plan.fieldApiName) === controllingFieldKey);
+
+            const controllingFieldFilePath = existingPlanIndex >= 0
+                ? resultingPlans[existingPlanIndex].fieldFilePath
+                : fieldFilePathsByFieldKey[controllingFieldKey];
+
+            const buildRefusal = (reason: string) => refusals.push({
+                objectApiName: controllingField.objectApiName,
+                fieldApiName: controllingField.fieldApiName,
+                reason
+            });
+
+            let baseContent: string;
+
+            if ( existingPlanIndex >= 0 ) {
+                baseContent = resultingPlans[existingPlanIndex].proposedContent;
+            } else {
+
+                if ( !controllingFieldFilePath ) {
+                    /*
+                        No file for the controlling field is not automatically a problem: it is how a
+                        standard picklist, or one this objects directory does not carry, looks from
+                        here. Reported only when a value is actually missing, which cannot be known
+                        without the file, so silence is the honest answer.
+                    */
+                    return;
+                }
+
+                try {
+                    baseContent = readFieldFileContent(controllingFieldFilePath);
+                } catch (error) {
+                    buildRefusal(`"${controllingFieldFilePath}" could not be read (${error.message}), so the controlling values the specs name could not be checked against it. Nothing was written for this field.`);
+                    return;
+                }
+
+            }
+
+            const declaredValues = new Set(this.collectDeclaredPicklistValues(baseContent));
+
+            const addedPicklistValues = controllingValuesByControllingFieldKey[controllingFieldKey]
+                .filter(controllingValue => !declaredValues.has(controllingValue))
+                .sort((firstValue, secondValue) => this.compareForEmission(firstValue, secondValue));
+
+            if ( addedPicklistValues.length === 0 ) {
+                return;
+            }
+
+            if ( this.isGlobalValueSetBacked(baseContent) ) {
+                buildRefusal(`"${controllingFieldKey}" controls a field this run is reconciling and takes its values from the global value set "${this.resolveGlobalValueSetName(baseContent)}", which this command never edits. Add ${addedPicklistValues.map(value => `"${value}"`).join(', ')} to that global value set first, then run this again.`);
+                return;
+            }
+
+            const indentation = this.resolveValueSetDefinitionIndentation(baseContent);
+
+            if ( indentation === undefined ) {
+                buildRefusal(`"${controllingFieldKey}" has no "valueSetDefinition" markup, so ${addedPicklistValues.map(value => `"${value}"`).join(', ')} could not be added to it. Add ${addedPicklistValues.length === 1 ? 'it' : 'them'} to the controlling picklist first, then run this again.`);
+                return;
+            }
+
+            const proposedContent = this.addPicklistValuesToDefinition(
+                baseContent, addedPicklistValues, indentation, this.resolveLineEnding(baseContent)
+            );
+
+            if ( existingPlanIndex >= 0 ) {
+
+                const existingPlan = resultingPlans[existingPlanIndex];
+
+                resultingPlans[existingPlanIndex] = {
+                    ...existingPlan,
+                    proposedContent,
+                    addedPicklistValues: existingPlan.addedPicklistValues.concat(addedPicklistValues)
+                };
+
+                return;
+
+            }
+
+            resultingPlans.push({
+                objectApiName: controllingField.objectApiName,
+                fieldApiName: controllingField.fieldApiName,
+                fieldFilePath: controllingFieldFilePath,
+                proposedContent,
+                hasChanges: true,
+                addedPairs: [],
+                removedPairs: [],
+                addedPicklistValues
+            });
+
+        });
+
+        return { plans: resultingPlans, refusals };
+
+    }
+
+    /*
+        The indentation of the field's valueSetDefinition element, or undefined when it has none.
+
+        Undefined is the signal to refuse rather than to guess: a file with no valueSetDefinition has
+        nowhere to put a new value, and appending one anyway is how a report claims an addition the
+        written file does not contain.
+    */
+    static resolveValueSetDefinitionIndentation(fieldFileContent: string): string | undefined {
+
+        const definitionOpenIndex = this.blankXmlComments(fieldFileContent).indexOf('<valueSetDefinition>');
+
+        if ( definitionOpenIndex === -1 ) {
+            return undefined;
+        }
+
+        return this.resolveIndentationAtIndex(fieldFileContent, definitionOpenIndex);
 
     }
 
@@ -842,12 +1074,38 @@ export class PicklistDependencyMetadataWriterService {
         what is refused, what is already in sync -- is computable and testable without a filesystem,
         and so a caller can show it and be declined before anything is written.
     */
-    static writeFieldWritebackPlans(plans: IPicklistDependencyFieldWritebackPlan[]): string[] {
+    static writeFieldWritebackPlans(plans: IPicklistDependencyFieldWritebackPlan[],
+                                        containingDirectoryPath?: string): string[] {
 
         return plans.map(plan => {
+
+            /*
+                The sink checks containment itself rather than trusting the api name validation two
+                services upstream. That validation is what makes traversal impossible today, but a
+                write sink whose safety lives in another file stops being safe the moment somebody
+                adds a second caller -- and realpath additionally refuses a field file that is a
+                symlink out of the tree, which a path check alone would follow.
+            */
+            if ( containingDirectoryPath ) {
+                this.assertFieldFileContainedIn(plan.fieldFilePath, containingDirectoryPath);
+            }
+
             fs.writeFileSync(plan.fieldFilePath, plan.proposedContent);
             return plan.fieldFilePath;
+
         });
+
+    }
+
+    static assertFieldFileContainedIn(fieldFilePath: string, containingDirectoryPath: string) {
+
+        const resolvedContainingDirectoryPath = fs.realpathSync(containingDirectoryPath);
+        const resolvedFieldFilePath = fs.realpathSync(fieldFilePath);
+
+        if ( resolvedFieldFilePath !== resolvedContainingDirectoryPath
+                && !resolvedFieldFilePath.startsWith(resolvedContainingDirectoryPath + path.sep) ) {
+            throw new Error(`"${fieldFilePath}" resolves outside "${containingDirectoryPath}". Nothing was written. Field metadata is only ever written inside the configured Salesforce objects directory.`);
+        }
 
     }
 
@@ -874,8 +1132,8 @@ export class PicklistDependencyMetadataWriterService {
 
         });
 
-        if ( result.unchangedFieldApiNames.length > 0 ) {
-            reportLines.push(`Already in sync: ${result.unchangedFieldApiNames.join(', ')}`);
+        if ( result.unchangedFieldKeys.length > 0 ) {
+            reportLines.push(`Already in sync: ${result.unchangedFieldKeys.join(', ')}`);
         }
 
         result.refusals.forEach(refusal => reportLines.push(`Skipped ${refusal.objectApiName}.${refusal.fieldApiName}: ${refusal.reason}`));

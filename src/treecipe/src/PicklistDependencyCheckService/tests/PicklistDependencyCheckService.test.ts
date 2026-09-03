@@ -547,6 +547,88 @@ describe('shouldDeployPicklistDependencyClasses', () => {
 
     });
 
+    /*
+        The writeback command's deploy entry point. Phrased around the field metadata rather than
+        the Apex classes, because a user who just approved a metadata write should not be told
+        "the picklist dependency classes" failed.
+    */
+    describe('deploySourcePaths', () => {
+
+        const changedFieldFilePaths = ['/workspace/objects/Account/fields/Neighborhood__c.field-meta.xml'];
+
+        it('shouldDeployExactlyThePathsItWasGiven', async () => {
+
+            const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true, numberComponentsDeployed: 1 } }) });
+
+            const deploySummary = await PicklistDependencyCheckService.deploySourcePaths(changedFieldFilePaths, 'devHub');
+
+            expect(deploySummary).toContain('1 component(s)');
+
+            const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
+
+            expect(salesforceCliArguments).toContain('--source-dir');
+            expect(salesforceCliArguments).toContain(changedFieldFilePaths[0]);
+            expect(salesforceCliArguments).toContain('devHub');
+
+        });
+
+        it('shouldThrowComponentFailureDetailNamingTheFieldMetadataRatherThanTheClasses', async () => {
+
+            stubSalesforceCli({
+                stdout: JSON.stringify({
+                    status: 1,
+                    result: { success: false, details: { componentFailures: [{ fullName: 'Account.Neighborhood__c', problem: 'Invalid controlling value' }] } }
+                })
+            });
+
+            await expect(PicklistDependencyCheckService.deploySourcePaths(changedFieldFilePaths, 'devHub'))
+                .rejects.toThrow('The changed field metadata failed to deploy: Account.Neighborhood__c: Invalid controlling value');
+
+        });
+
+        it('shouldThrowActionableGuidanceWhenSourceTrackingReportsConflicts', async () => {
+
+            stubSalesforceCli({ stdout: JSON.stringify({ status: 1, name: 'SourceConflictError', message: '2 conflicts detected' }) });
+
+            await expect(PicklistDependencyCheckService.deploySourcePaths(changedFieldFilePaths, 'devHub'))
+                .rejects.toThrow('Retrieve or resolve them first');
+
+        });
+
+        it('shouldThrowTheCliErrorWhenNoComponentFailureIsReported', async () => {
+
+            stubSalesforceCli({ stdout: JSON.stringify({ status: 1, name: 'GenericTimeoutError', message: 'The deploy timed out' }) });
+
+            await expect(PicklistDependencyCheckService.deploySourcePaths(changedFieldFilePaths, 'devHub'))
+                .rejects.toThrow('GenericTimeoutError: The deploy timed out');
+
+        });
+
+        // AN ORG IDENTIFIER IS VALIDATED BEFORE ANY ARGV IS BUILT, SO IT CANNOT MASQUERADE AS A FLAG
+        it('shouldRefuseAnOrgIdentifierThatCouldBeReadAsAFlag', async () => {
+
+            const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true } }) });
+
+            await expect(PicklistDependencyCheckService.deploySourcePaths(changedFieldFilePaths, '--targetusername'))
+                .rejects.toThrow();
+
+            expect(execFileSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('shouldRefuseADeployWithNoSourcePaths', async () => {
+
+            const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { success: true } }) });
+
+            await expect(PicklistDependencyCheckService.deploySourcePaths([], 'devHub'))
+                .rejects.toThrow('no source files to deploy');
+
+            expect(execFileSpy).not.toHaveBeenCalled();
+
+        });
+
+    });
+
 });
 
 describe('shouldResolveFrameworkClassesFromEitherLocation', () => {

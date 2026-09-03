@@ -696,7 +696,9 @@ describe('PicklistDependencyMetadataWriterService', () => {
             const downstream = PicklistDependencyMetadataWriterService
                 .buildDownstreamFieldApiNamesByControllingField(chainedSpecDetails);
 
-            expect(downstream['State__c']).toEqual(['City__c']);
+            expect(downstream['Chain__c.State__c']).toEqual(['City__c']);
+            // KEYED BY OBJECT AND FIELD -- THE BARE FIELD NAME WOULD COLLIDE ACROSS OBJECTS
+            expect(downstream['State__c']).toBeUndefined();
 
         });
 
@@ -754,6 +756,301 @@ describe('PicklistDependencyMetadataWriterService', () => {
         metadata. If they disagree anywhere, running one after the other reports drift that nobody
         introduced -- and a developer chasing a phantom diff has no way to tell it from a real one.
     */
+    describe('one run, many objects', () => {
+
+        const buildSpecDetail = (objectApiName: string): IPicklistDependencySpecDetail => ({
+            objectApiName,
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont', 'willowick'] }]
+        });
+
+        /*
+            The collision this keys against: field api names repeat across objects, and a run
+            concatenates the spec details of every per-object class. Keyed by the bare field name,
+            one object's dependency metadata is written into the other object's file.
+        */
+        it('given two objects sharing a field api name, plans against each object own file', () => {
+
+            const specDetails = [buildSpecDetail('Account'), buildSpecDetail('Case')];
+
+            const fieldFilePathsByFieldKey = {
+                'Account.Neighborhood__c': '/objects/Account/fields/Neighborhood__c.field-meta.xml',
+                'Case.Neighborhood__c': '/objects/Case/fields/Neighborhood__c.field-meta.xml'
+            };
+
+            const result = PicklistDependencyMetadataWriterService.buildWritebackResult(
+                specDetails, fieldFilePathsByFieldKey, () => readMock('FlatShape.field-meta.xml')
+            );
+
+            const plannedPaths = result.plans.map(plan => plan.fieldFilePath);
+
+            expect(new Set(plannedPaths).size).toBe(plannedPaths.length);
+            expect(plannedPaths).toIncludeAllMembers([
+                '/objects/Account/fields/Neighborhood__c.field-meta.xml',
+                '/objects/Case/fields/Neighborhood__c.field-meta.xml'
+            ]);
+
+        });
+
+        it('object qualifies the fields it reports as already in sync', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Neighborhood__c',
+                controllingFieldApiName: 'City__c',
+                expectations: [
+                    { controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont'] },
+                    { controllingValue: 'eastlake', dependentValues: ['willowick'] }
+                ]
+            };
+
+            const result = PicklistDependencyMetadataWriterService.buildWritebackResult(
+                [specDetail],
+                { 'Account.Neighborhood__c': '/fields/Neighborhood__c.field-meta.xml' },
+                () => readMock('FlatShape.field-meta.xml')
+            );
+
+            expect(result.plans).toHaveLength(0);
+            expect(result.unchangedFieldKeys).toEqual(['Account.Neighborhood__c']);
+            expect(PicklistDependencyMetadataWriterService.buildWritebackReport(result))
+                .toContain('Already in sync: Account.Neighborhood__c');
+
+        });
+
+    });
+
+    describe('the controlling field own picklist values', () => {
+
+        const specDetailNamingAnUndeclaredControllingValue: IPicklistDependencySpecDetail = {
+            objectApiName: 'Account',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            // "madison" IS NOT A VALUE ControllingField.field-meta.xml DECLARES
+            expectations: [{ controllingValue: 'madison', dependentValues: ['willowick'] }]
+        };
+
+        const fieldFilePathsByFieldKey = {
+            'Account.Neighborhood__c': '/objects/Account/fields/Neighborhood__c.field-meta.xml',
+            'Account.City__c': '/objects/Account/fields/City__c.field-meta.xml'
+        };
+
+        const readByPath = (controllingFieldMockFileName: string) => (fieldFilePath: string) =>
+            fieldFilePath.includes('City__c') ? readMock(controllingFieldMockFileName) : readMock('FlatShape.field-meta.xml');
+
+        it('adds a controlling value the spec names that the controlling field does not declare', () => {
+
+            const result = PicklistDependencyMetadataWriterService.buildWritebackResult(
+                [specDetailNamingAnUndeclaredControllingValue], fieldFilePathsByFieldKey, readByPath('ControllingField.field-meta.xml')
+            );
+
+            expect(result.refusals).toHaveLength(0);
+
+            const controllingFieldPlan = result.plans.find(plan => plan.fieldApiName === 'City__c');
+
+            expect(controllingFieldPlan).toBeDefined();
+            expect(controllingFieldPlan.addedPicklistValues).toEqual(['madison']);
+            expect(controllingFieldPlan.proposedContent).toContain('<fullName>madison</fullName>');
+            expect(controllingFieldPlan.proposedContent).toContain('<label>madison</label>');
+            // THE VALUES IT ALREADY DECLARED ARE NOT REORDERED OR DROPPED
+            expect(controllingFieldPlan.proposedContent).toContain('<fullName>cle</fullName>');
+            expect(controllingFieldPlan.proposedContent).toContain('<fullName>eastlake</fullName>');
+
+        });
+
+        it('leaves the controlling field alone when it already declares every value the specs name', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                ...specDetailNamingAnUndeclaredControllingValue,
+                expectations: [{ controllingValue: 'eastlake', dependentValues: ['ohiocity'] }]
+            };
+
+            const result = PicklistDependencyMetadataWriterService.buildWritebackResult(
+                [specDetail], fieldFilePathsByFieldKey, readByPath('ControllingField.field-meta.xml')
+            );
+
+            expect(result.plans.map(plan => plan.fieldApiName)).toEqual(['Neighborhood__c']);
+
+        });
+
+        it('refuses when the controlling field takes its values from a global value set', () => {
+
+            const result = PicklistDependencyMetadataWriterService.buildWritebackResult(
+                [specDetailNamingAnUndeclaredControllingValue],
+                fieldFilePathsByFieldKey,
+                readByPath('ControllingFieldGlobalValueSet.field-meta.xml')
+            );
+
+            expect(result.plans.map(plan => plan.fieldApiName)).toEqual(['Neighborhood__c']);
+            expect(result.refusals).toHaveLength(1);
+            expect(result.refusals[0].fieldApiName).toBe('City__c');
+            expect(result.refusals[0].reason).toContain('Cities');
+            expect(result.refusals[0].reason).toContain('madison');
+
+        });
+
+        /*
+            A forbidden combination asserts the value is NOT usable, so it names nothing the
+            controlling field has to start offering.
+        */
+        it('does not add a controlling value named only by a forbidden combination', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                ...specDetailNamingAnUndeclaredControllingValue,
+                expectations: [
+                    { controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont', 'willowick'] },
+                    { controllingValue: 'madison', dependentValues: [], forbiddenValues: ['willowick'] }
+                ]
+            };
+
+            const result = PicklistDependencyMetadataWriterService.buildWritebackResult(
+                [specDetail], fieldFilePathsByFieldKey, readByPath('ControllingField.field-meta.xml')
+            );
+
+            expect(result.refusals).toHaveLength(0);
+            expect(result.plans.map(plan => plan.fieldApiName)).toEqual(['Neighborhood__c']);
+
+        });
+
+        it('folds the added values into the controlling field own plan rather than writing it twice', () => {
+
+            const chainedSpecDetails: IPicklistDependencySpecDetail[] = [
+                specDetailNamingAnUndeclaredControllingValue,
+                {
+                    objectApiName: 'Account',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'ohio', dependentValues: ['cle', 'tremont'] }]
+                }
+            ];
+
+            const result = PicklistDependencyMetadataWriterService.buildWritebackResult(
+                chainedSpecDetails,
+                fieldFilePathsByFieldKey,
+                fieldFilePath => fieldFilePath.includes('City__c') ? readMock('FlatShape.field-meta.xml') : readMock('FlatShape.field-meta.xml')
+            );
+
+            const controllingFieldPlans = result.plans.filter(plan => plan.fieldApiName === 'City__c');
+
+            // ONE PLAN PER FILE -- TWO WOULD WRITE THE PATH TWICE AND THE SECOND WOULD WIN
+            expect(controllingFieldPlans).toHaveLength(1);
+            expect(controllingFieldPlans[0].addedPicklistValues).toContain('madison');
+            expect(controllingFieldPlans[0].proposedContent).toContain('<fullName>madison</fullName>');
+
+        });
+
+    });
+
+    describe('files that are not pretty printed', () => {
+
+        /*
+            resolveIndentationAtIndex falls back to a fixed width when the tag does not start its
+            own line, so a span extended back by that width would splice out characters of real
+            markup -- an arbitrary number of them -- and leave XML that will not deploy.
+        */
+        it('given valueSettings sharing a line with the markup before it, eats none of that markup', () => {
+
+            const inlineContent = '<?xml version="1.0" encoding="UTF-8"?>\n'
+                                    + '<CustomField>\n'
+                                    + '    <valueSet><valueSettings>\n'
+                                    + '            <controllingFieldValue>cle</controllingFieldValue>\n'
+                                    + '            <valueName>ohiocity</valueName>\n'
+                                    + '        </valueSettings>\n'
+                                    + '    </valueSet>\n'
+                                    + '</CustomField>\n';
+
+            const region = PicklistDependencyMetadataWriterService.resolveValueSettingsRegion(inlineContent);
+
+            expect(inlineContent.slice(region.startIndex)).toStartWith('<valueSettings>');
+            expect(inlineContent.slice(0, region.startIndex)).toEndWith('<valueSet>');
+
+            const outcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                {
+                    objectApiName: 'Account',
+                    fieldApiName: 'Neighborhood__c',
+                    controllingFieldApiName: 'City__c',
+                    expectations: [{ controllingValue: 'cle', dependentValues: ['ohiocity', 'tremont'] }]
+                },
+                '/fields/Neighborhood__c.field-meta.xml',
+                inlineContent
+            );
+
+            expect(outcome.plan.proposedContent).toContain('<valueSet>');
+            expect(outcome.plan.proposedContent).not.toContain('<v    ');
+            expect(outcome.plan.proposedContent).toContain('<valueName>tremont</valueName>');
+
+        });
+
+        it('inserts new picklist values ahead of the real valueSetDefinition close, not a commented out one', () => {
+
+            const contentWithTrailingCommentedClose = readMock('ControllingField.field-meta.xml')
+                                                        .replace('</valueSet>', '    <!-- </valueSetDefinition> -->\n</valueSet>');
+
+            const updated = PicklistDependencyMetadataWriterService.addPicklistValuesToDefinition(
+                contentWithTrailingCommentedClose, ['madison'], '        ', '\n'
+            );
+
+            const addedValueIndex = updated.indexOf('<fullName>madison</fullName>');
+
+            expect(addedValueIndex).toBeGreaterThan(-1);
+            expect(addedValueIndex).toBeLessThan(updated.indexOf('</valueSetDefinition>'));
+            expect(updated).toContain('<!-- </valueSetDefinition> -->');
+
+        });
+
+    });
+
+    describe('writing to disk', () => {
+
+        it('refuses a plan whose field file resolves outside the objects directory', () => {
+
+            const writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+
+            const escapingPlan = {
+                objectApiName: 'Account',
+                fieldApiName: 'Neighborhood__c',
+                fieldFilePath: path.join(mocksDirectoryPath, 'FlatShape.field-meta.xml'),
+                proposedContent: 'anything',
+                hasChanges: true,
+                addedPairs: [],
+                removedPairs: [],
+                addedPicklistValues: []
+            };
+
+            expect(() => PicklistDependencyMetadataWriterService.writeFieldWritebackPlans(
+                [escapingPlan], path.join(mocksDirectoryPath, '..', '..', '..', 'PicklistDependencyManifestService')
+            )).toThrow('resolves outside');
+
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('writes a plan whose field file is contained in the objects directory', () => {
+
+            const writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+
+            const containedPlan = {
+                objectApiName: 'Account',
+                fieldApiName: 'Neighborhood__c',
+                fieldFilePath: path.join(mocksDirectoryPath, 'FlatShape.field-meta.xml'),
+                proposedContent: 'anything',
+                hasChanges: true,
+                addedPairs: [],
+                removedPairs: [],
+                addedPicklistValues: []
+            };
+
+            const writtenFilePaths = PicklistDependencyMetadataWriterService.writeFieldWritebackPlans(
+                [containedPlan], mocksDirectoryPath
+            );
+
+            expect(writtenFilePaths).toEqual([containedPlan.fieldFilePath]);
+            expect(writeFileSyncSpy).toHaveBeenCalledWith(containedPlan.fieldFilePath, 'anything');
+
+        });
+
+    });
+
     describe('round trip with Generate', () => {
 
         const buildApexFromFieldFile = async (fieldFileContent: string, objectApiName: string) => {

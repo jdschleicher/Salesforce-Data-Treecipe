@@ -1749,6 +1749,26 @@ describe('ExtensionCommandService', () => {
 </CustomField>
 `;
 
+        /*
+            The CONTROLLING field's own file. Writeback reads it to check that every controlling
+            value the specs name is a value this picklist actually offers, so a mock returning the
+            dependent field's markup for it would make "cle" look undeclared.
+        */
+        const controllingFieldFileContent = `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>City__c</fullName>
+    <valueSet>
+        <valueSetDefinition>
+            <value>
+                <fullName>cle</fullName>
+                <default>false</default>
+                <label>cle</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
+`;
+
         const apexClassBody = `public class SDTPLDSpecs_Dependency_Example_c {
     public static SDTPicklistDependencySpec specFor_Dependency_Example_c_Neighborhood_c() {
         return SDTPicklistDependencySpec.forField('Dependency_Example__c', 'Neighborhood__c')
@@ -1781,8 +1801,22 @@ describe('ExtensionCommandService', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readdirSync').mockReturnValue(['SDTPLDSpecs_Dependency_Example_c.cls'] as any);
-            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) =>
-                String(readPath).endsWith('.cls') ? apexClassBody : fieldFileContent as any);
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) => {
+
+                if ( String(readPath).endsWith('.cls') ) {
+                    return apexClassBody as any;
+                }
+
+                return ( String(readPath).includes('City__c') ? controllingFieldFileContent : fieldFileContent ) as any;
+
+            });
+
+            /*
+                The write sink resolves both paths before writing, to refuse a field file that is a
+                symlink out of the objects directory. Identity here is what a tree with no symlinks
+                resolves to, so the containment check still runs against these fake paths.
+            */
+            jest.spyOn(fs, 'realpathSync').mockImplementation((resolvedPath: any) => String(resolvedPath) as any);
 
             // THE ONE CALL THAT TOUCHES A DEVELOPER'S METADATA -- STUBBED SO NO TEST EVER WRITES ONE
             writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
@@ -1856,6 +1890,36 @@ describe('ExtensionCommandService', () => {
             await extensionCommandService.updatePicklistDependencyMetadata();
 
             expect(deploySpy).toHaveBeenCalledWith([fieldFilePath], 'devHub', expect.any(Function));
+
+        });
+
+        /*
+            The spec asserts "cle unlocks tremont", and the controlling field above declares only
+            "cle" -- so the dependent field's write is fine, but nothing is missing on the
+            controlling side. Naming a controlling value the picklist does NOT offer is the case
+            that has to reach its own file.
+        */
+        it('given a spec naming a controlling value the controlling field does not declare, writes that field too', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(UPDATE_METADATA_ACTION_LABEL);
+
+            jest.spyOn(PicklistDependencyTestService, 'parseSpecDetailsByApexClassBody').mockReturnValue([{
+                objectApiName: 'Dependency_Example__c',
+                fieldApiName: 'Neighborhood__c',
+                controllingFieldApiName: 'City__c',
+                expectations: [{ controllingValue: 'madison', dependentValues: ['ohiocity'] }]
+            }]);
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            const writtenControllingFieldCall = writeFileSyncSpy.mock.calls
+                .find(writeCall => String(writeCall[0]).includes('City__c'));
+
+            expect(writtenControllingFieldCall).toBeDefined();
+            expect(String(writtenControllingFieldCall[1])).toContain('<fullName>madison</fullName>');
+
+            // AND THE DEPENDENT FIELD IS STILL WRITTEN IN THE SAME RUN
+            expect(writeFileSyncSpy.mock.calls.some(writeCall => String(writeCall[0]).includes('Neighborhood__c'))).toBe(true);
 
         });
 

@@ -1812,7 +1812,45 @@ ${recordTypeAggregationMarkup}}
 
         });
 
+        this.applyUpstreamFieldApiNames(specDetails);
+
         return specDetails;
+
+    }
+
+    /*
+        The chain links, restored by derivation rather than by reading the emitted dependsOn.
+
+        dependsOn names a spec METHOD, and buildSpecMethodName is deliberately lossy -- it strips
+        characters an identifier cannot carry, collapses runs of underscores, and appends a numeric
+        suffix on collision -- so the field it came from cannot be recovered from the identifier.
+        Reconstructing the invariant instead is exact: upstreamFieldApiName means "this field's
+        controlling field is ITSELF a dependent picklist", and the parsed set says which fields are
+        dependent. A hand written class that omits the dependsOn still gets the link, and one that
+        names a method for a field the class no longer specs does not get a broken one.
+
+        Scoped per object, because a controlling field always lives on the same object as the field
+        it controls. A field naming ITSELF as its controlling field is left unlinked, matching the
+        generator's own guard -- source metadata can declare that, and a spec chained to itself is
+        not a chain.
+    */
+    static applyUpstreamFieldApiNames(specDetails: IPicklistDependencySpecDetail[]) {
+
+        const dependentFieldKeys = new Set(specDetails.map(
+            specDetail => `${specDetail.objectApiName}.${specDetail.fieldApiName}`
+        ));
+
+        specDetails.forEach(specDetail => {
+
+            const controllingFieldIsItselfDependent =
+                specDetail.controllingFieldApiName !== specDetail.fieldApiName
+                && dependentFieldKeys.has(`${specDetail.objectApiName}.${specDetail.controllingFieldApiName}`);
+
+            specDetail.upstreamFieldApiName = controllingFieldIsItselfDependent
+                ? specDetail.controllingFieldApiName
+                : undefined;
+
+        });
 
     }
 

@@ -26,6 +26,12 @@ A spec asserts what a controlling value **must** unlock (`expectAtLeast`) and wh
 
 `expectNone` and `expectExactly` are the exception, and deliberately so: both state their dependent list *completely*, so anything else the metadata unlocks under that controlling value contradicts the spec and is removed.
 
+### The controlling field is reconciled too
+
+A dependent field's `valueSettings` can only name a controlling value the **controlling** field actually offers. When a spec asserts `madison unlocks willowick` and the controlling picklist declares no `madison`, the value is added to that field's own `valueSetDefinition` in the same run — otherwise the write would describe a combination no user could ever reach, and you would find out on deploy. Only values a spec asserts are *usable* count; a forbidden combination names nothing the controlling field has to start offering.
+
+The controlling field is held to the same global-value-set rule as the dependent one, and when it is itself somebody's dependent field the added values fold into its existing plan rather than producing a second write of the same path.
+
 ### Three things it refuses to do
 
 - **A global-value-set-backed field** can be rewired, but a new value is refused with a message naming the set to add it to first. The only place a new value could go is the shared `.globalValueSet-meta.xml`, whose blast radius reaches every other field pointing at it. That file is never edited.
@@ -39,6 +45,16 @@ Only two spans of a field file are ever rewritten: the `valueSettings` region, a
 Both `<valueSettings>` shapes are supported and preserved — grouped by `valueName` with repeated `controllingFieldValue`, and one pair per block. Rewriting a file into the other shape would make the first reconciliation a restructure of every block.
 
 Order is normalized alphabetically on both axes on the first writeback, so a second writeback with no spec change produces **zero diff** — and after a writeback, running Generate produces byte-identical Apex. The two directions agree, and neither reports drift the other introduced.
+
+A field file that is not pretty printed is handled rather than damaged: where a `<valueSettings>` block does not start its own line, the rewritten span stops at the tag instead of extending back over markup that has nothing to do with it. New picklist values are inserted ahead of the *real* `</valueSetDefinition>`, located against a comment-blanked copy so a commented-out close tag cannot put them in dead text.
+
+### Correctness across a multi-object run
+
+Field API names are not unique across objects — `Status__c` on Account and on Case are routine and different. Every path map and dependency-graph key is therefore keyed by **object and field**, so one object's dependency metadata can never be written into another object's file, and an orphaning cascade on `Account.Type__c` is not read as one on `Case.Sub_Type__c`. Reports name fields the same way.
+
+The write sink checks containment itself: a field file resolving outside the configured objects directory — a symlink out of the tree included — is refused rather than written, independent of the API-name validation upstream.
+
+Chain links survive the round trip. `.dependsOn(...)` names a spec *method*, and method names are deliberately lossy, so the link is derived from the parsed set — a field whose controlling field is itself specced in the same class — rather than reverse-engineered from the identifier. A field naming itself as its controlling field stays a root.
 
 ## [3.5.0] - The Spec Manifest: the Explorer and the generated Apex become one artifact
 

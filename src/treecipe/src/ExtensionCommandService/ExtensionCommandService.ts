@@ -737,7 +737,7 @@ export class ExtensionCommandService {
                 return;
             }
 
-            const writtenFilePaths = PicklistDependencyMetadataWriterService.writeFieldWritebackPlans(writebackResult.plans);
+            const writtenFilePaths = PicklistDependencyMetadataWriterService.writeFieldWritebackPlans(writebackResult.plans, fullPathToObjectsDirectory);
 
             VSCodeWorkspaceService.showPicklistDependencyCheckReport(changeReport);
 
@@ -820,34 +820,50 @@ export class ExtensionCommandService {
             return undefined;
         }
 
-        const fieldFilePathsByFieldApiName = this.buildFieldFilePathsByFieldApiName(specDetails, fullPathToObjectsDirectory);
+        const fieldFilePathsByFieldKey = this.buildFieldFilePathsByFieldKey(specDetails, fullPathToObjectsDirectory);
 
         return PicklistDependencyMetadataWriterService.buildWritebackResult(
             specDetails,
-            fieldFilePathsByFieldApiName,
+            fieldFilePathsByFieldKey,
             fieldFilePath => fs.readFileSync(fieldFilePath, 'utf-8')
         );
 
     }
 
-    private buildFieldFilePathsByFieldApiName(specDetails: IPicklistDependencySpecDetail[],
-                                                fullPathToObjectsDirectory: string): Record<string, string> {
+    /*
+        Keyed by OBJECT and field, never by field alone.
 
-        let fieldFilePathsByFieldApiName: Record<string, string> = Object.create(null);
+        A run reconciles every per-object spec class at once, and "Status__c" on Account and on Case
+        are different fields with the same api name. Keyed by the bare name they collide, and one
+        object's dependency metadata is written into the other object's file while its own is never
+        written at all -- silently, because the report names what was planned rather than what landed.
 
-        specDetails.forEach(specDetail => {
+        Both the CONTROLLING and the dependent field of each spec are mapped: writeback may add a
+        controlling value to the controlling field's own file, so its path has to be resolvable too.
+    */
+    private buildFieldFilePathsByFieldKey(specDetails: IPicklistDependencySpecDetail[],
+                                            fullPathToObjectsDirectory: string): Record<string, string> {
+
+        let fieldFilePathsByFieldKey: Record<string, string> = Object.create(null);
+
+        const mapFieldFilePath = (objectApiName: string, fieldApiName: string) => {
 
             const fieldFilePath = path.join(
-                fullPathToObjectsDirectory, specDetail.objectApiName, 'fields', `${specDetail.fieldApiName}.field-meta.xml`
+                fullPathToObjectsDirectory, objectApiName, 'fields', `${fieldApiName}.field-meta.xml`
             );
 
             if ( fs.existsSync(fieldFilePath) ) {
-                fieldFilePathsByFieldApiName[specDetail.fieldApiName] = fieldFilePath;
+                fieldFilePathsByFieldKey[PicklistDependencyMetadataWriterService.buildFieldKey(objectApiName, fieldApiName)] = fieldFilePath;
             }
 
+        };
+
+        specDetails.forEach(specDetail => {
+            mapFieldFilePath(specDetail.objectApiName, specDetail.fieldApiName);
+            mapFieldFilePath(specDetail.objectApiName, specDetail.controllingFieldApiName);
         });
 
-        return fieldFilePathsByFieldApiName;
+        return fieldFilePathsByFieldKey;
 
     }
 

@@ -68,6 +68,28 @@ export interface ISalesforceCliJsonPayload {
 */
 export type PicklistDependencyDeployReason = 'specsTestClassAbsentFromOrg' | 'specsClassesJustRegenerated';
 
+/*
+    The shape of the deploy CLI's --json output that these commands actually read.
+
+    Narrow on purpose: the CLI emits a great deal more, and typing only what is consumed keeps the
+    failure message honest about what it depends on. Every member is optional because a failing
+    invocation may emit any subset of them, or none.
+*/
+export interface ISalesforceDeployComponentFailure {
+    fullName?: string;
+    problem?: string;
+}
+
+export interface ISalesforceDeployCliOutput {
+    name?: string;
+    message?: string;
+    result?: {
+        details?: {
+            componentFailures?: ISalesforceDeployComponentFailure | ISalesforceDeployComponentFailure[];
+        };
+    };
+}
+
 export class PicklistDependencyCheckService {
 
     /*
@@ -546,7 +568,7 @@ export class PicklistDependencyCheckService {
         writeback command can report a failed field-metadata deploy without claiming Apex classes
         were involved.
     */
-    static buildDeployFailureMessage(parsedCliOutput: any, targetOrgIdentifier: string, deployedSubject: string): string {
+    static buildDeployFailureMessage(parsedCliOutput: ISalesforceDeployCliOutput | undefined, targetOrgIdentifier: string, deployedSubject: string): string {
 
         /*
             An org with source tracking rejects the deploy outright when it sees the source as

@@ -3677,6 +3677,88 @@ describe('PicklistDependencyTestService', () => {
             return PicklistDependencyTestService.parseSpecDetailByStatement(`${specStatement};`);
         };
 
+        /*
+            The chain link the generator emits as .dependsOn(specFor_X_Y()) cannot be read back off
+            that identifier -- buildSpecMethodName strips characters, collapses underscore runs and
+            appends a collision suffix, so it is deliberately lossy. It is derived from the parsed
+            set instead, which is exact.
+        */
+        describe('chain links', () => {
+
+            const chainedSpecDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'usa', dependentValues: ['ohio'] }]
+                },
+                {
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'ohio', dependentValues: ['cle'] }],
+                    upstreamFieldApiName: 'State__c'
+                }
+            ];
+
+            const parseChainedClassBody = () => PicklistDependencyTestService.parseSpecDetailsByApexClassBody(
+                PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    'Chain__c',
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain__c'),
+                    chainedSpecDetails
+                )
+            );
+
+            test('given a class carrying a dependsOn, reads the chain link back', () => {
+
+                const parsedSpecDetails = parseChainedClassBody();
+
+                const cityDetail = parsedSpecDetails.find(specDetail => specDetail.fieldApiName === 'City__c');
+                const stateDetail = parsedSpecDetails.find(specDetail => specDetail.fieldApiName === 'State__c');
+
+                expect(cityDetail.upstreamFieldApiName).toBe('State__c');
+
+                // Country__c IS NOT SPECCED IN THIS CLASS, SO State__c IS A ROOT
+                expect(stateDetail.upstreamFieldApiName).toBeUndefined();
+
+            });
+
+            test('given a class carrying a dependsOn, regenerates byte-identical Apex', () => {
+
+                const originalClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    'Chain__c',
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain__c'),
+                    chainedSpecDetails
+                );
+
+                const regeneratedClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    'Chain__c',
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain__c'),
+                    parseChainedClassBody()
+                );
+
+                expect(regeneratedClassBody).toBe(originalClassBody);
+
+            });
+
+            // A PICKLIST WHOSE controllingField IS ITSELF IS A ROOT, NOT A SPEC THAT CALLS ITSELF
+            test('given a field naming itself as its controlling field, leaves it unlinked', () => {
+
+                const selfReferencingSpecDetails: IPicklistDependencySpecDetail[] = [{
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'ohio', dependentValues: ['ohio'] }]
+                }];
+
+                PicklistDependencyTestService.applyUpstreamFieldApiNames(selfReferencingSpecDetails);
+
+                expect(selfReferencingSpecDetails[0].upstreamFieldApiName).toBeUndefined();
+
+            });
+
+        });
+
         test('given a field level spec, round trips to an equivalent detail', () => {
 
             const specDetail: IPicklistDependencySpecDetail = {
