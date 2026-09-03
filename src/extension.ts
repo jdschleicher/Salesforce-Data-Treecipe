@@ -69,6 +69,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const updatePicklistDependencyMetadata = vscode.commands.registerCommand("treecipe.updatePicklistDependencyMetadata", () => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.updatePicklistDependencyMetadata();
+
+	});
+
 	context.subscriptions.push(
 		generateTreecipe,
 		initiateConfiguration,
@@ -77,7 +84,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		changeFakerImplementationService,
 		generatePicklistDependencyTests,
 		runPicklistDependencyCheck,
-		openPicklistDependencyExplorer
+		openPicklistDependencyExplorer,
+		updatePicklistDependencyMetadata
 	);
 	
 }

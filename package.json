@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -59,6 +59,11 @@
       {
         "command": "treecipe.openPicklistDependencyExplorer",
         "title": "Open Picklist Dependency Explorer",
+        "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.updatePicklistDependencyMetadata",
+        "title": "Update Picklist Dependency Metadata from Specs",
         "category": "Salesforce Treecipe"
       }
     ],

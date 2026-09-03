@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>GlobalDependent__c</fullName>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>City__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetName>Planets</valueSetName>
+        <valueSettings>
+            <controllingFieldValue>cle</controllingFieldValue>
+            <valueName>earth</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>eastlake</controllingFieldValue>
+            <valueName>mars</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

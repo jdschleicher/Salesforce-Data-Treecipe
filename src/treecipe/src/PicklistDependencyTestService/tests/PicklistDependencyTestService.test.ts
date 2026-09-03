@@ -3665,4 +3665,395 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+    /*
+        The parser is the inverse of buildSpecStatement, and writeback reconciles metadata against
+        whatever it reads. If the two drift, the command would write metadata matching a spec nobody
+        authored -- so the round trip is asserted rather than assumed.
+    */
+    describe('parsing generated Apex back into spec details', () => {
+
+        const roundTrip = (specDetail: IPicklistDependencySpecDetail) => {
+            const specStatement = PicklistDependencyTestService.buildSpecStatement(specDetail);
+            return PicklistDependencyTestService.parseSpecDetailByStatement(`${specStatement};`);
+        };
+
+        /*
+            The chain link the generator emits as .dependsOn(specFor_X_Y()) cannot be read back off
+            that identifier -- buildSpecMethodName strips characters, collapses underscore runs and
+            appends a collision suffix, so it is deliberately lossy. It is derived from the parsed
+            set instead, which is exact.
+        */
+        describe('chain links', () => {
+
+            const chainedSpecDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'usa', dependentValues: ['ohio'] }]
+                },
+                {
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'ohio', dependentValues: ['cle'] }],
+                    upstreamFieldApiName: 'State__c'
+                }
+            ];
+
+            const parseChainedClassBody = () => PicklistDependencyTestService.parseSpecDetailsByApexClassBody(
+                PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    'Chain__c',
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain__c'),
+                    chainedSpecDetails
+                )
+            );
+
+            test('given a class carrying a dependsOn, reads the chain link back', () => {
+
+                const parsedSpecDetails = parseChainedClassBody();
+
+                const cityDetail = parsedSpecDetails.find(specDetail => specDetail.fieldApiName === 'City__c');
+                const stateDetail = parsedSpecDetails.find(specDetail => specDetail.fieldApiName === 'State__c');
+
+                expect(cityDetail.upstreamFieldApiName).toBe('State__c');
+
+                // Country__c IS NOT SPECCED IN THIS CLASS, SO State__c IS A ROOT
+                expect(stateDetail.upstreamFieldApiName).toBeUndefined();
+
+            });
+
+            test('given a class carrying a dependsOn, regenerates byte-identical Apex', () => {
+
+                const originalClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    'Chain__c',
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain__c'),
+                    chainedSpecDetails
+                );
+
+                const regeneratedClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                    'Chain__c',
+                    PicklistDependencyTestService.buildPerObjectSpecsClassName('Chain__c'),
+                    parseChainedClassBody()
+                );
+
+                expect(regeneratedClassBody).toBe(originalClassBody);
+
+            });
+
+            // A PICKLIST WHOSE controllingField IS ITSELF IS A ROOT, NOT A SPEC THAT CALLS ITSELF
+            test('given a field naming itself as its controlling field, leaves it unlinked', () => {
+
+                const selfReferencingSpecDetails: IPicklistDependencySpecDetail[] = [{
+                    objectApiName: 'Chain__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'ohio', dependentValues: ['ohio'] }]
+                }];
+
+                PicklistDependencyTestService.applyUpstreamFieldApiNames(selfReferencingSpecDetails);
+
+                expect(selfReferencingSpecDetails[0].upstreamFieldApiName).toBeUndefined();
+
+            });
+
+        });
+
+        test('given a field level spec, round trips to an equivalent detail', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [
+                    { controllingValue: 'USA', dependentValues: ['East', 'West'], forbiddenValues: ['Baja'] },
+                    { controllingValue: 'Mexico', dependentValues: ['Baja'], forbiddenValues: ['East', 'West'] }
+                ]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        test('given a record type scoped spec, round trips including the scope', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'US_Only',
+                expectations: [
+                    { controllingValue: 'Canada', dependentValues: [], controllingValueUnavailable: true },
+                    { controllingValue: 'USA', dependentValues: ['East'] }
+                ]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        /*
+            expectNone does NOT round trip to an identical detail, and must not.
+
+            An empty dependentValues list is indistinguishable from a controlling value the spec
+            never mentioned, and the two mean opposite things to writeback: silence is "no claim,
+            leave the metadata alone", while expectNone is "remove everything". The parser therefore
+            reads the emitted expectNone back as exhaustively empty, which is strictly more than the
+            detail that produced it said.
+        */
+        test('given a controlling value that unlocks nothing, reads expectNone back as exhaustively empty', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'Antarctica', dependentValues: [] }]
+            };
+
+            const specStatement = PicklistDependencyTestService.buildSpecStatement(specDetail);
+            expect(specStatement).toContain('.expectNone(');
+
+            const parsedExpectation = roundTrip(specDetail).expectations[0];
+
+            expect(parsedExpectation.controllingValue).toBe('Antarctica');
+            expect(parsedExpectation.dependentValues).toBeEmpty();
+            expect(parsedExpectation.dependentValuesAreExhaustive).toBe(true);
+
+        });
+
+        // AN expectAtLeast IS A FLOOR, NOT A COMPLETE LIST, SO IT MUST NOT CARRY THE FLAG
+        test('given expectAtLeast, does not mark the dependent list exhaustive', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: ['Baja'] }]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+            expect(roundTrip(specDetail).expectations[0].dependentValuesAreExhaustive).toBeUndefined();
+
+        });
+
+        test('reads expectExactly back as exhaustive, so writeback can narrow to it', () => {
+
+            const specStatement = `SDTPicklistDependencySpec.forField('Account', 'Region__c')
+                .controlledBy('Country__c')
+                .expectExactly('USA', new List<String>{ 'East' });`;
+
+            const parsedExpectation = PicklistDependencyTestService.parseSpecDetailByStatement(specStatement).expectations[0];
+
+            expect(parsedExpectation.dependentValues).toEqual(['East']);
+            expect(parsedExpectation.dependentValuesAreExhaustive).toBe(true);
+
+        });
+
+        /*
+            An apostrophe in a comment used to flip the literal-parity toggle, leaving the statement
+            unterminated and dropping the whole spec with no diagnostic -- on exactly the hand
+            annotated file writeback exists to read.
+        */
+        test('given an apostrophe inside a comment within a statement, still parses the spec', () => {
+
+            const apexClassBody = `public class Specs {
+    public static SDTPicklistDependencySpec a() {
+        return SDTPicklistDependencySpec.forField('Acct__c', 'Dep__c')
+            .controlledBy('Ctl__c')
+            // don't touch this one
+            .expectAtLeast('cle', new List<String>{ 'plant' });
+    }
+    public static SDTPicklistDependencySpec b() {
+        return SDTPicklistDependencySpec.forField('Acct__c', 'Other__c')
+            .controlledBy('Ctl__c')
+            .expectAtLeast('cle', new List<String>{ 'tree' });
+    }
+}`;
+
+            const parsedSpecDetails = PicklistDependencyTestService.parseSpecDetailsByApexClassBody(apexClassBody);
+
+            expect(parsedSpecDetails).toHaveLength(2);
+            expect(parsedSpecDetails.map(detail => detail.fieldApiName)).toEqual(['Dep__c', 'Other__c']);
+
+        });
+
+        test('given a block comment carrying an apostrophe and a brace, still parses the spec', () => {
+
+            const apexClassBody = `SDTPicklistDependencySpec.forField('Acct__c', 'Dep__c')
+    .controlledBy('Ctl__c')
+    /* it's fine ) ; here */
+    .expectAtLeast('cle', new List<String>{ 'plant' });`;
+
+            expect(PicklistDependencyTestService.parseSpecDetailsByApexClassBody(apexClassBody)).toHaveLength(1);
+
+        });
+
+        // A VALUE CONTAINING COMMENT SYNTAX IS DATA, AND MUST SURVIVE THE COMMENT BLANKING
+        test('given a picklist value containing comment syntax, does not treat it as a comment', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'a // b', dependentValues: ['c /* d */ e'] }]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        /*
+            A controlling value of "constructor" answers true to an "in" check on an ordinary object
+            literal and hands back Object.prototype.constructor, which then gets mutated as though it
+            were an expectation -- losing both expectations and damaging the global Object.
+        */
+        test('given a controlling value that collides with an Object prototype key, still parses it', () => {
+
+            const specStatement = `SDTPicklistDependencySpec.forField('Account', 'Region__c')
+                .controlledBy('Country__c')
+                .expectAtLeast('constructor', new List<String>{ 'East' })
+                .expectAtLeast('toString', new List<String>{ 'West' });`;
+
+            const specDetail = PicklistDependencyTestService.parseSpecDetailByStatement(specStatement);
+
+            expect(specDetail.expectations).toHaveLength(2);
+            expect(specDetail.expectations.map(expectation => expectation.controllingValue)).toEqual(['constructor', 'toString']);
+
+        });
+
+        test('given api names that are not valid Salesforce api names, refuses the spec', () => {
+
+            const traversalStatement = `SDTPicklistDependencySpec.forField('../../../..', 'anything')
+                .controlledBy('Ctl__c')
+                .expectAtLeast('cle', new List<String>{ 'plant' });`;
+
+            expect(PicklistDependencyTestService.parseSpecDetailByStatement(traversalStatement)).toBeUndefined();
+
+            const badControllingField = `SDTPicklistDependencySpec.forField('Acct__c', 'Dep__c')
+                .controlledBy('../evil')
+                .expectAtLeast('cle', new List<String>{ 'plant' });`;
+
+            expect(PicklistDependencyTestService.parseSpecDetailByStatement(badControllingField)).toBeUndefined();
+
+        });
+
+        /*
+            The case a regex over '([^']*)' gets wrong. Apostrophes in picklist values are ordinary
+            Salesforce data, not an exotic input.
+        */
+        test('given picklist values carrying quotes and backslashes, round trips them intact', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{
+                    controllingValue: `Bob's Region`,
+                    dependentValues: [`Bob's Diner`, 'Back\\Slash', `Tom & Jerry's`],
+                    forbiddenValues: [`O'Hare`]
+                }]
+            };
+
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        test('given a picklist value containing a semicolon, does not cut the statement short', () => {
+
+            const specDetail: IPicklistDependencySpecDetail = {
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [
+                    { controllingValue: 'North; South', dependentValues: ['East'] },
+                    { controllingValue: 'Later', dependentValues: ['West'] }
+                ]
+            };
+
+            expect(roundTrip(specDetail).expectations).toHaveLength(2);
+            expect(roundTrip(specDetail)).toEqual(specDetail);
+
+        });
+
+        test('reads expectExactly as the positive half, the same as expectAtLeast', () => {
+
+            const specStatement = `SDTPicklistDependencySpec.forField('Account', 'Region__c')
+                .controlledBy('Country__c')
+                .expectExactly('USA', new List<String>{ 'East', 'West' });`;
+
+            const specDetail = PicklistDependencyTestService.parseSpecDetailByStatement(specStatement);
+
+            expect(specDetail.expectations[0].dependentValues).toEqual(['East', 'West']);
+
+        });
+
+        test('parses a whole generated class body, and skips record type scoped specs', () => {
+
+            const fieldLevelSpecDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'], forbiddenValues: ['Baja'] }]
+            }];
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'US_Only',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'] }]
+            }];
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Account', 'SDTPLDSpecs_Account', fieldLevelSpecDetails, recordTypeSpecDetails
+            );
+
+            const parsedSpecDetails = PicklistDependencyTestService.parseSpecDetailsByApexClassBody(apexClassBody);
+
+            /*
+                Both specs are in the class body, but only the field-level one describes what the
+                field itself declares. Writing a record type's narrowing back into valueSettings
+                would assert it against every record type.
+            */
+            expect(parsedSpecDetails).toHaveLength(1);
+            expect(parsedSpecDetails[0].recordTypeDeveloperName).toBeUndefined();
+            expect(parsedSpecDetails[0]).toEqual(fieldLevelSpecDetails[0]);
+
+        });
+
+        test('given a class body describing another object, returns nothing for the object asked for', () => {
+
+            const apexClassBody = PicklistDependencyTestService.buildPerObjectSpecsApexClassBody(
+                'Account',
+                'SDTPLDSpecs_Account',
+                [{
+                    objectApiName: 'Account',
+                    fieldApiName: 'Region__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['East'] }]
+                }]
+            );
+
+            expect(PicklistDependencyTestService.parseSpecDetailsByApexClassBody(apexClassBody, 'Contact')).toBeEmpty();
+
+        });
+
+        test('given markup that declares no spec, returns nothing rather than throwing', () => {
+
+            expect(PicklistDependencyTestService.parseSpecDetailsByApexClassBody('public class Empty {}')).toBeEmpty();
+            expect(() => PicklistDependencyTestService.parseSpecDetailsByApexClassBody('')).not.toThrow();
+
+        });
+
+        test('given a spec with no controlledBy, refuses it rather than returning a detail with no controlling field', () => {
+
+            const specStatement = `SDTPicklistDependencySpec.forField('Account', 'Region__c')
+                .expectAtLeast('USA', new List<String>{ 'East' });`;
+
+            expect(PicklistDependencyTestService.parseSpecDetailByStatement(specStatement)).toBeUndefined();
+
+        });
+
+    });
+
 });

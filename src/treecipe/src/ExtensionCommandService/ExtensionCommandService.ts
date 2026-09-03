@@ -8,10 +8,11 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile } from "../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { PicklistDependencyExplorerService, IPicklistDependencyExplorerViewModel } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
+import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -28,6 +29,10 @@ export const PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE = 'treecipe.picklistDependen
 
 // SHARED WITH THE TESTS SO THE OPT IN LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
 export const PREVIEW_FROM_METADATA_ACTION_LABEL = 'Preview from metadata (not generated)';
+
+// SHARED WITH THE TESTS SO THESE LABELS CANNOT DRIFT FROM WHAT IS ASSERTED
+export const UPDATE_METADATA_ACTION_LABEL = 'Update Metadata';
+export const DEPLOY_UPDATED_METADATA_ACTION_LABEL = 'Deploy to Org';
 
 /*
     Everything the explorer webview can post back, as ONE shape with every field optional.
@@ -673,6 +678,230 @@ export class ExtensionCommandService {
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
+
+    }
+
+    /*
+        Writes the intent a developer declared in the generated Apex specs back into source metadata.
+
+        This runs OPPOSITE to Generate. Generate reads metadata and emits Apex; this reads the Apex
+        -- including whatever the developer edited into it -- and reconciles the metadata to match.
+        It is the half that closes the loop the picklist dependency check opens: the check tells you
+        "cle no longer unlocks plant", the spec is where you declare that it should, and until now
+        translating that back into valueSettings was a hand transpose across blocks the failure
+        message does not point at.
+
+        Nothing is written before the user sees what would change. The report is shown first and
+        declining leaves every file untouched, because rewriting a developer's source metadata is
+        not something to do on an assumption about what they meant.
+    */
+    async updatePicklistDependencyMetadata() {
+
+        try {
+
+            const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+            if ( !workspaceRoot ) {
+                throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
+            }
+
+            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
+            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+
+            if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
+                throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
+            }
+
+            const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
+            const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
+            PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
+
+            const writebackResult = this.buildPicklistDependencyWritebackResult(classesDirectoryPath, fullPathToObjectsDirectory);
+
+            if ( !writebackResult ) {
+                return;
+            }
+
+            const changeReport = PicklistDependencyMetadataWriterService.buildWritebackReport(writebackResult);
+
+            if ( writebackResult.plans.length === 0 ) {
+
+                /*
+                    Nothing to write is a SUCCESS, not a failure, and the two reasons for it read
+                    very differently to someone who just edited a spec expecting a change: either
+                    the metadata already says what the Apex does, or every field that would have
+                    changed was refused.
+                */
+                const nothingToWriteMessage = writebackResult.refusals.length > 0
+                    ? `No field metadata was changed. ${writebackResult.refusals.length} field(s) were skipped -- see the report for why.`
+                    : 'The picklist dependency metadata already matches the generated Apex specs. Nothing to update.';
+
+                vscode.window.showInformationMessage(nothingToWriteMessage);
+                VSCodeWorkspaceService.showPicklistDependencyCheckReport(changeReport);
+                return;
+
+            }
+
+            const confirmedUpdate = await vscode.window.showWarningMessage(
+                `Update ${writebackResult.plans.length} field metadata file(s) to match the generated Apex specs?\n\n${changeReport}`,
+                { modal: true },
+                UPDATE_METADATA_ACTION_LABEL
+            );
+
+            if ( confirmedUpdate !== UPDATE_METADATA_ACTION_LABEL ) {
+                vscode.window.showInformationMessage('Picklist dependency metadata update cancelled. No files were changed.');
+                return;
+            }
+
+            const writtenFilePaths = PicklistDependencyMetadataWriterService.writeFieldWritebackPlans(writebackResult.plans, fullPathToObjectsDirectory);
+
+            VSCodeWorkspaceService.showPicklistDependencyCheckReport(changeReport);
+
+            /*
+                The working tree is now changed whatever happens next, so the offer says so. A
+                writeback that produced a deployable change and then said nothing would leave the
+                user unsure whether they still have to do something.
+            */
+            const deploySelection = await vscode.window.showInformationMessage(
+                `Updated ${writtenFilePaths.length} field metadata file(s). These changes are in your working tree now. Deploy them to an org so the picklist dependency check can go green?`,
+                DEPLOY_UPDATED_METADATA_ACTION_LABEL
+            );
+
+            if ( deploySelection !== DEPLOY_UPDATED_METADATA_ACTION_LABEL ) {
+                vscode.window.showInformationMessage(`${writtenFilePaths.length} field metadata file(s) were updated and NOT deployed. Review the changes and deploy them when ready.`);
+                return;
+            }
+
+            const targetOrgIdentifier = await this.promptForPicklistDependencyTargetOrg();
+            if ( !targetOrgIdentifier ) {
+                vscode.window.showInformationMessage(`The field metadata changes are still in your working tree and were not deployed.`);
+                return;
+            }
+
+            await this.deployUpdatedPicklistDependencyMetadata(writtenFilePaths, targetOrgIdentifier);
+
+        } catch(error) {
+
+            const commandName = 'updatePicklistDependencyMetadata';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    /*
+        Reads every generated per-object class, parses the specs back out, and resolves what each
+        field file would become. Returns undefined when there is nothing to reconcile, having said
+        why -- callers stop quietly rather than reporting a second time.
+    */
+    private buildPicklistDependencyWritebackResult(classesDirectoryPath: string, fullPathToObjectsDirectory: string) {
+
+        if ( !fs.existsSync(classesDirectoryPath) ) {
+            vscode.window.showInformationMessage(`No generated picklist dependency specs were found in "${classesDirectoryPath}". Run "Salesforce Treecipe: Generate Picklist Dependency Tests" first, then edit a spec to declare the dependency you intend.`);
+            return undefined;
+        }
+
+        const perObjectClassFileNames = fs.readdirSync(classesDirectoryPath)
+            .filter(fileName => PicklistDependencyTestService.isPerObjectSpecsClassFileName(fileName));
+
+        if ( perObjectClassFileNames.length === 0 ) {
+            vscode.window.showInformationMessage(`No generated picklist dependency spec classes were found in "${classesDirectoryPath}". Run "Salesforce Treecipe: Generate Picklist Dependency Tests" first.`);
+            return undefined;
+        }
+
+        let specDetails: IPicklistDependencySpecDetail[] = [];
+
+        perObjectClassFileNames.forEach(perObjectClassFileName => {
+
+            const perObjectClassFilePath = path.join(classesDirectoryPath, perObjectClassFileName);
+            const apexClassBody = fs.readFileSync(perObjectClassFilePath, 'utf-8');
+
+            const parsedSpecDetails = PicklistDependencyTestService.parseSpecDetailsByApexClassBody(apexClassBody);
+
+            /*
+                A class that declares a factory call but yields no spec did not parse, and writeback
+                must not treat that as "this object has no dependencies" -- it would silently skip
+                fields the developer edited. Named so the user can look at the file.
+            */
+            if ( parsedSpecDetails.length === 0 && apexClassBody.includes('SDTPicklistDependencySpec.forField') ) {
+                throw new Error(`"${perObjectClassFilePath}" contains picklist dependency specs that could not be parsed. Nothing was written. Check that its spec methods are unmodified Apex, or regenerate them with "Generate Picklist Dependency Tests".`);
+            }
+
+            specDetails = specDetails.concat(parsedSpecDetails);
+
+        });
+
+        if ( specDetails.length === 0 ) {
+            vscode.window.showInformationMessage('The generated picklist dependency specs declare no field-level dependencies to write back.');
+            return undefined;
+        }
+
+        const fieldFilePathsByFieldKey = this.buildFieldFilePathsByFieldKey(specDetails, fullPathToObjectsDirectory);
+
+        return PicklistDependencyMetadataWriterService.buildWritebackResult(
+            specDetails,
+            fieldFilePathsByFieldKey,
+            fieldFilePath => fs.readFileSync(fieldFilePath, 'utf-8')
+        );
+
+    }
+
+    /*
+        Keyed by OBJECT and field, never by field alone.
+
+        A run reconciles every per-object spec class at once, and "Status__c" on Account and on Case
+        are different fields with the same api name. Keyed by the bare name they collide, and one
+        object's dependency metadata is written into the other object's file while its own is never
+        written at all -- silently, because the report names what was planned rather than what landed.
+
+        Both the CONTROLLING and the dependent field of each spec are mapped: writeback may add a
+        controlling value to the controlling field's own file, so its path has to be resolvable too.
+    */
+    private buildFieldFilePathsByFieldKey(specDetails: IPicklistDependencySpecDetail[],
+                                            fullPathToObjectsDirectory: string): Record<string, string> {
+
+        let fieldFilePathsByFieldKey: Record<string, string> = Object.create(null);
+
+        const mapFieldFilePath = (objectApiName: string, fieldApiName: string) => {
+
+            const fieldFilePath = path.join(
+                fullPathToObjectsDirectory, objectApiName, 'fields', `${fieldApiName}.field-meta.xml`
+            );
+
+            if ( fs.existsSync(fieldFilePath) ) {
+                fieldFilePathsByFieldKey[PicklistDependencyMetadataWriterService.buildFieldKey(objectApiName, fieldApiName)] = fieldFilePath;
+            }
+
+        };
+
+        specDetails.forEach(specDetail => {
+            mapFieldFilePath(specDetail.objectApiName, specDetail.fieldApiName);
+            mapFieldFilePath(specDetail.objectApiName, specDetail.controllingFieldApiName);
+        });
+
+        return fieldFilePathsByFieldKey;
+
+    }
+
+    private async deployUpdatedPicklistDependencyMetadata(writtenFilePaths: string[], targetOrgIdentifier: string) {
+
+        const deploySummary = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Update Picklist Dependency Metadata',
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            const registerCancellation = (killChildProcess: () => void) => {
+                cancellationToken.onCancellationRequested(() => killChildProcess());
+            };
+
+            progress.report({ message: `Deploying ${writtenFilePaths.length} field metadata file(s) to ${targetOrgIdentifier}...` });
+
+            return await PicklistDependencyCheckService.deploySourcePaths(writtenFilePaths, targetOrgIdentifier, registerCancellation);
+
+        });
+
+        vscode.window.showInformationMessage(`${deploySummary} Run "Salesforce Treecipe: Run Picklist Dependency Check" to confirm the specs now pass.`);
 
     }
 

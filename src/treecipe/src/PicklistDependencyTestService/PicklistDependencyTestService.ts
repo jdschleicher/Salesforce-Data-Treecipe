@@ -31,6 +31,20 @@ export interface IPicklistDependencyExpectation {
         expectUnavailable instead.
     */
     controllingValueUnavailable?: boolean;
+    /*
+        Set by the PARSER when the spec stated its dependent list exhaustively -- expectNone, which
+        claims the controlling value unlocks nothing, and expectExactly, which claims it unlocks
+        precisely these.
+
+        Writeback needs it because an empty dependentValues list is otherwise indistinguishable from
+        a controlling value the spec never mentioned, and those two mean opposite things: silence is
+        "no claim, leave the metadata alone", while expectNone is "remove everything". Without the
+        flag the strictly stronger statement is the one that does nothing.
+
+        The generator never sets it -- it emits expectAtLeast plus a complement -- so this changes
+        nothing about generation.
+    */
+    dependentValuesAreExhaustive?: boolean;
 }
 
 export interface IPicklistDependencySpecDetail {
@@ -1577,6 +1591,557 @@ ${recordTypeAggregationMarkup}}
         });
 
         return specStatement;
+
+    }
+
+    /*
+        The inverse of escapeApexStringLiteral.
+
+        Order matters and is the reverse of escaping: the backslash unescape runs LAST, so a value
+        that legitimately contains a backslash followed by a quote is not mistaken for an escaped
+        quote. Doing it in the other order would turn "\\'" -- an escaped backslash then a quote
+        delimiter -- into a literal quote and swallow the string's own terminator.
+    */
+    static unescapeApexStringLiteral(value: string): string {
+
+        let unescapedValue = '';
+
+        for ( let characterIndex = 0; characterIndex < value.length; characterIndex++ ) {
+
+            const currentCharacter = value[characterIndex];
+
+            if ( currentCharacter !== '\\' || characterIndex === value.length - 1 ) {
+                unescapedValue += currentCharacter;
+                continue;
+            }
+
+            const escapedCharacter = value[characterIndex + 1];
+            characterIndex++;
+
+            if ( escapedCharacter === 'n' ) {
+                unescapedValue += '\n';
+                continue;
+            }
+
+            // A BACKSLASH BEFORE ANYTHING ELSE ESCAPED THAT CHARACTER LITERALLY -- QUOTE OR BACKSLASH ALIKE
+            unescapedValue += escapedCharacter;
+
+        }
+
+        return unescapedValue;
+
+    }
+
+    /*
+        Every Apex string literal in one argument list, in order.
+
+        Scanned character by character rather than matched with a regex, because a picklist value may
+        contain an escaped quote -- "Bob\'s Diner" -- and a regex for '([^']*)' terminates on it. The
+        escape is what a naive split gets wrong, and picklist values carrying apostrophes are the
+        common case, not the exotic one.
+    */
+    static parseApexStringLiterals(argumentMarkup: string): string[] {
+
+        let literals: string[] = [];
+        let currentLiteral = '';
+        let isInsideLiteral = false;
+
+        for ( let characterIndex = 0; characterIndex < argumentMarkup.length; characterIndex++ ) {
+
+            const currentCharacter = argumentMarkup[characterIndex];
+
+            if ( !isInsideLiteral ) {
+
+                if ( currentCharacter === `'` ) {
+                    isInsideLiteral = true;
+                    currentLiteral = '';
+                }
+
+                continue;
+
+            }
+
+            if ( currentCharacter === '\\' && characterIndex < argumentMarkup.length - 1 ) {
+                currentLiteral += currentCharacter + argumentMarkup[characterIndex + 1];
+                characterIndex++;
+                continue;
+            }
+
+            if ( currentCharacter === `'` ) {
+                literals.push(this.unescapeApexStringLiteral(currentLiteral));
+                isInsideLiteral = false;
+                continue;
+            }
+
+            currentLiteral += currentCharacter;
+
+        }
+
+        return literals;
+
+    }
+
+    /*
+        Every Apex comment replaced by spaces of the same length, so offsets are unchanged.
+
+        Without this a single apostrophe in a comment -- "// don't touch this one", which is exactly
+        what a hand annotated spec file contains -- flips the literal-parity toggle every scanner
+        here depends on. The terminating semicolon then reads as being inside a string, the statement
+        is never closed, and the whole spec is dropped with no diagnostic at all. Silently losing a
+        spec is the worst outcome available to writeback: it would reconcile metadata against an
+        intent the developer wrote and the parser never saw.
+
+        String literals are tracked while blanking, so a picklist value containing "//" or "/*" is
+        left alone. Newlines inside a block comment are preserved so line based indexing still holds.
+    */
+    static blankApexComments(apexClassBody: string): string {
+
+        let blankedCharacters: string[] = [];
+        let isInsideLiteral = false;
+        let characterIndex = 0;
+
+        while ( characterIndex < apexClassBody.length ) {
+
+            const currentCharacter = apexClassBody[characterIndex];
+            const nextCharacter = apexClassBody[characterIndex + 1];
+
+            if ( isInsideLiteral ) {
+
+                blankedCharacters.push(currentCharacter);
+
+                if ( currentCharacter === '\\' && characterIndex < apexClassBody.length - 1 ) {
+                    blankedCharacters.push(nextCharacter);
+                    characterIndex += 2;
+                    continue;
+                }
+
+                if ( currentCharacter === `'` ) {
+                    isInsideLiteral = false;
+                }
+
+                characterIndex++;
+                continue;
+
+            }
+
+            if ( currentCharacter === `'` ) {
+                isInsideLiteral = true;
+                blankedCharacters.push(currentCharacter);
+                characterIndex++;
+                continue;
+            }
+
+            if ( currentCharacter === '/' && nextCharacter === '/' ) {
+
+                while ( characterIndex < apexClassBody.length && apexClassBody[characterIndex] !== '\n' ) {
+                    blankedCharacters.push(' ');
+                    characterIndex++;
+                }
+
+                continue;
+
+            }
+
+            if ( currentCharacter === '/' && nextCharacter === '*' ) {
+
+                const commentEndIndex = apexClassBody.indexOf('*/', characterIndex + 2);
+                // AN UNTERMINATED BLOCK COMMENT RUNS TO END OF FILE, WHICH IS HOW A COMPILER READS IT TOO
+                const blankUntilIndex = commentEndIndex === -1 ? apexClassBody.length : commentEndIndex + 2;
+
+                while ( characterIndex < blankUntilIndex ) {
+                    blankedCharacters.push(apexClassBody[characterIndex] === '\n' ? '\n' : ' ');
+                    characterIndex++;
+                }
+
+                continue;
+
+            }
+
+            blankedCharacters.push(currentCharacter);
+            characterIndex++;
+
+        }
+
+        return blankedCharacters.join('');
+
+    }
+
+    /*
+        A generated class body read back into the spec details it declares.
+
+        This is the inverse of buildSpecStatement, and it lives beside it deliberately: writeback
+        exists so a hand EDITED spec can be pushed into metadata, which means the intent it reads is
+        whatever the developer left in the .cls rather than anything the generator produced. Emission
+        and parsing drifting apart would silently reconcile metadata against a spec nobody wrote, so
+        the two stay in one file and one round-trip test holds them together.
+
+        Only field-level specs are returned. A record-type-scoped spec narrows what a record type
+        exposes rather than what the field declares, and writing that back into valueSettings would
+        assert the narrowing on every record type -- so those are recognised and skipped rather than
+        misapplied.
+    */
+    static parseSpecDetailsByApexClassBody(apexClassBody: string, objectApiName?: string): IPicklistDependencySpecDetail[] {
+
+        let specDetails: IPicklistDependencySpecDetail[] = [];
+
+        // COMMENTS CARRY NOTHING THE PARSER NEEDS, AND CARRY APOSTROPHES THAT BREAK IT -- SEE blankApexComments
+        const specMethodBodies = this.collectSpecMethodBodies(this.blankApexComments(apexClassBody));
+
+        specMethodBodies.forEach(specMethodBody => {
+
+            const specDetail = this.parseSpecDetailByStatement(specMethodBody);
+
+            if ( !specDetail ) {
+                return;
+            }
+
+            /*
+                Recognised and dropped rather than never parsed, so a malformed scoped spec is still
+                a parse failure the caller hears about instead of markup silently skipped.
+            */
+            if ( specDetail.recordTypeDeveloperName !== undefined ) {
+                return;
+            }
+
+            // A CALLER RECONCILING ONE OBJECT IGNORES A CLASS THAT TURNS OUT TO DESCRIBE ANOTHER
+            if ( objectApiName !== undefined && specDetail.objectApiName !== objectApiName ) {
+                return;
+            }
+
+            specDetails.push(specDetail);
+
+        });
+
+        this.applyUpstreamFieldApiNames(specDetails);
+
+        return specDetails;
+
+    }
+
+    /*
+        The chain links, restored by derivation rather than by reading the emitted dependsOn.
+
+        dependsOn names a spec METHOD, and buildSpecMethodName is deliberately lossy -- it strips
+        characters an identifier cannot carry, collapses runs of underscores, and appends a numeric
+        suffix on collision -- so the field it came from cannot be recovered from the identifier.
+        Reconstructing the invariant instead is exact: upstreamFieldApiName means "this field's
+        controlling field is ITSELF a dependent picklist", and the parsed set says which fields are
+        dependent. A hand written class that omits the dependsOn still gets the link, and one that
+        names a method for a field the class no longer specs does not get a broken one.
+
+        Scoped per object, because a controlling field always lives on the same object as the field
+        it controls. A field naming ITSELF as its controlling field is left unlinked, matching the
+        generator's own guard -- source metadata can declare that, and a spec chained to itself is
+        not a chain.
+    */
+    static applyUpstreamFieldApiNames(specDetails: IPicklistDependencySpecDetail[]) {
+
+        const dependentFieldKeys = new Set(specDetails.map(
+            specDetail => `${specDetail.objectApiName}.${specDetail.fieldApiName}`
+        ));
+
+        specDetails.forEach(specDetail => {
+
+            const controllingFieldIsItselfDependent =
+                specDetail.controllingFieldApiName !== specDetail.fieldApiName
+                && dependentFieldKeys.has(`${specDetail.objectApiName}.${specDetail.controllingFieldApiName}`);
+
+            specDetail.upstreamFieldApiName = controllingFieldIsItselfDependent
+                ? specDetail.controllingFieldApiName
+                : undefined;
+
+        });
+
+    }
+
+    private static specFactoryCallPattern = /SDTPicklistDependencySpec\s*\.\s*(forField|forRecordType)\s*\(/g;
+
+    /*
+        Each spec statement, from its factory call to the semicolon that ends it.
+
+        Sliced on the factory call rather than on method boundaries so a hand written class that does
+        not follow the generator's one-spec-per-method layout still parses -- writeback reads files
+        people have edited, and insisting on the emitted shape would reject exactly the edits the
+        command exists to act on.
+    */
+    static collectSpecMethodBodies(apexClassBody: string): string[] {
+
+        let specStatements: string[] = [];
+        let factoryCallMatch: RegExpExecArray | null;
+
+        const factoryCallPattern = new RegExp(this.specFactoryCallPattern.source, 'g');
+
+        while ( ( factoryCallMatch = factoryCallPattern.exec(apexClassBody) ) !== null ) {
+
+            const statementStartIndex = factoryCallMatch.index;
+            const statementEndIndex = this.findStatementEndIndex(apexClassBody, statementStartIndex);
+
+            /*
+                A statement with no terminating semicolon outside a literal is unclosed, and every
+                later factory match would re-scan to end of file looking for one. Stopping here
+                bounds that to a single scan rather than one per remaining statement.
+            */
+            if ( statementEndIndex === -1 ) {
+                break;
+            }
+
+            specStatements.push(apexClassBody.slice(statementStartIndex, statementEndIndex));
+
+        }
+
+        return specStatements;
+
+    }
+
+    /*
+        The semicolon that ends a statement, skipping any that sits inside a string literal.
+
+        A picklist value containing a semicolon is perfectly legal and would otherwise cut the
+        statement in half, losing every expectation after it.
+    */
+    static findStatementEndIndex(apexClassBody: string, statementStartIndex: number): number {
+
+        let isInsideLiteral = false;
+
+        for ( let characterIndex = statementStartIndex; characterIndex < apexClassBody.length; characterIndex++ ) {
+
+            const currentCharacter = apexClassBody[characterIndex];
+
+            if ( isInsideLiteral && currentCharacter === '\\' ) {
+                characterIndex++;
+                continue;
+            }
+
+            if ( currentCharacter === `'` ) {
+                isInsideLiteral = !isInsideLiteral;
+                continue;
+            }
+
+            if ( !isInsideLiteral && currentCharacter === ';' ) {
+                return characterIndex;
+            }
+
+        }
+
+        return -1;
+
+    }
+
+    private static builderCallPattern = /\.\s*(controlledBy|expectAtLeast|expectNotAllowed|expectExactly|expectNone|expectUnavailable)\s*\(/g;
+
+    static parseSpecDetailByStatement(specStatement: string): IPicklistDependencySpecDetail | undefined {
+
+        const factoryCallPattern = new RegExp(this.specFactoryCallPattern.source);
+        const factoryCallMatch = factoryCallPattern.exec(specStatement);
+
+        if ( !factoryCallMatch ) {
+            return undefined;
+        }
+
+        const factoryArgumentEndIndex = this.findCallArgumentEndIndex(specStatement, factoryCallMatch.index + factoryCallMatch[0].length - 1);
+
+        if ( factoryArgumentEndIndex === -1 ) {
+            return undefined;
+        }
+
+        const factoryArguments = this.parseApexStringLiterals(
+            specStatement.slice(factoryCallMatch.index + factoryCallMatch[0].length, factoryArgumentEndIndex)
+        );
+
+        const isRecordTypeScoped = factoryCallMatch[1] === 'forRecordType';
+        const requiredArgumentCount = isRecordTypeScoped ? 3 : 2;
+
+        if ( factoryArguments.length < requiredArgumentCount ) {
+            return undefined;
+        }
+
+        /*
+            The api names are held to the same gate the generator applies before emitting them.
+
+            A .cls is a hand-edited file -- that is the entire premise of writeback -- so these two
+            strings are untrusted input, and they are the two that decide which file on disk gets
+            written. Every other path in this pipeline validates them before letting them reach a
+            path join; without it here, a spec declaring forField('../../../..', 'anything') would
+            produce a detail that flows toward a file path unchecked. Refusing at extraction keeps
+            the check in front of every consumer rather than relying on each one to remember.
+        */
+        const parsedApiNames = [factoryArguments[0], factoryArguments[1]];
+
+        if ( isRecordTypeScoped ) {
+            parsedApiNames.push(factoryArguments[2]);
+        }
+
+        if ( parsedApiNames.some(parsedApiName => !this.isValidSalesforceApiName(parsedApiName)) ) {
+            return undefined;
+        }
+
+        let specDetail: IPicklistDependencySpecDetail = {
+            objectApiName: factoryArguments[0],
+            fieldApiName: factoryArguments[1],
+            controllingFieldApiName: '',
+            expectations: []
+        };
+
+        if ( isRecordTypeScoped ) {
+            specDetail.recordTypeDeveloperName = factoryArguments[2];
+        }
+
+        /*
+            Expectations are accumulated by controlling value rather than appended, because
+            expectAtLeast and expectNotAllowed are two calls describing ONE combination -- the
+            positive half and its complement -- and the spec detail carries them as one expectation.
+        */
+        /*
+            Null prototyped because the keys are picklist values, which are metadata an admin
+            controls. A controlling value of "constructor" makes an ordinary object literal answer
+            true to an "in" check and hand back Object.prototype.constructor, which then gets mutated
+            as though it were an expectation -- so both expectations vanish and the global Object is
+            damaged on the way past.
+        */
+        let expectationsByControllingValue: Record<string, IPicklistDependencyExpectation> = Object.create(null);
+        let controllingValueOrder: string[] = [];
+
+        const resolveExpectation = (controllingValue: string): IPicklistDependencyExpectation => {
+
+            if ( !( controllingValue in expectationsByControllingValue ) ) {
+                expectationsByControllingValue[controllingValue] = { controllingValue, dependentValues: [] };
+                controllingValueOrder.push(controllingValue);
+            }
+
+            return expectationsByControllingValue[controllingValue];
+
+        };
+
+        const builderCallPattern = new RegExp(this.builderCallPattern.source, 'g');
+        let builderCallMatch: RegExpExecArray | null;
+
+        while ( ( builderCallMatch = builderCallPattern.exec(specStatement) ) !== null ) {
+
+            const argumentStartIndex = builderCallMatch.index + builderCallMatch[0].length;
+            const argumentEndIndex = this.findCallArgumentEndIndex(specStatement, argumentStartIndex - 1);
+
+            if ( argumentEndIndex === -1 ) {
+                continue;
+            }
+
+            const callArguments = this.parseApexStringLiterals(specStatement.slice(argumentStartIndex, argumentEndIndex));
+
+            if ( callArguments.length === 0 ) {
+                continue;
+            }
+
+            const builderCallName = builderCallMatch[1];
+
+            if ( builderCallName === 'controlledBy' ) {
+
+                // THE CONTROLLING FIELD NAMES A FILE TOO -- THE WRITEBACK MAY ADD A VALUE TO IT
+                if ( !this.isValidSalesforceApiName(callArguments[0]) ) {
+                    return undefined;
+                }
+
+                specDetail.controllingFieldApiName = callArguments[0];
+                continue;
+
+            }
+
+            const expectation = resolveExpectation(callArguments[0]);
+            const listedValues = callArguments.slice(1);
+
+            switch ( builderCallName ) {
+
+                case 'expectAtLeast':
+                    // "AT LEAST" IS A FLOOR, NOT A COMPLETE LIST, SO IT ADDS WITHOUT REMOVING
+                    expectation.dependentValues = listedValues;
+                    break;
+
+                case 'expectExactly':
+                    /*
+                        "Exactly" is a complete list, so writeback must be able to remove what is not
+                        in it. Read as the same positive half as expectAtLeast plus the exhaustive
+                        flag -- the two calls differ for the validator in what the ORG may add beyond
+                        the list, and differ here in whether the METADATA may keep anything else.
+                    */
+                    expectation.dependentValues = listedValues;
+                    expectation.dependentValuesAreExhaustive = true;
+                    break;
+
+                case 'expectNotAllowed':
+                    expectation.forbiddenValues = listedValues;
+                    break;
+
+                case 'expectNone':
+                    // A CLAIM THAT THIS CONTROLLING VALUE UNLOCKS NOTHING -- EXHAUSTIVELY EMPTY, NOT SILENT
+                    expectation.dependentValues = [];
+                    expectation.dependentValuesAreExhaustive = true;
+                    break;
+
+                case 'expectUnavailable':
+                    expectation.controllingValueUnavailable = true;
+                    expectation.dependentValues = [];
+                    break;
+
+            }
+
+        }
+
+        if ( specDetail.controllingFieldApiName === '' ) {
+            return undefined;
+        }
+
+        specDetail.expectations = controllingValueOrder.map(controllingValue => expectationsByControllingValue[controllingValue]);
+
+        return specDetail;
+
+    }
+
+    /*
+        The closing parenthesis of a call whose opening parenthesis sits at openParenthesisIndex.
+
+        Depth counted, and parentheses inside string literals ignored, so an argument list carrying a
+        nested "new List<String>{ ... }" or a picklist value containing a bracket still ends where
+        the call actually ends.
+    */
+    static findCallArgumentEndIndex(specStatement: string, openParenthesisIndex: number): number {
+
+        let parenthesisDepth = 0;
+        let isInsideLiteral = false;
+
+        for ( let characterIndex = openParenthesisIndex; characterIndex < specStatement.length; characterIndex++ ) {
+
+            const currentCharacter = specStatement[characterIndex];
+
+            if ( isInsideLiteral && currentCharacter === '\\' ) {
+                characterIndex++;
+                continue;
+            }
+
+            if ( currentCharacter === `'` ) {
+                isInsideLiteral = !isInsideLiteral;
+                continue;
+            }
+
+            if ( isInsideLiteral ) {
+                continue;
+            }
+
+            if ( currentCharacter === '(' ) {
+                parenthesisDepth++;
+                continue;
+            }
+
+            if ( currentCharacter === ')' ) {
+
+                parenthesisDepth--;
+
+                if ( parenthesisDepth === 0 ) {
+                    return characterIndex;
+                }
+
+            }
+
+        }
+
+        return -1;
 
     }
 
