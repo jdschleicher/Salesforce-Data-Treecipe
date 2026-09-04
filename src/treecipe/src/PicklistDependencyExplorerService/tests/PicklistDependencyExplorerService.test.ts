@@ -3052,15 +3052,46 @@ describe('PicklistDependencyExplorerService', () => {
 
         }
 
-        it('renders the find box, the status filter, the jump list and the expand controls', () => {
+        it('renders the find box, the status filter and the expand controls', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
             expect(actualWebviewHtml).toContain('Find object or field');
-            expect(actualWebviewHtml).toContain('Jump to object');
             expect(actualWebviewHtml).toContain('Expand all');
             expect(actualWebviewHtml).toContain('Collapse all');
             expect(actualWebviewHtml).toContain('not checked');
+
+        });
+
+        /*
+            The jump select is gone. Its NODE level override moved to the contents -- naming an object
+            still shows every one of its nodes, including the ones the query was hiding. Its object
+            level override did not survive and is asserted absent below, because the contents lists
+            only what the panel is showing.
+        */
+        it('retires the jump select in favour of the contents, keeping only its node level override', () => {
+
+            const actualWebviewHtml = buildRenderedHtml();
+
+            expect(actualWebviewHtml).not.toContain('select an object');
+            expect(actualWebviewHtml).not.toContain('jumpSelectElement');
+
+            expect(actualWebviewHtml).toContain('function jumpToObject(sectionRecord)');
+            expect(actualWebviewHtml).toContain('showEveryNode(sectionRecord);');
+            expect(actualWebviewHtml).toContain('renderTableOfContents(tableOfContentsElement);');
+
+            /*
+                What survives of the select's override is the NODE level half: naming an object shows
+                every one of its nodes, including the ones the query was hiding. The object level half
+                does not survive and must not be claimed -- the contents lists what the panel shows,
+                so a filtered-out object has no entry to click, and a stray un-hide here would be dead
+                code asserting a capability the panel does not have.
+            */
+            const jumpToObjectSource = actualWebviewHtml
+                .split('function jumpToObject(sectionRecord) {')[1]
+                .split('\n    }')[0];
+
+            expect(jumpToObjectSource).not.toContain("classList.remove('hidden')");
 
         });
 
@@ -3175,6 +3206,441 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(actualWebviewHtml).toContain('combination(s) are not rendered');
             expect(actualWebviewHtml).toContain('renderTruncationNotices');
+
+        });
+
+    });
+
+    /*
+        The panel is a script string, so what these assert is the emitted panel SOURCE -- the same
+        way every other buildWebviewHtml test in this file reads. What each one is protecting is a
+        decision that is easy to undo by accident while the panel still renders.
+    */
+    describe('buildWebviewHtml collapsible layout', () => {
+
+        function buildRenderedHtml(): string {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                buildNoResultsLoad(),
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            return PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+
+        }
+
+        describe('the forbidden complement collapses', () => {
+
+            it('draws "must not unlock" through the collapsible list, opened only for a failed row', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('appendCollapsibleValueList(');
+                expect(actualWebviewHtml).toContain("'must not unlock',");
+                expect(actualWebviewHtml).toContain("combination.status === 'failed'");
+
+                // COLLAPSED IS THE DEFAULT, AND THE ARROW HAS TO AGREE WITH THE BODY IT DESCRIBES
+                expect(actualWebviewHtml).toContain(
+                    "createElement('span', 'disclosure', startExpanded ? '▾' : '▸')"
+                );
+                expect(actualWebviewHtml).toContain("'valueListValues' + (startExpanded ? '' : ' hidden')");
+
+            });
+
+            /*
+                One derivation, two readings of it. A count computed separately from the list would
+                be free to disagree with it, and a row claiming 14 forbidden values while showing 12
+                is worse than one that claims nothing.
+            */
+            it('takes the summary count from the rendered list rather than computing it a second way', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain("createElement('span', 'valueCount', '(' + values.length + ')')");
+                expect(actualWebviewHtml).toContain('values.forEach(function (value) {');
+
+            });
+
+            it('renders no disclosure at all where the complement is empty', () => {
+
+                expect(buildRenderedHtml()).toContain('if (!values.length) { return; }');
+
+            });
+
+            /*
+                The combination row's own click toggles its source detail. Without this, opening the
+                forbidden list would also open the actions block underneath it.
+            */
+            it('keeps the disclosure click off the row it sits inside', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('summaryElement.addEventListener');
+                expect(actualWebviewHtml).toContain('clickEvent.stopPropagation();');
+
+            });
+
+            /*
+                The one branch that must NOT collapse. That line is a claim about what the panel
+                cannot show; behind a collapsed arrow, an unexpanded row reads as "nothing forbidden
+                here", which is the false claim the branch exists to avoid making.
+            */
+            it('leaves the capped-universe message uncollapsed and verbatim', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('if (declaredValuesTruncated) {');
+                expect(actualWebviewHtml).toContain(
+                    "combinationElement.appendChild(createElement('div', 'valueList muted',\n                'must not unlock: not shown"
+                );
+                expect(actualWebviewHtml).toContain(
+                    'a complement of a partial list would understate what the spec forbids'
+                );
+
+            });
+
+        });
+
+        describe('record types are their own section', () => {
+
+            it('gathers a field\'s record type scopes under one collapsible group', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('function buildRecordTypeGroupElement(node, objectViewModel, sectionRecord)');
+                expect(actualWebviewHtml).toContain("'Record Types (' + node.recordTypeScopes.length + ')'");
+                expect(actualWebviewHtml).toContain('if (node.recordTypeScopes.length) {');
+                expect(actualWebviewHtml).toContain("createElement('div', 'recordTypeScopes hidden')");
+
+            });
+
+            /*
+                Nothing in the shipped framework verifies a record-type-scoped row -- Apex describe
+                returns picklist values without record type filtering, which is what every scope's
+                note says. A passed badge over the group would assert exactly that. A FAILED count is
+                a different statement: it is about scopes a run did report against.
+            */
+            it('shows a failed count and never a passed or unknown badge on the group header', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain("recordTypeScope.status === 'failed'");
+                expect(actualWebviewHtml).toContain("createElement('span', 'statusBadge failed', failedScopeCount + ' failed')");
+                expect(actualWebviewHtml).not.toContain('appendStatusBadge(headingElement');
+
+            });
+
+            /*
+                Opening the group reveals headings that already exist. The BODIES stay lazy, which is
+                the whole reason the record type axis did not multiply the panel's element count.
+            */
+            it('builds no scope body when the group opens', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const openGroupSource = actualWebviewHtml
+                    .split('const openGroup = function () {')[1]
+                    .split('\n        };')[0];
+
+                expect(openGroupSource).toContain("groupBodyElement.classList.remove('hidden');");
+                expect(openGroupSource).not.toContain('buildScopeBody');
+
+                const revealFunctionSource = actualWebviewHtml
+                    .split('const revealRecordTypeGroup = function () {')[1]
+                    .split('\n        };')[0];
+
+                expect(revealFunctionSource).not.toContain('buildScopeBody');
+
+                expect(actualWebviewHtml).toContain('scopeBodyBuilt');
+                expect(actualWebviewHtml).toContain('const buildScopeBody = function () {');
+
+            });
+
+            /*
+                A pasted reference can name a scoped row, and that row now lives two disclosures
+                deep. Revealing only the scope would scroll the panel to an element inside a hidden
+                parent -- a focus ring on something the reader cannot see.
+            */
+            it('opens the group as well as the scope when a deep link lands inside it', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain(
+                    'sectionRecord.scopeRevealers.push(function () {\n            revealRecordTypeGroup();'
+                );
+                expect(actualWebviewHtml).toContain(
+                    'buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord, revealRecordTypeGroup)'
+                );
+
+            });
+
+            it('opens the group holding a record type the find box named', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('function applyRecordTypeGroupFilter(nodeRecord)');
+                expect(actualWebviewHtml).toContain('nodeRecord.recordTypeSearchText.indexOf(filterText) !== -1');
+                expect(actualWebviewHtml).toContain('nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeMatch);');
+
+            });
+
+            /*
+                applyFilter runs on every input event across every built node record, and built
+                objects accumulate over a session -- they are never un-built. Lowercasing each scope
+                name inside that loop measured 27ms per keystroke at 250 built objects, past the frame
+                budget, against 1.4ms before the panel had a filter at all.
+
+                So the haystack is lowercased once at build time and the per-keystroke predicate is a
+                single indexOf. This fails if either half is undone: a .toLowerCase() reappearing in
+                the keystroke path, or the build-time hoist going away.
+            */
+            it('lowercases the record type haystack once at build time, never per keystroke', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const filterFunctionSource = actualWebviewHtml
+                    .split('function applyRecordTypeGroupFilter(nodeRecord) {')[1]
+                    .split('\n    }')[0];
+
+                expect(filterFunctionSource).not.toContain('toLowerCase');
+                expect(filterFunctionSource).not.toContain('recordTypeScopes');
+                expect(filterFunctionSource).not.toContain('.some(');
+
+                expect(actualWebviewHtml).toContain('recordTypeSearchText = node.recordTypeScopes');
+                expect(actualWebviewHtml).toContain(".join('\\n')");
+                expect(actualWebviewHtml).toContain('recordTypeSearchText: recordTypeSearchText');
+
+            });
+
+            /*
+                A newline join makes one indexOf exactly equivalent to testing each name separately.
+                A record type developer name is [A-Za-z0-9_] and the find box is an input[type=search]
+                whose value cannot contain a newline, so no query can match across the join. A space
+                separator would not hold: "foo bar" could match the tail of one name and the head of
+                the next, opening a group that matches nothing.
+            */
+            it('joins the haystack on a separator no query can contain', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain(".join('\\n')");
+                expect(actualWebviewHtml).not.toContain(".join(' ')\n                .toLowerCase()");
+                expect(actualWebviewHtml).toContain("findInputElement.type = 'search';");
+
+            });
+
+            // A KEYSTROKE THAT CHANGES NOTHING WRITES NOTHING: applyFilter RUNS THESE PER NODE RECORD
+            it('makes the group toggles idempotent', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const openGroupSource = actualWebviewHtml
+                    .split('const openGroup = function () {')[1]
+                    .split('\n        };')[0];
+                const closeGroupSource = actualWebviewHtml
+                    .split('const closeGroup = function () {')[1]
+                    .split('\n        };')[0];
+
+                expect(openGroupSource).toContain("if (!groupBodyElement.classList.contains('hidden')) { return; }");
+                expect(closeGroupSource).toContain("if (groupBodyElement.classList.contains('hidden')) { return; }");
+
+            });
+
+            /*
+                The find box fires on every keystroke and the match is a bare substring, so a PREFIX
+                of the query names record types the finished query does not -- typing "Status__c"
+                matches "Master" on its first letter. A reveal with no closing branch would leave the
+                reader looking at the wall of headings this group exists to collapse, opened by a
+                query that no longer matches anything.
+            */
+            it('closes a filter-opened group again when the match lapses', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const applyMatchSource = actualWebviewHtml
+                    .split('const applyRecordTypeFilterMatch = function (isRecordTypeMatch) {')[1]
+                    .split('\n        };')[0];
+
+                expect(applyMatchSource).toContain('isOpenedByFilter = true;');
+                expect(applyMatchSource).toContain('isOpenedByFilter = false;');
+                expect(applyMatchSource).toContain('closeGroup();');
+                expect(applyMatchSource).toContain('if (!isOpenedByFilter) { return; }');
+
+            });
+
+            /*
+                Once the reader has touched a group it stops being the filter's to manage, in BOTH
+                directions: reopening one they just shut is the same kind of wrong as leaving one open
+                that no longer matches. A pasted deep link counts as the reader's own reveal.
+            */
+            it('hands a group the reader touched out of the filter\'s control, opened or closed', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const applyMatchSource = actualWebviewHtml
+                    .split('const applyRecordTypeFilterMatch = function (isRecordTypeMatch) {')[1]
+                    .split('\n        };')[0];
+
+                expect(applyMatchSource).toContain('if (isReaderManaged) { return; }');
+
+                const revealSource = actualWebviewHtml
+                    .split('const revealRecordTypeGroup = function () {')[1]
+                    .split('\n        };')[0];
+
+                expect(revealSource).toContain('isReaderManaged = true;');
+
+                // THE CLOSING HALF: A GROUP THE READER SHUT MUST NOT REOPEN ON THE NEXT KEYSTROKE
+                const headingClickSource = actualWebviewHtml
+                    .split("headingElement.addEventListener('click', function () {")[1]
+                    .split('\n        });')[0];
+
+                expect(headingClickSource).toContain('isReaderManaged = true;');
+                expect(headingClickSource).toContain('closeGroup();');
+
+            });
+
+            /*
+                The header states the count of scopes the panel RENDERS. Where the ceiling dropped
+                some, that number is not the field's record type count -- so the notice correcting it
+                has to sit where the reader already is, not behind the click they have no reason to
+                make. Appended to groupElement, and BEFORE groupBodyElement exists, so it cannot drift
+                back inside the collapsible body without this failing.
+            */
+            it('keeps the dropped-scope notice outside the collapsible body, under the header', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain(
+                    "appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are')"
+                );
+                expect(actualWebviewHtml).not.toContain(
+                    'appendTruncationNotice(groupBodyElement, node.truncatedRecordTypeScopeCount'
+                );
+
+                const noticeIndex = actualWebviewHtml.indexOf(
+                    "appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount"
+                );
+                const groupBodyDeclarationIndex = actualWebviewHtml.indexOf(
+                    "const groupBodyElement = createElement('div', 'recordTypeScopes hidden');"
+                );
+
+                expect(noticeIndex).toBeGreaterThan(-1);
+                expect(groupBodyDeclarationIndex).toBeGreaterThan(noticeIndex);
+
+            });
+
+        });
+
+        describe('the table of contents', () => {
+
+            it('renders a collapsible contents, open on arrival', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('function renderTableOfContents(tableOfContentsElement)');
+                expect(actualWebviewHtml).toContain("createElement('span', 'disclosure', '▾')");
+                expect(actualWebviewHtml).toContain("createElement('span', undefined, 'Contents')");
+
+            });
+
+            /*
+                A section the panel did not render must not appear in its contents. Registration
+                happens inside the renderer that builds a section, past that renderer's own guard,
+                so the two cannot come apart.
+            */
+            it('registers each section from the renderer that built it, behind that renderer\'s guard', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('function registerPanelSection(labelText, sectionElement)');
+                expect(actualWebviewHtml).toContain("registerPanelSection('Last check', bannerElement);");
+                expect(actualWebviewHtml).toContain("registerPanelSection('Preview from metadata', bannerElement);");
+                expect(actualWebviewHtml).toContain(
+                    "registerPanelSection(isStale ? 'Generated specs — stale' : 'Generated specs', bannerElement);"
+                );
+
+                expect(actualWebviewHtml).toContain(
+                    'if (!explorerModel.truncationNotices.length) { return; }'
+                );
+                expect(actualWebviewHtml).toContain("registerPanelSection('Rendering limits', noticesElement);");
+
+                expect(actualWebviewHtml).toContain(
+                    'if (!explorerModel.skippedFieldWarnings.length) { return; }'
+                );
+                expect(actualWebviewHtml).toContain("registerPanelSection('Not asserted', warningsElement);");
+
+            });
+
+            /*
+                Every object entry addresses a section record the panel already built. It names
+                nothing the panel is not showing, and it opens no path of its own -- so it adds no
+                allow-list entry to the extension host side.
+            */
+            it('lists objects from the built section records rather than from anything it resolves itself', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain("createElement('div', 'tableOfContentsGroupLabel',\n            'Objects (' + objectSectionRecords.length + ')')");
+                expect(actualWebviewHtml).toContain('objectSectionRecords.forEach(function (sectionRecord) {');
+                expect(actualWebviewHtml).toContain("entryElement.addEventListener('click', function () { jumpToObject(sectionRecord); });");
+                expect(actualWebviewHtml).not.toContain("command: 'openTableOfContentsEntry'");
+
+            });
+
+            /*
+                A contents listing an object the filter has hidden is a second account of what is on
+                screen, and the two would disagree the moment anyone typed.
+            */
+            it('hides and shows its object entries with the filter', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('if (sectionRecord.tableOfContentsEntryElement) {');
+                expect(actualWebviewHtml).toContain(
+                    "sectionRecord.tableOfContentsEntryElement.classList.toggle('hidden', !isVisible);"
+                );
+
+            });
+
+            /*
+                Built after the sections exist so an entry holds the record it scrolls to, rather
+                than looking an object up by name at click time.
+            */
+            it('fills the contents once every object section record has been built', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const tableOfContentsPlaceholderIndex = actualWebviewHtml.indexOf(
+                    "const tableOfContentsElement = createElement('div', 'tableOfContents');"
+                );
+                const sectionBuildIndex = actualWebviewHtml.indexOf('const sectionRecord = buildObjectSectionRecord(objectViewModel);');
+                const tableOfContentsFillIndex = actualWebviewHtml.indexOf('renderTableOfContents(tableOfContentsElement);');
+
+                expect(tableOfContentsPlaceholderIndex).toBeGreaterThan(-1);
+                expect(sectionBuildIndex).toBeGreaterThan(tableOfContentsPlaceholderIndex);
+                expect(tableOfContentsFillIndex).toBeGreaterThan(sectionBuildIndex);
+
+            });
+
+            /*
+                Object api names and record type names are metadata the extension does not control.
+                Every label the contents and the new groups add is set as textContent through
+                createElement, so none of it can reach the panel as markup.
+            */
+            it('sets every added label as text rather than markup', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain("createElement('span', 'fieldName', objectViewModel.objectApiName)");
+                expect(actualWebviewHtml).not.toContain('innerHTML');
+                expect(actualWebviewHtml).toContain(
+                    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-testNonce'; script-src 'nonce-testNonce'; form-action 'none'; base-uri 'none';">`
+                );
+
+            });
 
         });
 

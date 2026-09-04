@@ -2476,7 +2476,8 @@ export class PicklistDependencyExplorerService {
         margin: 0.1rem 0.2rem 0.1rem 0;
     }
     .value.forbidden { text-decoration: line-through; color: var(--vscode-descriptionForeground); }
-    .recordTypeScopes { margin: 0.4rem 0 0.2rem 1rem; }
+    /* NESTED INSIDE .recordTypeGroup, WHICH ALREADY CARRIES THE INDENT AND THE RULE */
+    .recordTypeScopes { margin: 0.2rem 0; }
     .recordTypeScope {
         border: 1px dashed var(--vscode-panel-border);
         padding: 0.35rem 0.5rem;
@@ -2567,6 +2568,66 @@ export class PicklistDependencyExplorerService {
     .provenanceBanner.preview { border-left-color: var(--vscode-testing-iconQueued); }
     .skippedField { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; margin: 0.35rem 0; }
     .skippedBadge { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-testing-iconQueued); margin-left: 0.5rem; }
+    /*
+        The forbidden complement is the longest thing on a row and the least often read: a field
+        with a 40 value picklist forbids 36 of them under every controlling value. Collapsed, its
+        summary still states the count, so the row says how much it is holding back.
+    */
+    .valueListSummary { cursor: pointer; display: flex; align-items: baseline; gap: 0.35rem; }
+    .valueListSummary:hover { text-decoration: underline; }
+    .valueListValues { margin-top: 0.1rem; }
+    .valueCount { color: var(--vscode-descriptionForeground); font-size: 0.85em; }
+    .recordTypeGroup {
+        border-left: 2px solid var(--vscode-panel-border);
+        margin: 0.5rem 0 0.2rem 1rem;
+        padding-left: 0.6rem;
+    }
+    .recordTypeGroupHeading {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        cursor: pointer;
+        padding: 0.15rem 0;
+    }
+    .recordTypeGroupHeading:hover { background-color: var(--vscode-list-hoverBackground); }
+    .recordTypeGroupLabel {
+        font-weight: 600;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .tableOfContents {
+        border: 1px solid var(--vscode-panel-border);
+        padding: 0.4rem 0.6rem 0.5rem 0.6rem;
+        margin-bottom: 0.75rem;
+    }
+    .tableOfContentsHeading {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .tableOfContentsGroupLabel {
+        color: var(--vscode-descriptionForeground);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin: 0.4rem 0 0.1rem 0;
+    }
+    .tocEntry {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        cursor: pointer;
+        padding: 0.12rem 0.3rem 0.12rem 0.75rem;
+    }
+    .tocEntry:hover { background-color: var(--vscode-list-hoverBackground); }
     .hidden { display: none; }
 </style>
 </head>
@@ -2605,6 +2666,18 @@ export class PicklistDependencyExplorerService {
     let matchCountElement;
     let focusedCombinationElement;
 
+    /*
+        The panel's named sections, in the order they were rendered, each with the element the table
+        of contents scrolls to. Registered by the renderer that builds a section rather than listed
+        up front: a section the panel did not render must not appear in its contents, and the
+        renderer is the only place that knows whether it did.
+    */
+    let panelSectionRecords = [];
+
+    function registerPanelSection(labelText, sectionElement) {
+        panelSectionRecords.push({ label: labelText, element: sectionElement });
+    }
+
     function createElement(tagName, className, textContent) {
         const element = document.createElement(tagName);
         if (className) { element.className = className; }
@@ -2625,6 +2698,52 @@ export class PicklistDependencyExplorerService {
         values.forEach(function (value) {
             valueListElement.appendChild(createElement('span', valueClassName, value));
         });
+        parentElement.appendChild(valueListElement);
+
+    }
+
+    /*
+        The same list behind a disclosure, for the one value list that is long by construction.
+
+        A combination's forbidden set is the COMPLEMENT of what it unlocks, so it grows as the
+        field's picklist grows while the unlock list stays short -- the values a reader came for
+        were being pushed off screen by the values they did not. The summary carries the count, so
+        a collapsed row still states how many values it is holding, and the count is taken from the
+        rendered list rather than computed a second way.
+
+        startExpanded is the failed row: it opens with its detail already showing for the same
+        reason, and the forbidden set is what a MISSING_VALUES or EXTRA_VALUES failure is about.
+    */
+    function appendCollapsibleValueList(parentElement, labelText, values, valueClassName, startExpanded) {
+
+        if (!values.length) { return; }
+
+        const valueListElement = createElement('div', 'valueList');
+
+        const summaryElement = createElement('div', 'valueListSummary');
+        const disclosureElement = createElement('span', 'disclosure', startExpanded ? '▾' : '▸');
+        summaryElement.appendChild(disclosureElement);
+        summaryElement.appendChild(createElement('span', 'valueLabel', labelText));
+        summaryElement.appendChild(createElement('span', 'valueCount', '(' + values.length + ')'));
+        valueListElement.appendChild(summaryElement);
+
+        const valuesElement = createElement('div', 'valueListValues' + (startExpanded ? '' : ' hidden'));
+        values.forEach(function (value) {
+            valuesElement.appendChild(createElement('span', valueClassName, value));
+        });
+        valueListElement.appendChild(valuesElement);
+
+        /*
+            Stopped here rather than allowed to bubble: the combination row's own click toggles its
+            source detail, so without this, opening the forbidden list would also open the actions
+            block underneath it.
+        */
+        summaryElement.addEventListener('click', function (clickEvent) {
+            clickEvent.stopPropagation();
+            valuesElement.classList.toggle('hidden');
+            disclosureElement.textContent = valuesElement.classList.contains('hidden') ? '▸' : '▾';
+        });
+
         parentElement.appendChild(valueListElement);
 
     }
@@ -2730,7 +2849,13 @@ export class PicklistDependencyExplorerService {
                 'must not unlock: not shown — this field declares more values than the panel renders, '
                     + 'and a complement of a partial list would understate what the spec forbids'));
         } else {
-            appendValueList(combinationElement, 'must not unlock', buildForbiddenValues(declaredValues, combination), 'value forbidden');
+            appendCollapsibleValueList(
+                combinationElement,
+                'must not unlock',
+                buildForbiddenValues(declaredValues, combination),
+                'value forbidden',
+                combination.status === 'failed'
+            );
         }
         appendFailureDetails(combinationElement, combination.failures);
 
@@ -2819,7 +2944,7 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    function buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord) {
+    function buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord, revealRecordTypeGroup) {
 
         const scopeElement = createElement('div', 'recordTypeScope');
 
@@ -2879,8 +3004,13 @@ export class PicklistDependencyExplorerService {
 
         };
 
-        // BUILDS AND SHOWS THE SCOPE, FOR A DEEP LINK THAT LANDS INSIDE IT RATHER THAN ON A FIELD LEVEL ROW
+        /*
+            BUILDS AND SHOWS THE SCOPE, FOR A DEEP LINK THAT LANDS INSIDE IT RATHER THAN ON A FIELD LEVEL ROW.
+            The GROUP is opened too: the scopes live inside a collapsed disclosure, so revealing only
+            the scope body would scroll the panel to a row inside a hidden parent.
+        */
         sectionRecord.scopeRevealers.push(function () {
+            revealRecordTypeGroup();
             buildScopeBody();
             scopeBodyElement.classList.remove('hidden');
         });
@@ -2891,6 +3021,148 @@ export class PicklistDependencyExplorerService {
         });
 
         return scopeElement;
+
+    }
+
+    /*
+        Every record type that narrows this field, under ONE labelled disclosure rather than appended
+        flat beneath the field level rows.
+
+        The separation is the point. A field level combination is asserted by the generated check; a
+        record-type-scoped one is not, and running them together as siblings made a reader work out
+        which kind of row they were reading from the wording of a note. It is also where the volume
+        is -- every record type repeats the whole field's combinations.
+
+        The header carries NO passed/unknown status badge. Apex describe returns picklist values
+        without record type filtering, so nothing in the shipped framework verifies a scoped row; a
+        green badge over the group would assert exactly what each scope's note exists to deny. A
+        failed count is different -- it is a statement about scopes a run DID report against.
+    */
+    function buildRecordTypeGroupElement(node, objectViewModel, sectionRecord) {
+
+        const groupElement = createElement('div', 'recordTypeGroup');
+
+        const failedScopeCount = node.recordTypeScopes.filter(function (recordTypeScope) {
+            return recordTypeScope.status === 'failed';
+        }).length;
+
+        const headingElement = createElement('div', 'recordTypeGroupHeading');
+        const disclosureElement = createElement('span', 'disclosure', '▸');
+        headingElement.appendChild(disclosureElement);
+        headingElement.appendChild(createElement('span', 'recordTypeGroupLabel',
+            'Record Types (' + node.recordTypeScopes.length + ')'));
+
+        if (failedScopeCount) {
+            headingElement.appendChild(createElement('span', 'statusBadge failed', failedScopeCount + ' failed'));
+        }
+
+        groupElement.appendChild(headingElement);
+
+        /*
+            OUTSIDE the collapsible body, directly under the header that would otherwise misstate it.
+
+            The header states the count of scopes the panel RENDERS. Where the ceiling dropped some,
+            that number is not the field's record type count, and a notice explaining the difference
+            is no use behind a click the reader has no reason to make -- they would be looking at
+            "Record Types (25)" with nothing to suggest there were 40. A dropped row is counted in a
+            notice the reader can SEE, which is the whole of the invariant; the panel-level aggregate
+            is not a substitute, because it does not name this field.
+        */
+        appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are');
+
+        const groupBodyElement = createElement('div', 'recordTypeScopes hidden');
+
+        /*
+            Who opened the group, not just whether it is open.
+
+            The find box fires on every keystroke, and a substring match on a PREFIX of the query can
+            name a record type the finished query does not: typing "Status__c" matches "Master" on
+            its first letter. Reopening on every keystroke and never closing would leave the reader
+            looking at exactly the wall of record type headings this group exists to collapse, opened
+            by a query that no longer matches anything.
+
+            So a group the FILTER opened, the filter closes again when its match lapses. And the
+            moment the reader touches a group at all -- opening it, closing it, or following a pasted
+            reference into it -- the filter stops managing that group entirely, in BOTH directions:
+            reopening one they just shut is the same kind of wrong as leaving one open that no longer
+            matches.
+        */
+        let isReaderManaged = false;
+        let isOpenedByFilter = false;
+
+        // GUARDED SO A KEYSTROKE THAT CHANGES NOTHING WRITES NOTHING -- applyFilter RUNS THESE PER NODE
+        const openGroup = function () {
+
+            if (!groupBodyElement.classList.contains('hidden')) { return; }
+
+            groupBodyElement.classList.remove('hidden');
+            disclosureElement.textContent = '▾';
+
+        };
+
+        const closeGroup = function () {
+
+            if (groupBodyElement.classList.contains('hidden')) { return; }
+
+            groupBodyElement.classList.add('hidden');
+            disclosureElement.textContent = '▸';
+
+        };
+
+        // THE READER'S OWN REVEAL: A CLICK, OR A DEEP LINK THEY PASTED. THE FILTER MAY NOT UNDO IT.
+        const revealRecordTypeGroup = function () {
+            isReaderManaged = true;
+            openGroup();
+        };
+
+        const applyRecordTypeFilterMatch = function (isRecordTypeMatch) {
+
+            if (isReaderManaged) { return; }
+
+            if (isRecordTypeMatch) {
+                isOpenedByFilter = true;
+                openGroup();
+                return;
+            }
+
+            if (!isOpenedByFilter) { return; }
+
+            isOpenedByFilter = false;
+            closeGroup();
+
+        };
+
+        /*
+            The scope HEADINGS are built here, as they always were -- it is the scope BODIES that are
+            lazy. Opening the group therefore builds nothing: it reveals headings that already exist,
+            and each one still builds its own rows on first expand.
+        */
+        node.recordTypeScopes.forEach(function (recordTypeScope) {
+            groupBodyElement.appendChild(buildRecordTypeScopeElement(
+                node, objectViewModel, recordTypeScope, sectionRecord, revealRecordTypeGroup));
+        });
+
+        headingElement.addEventListener('click', function () {
+
+            if (groupBodyElement.classList.contains('hidden')) {
+                revealRecordTypeGroup();
+                return;
+            }
+
+            // CLOSING IT IS THE READER'S TOO: THE NEXT KEYSTROKE MUST NOT REOPEN WHAT THEY JUST SHUT
+            isReaderManaged = true;
+            isOpenedByFilter = false;
+            closeGroup();
+
+        });
+
+        groupElement.appendChild(groupBodyElement);
+
+        return {
+            element: groupElement,
+            reveal: revealRecordTypeGroup,
+            applyFilterMatch: applyRecordTypeFilterMatch
+        };
 
     }
 
@@ -2921,19 +3193,44 @@ export class PicklistDependencyExplorerService {
 
         appendTruncationNotice(nodeElement, node.truncatedCombinationCount, 'combination(s) are');
 
+        /*
+            The group's own reveal, held on the node record so a find-box query naming a record type
+            can open the disclosure holding it. Without it, searching a record type name would filter
+            the panel down to the node that has it and then show nothing of what was searched for.
+        */
+        let revealRecordTypeGroup;
+        let applyRecordTypeGroupFilterMatch;
+        let recordTypeSearchText = '';
+
         if (node.recordTypeScopes.length) {
 
-            const recordTypeScopesElement = createElement('div', 'recordTypeScopes');
+            const recordTypeGroup = buildRecordTypeGroupElement(node, objectViewModel, sectionRecord);
+            revealRecordTypeGroup = recordTypeGroup.reveal;
+            applyRecordTypeGroupFilterMatch = recordTypeGroup.applyFilterMatch;
+            nodeElement.appendChild(recordTypeGroup.element);
 
-            node.recordTypeScopes.forEach(function (recordTypeScope) {
-                recordTypeScopesElement.appendChild(buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord));
-            });
+            /*
+                Lowercased ONCE here, not per keystroke.
 
-            nodeElement.appendChild(recordTypeScopesElement);
+                applyFilter runs on every input event across every built node record, and built
+                objects accumulate over a session -- they are never un-built. Lowercasing each scope
+                name inside that loop allocated a fresh string per scope per keystroke, which measured
+                27ms per keystroke at 250 built objects against 1.4ms before this panel had the
+                filter at all. Names do not change after the model is built, so the haystack does not
+                either.
+
+                Joined on a NEWLINE rather than a space so one indexOf is exactly equivalent to
+                testing each name separately: a record type developer name is [A-Za-z0-9_], and the
+                find box is an <input type="search"> whose value can never contain a newline, so no
+                query can match across the join. A space separator would not hold -- "foo bar" could
+                match the tail of one name and the head of the next.
+            */
+            recordTypeSearchText = node.recordTypeScopes
+                .map(function (recordTypeScope) { return recordTypeScope.recordTypeDeveloperName; })
+                .join('\n')
+                .toLowerCase();
 
         }
-
-        appendTruncationNotice(nodeElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are');
 
         if (node.downstreamNodes.length) {
             const childrenElement = createElement('div', 'nodeChildren');
@@ -2943,7 +3240,13 @@ export class PicklistDependencyExplorerService {
             nodeElement.appendChild(childrenElement);
         }
 
-        sectionRecord.nodeRecords.push({ node: node, element: nodeElement });
+        sectionRecord.nodeRecords.push({
+            node: node,
+            element: nodeElement,
+            revealRecordTypeGroup: revealRecordTypeGroup,
+            applyRecordTypeGroupFilterMatch: applyRecordTypeGroupFilterMatch,
+            recordTypeSearchText: recordTypeSearchText
+        });
 
         return nodeElement;
 
@@ -2977,6 +3280,7 @@ export class PicklistDependencyExplorerService {
                 bannerElement.appendChild(createElement('div', 'muted', explorerModel.manifestLoadMessage));
             }
 
+            registerPanelSection('Preview from metadata', bannerElement);
             explorerRoot.appendChild(bannerElement);
             return;
 
@@ -2996,6 +3300,7 @@ export class PicklistDependencyExplorerService {
                 + ' — asserted by ' + explorerModel.specsTestClassName + '.cls'));
         bannerElement.appendChild(createElement('div', 'sourcePath', explorerModel.manifestFilePath));
 
+        registerPanelSection(isStale ? 'Generated specs — stale' : 'Generated specs', bannerElement);
         explorerRoot.appendChild(bannerElement);
 
     }
@@ -3021,6 +3326,7 @@ export class PicklistDependencyExplorerService {
             bannerElement.appendChild(createElement('div', undefined, explorerModel.runLoadMessage));
         }
 
+        registerPanelSection('Last check', bannerElement);
         explorerRoot.appendChild(bannerElement);
 
     }
@@ -3032,9 +3338,16 @@ export class PicklistDependencyExplorerService {
     */
     function renderTruncationNotices() {
 
+        if (!explorerModel.truncationNotices.length) { return; }
+
+        const noticesElement = createElement('div');
+
         explorerModel.truncationNotices.forEach(function (truncationNotice) {
-            explorerRoot.appendChild(createElement('div', 'truncationNotice', truncationNotice));
+            noticesElement.appendChild(createElement('div', 'truncationNotice', truncationNotice));
         });
+
+        registerPanelSection('Rendering limits', noticesElement);
+        explorerRoot.appendChild(noticesElement);
 
     }
 
@@ -3049,6 +3362,7 @@ export class PicklistDependencyExplorerService {
         explorerModel.skippedFieldWarnings.forEach(function (skippedFieldWarning) {
             warningsElement.appendChild(createElement('div', 'muted', skippedFieldWarning));
         });
+        registerPanelSection('Not asserted', warningsElement);
         explorerRoot.appendChild(warningsElement);
 
     }
@@ -3134,7 +3448,9 @@ export class PicklistDependencyExplorerService {
                 buildCombinationKey's format happens to make that unreachable today, but that is an
                 invariant in another file rather than a property of this lookup.
             */
-            combinationElementsByKey: Object.create(null)
+            combinationElementsByKey: Object.create(null),
+            // SET WHEN THE CONTENTS IS BUILT, WHICH HAPPENS AFTER EVERY SECTION RECORD EXISTS
+            tableOfContentsEntryElement: undefined
         };
 
         const objectHeading = createElement('div', 'objectHeading');
@@ -3230,7 +3546,34 @@ export class PicklistDependencyExplorerService {
 
         sectionRecord.nodeRecords.forEach(function (nodeRecord) {
             nodeRecord.element.classList.toggle('hidden', !nodeMatchesFilter(nodeRecord.node, isObjectNameMatch));
+            applyRecordTypeGroupFilter(nodeRecord);
         });
+
+    }
+
+    /*
+        A query naming a RECORD TYPE opens the group holding it, and stops naming it closes that
+        group again.
+
+        Record type names are part of a node's search text, so such a query already filters the panel
+        down to the right field -- and then leaves the thing that was searched for behind a collapsed
+        disclosure. The reverse matters just as much: a substring match on a PREFIX of the query names
+        record types the finished query does not, so opening without ever closing would leave a wall
+        of headings opened by a query that no longer matches. The group itself decides what to do with
+        the match -- a group the reader has touched is no longer the filter's to manage.
+
+        This still only toggles visibility. No status is recomputed, and none is inferred from a group
+        being open or shut.
+    */
+    function applyRecordTypeGroupFilter(nodeRecord) {
+
+        if (!nodeRecord.applyRecordTypeGroupFilterMatch) { return; }
+
+        // ONE indexOf AGAINST A HAYSTACK LOWERCASED AT BUILD TIME -- SEE buildNodeElement
+        const isRecordTypeMatch = !!filterText
+            && nodeRecord.recordTypeSearchText.indexOf(filterText) !== -1;
+
+        nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeMatch);
 
     }
 
@@ -3291,6 +3634,10 @@ export class PicklistDependencyExplorerService {
                 : objectMatchesFilter(sectionRecord.objectViewModel);
 
             sectionRecord.sectionElement.classList.toggle('hidden', !isVisible);
+
+            if (sectionRecord.tableOfContentsEntryElement) {
+                sectionRecord.tableOfContentsEntryElement.classList.toggle('hidden', !isVisible);
+            }
 
             if (isVisible) { visibleSectionRecords.push(sectionRecord); }
 
@@ -3364,43 +3711,6 @@ export class PicklistDependencyExplorerService {
         statusFieldElement.appendChild(statusSelectElement);
         toolbarElement.appendChild(statusFieldElement);
 
-        const jumpFieldElement = createElement('label', 'toolbarField');
-        jumpFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Jump to object'));
-
-        const jumpSelectElement = document.createElement('select');
-        const jumpPlaceholderElement = document.createElement('option');
-        jumpPlaceholderElement.value = '';
-        jumpPlaceholderElement.textContent = 'select an object…';
-        jumpSelectElement.appendChild(jumpPlaceholderElement);
-
-        explorerModel.objects.forEach(function (objectViewModel) {
-            const jumpOptionElement = document.createElement('option');
-            jumpOptionElement.value = objectViewModel.objectApiName;
-            jumpOptionElement.textContent = objectViewModel.objectApiName;
-            jumpSelectElement.appendChild(jumpOptionElement);
-        });
-
-        jumpSelectElement.addEventListener('change', function () {
-
-            const selectedSectionRecord = objectSectionRecords.filter(function (sectionRecord) {
-                return sectionRecord.objectViewModel.objectApiName === jumpSelectElement.value;
-            })[0];
-
-            jumpSelectElement.selectedIndex = 0;
-
-            if (!selectedSectionRecord) { return; }
-
-            // JUMPING TO AN OBJECT THE FILTER IS HIDING SHOWS IT, ROWS AND ALL: THE READER NAMED IT, WHICH OUTRANKS THE FILTER
-            selectedSectionRecord.sectionElement.classList.remove('hidden');
-            expandObject(selectedSectionRecord);
-            showEveryNode(selectedSectionRecord);
-            selectedSectionRecord.sectionElement.scrollIntoView({ block: 'start' });
-
-        });
-
-        jumpFieldElement.appendChild(jumpSelectElement);
-        toolbarElement.appendChild(jumpFieldElement);
-
         const expandAllButton = createElement('button', undefined, 'Expand all');
         expandAllButton.addEventListener('click', expandAllVisibleObjects);
         toolbarElement.appendChild(expandAllButton);
@@ -3415,6 +3725,97 @@ export class PicklistDependencyExplorerService {
         toolbarElement.appendChild(matchCountElement);
 
         explorerRoot.appendChild(toolbarElement);
+
+    }
+
+    /*
+        Jumping to an object the reader NAMED opens it and shows every one of its nodes, including the
+        nodes the active query was hiding: naming the object outranks the query WITHIN it.
+
+        What it deliberately does not do is un-hide the object itself. The retired toolbar select
+        listed every object unconditionally, so it could reach one the filter had hidden; the contents
+        lists what the panel is showing, so a hidden object has no entry to click in the first place.
+        That is the trade the contents makes -- it can never give a second, disagreeing account of
+        what is on screen -- and widening the query is how you reach an object it is excluding.
+    */
+    function jumpToObject(sectionRecord) {
+
+        expandObject(sectionRecord);
+        showEveryNode(sectionRecord);
+        sectionRecord.sectionElement.scrollIntoView({ block: 'start' });
+
+    }
+
+    /*
+        The shape of the panel, before scrolling it.
+
+        Built from the RENDERED model and nothing else: every section entry comes from what a
+        renderer registered, and every object entry addresses an object by the api name already on
+        screen -- so the contents can name nothing the panel is not showing, and introduces no path
+        and no allow-list entry of its own.
+
+        Object entries follow the filter. A contents listing an object the filter has hidden is a
+        second account of what is on screen, and the two would disagree the moment anyone typed.
+    */
+    function renderTableOfContents(tableOfContentsElement) {
+
+        const headingElement = createElement('div', 'tableOfContentsHeading');
+        const disclosureElement = createElement('span', 'disclosure', '▾');
+        headingElement.appendChild(disclosureElement);
+        headingElement.appendChild(createElement('span', undefined, 'Contents'));
+        tableOfContentsElement.appendChild(headingElement);
+
+        const bodyElement = createElement('div');
+        tableOfContentsElement.appendChild(bodyElement);
+
+        headingElement.addEventListener('click', function () {
+            bodyElement.classList.toggle('hidden');
+            disclosureElement.textContent = bodyElement.classList.contains('hidden') ? '▸' : '▾';
+        });
+
+        if (panelSectionRecords.length) {
+
+            bodyElement.appendChild(createElement('div', 'tableOfContentsGroupLabel', 'Sections'));
+
+            panelSectionRecords.forEach(function (panelSectionRecord) {
+
+                const entryElement = createElement('div', 'tocEntry');
+                entryElement.appendChild(createElement('span', undefined, panelSectionRecord.label));
+                entryElement.addEventListener('click', function () {
+                    panelSectionRecord.element.scrollIntoView({ block: 'start' });
+                });
+
+                bodyElement.appendChild(entryElement);
+
+            });
+
+        }
+
+        bodyElement.appendChild(createElement('div', 'tableOfContentsGroupLabel',
+            'Objects (' + objectSectionRecords.length + ')'));
+
+        objectSectionRecords.forEach(function (sectionRecord) {
+
+            const objectViewModel = sectionRecord.objectViewModel;
+
+            const entryElement = createElement('div', 'tocEntry');
+            entryElement.appendChild(createElement('span', 'fieldName', objectViewModel.objectApiName));
+            entryElement.appendChild(createElement('span', 'muted',
+                objectViewModel.dependentFieldCount + ' dependent picklist(s), '
+                    + objectViewModel.combinationCount + ' combination(s)'));
+            appendStatusBadge(entryElement, objectViewModel.status);
+
+            if (objectViewModel.skippedFields.length) {
+                entryElement.appendChild(createElement('span', 'skippedBadge',
+                    objectViewModel.skippedFields.length + ' not asserted'));
+            }
+
+            entryElement.addEventListener('click', function () { jumpToObject(sectionRecord); });
+
+            sectionRecord.tableOfContentsEntryElement = entryElement;
+            bodyElement.appendChild(entryElement);
+
+        });
 
     }
 
@@ -3434,11 +3835,21 @@ export class PicklistDependencyExplorerService {
 
         renderToolbar();
 
+        /*
+            Placed under the toolbar now and filled once the object sections exist: the contents
+            entries hold the section records they scroll to, rather than looking an object up by name
+            at click time.
+        */
+        const tableOfContentsElement = createElement('div', 'tableOfContents');
+        explorerRoot.appendChild(tableOfContentsElement);
+
         explorerModel.objects.forEach(function (objectViewModel) {
             const sectionRecord = buildObjectSectionRecord(objectViewModel);
             objectSectionRecords.push(sectionRecord);
             explorerRoot.appendChild(sectionRecord.sectionElement);
         });
+
+        renderTableOfContents(tableOfContentsElement);
 
         applyFilter();
 
