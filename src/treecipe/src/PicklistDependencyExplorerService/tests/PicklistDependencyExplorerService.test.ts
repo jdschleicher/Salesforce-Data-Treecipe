@@ -3064,11 +3064,12 @@ describe('PicklistDependencyExplorerService', () => {
         });
 
         /*
-            The jump select is gone, and what it did is not: naming an object still shows it even
-            where the filter was hiding it. The behaviour moved to the contents rather than being
-            dropped along with the control that used to offer it.
+            The jump select is gone. Its NODE level override moved to the contents -- naming an object
+            still shows every one of its nodes, including the ones the query was hiding. Its object
+            level override did not survive and is asserted absent below, because the contents lists
+            only what the panel is showing.
         */
-        it('retires the jump select in favour of the contents, keeping its override of the filter', () => {
+        it('retires the jump select in favour of the contents, keeping only its node level override', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
@@ -3381,10 +3382,70 @@ describe('PicklistDependencyExplorerService', () => {
                 const actualWebviewHtml = buildRenderedHtml();
 
                 expect(actualWebviewHtml).toContain('function applyRecordTypeGroupFilter(nodeRecord)');
-                expect(actualWebviewHtml).toContain(
-                    'recordTypeScope.recordTypeDeveloperName.toLowerCase().indexOf(filterText) !== -1'
-                );
+                expect(actualWebviewHtml).toContain('nodeRecord.recordTypeSearchText.indexOf(filterText) !== -1');
                 expect(actualWebviewHtml).toContain('nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeMatch);');
+
+            });
+
+            /*
+                applyFilter runs on every input event across every built node record, and built
+                objects accumulate over a session -- they are never un-built. Lowercasing each scope
+                name inside that loop measured 27ms per keystroke at 250 built objects, past the frame
+                budget, against 1.4ms before the panel had a filter at all.
+
+                So the haystack is lowercased once at build time and the per-keystroke predicate is a
+                single indexOf. This fails if either half is undone: a .toLowerCase() reappearing in
+                the keystroke path, or the build-time hoist going away.
+            */
+            it('lowercases the record type haystack once at build time, never per keystroke', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const filterFunctionSource = actualWebviewHtml
+                    .split('function applyRecordTypeGroupFilter(nodeRecord) {')[1]
+                    .split('\n    }')[0];
+
+                expect(filterFunctionSource).not.toContain('toLowerCase');
+                expect(filterFunctionSource).not.toContain('recordTypeScopes');
+                expect(filterFunctionSource).not.toContain('.some(');
+
+                expect(actualWebviewHtml).toContain('recordTypeSearchText = node.recordTypeScopes');
+                expect(actualWebviewHtml).toContain(".join('\\n')");
+                expect(actualWebviewHtml).toContain('recordTypeSearchText: recordTypeSearchText');
+
+            });
+
+            /*
+                A newline join makes one indexOf exactly equivalent to testing each name separately.
+                A record type developer name is [A-Za-z0-9_] and the find box is an input[type=search]
+                whose value cannot contain a newline, so no query can match across the join. A space
+                separator would not hold: "foo bar" could match the tail of one name and the head of
+                the next, opening a group that matches nothing.
+            */
+            it('joins the haystack on a separator no query can contain', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain(".join('\\n')");
+                expect(actualWebviewHtml).not.toContain(".join(' ')\n                .toLowerCase()");
+                expect(actualWebviewHtml).toContain("findInputElement.type = 'search';");
+
+            });
+
+            // A KEYSTROKE THAT CHANGES NOTHING WRITES NOTHING: applyFilter RUNS THESE PER NODE RECORD
+            it('makes the group toggles idempotent', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const openGroupSource = actualWebviewHtml
+                    .split('const openGroup = function () {')[1]
+                    .split('\n        };')[0];
+                const closeGroupSource = actualWebviewHtml
+                    .split('const closeGroup = function () {')[1]
+                    .split('\n        };')[0];
+
+                expect(openGroupSource).toContain("if (!groupBodyElement.classList.contains('hidden')) { return; }");
+                expect(closeGroupSource).toContain("if (groupBodyElement.classList.contains('hidden')) { return; }");
 
             });
 
