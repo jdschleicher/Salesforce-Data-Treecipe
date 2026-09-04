@@ -6,7 +6,8 @@ import {
     PicklistDependencyCheckStatus,
     DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS,
     IPicklistDependencyExplorerModelLimits,
-    PICKLIST_DEPENDENCY_EXPLORER_EXPAND_ALL_OBJECT_LIMIT
+    PICKLIST_DEPENDENCY_EXPLORER_EXPAND_ALL_OBJECT_LIMIT,
+    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES
 } from "../PicklistDependencyExplorerService";
 
 import {
@@ -115,6 +116,37 @@ function buildViewModelWithLatestMockRun(specDetails: IPicklistDependencySpecDet
 
     const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
     return PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, specDetails, [], resultsLoad);
+
+}
+
+/*
+    The size of what the panel is actually handed for one render.
+
+    These bounds are what keep the payload growing with the SUM of the two picklists rather than
+    their product, and they used to be measured on the json embedded in the document. The model is
+    posted now, so the same property is measured on the serialized message -- the payload moved, the
+    ceiling it is held to did not.
+*/
+function measureRenderPayloadLength(viewModel: IPicklistDependencyExplorerViewModel): number {
+
+    return JSON.stringify(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel)).length;
+
+}
+
+/*
+    Everything the panel is given for one render: the static shell document plus the model message
+    posted into it.
+
+    They are asserted together because they used to BE together -- the model was serialized into the
+    shell, and these tests were written against that one string. The model now travels over
+    postMessage, so a test that still means "the panel was told about Platinum" has to look at the
+    payload, while one that means "the panel knows how to open a spec method" still looks at the
+    script in the shell. Concatenating them keeps each test asserting what it always asserted.
+*/
+function buildPanelDocumentAndPayload(viewModel: IPicklistDependencyExplorerViewModel): string {
+
+    return PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce')
+                + JSON.stringify(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel));
 
 }
 
@@ -1110,7 +1142,7 @@ describe('PicklistDependencyExplorerService', () => {
             expect(unattributedText).toContain('Platinum');
 
             // THE MESSAGE MUST ALSO SURVIVE INTO THE RENDERED SHELL, WHICH IS WHERE IT WAS PREVIOUSLY LOST
-            expect(PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce')).toContain('Platinum');
+            expect(buildPanelDocumentAndPayload(actualViewModel)).toContain('Platinum');
 
         });
 
@@ -1136,7 +1168,7 @@ describe('PicklistDependencyExplorerService', () => {
                 .toEqual(['MISSING_VALUES', 'FORBIDDEN_VALUES_PRESENT']);
             expect(actualViewModel.objects[0].failureCount).toBe(2);
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
             expect(actualWebviewHtml).toContain('FORBIDDEN_VALUES_PRESENT');
             expect(actualWebviewHtml).toContain('MISSING_VALUES');
 
@@ -1300,7 +1332,7 @@ describe('PicklistDependencyExplorerService', () => {
                 buildNoResultsLoad()
             );
 
-            const embeddedJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(actualViewModel).length;
+            const embeddedJsonLength = measureRenderPayloadLength(actualViewModel);
 
             /*
                 Quadratic would be ~40 x 120 = 4800 value strings. Linear is ~120 declared plus the
@@ -1353,15 +1385,15 @@ describe('PicklistDependencyExplorerService', () => {
                 expectations: buildExpectations()
             };
 
-            const fieldLevelOnlyJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(
+            const fieldLevelOnlyJsonLength = measureRenderPayloadLength(
                 PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad())
-            ).length;
+            );
 
-            const withOneScopeJsonLength = PicklistDependencyExplorerService.buildEmbeddedModelJson(
+            const withOneScopeJsonLength = measureRenderPayloadLength(
                 PicklistDependencyExplorerService.buildExplorerViewModel(
                     mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad(), [recordTypeSpecDetail]
                 )
-            ).length;
+            );
 
             /*
                 One scope repeating the whole field costs about one field's worth again. Quadratic
@@ -1444,21 +1476,18 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
-    describe('escapeHtml', () => {
+    describe('buildRenderModelMessage', () => {
 
-        it('escapes every character that could break out of an html text or attribute context', () => {
+        /*
+            The replacement for the escaping this service used to do on the way into the document.
 
-            const actualEscapedValue = PicklistDependencyExplorerService.escapeHtml(`<img src="x" onerror='alert(1)'> & done`);
+            Metadata no longer passes through html at all, so the guarantee is stronger and stated
+            differently: the shell carries NO metadata, and the value the panel receives is the
+            value the metadata declared -- byte for byte, with no escaping applied or needed.
+        */
+        it('given a picklist value carrying markup, keeps it out of the panel document and carries it verbatim in the posted model', () => {
 
-            expect(actualEscapedValue).toBe('&lt;img src=&quot;x&quot; onerror=&#39;alert(1)&#39;&gt; &amp; done');
-
-        });
-
-    });
-
-    describe('buildEmbeddedModelJson', () => {
-
-        it('given a picklist value carrying markup, escapes it so it cannot close the embedded json block', () => {
+            const markupControllingValue = '</script><script>alert(1)</script>';
 
             const specDetails: IPicklistDependencySpecDetail[] = [
                 {
@@ -1466,7 +1495,7 @@ describe('PicklistDependencyExplorerService', () => {
                     fieldApiName: 'City__c',
                     controllingFieldApiName: 'State__c',
                     expectations: [
-                        { controllingValue: '</script><script>alert(1)</script>', dependentValues: ['Columbus'], forbiddenValues: [] }
+                        { controllingValue: markupControllingValue, dependentValues: ['Columbus'], forbiddenValues: [] }
                     ]
                 }
             ];
@@ -1475,12 +1504,43 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()
             );
 
-            const actualEmbeddedJson = PicklistDependencyExplorerService.buildEmbeddedModelJson(actualViewModel);
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+            const actualRenderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(actualViewModel);
 
-            expect(actualEmbeddedJson).not.toContain('</script>');
-            expect(actualEmbeddedJson).not.toContain('<');
-            expect(JSON.parse(actualEmbeddedJson).objects[0].rootNodes[0].combinations[0].controllingValue)
-                .toBe('</script><script>alert(1)</script>');
+            expect(actualShellHtml).not.toContain('alert(1)');
+            expect(actualShellHtml).not.toContain('Dependency_Example__c');
+
+            expect(actualRenderMessage.command).toBe('renderModel');
+            expect(actualRenderMessage.model.objects[0].rootNodes[0].combinations[0].controllingValue).toBe(markupControllingValue);
+
+        });
+
+        it('carries the empty state message with the model so the panel does not compose one of its own', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, [], [], buildNoResultsLoad()
+            );
+
+            const actualRenderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(actualViewModel);
+
+            expect(actualRenderMessage.emptyStateMessage)
+                .toBe(PicklistDependencyExplorerService.buildEmptyStateMessage(actualViewModel));
+            expect(actualRenderMessage.emptyStateMessage).toContain('No dependent picklists were found');
+
+        });
+
+        it('given a trailing phase, carries it so the panel keeps reporting what is still running after it paints', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+            );
+
+            const actualRenderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(
+                actualViewModel,
+                PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness
+            );
+
+            expect(actualRenderMessage.message).toBe(PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness);
 
         });
 
@@ -1518,20 +1578,36 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
-    describe('buildWebviewHtml', () => {
+    describe('buildWebviewShellHtml', () => {
 
-        it('given a built model, emits a themed shell carrying the model and the content security policy', () => {
+        it('emits a themed shell with the content security policy and no model of any kind', () => {
 
-            const actualViewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            expect(actualShellHtml).toContain('Content-Security-Policy');
+            expect(actualShellHtml).toContain(`default-src 'none'`);
+            expect(actualShellHtml).toContain('var(--vscode-editor-background)');
+            expect(actualShellHtml).toContain('acquireVsCodeApi');
+            expect(actualShellHtml).toContain('revealFieldSource');
 
-            expect(actualWebviewHtml).toContain('Content-Security-Policy');
-            expect(actualWebviewHtml).toContain(`default-src 'none'`);
-            expect(actualWebviewHtml).toContain('var(--vscode-editor-background)');
-            expect(actualWebviewHtml).toContain('<script id="explorerModel" type="application/json" nonce="testNonce">');
-            expect(actualWebviewHtml).toContain('acquireVsCodeApi');
-            expect(actualWebviewHtml).toContain('revealFieldSource');
+            /*
+                The shell is independent of any model, which is what lets it be shown before one
+                exists. The embedded json block it used to carry is gone -- a model arrives over
+                postMessage, and the panel asks for one by posting "ready".
+            */
+            expect(actualShellHtml).not.toContain('type="application/json"');
+            expect(actualShellHtml).toContain(`postMessage({ command: 'ready' })`);
+            expect(actualShellHtml).toContain('renderModel');
+
+        });
+
+        it('shows a status line before any model arrives, so an open in progress is never a blank panel', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('id="loadStatus"');
+            expect(actualShellHtml).toContain('Opening the Picklist Dependency Explorer');
+            expect(actualShellHtml).toContain('loadPhase');
 
         });
 
@@ -1545,7 +1621,7 @@ describe('PicklistDependencyExplorerService', () => {
                 buildChainExampleRecordTypeSpecDetails()
             );
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
 
             expect(actualWebviewHtml).toContain('North_America');
             expect(actualWebviewHtml).toContain('buildRecordTypeScopeElement');
@@ -1563,10 +1639,13 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualWebviewHtml).toContain('not asserted by the check');
 
             /*
-                A record type developer name reaches the panel through the same embedded JSON as
-                every other model value, so the escaping that protects the rest protects it too.
+                A record type developer name reaches the panel through the posted model like every
+                other value, and is written into the dom through textContent rather than markup --
+                so it needs no escaping and gets none.
             */
-            expect(actualWebviewHtml).toContain('type="application/json"');
+            expect(PicklistDependencyExplorerService.buildRenderModelMessage(actualViewModel)
+                        .model.objects[0].rootNodes[0].recordTypeScopes[0].recordTypeDeveloperName)
+                .toBe('North_America');
 
         });
 
@@ -1576,23 +1655,29 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath, [], [], buildNoResultsLoad()
             );
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
 
             expect(actualWebviewHtml).toContain('No dependent picklists were found in');
             expect(actualWebviewHtml).toContain(mockObjectsDirectoryPath);
 
         });
 
-        it('given a scanned directory path carrying markup, escapes it into the header', () => {
+        it('given a scanned directory path carrying markup, keeps it out of the document entirely', () => {
+
+            const markupObjectsDirectoryPath = '/workspace/<script>alert(1)</script>';
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                '/workspace/<script>alert(1)</script>', [], [], buildNoResultsLoad()
+                markupObjectsDirectoryPath, [], [], buildNoResultsLoad()
             );
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
-
-            expect(actualWebviewHtml).not.toContain('<script>alert(1)</script>');
-            expect(actualWebviewHtml).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+            /*
+                The path used to be interpolated into the header and escaped on the way in. It is not
+                in the document at all now -- the panel writes it through textContent from the posted
+                model, so there is no markup context for it to escape out of.
+            */
+            expect(PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce')).not.toContain('alert(1)');
+            expect(PicklistDependencyExplorerService.buildRenderModelMessage(actualViewModel).model.scannedObjectsDirectoryPath)
+                .toBe(markupObjectsDirectoryPath);
 
         });
 
@@ -2003,9 +2088,10 @@ describe('PicklistDependencyExplorerService', () => {
                 { freshness: 'fresh', message: '' }
             );
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
-
-            expect(actualWebviewHtml).not.toContain('<script>alert(1)</script>');
+            // THE WARNING IS METADATA, AND NO METADATA REACHES THE DOCUMENT -- IT IS POSTED AND WRITTEN THROUGH textContent
+            expect(PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce')).not.toContain('alert(1)');
+            expect(PicklistDependencyExplorerService.buildRenderModelMessage(actualViewModel).model.skippedFieldWarnings[0])
+                .toContain('<script>alert(1)</script>');
 
         });
 
@@ -2020,7 +2106,7 @@ describe('PicklistDependencyExplorerService', () => {
                 PicklistDependencyExplorerService.buildMetadataPreviewContext()
             );
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
 
             expect(actualWebviewHtml).toContain('Preview from metadata');
             expect(actualWebviewHtml).toContain('nothing asserts any combination below');
@@ -3042,7 +3128,7 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
-    describe('buildWebviewHtml navigation and triage wiring', () => {
+    describe('panel document navigation and triage wiring', () => {
 
         function buildRenderedHtml(): string {
 
@@ -3054,7 +3140,7 @@ describe('PicklistDependencyExplorerService', () => {
                 buildChainExampleRecordTypeSpecDetails()
             );
 
-            return PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            return buildPanelDocumentAndPayload(actualViewModel);
 
         }
 
@@ -3208,7 +3294,7 @@ describe('PicklistDependencyExplorerService', () => {
                 buildLimits({ maxCombinationsPerNode: 1 })
             );
 
-            const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewHtml(viewModel, 'testNonce');
+            const actualWebviewHtml = buildPanelDocumentAndPayload(viewModel);
 
             expect(actualWebviewHtml).toContain('combination(s) are not rendered');
             expect(actualWebviewHtml).toContain('renderTruncationNotices');
@@ -3219,10 +3305,10 @@ describe('PicklistDependencyExplorerService', () => {
 
     /*
         The panel is a script string, so what these assert is the emitted panel SOURCE -- the same
-        way every other buildWebviewHtml test in this file reads. What each one is protecting is a
+        way every other panel document test in this file reads. What each one is protecting is a
         decision that is easy to undo by accident while the panel still renders.
     */
-    describe('buildWebviewHtml collapsible layout', () => {
+    describe('panel document collapsible layout', () => {
 
         function buildRenderedHtml(): string {
 
@@ -3234,7 +3320,7 @@ describe('PicklistDependencyExplorerService', () => {
                 buildChainExampleRecordTypeSpecDetails()
             );
 
-            return PicklistDependencyExplorerService.buildWebviewHtml(actualViewModel, 'testNonce');
+            return buildPanelDocumentAndPayload(actualViewModel);
 
         }
 

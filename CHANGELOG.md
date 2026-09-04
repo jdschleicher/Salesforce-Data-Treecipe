@@ -1,5 +1,42 @@
 # Change Log
 
+## [3.10.0] - Picklist Dependency Explorer: the panel opens first and says what it is doing
+
+Resolves [#97](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/97).
+
+Opening the Explorer on a large org looked like nothing happening. The panel was not created until a finished model existed, so every phase — reading the spec manifest, stat-walking the objects directory for staleness, building the view, serializing it — ran against a window showing nothing at all. On a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values that was roughly two seconds of blank tab, with no way to tell which phase was slow or whether the command had failed.
+
+### The panel opens before the work, not after it
+
+The webview shell is static — it carries no model — so it is created and shown the moment the command runs, in **0.01 ms**. What used to be a blank window is now a panel reporting the phase it is in:
+
+- **Reading the generated spec manifest…**
+- **Loading the most recent picklist dependency check results…**
+- **Building the dependency view…**
+- **Checking whether the generated specs still match your metadata…**
+
+Each phase appears both in a status line at the top of the panel and in a status bar entry, so the load stays legible whether or not the panel has focus. The status bar entry is an explicit item rather than `ProgressLocation.Window`, which supports neither cancellation nor discrete progress; the generation command's progress notification is unchanged, because cancelling *its* walk is useful and this load has nothing to cancel.
+
+### The staleness walk no longer blocks the first paint
+
+`resolveManifestFreshness` stats every file under the objects directory to answer "could this have changed since generation". It is the slowest phase on a large or network-mounted org, and it produced a *caveat about* the structure rather than any part of it — so the structure is now painted first and the walk runs after, posting its answer into the banner when it lands.
+
+Until it lands the banner says so. Manifest freshness has a fourth state, `pendingCheck`, rendered as *"Generated specs — checking whether they still match your metadata…"*. It is deliberately neither "fresh" nor "stale": calling it fresh would assert agreement with metadata nothing had looked at yet, and calling it stale would send you to regenerate over a difference that may not exist.
+
+### The model is posted, not embedded
+
+The view model used to be serialized into a `<script type="application/json">` block inside the panel document — up to 18 MB of it for a large org. It now travels over `postMessage`, which changes three things:
+
+- The document is independent of the model, which is what lets it be shown before one exists
+- Revealing a hidden panel — the panel is deliberately not retained when hidden — is answered from the host's copy of the model. Nothing is re-read, rebuilt, or re-walked, and a resolved staleness answer survives the reveal instead of being re-walked
+- **No metadata reaches the panel document at all.** Picklist values, api names and Apex failure messages are written into the DOM through `textContent`, so the escaping this service used to apply on the way into the html is gone rather than merely unused — there is no markup context left for a value to escape out of
+
+### What did not move
+
+The run results overlay stays *before* the first paint, and the measurement is why: loading `results.json` and attributing every failure to its combination costs **17 ms** of a two-second open, under 1%. Deferring it would also break something real — `applyModelLimits` keeps a failing combination over a passing one when the rendering ceiling has to drop rows, and it cannot do that against statuses that have not been applied yet. A row dropped for lack of a status is a row a failure then has nowhere to land on.
+
+Two larger costs are named here rather than fixed: the manifest parse (~1.1 s of that open, because `manifest.json` records `forbiddenValues` per expectation and so grows with combinations x declared values) and the model build (~380 ms). Both are tracked separately.
+
 ## [3.9.0] - Generate Picklist Dependency Tests: progress you can watch, warnings you get once
 
 Resolves [#92](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/92).
