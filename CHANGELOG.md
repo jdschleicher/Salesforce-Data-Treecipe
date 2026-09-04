@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.8.0] - Generate Picklist Dependency Tests: progress you can watch, warnings you get once
+## [3.9.0] - Generate Picklist Dependency Tests: progress you can watch, warnings you get once
 
 Resolves [#92](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/92).
 
@@ -43,6 +43,49 @@ Where every candidate was skipped, the skips are folded into the *same* "no depe
 - No new command, and no change to `IRecipeFakerService` or `IFakerRecipeProcessor`. Neither faker backend is touched — this lives entirely on the Apex generation path
 - The progress port handed to `PicklistDependencyTestService` is deliberately free of any `vscode` type, so what the walk reports and where it stops are unit-tested rather than asserted against a `withProgress` double
 - A framework class that could not be scaffolded keeps its own warning rather than riding in the summary. It means the generated Apex will not compile at all, which is a different kind of news from a run report, and an information toast VS Code truncates is the wrong place for a blocker
+## [3.8.0] - Picklist Dependency Explorer layout: less to scroll past, a contents to navigate by
+
+Resolves [#93](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/93).
+
+3.7.0 made the Explorer searchable. It was still a panel you had to scroll, because the longest thing on every row was the part fewest readers wanted and the record types sat flat beneath the fields with nothing separating them. This release is layout only — nothing about what the model carries, what the ceiling drops, or what any status means has changed.
+
+### "must not unlock" collapses
+
+A combination's forbidden set is the *complement* of what it unlocks, so it grows with the field's picklist while the unlock list stays short. A field declaring 40 values pushed the four values a controlling value actually unlocks off the screen under the 36 it forbids.
+
+It is now a disclosure — `▸ must not unlock (14)` — collapsed by default, with two deliberate exceptions:
+
+- **A failed row opens it.** A failed combination already opens its spec and run-report links for the same reason; `MISSING_VALUES` and `EXTRA_VALUES` are *about* the forbidden set, so putting it behind a click on a row already marked failed is a step with nothing on the other side of it.
+- **A capped declared list still says so, uncollapsed.** Where `maxDeclaredValuesPerNode` capped a field's universe, the panel refuses to draw a complement against it and says why. That line is a claim about what the panel *cannot* show; behind a collapsed arrow an unexpanded row would read as "nothing forbidden here" — the exact false claim the branch exists to avoid.
+
+The count in the summary is taken from the rendered list rather than computed a second way, so the label and the list cannot disagree. An empty complement renders no disclosure at all.
+
+### A table of contents
+
+Under the toolbar, collapsible, open on arrival:
+
+- **Sections** — the banners and notices the panel actually rendered, each registered by the renderer that built it, past that renderer's own guard. A section the panel did not render cannot appear in its contents.
+- **Objects** — every object with its counts, status and `not asserted` badge. Clicking one opens it, scrolls to it, and shows every one of its dependent picklists including the ones the active query was hiding: naming the object outranks the query *within* it.
+
+Object entries hide and show with the filter, so the contents and the panel can never give two accounts of what is on screen. Every entry addresses a section the panel already built — the contents names nothing the panel is not showing, and opens no path of its own.
+
+The **Jump to object** dropdown is retired. One thing it could do does not survive: that select listed every object unconditionally, so it could reach an object the filter had hidden, and a contents that lists only what the panel is showing has no entry to click for one. Widening the query is how you reach it now — the trade buys a contents that cannot disagree with the panel beside it.
+
+### Record types are their own section
+
+A field's record type scopes move under one collapsible `Record Types (4)` group instead of being appended flat beneath the field-level combinations. The separation is the point: a field-level combination is asserted by the generated check and a record-type-scoped one is not, and running them together as siblings made a reader work that out from the wording of a note.
+
+The group header shows a **failed count** and **never a passed or unknown badge**. Apex describe returns picklist values without record type filtering, so nothing in the shipped framework verifies a scoped row — a green badge over the group would assert exactly what each scope's note exists to deny. A failed count is a different statement: it is about scopes a run *did* report against.
+
+Where the rendering ceiling dropped scopes, the notice saying so sits **outside** the collapsible body, directly under the header. The header states the count of scopes the panel renders, which is not the field's record type count when some were dropped — a correction behind a click the reader has no reason to make is not a correction.
+
+Scope bodies stay lazy. Opening the group reveals headings that already existed and builds no rows, so the record type axis still does not multiply the panel's element count. Two paths open the group when something inside it is the target: a pasted combination reference naming a scoped row, and a find-box query naming a record type — without them, the panel would filter down to the right field and then leave what was searched for behind a collapsed disclosure.
+
+A group the *filter* opened, the filter closes again when its match lapses. The find box fires on every keystroke and matches on a bare substring, so a prefix of a query names record types the finished query does not — typing `Status__c` matches `Master` on its first letter — and opening without ever closing would leave exactly the wall of headings this group exists to collapse, held open by a query that no longer matches. The moment the reader touches a group themselves, though, the filter stops managing it in both directions: reopening one they just shut is the same kind of wrong as leaving one open that no longer matches.
+
+### Unchanged
+
+Filtering still only ever hides, and recomputes no status. `Expand all` still opens object sections only, bounded by the same 25-object limit — expanding every group and disclosure would reintroduce the volume this release removes. No model limit, manifest shape, or generated Apex changed.
 
 ## [3.7.0] - Picklist Dependency Explorer UX: find it, understand it, jump to it
 
