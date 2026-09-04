@@ -3058,11 +3058,69 @@ export class PicklistDependencyExplorerService {
 
         groupElement.appendChild(headingElement);
 
+        /*
+            OUTSIDE the collapsible body, directly under the header that would otherwise misstate it.
+
+            The header states the count of scopes the panel RENDERS. Where the ceiling dropped some,
+            that number is not the field's record type count, and a notice explaining the difference
+            is no use behind a click the reader has no reason to make -- they would be looking at
+            "Record Types (25)" with nothing to suggest there were 40. A dropped row is counted in a
+            notice the reader can SEE, which is the whole of the invariant; the panel-level aggregate
+            is not a substitute, because it does not name this field.
+        */
+        appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are');
+
         const groupBodyElement = createElement('div', 'recordTypeScopes hidden');
 
-        const revealRecordTypeGroup = function () {
+        /*
+            Who opened the group, not just whether it is open.
+
+            The find box fires on every keystroke, and a substring match on a PREFIX of the query can
+            name a record type the finished query does not: typing "Status__c" matches "Master" on
+            its first letter. Reopening on every keystroke and never closing would leave the reader
+            looking at exactly the wall of record type headings this group exists to collapse, opened
+            by a query that no longer matches anything.
+
+            So a group the FILTER opened, the filter closes again when its match lapses. And the
+            moment the reader touches a group at all -- opening it, closing it, or following a pasted
+            reference into it -- the filter stops managing that group entirely, in BOTH directions:
+            reopening one they just shut is the same kind of wrong as leaving one open that no longer
+            matches.
+        */
+        let isReaderManaged = false;
+        let isOpenedByFilter = false;
+
+        const openGroup = function () {
             groupBodyElement.classList.remove('hidden');
             disclosureElement.textContent = '▾';
+        };
+
+        const closeGroup = function () {
+            groupBodyElement.classList.add('hidden');
+            disclosureElement.textContent = '▸';
+        };
+
+        // THE READER'S OWN REVEAL: A CLICK, OR A DEEP LINK THEY PASTED. THE FILTER MAY NOT UNDO IT.
+        const revealRecordTypeGroup = function () {
+            isReaderManaged = true;
+            openGroup();
+        };
+
+        const applyRecordTypeFilterMatch = function (isRecordTypeMatch) {
+
+            if (isReaderManaged) { return; }
+
+            if (isRecordTypeMatch) {
+                isOpenedByFilter = true;
+                openGroup();
+                return;
+            }
+
+            if (!isOpenedByFilter) { return; }
+
+            isOpenedByFilter = false;
+            closeGroup();
+
         };
 
         /*
@@ -3075,8 +3133,6 @@ export class PicklistDependencyExplorerService {
                 node, objectViewModel, recordTypeScope, sectionRecord, revealRecordTypeGroup));
         });
 
-        appendTruncationNotice(groupBodyElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are');
-
         headingElement.addEventListener('click', function () {
 
             if (groupBodyElement.classList.contains('hidden')) {
@@ -3084,14 +3140,20 @@ export class PicklistDependencyExplorerService {
                 return;
             }
 
-            groupBodyElement.classList.add('hidden');
-            disclosureElement.textContent = '▸';
+            // CLOSING IT IS THE READER'S TOO: THE NEXT KEYSTROKE MUST NOT REOPEN WHAT THEY JUST SHUT
+            isReaderManaged = true;
+            isOpenedByFilter = false;
+            closeGroup();
 
         });
 
         groupElement.appendChild(groupBodyElement);
 
-        return { element: groupElement, reveal: revealRecordTypeGroup };
+        return {
+            element: groupElement,
+            reveal: revealRecordTypeGroup,
+            applyFilterMatch: applyRecordTypeFilterMatch
+        };
 
     }
 
@@ -3128,10 +3190,12 @@ export class PicklistDependencyExplorerService {
             the panel down to the node that has it and then show nothing of what was searched for.
         */
         let revealRecordTypeGroup;
+        let applyRecordTypeGroupFilterMatch;
 
         if (node.recordTypeScopes.length) {
             const recordTypeGroup = buildRecordTypeGroupElement(node, objectViewModel, sectionRecord);
             revealRecordTypeGroup = recordTypeGroup.reveal;
+            applyRecordTypeGroupFilterMatch = recordTypeGroup.applyFilterMatch;
             nodeElement.appendChild(recordTypeGroup.element);
         }
 
@@ -3146,7 +3210,8 @@ export class PicklistDependencyExplorerService {
         sectionRecord.nodeRecords.push({
             node: node,
             element: nodeElement,
-            revealRecordTypeGroup: revealRecordTypeGroup
+            revealRecordTypeGroup: revealRecordTypeGroup,
+            applyRecordTypeGroupFilterMatch: applyRecordTypeGroupFilterMatch
         });
 
         return nodeElement;
@@ -3447,28 +3512,35 @@ export class PicklistDependencyExplorerService {
 
         sectionRecord.nodeRecords.forEach(function (nodeRecord) {
             nodeRecord.element.classList.toggle('hidden', !nodeMatchesFilter(nodeRecord.node, isObjectNameMatch));
-            revealRecordTypeGroupOnRecordTypeMatch(nodeRecord);
+            applyRecordTypeGroupFilter(nodeRecord);
         });
 
     }
 
     /*
-        A query naming a RECORD TYPE opens the group holding it.
+        A query naming a RECORD TYPE opens the group holding it, and stops naming it closes that
+        group again.
 
         Record type names are part of a node's search text, so such a query already filters the panel
         down to the right field -- and then leaves the thing that was searched for behind a collapsed
-        disclosure. This only ever OPENS: it reveals, it never re-hides a group the reader opened, and
-        it recomputes no status, so the filter still only hides.
+        disclosure. The reverse matters just as much: a substring match on a PREFIX of the query names
+        record types the finished query does not, so opening without ever closing would leave a wall
+        of headings opened by a query that no longer matches. The group itself decides what to do with
+        the match -- a group the reader has touched is no longer the filter's to manage.
+
+        This still only toggles visibility. No status is recomputed, and none is inferred from a group
+        being open or shut.
     */
-    function revealRecordTypeGroupOnRecordTypeMatch(nodeRecord) {
+    function applyRecordTypeGroupFilter(nodeRecord) {
 
-        if (!filterText || !nodeRecord.revealRecordTypeGroup) { return; }
+        if (!nodeRecord.applyRecordTypeGroupFilterMatch) { return; }
 
-        const isRecordTypeMatch = nodeRecord.node.recordTypeScopes.some(function (recordTypeScope) {
-            return recordTypeScope.recordTypeDeveloperName.toLowerCase().indexOf(filterText) !== -1;
-        });
+        const isRecordTypeMatch = !!filterText
+            && nodeRecord.node.recordTypeScopes.some(function (recordTypeScope) {
+                return recordTypeScope.recordTypeDeveloperName.toLowerCase().indexOf(filterText) !== -1;
+            });
 
-        if (isRecordTypeMatch) { nodeRecord.revealRecordTypeGroup(); }
+        nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeMatch);
 
     }
 
@@ -3624,12 +3696,17 @@ export class PicklistDependencyExplorerService {
     }
 
     /*
-        Jumping to an object the reader NAMED shows it, rows and all: naming it outranks the filter.
-        The same behaviour the retired toolbar select had -- the contents is where it lives now.
+        Jumping to an object the reader NAMED opens it and shows every one of its nodes, including the
+        nodes the active query was hiding: naming the object outranks the query WITHIN it.
+
+        What it deliberately does not do is un-hide the object itself. The retired toolbar select
+        listed every object unconditionally, so it could reach one the filter had hidden; the contents
+        lists what the panel is showing, so a hidden object has no entry to click in the first place.
+        That is the trade the contents makes -- it can never give a second, disagreeing account of
+        what is on screen -- and widening the query is how you reach an object it is excluding.
     */
     function jumpToObject(sectionRecord) {
 
-        sectionRecord.sectionElement.classList.remove('hidden');
         expandObject(sectionRecord);
         showEveryNode(sectionRecord);
         sectionRecord.sectionElement.scrollIntoView({ block: 'start' });

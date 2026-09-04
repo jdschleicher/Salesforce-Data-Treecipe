@@ -22,11 +22,11 @@ The count in the summary is taken from the rendered list rather than computed a 
 Under the toolbar, collapsible, open on arrival:
 
 - **Sections** — the banners and notices the panel actually rendered, each registered by the renderer that built it, past that renderer's own guard. A section the panel did not render cannot appear in its contents.
-- **Objects** — every object with its counts, status and `not asserted` badge. Clicking one opens and scrolls to it, overriding the filter: the reader named it, which outranks the query.
+- **Objects** — every object with its counts, status and `not asserted` badge. Clicking one opens it, scrolls to it, and shows every one of its dependent picklists including the ones the active query was hiding: naming the object outranks the query *within* it.
 
 Object entries hide and show with the filter, so the contents and the panel can never give two accounts of what is on screen. Every entry addresses a section the panel already built — the contents names nothing the panel is not showing, and opens no path of its own.
 
-The **Jump to object** dropdown is retired. What it did lives in the contents now.
+The **Jump to object** dropdown is retired. One thing it could do does not survive: that select listed every object unconditionally, so it could reach an object the filter had hidden, and a contents that lists only what the panel is showing has no entry to click for one. Widening the query is how you reach it now — the trade buys a contents that cannot disagree with the panel beside it.
 
 ### Record types are their own section
 
@@ -34,7 +34,11 @@ A field's record type scopes move under one collapsible `Record Types (4)` group
 
 The group header shows a **failed count** and **never a passed or unknown badge**. Apex describe returns picklist values without record type filtering, so nothing in the shipped framework verifies a scoped row — a green badge over the group would assert exactly what each scope's note exists to deny. A failed count is a different statement: it is about scopes a run *did* report against.
 
+Where the rendering ceiling dropped scopes, the notice saying so sits **outside** the collapsible body, directly under the header. The header states the count of scopes the panel renders, which is not the field's record type count when some were dropped — a correction behind a click the reader has no reason to make is not a correction.
+
 Scope bodies stay lazy. Opening the group reveals headings that already existed and builds no rows, so the record type axis still does not multiply the panel's element count. Two paths open the group when something inside it is the target: a pasted combination reference naming a scoped row, and a find-box query naming a record type — without them, the panel would filter down to the right field and then leave what was searched for behind a collapsed disclosure.
+
+A group the *filter* opened, the filter closes again when its match lapses. The find box fires on every keystroke and matches on a bare substring, so a prefix of a query names record types the finished query does not — typing `Status__c` matches `Master` on its first letter — and opening without ever closing would leave exactly the wall of headings this group exists to collapse, held open by a query that no longer matches. The moment the reader touches a group themselves, though, the filter stops managing it in both directions: reopening one they just shut is the same kind of wrong as leaving one open that no longer matches.
 
 ### Unchanged
 

@@ -3076,9 +3076,21 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualWebviewHtml).not.toContain('jumpSelectElement');
 
             expect(actualWebviewHtml).toContain('function jumpToObject(sectionRecord)');
-            expect(actualWebviewHtml).toContain("sectionRecord.sectionElement.classList.remove('hidden');");
             expect(actualWebviewHtml).toContain('showEveryNode(sectionRecord);');
             expect(actualWebviewHtml).toContain('renderTableOfContents(tableOfContentsElement);');
+
+            /*
+                What survives of the select's override is the NODE level half: naming an object shows
+                every one of its nodes, including the ones the query was hiding. The object level half
+                does not survive and must not be claimed -- the contents lists what the panel shows,
+                so a filtered-out object has no entry to click, and a stray un-hide here would be dead
+                code asserting a capability the panel does not have.
+            */
+            const jumpToObjectSource = actualWebviewHtml
+                .split('function jumpToObject(sectionRecord) {')[1]
+                .split('\n    }')[0];
+
+            expect(jumpToObjectSource).not.toContain("classList.remove('hidden')");
 
         });
 
@@ -3328,11 +3340,17 @@ describe('PicklistDependencyExplorerService', () => {
 
                 const actualWebviewHtml = buildRenderedHtml();
 
+                const openGroupSource = actualWebviewHtml
+                    .split('const openGroup = function () {')[1]
+                    .split('\n        };')[0];
+
+                expect(openGroupSource).toContain("groupBodyElement.classList.remove('hidden');");
+                expect(openGroupSource).not.toContain('buildScopeBody');
+
                 const revealFunctionSource = actualWebviewHtml
                     .split('const revealRecordTypeGroup = function () {')[1]
-                    .split('};')[0];
+                    .split('\n        };')[0];
 
-                expect(revealFunctionSource).toContain("groupBodyElement.classList.remove('hidden');");
                 expect(revealFunctionSource).not.toContain('buildScopeBody');
 
                 expect(actualWebviewHtml).toContain('scopeBodyBuilt');
@@ -3362,19 +3380,94 @@ describe('PicklistDependencyExplorerService', () => {
 
                 const actualWebviewHtml = buildRenderedHtml();
 
-                expect(actualWebviewHtml).toContain('function revealRecordTypeGroupOnRecordTypeMatch(nodeRecord)');
+                expect(actualWebviewHtml).toContain('function applyRecordTypeGroupFilter(nodeRecord)');
                 expect(actualWebviewHtml).toContain(
                     'recordTypeScope.recordTypeDeveloperName.toLowerCase().indexOf(filterText) !== -1'
                 );
-                expect(actualWebviewHtml).toContain('if (isRecordTypeMatch) { nodeRecord.revealRecordTypeGroup(); }');
+                expect(actualWebviewHtml).toContain('nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeMatch);');
 
             });
 
-            it('moves the dropped-scope notice inside the group it describes', () => {
+            /*
+                The find box fires on every keystroke and the match is a bare substring, so a PREFIX
+                of the query names record types the finished query does not -- typing "Status__c"
+                matches "Master" on its first letter. A reveal with no closing branch would leave the
+                reader looking at the wall of headings this group exists to collapse, opened by a
+                query that no longer matches anything.
+            */
+            it('closes a filter-opened group again when the match lapses', () => {
 
-                expect(buildRenderedHtml()).toContain(
-                    "appendTruncationNotice(groupBodyElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are')"
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const applyMatchSource = actualWebviewHtml
+                    .split('const applyRecordTypeFilterMatch = function (isRecordTypeMatch) {')[1]
+                    .split('\n        };')[0];
+
+                expect(applyMatchSource).toContain('isOpenedByFilter = true;');
+                expect(applyMatchSource).toContain('isOpenedByFilter = false;');
+                expect(applyMatchSource).toContain('closeGroup();');
+                expect(applyMatchSource).toContain('if (!isOpenedByFilter) { return; }');
+
+            });
+
+            /*
+                Once the reader has touched a group it stops being the filter's to manage, in BOTH
+                directions: reopening one they just shut is the same kind of wrong as leaving one open
+                that no longer matches. A pasted deep link counts as the reader's own reveal.
+            */
+            it('hands a group the reader touched out of the filter\'s control, opened or closed', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                const applyMatchSource = actualWebviewHtml
+                    .split('const applyRecordTypeFilterMatch = function (isRecordTypeMatch) {')[1]
+                    .split('\n        };')[0];
+
+                expect(applyMatchSource).toContain('if (isReaderManaged) { return; }');
+
+                const revealSource = actualWebviewHtml
+                    .split('const revealRecordTypeGroup = function () {')[1]
+                    .split('\n        };')[0];
+
+                expect(revealSource).toContain('isReaderManaged = true;');
+
+                // THE CLOSING HALF: A GROUP THE READER SHUT MUST NOT REOPEN ON THE NEXT KEYSTROKE
+                const headingClickSource = actualWebviewHtml
+                    .split("headingElement.addEventListener('click', function () {")[1]
+                    .split('\n        });')[0];
+
+                expect(headingClickSource).toContain('isReaderManaged = true;');
+                expect(headingClickSource).toContain('closeGroup();');
+
+            });
+
+            /*
+                The header states the count of scopes the panel RENDERS. Where the ceiling dropped
+                some, that number is not the field's record type count -- so the notice correcting it
+                has to sit where the reader already is, not behind the click they have no reason to
+                make. Appended to groupElement, and BEFORE groupBodyElement exists, so it cannot drift
+                back inside the collapsible body without this failing.
+            */
+            it('keeps the dropped-scope notice outside the collapsible body, under the header', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain(
+                    "appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are')"
                 );
+                expect(actualWebviewHtml).not.toContain(
+                    'appendTruncationNotice(groupBodyElement, node.truncatedRecordTypeScopeCount'
+                );
+
+                const noticeIndex = actualWebviewHtml.indexOf(
+                    "appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount"
+                );
+                const groupBodyDeclarationIndex = actualWebviewHtml.indexOf(
+                    "const groupBodyElement = createElement('div', 'recordTypeScopes hidden');"
+                );
+
+                expect(noticeIndex).toBeGreaterThan(-1);
+                expect(groupBodyDeclarationIndex).toBeGreaterThan(noticeIndex);
 
             });
 
