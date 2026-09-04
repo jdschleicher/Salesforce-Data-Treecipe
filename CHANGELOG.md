@@ -1,5 +1,48 @@
 # Change Log
 
+## [3.9.0] - Generate Picklist Dependency Tests: progress you can watch, warnings you get once
+
+Resolves [#92](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/92).
+
+**Generate Picklist Dependency Tests** was the only picklist dependency command that reported nothing while it ran. The check, the metadata writeback and both Explorer paths each wrapped their work in a progress scope; generation walked the entire objects directory, read every field's XML, resolved global value sets, planned every file and wrote the Apex — all with a frozen UI. On a large org's metadata it looked hung. Its warnings, meanwhile, arrived as up to four separate notifications *partway through the walk*, before you knew whether generation had even succeeded.
+
+### Progress you can watch, and stop
+
+The run now reports itself in a progress notification and the walk can be cancelled.
+
+It started as a status bar spinner, and that turned out to be unimplementable as specified: `ProgressLocation.Window` "supports neither cancellation nor discrete progress" — it renders no cancel button, so the token behind it never fires, and no percentage bar either. Status bar and cancellation are mutually exclusive in the VS Code API. Cancellation won, which also puts this command in line with the check and the writeback rather than apart from them.
+
+While walking, it reports a **growing** count of what it has found — `47 dependent picklist field(s) found so far, reading Account...`. Not a fraction: nothing at that point knows how many dependent picklists the tree holds, because establishing that is what the walk is doing. A denominator there would be a guess, and a guess that ran low would make the bar move backwards. Once collection finishes the total is real, and the write phase reports against it — `writing spec 12/47...`, advancing on unchanged files too, since on a re-run from unchanged metadata most classes are already correct and reporting only rewrites would leave the message stalled.
+
+The run is in three parts — read, **ask**, write — and the change-plan confirmation sits between two progress scopes rather than inside one. A progress bar left spinning behind a modal asking whether to proceed is the thing being asked about.
+
+**Cancellation is on the walk only, and that is deliberate.** The walk awaits the filesystem per directory, so its token genuinely flips and it stops between directories with nothing written; it is also the larger cost, and the one that grows with org size. The write phase is straight-line synchronous code — the host thread never yields, so a token could not flip part way through however often it were polled. A per-file check there would advertise responsiveness the runtime cannot deliver. Leaving the write uninterruptible is also what keeps the generated classes and the manifest a matched pair: a half-written set with no manifest describing it is a state nothing downstream can detect, because freshness is computed from the *objects* directory, which a write never touches. The honest design is not to create that state at all.
+
+Declining the change-plan confirmation still reports what was skipped. That is the one path where the skips matter most — the user is deciding whether the generation is worth taking.
+
+### One report at the end, grouped by what actually happened
+
+The per-warning notifications are gone. Skips are now carried as identity rather than only as prose — every one records a typed `reason` — and the run closes with a single message that groups them, with **View Details** writing the full list to the output channel. Reading the warnings does not cost you the deploy offer; it is put again once the report is open.
+
+The grouping keeps three outcomes apart, because they are not the same news:
+
+- **Fields skipped** — no spec was generated (`invalid api name`, `no "valueSettings" markup`, `global value set not found`, and the record-type file failures)
+- **Values dropped** — the field was specced, but values the global value set does not declare were left out of it
+- **Record-type scopes skipped** — the record type assigns no values, so no combination is reachable through it; the field-level spec still covers the field
+
+Rolling those into one "skipped" count would overstate what the run declined to do. The aggregate warning this replaces already took care to say so in prose; it is now structural, and the panel and the manifest group by the same table the summary does.
+
+Where every candidate was skipped, the skips are folded into the *same* "no dependent picklists were found" message rather than arriving as a second toast — one run, one piece of news.
+
+### Manifests written before this release still load
+
+`manifest.json` now records each skipped field's reason. A manifest written by an earlier version carries none, and a hand-edited one can carry a string this build does not define. Both degrade to `unknown` rather than dropping the row: the warning text is still exactly what the run reported, and losing the entry would understate what generation left out — the one thing the skipped-field list exists to prevent.
+
+### Notes
+
+- No new command, and no change to `IRecipeFakerService` or `IFakerRecipeProcessor`. Neither faker backend is touched — this lives entirely on the Apex generation path
+- The progress port handed to `PicklistDependencyTestService` is deliberately free of any `vscode` type, so what the walk reports and where it stops are unit-tested rather than asserted against a `withProgress` double
+- A framework class that could not be scaffolded keeps its own warning rather than riding in the summary. It means the generated Apex will not compile at all, which is a different kind of news from a run report, and an information toast VS Code truncates is the wrong place for a blocker
 ## [3.8.0] - Picklist Dependency Explorer layout: less to scroll past, a contents to navigate by
 
 Resolves [#93](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/93).

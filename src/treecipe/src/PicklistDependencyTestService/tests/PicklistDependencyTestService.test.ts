@@ -1,4 +1,4 @@
-import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail } from "../PicklistDependencyTestService";
+import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, PicklistDependencySkipReason } from "../PicklistDependencyTestService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { XmlFileProcessor } from "../../XMLProcessingService/XmlFileProcessor";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
@@ -183,6 +183,212 @@ describe('PicklistDependencyTestService', () => {
 
             expect(collectionResult.specDetails).toHaveLength(0);
             expect(collectionResult.skippedFieldWarnings).toHaveLength(0);
+
+        });
+
+    });
+
+    describe('skip reasons and the end of run summary', () => {
+
+        test('given a dependent picklist with no valueSettings, records the noValueSettings reason alongside the prose', async () => {
+
+            const dependentFieldDetail = await getFieldDetailByFixtureFileName(existingDirectoryProcessingMocksFieldsPath, 'DependentPicklist__c.field-meta.xml');
+            dependentFieldDetail.picklistValues = [];
+
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Example_Everything__c',
+                [dependentFieldDetail]
+            );
+
+            expect(collectionResult.skippedFields).toHaveLength(1);
+            expect(collectionResult.skippedFields[0].reason).toBe('noValueSettings');
+            // THE PROSE IS KEPT ALONGSIDE THE IDENTITY, NOT REPLACED BY IT
+            expect(collectionResult.skippedFields[0].warning).toContain('valueSettings');
+
+        });
+
+        test('given an api name that is not a valid Salesforce identifier, records the invalidApiName reason', async () => {
+
+            const dependentFieldDetail = await getFieldDetailByFixtureFileName(existingDirectoryProcessingMocksFieldsPath, 'DependentPicklist__c.field-meta.xml');
+            dependentFieldDetail.apiName = 'Bad Name__c';
+
+            const collectionResult = PicklistDependencyTestService.buildSpecDetailsByObjectFieldDetails(
+                'Example_Everything__c',
+                [dependentFieldDetail]
+            );
+
+            expect(collectionResult.skippedFields).toHaveLength(1);
+            expect(collectionResult.skippedFields[0].reason).toBe('invalidApiName');
+
+        });
+
+        /*
+            The distinction the whole outcome type exists for: neither of these cost the field its
+            spec, so neither may be counted as a skipped field.
+        */
+        test('classifies a dropped global value set value and a record type assigning none apart from a skipped field', () => {
+
+            expect(PicklistDependencyTestService.getSkipOutcomeByReason('valueNotDeclaredInGlobalValueSet')).toBe('valuesDropped');
+            expect(PicklistDependencyTestService.getSkipOutcomeByReason('recordTypeAssignsNoValues')).toBe('recordTypeScopeSkipped');
+            expect(PicklistDependencyTestService.getSkipOutcomeByReason('noValueSettings')).toBe('fieldSkipped');
+
+        });
+
+        /*
+            Field-level specs come from buildSpecDetailsByObjectFieldDetails and are unaffected by
+            anything that goes wrong reading a recordTypes sibling. Counting these as skipped FIELDS
+            would send a reader looking for a field that was in fact specced -- the exact failure the
+            outcome type exists to prevent.
+        */
+        test('classifies every record type file failure as scope-only, never as a skipped field', () => {
+
+            const recordTypeFileReasons: PicklistDependencySkipReason[] = [
+                'recordTypeXmlUnparseable',
+                'recordTypeMissingDeveloperName',
+                'recordTypePicklistMarkupUnreadable',
+                'recordTypeInvalidDeveloperName'
+            ];
+
+            recordTypeFileReasons.forEach(recordTypeFileReason => {
+                expect(PicklistDependencyTestService.getSkipOutcomeByReason(recordTypeFileReason)).toBe('recordTypeScopeSkipped');
+            });
+
+            const summary = PicklistDependencyTestService.buildSkippedFieldSummary([
+                { objectApiName: 'A__c', warning: 'w', reason: 'recordTypeXmlUnparseable' }
+            ]);
+
+            expect(summary).not.toContain('field(s) skipped');
+            expect(summary).toContain('record-type-scoped combination(s) skipped');
+
+        });
+
+        test('given an unrecognised reason, degrades to unknown rather than inventing an explanation', () => {
+
+            expect(PicklistDependencyTestService.isRecognisedSkipReason('somethingElse')).toBe(false);
+            expect(PicklistDependencyTestService.isRecognisedSkipReason(undefined)).toBe(false);
+            expect(PicklistDependencyTestService.isRecognisedSkipReason('noValueSettings')).toBe(true);
+            expect(PicklistDependencyTestService.getSkipLabelByReason('unknown')).toBe('reason not recorded');
+
+        });
+
+        test('groups the summary by outcome, then by reason within it, most frequent reason first', () => {
+
+            const summary = PicklistDependencyTestService.buildSkippedFieldSummary([
+                { objectApiName: 'A__c', fieldApiName: 'One__c', warning: 'w', reason: 'noValueSettings' },
+                { objectApiName: 'A__c', fieldApiName: 'Two__c', warning: 'w', reason: 'noValueSettings' },
+                { objectApiName: 'A__c', fieldApiName: 'Three__c', warning: 'w', reason: 'invalidApiName' },
+                { objectApiName: 'A__c', fieldApiName: 'Four__c', warning: 'w', reason: 'valueNotDeclaredInGlobalValueSet' },
+                { objectApiName: 'A__c', fieldApiName: 'Five__c', recordTypeDeveloperName: 'Retail', warning: 'w', reason: 'recordTypeAssignsNoValues' }
+            ]);
+
+            expect(summary).toContain('3 field(s) skipped (2 no "valueSettings" markup, 1 invalid api name)');
+            expect(summary).toContain('1 field(s) had values dropped from a spec that was still generated');
+            expect(summary).toContain('1 record-type-scoped combination(s) skipped');
+
+        });
+
+        test('given nothing skipped, returns an empty string so a caller can append it unconditionally', () => {
+
+            expect(PicklistDependencyTestService.buildSkippedFieldSummary([])).toBe('');
+
+        });
+
+        /*
+            A manifest is on disk and a hand edit controls it, so a reason that is not in the table
+            can reach these directly. They fall back rather than returning undefined, which would
+            put "undefined" in front of a user in the summary line.
+        */
+        test('given a reason absent from the table, falls back to the unknown entry rather than returning undefined', () => {
+
+            expect(PicklistDependencyTestService.getSkipOutcomeByReason('notAReason' as any)).toBe('outcomeUnknown');
+            expect(PicklistDependencyTestService.getSkipLabelByReason('notAReason' as any)).toBe('reason not recorded');
+
+        });
+
+        test('given a skipped field carrying an unrecognised reason, counts it under the unknown label', () => {
+
+            const summary = PicklistDependencyTestService.buildSkippedFieldSummary([
+                { objectApiName: 'A__c', fieldApiName: 'One__c', warning: 'w', reason: 'notAReason' as any }
+            ]);
+
+            expect(summary).toBe('1 warning(s) whose reason this version does not recognise, so what they cost is not known (1 reason not recorded).');
+
+        });
+
+    });
+
+    describe('generation progress and cancellation', () => {
+
+        function buildGenerationProgressStub(cancelAfterReportCount: number = Number.MAX_SAFE_INTEGER) {
+
+            let reportedMessages: string[] = [];
+
+            return {
+                reportedMessages,
+                port: {
+                    report: (message: string) => reportedMessages.push(message),
+                    isCancellationRequested: () => reportedMessages.length >= cancelAfterReportCount
+                }
+            };
+
+        }
+
+        test('reports a growing discovered field count as it walks, never a denominator it has not established', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const generationProgressStub = buildGenerationProgressStub();
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+
+            await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                objectsDirectoryUri, new Set(), generationProgressStub.port
+            );
+
+            expect(generationProgressStub.reportedMessages.length).toBeGreaterThan(0);
+            generationProgressStub.reportedMessages.forEach(reportedMessage => {
+                expect(reportedMessage).toContain('dependent picklist field(s) found');
+                // A FRACTION HERE WOULD BE A GUESS -- THE WALK IS WHAT ESTABLISHES THE TOTAL
+                expect(reportedMessage).not.toMatch(/\d+\/\d+/);
+            });
+
+            const discoveredCounts = generationProgressStub.reportedMessages
+                .map(reportedMessage => Number(reportedMessage.split(' ')[0]));
+
+            const sortedAscendingCounts = [...discoveredCounts].sort((first, second) => first - second);
+            expect(discoveredCounts).toEqual(sortedAscendingCounts);
+
+        });
+
+        test('given cancellation part way through the walk, stops and flags the result as partial', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const generationProgressStub = buildGenerationProgressStub(1);
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                objectsDirectoryUri, new Set(), generationProgressStub.port
+            );
+
+            expect(collectionResult.cancelled).toBe(true);
+
+            /*
+                A cancelled walk that came back complete would prove nothing about cancellation. The
+                uncancelled walk over these same fixtures collects five specs.
+            */
+            expect(collectionResult.specDetails.length).toBeLessThan(5);
+
+        });
+
+        test('given no progress port, walks to completion exactly as before', async () => {
+
+            pointMockedVSCodeFileSystemAtFixtures();
+
+            const objectsDirectoryUri = vscode.Uri.file(mockMetadataDirectoryPath);
+            const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsDirectoryUri);
+
+            expect(collectionResult.cancelled).toBeUndefined();
+            expect(collectionResult.specDetails).toHaveLength(5);
 
         });
 
@@ -2573,6 +2779,144 @@ describe('PicklistDependencyTestService', () => {
 
             expect(writtenFilePaths).toEqual([]);
             expect(fs.statSync(perObjectClassFilePath).mtimeMs).toBe(modifiedTimeAfterFirstWrite);
+
+        });
+
+        /*
+            Cancellation is checked BEFORE each write, so the file a cancel lands on is never half
+            considered: either it was written or it was not.
+        */
+        /*
+            An object with no entry in the count map contributes nothing rather than NaN. Reachable
+            whenever the write is driven without progress -- the default map is empty.
+        */
+        test('given no spec counts and no total, writes every file and reports no fraction', () => {
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            let reportedMessages: string[] = [];
+
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(
+                changePlan.plannedFiles,
+                { report: (message: string) => reportedMessages.push(message), isCancellationRequested: () => false }
+            );
+
+            expect(writtenFilePaths.length).toBeGreaterThan(0);
+            expect(reportedMessages).toEqual([]);
+
+        });
+
+        /*
+            The write takes no cancellation token on purpose: every call in its loop is synchronous,
+            so the host thread never yields and a token could not flip part way however often it were
+            polled. Polling anyway would advertise responsiveness the runtime cannot deliver -- and
+            leaving the write uninterruptible is what keeps the classes and the manifest a matched
+            pair, since a half-written set with no manifest is a state nothing downstream can detect.
+        */
+        test('writes every planned file even when the caller reports cancellation, rather than half writing a set', () => {
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
+            );
+
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(
+                changePlan.plannedFiles,
+                { report: () => undefined, isCancellationRequested: () => true }
+            );
+
+            expect(writtenFilePaths).toHaveLength(changePlan.plannedFiles.length);
+            writtenFilePaths.forEach(writtenFilePath => {
+                expect(fs.existsSync(writtenFilePath)).toBe(true);
+            });
+
+        });
+
+        /*
+            The common case on a re-run: emission is deterministic, so most classes are already
+            correct. Reporting only what was rewritten would leave the message stalled at its first
+            value for the whole write.
+        */
+        test('given an unchanged re-run, still advances the reported fraction', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
+            );
+
+            const unchangedPlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
+            );
+
+            let reportedMessages: string[] = [];
+
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(
+                unchangedPlan.plannedFiles,
+                { report: (message: string) => reportedMessages.push(message), isCancellationRequested: () => false },
+                { 'Account': 1, 'Dependency_Example__c': 1 },
+                2
+            );
+
+            expect(writtenFilePaths).toEqual([]);
+            expect(reportedMessages).toEqual(['writing spec 1/2...', 'writing spec 2/2...']);
+
+        });
+
+        test('reports written specs against the total, counting each object once rather than once per file', () => {
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
+            );
+
+            let reportedMessages: string[] = [];
+
+            PicklistDependencyTestService.writePlannedSpecsFiles(
+                changePlan.plannedFiles,
+                { report: (message: string) => reportedMessages.push(message), isCancellationRequested: () => false },
+                { 'Account': 1, 'Dependency_Example__c': 1 },
+                2
+            );
+
+            expect(reportedMessages).toContain('writing spec 1/2...');
+            expect(reportedMessages).toContain('writing spec 2/2...');
+
+            expect(reportedMessages.every(reportedMessage => reportedMessage.startsWith('writing spec '))).toBe(true);
+
+            /*
+                The -meta.xml beside a class is the same object's file. Counting both would double
+                every object's contribution and run the reported total past the real one.
+            */
+            reportedMessages.forEach(reportedMessage => {
+                const writtenSpecCount = Number(reportedMessage.split(' ')[2].split('/')[0]);
+                expect(writtenSpecCount).toBeLessThanOrEqual(2);
+            });
+
+        });
+
+        /*
+            The write runs to completion, so stale cleanup runs against a COMPLETE set of objects --
+            which is the only state it can safely delete against.
+        */
+        test('given a progress port, still removes the stale class of an object no longer specced', () => {
+
+            PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
+            );
+
+            const staleClassFilePath = path.join(temporaryClassesDirectoryPath, 'SDTPLDSpecs_Account.cls');
+            expect(fs.existsSync(staleClassFilePath)).toBe(true);
+
+            const writeResult = PicklistDependencyTestService.writeSpecsClassFiles(
+                temporaryClassesDirectoryPath,
+                [dependencyExampleSpecDetail],
+                '64.0',
+                [],
+                undefined,
+                { report: () => undefined, isCancellationRequested: () => false }
+            );
+
+            expect(writeResult.removedStaleClassFilePaths).toContain(staleClassFilePath);
+            expect(fs.existsSync(staleClassFilePath)).toBe(false);
 
         });
 

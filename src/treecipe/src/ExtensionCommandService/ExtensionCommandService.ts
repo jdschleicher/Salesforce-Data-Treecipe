@@ -8,7 +8,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { PicklistDependencyExplorerService, IPicklistDependencyExplorerViewModel } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
@@ -33,6 +33,7 @@ export const PREVIEW_FROM_METADATA_ACTION_LABEL = 'Preview from metadata (not ge
 // SHARED WITH THE TESTS SO THESE LABELS CANNOT DRIFT FROM WHAT IS ASSERTED
 export const UPDATE_METADATA_ACTION_LABEL = 'Update Metadata';
 export const DEPLOY_UPDATED_METADATA_ACTION_LABEL = 'Deploy to Org';
+export const VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL = 'View Details';
 
 /*
     Everything the explorer webview can post back, as ONE shape with every field optional.
@@ -56,6 +57,11 @@ interface IPicklistDependencyGenerationResult {
     specCount: number;
     generationSummary: string;
     manifestFilePath: string;
+    /*
+        Carried out of generation rather than reported inside it, so the command can fold the skips
+        into the SAME message that announces what was generated.
+    */
+    skippedFields: IPicklistDependencySkippedField[];
 }
 
 export class ExtensionCommandService {
@@ -223,9 +229,93 @@ export class ExtensionCommandService {
     }
 
     /*
+        Runs one generation phase behind a cancellable progress notification.
+
+        Notification rather than the status bar, which is where this started. ProgressLocation.Window
+        "supports neither cancellation nor discrete progress" (vscode.d.ts): it renders no cancel
+        button, so the token it hands you never fires. Cancelling the walk is the more useful of the
+        two, so the location that can actually offer it wins, and it puts this command in line with
+        the check and the writeback rather than apart from them.
+
+        The port handed to the service is deliberately narrow -- two plain functions, no vscode type
+        -- so what the walk reports and where it stops are testable without a withProgress double.
+    */
+    private async runWithPicklistDependencyGenerationProgress<TPhaseResult>(
+                        initialMessage: string,
+                        runPhase: (generationProgress: IPicklistDependencyGenerationProgress) => Promise<TPhaseResult>): Promise<TPhaseResult> {
+
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Generate Picklist Dependency Tests',
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            progress.report({ message: initialMessage });
+
+            const generationProgress: IPicklistDependencyGenerationProgress = {
+                report: (message: string) => progress.report({ message }),
+                isCancellationRequested: () => cancellationToken.isCancellationRequested
+            };
+
+            return await runPhase(generationProgress);
+
+        });
+
+    }
+
+    /*
+        Every warning the run raised, one per line, for the output channel behind "View details".
+    */
+    private buildPicklistDependencyWarningReport(skippedFields: IPicklistDependencySkippedField[]): string {
+
+        const reportLines = skippedFields.map(skippedField => `- ${skippedField.warning}`);
+
+        return [
+            'PICKLIST DEPENDENCY GENERATION WARNINGS',
+            '',
+            PicklistDependencyTestService.buildSkippedFieldSummary(skippedFields),
+            '',
+            ...reportLines
+        ].join('\n');
+
+    }
+
+    /*
+        The single end-of-run report.
+
+        Warnings used to fire as up to four separate toasts DURING the walk, before the user knew
+        whether generation had even succeeded. They are held to the end and grouped by reason
+        instead, so what arrives is one message about a finished run rather than a stream of
+        interruptions about a running one.
+    */
+    private async showPicklistDependencyGenerationSummary(summaryMessage: string,
+                                                            skippedFields: IPicklistDependencySkippedField[]) {
+
+        if ( skippedFields.length === 0 ) {
+            vscode.window.showInformationMessage(summaryMessage);
+            return;
+        }
+
+        const viewWarningDetailsSelection = await vscode.window.showWarningMessage(
+            `${summaryMessage} ${PicklistDependencyTestService.buildSkippedFieldSummary(skippedFields)}`,
+            VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL
+        );
+
+        if ( viewWarningDetailsSelection === VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL ) {
+            VSCodeWorkspaceService.showPicklistDependencyCheckReport(this.buildPicklistDependencyWarningReport(skippedFields));
+        }
+
+    }
+
+    /*
         Shared by the generate command and the end to end command. Returns undefined when there is
         nothing to generate or the user declined an overwrite, both of which are already reported --
         callers stop quietly rather than reporting a second time.
+
+        The run is in three parts for a reason the shape makes easy to miss: read, ASK, write. The
+        confirmation sits between two progress scopes rather than inside one, because it is the point
+        at which the user decides whether the write happens at all -- and a spinner is not something
+        to leave running behind a question about whether to proceed.
     */
     private async generatePicklistDependencyClasses(extensionPath: string, workspaceRoot: string): Promise<IPicklistDependencyGenerationResult | undefined> {
 
@@ -237,44 +327,7 @@ export class ExtensionCommandService {
             throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
         }
 
-        /*
-            A dependent picklist can take its values from a GLOBAL value set, whose values live
-            beside the objects directory rather than in the field file. Spec generation reads them
-            from this singleton, so it is initialized here for the same reason recipe generation
-            initializes it -- the sets may have changed since the window opened.
-        */
-        const isMissingGlobalValueSetsDirectoryWarningShown = false;
-        const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
-        await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
-
         const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-        const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
-
-        /*
-            A field with a controlling field but no value settings is reported and skipped, it does
-            not abort the run. Only the first few are shown individually so a misconfigured org
-            cannot bury the user in notifications.
-        */
-        const maximumIndividualWarningsToShow = 3;
-        collectionResult.skippedFieldWarnings.slice(0, maximumIndividualWarningsToShow).forEach(skippedFieldWarning => {
-            VSCodeWorkspaceService.showWarningMessage(skippedFieldWarning);
-        });
-
-        const remainingSkippedFieldCount = collectionResult.skippedFieldWarnings.length - maximumIndividualWarningsToShow;
-        if ( remainingSkippedFieldCount > 0 ) {
-            /*
-                The suppressed entries are a mix of reasons, and not all of them are skips: an
-                undeclared valueSettings value is DROPPED from a spec that is still generated. The
-                wording therefore names the list rather than claiming every entry was skipped, which
-                sent a reader looking for a field that was in fact specced.
-            */
-            VSCodeWorkspaceService.showWarningMessage(`...and ${remainingSkippedFieldCount} more picklist dependency warning(s). Reasons include an invalid api name, no "valueSettings" markup, a record type that assigns no values to the field, a global value set that could not be found, and values a global value set does not declare.`);
-        }
-
-        if ( collectionResult.specDetails.length === 0 ) {
-            vscode.window.showInformationMessage(`No dependent picklists were found in "${fullPathToObjectsDirectory}". No Apex spec file was written.`);
-            return undefined;
-        }
 
         const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
         const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
@@ -286,80 +339,179 @@ export class ExtensionCommandService {
         const specsTestClassName = PicklistDependencyTestService.getSpecsTestClassName();
 
         const sourceApiVersion = PicklistDependencyTestService.getSourceApiVersion(workspaceRoot);
-        const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody(collectionResult.specDetails);
 
         /*
-            Resolved before anything is written, so the run can be cancelled with the generated
-            files exactly as they were. The generated classes are meant to be committed and edited
-            -- declare the dependency you intend, watch the test go red, fix the org -- and that
-            workflow does not survive a regeneration that silently replaces the edit.
+            Reading and planning share one scope. Both run before anything is written, so cancelling
+            anywhere in here leaves the generated files exactly as they were -- which is what lets
+            this half be cancellable without any question about what to do with a partial write.
         */
-        const specsChangePlan = PicklistDependencyTestService.buildSpecsChangePlan(
-            classesDirectoryPath,
-            collectionResult.specDetails,
-            sourceApiVersion,
-            collectionResult.recordTypeSpecDetails,
-            specsTestClassBody
+        const collectionPhaseResult = await this.runWithPicklistDependencyGenerationProgress(
+            'Reading picklist dependency metadata...',
+            async (generationProgress) => {
+
+                /*
+                    A dependent picklist can take its values from a GLOBAL value set, whose values live
+                    beside the objects directory rather than in the field file. Spec generation reads them
+                    from this singleton, so it is initialized here for the same reason recipe generation
+                    initializes it -- the sets may have changed since the window opened.
+                */
+                const isMissingGlobalValueSetsDirectoryWarningShown = false;
+                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
+
+                const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
+                    objectsTargetUri, new Set(), generationProgress
+                );
+
+                /*
+                    Returned as one shape or the other rather than as optional fields, so the caller
+                    cannot reach for a plan that a cancelled or empty run never built.
+                */
+                if ( collectionResult.cancelled || collectionResult.specDetails.length === 0 ) {
+                    return { collectionResult, plannedGeneration: undefined };
+                }
+
+                generationProgress.report(`Resolving what would change for ${collectionResult.specDetails.length} spec(s)...`);
+
+                const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody(collectionResult.specDetails);
+
+                /*
+                    Resolved before anything is written, so the run can be cancelled with the generated
+                    files exactly as they were. The generated classes are meant to be committed and edited
+                    -- declare the dependency you intend, watch the test go red, fix the org -- and that
+                    workflow does not survive a regeneration that silently replaces the edit.
+                */
+                const specsChangePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                    classesDirectoryPath,
+                    collectionResult.specDetails,
+                    sourceApiVersion,
+                    collectionResult.recordTypeSpecDetails,
+                    specsTestClassBody
+                );
+
+                return { collectionResult, plannedGeneration: { specsChangePlan, specsTestClassBody } };
+
+            }
         );
+
+        const collectionResult = collectionPhaseResult.collectionResult;
+
+        /*
+            A cancelled walk is reported on its own terms. Its result is partial by construction, so
+            it must never fall through to the "no dependent picklists were found" message below --
+            that would report an empty project to someone who simply stopped the run.
+        */
+        if ( collectionResult.cancelled ) {
+            vscode.window.showInformationMessage('Picklist dependency spec generation cancelled. No files were changed.');
+            return undefined;
+        }
+
+        if ( collectionResult.specDetails.length === 0 ) {
+
+            /*
+                The skips are folded into this one message rather than reported separately. "Nothing
+                was found" and "17 fields were skipped" are the same news when every candidate was
+                skipped, and showing them as two toasts invites reading them as two problems.
+            */
+            await this.showPicklistDependencyGenerationSummary(
+                `No dependent picklists were found in "${fullPathToObjectsDirectory}". No Apex spec file was written.`,
+                collectionResult.skippedFields
+            );
+            return undefined;
+
+        }
+
+        const plannedGeneration = collectionPhaseResult.plannedGeneration;
+
+        /*
+            Unreachable: the phase returns a plan for exactly the runs this point is reached on. It is
+            checked rather than asserted away so a later early-return inside that phase becomes a
+            reported stop rather than "undefined" spliced into the summary.
+        */
+        if ( !plannedGeneration ) {
+            vscode.window.showWarningMessage('Picklist dependency spec generation could not resolve what would change. Nothing was written.');
+            return undefined;
+        }
+
+        const { specsChangePlan, specsTestClassBody } = plannedGeneration;
 
         const confirmedRegeneration = await this.confirmPicklistDependencySpecsChangePlan(specsChangePlan, classesDirectoryPath);
 
         if ( !confirmedRegeneration ) {
+
+            /*
+                Declining the overwrite is the one path where the skips are most worth having: the
+                user is deciding whether this generation is worth taking, and before the warnings
+                were rolled up they fired ahead of this prompt and so were seen. Reporting them here
+                keeps that.
+            */
+            await this.showPicklistDependencyGenerationSummary(
+                'Picklist dependency specs were not regenerated, so no files were changed.',
+                collectionResult.skippedFields
+            );
             return undefined;
+
         }
 
-        /*
-            The plan built for the preview is handed to the writer rather than rebuilt, so what was
-            shown in the diff is literally what gets written -- and every object's Apex body is
-            constructed once per run instead of twice.
-        */
-        const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
-            classesDirectoryPath,
-            collectionResult.specDetails,
-            sourceApiVersion,
-            collectionResult.recordTypeSpecDetails,
-            specsChangePlan
+        const writePhaseResult = await this.runWithPicklistDependencyGenerationProgress(
+            `Writing ${collectionResult.specDetails.length} picklist dependency spec(s)...`,
+            async (generationProgress) => {
+
+                /*
+                    The plan built for the preview is handed to the writer rather than rebuilt, so what was
+                    shown in the diff is literally what gets written -- and every object's Apex body is
+                    constructed once per run instead of twice.
+                */
+                const specsClassWriteResult = PicklistDependencyTestService.writeSpecsClassFiles(
+                    classesDirectoryPath,
+                    collectionResult.specDetails,
+                    sourceApiVersion,
+                    collectionResult.recordTypeSpecDetails,
+                    specsChangePlan,
+                    generationProgress
+                );
+
+                PicklistDependencyTestService.writeSpecsTestClassFiles(
+                    classesDirectoryPath,
+                    specsTestClassBody,
+                    sourceApiVersion
+                );
+
+                generationProgress.report('Writing the spec manifest...');
+
+                /*
+                    Written from the SAME collectionResult the Apex above was emitted from, in the same run,
+                    after the write the user approved. That is the whole point of the artifact: the Explorer
+                    reads this instead of re-walking the source XML at panel-open time, so the panel and the
+                    generated specs cannot be two derivations of metadata that has moved between them.
+
+                    It goes under the treecipe directory rather than beside the .cls files: a stray json in a
+                    package directory is not valid Salesforce metadata and would ride into "sf project
+                    deploy" and fail the deploy it describes.
+                */
+                const specsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencySpecsFolderPath());
+
+                const manifest = PicklistDependencyManifestService.buildManifest(
+                    collectionResult,
+                    fullPathToObjectsDirectory,
+                    classesDirectoryPath,
+                    PicklistDependencyManifestService.getGeneratorVersion(extensionPath),
+                    VSCodeWorkspaceService.getNowIsoDateTimestamp(),
+                    PicklistDependencyManifestService.buildSourceFingerprint(fullPathToObjectsDirectory)
+                );
+
+                const manifestFilePath = PicklistDependencyManifestService.writeManifest(specsFolderPath, manifest);
+
+                generationProgress.report('Adding any missing framework classes...');
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+                return { specsClassWriteResult, manifestFilePath, frameworkScaffoldResult };
+
+            }
         );
 
-        PicklistDependencyTestService.writeSpecsTestClassFiles(
-            classesDirectoryPath,
-            specsTestClassBody,
-            sourceApiVersion
-        );
-
-        /*
-            Written from the SAME collectionResult the Apex above was emitted from, in the same run,
-            after the write the user approved. That is the whole point of the artifact: the Explorer
-            reads this instead of re-walking the source XML at panel-open time, so the panel and the
-            generated specs cannot be two derivations of metadata that has moved between them.
-
-            It goes under the treecipe directory rather than beside the .cls files: a stray json in a
-            package directory is not valid Salesforce metadata and would ride into "sf project
-            deploy" and fail the deploy it describes.
-        */
-        const specsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencySpecsFolderPath());
-
-        const manifest = PicklistDependencyManifestService.buildManifest(
-            collectionResult,
-            fullPathToObjectsDirectory,
-            classesDirectoryPath,
-            PicklistDependencyManifestService.getGeneratorVersion(extensionPath),
-            VSCodeWorkspaceService.getNowIsoDateTimestamp(),
-            PicklistDependencyManifestService.buildSourceFingerprint(fullPathToObjectsDirectory)
-        );
-
-        const manifestFilePath = PicklistDependencyManifestService.writeManifest(specsFolderPath, manifest);
-
-        const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
-
-        /*
-            The generated specs class does not compile without the framework, so a class that could
-            not be supplied is surfaced rather than leaving the user with a file that silently fails
-            to deploy.
-        */
-        if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
-            VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
-        }
+        const { specsClassWriteResult, manifestFilePath, frameworkScaffoldResult } = writePhaseResult;
 
         const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
 
@@ -367,6 +519,15 @@ export class ExtensionCommandService {
         if ( collectionResult.recordTypeSpecDetails.length > 0 ) {
             // THE RECORD TYPE SCOPED SPECS ARE NOT IN all(), SO THE SUMMARY SAYS WHERE THEY ARE INSTEAD OF LEAVING THEM UNMENTIONED
             generationSummary += ` Also generated ${collectionResult.recordTypeSpecDetails.length} record-type-scoped spec(s), aggregated by ${specsClassName}.allRecordTypeScoped(). These are not asserted by ${specsTestClassName}.cls: Schema describe returns picklist values without record type filtering, so they need a record-type-aware ISDTPicklistDependencySource.`;
+        }
+        /*
+            The one thing here that is NOT part of the run report: a missing framework class means the
+            generated Apex will not compile at all. Appending that to a success message, as an
+            information toast VS Code truncates, would drop a blocker to the bottom of two sentences
+            of good news -- so it keeps its own warning, which is what it had before the roll-up.
+        */
+        if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
         }
         if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
             generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
@@ -389,7 +550,8 @@ export class ExtensionCommandService {
             specsClassFilePath,
             specCount: collectionResult.specDetails.length,
             generationSummary,
-            manifestFilePath
+            manifestFilePath,
+            skippedFields: collectionResult.skippedFields
         };
 
     }
@@ -650,10 +812,43 @@ export class ExtensionCommandService {
 
             await VSCodeWorkspaceService.openFileInEditor(generationResult.specsClassFilePath);
 
-            const runAgainstOrgSelection = await vscode.window.showInformationMessage(
-                `${generationResult.generationSummary} Deploy and run them against an org now?`,
-                RUN_AGAINST_ORG_ACTION_LABEL
+            /*
+                ONE message closes the run: what was generated, what was skipped and why, and the
+                offer to run it. The skips used to arrive as their own toasts partway through the
+                walk; folding them in here is what makes this the report of a finished run rather
+                than the last of several interruptions during a running one.
+            */
+            const skippedFieldSummary = PicklistDependencyTestService.buildSkippedFieldSummary(generationResult.skippedFields);
+            const generationCompleteMessage = skippedFieldSummary
+                ? `${generationResult.generationSummary} ${skippedFieldSummary} Deploy and run them against an org now?`
+                : `${generationResult.generationSummary} Deploy and run them against an org now?`;
+
+            const generationCompleteActionLabels = skippedFieldSummary
+                ? [RUN_AGAINST_ORG_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL]
+                : [RUN_AGAINST_ORG_ACTION_LABEL];
+
+            let runAgainstOrgSelection = await vscode.window.showInformationMessage(
+                generationCompleteMessage,
+                ...generationCompleteActionLabels
             );
+
+            /*
+                Reading the warnings does not cost the deploy offer. Showing the report and stopping
+                would make "View Details" a choice between understanding the run and finishing it,
+                so the offer is put again once the report is open.
+            */
+            if ( runAgainstOrgSelection === VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL ) {
+
+                VSCodeWorkspaceService.showPicklistDependencyCheckReport(
+                    this.buildPicklistDependencyWarningReport(generationResult.skippedFields)
+                );
+
+                runAgainstOrgSelection = await vscode.window.showInformationMessage(
+                    'Deploy the generated picklist dependency specs and run them against an org now?',
+                    RUN_AGAINST_ORG_ACTION_LABEL
+                );
+
+            }
 
             if ( runAgainstOrgSelection !== RUN_AGAINST_ORG_ACTION_LABEL ) {
                 return;

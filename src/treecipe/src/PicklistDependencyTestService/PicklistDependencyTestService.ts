@@ -81,10 +81,19 @@ export interface IRecordTypePicklistDependencySpecDetail extends IPicklistDepend
     declaredDependentValues is undefined when the named global value set could not be read at all,
     which is the one case where the field cannot be specced and is skipped.
 */
+/*
+    A warning carrying the reason it was raised, so a caller recording it as a skipped field does
+    not have to infer one from the sentence.
+*/
+export interface IPicklistDependencySkipWarning {
+    warning: string;
+    reason: PicklistDependencySkipReason;
+}
+
 export interface IGlobalValueSetDependentValueResolution {
     declaredDependentValues?: string[];
     controllingValueToPicklistOptions: Record<string, string[]>;
-    warnings: string[];
+    warnings: IPicklistDependencySkipWarning[];
 }
 
 /*
@@ -96,12 +105,49 @@ export interface IGlobalValueSetDependentValueResolution {
     The message is kept alongside the identity rather than rebuilt from it, so what the user reads
     in the panel is the same sentence the command reported.
 */
+/*
+    Why the generator declined, as identity the caller can group by.
+
+    "unknown" is reachable only from a manifest written before this field existed, or one hand
+    edited to a reason this version does not define. It is carried rather than dropped: the warning
+    text is still perfectly readable, and losing the entry entirely would understate what the run
+    left out.
+*/
+export type PicklistDependencySkipReason = 'invalidApiName'
+                                            | 'noValueSettings'
+                                            | 'globalValueSetNotFound'
+                                            | 'valueNotDeclaredInGlobalValueSet'
+                                            | 'recordTypeXmlUnparseable'
+                                            | 'recordTypeMissingDeveloperName'
+                                            | 'recordTypePicklistMarkupUnreadable'
+                                            | 'recordTypeInvalidDeveloperName'
+                                            | 'recordTypeAssignsNoValues'
+                                            | 'unknown';
+
+/*
+    What actually happened to the metadata, which is NOT the same question as why.
+
+    Most of these reasons do not skip a field at all. Field-level specs are built by
+    buildSpecDetailsByObjectFieldDetails and are unaffected by anything that goes wrong reading a
+    recordTypes sibling, so EVERY record type reason costs only the scoped spec while the
+    field-level one stands; an undeclared global value set value is likewise DROPPED from a spec
+    that is still generated. Reporting any of them as "skipped" sends a reader looking for a field
+    that was in fact specced -- the aggregate warning this replaces already took care to say so in
+    prose, and this is that distinction made structural.
+
+    outcomeUnknown is what a reason this version does not define gets. Its outcome is genuinely not
+    known -- such a row could have been any of the other three -- and picking the most common one
+    would be inventing a claim about a run rather than reporting it.
+*/
+export type PicklistDependencySkipOutcome = 'fieldSkipped' | 'valuesDropped' | 'recordTypeScopeSkipped' | 'outcomeUnknown';
+
 export interface IPicklistDependencySkippedField {
     objectApiName: string;
     // ABSENT WHERE THE SKIP IS ABOUT A RECORD TYPE FILE RATHER THAN ABOUT ONE FIELD
     fieldApiName?: string;
     recordTypeDeveloperName?: string;
     warning: string;
+    reason: PicklistDependencySkipReason;
 }
 
 export interface IPicklistDependencyCollectionResult {
@@ -114,6 +160,24 @@ export interface IPicklistDependencyCollectionResult {
         panel rows. They are appended in lockstep so neither can report a skip the other does not.
     */
     skippedFields: IPicklistDependencySkippedField[];
+    /*
+        Set when the caller asked to stop mid-walk. A cancelled result is PARTIAL by definition, so
+        callers must not treat its emptiness as "this project has no dependent picklists" -- the one
+        reading of it that would silently delete a user's generated classes.
+    */
+    cancelled?: boolean;
+}
+
+/*
+    How a long-running generation phase reports itself, deliberately free of any vscode type.
+
+    The command owns the progress UI; this service owns the work. Keeping the port to two plain
+    functions means the walk and the write can be tested for the counts they report and the point
+    they stop at, without standing up a withProgress double for every case.
+*/
+export interface IPicklistDependencyGenerationProgress {
+    report(message: string): void;
+    isCancellationRequested(): boolean;
 }
 
 /*
@@ -240,6 +304,103 @@ export class PicklistDependencyTestService {
         return typeof apiName === 'string' && this.salesforceApiNamePattern.test(apiName);
     }
 
+    /*
+        What each reason cost the run, and the phrase the summary counts it under.
+
+        Held in ONE table rather than as a switch at each reporting site: the panel, the manifest and
+        the end-of-run summary all group by reason, and a reason that meant "skipped" in one place
+        and "dropped" in another would be describing two different runs.
+    */
+    private static skipOutcomeAndLabelByReason: Record<PicklistDependencySkipReason, { outcome: PicklistDependencySkipOutcome, label: string }> = {
+        invalidApiName: { outcome: 'fieldSkipped', label: 'invalid api name' },
+        noValueSettings: { outcome: 'fieldSkipped', label: 'no "valueSettings" markup' },
+        globalValueSetNotFound: { outcome: 'fieldSkipped', label: 'global value set not found' },
+        valueNotDeclaredInGlobalValueSet: { outcome: 'valuesDropped', label: 'values the global value set does not declare' },
+        recordTypeXmlUnparseable: { outcome: 'recordTypeScopeSkipped', label: 'record type XML could not be parsed' },
+        recordTypeMissingDeveloperName: { outcome: 'recordTypeScopeSkipped', label: 'record type has no developer name' },
+        recordTypePicklistMarkupUnreadable: { outcome: 'recordTypeScopeSkipped', label: 'record type picklist markup could not be read' },
+        recordTypeInvalidDeveloperName: { outcome: 'recordTypeScopeSkipped', label: 'record type developer name is not a valid api name' },
+        recordTypeAssignsNoValues: { outcome: 'recordTypeScopeSkipped', label: 'record type assigns no values to the field' },
+        unknown: { outcome: 'outcomeUnknown', label: 'reason not recorded' }
+    };
+
+    static getSkipOutcomeByReason(reason: PicklistDependencySkipReason): PicklistDependencySkipOutcome {
+        return (this.skipOutcomeAndLabelByReason[reason] ?? this.skipOutcomeAndLabelByReason.unknown).outcome;
+    }
+
+    static getSkipLabelByReason(reason: PicklistDependencySkipReason): string {
+        return (this.skipOutcomeAndLabelByReason[reason] ?? this.skipOutcomeAndLabelByReason.unknown).label;
+    }
+
+    static isRecognisedSkipReason(reason: unknown): reason is PicklistDependencySkipReason {
+        return typeof reason === 'string' && Object.prototype.hasOwnProperty.call(this.skipOutcomeAndLabelByReason, reason);
+    }
+
+    /*
+        One sentence per outcome, each naming its reasons and their counts.
+
+        Reported once at the END of a run rather than as a toast per warning, which fired up to four
+        times before the user knew whether generation had even succeeded. The three outcomes are kept
+        apart because they are not the same news: a dropped value still leaves a spec behind, and a
+        record type that assigns nothing still leaves the field-level spec covering the field. Rolling
+        them into one "skipped" count would overstate what the run declined to do.
+
+        Returns an empty string when nothing was skipped, so a caller can append it unconditionally.
+    */
+    static buildSkippedFieldSummary(skippedFields: IPicklistDependencySkippedField[]): string {
+
+        if ( skippedFields.length === 0 ) {
+            return '';
+        }
+
+        const summarySentenceByOutcome: Record<PicklistDependencySkipOutcome, (count: number, reasonBreakdown: string) => string> = {
+            fieldSkipped: (count, reasonBreakdown) => `${count} field(s) skipped (${reasonBreakdown}).`,
+            valuesDropped: (count, reasonBreakdown) => `${count} field(s) had values dropped from a spec that was still generated (${reasonBreakdown}).`,
+            recordTypeScopeSkipped: (count, reasonBreakdown) => `${count} record-type-scoped combination(s) skipped, with the field-level spec still generated (${reasonBreakdown}).`,
+            // SAYS IT HAS NO EXPLANATION RATHER THAN OFFERING A PLAUSIBLE ONE
+            outcomeUnknown: (count, reasonBreakdown) => `${count} warning(s) whose reason this version does not recognise, so what they cost is not known (${reasonBreakdown}).`
+        };
+
+        // INSERTION ORDER IS THE REPORTING ORDER, SO THE SENTENCES READ THE SAME WAY ON EVERY RUN
+        const outcomeReportingOrder: PicklistDependencySkipOutcome[] = ['fieldSkipped', 'valuesDropped', 'recordTypeScopeSkipped', 'outcomeUnknown'];
+
+        let countByReasonByOutcome: Record<string, Record<string, number>> = {};
+
+        skippedFields.forEach(skippedField => {
+
+            const reason = this.isRecognisedSkipReason(skippedField.reason) ? skippedField.reason : 'unknown';
+            const outcome = this.getSkipOutcomeByReason(reason);
+
+            countByReasonByOutcome[outcome] = countByReasonByOutcome[outcome] || {};
+            countByReasonByOutcome[outcome][reason] = (countByReasonByOutcome[outcome][reason] || 0) + 1;
+
+        });
+
+        let summarySentences: string[] = [];
+
+        outcomeReportingOrder.forEach(outcome => {
+
+            const countByReason = countByReasonByOutcome[outcome];
+            if ( !countByReason ) {
+                return;
+            }
+
+            const reasonBreakdown = Object.keys(countByReason)
+                .sort((firstReason, secondReason) => countByReason[secondReason] - countByReason[firstReason]
+                                                        || this.compareForEmission(firstReason, secondReason))
+                .map(reason => `${countByReason[reason]} ${this.getSkipLabelByReason(reason as PicklistDependencySkipReason)}`)
+                .join(', ');
+
+            const outcomeCount = Object.keys(countByReason).reduce((runningTotal, reason) => runningTotal + countByReason[reason], 0);
+
+            summarySentences.push(summarySentenceByOutcome[outcome](outcomeCount, reasonBreakdown));
+
+        });
+
+        return summarySentences.join(' ');
+
+    }
+
     static getSpecsClassName(): string {
         return this.specsClassName;
     }
@@ -252,9 +413,18 @@ export class PicklistDependencyTestService {
         visitedDirectoryPaths guards the recursion. Symlinked directories are walked (see the
         bitmask check below), so a link pointing back up the tree -- "objects/Thing__c/loop"
         resolving to "objects" -- would otherwise recurse until the stack is exhausted.
+
+        The cancellation check is per DIRECTORY rather than per top-level object: an objects
+        directory is commonly one flat level of hundreds, so checking only between roots would leave
+        cancel unresponsive for exactly the tree that takes long enough to want cancelling.
+
+        A cancelled walk returns what it had, flagged. It does not throw: the partial result still
+        names the fields it read, and the caller needs to say how far it got.
     */
     static async collectSpecDetailsByObjectsDirectory(objectsDirectoryUri: vscode.Uri,
-                                                        visitedDirectoryPaths: Set<string> = new Set()): Promise<IPicklistDependencyCollectionResult> {
+                                                        visitedDirectoryPaths: Set<string> = new Set(),
+                                                        generationProgress?: IPicklistDependencyGenerationProgress,
+                                                        discoveredFieldCountByReference: { count: number } = { count: 0 }): Promise<IPicklistDependencyCollectionResult> {
 
         let collectedResult: IPicklistDependencyCollectionResult = {
             specDetails: [],
@@ -262,6 +432,11 @@ export class PicklistDependencyTestService {
             skippedFieldWarnings: [],
             skippedFields: []
         };
+
+        if ( generationProgress?.isCancellationRequested() ) {
+            collectedResult.cancelled = true;
+            return collectedResult;
+        }
 
         const currentDirectoryPath = this.getRealDirectoryPath(objectsDirectoryUri.fsPath);
         if ( visitedDirectoryPaths.has(currentDirectoryPath) ) {
@@ -311,6 +486,15 @@ export class PicklistDependencyTestService {
             collectedResult.skippedFields = collectedResult.skippedFields.concat(objectResult.skippedFields);
 
             /*
+                A GROWING count, not a fraction. Nothing at this point knows how many dependent
+                picklists the tree holds -- that is what this walk is establishing -- and rendering a
+                denominator it would have to invent is worse than rendering none: it would move
+                backwards the moment the guess was low.
+            */
+            discoveredFieldCountByReference.count += objectResult.specDetails.length;
+            generationProgress?.report(`${discoveredFieldCountByReference.count} dependent picklist field(s) found so far, reading ${objectApiName}...`);
+
+            /*
                 Record types are a SIBLING of the fields directory, so they are read here rather than
                 in the recursion: this is the one point in the walk that has both the object api name
                 and the specs the record types narrow.
@@ -340,11 +524,23 @@ export class PicklistDependencyTestService {
 
             const childDirectoryUri = vscode.Uri.joinPath(objectsDirectoryUri, childDirectoryName);
 
-            const nestedResult = await this.collectSpecDetailsByObjectsDirectory(childDirectoryUri, visitedDirectoryPaths);
+            const nestedResult = await this.collectSpecDetailsByObjectsDirectory(
+                childDirectoryUri, visitedDirectoryPaths, generationProgress, discoveredFieldCountByReference
+            );
             collectedResult.specDetails = collectedResult.specDetails.concat(nestedResult.specDetails);
             collectedResult.recordTypeSpecDetails = collectedResult.recordTypeSpecDetails.concat(nestedResult.recordTypeSpecDetails);
             collectedResult.skippedFieldWarnings = collectedResult.skippedFieldWarnings.concat(nestedResult.skippedFieldWarnings);
             collectedResult.skippedFields = collectedResult.skippedFields.concat(nestedResult.skippedFields);
+
+            /*
+                Propagated rather than re-checked at the top of the next iteration: a subtree that
+                stopped because of cancellation must not have its siblings walked, and the flag is
+                what tells the caller the result it is holding is partial.
+            */
+            if ( nestedResult.cancelled ) {
+                collectedResult.cancelled = true;
+                return collectedResult;
+            }
 
         }
 
@@ -406,9 +602,12 @@ export class PicklistDependencyTestService {
             Appended in lockstep so the prose list and the structured list can never disagree about
             what was skipped -- one call site, not two that have to be kept in step by hand.
         */
-        const recordSkippedField = (warning: string, fieldApiName?: string, recordTypeDeveloperName?: string) => {
+        const recordSkippedField = (warning: string,
+                                        reason: PicklistDependencySkipReason,
+                                        fieldApiName?: string,
+                                        recordTypeDeveloperName?: string) => {
             skippedFieldWarnings.push(warning);
-            skippedFields.push({ objectApiName, fieldApiName, recordTypeDeveloperName, warning });
+            skippedFields.push({ objectApiName, fieldApiName, recordTypeDeveloperName, warning, reason });
         };
 
         const fieldDetailByApiName: Record<string, XMLFieldDetail> = {};
@@ -436,6 +635,7 @@ export class PicklistDependencyTestService {
                 const invalidApiName = apiNamesToValidate[invalidApiNameIndex];
                 recordSkippedField(
                     `Skipped dependent picklist "${objectApiName}.${fieldDetail.apiName}": the api name "${invalidApiName}" is not a valid Salesforce api name (letters, numbers and underscores only). No spec was generated for this field.`,
+                    'invalidApiName',
                     fieldDetail.apiName
                 );
                 return;
@@ -448,6 +648,7 @@ export class PicklistDependencyTestService {
 
                 recordSkippedField(
                     `No "valueSettings" markup found for dependent picklist "${objectApiName}.${fieldDetail.apiName}" controlled by "${fieldDetail.controllingField}" -- no spec was generated for this field.`,
+                    'noValueSettings',
                     fieldDetail.apiName
                 );
                 return;
@@ -466,7 +667,9 @@ export class PicklistDependencyTestService {
             if ( fieldDetail.globalValueSetName ) {
 
                 const globalValueSetResolution = this.resolveGlobalValueSetDependentValues(objectApiName, fieldDetail, controllingValueToPicklistOptions);
-                globalValueSetResolution.warnings.forEach(globalValueSetWarning => recordSkippedField(globalValueSetWarning, fieldDetail.apiName));
+                globalValueSetResolution.warnings.forEach(globalValueSetWarning => recordSkippedField(
+                    globalValueSetWarning.warning, globalValueSetWarning.reason, fieldDetail.apiName
+                ));
 
                 if ( !globalValueSetResolution.declaredDependentValues ) {
                     return;
@@ -544,9 +747,11 @@ export class PicklistDependencyTestService {
         let skippedRecordTypeWarnings: string[] = [];
         let skippedFields: IPicklistDependencySkippedField[] = [];
 
-        const recordSkippedRecordType = (warning: string, recordTypeDeveloperName?: string) => {
+        const recordSkippedRecordType = (warning: string,
+                                            reason: PicklistDependencySkipReason,
+                                            recordTypeDeveloperName?: string) => {
             skippedRecordTypeWarnings.push(warning);
-            skippedFields.push({ objectApiName, recordTypeDeveloperName, warning });
+            skippedFields.push({ objectApiName, recordTypeDeveloperName, warning, reason });
         };
 
         const recordTypeDirectoryEntries = await vscode.workspace.fs.readDirectory(recordTypesDirectoryUri);
@@ -572,7 +777,7 @@ export class PicklistDependencyTestService {
                     is not. What the parser would have added is "this file is not well-formed XML",
                     which the wording below already says.
                 */
-                recordSkippedRecordType(`Skipped record type file "${fileName}" under "${objectApiName}": its XML could not be parsed. Fix the markup in that file to have its record type scoped specs generated.`);
+                recordSkippedRecordType(`Skipped record type file "${fileName}" under "${objectApiName}": its XML could not be parsed. Fix the markup in that file to have its record type scoped specs generated.`, 'recordTypeXmlUnparseable');
                 continue;
             }
 
@@ -584,7 +789,7 @@ export class PicklistDependencyTestService {
                 would carry it into the wrapper and fail later at the sort below.
             */
             if ( typeof parsedRecordTypeDeveloperName !== 'string' || parsedRecordTypeDeveloperName.trim() === '' ) {
-                recordSkippedRecordType(`Skipped record type file "${fileName}" under "${objectApiName}": no usable RecordType "fullName" markup was found, so the record type has no developer name to scope specs by.`);
+                recordSkippedRecordType(`Skipped record type file "${fileName}" under "${objectApiName}": no usable RecordType "fullName" markup was found, so the record type has no developer name to scope specs by.`, 'recordTypeMissingDeveloperName');
                 continue;
             }
 
@@ -601,6 +806,7 @@ export class PicklistDependencyTestService {
             } catch (error) {
                 recordSkippedRecordType(
                     `Skipped record type "${parsedRecordTypeDeveloperName}" under "${objectApiName}": its picklist assignment markup could not be read (${error.message}). No record-type-scoped specs were generated for it.`,
+                    'recordTypePicklistMarkupUnreadable',
                     parsedRecordTypeDeveloperName
                 );
             }
@@ -641,11 +847,12 @@ export class PicklistDependencyTestService {
         let skippedFields: IPicklistDependencySkippedField[] = [];
 
         const recordSkippedField = (warning: string,
+                                        reason: PicklistDependencySkipReason,
                                         objectApiName: string,
                                         fieldApiName?: string,
                                         recordTypeDeveloperName?: string) => {
             skippedFieldWarnings.push(warning);
-            skippedFields.push({ objectApiName, fieldApiName, recordTypeDeveloperName, warning });
+            skippedFields.push({ objectApiName, fieldApiName, recordTypeDeveloperName, warning, reason });
         };
 
         /*
@@ -666,6 +873,7 @@ export class PicklistDependencyTestService {
             if ( !this.isValidSalesforceApiName(recordTypeDeveloperName) ) {
                 recordSkippedField(
                     `Skipped record type "${recordTypeDeveloperName}": the developer name is not a valid Salesforce api name (letters, numbers and underscores only). No record-type-scoped specs were generated for it.`,
+                    'recordTypeInvalidDeveloperName',
                     objectApiNameForRecordTypes,
                     undefined,
                     recordTypeDeveloperName
@@ -689,6 +897,7 @@ export class PicklistDependencyTestService {
                 if ( unassignedFieldApiName ) {
                     recordSkippedField(
                         `Skipped record type "${recordTypeDeveloperName}" for dependent picklist "${specDetail.objectApiName}.${specDetail.fieldApiName}": the record type assigns no values to "${unassignedFieldApiName}", so no combination is reachable through it. The field-level spec still covers this field.`,
+                        'recordTypeAssignsNoValues',
                         specDetail.objectApiName,
                         specDetail.fieldApiName,
                         recordTypeDeveloperName
@@ -864,14 +1073,17 @@ export class PicklistDependencyTestService {
                                                     fieldDetail: XMLFieldDetail,
                                                     controllingValueToPicklistOptions: Record<string, string[]>): IGlobalValueSetDependentValueResolution {
 
-        let warnings: string[] = [];
+        let warnings: IPicklistDependencySkipWarning[] = [];
 
         const globalValueSetName = fieldDetail.globalValueSetName;
         const declaredDependentValues = this.getGlobalValueSetPicklistValues(globalValueSetName);
 
         if ( !declaredDependentValues ) {
 
-            warnings.push(`Skipped dependent picklist "${objectApiName}.${fieldDetail.apiName}": its values come from the global value set "${globalValueSetName}", which was not found in the project's "globalValueSets" directory. Retrieve that global value set and run the command again to have this field specced.`);
+            warnings.push({
+                warning: `Skipped dependent picklist "${objectApiName}.${fieldDetail.apiName}": its values come from the global value set "${globalValueSetName}", which was not found in the project's "globalValueSets" directory. Retrieve that global value set and run the command again to have this field specced.`,
+                reason: 'globalValueSetNotFound'
+            });
             return { declaredDependentValues: undefined, controllingValueToPicklistOptions, warnings };
 
         }
@@ -900,7 +1112,10 @@ export class PicklistDependencyTestService {
         if ( undeclaredValueNames.size > 0 ) {
 
             const sortedUndeclaredValueNames = [...undeclaredValueNames].sort();
-            warnings.push(`Dependent picklist "${objectApiName}.${fieldDetail.apiName}" has "valueSettings" for ${sortedUndeclaredValueNames.map(undeclaredValueName => `"${undeclaredValueName}"`).join(', ')}, which the global value set "${globalValueSetName}" does not declare. Those values were left out of the generated spec -- no org exposes them, so asserting them would fail for a reason the spec cannot fix.`);
+            warnings.push({
+                warning: `Dependent picklist "${objectApiName}.${fieldDetail.apiName}" has "valueSettings" for ${sortedUndeclaredValueNames.map(undeclaredValueName => `"${undeclaredValueName}"`).join(', ')}, which the global value set "${globalValueSetName}" does not declare. Those values were left out of the generated spec -- no org exposes them, so asserting them would fail for a reason the spec cannot fix.`,
+                reason: 'valueNotDeclaredInGlobalValueSet'
+            });
 
         }
 
@@ -2712,22 +2927,73 @@ ${testMethods}
         Only what actually differs is written. Returns the paths touched, which is what a caller
         reports -- an empty result means the run was a genuine no-op rather than that it failed.
     */
-    static writePlannedSpecsFiles(plannedFiles: IPlannedSpecsFile[]): string[] {
+    /*
+        Reports progress but takes no cancellation token, and that is deliberate.
+
+        Every call in this loop is synchronous, so the extension host thread never yields and a
+        cancellation token could not flip part way through however often it were polled: the only
+        cancel such a check can observe is one requested before the loop began. A per-file check
+        would read as responsiveness the runtime cannot deliver.
+
+        Leaving the write uninterruptible is also what keeps the generated classes and the manifest
+        a matched pair. A half-written set with no manifest describing it is a state nothing
+        downstream can detect -- freshness is computed from the OBJECTS directory, which a write
+        does not touch -- so the honest design is not to create it. Cancellation lives on the walk,
+        which awaits the filesystem per directory and is the larger cost anyway.
+    */
+    static writePlannedSpecsFiles(plannedFiles: IPlannedSpecsFile[],
+                                    generationProgress?: IPicklistDependencyGenerationProgress,
+                                    specCountByObjectApiName: Record<string, number> = {},
+                                    totalSpecCount: number = 0): string[] {
 
         let writtenFilePaths: string[] = [];
+        let writtenSpecCount = 0;
 
-        plannedFiles.forEach(plannedFile => {
+        for ( const plannedFile of plannedFiles ) {
 
-            if ( plannedFile.changeType === 'unchanged' ) {
-                return;
+            if ( plannedFile.changeType !== 'unchanged' ) {
+                fs.writeFileSync(plannedFile.filePath, plannedFile.proposedContent);
+                writtenFilePaths.push(plannedFile.filePath);
             }
 
-            fs.writeFileSync(plannedFile.filePath, plannedFile.proposedContent);
-            writtenFilePaths.push(plannedFile.filePath);
+            /*
+                Counted for written and unchanged alike, and reported outside the write branch: on a
+                re-run where most classes are already correct -- the common case -- reporting only
+                what was rewritten would leave the message stalled at its first value.
 
-        });
+                Only a file that actually carries specs moves the count, so the -meta.xml beside each
+                class does not re-report the fraction its .cls just reported.
+            */
+            const plannedFileSpecCount = this.getPlannedFileSpecCount(plannedFile, specCountByObjectApiName);
+            if ( plannedFileSpecCount === 0 ) {
+                continue;
+            }
+
+            writtenSpecCount += plannedFileSpecCount;
+
+            if ( totalSpecCount > 0 ) {
+                generationProgress?.report(`writing spec ${writtenSpecCount}/${totalSpecCount}...`);
+            }
+
+        }
 
         return writtenFilePaths;
+
+    }
+
+    /*
+        How many specs a planned file accounts for. Only the .cls carries them: the -meta.xml beside
+        it is the same object's file, and counting both would double every object's contribution and
+        run the reported total past the real one.
+    */
+    private static getPlannedFileSpecCount(plannedFile: IPlannedSpecsFile,
+                                            specCountByObjectApiName: Record<string, number>): number {
+
+        if ( !plannedFile.objectApiName || plannedFile.filePath.endsWith('-meta.xml') ) {
+            return 0;
+        }
+
+        return specCountByObjectApiName[plannedFile.objectApiName] ?? 0;
 
     }
 
@@ -2735,7 +3001,8 @@ ${testMethods}
                                     specDetails: IPicklistDependencySpecDetail[],
                                     apiVersion: string,
                                     recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
-                                    previewedChangePlan?: ISpecsChangePlan): ISpecsClassWriteResult {
+                                    previewedChangePlan?: ISpecsChangePlan,
+                                    generationProgress?: IPicklistDependencyGenerationProgress): ISpecsClassWriteResult {
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
 
@@ -2764,7 +3031,15 @@ ${testMethods}
                             && plannedFile.filePath !== `${specsTestClassFilePath}-meta.xml`
         );
 
-        this.writePlannedSpecsFiles(specsClassPlannedFiles);
+        const specDetailsByObjectApiNameForProgress = this.groupSpecDetailsByObjectApiName(specDetails);
+        let specCountByObjectApiName: Record<string, number> = {};
+        Object.keys(specDetailsByObjectApiNameForProgress).forEach(objectApiNameForProgress => {
+            specCountByObjectApiName[objectApiNameForProgress] = specDetailsByObjectApiNameForProgress[objectApiNameForProgress].length;
+        });
+
+        this.writePlannedSpecsFiles(
+            specsClassPlannedFiles, generationProgress, specCountByObjectApiName, specDetails.length
+        );
 
         const objectApiNames = this.getDistinctObjectApiNames([...specDetails, ...recordTypeSpecDetails]);
         const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);

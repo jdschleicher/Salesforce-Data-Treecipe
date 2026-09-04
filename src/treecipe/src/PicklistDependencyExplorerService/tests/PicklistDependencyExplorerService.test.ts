@@ -1724,7 +1724,8 @@ describe('PicklistDependencyExplorerService', () => {
             const skippedField: IPicklistDependencySkippedField = {
                 objectApiName: 'Chain_Example__c',
                 fieldApiName: 'Unspecced__c',
-                warning: 'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Unspecced__c"'
+                warning: 'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Unspecced__c"',
+                reason: 'noValueSettings'
             };
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
@@ -1738,6 +1739,8 @@ describe('PicklistDependencyExplorerService', () => {
             expect(objectViewModel.skippedFields).toHaveLength(1);
             expect(objectViewModel.skippedFields[0].fieldApiName).toBe('Unspecced__c');
             expect(objectViewModel.skippedFields[0].warning).toContain('valueSettings');
+            // GROUPABLE WITHOUT SCRAPING THE PROSE, WHICH IS THE WHOLE POINT OF CARRYING A REASON
+            expect(objectViewModel.skippedFields[0].reason).toBe('noValueSettings');
 
         });
 
@@ -1751,7 +1754,8 @@ describe('PicklistDependencyExplorerService', () => {
             const skippedField: IPicklistDependencySkippedField = {
                 objectApiName: 'Only_Skips__c',
                 fieldApiName: 'Broken__c',
-                warning: 'No "valueSettings" markup found for dependent picklist "Only_Skips__c.Broken__c"'
+                warning: 'No "valueSettings" markup found for dependent picklist "Only_Skips__c.Broken__c"',
+                reason: 'noValueSettings'
             };
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
@@ -1981,7 +1985,8 @@ describe('PicklistDependencyExplorerService', () => {
                     skippedFields: [{
                         objectApiName: 'Chain_Example__c',
                         fieldApiName: 'Broken__c',
-                        warning: '<script>alert(1)</script>'
+                        warning: '<script>alert(1)</script>',
+                        reason: 'noValueSettings'
                     }]
                 },
                 mockObjectsDirectoryPath,
@@ -2282,7 +2287,8 @@ describe('PicklistDependencyExplorerService', () => {
                 objectApiName: 'Skipped_Only__c',
                 fieldApiName: 'Broken__c',
                 recordTypeDeveloperName: '',
-                warning: 'no valueSettings markup'
+                warning: 'no valueSettings markup',
+                reason: 'noValueSettings' as const
             };
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
@@ -3646,5 +3652,30 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+
+
+    describe('skipped field reasons on the view model', () => {
+
+        test('given a reason the manifest never recorded, renders it as unknown rather than inventing one', () => {
+
+            const grouped = PicklistDependencyExplorerService.groupSkippedFieldViewModelsByObjectApiName([
+                { objectApiName: 'Account', fieldApiName: 'Region__c', warning: 'a warning', reason: 'notAReason' as any }
+            ]);
+
+            expect(grouped['Account'][0].reason).toBe('unknown');
+
+        });
+
+        test('given a recognised reason, carries it through unchanged', () => {
+
+            const grouped = PicklistDependencyExplorerService.groupSkippedFieldViewModelsByObjectApiName([
+                { objectApiName: 'Account', fieldApiName: 'Region__c', warning: 'a warning', reason: 'valueNotDeclaredInGlobalValueSet' }
+            ]);
+
+            expect(grouped['Account'][0].reason).toBe('valueNotDeclaredInGlobalValueSet');
+
+        });
+
+    });
 
 });

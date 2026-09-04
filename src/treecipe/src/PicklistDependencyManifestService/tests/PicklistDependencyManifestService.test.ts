@@ -247,7 +247,8 @@ describe('PicklistDependencyManifestService', () => {
                 skippedFields: [{
                     objectApiName: 'Account',
                     fieldApiName: 'Region__c',
-                    warning: 'No "valueSettings" markup found for dependent picklist "Account.Region__c"'
+                    warning: 'No "valueSettings" markup found for dependent picklist "Account.Region__c"',
+                    reason: 'noValueSettings'
                 }]
             });
 
@@ -256,7 +257,63 @@ describe('PicklistDependencyManifestService', () => {
             expect(manifest.skippedFields).toHaveLength(1);
             expect(manifest.skippedFields[0].objectApiName).toBe('Account');
             expect(manifest.skippedFields[0].fieldApiName).toBe('Region__c');
+            expect(manifest.skippedFields[0].reason).toBe('noValueSettings');
             expect(manifest.skippedFieldWarnings).toHaveLength(1);
+
+        });
+
+    });
+
+    describe('skipped field reasons across manifest versions', () => {
+
+        /*
+            A manifest written before the reason existed, or hand edited to one this version does not
+            define, still names a real skip. Dropping the row would understate what generation left
+            out -- the one thing the skipped-field list exists to prevent.
+        */
+        test('given a skipped field with no reason, loads it as unknown rather than dropping it', () => {
+
+            const skippedField = PicklistDependencyManifestService.buildSkippedFieldByEntry({
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                warning: 'No "valueSettings" markup found for dependent picklist "Account.Region__c"'
+            });
+
+            expect(skippedField).toBeDefined();
+            expect(skippedField!.reason).toBe('unknown');
+            expect(skippedField!.warning).toContain('valueSettings');
+
+        });
+
+        test('given a reason this version does not define, loads it as unknown rather than trusting the string', () => {
+
+            const skippedField = PicklistDependencyManifestService.buildSkippedFieldByEntry({
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                warning: 'a warning',
+                reason: 'somethingThisBuildHasNeverHeardOf'
+            });
+
+            expect(skippedField!.reason).toBe('unknown');
+
+        });
+
+        test('given a recognised reason, round trips it unchanged', () => {
+
+            const skippedField = PicklistDependencyManifestService.buildSkippedFieldByEntry({
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                warning: 'a warning',
+                reason: 'valueNotDeclaredInGlobalValueSet'
+            });
+
+            expect(skippedField!.reason).toBe('valueNotDeclaredInGlobalValueSet');
+
+        });
+
+        test('given an entry with no object api name, still drops it -- a row naming nothing cannot be rendered', () => {
+
+            expect(PicklistDependencyManifestService.buildSkippedFieldByEntry({ warning: 'a warning' })).toBeUndefined();
 
         });
 
