@@ -740,9 +740,19 @@ export class PicklistDependencyManifestService {
             return undefined;
         }
 
+        /*
+            A manifest written before this field existed carries no reason, and a hand-edited one can
+            carry a string this version does not define. Both degrade to "unknown" rather than
+            dropping the entry: the warning text is still exactly what the run reported, and losing
+            the row entirely would understate what generation left out -- which is the one thing the
+            skipped-field list exists to prevent.
+        */
         let skippedField: IPicklistDependencySkippedField = {
             objectApiName: skippedFieldRecord.objectApiName,
-            warning: skippedFieldRecord.warning
+            warning: skippedFieldRecord.warning,
+            reason: PicklistDependencyTestService.isRecognisedSkipReason(skippedFieldRecord.reason)
+                        ? skippedFieldRecord.reason
+                        : 'unknown'
         };
 
         if ( typeof skippedFieldRecord.fieldApiName === 'string' && skippedFieldRecord.fieldApiName.length > 0 ) {

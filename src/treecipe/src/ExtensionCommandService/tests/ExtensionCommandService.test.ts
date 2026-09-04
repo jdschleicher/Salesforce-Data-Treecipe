@@ -46,7 +46,7 @@ jest.mock('@salesforce/core', () => ({
 
 import { AuthInfo } from '@salesforce/core';
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -233,7 +233,8 @@ describe('ExtensionCommandService', () => {
                 [specDetail],
                 '64.0',
                 [recordTypeSpecDetail],
-                expect.objectContaining({ plannedFiles: expect.any(Array), staleClassFilePaths: expect.any(Array) })
+                expect.objectContaining({ plannedFiles: expect.any(Array), staleClassFilePaths: expect.any(Array) }),
+                expect.objectContaining({ report: expect.any(Function), isCancellationRequested: expect.any(Function) })
             );
 
             /*
@@ -264,7 +265,8 @@ describe('ExtensionCommandService', () => {
                 [specDetail],
                 '64.0',
                 [],
-                expect.objectContaining({ plannedFiles: expect.any(Array), staleClassFilePaths: expect.any(Array) })
+                expect.objectContaining({ plannedFiles: expect.any(Array), staleClassFilePaths: expect.any(Array) }),
+                expect.objectContaining({ report: expect.any(Function), isCancellationRequested: expect.any(Function) })
             );
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
 
@@ -723,7 +725,7 @@ describe('ExtensionCommandService', () => {
 
         });
 
-        test('given framework classes that could not be supplied, warns that the generated class will not compile', async () => {
+        test('given framework classes that could not be supplied, says so in the one end of run message rather than its own toast', async () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
@@ -731,11 +733,13 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => call[0]);
-            const unavailableWarning = warningMessages.find(message => message.includes('will not compile'));
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
 
-            expect(unavailableWarning).toBeDefined();
-            expect(unavailableWarning).toContain('PicklistDependencySpec');
+            expect(informationMessage).toContain('will not compile');
+            expect(informationMessage).toContain('SDTPicklistDependencySpec');
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => String(call[0]));
+            expect(warningMessages.find(warningMessage => warningMessage.includes('will not compile'))).toBeUndefined();
 
         });
 
@@ -753,34 +757,271 @@ describe('ExtensionCommandService', () => {
 
         /*
             A managed package declaring dependent picklists without valueSettings can produce many
-            skips, and VS Code shows notifications one at a time.
+            skips. They used to arrive as up to four toasts DURING the walk, before the user knew
+            whether generation had succeeded; they are now one grouped line on the finished run.
         */
-        test('given more skipped fields than the notification cap, shows three then one aggregate', async () => {
+        test('given many skipped fields, reports them once at the end grouped by reason rather than as toasts during the run', async () => {
 
-            const skippedFieldWarnings = Array.from({ length: 10 }, (unusedValue, index) => `skipped field ${index}`);
-            stubCollectionResult([specDetail], skippedFieldWarnings);
+            const skippedFields: IPicklistDependencySkippedField[] = [
+                ...Array.from({ length: 7 }, (unusedValue, index): IPicklistDependencySkippedField => ({
+                    objectApiName: 'Dependency_Example__c',
+                    fieldApiName: `NoSettings_${index}__c`,
+                    warning: `skipped field ${index}`,
+                    reason: 'noValueSettings'
+                })),
+                {
+                    objectApiName: 'Dependency_Example__c',
+                    fieldApiName: 'BadName__c',
+                    warning: 'invalid api name',
+                    reason: 'invalidApiName'
+                }
+            ];
+
+            stubCollectionResult([specDetail], skippedFields.map(skippedField => skippedField.warning), [], skippedFields);
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => call[0]);
+            // NOT ONE TOAST PER WARNING -- THE WHOLE POINT OF THE ROLL UP
+            expect(VSCodeWorkspaceService.showWarningMessage as jest.Mock).not.toHaveBeenCalled();
 
-            expect(warningMessages).toHaveLength(4);
-            expect(warningMessages.slice(0, 3)).toEqual(['skipped field 0', 'skipped field 1', 'skipped field 2']);
-            expect(warningMessages[3]).toContain('7 more picklist dependency warning(s)');
-            // NOT EVERY SUPPRESSED ENTRY IS A SKIP -- AN UNDECLARED valueSettings VALUE IS DROPPED FROM A SPEC THAT IS STILL GENERATED
-            expect(warningMessages[3]).not.toContain('were skipped');
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
+
+            expect(informationMessage).toContain('8 field(s) skipped');
+            expect(informationMessage).toContain('7 no "valueSettings" markup');
+            expect(informationMessage).toContain('1 invalid api name');
 
         });
 
-        test('given fewer skipped fields than the cap, shows each one and no aggregate', async () => {
+        /*
+            The distinction the aggregate warning this replaces took care to make in prose, now made
+            structurally: neither of these cost the field its spec, so neither may be counted as a
+            skipped field.
+        */
+        test('given a dropped global value set value and a record type that assigns none, counts each apart from skipped fields', async () => {
 
-            stubCollectionResult([specDetail], ['only skipped field']);
+            const skippedFields: IPicklistDependencySkippedField[] = [
+                {
+                    objectApiName: 'Dependency_Example__c',
+                    fieldApiName: 'Neighborhood__c',
+                    warning: 'values the global value set does not declare',
+                    reason: 'valueNotDeclaredInGlobalValueSet'
+                },
+                {
+                    objectApiName: 'Dependency_Example__c',
+                    fieldApiName: 'Neighborhood__c',
+                    recordTypeDeveloperName: 'Retail',
+                    warning: 'record type assigns no values',
+                    reason: 'recordTypeAssignsNoValues'
+                }
+            ];
+
+            stubCollectionResult([specDetail], skippedFields.map(skippedField => skippedField.warning), [], skippedFields);
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => call[0]);
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
 
-            expect(warningMessages).toEqual(['only skipped field']);
+            expect(informationMessage).toContain('1 field(s) had values dropped from a spec that was still generated');
+            expect(informationMessage).toContain('1 record-type-scoped combination(s) skipped');
+            expect(informationMessage).not.toContain('field(s) skipped (');
+
+        });
+
+        test('given skipped fields, offers View Details and writes every warning to the report channel', async () => {
+
+            const skippedFields: IPicklistDependencySkippedField[] = [{
+                objectApiName: 'Dependency_Example__c',
+                fieldApiName: 'NoSettings__c',
+                warning: 'no valueSettings markup on NoSettings__c',
+                reason: 'noValueSettings'
+            }];
+
+            stubCollectionResult([specDetail], ['no valueSettings markup on NoSettings__c'], [], skippedFields);
+            jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValueOnce(VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0]).toContain(VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL);
+
+            const reportedWarnings = (VSCodeWorkspaceService.showPicklistDependencyCheckReport as jest.Mock).mock.calls[0][0];
+            expect(reportedWarnings).toContain('no valueSettings markup on NoSettings__c');
+
+            /*
+                Reading the warnings must not cost the deploy offer -- it is put again once the
+                report is open, so "View Details" is not a choice between understanding the run and
+                finishing it.
+            */
+            const secondMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[1][0];
+            expect(secondMessage).toContain('Deploy the generated picklist dependency specs');
+
+        });
+
+        test('given no skipped fields, offers no View Details action', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0])
+                .not.toContain(VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL);
+
+        });
+
+        /*
+            Window, not Notification. The other picklist commands each end in a report the user is
+            waiting on; generation ends in a CONFIRMATION, and a notification-location progress bar
+            sitting behind that prompt is the thing being asked about.
+        */
+        test('runs behind a cancellable status bar progress rather than a notification', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const generationProgressCalls = (vscode.window.withProgress as jest.Mock).mock.calls
+                .filter(progressCall => progressCall[0].title === 'Generate Picklist Dependency Tests');
+
+            expect(generationProgressCalls.length).toBeGreaterThan(0);
+            generationProgressCalls.forEach(progressCall => {
+                expect(progressCall[0].location).toBe(vscode.ProgressLocation.Window);
+                expect(progressCall[0].cancellable).toBe(true);
+            });
+
+        });
+
+        /*
+            Read, ASK, write -- in three parts, so the confirmation is not competing with a spinner
+            over whether the write it is asking about should happen.
+        */
+        test('puts the change plan confirmation between the read and the write, not inside either', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            let callSequence: string[] = [];
+
+            (vscode.window.withProgress as jest.Mock).mockImplementation(async (progressOptions, task) => {
+                if ( progressOptions.title === 'Generate Picklist Dependency Tests' ) {
+                    callSequence.push('progressScope');
+                }
+                return await task(
+                    { report: jest.fn() },
+                    { isCancellationRequested: false, onCancellationRequested: jest.fn() }
+                );
+            });
+
+            jest.spyOn(PicklistDependencyTestService, 'planReplacesExistingContent').mockReturnValue(true);
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                callSequence.push('confirmation');
+                return 'Generate';
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(callSequence).toEqual(['progressScope', 'confirmation', 'progressScope']);
+
+        });
+
+        test('given the walk cancelled, writes nothing and says nothing was changed', async () => {
+
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory').mockResolvedValue({
+                specDetails: [],
+                recordTypeSpecDetails: [],
+                skippedFieldWarnings: [],
+                skippedFields: [],
+                cancelled: true
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
+            expect(informationMessage).toContain('cancelled');
+            expect(informationMessage).toContain('No files were changed');
+
+            /*
+                A cancelled walk is PARTIAL by construction, so it must never fall through to the
+                empty-project message -- that would report an empty project to someone who simply
+                stopped the run.
+            */
+            expect(informationMessage).not.toContain('No dependent picklists were found');
+
+        });
+
+        /*
+            The manifest is what the Explorer renders INSTEAD of re-walking the source XML. One
+            describing a full run over a partial write would make the panel and the Apex two
+            derivations again -- the exact split the manifest exists to close.
+        */
+        test('given the write cancelled, writes no manifest and names how many files landed', async () => {
+
+            stubCollectionResult([specDetail]);
+            writeSpecsClassFilesSpy.mockReturnValue({
+                aggregatorClassFilePath: specsClassFilePath,
+                perObjectClassFilePathsByObjectApiName: {},
+                removedStaleClassFilePaths: [],
+                cancelled: true,
+                writtenFilePaths: [perObjectSpecsClassFilePath, `${perObjectSpecsClassFilePath}-meta.xml`]
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeManifestSpy).not.toHaveBeenCalled();
+
+            const warningMessages = (vscode.window.showWarningMessage as jest.Mock).mock.calls.map(warningCall => String(warningCall[0]));
+            const cancellationWarning = warningMessages.find(warningMessage => warningMessage.includes('cancelled after writing'));
+
+            expect(cancellationWarning).toContain('2 file(s)');
+            expect(cancellationWarning).toContain('No spec manifest was written');
+
+        });
+
+        test('given no dependent picklists but fields that were skipped, folds the skips into the one message', async () => {
+
+            const skippedFields: IPicklistDependencySkippedField[] = [{
+                objectApiName: 'Dependency_Example__c',
+                fieldApiName: 'NoSettings__c',
+                warning: 'no valueSettings markup',
+                reason: 'noValueSettings'
+            }];
+
+            stubCollectionResult([], ['no valueSettings markup'], [], skippedFields);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessage = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0];
+
+            expect(warningMessage).toContain('No dependent picklists were found');
+            expect(warningMessage).toContain('1 field(s) skipped');
+
+        });
+
+        test('given no dependent picklists and nothing skipped, reports only that none were found', async () => {
+
+            stubCollectionResult([]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
+
+            expect(informationMessage).toContain('No dependent picklists were found');
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            The progress wrapper must not swallow a throw -- an unwritable classes directory has to
+            reach the same error handler it did before generation reported progress at all.
+        */
+        test('given a throw inside the progress scope, still routes it through ErrorHandlingService', async () => {
+
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockRejectedValue(new Error('objects directory could not be read'));
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.any(Error), 'generatePicklistDependencyTests');
 
         });
 
@@ -1801,7 +2042,8 @@ describe('ExtensionCommandService', () => {
             const skippedField: IPicklistDependencySkippedField = {
                 objectApiName: 'Chain_Example__c',
                 fieldApiName: 'Unspecced__c',
-                warning: 'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Unspecced__c" controlled by "Country__c" -- no spec was generated for this field.'
+                warning: 'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Unspecced__c" controlled by "Country__c" -- no spec was generated for this field.',
+                reason: 'noValueSettings'
             };
 
             stubLoadedManifest(buildStubManifest([chainSpecDetail], [], [skippedField]));

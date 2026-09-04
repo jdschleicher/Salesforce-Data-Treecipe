@@ -2,6 +2,7 @@ import {
     IPicklistDependencySkippedField,
     IPicklistDependencySpecDetail,
     IRecordTypePicklistDependencySpecDetail,
+    PicklistDependencySkipReason,
     PicklistDependencyTestService
 } from '../PicklistDependencyTestService/PicklistDependencyTestService';
 
@@ -165,6 +166,12 @@ export interface IPicklistDependencySkippedFieldViewModel {
     fieldApiName: string;
     recordTypeDeveloperName: string;
     warning: string;
+    /*
+        Carried alongside the prose so a row can be grouped or filtered by what actually happened
+        without scraping the sentence. Degraded to "unknown" by the manifest loader rather than
+        dropped, so every row has one.
+    */
+    reason: PicklistDependencySkipReason;
 }
 
 export interface IPicklistDependencyObjectViewModel {
@@ -1692,7 +1699,8 @@ export class PicklistDependencyExplorerService {
                 */
                 fieldApiName: skippedField.fieldApiName ?? '',
                 recordTypeDeveloperName: skippedField.recordTypeDeveloperName ?? '',
-                warning: skippedField.warning
+                warning: skippedField.warning,
+                reason: PicklistDependencyTestService.isRecognisedSkipReason(skippedField.reason) ? skippedField.reason : 'unknown'
             });
 
         });
