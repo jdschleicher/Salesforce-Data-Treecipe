@@ -82,6 +82,7 @@ describe('ExtensionCommandService', () => {
         let extensionCommandService: ExtensionCommandService;
         let writeSpecsClassFilesSpy: jest.SpyInstance;
         let writeSpecsTestClassFilesSpy: jest.SpyInstance;
+        let writeSpecsTestSuiteFileSpy: jest.SpyInstance;
         let writeManifestSpy: jest.SpyInstance;
         let handleCapturedErrorSpy: jest.SpyInstance;
 
@@ -125,6 +126,8 @@ describe('ExtensionCommandService', () => {
             });
             jest.spyOn(PicklistDependencyTestService, 'detectLegacyGeneratedArtifacts').mockReturnValue([]);
             writeSpecsTestClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsTestClassFiles').mockReturnValue(specsTestClassFilePath);
+            writeSpecsTestSuiteFileSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsTestSuiteFile')
+                .mockReturnValue('/workspace/force-app/main/default/testSuites/SDTPicklistDependencyTests.testSuite-meta.xml');
 
             /*
                 Stubbed for the same reason every other writer here is: this describe drives the real
@@ -347,6 +350,66 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test('given dependent picklists found, registers the test class in the generated Apex test suite', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsTestSuiteFileSpy).toHaveBeenCalledWith(
+                classesDirectoryPath,
+                expect.stringContaining('<testClassName>SDTPLDSpecsTest</testClassName>')
+            );
+
+            const emittedTestSuiteContent = writeSpecsTestSuiteFileSpy.mock.calls[0][1];
+            expect(emittedTestSuiteContent).toContain('<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">');
+
+            // THE SUITE IS THE HANDLE A PIPELINE ADDRESSES, SO THE SUCCESS MESSAGE HAS TO NAME IT
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SDTPicklistDependencyTests');
+
+        });
+
+        /*
+            A suite is a grouping a team curates. Resetting it to just the generated member on every
+            regeneration would silently delete whatever else they had registered in it.
+        */
+        test('given a suite already carrying a hand added member, keeps it rather than resetting the file', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            jest.spyOn(PicklistDependencyTestService, 'buildTestSuiteContentByClassesDirectory')
+                .mockReturnValue({
+                    content: PicklistDependencyTestService.buildTestSuiteXml(['SDTPLDSpecsTest', 'TeamOwnedPicklistTest']),
+                    isExistingFileUnparseable: false
+                });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const emittedTestSuiteContent = writeSpecsTestSuiteFileSpy.mock.calls[0][1];
+
+            expect(emittedTestSuiteContent).toContain('<testClassName>TeamOwnedPicklistTest</testClassName>');
+            expect(emittedTestSuiteContent).toContain('<testClassName>SDTPLDSpecsTest</testClassName>');
+
+        });
+
+        test('given a suite file it cannot read, warns that the tests are not registered rather than replacing it', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            jest.spyOn(PicklistDependencyTestService, 'buildTestSuiteContentByClassesDirectory')
+                .mockReturnValue({ content: 'not a suite at all', isExistingFileUnparseable: true });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            // THE FILE IS WRITTEN BACK AS ITSELF, WHICH THE CONTENT COMPARISON MAKES A NO-OP
+            expect(writeSpecsTestSuiteFileSpy).toHaveBeenCalledWith(classesDirectoryPath, 'not a suite at all');
+
+            expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(
+                expect.stringContaining('NOT registered')
+            );
+
+        });
+
         test('after generating, offers to deploy and run against an org', async () => {
 
             stubCollectionResult([specDetail]);
@@ -409,7 +472,7 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
             jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts').mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-x');
 
-            const isDeployedSpy = jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg');
+            const isDeployedSpy = jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestSuiteDeployedInOrg');
 
             // GENERATION JUST WROTE THESE CLASSES, SO THEY ARE ON DISK BY DEFINITION
             jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist')
@@ -1318,7 +1381,7 @@ describe('ExtensionCommandService', () => {
                 { username: 'dev@example.com', aliases: ['devHub'] }
             ]);
 
-            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(true);
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestSuiteDeployedInOrg').mockResolvedValue(true);
 
             /*
                 These scenarios all assume generation has already run. The deploy path now asserts
@@ -1424,13 +1487,13 @@ describe('ExtensionCommandService', () => {
 
         test('given a missing test class and a declined deploy prompt, deploys nothing and runs nothing', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(false);
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestSuiteDeployedInOrg').mockResolvedValue(false);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
 
             await extensionCommandService.runPicklistDependencyCheck();
 
             expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-                expect.stringContaining('was not found in "devHub"'),
+                expect.stringContaining('does not exist, or no longer contains'),
                 { modal: true },
                 'Deploy and Run'
             );
@@ -1442,7 +1505,7 @@ describe('ExtensionCommandService', () => {
 
         test('given a missing test class and a confirmed deploy, deploys then runs the check', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(false);
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestSuiteDeployedInOrg').mockResolvedValue(false);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Deploy and Run');
 
             await extensionCommandService.runPicklistDependencyCheck();
@@ -1459,7 +1522,7 @@ describe('ExtensionCommandService', () => {
         */
         test('given no generated classes on disk, refuses before showing the deploy confirmation', async () => {
 
-            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestClassDeployedInOrg').mockResolvedValue(false);
+            jest.spyOn(PicklistDependencyCheckService, 'isSpecsTestSuiteDeployedInOrg').mockResolvedValue(false);
 
             jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist').mockImplementation(() => {
                 throw new Error('No picklist dependency classes were found in "/workspace/classes". Run "Generate Picklist Dependency Tests" first, then run the command again.');

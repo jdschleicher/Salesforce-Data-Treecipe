@@ -204,6 +204,7 @@ flowchart TB
 | `SDTPLDSpecs_<Object>` | **Generated** | **Overwritten on every generation** | default | The declared matrix for one object, as executable Apex. `all()` is the field-level matrix; `recordTypeSpecs()` — emitted only where the object has record types assigning both fields of a dependency — is the same matrix narrowed per record type |
 | `SDTPLDSpecs` | **Generated** | **Overwritten on every generation** | default | Aggregator; the only class downstream code should reference. `all()` aggregates the field-level specs; `allRecordTypeScoped()` is emitted only when at least one object produced scoped specs |
 | `SDTPLDSpecsTest` | **Generated** | **Overwritten on every generation** | `@IsTest private` | One test method per object + `specRegistryIsNotEmpty` |
+| `SDTPicklistDependencyTests` | **Generated** | **Merged on every generation** — members it did not add are kept | `ApexTestSuite` metadata, not a class | Registers `SDTPLDSpecsTest`. The stable handle `--suite-names`, Setup and the extension all address |
 
 ### The spec manifest — the one artefact that is not Apex
 
@@ -278,6 +279,7 @@ sequenceDiagram
     Svc->>FS: write SDTPLDSpecs_<Object>.cls (+ -meta.xml)
     Svc->>FS: write SDTPLDSpecs.cls (+ -meta.xml)
     Svc->>FS: write SDTPLDSpecsTest.cls (+ -meta.xml)
+    Svc->>FS: merge + write SDTPicklistDependencyTests.testSuite-meta.xml
     Svc->>FS: scaffold missing framework classes only
     Svc-->>Cmd: write result + legacy-artefact warnings
     Cmd-->>Dev: summary, then offer to run the check
@@ -561,14 +563,14 @@ Three consequences follow, and each is handled explicitly in `SDTSchemaPicklistD
 
 ### Execution path
 
-One entry point exists: the generated, **deployed** Apex test. Every run — the extension command, the demo harness, CI — deploys `SDTPLDSpecsTest` alongside the specs and executes it with `sf apex run test`. There is deliberately no anonymous-Apex variant: a check that runs from deployed Apex always executes in system context, so its result cannot vary with the running user ([§9](#9-permissions-and-access-model)).
+One entry point exists: the generated, **deployed** Apex test. Every run — the extension command, the demo harness, CI — deploys `SDTPLDSpecsTest` and the `SDTPicklistDependencyTests` suite alongside the specs and executes the suite with `sf apex run test --suite-names`. There is deliberately no anonymous-Apex variant: a check that runs from deployed Apex always executes in system context, so its result cannot vary with the running user ([§9](#9-permissions-and-access-model)).
 
 ```mermaid
 flowchart TB
     START(["SDTPLDSpecs.all()"])
 
     subgraph P1["Apex test — generated and deployed"]
-        T1["sf apex run test --tests SDTPLDSpecsTest"]
+        T1["sf apex run test --suite-names SDTPicklistDependencyTests"]
         T2["SDTPLDSpecsTest<br/>one method per object"]
         T3["Runs in <b>system context</b>"]
     end
@@ -938,7 +940,7 @@ Each generated file carries a `GENERATED FILE -- commit it, and review each rege
 
 ### CI integration contract
 
-CI runs the same path as everything else: deploy the generated classes, then `sf apex run test --tests SDTPLDSpecsTest` and gate on the test outcome. For pipelines that read the report output, `SDTPicklistDependencyReport` emits a single stable line:
+CI runs the same path as everything else: deploy the generated classes and the generated test suite, then `sf apex run test --suite-names SDTPicklistDependencyTests` and gate on the test outcome. Naming the suite rather than the class is what keeps a pipeline working if the generated class is later renamed or split. For pipelines that read the report output, `SDTPicklistDependencyReport` emits a single stable line:
 
 ```
 PICKLIST_DEPENDENCY_CHECK_RESULT=PASS | FAIL | EMPTY

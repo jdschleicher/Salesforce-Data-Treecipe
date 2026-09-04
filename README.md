@@ -191,7 +191,8 @@ The command:
 4. Writes `SDTPLDSpecs.cls`, an aggregator whose `all()` pulls in every per-object class. Callers depend on the aggregator, so a per-object class appearing or disappearing as your metadata changes does not ripple outwards
 5. Writes `SDTPLDSpecsTest.cls`, an `@IsTest` class with one test method per object that asserts that object's specs against the org the test runs in, plus a guard method that fails when the spec registry is empty
 6. Scaffolds the Apex validation framework classes it depends on (`SDTPicklistDependencySpec`, `SDTPicklistDependencyValidator`, `SDTSchemaPicklistDependencySource`, and supporting classes) into a `SDTPicklistDependencyFramework` subfolder, if they are not already present. Keeping them in their own directory separates the six files you did not write from the generated contract you do engage with, and makes them removable in one action — Salesforce resolves `ApexClass` by the enclosing `classes` directory and walks nested folders, so the layout deploys identically
-7. Writes `treecipe/PicklistDependencySpecs/manifest.json`, a machine-readable description of everything it just generated — built from the same model as the Apex, in the same run, so the two cannot disagree
+7. Writes `<packageDir>/main/default/testSuites/SDTPicklistDependencyTests.testSuite-meta.xml`, an Apex test suite registering `SDTPLDSpecsTest`. The suite is the stable handle a CI pipeline, Setup and this extension all address, so nothing has to hard-code the generated class name. If the file already exists, members you added yourself are kept — regeneration adds the generated class, it never resets the file
+8. Writes `treecipe/PicklistDependencySpecs/manifest.json`, a machine-readable description of everything it just generated — built from the same model as the Apex, in the same run, so the two cannot disagree
 
 #### The spec manifest
 
@@ -304,8 +305,8 @@ This command deploys and runs the generated picklist dependency tests against an
 The command:
 
 1. Lists your authenticated orgs and prompts you to pick the target
-2. Checks whether `SDTPLDSpecsTest` exists in that org, and offers to deploy the classes if it does not — nothing is deployed without explicit confirmation
-3. Runs the test class with `sf apex run test`
+2. Checks whether the `SDTPicklistDependencyTests` suite in that org still contains `SDTPLDSpecsTest`, and offers to deploy if it does not — nothing is deployed without explicit confirmation. Membership is what is checked rather than the suite's existence: a suite whose member class was deleted still exists, and running it would pass having asserted nothing
+3. Runs the suite with `sf apex run test --suite-names SDTPicklistDependencyTests`
 4. Writes a per-method report to the **Picklist Dependency Check** output channel and shows a pass/fail summary notification
 5. Saves the results into `treecipe/PicklistDependencyResults/check-<org>-<timestamp>/` as `results.json` and `report.md`
 

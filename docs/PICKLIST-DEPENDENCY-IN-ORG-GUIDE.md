@@ -72,6 +72,7 @@ All under a `SDTPicklistDependencyFramework` folder in source. They deploy as or
 | `SDTPLDSpecs_<Object>` | One per object that has dependent picklists. One method per dependent picklist on that object |
 | `SDTPLDSpecs` | The aggregator. `all()` returns every spec from every per-object class |
 | `SDTPLDSpecsTest` | The `@IsTest` class. One test method per object, plus a guard that an empty registry can never pass |
+| `SDTPicklistDependencyTests` | The Apex test suite `SDTPLDSpecsTest` is registered in. Not a class — an `ApexTestSuite`, so a pipeline can name the suite instead of the class |
 
 Every one of these carries `GENERATED FILE -- regenerating overwrites it.` at the top, and means it. Hand edits survive in the org until the next generation run, and are then silently replaced. If you want a permanent tightening, [§9](#9-behaviours-that-surprise-people) covers where that leaves you.
 
@@ -233,9 +234,9 @@ Four ways, all running the same assertions:
 
 | Where | How |
 |---|---|
-| **Setup** | Setup → **Apex Test Execution** → *Select Tests* → tick `SDTPLDSpecsTest` → Run |
+| **Setup** | Setup → **Apex Test Execution** → *Select Tests* → pick the `SDTPicklistDependencyTests` suite, or tick `SDTPLDSpecsTest` → Run |
 | **Developer Console** | **Test → New Run** → select `SDTPLDSpecsTest` → Run. Failures appear in the Tests tab with the full assert message |
-| **CLI** | `sf apex run test --tests SDTPLDSpecsTest --result-format human --wait 10 --target-org <alias>` |
+| **CLI** | `sf apex run test --suite-names SDTPicklistDependencyTests --result-format human --wait 10 --target-org <alias>` |
 | **VS Code** | The *Run Picklist Dependency Check* command, which wraps the CLI call and writes a report to disk |
 
 ### During a deployment
@@ -243,7 +244,7 @@ Four ways, all running the same assertions:
 `SDTPLDSpecsTest` is an ordinary Apex test, so it participates in deployment test runs like any other:
 
 - **`RunLocalTests` / `RunAllTestsInOrg`** (which production deployments require) will run it. **Real dependency drift will therefore fail your production deployment.** That is the intended behaviour — but decide deliberately that you want it, because it turns picklist drift into a release blocker.
-- **`RunSpecifiedTests`** — name it explicitly to gate on it: `--tests SDTPLDSpecsTest`.
+- **`RunSpecifiedTests`** — name it explicitly to gate on it: `--tests SDTPLDSpecsTest`. Prefer the suite where the tooling accepts one (`--suite-names SDTPicklistDependencyTests`), so the pipeline keeps working if the generated class is ever renamed or split.
 
 ### What passing and failing look like
 

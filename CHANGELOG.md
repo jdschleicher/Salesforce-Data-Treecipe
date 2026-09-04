@@ -1,5 +1,45 @@
 # Change Log
 
+## [3.10.0] - A dedicated Apex test suite for the generated picklist dependency tests
+
+Resolves [#96](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/96).
+
+**Generate Picklist Dependency Tests** wrote `SDTPLDSpecsTest.cls` and nothing that named it. The only way to run the generated assertions was to know the class name and hard-code it — in a CI pipeline, in `sf apex run test --tests`, or by finding it in Setup. This extension did exactly that too, invoking the class it happened to generate.
+
+That makes the generated class name a public contract by accident. Rename it, split it per object, and every pipeline that referenced it breaks.
+
+### The suite is the handle
+
+Generation now also writes `<packageDir>/main/default/testSuites/SDTPicklistDependencyTests.testSuite-meta.xml`, an `ApexTestSuite` registering `SDTPLDSpecsTest`. It is the stable name a pipeline, Setup → **Apex Test Execution**, and this extension all address:
+
+```
+sf apex run test --suite-names SDTPicklistDependencyTests --target-org <alias>
+```
+
+The suite has one member today, and that is the point — its value is the stable handle, not the member count. Anything later added or split out is registered in the same suite, and nothing downstream changes.
+
+### Regeneration merges, it does not reset
+
+A test suite is a grouping a team curates. Someone may well add their own picklist-adjacent test class to it, so regeneration **unions** the generated member in and removes nothing:
+
+- A member added by hand survives every regeneration
+- Members are emitted sorted, so regenerating an unchanged project reproduces the file byte for byte and the suite stays out of source-control diffs
+- A `.testSuite-meta.xml` that cannot be read as an `ApexTestSuite` is left **exactly** as it is, with a warning saying the generated tests are not registered in it — rather than being silently replaced by a file this command could understand
+
+This is the same rule the metadata writeback follows: silence in the generated model is never an instruction to delete.
+
+### The check runs the suite
+
+**Run Picklist Dependency Check** now invokes `--suite-names` rather than `--tests`, so the extension and everyone else reach the tests by one route instead of two. The suite file is included in the deploy the command offers, because a deploy that sent the classes without it would succeed and then fail at the very next step.
+
+The "is it deployed" check asks about **membership**, not existence, through one Tooling API query over `TestSuiteMembership`. A suite whose member class has been deleted still exists, and running it would report success having asserted nothing — the same vacuous-green failure the generated `specRegistryIsNotEmpty` guard exists to prevent one layer down.
+
+### Also in this release
+
+- The spec manifest records the suite name and file path, written by the run that generated the Apex rather than recomputed by a reader. `manifestVersion` is now **2**; a manifest written by 3.9.0 is refused with the existing "re-run the command" message rather than being read as if it named a suite.
+- The change report no longer filters the suite out. It previously excluded every `-meta.xml`, which the suite file's own name ends with, so a run whose only change was the suite reported nothing. The filter now targets the `.cls-meta.xml` sidecar specifically.
+- The `testSuites` directory gets the same symlink-resolved containment check the `classes` directory has, since it is a second set of path segments the package directory resolution never saw.
+
 ## [3.9.0] - Generate Picklist Dependency Tests: progress you can watch, warnings you get once
 
 Resolves [#92](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/92).

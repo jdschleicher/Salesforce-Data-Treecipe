@@ -68,6 +68,14 @@ export interface IPicklistDependencyManifest {
     aggregatorClassName: string;
     specsTestClassName: string;
     /*
+        The Apex test suite the generated test class is registered in, and the file that declares
+        it. Recorded so the check command and anything else asking "how do I run these" reads one
+        name written by the run that generated them, rather than recomputing it and being right only
+        until the generator changes.
+    */
+    testSuiteName: string;
+    testSuiteFilePath: string;
+    /*
         A digest over every source file that could contribute a spec -- relative path, mtime and
         size. Deliberately NOT a hash of the collected model: recomputing that would cost the parse
         walk the manifest exists to avoid, and the question being asked is only "could this have
@@ -122,7 +130,7 @@ export class PicklistDependencyManifestService {
         rendering a v1 manifest against v2 assumptions is exactly the silent disagreement between
         the panel and the Apex that this artifact exists to eliminate.
     */
-    private static currentManifestVersion = 1;
+    private static currentManifestVersion = 2;
 
     static getManifestVersion(): number {
         return this.currentManifestVersion;
@@ -326,6 +334,8 @@ export class PicklistDependencyManifestService {
             classesDirectoryPath: classesDirectoryPath,
             aggregatorClassName: PicklistDependencyTestService.getSpecsClassName(),
             specsTestClassName: PicklistDependencyTestService.getSpecsTestClassName(),
+            testSuiteName: PicklistDependencyTestService.getTestSuiteName(),
+            testSuiteFilePath: PicklistDependencyTestService.getTestSuiteFilePath(classesDirectoryPath),
             sourceFingerprint: sourceFingerprint,
             objects: objects,
             /*
@@ -557,6 +567,8 @@ export class PicklistDependencyManifestService {
                 classesDirectoryPath: typeof manifestRecord.classesDirectoryPath === 'string' ? manifestRecord.classesDirectoryPath : '',
                 aggregatorClassName: typeof manifestRecord.aggregatorClassName === 'string' ? manifestRecord.aggregatorClassName : '',
                 specsTestClassName: typeof manifestRecord.specsTestClassName === 'string' ? manifestRecord.specsTestClassName : '',
+                testSuiteName: typeof manifestRecord.testSuiteName === 'string' ? manifestRecord.testSuiteName : '',
+                testSuiteFilePath: typeof manifestRecord.testSuiteFilePath === 'string' ? manifestRecord.testSuiteFilePath : '',
                 sourceFingerprint: typeof manifestRecord.sourceFingerprint === 'string' ? manifestRecord.sourceFingerprint : '',
                 objects: objects,
                 skippedFieldWarnings: Array.isArray(manifestRecord.skippedFieldWarnings)

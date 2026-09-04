@@ -236,6 +236,16 @@ export interface ISpecsChangePlan {
     hasChanges: boolean;
 }
 
+export interface IMergedTestSuiteContent {
+    content: string;
+    /*
+        True when the file already on disk could not be read as an ApexTestSuite. "content" is then
+        that file's EXACT existing content, so writing it back is a no-op and the user's file
+        survives -- the caller reports the warning rather than replacing what it cannot understand.
+    */
+    isExistingFileUnparseable: boolean;
+}
+
 export interface IFrameworkScaffoldResult {
     scaffoldedClassNames: string[];
     // FRAMEWORK CLASSES NEITHER ALREADY IN THE WORKSPACE NOR AVAILABLE TO COPY FROM THE EXTENSION
@@ -2526,6 +2536,204 @@ ${recordTypeAggregationMarkup}}
     }
 
     /*
+        The suite groups the generated test class under one name a CI pipeline, "sf apex run test
+        --suite-names" and Setup can all address. Its value is the stable handle rather than the
+        member count: the suite survives any later change to how the generated classes are named or
+        split, where a hard-coded class name in someone's pipeline does not.
+
+        SDT-prefixed for the same reason every generated Apex class is -- it is written into a
+        user's package directory and must not collide with a suite they already maintain.
+    */
+    private static testSuiteName = 'SDTPicklistDependencyTests';
+
+    private static testSuitesDirectoryName = 'testSuites';
+
+    private static testSuiteFileSuffix = '.testSuite-meta.xml';
+
+    static getTestSuiteName(): string {
+        return this.testSuiteName;
+    }
+
+    /*
+        Derived from the CLASSES directory rather than from the package directory, so the two cannot
+        drift apart. Both live under the same "main/default" metadata root, which makes testSuites
+        the sibling of classes -- expressing it that way means a change to where classes are written
+        moves the suite with it, instead of leaving a second copy of "main/default" to be updated
+        separately and silently forgotten.
+    */
+    static getTestSuitesDirectoryPath(classesDirectoryPath: string): string {
+        return path.join(path.dirname(classesDirectoryPath), this.testSuitesDirectoryName);
+    }
+
+    static getTestSuiteFilePath(classesDirectoryPath: string): string {
+        return path.join(
+            this.getTestSuitesDirectoryPath(classesDirectoryPath),
+            `${this.testSuiteName}${this.testSuiteFileSuffix}`
+        );
+    }
+
+    /*
+        The same containment check the classes directory gets, for the same reason: the suite path is
+        built by appending directory segments that are never re-checked, and writeFileSync follows a
+        symlink wherever it points.
+    */
+    static assertTestSuitesDirectoryContainedInWorkspace(testSuitesDirectoryPath: string, workspaceRoot: string) {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const resolvedTestSuitesDirectoryPath = path.resolve(testSuitesDirectoryPath);
+
+        if ( !this.isPathContainedInWorkspace(resolvedTestSuitesDirectoryPath, resolvedWorkspaceRoot) ) {
+            throw new Error(`The test suites directory "${resolvedTestSuitesDirectoryPath}" resolves outside the workspace. A path segment is most likely a symlink pointing elsewhere. Fix the project layout and run the command again.`);
+        }
+
+    }
+
+    /*
+        The members this command owns, and the only ones it will ever add. Everything else found in
+        an existing suite file belongs to whoever put it there.
+    */
+    static getGeneratedTestSuiteClassNames(): string[] {
+        return [this.getSpecsTestClassName()];
+    }
+
+    /*
+        Reads the members out of an existing suite file, or returns undefined when the file is not a
+        suite this can safely rewrite.
+
+        Matched with a regular expression rather than parsed with xml2js because every caller in the
+        emission path -- buildSpecsChangePlan, writePlannedSpecsFiles -- is synchronous by design,
+        and xml2js offers no synchronous parse. Making the change plan async to read one flat list of
+        element values would turn the whole write path async for no gain in what is actually
+        understood about the file.
+
+        undefined is deliberately distinct from an empty array: an empty suite is a valid file with
+        no members, whereas undefined means "this does not look like an ApexTestSuite" and the
+        caller must leave it alone rather than replace it.
+    */
+    static parseTestSuiteClassNames(testSuiteFileContent: string): string[] | undefined {
+
+        if ( !/<ApexTestSuite[\s>]/.test(testSuiteFileContent) ) {
+            return undefined;
+        }
+
+        const testClassNamePattern = /<testClassName>([^<]*)<\/testClassName>/g;
+
+        let testClassNames: string[] = [];
+        let testClassNameMatch: RegExpExecArray | null;
+
+        while ( (testClassNameMatch = testClassNamePattern.exec(testSuiteFileContent)) !== null ) {
+
+            const testClassName = testClassNameMatch[1].trim();
+
+            if ( testClassName.length > 0 ) {
+                testClassNames.push(testClassName);
+            }
+
+        }
+
+        return testClassNames;
+
+    }
+
+    static buildTestSuiteXml(testClassNames: string[]): string {
+
+        const testClassNameElements = testClassNames
+            .map(testClassName => `    <testClassName>${this.escapeXmlText(testClassName)}</testClassName>`)
+            .join('\n');
+
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+${testClassNameElements}
+</ApexTestSuite>
+`;
+
+    }
+
+    static escapeXmlText(value: string): string {
+
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+    }
+
+    /*
+        The suite content a regeneration should write, merged with whatever is already on disk.
+
+        A suite is a grouping a team curates, not a file this command owns outright: someone may
+        well have added their own picklist-adjacent test class to it, and a regeneration that reset
+        the file to just the generated member would silently delete that. So the generated members
+        are UNIONED in and nothing else is removed -- the same rule the metadata writeback follows,
+        where silence in the generated model is never read as an instruction to delete.
+
+        Members are sorted so that regenerating an unchanged project reproduces the file byte for
+        byte, which is what keeps the suite out of every source-control diff.
+    */
+    static buildMergedTestSuiteContent(existingTestSuiteFileContent?: string): IMergedTestSuiteContent {
+
+        const generatedTestSuiteClassNames = this.getGeneratedTestSuiteClassNames();
+
+        if ( existingTestSuiteFileContent === undefined ) {
+            return {
+                content: this.buildTestSuiteXml(this.sortValuesForEmission(generatedTestSuiteClassNames)),
+                isExistingFileUnparseable: false
+            };
+        }
+
+        const existingTestClassNames = this.parseTestSuiteClassNames(existingTestSuiteFileContent);
+
+        /*
+            An unreadable file keeps its exact content. Rewriting it would destroy whatever the user
+            has there, and the one thing worse than a missing suite is a suite that quietly replaced
+            a hand-maintained file the command could not understand.
+        */
+        if ( existingTestClassNames === undefined ) {
+            return {
+                content: existingTestSuiteFileContent,
+                isExistingFileUnparseable: true
+            };
+        }
+
+        const mergedTestClassNames = [...new Set([...existingTestClassNames, ...generatedTestSuiteClassNames])];
+
+        return {
+            content: this.buildTestSuiteXml(this.sortValuesForEmission(mergedTestClassNames)),
+            isExistingFileUnparseable: false
+        };
+
+    }
+
+    /*
+        Reads the suite already on disk, if any, and resolves what should replace it. Kept separate
+        from buildMergedTestSuiteContent so that merging stays a pure function of its input and can
+        be tested without a filesystem.
+    */
+    static buildTestSuiteContentByClassesDirectory(classesDirectoryPath: string): IMergedTestSuiteContent {
+
+        const testSuiteFilePath = this.getTestSuiteFilePath(classesDirectoryPath);
+
+        let existingTestSuiteFileContent: string | undefined;
+
+        try {
+            existingTestSuiteFileContent = fs.readFileSync(testSuiteFilePath, 'utf-8');
+        } catch {
+            existingTestSuiteFileContent = undefined;
+        }
+
+        return this.buildMergedTestSuiteContent(existingTestSuiteFileContent);
+
+    }
+
+    static buildUnparseableTestSuiteWarning(testSuiteFilePath: string): string {
+
+        return `The Apex test suite at "${testSuiteFilePath}" could not be read as an ApexTestSuite file, so it has been left exactly as it is. `
+            + `The generated picklist dependency tests are NOT registered in it, and "Run Picklist Dependency Check" will not find the suite until this is fixed. `
+            + `Repair the file, or delete it and run "Generate Picklist Dependency Tests" again to have it rewritten.`;
+
+    }
+
+    /*
         Builds the Apex method name that covers one object.
 
         Apex identifiers may NOT contain two consecutive underscores -- that sequence is reserved for
@@ -2803,7 +3011,8 @@ ${testMethods}
                                     specDetails: IPicklistDependencySpecDetail[],
                                     apiVersion: string,
                                     recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
-                                    specsTestClassBody?: string): ISpecsChangePlan {
+                                    specsTestClassBody?: string,
+                                    testSuiteContent?: string): ISpecsChangePlan {
 
         const objectApiNames = this.getDistinctObjectApiNames([...specDetails, ...recordTypeSpecDetails]);
         const classNamesByObjectApiName = this.buildPerObjectSpecsClassNamesByObjectApiName(objectApiNames);
@@ -2855,6 +3064,16 @@ ${testMethods}
 
         }
 
+        /*
+            The suite is planned like everything else so a run that changes nothing reports it as
+            unchanged instead of rewriting it. Its content arrives already merged with what is on
+            disk, for the reason the test class body does: resolving it twice is two chances for the
+            previewed content and the written content to disagree.
+        */
+        if ( testSuiteContent !== undefined ) {
+            plannedFiles.push(this.buildPlannedSpecsFile(this.getTestSuiteFilePath(classesDirectoryPath), testSuiteContent));
+        }
+
         const staleClassFilePaths = this.findStalePerObjectSpecsClassFilePaths(
             classesDirectoryPath,
             objectApiNames.map(objectApiName => classNamesByObjectApiName[objectApiName])
@@ -2894,8 +3113,14 @@ ${testMethods}
 
         let reportLines: string[] = [];
 
-        const addedClassFiles = changedFiles.filter(changedFile => changedFile.changeType === 'added' && !changedFile.filePath.endsWith('-meta.xml'));
-        const updatedClassFiles = changedFiles.filter(changedFile => changedFile.changeType === 'changed' && !changedFile.filePath.endsWith('-meta.xml'));
+        /*
+            Filtered on the ".cls-meta.xml" sidecar specifically rather than on "-meta.xml", which
+            the generated test suite's own file name also ends with. Excluding every "-meta.xml"
+            dropped the suite from the report entirely -- it is the artifact, not a sidecar beside
+            one -- so a run whose only change was the suite reported nothing.
+        */
+        const addedClassFiles = changedFiles.filter(changedFile => changedFile.changeType === 'added' && !this.isApexClassSidecarFilePath(changedFile.filePath));
+        const updatedClassFiles = changedFiles.filter(changedFile => changedFile.changeType === 'changed' && !this.isApexClassSidecarFilePath(changedFile.filePath));
 
         if ( addedClassFiles.length > 0 ) {
             reportLines.push(`New: ${addedClassFiles.map(addedFile => path.basename(addedFile.filePath)).join(', ')}`);
@@ -2952,8 +3177,17 @@ ${testMethods}
         for ( const plannedFile of plannedFiles ) {
 
             if ( plannedFile.changeType !== 'unchanged' ) {
+
+                /*
+                    Created per file rather than once for the classes directory, because the planned
+                    set no longer lives in a single directory: the test suite is written to a
+                    testSuites sibling that may not exist yet.
+                */
+                fs.mkdirSync(path.dirname(plannedFile.filePath), { recursive: true });
+
                 fs.writeFileSync(plannedFile.filePath, plannedFile.proposedContent);
                 writtenFilePaths.push(plannedFile.filePath);
+
             }
 
             /*
@@ -2989,12 +3223,21 @@ ${testMethods}
     private static getPlannedFileSpecCount(plannedFile: IPlannedSpecsFile,
                                             specCountByObjectApiName: Record<string, number>): number {
 
-        if ( !plannedFile.objectApiName || plannedFile.filePath.endsWith('-meta.xml') ) {
+        if ( !plannedFile.objectApiName || this.isApexClassSidecarFilePath(plannedFile.filePath) ) {
             return 0;
         }
 
         return specCountByObjectApiName[plannedFile.objectApiName] ?? 0;
 
+    }
+
+    /*
+        The "<name>.cls-meta.xml" written beside every generated Apex class. Named as its own idea
+        because "ends with -meta.xml" is true of Salesforce metadata files generally, the generated
+        test suite among them.
+    */
+    static isApexClassSidecarFilePath(filePath: string): boolean {
+        return filePath.endsWith('.cls-meta.xml');
     }
 
     static writeSpecsClassFiles(classesDirectoryPath: string,
@@ -3026,9 +3269,11 @@ ${testMethods}
             unchanged -- but it would put a file this method does not report in its result.
         */
         const specsTestClassFilePath = this.getSpecsTestClassFilePath(classesDirectoryPath);
+        const testSuiteFilePath = this.getTestSuiteFilePath(classesDirectoryPath);
         const specsClassPlannedFiles = changePlan.plannedFiles.filter(
             plannedFile => plannedFile.filePath !== specsTestClassFilePath
                             && plannedFile.filePath !== `${specsTestClassFilePath}-meta.xml`
+                            && plannedFile.filePath !== testSuiteFilePath
         );
 
         const specDetailsByObjectApiNameForProgress = this.groupSpecDetailsByObjectApiName(specDetails);
@@ -3124,6 +3369,26 @@ ${testMethods}
         ]);
 
         return specsTestClassFilePath;
+
+    }
+
+    /*
+        Writes the merged suite content resolved earlier in the run.
+
+        Takes the content rather than resolving it, so the file written is literally the one the
+        change plan previewed. An unparseable existing file arrives here as its own exact content,
+        which makes this a no-op for that case without needing to know why.
+    */
+    static writeSpecsTestSuiteFile(classesDirectoryPath: string, testSuiteContent: string): string {
+
+        const testSuiteFilePath = this.getTestSuiteFilePath(classesDirectoryPath);
+
+        // SKIPS A FILE ALREADY CARRYING THIS EXACT CONTENT, FOR THE MTIME REASON IN buildPlannedSpecsFile
+        this.writePlannedSpecsFiles([
+            this.buildPlannedSpecsFile(testSuiteFilePath, testSuiteContent)
+        ]);
+
+        return testSuiteFilePath;
 
     }
 

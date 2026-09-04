@@ -4400,4 +4400,303 @@ describe('PicklistDependencyTestService', () => {
 
     });
 
+
+    describe('generated Apex test suite', () => {
+
+        const fakeClassesDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'classes');
+        const expectedTestSuiteFilePath = path.join(
+            '/workspace', 'force-app', 'main', 'default', 'testSuites', 'SDTPicklistDependencyTests.testSuite-meta.xml'
+        );
+
+        test('given the classes directory, resolves testSuites as its sibling under the same metadata root', () => {
+
+            expect(PicklistDependencyTestService.getTestSuitesDirectoryPath(fakeClassesDirectoryPath))
+                .toBe(path.join('/workspace', 'force-app', 'main', 'default', 'testSuites'));
+
+            expect(PicklistDependencyTestService.getTestSuiteFilePath(fakeClassesDirectoryPath))
+                .toBe(expectedTestSuiteFilePath);
+
+        });
+
+        test('the suite name is SDT prefixed so it cannot collide with a suite the user maintains', () => {
+
+            expect(PicklistDependencyTestService.getTestSuiteName()).toBe('SDTPicklistDependencyTests');
+            expect(PicklistDependencyTestService.getTestSuiteName()).toStartWith('SDT');
+
+        });
+
+        test('the only member this command owns is the generated test class', () => {
+
+            expect(PicklistDependencyTestService.getGeneratedTestSuiteClassNames())
+                .toEqual([PicklistDependencyTestService.getSpecsTestClassName()]);
+
+        });
+
+        test('given no existing suite, emits ApexTestSuite markup naming the generated test class', () => {
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(undefined);
+
+            expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(false);
+            expect(mergedTestSuiteContent.content).toContain('<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">');
+            expect(mergedTestSuiteContent.content).toContain(`<testClassName>${PicklistDependencyTestService.getSpecsTestClassName()}</testClassName>`);
+            expect(mergedTestSuiteContent.content).toContain('</ApexTestSuite>');
+
+        });
+
+        test('given an existing suite carrying a hand added member, keeps it and adds the generated one', () => {
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <testClassName>TeamOwnedPicklistTest</testClassName>
+</ApexTestSuite>
+`;
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(existingTestSuiteContent);
+
+            expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(false);
+            expect(mergedTestSuiteContent.content).toContain('<testClassName>TeamOwnedPicklistTest</testClassName>');
+            expect(mergedTestSuiteContent.content).toContain(`<testClassName>${PicklistDependencyTestService.getSpecsTestClassName()}</testClassName>`);
+
+        });
+
+        test('given a suite that already carries the generated member, does not duplicate it', () => {
+
+            const generatedTestClassName = PicklistDependencyTestService.getSpecsTestClassName();
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <testClassName>${generatedTestClassName}</testClassName>
+</ApexTestSuite>
+`;
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(existingTestSuiteContent);
+
+            const memberOccurrenceCount = mergedTestSuiteContent.content.split(`<testClassName>${generatedTestClassName}</testClassName>`).length - 1;
+            expect(memberOccurrenceCount).toBe(1);
+
+        });
+
+        test('regenerating over content this emitted reproduces it byte for byte', () => {
+
+            const firstEmission = PicklistDependencyTestService.buildMergedTestSuiteContent(undefined);
+            const secondEmission = PicklistDependencyTestService.buildMergedTestSuiteContent(firstEmission.content);
+
+            expect(secondEmission.content).toBe(firstEmission.content);
+
+        });
+
+        test('members are emitted in sorted order regardless of the order found on disk', () => {
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <testClassName>ZebraTest</testClassName>
+    <testClassName>AardvarkTest</testClassName>
+</ApexTestSuite>
+`;
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(existingTestSuiteContent);
+
+            expect(mergedTestSuiteContent.content.indexOf('AardvarkTest'))
+                .toBeLessThan(mergedTestSuiteContent.content.indexOf('ZebraTest'));
+
+        });
+
+        test('given a file that is not an ApexTestSuite, keeps its exact content and reports it unparseable', () => {
+
+            const notASuite = 'this is not xml at all';
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(notASuite);
+
+            expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(true);
+            expect(mergedTestSuiteContent.content).toBe(notASuite);
+
+        });
+
+        test('given an empty but valid suite, adds the generated member rather than treating it as unreadable', () => {
+
+            const emptySuite = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+</ApexTestSuite>
+`;
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(emptySuite);
+
+            expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(false);
+            expect(mergedTestSuiteContent.content).toContain(`<testClassName>${PicklistDependencyTestService.getSpecsTestClassName()}</testClassName>`);
+
+        });
+
+        test('parseTestSuiteClassNames separates an empty suite from a file that is not a suite', () => {
+
+            expect(PicklistDependencyTestService.parseTestSuiteClassNames('<ApexTestSuite></ApexTestSuite>')).toEqual([]);
+            expect(PicklistDependencyTestService.parseTestSuiteClassNames('nonsense')).toBeUndefined();
+
+        });
+
+        test('a member carrying xml significant characters is escaped rather than emitted raw', () => {
+
+            expect(PicklistDependencyTestService.buildTestSuiteXml(['A&B<C>D']))
+                .toContain('<testClassName>A&amp;B&lt;C&gt;D</testClassName>');
+
+        });
+
+        test('given a testSuites path resolving outside the workspace, refuses to write to it', () => {
+
+            expect(() => PicklistDependencyTestService.assertTestSuitesDirectoryContainedInWorkspace(
+                path.join('/somewhere', 'else', 'testSuites'), '/workspace'
+            )).toThrow(/resolves outside the workspace/);
+
+            expect(() => PicklistDependencyTestService.assertTestSuitesDirectoryContainedInWorkspace(
+                path.join('/workspace', 'force-app', 'main', 'default', 'testSuites'), '/workspace'
+            )).not.toThrow();
+
+        });
+
+        test('given a suite already on disk, buildTestSuiteContentByClassesDirectory merges with it', () => {
+
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(`<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <testClassName>TeamOwnedPicklistTest</testClassName>
+</ApexTestSuite>
+`);
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildTestSuiteContentByClassesDirectory(fakeClassesDirectoryPath);
+
+            expect(mergedTestSuiteContent.content).toContain('<testClassName>TeamOwnedPicklistTest</testClassName>');
+
+        });
+
+        test('given no suite on disk, buildTestSuiteContentByClassesDirectory emits a new one rather than throwing', () => {
+
+            jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+                throw new Error('ENOENT');
+            });
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildTestSuiteContentByClassesDirectory(fakeClassesDirectoryPath);
+
+            expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(false);
+            expect(mergedTestSuiteContent.content).toContain(`<testClassName>${PicklistDependencyTestService.getSpecsTestClassName()}</testClassName>`);
+
+        });
+
+        test('the unparseable suite warning names the file and says the tests are not registered', () => {
+
+            const unparseableTestSuiteWarning = PicklistDependencyTestService.buildUnparseableTestSuiteWarning(expectedTestSuiteFilePath);
+
+            expect(unparseableTestSuiteWarning).toContain(expectedTestSuiteFilePath);
+            expect(unparseableTestSuiteWarning).toContain('NOT registered');
+
+        });
+
+        test('given suite content, the change plan carries the suite file', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+            const specDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Account',
+                fieldApiName: 'Region__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'USA', dependentValues: ['East'] }]
+            }];
+
+            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                fakeClassesDirectoryPath, specDetails, '64.0', [], undefined, '<ApexTestSuite/>'
+            );
+
+            const plannedTestSuiteFile = changePlan.plannedFiles.find(
+                plannedFile => plannedFile.filePath === expectedTestSuiteFilePath
+            );
+
+            expect(plannedTestSuiteFile).toBeDefined();
+            expect(plannedTestSuiteFile?.proposedContent).toBe('<ApexTestSuite/>');
+
+        });
+
+        test('the suite is named in the change report rather than filtered out as a meta xml sidecar', () => {
+
+            const changeReport = PicklistDependencyTestService.buildSpecsChangeReport({
+                plannedFiles: [{
+                    filePath: expectedTestSuiteFilePath,
+                    proposedContent: '<ApexTestSuite/>',
+                    changeType: 'added'
+                }],
+                staleClassFilePaths: [],
+                hasChanges: true
+            });
+
+            expect(changeReport).toContain('SDTPicklistDependencyTests.testSuite-meta.xml');
+
+        });
+
+        /*
+            A sourceApiVersion bump changes every sidecar and nothing else. Both report lists filter
+            sidecars out, which left the report empty and the confirmation dialog blank -- so the
+            fallback names them after all. Covered here rather than incidentally through the command,
+            where narrowing the filter to ".cls-meta.xml" stopped the plan reaching this branch at
+            all: the generated suite in that plan now counts as an artifact in its own right.
+        */
+        test('given only the cls sidecars changed, still names what is being overwritten', () => {
+
+            const changeReport = PicklistDependencyTestService.buildSpecsChangeReport({
+                plannedFiles: [{
+                    filePath: path.join(fakeClassesDirectoryPath, 'SDTPLDSpecs.cls-meta.xml'),
+                    proposedContent: '<ApexClass/>',
+                    changeType: 'changed'
+                }],
+                staleClassFilePaths: [],
+                hasChanges: true
+            });
+
+            expect(changeReport).toContain('Overwritten: SDTPLDSpecs.cls-meta.xml');
+            expect(changeReport).not.toContain('No changes');
+
+        });
+
+        test('a .cls-meta.xml sidecar is still kept out of the change report', () => {
+
+            expect(PicklistDependencyTestService.isApexClassSidecarFilePath('SDTPLDSpecs.cls-meta.xml')).toBe(true);
+            expect(PicklistDependencyTestService.isApexClassSidecarFilePath('SDTPicklistDependencyTests.testSuite-meta.xml')).toBe(false);
+
+        });
+
+        test('writing the suite creates its directory and writes the content it was given', () => {
+
+            let madeDirectoryPaths: string[] = [];
+            let writtenContentByFilePath: Record<string, string> = {};
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+            jest.spyOn(fs, 'mkdirSync').mockImplementation((directoryPath: any) => {
+                madeDirectoryPaths.push(directoryPath);
+                return undefined;
+            });
+            jest.spyOn(fs, 'writeFileSync').mockImplementation((filePath: any, fileContent: any) => {
+                writtenContentByFilePath[filePath] = fileContent;
+            });
+
+            const writtenTestSuiteFilePath = PicklistDependencyTestService.writeSpecsTestSuiteFile(
+                fakeClassesDirectoryPath, '<ApexTestSuite/>'
+            );
+
+            expect(writtenTestSuiteFilePath).toBe(expectedTestSuiteFilePath);
+            expect(madeDirectoryPaths).toContain(path.join('/workspace', 'force-app', 'main', 'default', 'testSuites'));
+            expect(writtenContentByFilePath[expectedTestSuiteFilePath]).toBe('<ApexTestSuite/>');
+
+        });
+
+        test('a suite already carrying the exact content is not rewritten', () => {
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue('<ApexTestSuite/>');
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+
+            const writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+
+            PicklistDependencyTestService.writeSpecsTestSuiteFile(fakeClassesDirectoryPath, '<ApexTestSuite/>');
+
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+
+        });
+
+    });
+
 });
