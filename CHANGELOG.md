@@ -6,19 +6,19 @@ Resolves [#92](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/9
 
 **Generate Picklist Dependency Tests** was the only picklist dependency command that reported nothing while it ran. The check, the metadata writeback and both Explorer paths each wrapped their work in a progress scope; generation walked the entire objects directory, read every field's XML, resolved global value sets, planned every file and wrote the Apex — all with a frozen UI. On a large org's metadata it looked hung. Its warnings, meanwhile, arrived as up to four separate notifications *partway through the walk*, before you knew whether generation had even succeeded.
 
-### A status bar you can watch, and stop
+### Progress you can watch, and stop
 
-The run now reports itself in the status bar and can be cancelled at any point.
+The run now reports itself in a progress notification and the walk can be cancelled.
 
-While walking, it reports a **growing** count of what it has found — `47 dependent picklist field(s) found in Account...`. Not a fraction: nothing at that point knows how many dependent picklists the tree holds, because establishing that is what the walk is doing. A denominator there would be a guess, and a guess that ran low would make the bar move backwards. Once collection finishes the total is real, and the write phase reports against it — `writing spec 12/47...`.
+It started as a status bar spinner, and that turned out to be unimplementable as specified: `ProgressLocation.Window` "supports neither cancellation nor discrete progress" — it renders no cancel button, so the token behind it never fires, and no percentage bar either. Status bar and cancellation are mutually exclusive in the VS Code API. Cancellation won, which also puts this command in line with the check and the writeback rather than apart from them.
+
+While walking, it reports a **growing** count of what it has found — `47 dependent picklist field(s) found so far, reading Account...`. Not a fraction: nothing at that point knows how many dependent picklists the tree holds, because establishing that is what the walk is doing. A denominator there would be a guess, and a guess that ran low would make the bar move backwards. Once collection finishes the total is real, and the write phase reports against it — `writing spec 12/47...`, advancing on unchanged files too, since on a re-run from unchanged metadata most classes are already correct and reporting only rewrites would leave the message stalled.
 
 The run is in three parts — read, **ask**, write — and the change-plan confirmation sits between two progress scopes rather than inside one. A progress bar left spinning behind a modal asking whether to proceed is the thing being asked about.
 
-Cancelling is honest about where it landed:
+**Cancellation is on the walk only, and that is deliberate.** The walk awaits the filesystem per directory, so its token genuinely flips and it stops between directories with nothing written; it is also the larger cost, and the one that grows with org size. The write phase is straight-line synchronous code — the host thread never yields, so a token could not flip part way through however often it were polled. A per-file check there would advertise responsiveness the runtime cannot deliver. Leaving the write uninterruptible is also what keeps the generated classes and the manifest a matched pair: a half-written set with no manifest describing it is a state nothing downstream can detect, because freshness is computed from the *objects* directory, which a write never touches. The honest design is not to create that state at all.
 
-- **During the walk** nothing has been written, so the run stops and says so. A cancelled walk is partial by construction and never falls through to "no dependent picklists were found" — that would report an empty project to someone who simply stopped the run
-- **During the write** it stops between files and **writes no manifest**. The Explorer renders the manifest *instead of* re-walking the source XML, so one describing a full run over a partial write would make the panel and the Apex two derivations again — the exact split the manifest exists to close. You are told how many files landed and that re-running finishes the job. Nothing already written is deleted: unwinding a cancellation by removing generated classes is a destructive act to take on someone's behalf
-- Stale-class cleanup is skipped on a cancelled write, since the set of objects a run produces is only known once it finishes
+Declining the change-plan confirmation still reports what was skipped. That is the one path where the skips matter most — the user is deciding whether the generation is worth taking.
 
 ### One report at the end, grouped by what actually happened
 
@@ -41,7 +41,8 @@ Where every candidate was skipped, the skips are folded into the *same* "no depe
 ### Notes
 
 - No new command, and no change to `IRecipeFakerService` or `IFakerRecipeProcessor`. Neither faker backend is touched — this lives entirely on the Apex generation path
-- The progress port handed to `PicklistDependencyTestService` is deliberately free of any `vscode` type, so the counts the walk reports and the point the write stops at are unit-tested rather than asserted against a `withProgress` double
+- The progress port handed to `PicklistDependencyTestService` is deliberately free of any `vscode` type, so what the walk reports and where it stops are unit-tested rather than asserted against a `withProgress` double
+- A framework class that could not be scaffolded keeps its own warning rather than riding in the summary. It means the generated Apex will not compile at all, which is a different kind of news from a run report, and an information toast VS Code truncates is the wrong place for a blocker
 
 ## [3.7.0] - Picklist Dependency Explorer UX: find it, understand it, jump to it
 

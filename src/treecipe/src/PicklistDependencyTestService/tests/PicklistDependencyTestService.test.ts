@@ -1,4 +1,4 @@
-import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail } from "../PicklistDependencyTestService";
+import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, PicklistDependencySkipReason } from "../PicklistDependencyTestService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { XmlFileProcessor } from "../../XMLProcessingService/XmlFileProcessor";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
@@ -234,6 +234,34 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        /*
+            Field-level specs come from buildSpecDetailsByObjectFieldDetails and are unaffected by
+            anything that goes wrong reading a recordTypes sibling. Counting these as skipped FIELDS
+            would send a reader looking for a field that was in fact specced -- the exact failure the
+            outcome type exists to prevent.
+        */
+        test('classifies every record type file failure as scope-only, never as a skipped field', () => {
+
+            const recordTypeFileReasons: PicklistDependencySkipReason[] = [
+                'recordTypeXmlUnparseable',
+                'recordTypeMissingDeveloperName',
+                'recordTypePicklistMarkupUnreadable',
+                'recordTypeInvalidDeveloperName'
+            ];
+
+            recordTypeFileReasons.forEach(recordTypeFileReason => {
+                expect(PicklistDependencyTestService.getSkipOutcomeByReason(recordTypeFileReason)).toBe('recordTypeScopeSkipped');
+            });
+
+            const summary = PicklistDependencyTestService.buildSkippedFieldSummary([
+                { objectApiName: 'A__c', warning: 'w', reason: 'recordTypeXmlUnparseable' }
+            ]);
+
+            expect(summary).not.toContain('field(s) skipped');
+            expect(summary).toContain('record-type-scoped combination(s) skipped');
+
+        });
+
         test('given an unrecognised reason, degrades to unknown rather than inventing an explanation', () => {
 
             expect(PicklistDependencyTestService.isRecognisedSkipReason('somethingElse')).toBe(false);
@@ -272,7 +300,7 @@ describe('PicklistDependencyTestService', () => {
         */
         test('given a reason absent from the table, falls back to the unknown entry rather than returning undefined', () => {
 
-            expect(PicklistDependencyTestService.getSkipOutcomeByReason('notAReason' as any)).toBe('fieldSkipped');
+            expect(PicklistDependencyTestService.getSkipOutcomeByReason('notAReason' as any)).toBe('outcomeUnknown');
             expect(PicklistDependencyTestService.getSkipLabelByReason('notAReason' as any)).toBe('reason not recorded');
 
         });
@@ -283,7 +311,7 @@ describe('PicklistDependencyTestService', () => {
                 { objectApiName: 'A__c', fieldApiName: 'One__c', warning: 'w', reason: 'notAReason' as any }
             ]);
 
-            expect(summary).toBe('1 field(s) skipped (1 reason not recorded).');
+            expect(summary).toBe('1 warning(s) whose reason this version does not recognise, so what they cost is not known (1 reason not recorded).');
 
         });
 
@@ -2747,10 +2775,9 @@ describe('PicklistDependencyTestService', () => {
             const unchangedPlan = PicklistDependencyTestService.buildSpecsChangePlan(
                 temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
             );
-            const plannedWriteResult = PicklistDependencyTestService.writePlannedSpecsFiles(unchangedPlan.plannedFiles);
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(unchangedPlan.plannedFiles);
 
-            expect(plannedWriteResult.writtenFilePaths).toEqual([]);
-            expect(plannedWriteResult.cancelled).toBe(false);
+            expect(writtenFilePaths).toEqual([]);
             expect(fs.statSync(perObjectClassFilePath).mtimeMs).toBe(modifiedTimeAfterFirstWrite);
 
         });
@@ -2771,65 +2798,67 @@ describe('PicklistDependencyTestService', () => {
 
             let reportedMessages: string[] = [];
 
-            const plannedWriteResult = PicklistDependencyTestService.writePlannedSpecsFiles(
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(
                 changePlan.plannedFiles,
                 { report: (message: string) => reportedMessages.push(message), isCancellationRequested: () => false }
             );
 
-            expect(plannedWriteResult.cancelled).toBe(false);
-            expect(plannedWriteResult.writtenFilePaths.length).toBeGreaterThan(0);
+            expect(writtenFilePaths.length).toBeGreaterThan(0);
             expect(reportedMessages).toEqual([]);
 
         });
 
-        test('given cancellation before the first file, writes nothing and reports the cancellation', () => {
+        /*
+            The write takes no cancellation token on purpose: every call in its loop is synchronous,
+            so the host thread never yields and a token could not flip part way however often it were
+            polled. Polling anyway would advertise responsiveness the runtime cannot deliver -- and
+            leaving the write uninterruptible is what keeps the classes and the manifest a matched
+            pair, since a half-written set with no manifest is a state nothing downstream can detect.
+        */
+        test('writes every planned file even when the caller reports cancellation, rather than half writing a set', () => {
 
             const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
                 temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
             );
 
-            const plannedWriteResult = PicklistDependencyTestService.writePlannedSpecsFiles(
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(
                 changePlan.plannedFiles,
                 { report: () => undefined, isCancellationRequested: () => true }
             );
 
-            expect(plannedWriteResult.cancelled).toBe(true);
-            expect(plannedWriteResult.writtenFilePaths).toEqual([]);
-            expect(fs.readdirSync(temporaryClassesDirectoryPath)).toEqual([]);
+            expect(writtenFilePaths).toHaveLength(changePlan.plannedFiles.length);
+            writtenFilePaths.forEach(writtenFilePath => {
+                expect(fs.existsSync(writtenFilePath)).toBe(true);
+            });
 
         });
 
-        test('given cancellation part way, keeps what it wrote and stops rather than unwinding it', () => {
+        /*
+            The common case on a re-run: emission is deterministic, so most classes are already
+            correct. Reporting only what was rewritten would leave the message stalled at its first
+            value for the whole write.
+        */
+        test('given an unchanged re-run, still advances the reported fraction', () => {
 
-            const changePlan = PicklistDependencyTestService.buildSpecsChangePlan(
+            PicklistDependencyTestService.writeSpecsClassFiles(
                 temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
             );
 
-            // CHECKED ONCE PER FILE, SO THE THIRD CHECK IS THE CANCEL THAT LANDS AFTER TWO WRITES
-            let cancellationCheckCount = 0;
-
-            const plannedWriteResult = PicklistDependencyTestService.writePlannedSpecsFiles(
-                changePlan.plannedFiles,
-                {
-                    report: () => undefined,
-                    isCancellationRequested: () => {
-                        cancellationCheckCount += 1;
-                        return cancellationCheckCount > 2;
-                    }
-                }
+            const unchangedPlan = PicklistDependencyTestService.buildSpecsChangePlan(
+                temporaryClassesDirectoryPath, [accountSpecDetail, dependencyExampleSpecDetail], '64.0'
             );
 
-            expect(plannedWriteResult.cancelled).toBe(true);
-            expect(plannedWriteResult.writtenFilePaths).toHaveLength(2);
+            let reportedMessages: string[] = [];
 
-            /*
-                Deleting a user's generated classes to unwind a cancellation would be a destructive
-                act taken on their behalf. What was written stays written.
-            */
-            plannedWriteResult.writtenFilePaths.forEach(writtenFilePath => {
-                expect(fs.existsSync(writtenFilePath)).toBe(true);
-            });
-            expect(plannedWriteResult.writtenFilePaths.length).toBeLessThan(changePlan.plannedFiles.length);
+            const writtenFilePaths = PicklistDependencyTestService.writePlannedSpecsFiles(
+                unchangedPlan.plannedFiles,
+                { report: (message: string) => reportedMessages.push(message), isCancellationRequested: () => false },
+                { 'Account': 1, 'Dependency_Example__c': 1 },
+                2
+            );
+
+            expect(writtenFilePaths).toEqual([]);
+            expect(reportedMessages).toEqual(['writing spec 1/2...', 'writing spec 2/2...']);
 
         });
 
@@ -2864,7 +2893,11 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
-        test('given a cancelled write, leaves stale classes alone rather than deleting against a partial run', () => {
+        /*
+            The write runs to completion, so stale cleanup runs against a COMPLETE set of objects --
+            which is the only state it can safely delete against.
+        */
+        test('given a progress port, still removes the stale class of an object no longer specced', () => {
 
             PicklistDependencyTestService.writeSpecsClassFiles(
                 temporaryClassesDirectoryPath, [accountSpecDetail], '64.0'
@@ -2879,12 +2912,11 @@ describe('PicklistDependencyTestService', () => {
                 '64.0',
                 [],
                 undefined,
-                { report: () => undefined, isCancellationRequested: () => true }
+                { report: () => undefined, isCancellationRequested: () => false }
             );
 
-            expect(writeResult.cancelled).toBe(true);
-            expect(writeResult.removedStaleClassFilePaths).toEqual([]);
-            expect(fs.existsSync(staleClassFilePath)).toBe(true);
+            expect(writeResult.removedStaleClassFilePaths).toContain(staleClassFilePath);
+            expect(fs.existsSync(staleClassFilePath)).toBe(false);
 
         });
 

@@ -127,13 +127,19 @@ export type PicklistDependencySkipReason = 'invalidApiName'
 /*
     What actually happened to the metadata, which is NOT the same question as why.
 
-    Two of these reasons do not skip a field at all: an undeclared global value set value is DROPPED
-    from a spec that is still generated, and a record type assigning no values costs only the scoped
-    spec while the field-level one stands. Reporting either as "skipped" sends a reader looking for
-    a field that was in fact specced -- the aggregate warning this replaces already took care to say
-    so in prose, and this is that distinction made structural.
+    Most of these reasons do not skip a field at all. Field-level specs are built by
+    buildSpecDetailsByObjectFieldDetails and are unaffected by anything that goes wrong reading a
+    recordTypes sibling, so EVERY record type reason costs only the scoped spec while the
+    field-level one stands; an undeclared global value set value is likewise DROPPED from a spec
+    that is still generated. Reporting any of them as "skipped" sends a reader looking for a field
+    that was in fact specced -- the aggregate warning this replaces already took care to say so in
+    prose, and this is that distinction made structural.
+
+    outcomeUnknown is what a reason this version does not define gets. Its outcome is genuinely not
+    known -- such a row could have been any of the other three -- and picking the most common one
+    would be inventing a claim about a run rather than reporting it.
 */
-export type PicklistDependencySkipOutcome = 'fieldSkipped' | 'valuesDropped' | 'recordTypeScopeSkipped';
+export type PicklistDependencySkipOutcome = 'fieldSkipped' | 'valuesDropped' | 'recordTypeScopeSkipped' | 'outcomeUnknown';
 
 export interface IPicklistDependencySkippedField {
     objectApiName: string;
@@ -200,13 +206,6 @@ export interface ISpecsClassWriteResult {
     aggregatorClassFilePath: string;
     perObjectClassFilePathsByObjectApiName: Record<string, string>;
     removedStaleClassFilePaths: string[];
-    /*
-        Set when the write stopped part way. The classes already on disk are a PARTIAL generation --
-        the aggregator may name a per-object class that was never written -- so a cancelled write
-        must not go on to publish a manifest describing the full run.
-    */
-    cancelled?: boolean;
-    writtenFilePaths?: string[];
 }
 
 export type PlannedSpecsFileChangeType = 'added' | 'changed' | 'unchanged';
@@ -317,12 +316,12 @@ export class PicklistDependencyTestService {
         noValueSettings: { outcome: 'fieldSkipped', label: 'no "valueSettings" markup' },
         globalValueSetNotFound: { outcome: 'fieldSkipped', label: 'global value set not found' },
         valueNotDeclaredInGlobalValueSet: { outcome: 'valuesDropped', label: 'values the global value set does not declare' },
-        recordTypeXmlUnparseable: { outcome: 'fieldSkipped', label: 'record type XML could not be parsed' },
-        recordTypeMissingDeveloperName: { outcome: 'fieldSkipped', label: 'record type has no developer name' },
-        recordTypePicklistMarkupUnreadable: { outcome: 'fieldSkipped', label: 'record type picklist markup could not be read' },
-        recordTypeInvalidDeveloperName: { outcome: 'fieldSkipped', label: 'record type developer name is not a valid api name' },
+        recordTypeXmlUnparseable: { outcome: 'recordTypeScopeSkipped', label: 'record type XML could not be parsed' },
+        recordTypeMissingDeveloperName: { outcome: 'recordTypeScopeSkipped', label: 'record type has no developer name' },
+        recordTypePicklistMarkupUnreadable: { outcome: 'recordTypeScopeSkipped', label: 'record type picklist markup could not be read' },
+        recordTypeInvalidDeveloperName: { outcome: 'recordTypeScopeSkipped', label: 'record type developer name is not a valid api name' },
         recordTypeAssignsNoValues: { outcome: 'recordTypeScopeSkipped', label: 'record type assigns no values to the field' },
-        unknown: { outcome: 'fieldSkipped', label: 'reason not recorded' }
+        unknown: { outcome: 'outcomeUnknown', label: 'reason not recorded' }
     };
 
     static getSkipOutcomeByReason(reason: PicklistDependencySkipReason): PicklistDependencySkipOutcome {
@@ -357,11 +356,13 @@ export class PicklistDependencyTestService {
         const summarySentenceByOutcome: Record<PicklistDependencySkipOutcome, (count: number, reasonBreakdown: string) => string> = {
             fieldSkipped: (count, reasonBreakdown) => `${count} field(s) skipped (${reasonBreakdown}).`,
             valuesDropped: (count, reasonBreakdown) => `${count} field(s) had values dropped from a spec that was still generated (${reasonBreakdown}).`,
-            recordTypeScopeSkipped: (count, reasonBreakdown) => `${count} record-type-scoped combination(s) skipped, with the field-level spec still generated (${reasonBreakdown}).`
+            recordTypeScopeSkipped: (count, reasonBreakdown) => `${count} record-type-scoped combination(s) skipped, with the field-level spec still generated (${reasonBreakdown}).`,
+            // SAYS IT HAS NO EXPLANATION RATHER THAN OFFERING A PLAUSIBLE ONE
+            outcomeUnknown: (count, reasonBreakdown) => `${count} warning(s) whose reason this version does not recognise, so what they cost is not known (${reasonBreakdown}).`
         };
 
         // INSERTION ORDER IS THE REPORTING ORDER, SO THE SENTENCES READ THE SAME WAY ON EVERY RUN
-        const outcomeReportingOrder: PicklistDependencySkipOutcome[] = ['fieldSkipped', 'valuesDropped', 'recordTypeScopeSkipped'];
+        const outcomeReportingOrder: PicklistDependencySkipOutcome[] = ['fieldSkipped', 'valuesDropped', 'recordTypeScopeSkipped', 'outcomeUnknown'];
 
         let countByReasonByOutcome: Record<string, Record<string, number>> = {};
 
@@ -386,7 +387,7 @@ export class PicklistDependencyTestService {
 
             const reasonBreakdown = Object.keys(countByReason)
                 .sort((firstReason, secondReason) => countByReason[secondReason] - countByReason[firstReason]
-                                                        || firstReason.localeCompare(secondReason))
+                                                        || this.compareForEmission(firstReason, secondReason))
                 .map(reason => `${countByReason[reason]} ${this.getSkipLabelByReason(reason as PicklistDependencySkipReason)}`)
                 .join(', ');
 
@@ -491,7 +492,7 @@ export class PicklistDependencyTestService {
                 backwards the moment the guess was low.
             */
             discoveredFieldCountByReference.count += objectResult.specDetails.length;
-            generationProgress?.report(`${discoveredFieldCountByReference.count} dependent picklist field(s) found in ${objectApiName}...`);
+            generationProgress?.report(`${discoveredFieldCountByReference.count} dependent picklist field(s) found so far, reading ${objectApiName}...`);
 
             /*
                 Record types are a SIBLING of the fields directory, so they are read here rather than
@@ -2927,49 +2928,56 @@ ${testMethods}
         reports -- an empty result means the run was a genuine no-op rather than that it failed.
     */
     /*
-        Cancellation is checked BEFORE each write rather than after, so the file a cancel lands on is
-        never half considered: either it was written or it was not.
+        Reports progress but takes no cancellation token, and that is deliberate.
 
-        Nothing already written is removed. Deleting a user's generated classes to unwind a
-        cancellation would be a destructive act taken on their behalf, and the classes are meant to
-        be committed and diffed -- the honest recovery is to say what was written and let them re-run.
+        Every call in this loop is synchronous, so the extension host thread never yields and a
+        cancellation token could not flip part way through however often it were polled: the only
+        cancel such a check can observe is one requested before the loop began. A per-file check
+        would read as responsiveness the runtime cannot deliver.
+
+        Leaving the write uninterruptible is also what keeps the generated classes and the manifest
+        a matched pair. A half-written set with no manifest describing it is a state nothing
+        downstream can detect -- freshness is computed from the OBJECTS directory, which a write
+        does not touch -- so the honest design is not to create it. Cancellation lives on the walk,
+        which awaits the filesystem per directory and is the larger cost anyway.
     */
     static writePlannedSpecsFiles(plannedFiles: IPlannedSpecsFile[],
                                     generationProgress?: IPicklistDependencyGenerationProgress,
                                     specCountByObjectApiName: Record<string, number> = {},
-                                    totalSpecCount: number = 0): { writtenFilePaths: string[], cancelled: boolean } {
+                                    totalSpecCount: number = 0): string[] {
 
         let writtenFilePaths: string[] = [];
         let writtenSpecCount = 0;
 
         for ( const plannedFile of plannedFiles ) {
 
-            if ( generationProgress?.isCancellationRequested() ) {
-                return { writtenFilePaths, cancelled: true };
+            if ( plannedFile.changeType !== 'unchanged' ) {
+                fs.writeFileSync(plannedFile.filePath, plannedFile.proposedContent);
+                writtenFilePaths.push(plannedFile.filePath);
             }
 
-            if ( plannedFile.changeType === 'unchanged' ) {
-                /*
-                    An unchanged file still carries its object's specs, so it counts towards the
-                    reported total. Skipping it would make the progress message stall on a re-run
-                    where most classes are already correct -- the common case.
-                */
-                writtenSpecCount += this.getPlannedFileSpecCount(plannedFile, specCountByObjectApiName);
+            /*
+                Counted for written and unchanged alike, and reported outside the write branch: on a
+                re-run where most classes are already correct -- the common case -- reporting only
+                what was rewritten would leave the message stalled at its first value.
+
+                Only a file that actually carries specs moves the count, so the -meta.xml beside each
+                class does not re-report the fraction its .cls just reported.
+            */
+            const plannedFileSpecCount = this.getPlannedFileSpecCount(plannedFile, specCountByObjectApiName);
+            if ( plannedFileSpecCount === 0 ) {
                 continue;
             }
 
-            fs.writeFileSync(plannedFile.filePath, plannedFile.proposedContent);
-            writtenFilePaths.push(plannedFile.filePath);
-
-            writtenSpecCount += this.getPlannedFileSpecCount(plannedFile, specCountByObjectApiName);
+            writtenSpecCount += plannedFileSpecCount;
 
             if ( totalSpecCount > 0 ) {
-                generationProgress?.report(`writing spec ${Math.min(writtenSpecCount, totalSpecCount)}/${totalSpecCount}...`);
+                generationProgress?.report(`writing spec ${writtenSpecCount}/${totalSpecCount}...`);
             }
 
         }
 
-        return { writtenFilePaths, cancelled: false };
+        return writtenFilePaths;
 
     }
 
@@ -3029,7 +3037,7 @@ ${testMethods}
             specCountByObjectApiName[objectApiNameForProgress] = specDetailsByObjectApiNameForProgress[objectApiNameForProgress].length;
         });
 
-        const plannedWriteResult = this.writePlannedSpecsFiles(
+        this.writePlannedSpecsFiles(
             specsClassPlannedFiles, generationProgress, specCountByObjectApiName, specDetails.length
         );
 
@@ -3043,24 +3051,15 @@ ${testMethods}
             );
         });
 
-        /*
-            Stale class removal is skipped on a cancelled write. The set of objects this run produces
-            is only known once the run finishes, so deleting against a partial write could remove a
-            class that a completed run would have kept.
-        */
-        const removedStaleClassFilePaths = plannedWriteResult.cancelled
-            ? []
-            : this.removeStalePerObjectSpecsClassFiles(
-                classesDirectoryPath,
-                objectApiNames.map(objectApiName => classNamesByObjectApiName[objectApiName])
-            );
+        const removedStaleClassFilePaths = this.removeStalePerObjectSpecsClassFiles(
+            classesDirectoryPath,
+            objectApiNames.map(objectApiName => classNamesByObjectApiName[objectApiName])
+        );
 
         return {
             aggregatorClassFilePath: this.getSpecsClassFilePath(classesDirectoryPath),
             perObjectClassFilePathsByObjectApiName,
-            removedStaleClassFilePaths,
-            cancelled: plannedWriteResult.cancelled,
-            writtenFilePaths: plannedWriteResult.writtenFilePaths
+            removedStaleClassFilePaths
         };
 
     }

@@ -725,7 +725,12 @@ describe('ExtensionCommandService', () => {
 
         });
 
-        test('given framework classes that could not be supplied, says so in the one end of run message rather than its own toast', async () => {
+        /*
+            A missing framework class means the generated Apex will not compile at all. That is not
+            part of the run report, and appending it to a success message as an information toast
+            VS Code truncates would bury a blocker under two sentences of good news.
+        */
+        test('given framework classes that could not be supplied, keeps its own warning rather than burying it in the summary', async () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
@@ -733,13 +738,11 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
-
-            expect(informationMessage).toContain('will not compile');
-            expect(informationMessage).toContain('SDTPicklistDependencySpec');
-
             const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => String(call[0]));
-            expect(warningMessages.find(warningMessage => warningMessage.includes('will not compile'))).toBeUndefined();
+            const unavailableWarning = warningMessages.find(warningMessage => warningMessage.includes('will not compile'));
+
+            expect(unavailableWarning).toBeDefined();
+            expect(unavailableWarning).toContain('SDTPicklistDependencySpec');
 
         });
 
@@ -869,11 +872,11 @@ describe('ExtensionCommandService', () => {
         });
 
         /*
-            Window, not Notification. The other picklist commands each end in a report the user is
-            waiting on; generation ends in a CONFIRMATION, and a notification-location progress bar
-            sitting behind that prompt is the thing being asked about.
+            Notification, NOT the status bar. ProgressLocation.Window "supports neither cancellation
+            nor discrete progress" per vscode.d.ts -- it renders no cancel button, so cancelling the
+            walk would be unreachable behind it however well the token were plumbed.
         */
-        test('runs behind a cancellable status bar progress rather than a notification', async () => {
+        test('runs behind a cancellable notification progress, the only location that can offer cancel', async () => {
 
             stubCollectionResult([specDetail]);
 
@@ -884,7 +887,7 @@ describe('ExtensionCommandService', () => {
 
             expect(generationProgressCalls.length).toBeGreaterThan(0);
             generationProgressCalls.forEach(progressCall => {
-                expect(progressCall[0].location).toBe(vscode.ProgressLocation.Window);
+                expect(progressCall[0].location).toBe(vscode.ProgressLocation.Notification);
                 expect(progressCall[0].cancellable).toBe(true);
             });
 
@@ -950,30 +953,52 @@ describe('ExtensionCommandService', () => {
         });
 
         /*
-            The manifest is what the Explorer renders INSTEAD of re-walking the source XML. One
-            describing a full run over a partial write would make the panel and the Apex two
-            derivations again -- the exact split the manifest exists to close.
+            The write is not cancellable, so there is no partial-write state to reconcile: the
+            manifest is always written from the same run that emitted the classes beside it. This is
+            the invariant that replaced a per-file cancel check the runtime could never have honoured.
         */
-        test('given the write cancelled, writes no manifest and names how many files landed', async () => {
+        test('writes the manifest from the same run that wrote the classes, with no cancellable window between them', async () => {
 
             stubCollectionResult([specDetail]);
-            writeSpecsClassFilesSpy.mockReturnValue({
-                aggregatorClassFilePath: specsClassFilePath,
-                perObjectClassFilePathsByObjectApiName: {},
-                removedStaleClassFilePaths: [],
-                cancelled: true,
-                writtenFilePaths: [perObjectSpecsClassFilePath, `${perObjectSpecsClassFilePath}-meta.xml`]
-            });
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            expect(writeManifestSpy).not.toHaveBeenCalled();
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+            expect(writeManifestSpy).toHaveBeenCalled();
+
+            // THE WRITE PHASE TAKES THE PORT FOR PROGRESS ONLY -- NOTHING BETWEEN THE TWO CAN STOP IT
+            const writeSpecsCallOrder = writeSpecsClassFilesSpy.mock.invocationCallOrder[0];
+            const writeManifestCallOrder = writeManifestSpy.mock.invocationCallOrder[0];
+            expect(writeManifestCallOrder).toBeGreaterThan(writeSpecsCallOrder);
+
+        });
+
+        /*
+            The one path where the skips are most worth having: the user is deciding whether this
+            generation is worth taking. Before the roll-up these fired ahead of the prompt and so
+            were seen -- reporting them here is what keeps that.
+        */
+        test('given the change plan declined, still reports what was skipped', async () => {
+
+            const skippedFields: IPicklistDependencySkippedField[] = [{
+                objectApiName: 'Dependency_Example__c',
+                fieldApiName: 'NoSettings__c',
+                warning: 'no valueSettings markup',
+                reason: 'noValueSettings'
+            }];
+
+            stubCollectionResult([specDetail], ['no valueSettings markup'], [], skippedFields);
+            jest.spyOn(PicklistDependencyTestService, 'planReplacesExistingContent').mockReturnValue(true);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
 
             const warningMessages = (vscode.window.showWarningMessage as jest.Mock).mock.calls.map(warningCall => String(warningCall[0]));
-            const cancellationWarning = warningMessages.find(warningMessage => warningMessage.includes('cancelled after writing'));
+            const declinedSummary = warningMessages.find(warningMessage => warningMessage.includes('were not regenerated'));
 
-            expect(cancellationWarning).toContain('2 file(s)');
-            expect(cancellationWarning).toContain('No spec manifest was written');
+            expect(declinedSummary).toContain('1 field(s) skipped');
 
         });
 

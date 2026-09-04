@@ -229,23 +229,23 @@ export class ExtensionCommandService {
     }
 
     /*
-        Runs one generation phase behind a status bar spinner that can be cancelled.
+        Runs one generation phase behind a cancellable progress notification.
 
-        Window rather than Notification: the other picklist commands each end in a report the user is
-        waiting on, whereas generation ends in a CONFIRMATION -- and a notification-location progress
-        bar sitting behind that prompt is the thing being asked about. The status bar keeps the run
-        visible without competing with the question.
+        Notification rather than the status bar, which is where this started. ProgressLocation.Window
+        "supports neither cancellation nor discrete progress" (vscode.d.ts): it renders no cancel
+        button, so the token it hands you never fires. Cancelling the walk is the more useful of the
+        two, so the location that can actually offer it wins, and it puts this command in line with
+        the check and the writeback rather than apart from them.
 
-        The port handed to the service is deliberately narrow. VS Code's own progress object accepts
-        an increment that Window location ignores, and passing it through would invite reporting a
-        percentage that never renders.
+        The port handed to the service is deliberately narrow -- two plain functions, no vscode type
+        -- so what the walk reports and where it stops are testable without a withProgress double.
     */
     private async runWithPicklistDependencyGenerationProgress<TPhaseResult>(
                         initialMessage: string,
                         runPhase: (generationProgress: IPicklistDependencyGenerationProgress) => Promise<TPhaseResult>): Promise<TPhaseResult> {
 
         return await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Window,
+            location: vscode.ProgressLocation.Notification,
             title: 'Generate Picklist Dependency Tests',
             cancellable: true
         }, async (progress, cancellationToken) => {
@@ -363,8 +363,12 @@ export class ExtensionCommandService {
                     objectsTargetUri, new Set(), generationProgress
                 );
 
+                /*
+                    Returned as one shape or the other rather than as optional fields, so the caller
+                    cannot reach for a plan that a cancelled or empty run never built.
+                */
                 if ( collectionResult.cancelled || collectionResult.specDetails.length === 0 ) {
-                    return { collectionResult, specsChangePlan: undefined, specsTestClassBody: undefined };
+                    return { collectionResult, plannedGeneration: undefined };
                 }
 
                 generationProgress.report(`Resolving what would change for ${collectionResult.specDetails.length} spec(s)...`);
@@ -385,7 +389,7 @@ export class ExtensionCommandService {
                     specsTestClassBody
                 );
 
-                return { collectionResult, specsChangePlan, specsTestClassBody };
+                return { collectionResult, plannedGeneration: { specsChangePlan, specsTestClassBody } };
 
             }
         );
@@ -417,13 +421,36 @@ export class ExtensionCommandService {
 
         }
 
-        const specsChangePlan = collectionPhaseResult.specsChangePlan!;
-        const specsTestClassBody = collectionPhaseResult.specsTestClassBody!;
+        const plannedGeneration = collectionPhaseResult.plannedGeneration;
+
+        /*
+            Unreachable: the phase returns a plan for exactly the runs this point is reached on. It is
+            checked rather than asserted away so a later early-return inside that phase becomes a
+            reported stop rather than "undefined" spliced into the summary.
+        */
+        if ( !plannedGeneration ) {
+            vscode.window.showWarningMessage('Picklist dependency spec generation could not resolve what would change. Nothing was written.');
+            return undefined;
+        }
+
+        const { specsChangePlan, specsTestClassBody } = plannedGeneration;
 
         const confirmedRegeneration = await this.confirmPicklistDependencySpecsChangePlan(specsChangePlan, classesDirectoryPath);
 
         if ( !confirmedRegeneration ) {
+
+            /*
+                Declining the overwrite is the one path where the skips are most worth having: the
+                user is deciding whether this generation is worth taking, and before the warnings
+                were rolled up they fired ahead of this prompt and so were seen. Reporting them here
+                keeps that.
+            */
+            await this.showPicklistDependencyGenerationSummary(
+                'Picklist dependency specs were not regenerated, so no files were changed.',
+                collectionResult.skippedFields
+            );
             return undefined;
+
         }
 
         const writePhaseResult = await this.runWithPicklistDependencyGenerationProgress(
@@ -443,17 +470,6 @@ export class ExtensionCommandService {
                     specsChangePlan,
                     generationProgress
                 );
-
-                /*
-                    Everything downstream of the classes is skipped on a cancelled write. The manifest
-                    is the load-bearing one: it is what the Explorer renders INSTEAD of re-walking the
-                    source XML, so publishing one that describes a full run over a partial write would
-                    make the panel and the Apex two derivations again -- the exact split the manifest
-                    exists to close.
-                */
-                if ( specsClassWriteResult.cancelled ) {
-                    return { specsClassWriteResult, manifestFilePath: undefined, frameworkScaffoldResult: undefined };
-                }
 
                 PicklistDependencyTestService.writeSpecsTestClassFiles(
                     classesDirectoryPath,
@@ -495,24 +511,7 @@ export class ExtensionCommandService {
             }
         );
 
-        const specsClassWriteResult = writePhaseResult.specsClassWriteResult;
-
-        if ( specsClassWriteResult.cancelled ) {
-
-            const writtenFileCount = specsClassWriteResult.writtenFilePaths?.length ?? 0;
-
-            /*
-                Named rather than tidied away. The classes on disk are a partial generation -- the
-                aggregator may reference a per-object class that was never written -- so the user is
-                told what is there and that re-running is what makes it whole again.
-            */
-            vscode.window.showWarningMessage(`Picklist dependency spec generation cancelled after writing ${writtenFileCount} file(s) to "${classesDirectoryPath}". No spec manifest was written, so these classes are an incomplete generation. Run "Salesforce Treecipe: Generate Picklist Dependency Tests" again to finish it.`);
-            return undefined;
-
-        }
-
-        const manifestFilePath = writePhaseResult.manifestFilePath!;
-        const frameworkScaffoldResult = writePhaseResult.frameworkScaffoldResult!;
+        const { specsClassWriteResult, manifestFilePath, frameworkScaffoldResult } = writePhaseResult;
 
         const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
 
@@ -522,12 +521,13 @@ export class ExtensionCommandService {
             generationSummary += ` Also generated ${collectionResult.recordTypeSpecDetails.length} record-type-scoped spec(s), aggregated by ${specsClassName}.allRecordTypeScoped(). These are not asserted by ${specsTestClassName}.cls: Schema describe returns picklist values without record type filtering, so they need a record-type-aware ISDTPicklistDependencySource.`;
         }
         /*
-            The generated specs class does not compile without the framework, so a class that could
-            not be supplied is surfaced rather than leaving the user with a file that silently fails
-            to deploy. It rides in the one summary rather than firing its own toast.
+            The one thing here that is NOT part of the run report: a missing framework class means the
+            generated Apex will not compile at all. Appending that to a success message, as an
+            information toast VS Code truncates, would drop a blocker to the bottom of two sentences
+            of good news -- so it keeps its own warning, which is what it had before the roll-up.
         */
         if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
-            generationSummary += ` WARNING: the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`;
+            VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
         }
         if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
             generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
