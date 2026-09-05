@@ -2,6 +2,7 @@ import { ConfigurationService } from "../../ConfigurationService/ConfigurationSe
 import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
+import { SfdxProjectService } from "../../SfdxProjectService/SfdxProjectService";
 
 import * as fs from 'fs';
 import * as vscode from 'vscode';
@@ -20,13 +21,17 @@ jest.mock('vscode', () => ({
     },
     window: {
         showErrorMessage: jest.fn(),
+        showWarningMessage: jest.fn(),
         showInformationMessage: jest.fn(),
         showQuickPick: jest.fn(),
         showInputBox: jest.fn(),
         createOutputChannel: jest.fn(),
         showTextDocument: jest.fn(),
+        createQuickPick: jest.fn(),
+        withProgress: jest.fn(),
         createStatusBarItem: jest.fn()
     },
+    ProgressLocation: { Notification: 15, Window: 10 },
     StatusBarAlignment: { Left: 1, Right: 2 },
     env: {
         clipboard: {
@@ -334,32 +339,614 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     describe('promptForObjectsPath', () => {
 
-        test('if no selection made, should return undefined', async () => {
+        /*
+            The picker is opened BEFORE the scan and filled as it runs, so a double has to model
+            the ordering rather than a single showQuickPick call: onScanComplete fires the moment
+            the service clears busy, which is the only point at which a real user could have
+            accepted anything.
+        */
+        const buildFakeQuickPick = () => {
+
+            const acceptHandlers: Array<() => void> = [];
+            const hideHandlers: Array<() => void> = [];
+            let busyValue = false;
+
+            const fakeQuickPick: any = {
+                items: [],
+                selectedItems: [],
+                activeItems: [],
+                itemsAssignmentCount: 0,
+                placeholder: undefined,
+                ignoreFocusOut: false,
+                onScanComplete: undefined,
+                show: jest.fn(),
+                hide: jest.fn(() => hideHandlers.forEach(hideHandler => hideHandler())),
+                dispose: jest.fn(),
+                onDidAccept: jest.fn((handler: () => void) => acceptHandlers.push(handler)),
+                onDidHide: jest.fn((handler: () => void) => hideHandlers.push(handler)),
+                acceptItem: (item: any) => {
+                    fakeQuickPick.selectedItems = item ? [item] : [];
+                    acceptHandlers.forEach(acceptHandler => acceptHandler());
+                }
+            };
+
+            let itemsValue: any[] = [];
+            Object.defineProperty(fakeQuickPick, 'items', {
+                get: () => itemsValue,
+                set: (updatedItems: any[]) => {
+                    itemsValue = updatedItems;
+                    fakeQuickPick.itemsAssignmentCount++;
+                },
+                configurable: true
+            });
+
+            Object.defineProperty(fakeQuickPick, 'busy', {
+                get: () => busyValue,
+                set: (updatedBusyValue: boolean) => {
+                    busyValue = updatedBusyValue;
+                    if ( updatedBusyValue === false ) {
+                        fakeQuickPick.onScanComplete?.();
+                    }
+                },
+                configurable: true
+            });
+
+            (vscode.window.createQuickPick as jest.Mock).mockReturnValue(fakeQuickPick);
+
+            return fakeQuickPick;
+
+        };
+
+        const mockWithProgress = (isCancellationRequested: boolean = false) => {
+
+            const reportedMessages: string[] = [];
+
+            (vscode.window.withProgress as jest.Mock).mockImplementation(
+                async (_progressOptions: any, runTask: any) => await runTask(
+                    { report: ({ message }: { message: string }) => reportedMessages.push(message) },
+                    { isCancellationRequested }
+                )
+            );
+
+            return reportedMessages;
+
+        };
+
+        test('given no sfdx-project.json, scans the workspace root and returns undefined when the picker is dismissed', async () => {
 
             const fakeWorkspaceRoot = '/fake/workspace';
-            const mockedVSCodeQuickPickItems = MockVSCodeWorkspaceService.getMockVSCodeQuickPickItems();
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
 
-            jest.spyOn(VSCodeWorkspaceService as any, 'getPotentialTreecipeObjectDirectoryPathsQuickPickItems').mockResolvedValue(mockedVSCodeQuickPickItems);
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+            const collectSpy = jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
 
             const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(collectSpy).toHaveBeenCalledWith([fakeWorkspaceRoot], fakeWorkspaceRoot, expect.any(Function), expect.any(Object));
             expect(result).toBeUndefined();
 
         });
 
-        test('should return undefined when user makes no selection', async () => {       
+        test('opens the picker before the scan begins, marks it busy, and clears busy when the scan completes', async () => {
 
-            const mockedVSCodeQuickPickItems = MockVSCodeWorkspaceService.getMockVSCodeQuickPickItems();
-            jest.spyOn(VSCodeWorkspaceService, 'getPotentialTreecipeObjectDirectoryPathsQuickPickItems').mockResolvedValue(mockedVSCodeQuickPickItems);
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
 
-            const expectedPath = "/test/path";
-            const result = await VSCodeWorkspaceService.promptForObjectsPath(expectedPath);
-            
-            expect(VSCodeWorkspaceService.getPotentialTreecipeObjectDirectoryPathsQuickPickItems).toHaveBeenCalledWith(expectedPath);
-            expect(vscode.window.showQuickPick).toHaveBeenCalled();
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            let wasShownBeforeScan = false;
+            let wasBusyDuringScan = false;
+            (vscode.window.withProgress as jest.Mock).mockImplementation(async (_progressOptions: any, runTask: any) => {
+                wasShownBeforeScan = (fakeQuickPick.show as jest.Mock).mock.calls.length > 0;
+                wasBusyDuringScan = fakeQuickPick.busy;
+                return await runTask({ report: jest.fn() }, { isCancellationRequested: false });
+            });
+
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(wasShownBeforeScan).toBe(true);
+            expect(wasBusyDuringScan).toBe(true);
+            expect(fakeQuickPick.busy).toBe(false);
+            expect(fakeQuickPick.ignoreFocusOut).toBe(true);
+
+        });
+
+        test('makes every discovered directory available in the picker without waiting on the user', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered) => {
+                    onItemDiscovered?.({ label: './force-app/' });
+                    onItemDiscovered?.({ label: './force-app/main/' });
+                    return [];
+                }
+            );
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(fakeQuickPick.items.map((item: any) => item.label)).toEqual(['./force-app/', './force-app/main/']);
+
+        });
+
+        test('returns the accepted item label', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered) => {
+                    onItemDiscovered?.({ label: './force-app/main/default/objects/' });
+                    return [];
+                }
+            );
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.acceptItem(fakeQuickPick.items[0]);
+
+            const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(result).toBe('./force-app/main/default/objects/');
+            expect(fakeQuickPick.dispose).toHaveBeenCalled();
+
+        });
+
+        test('given a cancelled scan, hides the picker and returns undefined', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress(true);
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(result).toBeUndefined();
+            expect(fakeQuickPick.hide).toHaveBeenCalled();
+            expect(fakeQuickPick.dispose).toHaveBeenCalled();
+
+        });
+
+        test('given usable packageDirectories, seeds the scan from them and says so in the placeholder', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
+                packageDirectoryPaths: ['/fake/workspace/force-app', '/fake/workspace/utilities']
+            });
+            const collectSpy = jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(collectSpy).toHaveBeenCalledWith(
+                ['/fake/workspace/force-app', '/fake/workspace/utilities'],
+                fakeWorkspaceRoot,
+                expect.any(Function),
+                expect.any(Object)
+            );
+            expect(fakeQuickPick.placeholder).toContain('packageDirectories in sfdx-project.json');
+
+        });
+
+        test('given usable packageDirectories, offers a browse-all item that re-scans the whole workspace', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
+                packageDirectoryPaths: ['/fake/workspace/force-app']
+            });
+            const collectSpy = jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            let scanCompleteCount = 0;
+            let seededPickerItems: any[] = [];
+            fakeQuickPick.onScanComplete = () => {
+                scanCompleteCount++;
+                if ( scanCompleteCount === 1 ) {
+                    // CAPTURED HERE BECAUSE THE SECOND PICKER REPLACES items WITH ITS OWN
+                    seededPickerItems = [...fakeQuickPick.items];
+                    fakeQuickPick.acceptItem(fakeQuickPick.items[0]);
+                } else {
+                    fakeQuickPick.hide();
+                }
+            };
+
+            const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(seededPickerItems[0].label).toBe(VSCodeWorkspaceService.browseAllWorkspaceDirectoriesLabel);
+            expect(collectSpy).toHaveBeenNthCalledWith(1, ['/fake/workspace/force-app'], fakeWorkspaceRoot, expect.any(Function), expect.any(Object));
+            expect(collectSpy).toHaveBeenNthCalledWith(2, [fakeWorkspaceRoot], fakeWorkspaceRoot, expect.any(Function), expect.any(Object));
             expect(result).toBeUndefined();
 
         });
 
+        test('given no packageDirectories seeding, offers no browse-all item', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(fakeQuickPick.items).toEqual([]);
+            expect(fakeQuickPick.placeholder).toBe('Select directory that contains the Salesforce objects');
+
+        });
+
+        test('reports each discovered directory through the progress port', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            const reportedMessages = mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            const objectsDirent = Object.assign(new fs.Dirent(), { name: 'objects', isDirectory: () => true });
+            jest.spyOn(fs.promises, 'readdir')
+                .mockResolvedValueOnce([objectsDirent] as unknown as fs.Dirent[])
+                .mockResolvedValueOnce([] as unknown as fs.Dirent[]);
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(new vscode.ThemeIcon('folder'));
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(reportedMessages[0]).toBe('Scanning workspace directories...');
+            expect(reportedMessages).toContain('Found 1 directories - ./objects/');
+            expect(fakeQuickPick.items.map((item: any) => item.label)).toEqual(['./objects/']);
+
+        });
+
+        /*
+            The defect this replaced: the selection was awaited only AFTER the scan, so accepting an
+            item early closed the picker and then blocked on the rest of the walk. Every other
+            accept test here fires from onScanComplete, so none of them could ever have caught it.
+        */
+        test('given an accept part way through, returns without waiting for the scan to finish', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            let scanRanToCompletion = false;
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered) => {
+                    const earlyItem = { label: './force-app/main/default/objects/' };
+                    onItemDiscovered?.(earlyItem);
+                    fakeQuickPick.acceptItem(earlyItem);
+                    await new Promise(resolveAfterRemainingWalk => setTimeout(resolveAfterRemainingWalk, 60));
+                    scanRanToCompletion = true;
+                    return [];
+                }
+            );
+
+            const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(result).toBe('./force-app/main/default/objects/');
+            expect(scanRanToCompletion).toBe(false);
+
+        });
+
+        test('given an accept part way through, tells the walk to stop', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            let cancellationAfterAccept: boolean | undefined;
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered, directoryScanProgress) => {
+                    const earlyItem = { label: './objects/' };
+                    onItemDiscovered?.(earlyItem);
+                    fakeQuickPick.acceptItem(earlyItem);
+                    cancellationAfterAccept = directoryScanProgress?.isCancellationRequested();
+                    return [];
+                }
+            );
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(cancellationAfterAccept).toBe(true);
+
+        });
+
+        /*
+            A cancel arriving after the user already chose must not throw their choice away -- the
+            earlier shape returned undefined here and wrote no configuration file at all.
+        */
+        test('given a scan cancellation after an accept, still returns the accepted label', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress(true);
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered) => {
+                    const earlyItem = { label: './objects/' };
+                    onItemDiscovered?.(earlyItem);
+                    fakeQuickPick.acceptItem(earlyItem);
+                    return [];
+                }
+            );
+
+            const result = await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(result).toBe('./objects/');
+
+        });
+
+        test('batches item assignments rather than one round trip per discovered directory', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            const discoveredDirectoryCount = 1000;
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered) => {
+                    for ( let directoryIndex = 0; directoryIndex < discoveredDirectoryCount; directoryIndex++ ) {
+                        onItemDiscovered?.({ label: `./directory-${directoryIndex}/` });
+                    }
+                    return [];
+                }
+            );
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(fakeQuickPick.items).toHaveLength(discoveredDirectoryCount);
+            // ONE PER ITEM WOULD BE 1000+; THE BATCH BOUND IS discoveredDirectoryCount / 200 PLUS THE INITIAL AND FINAL FLUSHES
+            expect(fakeQuickPick.itemsAssignmentCount).toBeLessThanOrEqual(10);
+
+        });
+
+        test('restores the highlighted item across a batch flush so the selection does not snap away', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+
+            const highlightedItem = { label: './the-one-the-user-is-on/' };
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockImplementation(
+                async (_scanRootPaths, _workspaceRoot, onItemDiscovered) => {
+                    onItemDiscovered?.(highlightedItem);
+                    fakeQuickPick.activeItems = [highlightedItem];
+                    for ( let directoryIndex = 0; directoryIndex < 250; directoryIndex++ ) {
+                        onItemDiscovered?.({ label: `./later-${directoryIndex}/` });
+                    }
+                    return [];
+                }
+            );
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(fakeQuickPick.activeItems).toEqual([highlightedItem]);
+
+        });
+
+        test('given a scan that rejects, disposes the picker rather than leaving it busy on screen', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockRejectedValue(new Error('EACCES'));
+
+            await expect(VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot)).rejects.toThrow('EACCES');
+            expect(fakeQuickPick.dispose).toHaveBeenCalled();
+
+        });
+
+        test('runs the scan under a cancellable notification progress', async () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const fakeQuickPick = buildFakeQuickPick();
+            mockWithProgress();
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({ packageDirectoryPaths: [] });
+            jest.spyOn(VSCodeWorkspaceService, 'collectObjectDirectoryQuickPickItems').mockResolvedValue([]);
+
+            fakeQuickPick.onScanComplete = () => fakeQuickPick.hide();
+
+            await VSCodeWorkspaceService.promptForObjectsPath(fakeWorkspaceRoot);
+
+            expect(vscode.window.withProgress).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    location: vscode.ProgressLocation.Notification,
+                    cancellable: true
+                }),
+                expect.any(Function)
+            );
+
+        });
+
+    });
+
+    describe('resolveObjectsDirectoryScanRoots', () => {
+
+        test('given an unreadable sfdx-project.json, warns and falls back to the workspace root', () => {
+
+            const fakeWorkspaceRoot = '/fake/workspace';
+            const warnSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
+                packageDirectoryPaths: [],
+                unreadableProjectFileMessage: 'Could not parse "/fake/workspace/sfdx-project.json" as JSON: bad.'
+            });
+
+            const scanRoots = VSCodeWorkspaceService.resolveObjectsDirectoryScanRoots(fakeWorkspaceRoot);
+
+            expect(scanRoots).toEqual({ scanRootPaths: [fakeWorkspaceRoot], isSeededFromSfdxProject: false });
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not parse'));
+
+        });
+
+        test('given usable packageDirectories, seeds from every one of them', () => {
+
+            jest.spyOn(SfdxProjectService, 'resolvePackageDirectoryPaths').mockReturnValue({
+                packageDirectoryPaths: ['/fake/workspace/force-app', '/fake/workspace/utilities']
+            });
+
+            const scanRoots = VSCodeWorkspaceService.resolveObjectsDirectoryScanRoots('/fake/workspace');
+
+            expect(scanRoots).toEqual({
+                scanRootPaths: ['/fake/workspace/force-app', '/fake/workspace/utilities'],
+                isSeededFromSfdxProject: true
+            });
+
+        });
+
+    });
+
+    describe('getDirectoryQuickPickItemsByStartingDirectoryPath cancellation', () => {
+
+        test('given cancellation already requested, does not read the directory at all', async () => {
+
+            const readdirSpy = jest.spyOn(fs.promises, 'readdir');
+
+            const collectedItems = await VSCodeWorkspaceService.getDirectoryQuickPickItemsByStartingDirectoryPath(
+                '/mockWorkspace/force-app',
+                [],
+                undefined,
+                { report: jest.fn(), isCancellationRequested: () => true },
+                '/mockWorkspace'
+            );
+
+            expect(collectedItems).toEqual([]);
+            expect(readdirSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given cancellation requested part way through, stops before the remaining entries', async () => {
+
+            const firstDirent = Object.assign(new fs.Dirent(), { name: 'first', isDirectory: () => true });
+            const secondDirent = Object.assign(new fs.Dirent(), { name: 'second', isDirectory: () => true });
+
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue([firstDirent, secondDirent] as unknown as fs.Dirent[]);
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(new vscode.ThemeIcon('folder'));
+
+            // CANCELLED THE MOMENT THE FIRST ENTRY HAS BEEN REPORTED
+            let cancellationRequested = false;
+            const cancelAfterFirstReport = {
+                report: () => { cancellationRequested = true; },
+                isCancellationRequested: () => cancellationRequested
+            };
+
+            const collectedItems = await VSCodeWorkspaceService.getDirectoryQuickPickItemsByStartingDirectoryPath(
+                '/mockWorkspace/force-app',
+                [],
+                undefined,
+                cancelAfterFirstReport,
+                '/mockWorkspace'
+            );
+
+            expect(collectedItems.map(item => item.label)).toEqual(['./force-app/first/']);
+
+        });
+
+    });
+
+    describe('collectObjectDirectoryQuickPickItems', () => {
+
+        test('offers each non-root scan root itself alongside the directories beneath it', async () => {
+
+            const mockWorkspaceRoot = '/mockWorkspace';
+            const packageDirectoryPath = `${mockWorkspaceRoot}/force-app`;
+
+            const objectsDirent = Object.assign(new fs.Dirent(), { name: 'objects', isDirectory: () => true });
+
+            jest.spyOn(fs.promises, 'readdir')
+                .mockResolvedValueOnce([objectsDirent] as unknown as fs.Dirent[])
+                .mockResolvedValueOnce([] as unknown as fs.Dirent[]);
+            jest.spyOn(vscode, "ThemeIcon").mockReturnValue(new vscode.ThemeIcon('folder'));
+
+            const collectedItems = await VSCodeWorkspaceService.collectObjectDirectoryQuickPickItems(
+                [packageDirectoryPath],
+                mockWorkspaceRoot
+            );
+
+            expect(collectedItems.map(item => item.label)).toEqual(['./force-app/', './force-app/objects/']);
+
+        });
+
+        test('does not offer the workspace root itself as a selectable directory', async () => {
+
+            const mockWorkspaceRoot = '/mockWorkspace';
+
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue([] as unknown as fs.Dirent[]);
+
+            const collectedItems = await VSCodeWorkspaceService.collectObjectDirectoryQuickPickItems(
+                [mockWorkspaceRoot],
+                mockWorkspaceRoot
+            );
+
+            expect(collectedItems).toEqual([]);
+
+        });
+
+        test('stops before scanning a further root once cancellation is requested', async () => {
+
+            const mockWorkspaceRoot = '/mockWorkspace';
+            const readdirSpy = jest.spyOn(fs.promises, 'readdir').mockResolvedValue([] as unknown as fs.Dirent[]);
+
+            const cancelledScanProgress = {
+                report: jest.fn(),
+                isCancellationRequested: () => true
+            };
+
+            const collectedItems = await VSCodeWorkspaceService.collectObjectDirectoryQuickPickItems(
+                [`${mockWorkspaceRoot}/force-app`, `${mockWorkspaceRoot}/utilities`],
+                mockWorkspaceRoot,
+                undefined,
+                cancelledScanProgress
+            );
+
+            expect(collectedItems).toEqual([]);
+            expect(readdirSpy).not.toHaveBeenCalled();
+
+        });
+
+    });
+
+    describe('promptForFakerServiceImplementation', () => {
 
         test('should call vscode.window.showQuickPick with correct parameters', async () => {
 

@@ -4,7 +4,22 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
+
+/*
+    The narrow port the directory walk reports through. Two plain functions and no vscode type, so
+    the walk's reporting and its stopping point are testable without a withProgress double.
+*/
+export interface IDirectoryScanProgress {
+    report(message: string): void;
+    isCancellationRequested(): boolean;
+}
+
+export interface IObjectsDirectoryScanRoots {
+    scanRootPaths: string[];
+    isSeededFromSfdxProject: boolean;
+}
 
 export class VSCodeWorkspaceService {
 
@@ -22,29 +37,287 @@ export class VSCodeWorkspaceService {
         return workspaceRoot;
     }
 
+    /*
+        The label of the item that abandons the sfdx-project.json seeding and walks the whole
+        workspace. Compared by identity when the first picker closes, so it must not collide with
+        a directory label -- every one of those is built as "./<relative path>/".
+    */
+    static readonly browseAllWorkspaceDirectoriesLabel = 'Browse all workspace directories...';
+
+    // BOUNDS THE .items ROUND TRIPS DESCRIBED IN showObjectsDirectoryQuickPick
+    static readonly maxPendingQuickPickItems = 200;
+    static readonly quickPickFlushIntervalMilliseconds = 100;
+
+    /*
+        Opens the picker FIRST and fills it as the walk finds directories.
+
+        The old shape built the entire item list before calling showQuickPick, so a workspace-wide
+        recursive readdir ran with nothing on screen -- and the notification whose button started
+        this has already been dismissed by VS Code, which offers no way to keep it open or put a
+        spinner in it. A busy quick pick is the only surface that can appear before the work is
+        done; the progress notification alongside it is what carries the cancel affordance.
+    */
     static async promptForObjectsPath(workspaceRoot:string ): Promise<string | undefined> {
 
-        let currentPath = workspaceRoot;
-        while (true) {
-            
-            const items = await this.getPotentialTreecipeObjectDirectoryPathsQuickPickItems(currentPath);
-            
-            const selection = await vscode.window.showQuickPick(
-                items,
-                {
-                    placeHolder: 'Select directory that contains the Salesforce objects',
-                    ignoreFocusOut: true
-                }
-            );
+        const objectsDirectoryScanRoots = this.resolveObjectsDirectoryScanRoots(workspaceRoot);
+        const selectedLabel = await this.showObjectsDirectoryQuickPick(workspaceRoot, objectsDirectoryScanRoots);
 
-            if (!selection) {
-                // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
-                return undefined; 
-            } else {
-                return selection.label;
+        if ( selectedLabel !== this.browseAllWorkspaceDirectoriesLabel ) {
+            // IF NO SELECTION THE USER DIDN'T SELECT OR MOVED AWAY FROM SCREEN
+            return selectedLabel;
+        }
+
+        return await this.showObjectsDirectoryQuickPick(
+            workspaceRoot,
+            { scanRootPaths: [workspaceRoot], isSeededFromSfdxProject: false }
+        );
+
+    }
+
+    /*
+        Where the walk starts. packageDirectories entries when sfdx-project.json names usable ones,
+        and the workspace root otherwise -- a user who is not in a DX project must still get the
+        full walk, which is why this reads the project file through the tolerant resolver rather
+        than PicklistDependencyTestService.resolveDefaultPackageDirectoryPath, which throws.
+    */
+    static resolveObjectsDirectoryScanRoots(workspaceRoot: string): IObjectsDirectoryScanRoots {
+
+        const resolvedPackageDirectories = SfdxProjectService.resolvePackageDirectoryPaths(workspaceRoot);
+
+        if ( resolvedPackageDirectories.unreadableProjectFileMessage ) {
+            this.showWarningMessage(`${resolvedPackageDirectories.unreadableProjectFileMessage} Every directory in the workspace will be listed instead.`);
+        }
+
+        if ( resolvedPackageDirectories.packageDirectoryPaths.length === 0 ) {
+            return { scanRootPaths: [workspaceRoot], isSeededFromSfdxProject: false };
+        }
+
+        return {
+            scanRootPaths: resolvedPackageDirectories.packageDirectoryPaths,
+            isSeededFromSfdxProject: true
+        };
+
+    }
+
+    /*
+        The user's answer ends this, NOT the scan.
+
+        An earlier shape awaited the whole walk and only then awaited the selection, which put the
+        stall this command exists to remove back one layer down: accepting an item 200ms in closed
+        the picker and then waited for every remaining directory. Worse, a Cancel after that point
+        discarded the selection the user had already made and wrote no config at all.
+
+        So the two are raced, and a response is itself a reason to stop walking -- the walk's
+        cancellation predicate ORs it in, and the detached remainder unwinds at its next check
+        without touching a picker that is on its way out.
+    */
+    private static async showObjectsDirectoryQuickPick(workspaceRoot: string,
+                                                        objectsDirectoryScanRoots: IObjectsDirectoryScanRoots): Promise<string | undefined> {
+
+        const objectsDirectoryQuickPick = vscode.window.createQuickPick();
+        objectsDirectoryQuickPick.placeholder = objectsDirectoryScanRoots.isSeededFromSfdxProject
+                                                ? 'Select directory that contains the Salesforce objects - options from packageDirectories in sfdx-project.json'
+                                                : 'Select directory that contains the Salesforce objects';
+        objectsDirectoryQuickPick.ignoreFocusOut = true;
+        objectsDirectoryQuickPick.busy = true;
+
+        const discoveredQuickPickItems: vscode.QuickPickItem[] = objectsDirectoryScanRoots.isSeededFromSfdxProject
+                                                                ? [ this.buildBrowseAllWorkspaceDirectoriesQuickPickItem() ]
+                                                                : [];
+        objectsDirectoryQuickPick.items = [...discoveredQuickPickItems];
+        objectsDirectoryQuickPick.show();
+
+        let userHasRespondedToPicker = false;
+
+        const objectsDirectorySelection = new Promise<string | undefined>((resolveSelection) => {
+
+            objectsDirectoryQuickPick.onDidAccept(() => {
+                userHasRespondedToPicker = true;
+                resolveSelection(objectsDirectoryQuickPick.selectedItems[0]?.label);
+                objectsDirectoryQuickPick.hide();
+            });
+
+            objectsDirectoryQuickPick.onDidHide(() => {
+                userHasRespondedToPicker = true;
+                resolveSelection(undefined);
+            });
+
+        });
+
+        /*
+            Assigning .items is an ext-host to renderer round trip that re-sends the WHOLE list and
+            re-runs the filter, so doing it per directory is quadratic in the payload on exactly the
+            large workspaces this command targets. Batching bounds it, and the active item is
+            restored across the assignment because VS Code resets the highlight to the top -- which
+            would otherwise drag the user's selection away from them mid-scan.
+        */
+        let pendingDiscoveredItemCount = 0;
+        let lastItemFlushTime = Date.now();
+
+        const flushDiscoveredItems = () => {
+
+            if ( userHasRespondedToPicker || pendingDiscoveredItemCount === 0 ) {
+                return;
             }
 
+            const activeQuickPickItem = objectsDirectoryQuickPick.activeItems[0];
+            objectsDirectoryQuickPick.items = [...discoveredQuickPickItems];
+
+            if ( activeQuickPickItem ) {
+                objectsDirectoryQuickPick.activeItems = [activeQuickPickItem];
+            }
+
+            pendingDiscoveredItemCount = 0;
+            lastItemFlushTime = Date.now();
+
+        };
+
+        const onItemDiscovered = (discoveredQuickPickItem: vscode.QuickPickItem) => {
+
+            if ( userHasRespondedToPicker ) {
+                return;
+            }
+
+            discoveredQuickPickItems.push(discoveredQuickPickItem);
+            pendingDiscoveredItemCount++;
+
+            const flushIsDue = (pendingDiscoveredItemCount >= this.maxPendingQuickPickItems)
+                                || ((Date.now() - lastItemFlushTime) >= this.quickPickFlushIntervalMilliseconds);
+
+            if ( flushIsDue ) {
+                flushDiscoveredItems();
+            }
+
+        };
+
+        try {
+
+            const scanCompletion = this.runObjectsDirectoryScanWithProgress(
+                workspaceRoot,
+                objectsDirectoryScanRoots,
+                onItemDiscovered,
+                () => userHasRespondedToPicker
+            ).then((wasCancelledByUser) => {
+                flushDiscoveredItems();
+                if ( !userHasRespondedToPicker ) {
+                    objectsDirectoryQuickPick.busy = false;
+                }
+                return wasCancelledByUser;
+            });
+
+            // A RESPONSE WINS THE RACE AND IS NEVER A SCAN CANCELLATION, WHICH IS WHY IT YIELDS false
+            const scanWasCancelled = await Promise.race([
+                scanCompletion,
+                objectsDirectorySelection.then(() => false)
+            ]);
+
+            if ( scanWasCancelled && !userHasRespondedToPicker ) {
+                objectsDirectoryQuickPick.hide();
+                return undefined;
+            }
+
+            return await objectsDirectorySelection;
+
+        } finally {
+            // REACHED ON A readdir REJECTION TOO, WHICH OTHERWISE LEFT A BUSY PICKER ON SCREEN FOREVER
+            userHasRespondedToPicker = true;
+            objectsDirectoryQuickPick.dispose();
         }
+
+    }
+
+    /*
+        ProgressLocation.Notification rather than Window for the same reason the picklist dependency
+        commands chose it: Window "supports neither cancellation nor discrete progress", so the
+        token it hands you never fires and a workspace-wide walk could not be called off.
+
+        The port handed to the walk is two plain functions and no vscode type, so what the walk
+        reports and where it stops are testable without a withProgress double.
+    */
+    private static async runObjectsDirectoryScanWithProgress(workspaceRoot: string,
+                                                                objectsDirectoryScanRoots: IObjectsDirectoryScanRoots,
+                                                                onItemDiscovered: (discoveredQuickPickItem: vscode.QuickPickItem) => void,
+                                                                hasUserResponded: () => boolean = () => false): Promise<boolean> {
+
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Treecipe: Initiate Configuration File',
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            progress.report({
+                message: objectsDirectoryScanRoots.isSeededFromSfdxProject
+                            ? 'Scanning packageDirectories from sfdx-project.json...'
+                            : 'Scanning workspace directories...'
+            });
+
+            const directoryScanProgress: IDirectoryScanProgress = {
+                report: (message: string) => progress.report({ message }),
+                // A RESPONSE STOPS THE WALK, BUT ONLY THE TOKEN COUNTS AS A CANCELLATION BELOW
+                isCancellationRequested: () => cancellationToken.isCancellationRequested || hasUserResponded()
+            };
+
+            await this.collectObjectDirectoryQuickPickItems(
+                objectsDirectoryScanRoots.scanRootPaths,
+                workspaceRoot,
+                onItemDiscovered,
+                directoryScanProgress
+            );
+
+            return cancellationToken.isCancellationRequested;
+
+        });
+
+    }
+
+    static buildBrowseAllWorkspaceDirectoriesQuickPickItem(): vscode.QuickPickItem {
+
+        return {
+            label: this.browseAllWorkspaceDirectoriesLabel,
+            description: 'Scan every directory in the workspace instead',
+            iconPath: new vscode.ThemeIcon('search')
+        };
+
+    }
+
+    /*
+        A scan root that is not the workspace root is itself offered as an option -- the walk only
+        yields descendants, and a packageDirectories entry pointing straight at an objects
+        directory would otherwise be the one directory missing from the list.
+    */
+    static async collectObjectDirectoryQuickPickItems(scanRootPaths: string[],
+                                                        workspaceRoot: string,
+                                                        onItemDiscovered?: (discoveredQuickPickItem: vscode.QuickPickItem) => void,
+                                                        directoryScanProgress?: IDirectoryScanProgress): Promise<vscode.QuickPickItem[]> {
+
+        const collectedQuickPickItems: vscode.QuickPickItem[] = [];
+
+        for ( const scanRootPath of scanRootPaths ) {
+
+            if ( directoryScanProgress?.isCancellationRequested() ) {
+                break;
+            }
+
+            if ( scanRootPath !== workspaceRoot ) {
+
+                const scanRootQuickPickItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryPath(scanRootPath, workspaceRoot);
+                collectedQuickPickItems.push(scanRootQuickPickItem);
+                onItemDiscovered?.(scanRootQuickPickItem);
+
+            }
+
+            await this.getDirectoryQuickPickItemsByStartingDirectoryPath(
+                scanRootPath,
+                collectedQuickPickItems,
+                onItemDiscovered,
+                directoryScanProgress,
+                workspaceRoot
+            );
+
+        }
+
+        return collectedQuickPickItems;
+
     }
 
     static async getPotentialTreecipeObjectDirectoryPathsQuickPickItems(dirPath: string): Promise<vscode.QuickPickItem[]> {
@@ -56,20 +329,35 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async getDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string, quickPickItems: vscode.QuickPickItem[]): Promise<vscode.QuickPickItem[]> {
+    static async getDirectoryQuickPickItemsByStartingDirectoryPath(directoryPath:string,
+                                                                    quickPickItems: vscode.QuickPickItem[],
+                                                                    onItemDiscovered?: (discoveredQuickPickItem: vscode.QuickPickItem) => void,
+                                                                    directoryScanProgress?: IDirectoryScanProgress,
+                                                                    workspaceRootPath?: string): Promise<vscode.QuickPickItem[]> {
+
+        if ( directoryScanProgress?.isCancellationRequested() ) {
+            return quickPickItems;
+        }
 
         const entries = await fs.promises.readdir(directoryPath, { withFileTypes: true });
-        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        // RESOLVED ONCE PER CALL AND HANDED DOWN THE RECURSION RATHER THAN READ PER ENTRY
+        const workspaceRoot = workspaceRootPath ?? VSCodeWorkspaceService.getWorkspaceRoot();
 
         for (const entry of entries) {
   
+            if ( directoryScanProgress?.isCancellationRequested() ) {
+                return quickPickItems;
+            }
+
             if ( this.isPossibleTreecipeUsableDirectory(entry) ) {
 
                 const quickPickDirectoryItem = this.buildDirectoryVSCodeQuickPickItemByDirectoryEntry(entry, workspaceRoot, directoryPath);
                 quickPickItems.push(quickPickDirectoryItem);
+                onItemDiscovered?.(quickPickDirectoryItem);
+                directoryScanProgress?.report(`Found ${quickPickItems.length} directories - ${quickPickDirectoryItem.label}`);
 
                 const fullPath = path.join(directoryPath, entry.name);
-                await this.getDirectoryQuickPickItemsByStartingDirectoryPath(fullPath, quickPickItems);
+                await this.getDirectoryQuickPickItemsByStartingDirectoryPath(fullPath, quickPickItems, onItemDiscovered, directoryScanProgress, workspaceRoot);
 
             }
 
@@ -131,6 +419,13 @@ export class VSCodeWorkspaceService {
         const currentDirectoryName = entry.name;
 
         const fullEntryPath = `${fullMachinePathToEntry}/${currentDirectoryName}`;
+
+        return this.buildDirectoryVSCodeQuickPickItemByDirectoryPath(fullEntryPath, workspaceRoot);
+
+    }
+
+    static buildDirectoryVSCodeQuickPickItemByDirectoryPath(fullEntryPath: string, workspaceRoot: string): vscode.QuickPickItem {
+
         const quickPickRelativePath = fullEntryPath.split(workspaceRoot)[1];
         const quickpickLabel = `.${quickPickRelativePath}/`;
 

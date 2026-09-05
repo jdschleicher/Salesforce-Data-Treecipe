@@ -4,6 +4,7 @@ import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
+import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -585,23 +586,7 @@ export class PicklistDependencyTestService {
         working there.
     */
     static getRealDirectoryPath(directoryPath: string): string {
-
-        const resolvedDirectoryPath = path.resolve(directoryPath);
-
-        try {
-            return fs.realpathSync(resolvedDirectoryPath);
-        } catch {
-            // FALLS THROUGH TO THE ANCESTOR WALK BELOW
-        }
-
-        const parentDirectoryPath = path.dirname(resolvedDirectoryPath);
-
-        if ( parentDirectoryPath === resolvedDirectoryPath ) {
-            return resolvedDirectoryPath;
-        }
-
-        return path.join(this.getRealDirectoryPath(parentDirectoryPath), path.basename(resolvedDirectoryPath));
-
+        return SfdxProjectService.getRealDirectoryPath(directoryPath);
     }
 
     static async getFieldDetailsByFieldsDirectory(fieldsDirectoryUri: vscode.Uri): Promise<XMLFieldDetail[]> {
@@ -2402,19 +2387,11 @@ ${recordTypeAggregationMarkup}}
     }
 
     static getSfdxProjectFilePath(workspaceRoot: string): string {
-        return path.join(workspaceRoot, 'sfdx-project.json');
+        return SfdxProjectService.getSfdxProjectFilePath(workspaceRoot);
     }
 
     static readSfdxProjectJson(sfdxProjectFilePath: string): any {
-
-        const sfdxProjectFileContent = fs.readFileSync(sfdxProjectFilePath, 'utf-8');
-
-        try {
-            return JSON.parse(sfdxProjectFileContent);
-        } catch (error) {
-            throw new Error(`Could not parse "${sfdxProjectFilePath}" as JSON: ${error.message}. Fix the file and run the command again.`);
-        }
-
+        return SfdxProjectService.readSfdxProjectJson(sfdxProjectFilePath);
     }
 
     static resolveDefaultPackageDirectoryPath(workspaceRoot: string): string {
@@ -2465,16 +2442,11 @@ ${recordTypeAggregationMarkup}}
         string comparison. The trailing separator stops "/work-evil" matching a "/work" root.
     */
     static isPathContainedInWorkspace(resolvedPath: string, resolvedWorkspaceRoot: string): boolean {
-
-        const realPath = this.getRealDirectoryPath(resolvedPath);
-        const realWorkspaceRoot = this.getRealDirectoryPath(resolvedWorkspaceRoot);
-
-        const isContained = (candidatePath: string, rootPath: string) => (
-            candidatePath === rootPath || candidatePath.startsWith(rootPath + path.sep)
+        return SfdxProjectService.isPathContainedInWorkspace(
+            resolvedPath,
+            resolvedWorkspaceRoot,
+            (directoryPath: string) => this.getRealDirectoryPath(directoryPath)
         );
-
-        return isContained(resolvedPath, resolvedWorkspaceRoot) && isContained(realPath, realWorkspaceRoot);
-
     }
 
     static getSourceApiVersion(workspaceRoot: string): string {

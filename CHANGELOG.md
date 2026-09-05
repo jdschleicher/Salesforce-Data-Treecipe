@@ -1,5 +1,50 @@
 # Change Log
 
+## [3.12.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json
+
+Resolves [#100](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/100).
+
+**Initiate Configuration File** built its entire directory list before it showed anything. `promptForObjectsPath` walked every non-hidden, non-`node_modules` directory in the workspace -- one `readdir` per directory, recursively -- and only then called `showQuickPick`. On a real repository that is thousands of stat calls with an empty screen in front of them.
+
+It is worse from the warning notification. VS Code dismisses a notification the instant one of its buttons is clicked, and offers no way to keep it open, disable the button, or put a spinner in it. So clicking **Run Treecipe Initiation Setup** removed the last thing on screen that said anything was happening, and nothing replaced it until the walk finished.
+
+### The picker opens first and fills as it scans
+
+`promptForObjectsPath` now builds the quick pick up front, marks it `busy`, shows it, and streams directories in as the walk discovers them. The dead time is not narrated -- it is gone.
+
+**The user's answer ends the command, not the scan.** Selecting a directory found in the first few milliseconds returns immediately; the walk is told to stop and unwinds on its own. This is the part that is easy to get wrong -- an earlier draft awaited the whole walk and only then read the selection, which put the original stall back one layer down and, worse, threw away an already-made selection if the user then hit Cancel. Both cases are now covered by tests that fail against that shape.
+
+Item updates are **batched** (200 items or 100ms, whichever comes first). Assigning `.items` is an ext-host to renderer round trip that re-sends the entire list and re-runs the filter, so one assignment per directory is quadratic in payload on exactly the large workspaces this targets. The highlighted item is restored across each flush, because VS Code resets it to the top -- otherwise the scan would drag the user's cursor away from them while they were reading.
+
+Alongside it, the scan runs under a **cancellable** progress notification. `ProgressLocation.Notification` rather than `Window` for the reason the picklist dependency commands already chose it: `Window` "supports neither cancellation nor discrete progress", so the token it hands you never fires. Cancelling before a selection stops the walk, closes the picker, and writes no configuration file.
+
+### Options come from sfdx-project.json
+
+Where a workspace has an `sfdx-project.json`, the scan is seeded from its `packageDirectories` instead of the workspace root, and the picker says so. To be clear about the size of this win: the walk already skipped `node_modules` and dotfolders, so most of the directory reduction predates this change -- seeding drops the remaining non-DX siblings and, more usefully, puts the directories a Salesforce developer actually wants at the top of the list.
+
+> Select directory that contains the Salesforce objects - options from packageDirectories in sfdx-project.json
+
+**Every** usable entry, not just the one marked `default` -- a multi-package repository can keep objects under several, and seeding from only the default would hide the rest. Entries are scanned in file order, so a team that lists `force-app` first means it. A `Browse all workspace directories...` item is always offered for the case where the answer is somewhere else.
+
+### Every way the project file can disappoint you degrades to the old behavior
+
+The commands that write Apex resolve a package directory through `resolveDefaultPackageDirectoryPath`, which **throws** on each of these, because they cannot proceed without one. Config initiation can, so it reads the same file through a tolerant resolver instead:
+
+- No `sfdx-project.json` -- the user is not in a DX project, and still gets the full walk
+- `packageDirectories` missing, empty, or with no usable `path` -- full walk
+- A path that is absolute, escapes the workspace, or is not on disk -- skipped, and the remaining valid entries still seed the picker
+- A project file that is present and **unparseable** -- full walk, plus a warning naming the file, because that one is a typo the user wants to know about rather than an absence
+
+### Internals
+
+`SfdxProjectService` is new, and deliberately a leaf: `fs` and `path`, no `vscode`, no other service. `VSCodeWorkspaceService` needed the containment logic that lived in `PicklistDependencyTestService`, and importing that service would have closed a cycle through `RecipeService` and `ErrorHandlingService`. `PicklistDependencyTestService` keeps its four helpers as delegations, `isPathContainedInWorkspace` injecting its own realpath resolver so it remains the one source of truth for how its paths resolve.
+
+The value here is the cycle and the dependency weight of that one module graph, and **not** a startup saving: `extension.ts` imports `ExtensionCommandService`, which imports `@salesforce/core` at the top level, so that dependency is loaded on the first command regardless of what this service does.
+
+Reading `sfdx-project.json` now requires a regular file rather than merely an existing path -- a repository can commit that name as a symlink to a character device, and reading one would hang the extension host on the first command a new user runs.
+
+The walk also stopped calling `getWorkspaceRoot()` once per directory entry; it is resolved once and handed down the recursion.
+
 ## [3.11.0] - Picklist Dependency Explorer: the panel opens first and says what it is doing
 
 Resolves [#97](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/97).
