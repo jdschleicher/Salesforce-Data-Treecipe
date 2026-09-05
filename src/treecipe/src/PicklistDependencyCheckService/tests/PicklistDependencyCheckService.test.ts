@@ -280,7 +280,7 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
     });
 
-    it('shouldRequestOnlyTheGeneratedTestClassAndBoundTheWait', async () => {
+    it('shouldRequestTheGeneratedTestSuiteAndBoundTheWait', async () => {
 
         const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify(buildTestRunPayload(passingTestMethods)) });
 
@@ -288,8 +288,11 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         const salesforceCliArguments = execFileSpy.mock.calls[0][1] as string[];
 
-        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--tests', 'SDTPLDSpecsTest']);
+        expect(salesforceCliArguments).toIncludeAllMembers(['apex', 'run', 'test', '--suite-names', 'SDTPicklistDependencyTests']);
         expect(salesforceCliArguments).toIncludeAllMembers(['--target-org', 'devHub']);
+
+        // THE SUITE IS THE PUBLISHED HANDLE -- ADDRESSING THE CLASS DIRECTLY WOULD BE A SECOND ROUTE
+        expect(salesforceCliArguments).not.toContain('--tests');
 
         /*
             --wait is in MINUTES. An unbounded or very large value would hold the command open long
@@ -448,21 +451,21 @@ describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
 
 });
 
-describe('shouldDetectWhetherTestClassIsDeployedInOrg', () => {
+describe('shouldDetectWhetherTestSuiteIsDeployedInOrg', () => {
 
-    it('shouldReturnTrueWhenTestClassQueryReturnsARecord', async () => {
+    it('shouldReturnTrueWhenTheSuiteMembershipQueryReturnsARecord', async () => {
 
-        stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 1, records: [{ Id: '01p' }] } }) });
+        stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 1, records: [{ Id: '05F' }] } }) });
 
-        await expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).resolves.toBeTrue();
+        await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeTrue();
 
     });
 
-    it('shouldReturnFalseWhenTestClassQueryReturnsNoRecords', async () => {
+    it('shouldReturnFalseWhenTheSuiteMembershipQueryReturnsNoRecords', async () => {
 
         stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 0, records: [] } }) });
 
-        await expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).resolves.toBeFalse();
+        await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeFalse();
 
     });
 
@@ -470,7 +473,26 @@ describe('shouldDetectWhetherTestClassIsDeployedInOrg', () => {
 
         stubSalesforceCli({ error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
 
-        await expect(PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg('devHub')).resolves.toBeFalse();
+        await expect(PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub')).resolves.toBeFalse();
+
+    });
+
+    /*
+        Membership rather than mere existence: a suite whose member class was deleted still exists,
+        and running it would pass having asserted nothing.
+    */
+    it('shouldQueryTestSuiteMembershipThroughTheToolingApi', async () => {
+
+        const { execFileSpy } = stubSalesforceCli({ stdout: JSON.stringify({ status: 0, result: { totalSize: 1, records: [{ Id: '05F' }] } }) });
+
+        await PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg('devHub');
+
+        const invokedArguments = execFileSpy.mock.calls[0][1] as string[];
+
+        expect(invokedArguments).toContain('--use-tooling-api');
+        expect(invokedArguments.join(' ')).toContain('FROM TestSuiteMembership');
+        expect(invokedArguments.join(' ')).toContain("ApexTestSuite.TestSuiteName = 'SDTPicklistDependencyTests'");
+        expect(invokedArguments.join(' ')).toContain("ApexClass.Name = 'SDTPLDSpecsTest'");
 
     });
 
@@ -722,11 +744,13 @@ describe('shouldNameEveryFileInTheDeployConfirmation', () => {
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
         jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
-        const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestClassAbsentFromOrg');
+        const confirmationMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestSuiteAbsentFromOrg');
 
         expect(confirmationMessage).toContain('devHub');
         expect(confirmationMessage).toContain('SDTPLDSpecsTest.cls');
         expect(confirmationMessage).toContain('SDTPicklistDependencyValidator.cls');
+        // THE RUN INVOKES --suite-names, SO A DEPLOY THAT OMITTED THE SUITE WOULD FAIL AT THE NEXT STEP
+        expect(confirmationMessage).toContain('SDTPicklistDependencyTests.testSuite-meta.xml');
         // THE USER MUST BE ABLE TO SEE THAT WORKSPACE COPIES ARE WHAT GETS SENT
         expect(confirmationMessage).toContain('as they exist in your workspace');
 
@@ -737,17 +761,17 @@ describe('shouldNameEveryFileInTheDeployConfirmation', () => {
         org anything. Telling that user the test class "was not found" is simply false, and invites
         them to conclude their previous deploy failed.
     */
-    it('shouldSayTheClassWasNotFoundOnlyWhenTheOrgWasActuallyAsked', () => {
+    it('shouldSayTheSuiteWasNotFoundOnlyWhenTheOrgWasActuallyAsked', () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);
         jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
-        const absentFromOrgMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestClassAbsentFromOrg');
+        const absentFromOrgMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsTestSuiteAbsentFromOrg');
         const regeneratedMessage = PicklistDependencyCheckService.buildDeployConfirmationMessage('/workspace/classes', 'devHub', 'specsClassesJustRegenerated');
 
-        expect(absentFromOrgMessage).toContain('was not found in "devHub"');
+        expect(absentFromOrgMessage).toContain('does not exist, or no longer contains');
 
-        expect(regeneratedMessage).not.toContain('was not found');
+        expect(regeneratedMessage).not.toContain('does not exist, or no longer contains');
         expect(regeneratedMessage).toContain('just regenerated');
         expect(regeneratedMessage).toContain('devHub');
 
@@ -794,6 +818,52 @@ describe('shouldRefuseToProposeADeployWithNothingToSend', () => {
 
         expect(deployableClassPaths.length).toBeGreaterThan(0);
         expect(deployableClassPaths.some(classPath => classPath.includes('SDTPLDSpecsTest.cls'))).toBe(true);
+        expect(deployableClassPaths.some(classPath => classPath.endsWith('SDTPicklistDependencyTests.testSuite-meta.xml'))).toBe(true);
+
+    });
+
+    it('shouldKeepTheSuiteOutOfTheClassOnlyListWhileIncludingItInWhatIsDeployed', () => {
+
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        const classFilePaths = PicklistDependencyCheckService.getPicklistDependencyClassFilePaths('/workspace/classes');
+        const sourceFilePaths = PicklistDependencyCheckService.getPicklistDependencySourceFilePaths('/workspace/classes');
+
+        expect(classFilePaths.some(filePath => filePath.endsWith('.testSuite-meta.xml'))).toBe(false);
+        expect(sourceFilePaths.some(filePath => filePath.endsWith('.testSuite-meta.xml'))).toBe(true);
+
+    });
+
+    it('shouldOmitTheSuiteFromTheSourceListWhenItHasNotBeenGeneratedYet', () => {
+
+        jest.spyOn(fs, 'existsSync').mockImplementation((candidatePath: any) => !String(candidatePath).endsWith('.testSuite-meta.xml'));
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        const sourceFilePaths = PicklistDependencyCheckService.getPicklistDependencySourceFilePaths('/workspace/classes');
+
+        // THE PATH LIST REPORTS WHAT IS ON DISK; REQUIRING THE SUITE IS assertDeployableClassesExist'S JOB
+        expect(sourceFilePaths.some(filePath => filePath.endsWith('.testSuite-meta.xml'))).toBe(false);
+
+    });
+
+    /*
+        The upgrade path this release creates. A workspace generated before the suite existed has
+        every class and no suite, so without this the org check reports "not deployed", the deploy is
+        offered and accepted, the classes go up WITHOUT the suite, and the very next step invokes
+        "--suite-names" against an org that has none -- failing with the raw CLI error and nothing to
+        say that regenerating is the fix.
+    */
+    it('shouldRefuseToDeployWhenTheSuiteHasNotBeenGeneratedYet', () => {
+
+        jest.spyOn(fs, 'existsSync').mockImplementation((candidatePath: any) => !String(candidatePath).endsWith('.testSuite-meta.xml'));
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('No Apex test suite was found');
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('Generate Picklist Dependency Tests');
 
     });
 

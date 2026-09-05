@@ -138,6 +138,24 @@ describe('PicklistDependencyManifestService', () => {
 
         });
 
+        test('records the test suite the generated tests are registered in', () => {
+
+            const manifest = buildManifestFromCollectionResult();
+
+            expect(manifest.testSuiteName).toBe(PicklistDependencyTestService.getTestSuiteName());
+            expect(manifest.testSuiteFilePath).toEndWith('SDTPicklistDependencyTests.testSuite-meta.xml');
+
+            /*
+                Written by the run that generated the Apex rather than recomputed by a reader, for the
+                reason every other name here is: two derivations of one name is the disagreement this
+                artifact exists to remove.
+            */
+            expect(manifest.testSuiteFilePath).toBe(
+                PicklistDependencyTestService.getTestSuiteFilePath(manifest.classesDirectoryPath)
+            );
+
+        });
+
         test('records the provenance a reader needs to explain what they are looking at', () => {
 
             const manifest = buildManifestFromCollectionResult();
@@ -668,6 +686,55 @@ describe('PicklistDependencyManifestService', () => {
 
             expect(manifestLoad.state).toBe('unreadableManifest');
             expect(manifestLoad.message).toContain('format version 99');
+
+        });
+
+        /*
+            The suite fields arrived with format version 2. A manifest from 3.9.0 carries neither, and
+            reading it as if it did would have the Explorer name a suite the generated Apex was never
+            registered in.
+        */
+        test('given a manifest written before the test suite existed, refuses it rather than assuming a suite', () => {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                { manifestVersion: 1, objects: [], specsTestClassName: 'SDTPLDSpecsTest' },
+                '/tmp/manifest.json'
+            );
+
+            expect(manifestLoad.state).toBe('unreadableManifest');
+            expect(manifestLoad.message).toContain('format version 1');
+            expect(manifestLoad.message).toContain('Generate Picklist Dependency Tests');
+
+        });
+
+        test('given a current manifest, round trips the suite name and path', () => {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                {
+                    manifestVersion: PicklistDependencyManifestService.getManifestVersion(),
+                    objects: [],
+                    testSuiteName: 'SDTPicklistDependencyTests',
+                    testSuiteFilePath: '/workspace/force-app/main/default/testSuites/SDTPicklistDependencyTests.testSuite-meta.xml'
+                },
+                '/tmp/manifest.json'
+            );
+
+            expect(manifestLoad.state).toBe('loaded');
+            expect(manifestLoad.manifest?.testSuiteName).toBe('SDTPicklistDependencyTests');
+            expect(manifestLoad.manifest?.testSuiteFilePath).toEndWith('SDTPicklistDependencyTests.testSuite-meta.xml');
+
+        });
+
+        test('given a manifest carrying no suite fields at the current version, reads them as empty rather than throwing', () => {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                { manifestVersion: PicklistDependencyManifestService.getManifestVersion(), objects: [] },
+                '/tmp/manifest.json'
+            );
+
+            expect(manifestLoad.state).toBe('loaded');
+            expect(manifestLoad.manifest?.testSuiteName).toBe('');
+            expect(manifestLoad.manifest?.testSuiteFilePath).toBe('');
 
         });
 

@@ -346,6 +346,14 @@ export class ExtensionCommandService {
         const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
         PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
 
+        /*
+            The suite is written to a sibling of the classes directory, which is a second set of path
+            segments that resolveDefaultPackageDirectoryPath never saw. Checked here for the reason
+            the classes path is: writeFileSync follows a symlink wherever it points.
+        */
+        const testSuitesDirectoryPath = PicklistDependencyTestService.getTestSuitesDirectoryPath(classesDirectoryPath);
+        PicklistDependencyTestService.assertTestSuitesDirectoryContainedInWorkspace(testSuitesDirectoryPath, workspaceRoot);
+
         const specsClassFilePath = PicklistDependencyTestService.getSpecsClassFilePath(classesDirectoryPath);
         const specsClassName = PicklistDependencyTestService.getSpecsClassName();
         const specsTestClassFilePath = PicklistDependencyTestService.getSpecsTestClassFilePath(classesDirectoryPath);
@@ -389,6 +397,13 @@ export class ExtensionCommandService {
                 const specsTestClassBody = PicklistDependencyTestService.buildSpecsTestApexClassBody(collectionResult.specDetails);
 
                 /*
+                    Merged with whatever suite is already on disk, once, so the same content is both
+                    previewed and written. A suite is a grouping a team curates -- a member someone
+                    added by hand is kept rather than reset away by a regeneration.
+                */
+                const mergedTestSuiteContent = PicklistDependencyTestService.buildTestSuiteContentByClassesDirectory(classesDirectoryPath);
+
+                /*
                     Resolved before anything is written, so the run can be cancelled with the generated
                     files exactly as they were. The generated classes are meant to be committed and edited
                     -- declare the dependency you intend, watch the test go red, fix the org -- and that
@@ -399,10 +414,11 @@ export class ExtensionCommandService {
                     collectionResult.specDetails,
                     sourceApiVersion,
                     collectionResult.recordTypeSpecDetails,
-                    specsTestClassBody
+                    specsTestClassBody,
+                    mergedTestSuiteContent.content
                 );
 
-                return { collectionResult, plannedGeneration: { specsChangePlan, specsTestClassBody } };
+                return { collectionResult, plannedGeneration: { specsChangePlan, specsTestClassBody, mergedTestSuiteContent } };
 
             }
         );
@@ -446,7 +462,7 @@ export class ExtensionCommandService {
             return undefined;
         }
 
-        const { specsChangePlan, specsTestClassBody } = plannedGeneration;
+        const { specsChangePlan, specsTestClassBody, mergedTestSuiteContent } = plannedGeneration;
 
         const confirmedRegeneration = await this.confirmPicklistDependencySpecsChangePlan(specsChangePlan, classesDirectoryPath);
 
@@ -490,6 +506,16 @@ export class ExtensionCommandService {
                     sourceApiVersion
                 );
 
+                /*
+                    An unparseable existing suite arrives here as its own exact content, so this is a
+                    no-op in that case and the user's file survives untouched. The warning below is
+                    what tells them it happened.
+                */
+                PicklistDependencyTestService.writeSpecsTestSuiteFile(
+                    classesDirectoryPath,
+                    mergedTestSuiteContent.content
+                );
+
                 generationProgress.report('Writing the spec manifest...');
 
                 /*
@@ -528,7 +554,7 @@ export class ExtensionCommandService {
 
         const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
 
-        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}". The Picklist Dependency Explorer reads "${manifestFilePath}" to render exactly these specs.`;
+        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}". Registered in the ${PicklistDependencyTestService.getTestSuiteName()} Apex test suite, which is what "Run Picklist Dependency Check" and "sf apex run test --suite-names" invoke. The Picklist Dependency Explorer reads "${manifestFilePath}" to render exactly these specs.`;
         if ( collectionResult.recordTypeSpecDetails.length > 0 ) {
             // THE RECORD TYPE SCOPED SPECS ARE NOT IN all(), SO THE SUMMARY SAYS WHERE THEY ARE INSTEAD OF LEAVING THEM UNMENTIONED
             generationSummary += ` Also generated ${collectionResult.recordTypeSpecDetails.length} record-type-scoped spec(s), aggregated by ${specsClassName}.allRecordTypeScoped(). These are not asserted by ${specsTestClassName}.cls: Schema describe returns picklist values without record type filtering, so they need a record-type-aware ISDTPicklistDependencySource.`;
@@ -553,6 +579,26 @@ export class ExtensionCommandService {
             Surfaced after generation rather than before it: the new classes are written either way,
             and the warning is about cleaning up what an earlier version left behind.
         */
+        /*
+            Kept as its own warning rather than folded into the run report: the suite is what "Run
+            Picklist Dependency Check" invokes, so a suite this could not register the tests in means
+            the check will not find them. That is a blocker, not a footnote on a success message.
+        */
+        if ( mergedTestSuiteContent.isExistingFileUnparseable ) {
+            VSCodeWorkspaceService.showWarningMessage(
+                PicklistDependencyTestService.buildUnparseableTestSuiteWarning(
+                    PicklistDependencyTestService.getTestSuiteFilePath(classesDirectoryPath)
+                )
+            );
+        }
+        if ( mergedTestSuiteContent.isExistingFileUnreadable ) {
+            VSCodeWorkspaceService.showWarningMessage(
+                PicklistDependencyTestService.buildUnreadableTestSuiteWarning(
+                    PicklistDependencyTestService.getTestSuiteFilePath(classesDirectoryPath)
+                )
+            );
+        }
+
         const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath);
         if ( legacyArtifactPaths.length > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(PicklistDependencyTestService.buildLegacyArtifactWarning(legacyArtifactPaths));
@@ -714,9 +760,9 @@ export class ExtensionCommandService {
 
             if ( !deployRequired ) {
 
-                progress.report({ message: `Checking ${targetOrgIdentifier} for the generated test class...` });
-                deployRequired = !(await PicklistDependencyCheckService.isSpecsTestClassDeployedInOrg(targetOrgIdentifier));
-                deployReason = 'specsTestClassAbsentFromOrg';
+                progress.report({ message: `Checking ${targetOrgIdentifier} for the generated test suite...` });
+                deployRequired = !(await PicklistDependencyCheckService.isSpecsTestSuiteDeployedInOrg(targetOrgIdentifier));
+                deployReason = 'specsTestSuiteAbsentFromOrg';
 
                 if ( cancellationToken.isCancellationRequested ) {
                     return undefined;
@@ -1130,6 +1176,15 @@ export class ExtensionCommandService {
             const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
             const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
             PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
+
+            /*
+                The check derives the same testSuites sibling to put the suite in the deploy, so the
+                containment the generate command applies before WRITING there is applied here before
+                the path is read and sent to an org.
+            */
+            PicklistDependencyTestService.assertTestSuitesDirectoryContainedInWorkspace(
+                PicklistDependencyTestService.getTestSuitesDirectoryPath(classesDirectoryPath), workspaceRoot
+            );
 
             await this.deployRunAndReportPicklistDependencyCheck(
                 targetOrgIdentifier,

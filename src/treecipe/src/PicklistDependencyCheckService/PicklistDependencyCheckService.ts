@@ -66,7 +66,7 @@ export interface ISalesforceCliJsonPayload {
     Why a deploy is being proposed. The two commands arrive at the same confirmation for different
     reasons, and the confirmation has to say which.
 */
-export type PicklistDependencyDeployReason = 'specsTestClassAbsentFromOrg' | 'specsClassesJustRegenerated';
+export type PicklistDependencyDeployReason = 'specsTestSuiteAbsentFromOrg' | 'specsClassesJustRegenerated';
 
 /*
     The shape of the deploy CLI's --json output that these commands actually read.
@@ -118,6 +118,10 @@ export class PicklistDependencyCheckService {
 
     static getSpecsTestClassName(): string {
         return PicklistDependencyTestService.getSpecsTestClassName();
+    }
+
+    static getSpecsTestSuiteName(): string {
+        return PicklistDependencyTestService.getTestSuiteName();
     }
 
     static isValidTargetOrgIdentifier(targetOrgIdentifier: string): boolean {
@@ -349,9 +353,15 @@ export class PicklistDependencyCheckService {
 
         this.assertValidTargetOrgIdentifier(targetOrgIdentifier);
 
+        /*
+            Run by suite rather than by class name. The suite is the handle this feature publishes --
+            a pipeline, Setup and this command all address the same one -- so pointing the extension
+            at the class it happens to generate today would leave the extension and everyone else
+            running the tests by two different routes.
+        */
         const salesforceCliArguments = [
             'apex', 'run', 'test',
-            '--tests', this.getSpecsTestClassName(),
+            '--suite-names', this.getSpecsTestSuiteName(),
             '--target-org', targetOrgIdentifier,
             '--wait', this.apexTestRunWaitMinutes,
             '--json'
@@ -365,17 +375,32 @@ export class PicklistDependencyCheckService {
     }
 
     /*
-        The test class is queried rather than deployed blindly so the user is only prompted when a
-        deploy is actually needed. A query failure is treated as "not deployed" -- prompting to
-        deploy something already present is recoverable, silently skipping a required deploy is not.
+        The org is queried rather than deployed to blindly so the user is only prompted when a deploy
+        is actually needed. A query failure is treated as "not deployed" -- prompting to deploy
+        something already present is recoverable, silently skipping a required deploy is not.
+
+        MEMBERSHIP is what is asked about, not the suite's existence. A suite whose member class has
+        been deleted still exists, and "sf apex run test --suite-names" against it runs zero tests
+        and reports success -- a green check that verified nothing, which is the exact failure mode
+        the generated specRegistryIsNotEmpty guard exists to prevent one layer down. One query over
+        TestSuiteMembership answers "is the suite there AND does it still contain the generated test
+        class", which is the only state in which the check is meaningful.
+
+        TestSuiteMembership is a Tooling API object, so this query -- unlike the ApexClass one it
+        replaced -- needs --use-tooling-api.
     */
-    static async isSpecsTestClassDeployedInOrg(targetOrgIdentifier: string): Promise<boolean> {
+    static async isSpecsTestSuiteDeployedInOrg(targetOrgIdentifier: string): Promise<boolean> {
 
         this.assertValidTargetOrgIdentifier(targetOrgIdentifier);
 
+        const testSuiteMembershipQuery = `SELECT Id FROM TestSuiteMembership`
+                                            + ` WHERE ApexTestSuite.TestSuiteName = '${this.getSpecsTestSuiteName()}'`
+                                            + ` AND ApexClass.Name = '${this.getSpecsTestClassName()}' LIMIT 1`;
+
         const salesforceCliArguments = [
             'data', 'query',
-            '--query', `SELECT Id FROM ApexClass WHERE Name = '${this.getSpecsTestClassName()}' LIMIT 1`,
+            '--query', testSuiteMembershipQuery,
+            '--use-tooling-api',
             '--target-org', targetOrgIdentifier,
             '--json'
         ];
@@ -442,6 +467,26 @@ export class PicklistDependencyCheckService {
 
     }
 
+    /*
+        Everything this command deploys: the Apex classes, plus the test suite that names the test
+        class among them.
+
+        Separate from getPicklistDependencyClassFilePaths so that method keeps returning only
+        classes and stays honest about its name. The suite is not optional here -- the run invokes
+        "--suite-names", so a deploy that sent the classes without it would succeed and then fail at
+        the very next step with the CLI's own wording about an unknown suite.
+    */
+    static getPicklistDependencySourceFilePaths(classesDirectoryPath: string): string[] {
+
+        const testSuiteFilePath = PicklistDependencyTestService.getTestSuiteFilePath(classesDirectoryPath);
+
+        return [
+            ...this.getPicklistDependencyClassFilePaths(classesDirectoryPath),
+            ...(fs.existsSync(testSuiteFilePath) ? [testSuiteFilePath] : [])
+        ];
+
+    }
+
     static getPerObjectSpecsClassFilePaths(classesDirectoryPath: string): string[] {
 
         if ( !fs.existsSync(classesDirectoryPath) ) {
@@ -469,10 +514,28 @@ export class PicklistDependencyCheckService {
             throw new Error(`No classes directory found at "${classesDirectoryPath}". Run "Generate Picklist Dependency Tests" first, then run the command again.`);
         }
 
-        const classFilePathsToDeploy = this.getPicklistDependencyClassFilePaths(classesDirectoryPath);
+        const classFilePathsToDeploy = this.getPicklistDependencySourceFilePaths(classesDirectoryPath);
 
         if ( classFilePathsToDeploy.length === 0 ) {
             throw new Error(`No picklist dependency classes were found in "${classesDirectoryPath}". Run "Generate Picklist Dependency Tests" first, then run the command again.`);
+        }
+
+        /*
+            The suite is REQUIRED, not merely included when present.
+
+            The run invokes "--suite-names", so a deploy that sent the classes without the suite
+            would succeed and then fail at the very next step with the CLI's own wording about an
+            unknown suite -- with nothing to tell the user that regenerating is what fixes it.
+
+            This is the ordinary upgrade path rather than a corner case: a workspace generated
+            before the suite existed has every class and no suite, so the org check reports "not
+            deployed", the deploy is offered and accepted, and the run then fails. Refusing here,
+            before the confirmation is built, turns that into one actionable message.
+        */
+        const testSuiteFilePath = PicklistDependencyTestService.getTestSuiteFilePath(classesDirectoryPath);
+
+        if ( !fs.existsSync(testSuiteFilePath) ) {
+            throw new Error(`No Apex test suite was found at "${testSuiteFilePath}". The check runs "sf apex run test --suite-names ${this.getSpecsTestSuiteName()}", so it cannot run without it -- a workspace generated by an earlier version has the classes but not the suite. Run "Generate Picklist Dependency Tests" again to add it, then run the command again.`);
         }
 
         return classFilePathsToDeploy;
@@ -605,7 +668,7 @@ export class PicklistDependencyCheckService {
                                           targetOrgIdentifier: string,
                                           deployReason: PicklistDependencyDeployReason): string {
 
-        const classFileNames = this.getPicklistDependencyClassFilePaths(classesDirectoryPath)
+        const classFileNames = this.getPicklistDependencySourceFilePaths(classesDirectoryPath)
             .map(classFilePath => path.basename(classFilePath));
 
         /*
@@ -615,8 +678,8 @@ export class PicklistDependencyCheckService {
             looked, so claiming the class "was not found" there tells a user whose class is deployed
             that it is missing -- and invites them to conclude their last deploy failed.
         */
-        const deployReasonLine = deployReason === 'specsTestClassAbsentFromOrg'
-            ? `${this.getSpecsTestClassName()} was not found in "${targetOrgIdentifier}".`
+        const deployReasonLine = deployReason === 'specsTestSuiteAbsentFromOrg'
+            ? `The ${this.getSpecsTestSuiteName()} test suite in "${targetOrgIdentifier}" does not exist, or no longer contains ${this.getSpecsTestClassName()}.`
             : `The picklist dependency classes were just regenerated and will be redeployed to "${targetOrgIdentifier}".`;
 
         return `${deployReasonLine}\n\n`
