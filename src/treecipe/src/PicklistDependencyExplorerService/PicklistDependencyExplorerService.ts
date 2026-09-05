@@ -1858,12 +1858,6 @@ export class PicklistDependencyExplorerService {
     }
 
     /*
-        Escaped for HTML text and attribute contexts alike. Picklist values, api names and Apex
-        failure messages all reach the panel unmodified from metadata an admin controls, so none of
-        it is interpolated raw. The JSON payload takes the same treatment below.
-    */
-
-    /*
         Keeps at most "cap" items, and never drops one the caller marked as retained.
 
         Retained items are taken FIRST and the remainder fills what is left, but the result is
