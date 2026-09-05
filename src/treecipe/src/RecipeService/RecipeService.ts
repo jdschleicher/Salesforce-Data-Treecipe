@@ -5,6 +5,12 @@ import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 
+export interface ICompoundAddressComponentRecipe {
+    componentKey: string;
+    componentApiName: string;
+    recipeValue: string;
+}
+
 export class RecipeService {
 
     private fakerService: IRecipeFakerService;
@@ -31,6 +37,57 @@ export class RecipeService {
         }
 
         return this.ootbSobjectToOttbFieldFakerValue;
+
+    }
+
+    /*
+        The Collections API cannot accept a compound Address field, so a recipe has to carry one line
+        per component instead. State and Country are deliberately the PLAIN forms rather than
+        StateCode/CountryCode: the coded components only exist when State and Country Picklists are
+        enabled in the target org, while these exist either way, and source metadata does not say
+        which org the recipe is destined for.
+    */
+    static readonly compoundAddressComponentKeys: string[] = ['Street', 'City', 'State', 'PostalCode', 'Country'];
+
+    /*
+        Salesforce names compound address components two different ways and the compound field's own
+        api name is the only signal for which: a custom field's components carry the "__s" system
+        suffix off the base name, a standard field's are the compound name with "Address" swapped for
+        the component. Lead's compound field is literally named "Address", so an empty prefix -- and
+        the bare "Street"/"City" components it produces -- is a correct result here, not a fallback.
+    */
+    static buildCompoundAddressComponentApiName(compoundFieldApiName: string, componentKey: string): string {
+
+        const customFieldSuffix = '__c';
+        if ( compoundFieldApiName.endsWith(customFieldSuffix) ) {
+
+            const customFieldBaseName = compoundFieldApiName.slice(0, -customFieldSuffix.length);
+            return `${customFieldBaseName}__${componentKey}__s`;
+
+        }
+
+        const standardCompoundFieldSuffix = 'Address';
+        const standardComponentPrefix = compoundFieldApiName.endsWith(standardCompoundFieldSuffix)
+            ? compoundFieldApiName.slice(0, -standardCompoundFieldSuffix.length)
+            : compoundFieldApiName;
+
+        return `${standardComponentPrefix}${componentKey}`;
+
+    }
+
+    buildCompoundAddressComponentRecipes(compoundFieldApiName: string): ICompoundAddressComponentRecipe[] {
+
+        const addressComponentToRecipeValue = this.fakerService.getAddressComponentToRecipeValueMap();
+
+        return RecipeService.compoundAddressComponentKeys.map((componentKey) => {
+
+            return {
+                componentKey: componentKey,
+                componentApiName: RecipeService.buildCompoundAddressComponentApiName(compoundFieldApiName, componentKey),
+                recipeValue: addressComponentToRecipeValue[componentKey]
+            };
+
+        });
 
     }
 

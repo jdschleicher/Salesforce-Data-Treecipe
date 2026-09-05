@@ -20,6 +20,7 @@ export class DirectoryProcessor {
   private recipeService: RecipeService;
   private relationshipService: RelationshipService;
   private customRelationshipMappings: Record<string, string> | undefined;
+  private customCompoundAddressFields: string[] | undefined;
   constructor() {
     const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
     this.recipeService = new RecipeService(selectedDataFakerService);
@@ -39,6 +40,67 @@ export class DirectoryProcessor {
     }
 
     return this.customRelationshipMappings;
+
+  }
+
+  private getCustomCompoundAddressFields(): string[] {
+
+    if (this.customCompoundAddressFields !== undefined) {
+      return this.customCompoundAddressFields;
+    }
+
+    try {
+      this.customCompoundAddressFields = ConfigurationService.getCustomCompoundAddressFields();
+    } catch {
+      this.customCompoundAddressFields = [];
+    }
+
+    return this.customCompoundAddressFields;
+
+  }
+
+  isCompoundAddressField(fieldInfo: FieldInfo): boolean {
+
+    const compoundAddressFieldType = 'address';
+    if ( fieldInfo?.type?.toLowerCase() === compoundAddressFieldType ) {
+      return true;
+    }
+
+    /*
+      A compound address field file can carry no <type> tag at all, in which case it has already
+      parsed as AUTO_GENERATED and no metadata signal is left to key on -- the configured list is
+      the only way such a field can be recognised.
+    */
+    return this.getCustomCompoundAddressFields().includes(fieldInfo?.fieldName);
+
+  }
+
+  /*
+    Returns one FieldInfo per writable component and NONE for the compound field itself, which is why
+    an empty array is a valid result: on an object whose OOTB mappings already name every component
+    (Account's BillingStreet/BillingCity/...) the compound field contributes nothing rather than a
+    second set of the same recipe lines.
+  */
+  buildCompoundAddressComponentFieldInfos(compoundFieldInfo: FieldInfo,
+                                            associatedObjectName: string,
+                                            salesforceOOTBFakerMappings: Record<string, Record<string, string>>
+                                          ): FieldInfo[] {
+
+    const ootbFieldApiNamesForObject = salesforceOOTBFakerMappings?.[associatedObjectName] ?? {};
+    const compoundAddressComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
+
+    return compoundAddressComponentRecipes
+      .filter((componentRecipe) => !(componentRecipe.componentApiName in ootbFieldApiNamesForObject))
+      .map((componentRecipe) => FieldInfo.create(
+        associatedObjectName,
+        componentRecipe.componentApiName,
+        `${compoundFieldInfo.fieldLabel} ${componentRecipe.componentKey}`,
+        'Text',
+        null,
+        null,
+        null,
+        componentRecipe.recipeValue
+      ));
 
   }
 
@@ -191,7 +253,20 @@ export class DirectoryProcessor {
                                                               recordTypeApiToRecordTypeWrapperMap,
                                                               fileName
                                                             );
-        fieldInfoDetails.push(fieldInfo);
+
+        if ( this.isCompoundAddressField(fieldInfo) ) {
+
+          const compoundAddressComponentFieldInfos = this.buildCompoundAddressComponentFieldInfos(fieldInfo,
+                                                                                                    associatedObjectName,
+                                                                                                    salesforceOOTBFakerMappings
+                                                                                                  );
+          fieldInfoDetails.push(...compoundAddressComponentFieldInfos);
+
+        } else {
+
+          fieldInfoDetails.push(fieldInfo);
+
+        }
 
       }
 

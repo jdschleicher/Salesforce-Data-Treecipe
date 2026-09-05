@@ -379,4 +379,48 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
     });
 
+    describe('getAddressComponentToRecipeValueMap', () => {
+
+        /*
+            Pinned literally rather than read from RecipeService.compoundAddressComponentKeys: a faker
+            service is a leaf that must not import the orchestrator, and the RecipeService suite
+            already asserts the two lists agree by exercising the composition.
+        */
+        test('returns an expression for every compound address component, and only those', () => {
+
+            const addressComponentToRecipeValue = fakerJSRecipeFakerService.getAddressComponentToRecipeValueMap();
+
+            expect(Object.keys(addressComponentToRecipeValue)).toEqual(
+                ['Street', 'City', 'State', 'PostalCode', 'Country']
+            );
+
+        });
+
+        test('returns the expected faker-js location expressions', () => {
+
+            const addressComponentToRecipeValue = fakerJSRecipeFakerService.getAddressComponentToRecipeValueMap();
+
+            expect(addressComponentToRecipeValue['Street']).toBe('${{faker.location.streetAddress()}}');
+            expect(addressComponentToRecipeValue['City']).toBe('${{faker.location.city()}}');
+            expect(addressComponentToRecipeValue['State']).toBe('${{faker.location.state()}}');
+            expect(addressComponentToRecipeValue['PostalCode']).toBe('${{faker.location.zipCode()}}');
+            expect(addressComponentToRecipeValue['Country']).toBe('${{faker.location.country()}}');
+
+        });
+
+        /*
+            The coded components only exist in an org with State and Country Picklists enabled, so
+            emitting them by default would produce a recipe that fails to insert everywhere else.
+        */
+        test('uses the plain State and Country components, never StateCode or CountryCode', () => {
+
+            const addressComponentToRecipeValue = fakerJSRecipeFakerService.getAddressComponentToRecipeValueMap();
+
+            expect(addressComponentToRecipeValue).not.toHaveProperty('StateCode');
+            expect(addressComponentToRecipeValue).not.toHaveProperty('CountryCode');
+
+        });
+
+    });
+
 });

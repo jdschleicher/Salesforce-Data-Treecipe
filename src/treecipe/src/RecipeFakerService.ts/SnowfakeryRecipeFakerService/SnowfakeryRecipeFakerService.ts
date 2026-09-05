@@ -313,6 +313,25 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return allRecordTypeBasedMultiselectPicklistOptions;
     }
 
+    /*
+        Keyed by address component, NOT by component api name -- the compound field's api name decides
+        whether a component is "BillingStreet" or "Site_Address__Street__s", and that derivation is
+        Salesforce metadata knowledge that RecipeService owns rather than a faker concern.
+    */
+    getAddressComponentToRecipeValueMap(): Record<string, string> {
+
+        const addressComponentToSnowfakeryValue: Record<string, string> = {
+            'Street': '${{fake.street_address}}',
+            'City': '${{fake.city}}',
+            'State': '${{fake.state}}',
+            'PostalCode': '${{fake.zipcode}}',
+            'Country': '${{fake.country}}'
+        };
+
+        return addressComponentToSnowfakeryValue;
+
+    }
+
     getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>> {
 
         const salesforceSnowfakeryMappings: Record<string, Record<string, string>> = {
