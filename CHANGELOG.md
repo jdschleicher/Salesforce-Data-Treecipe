@@ -19,6 +19,20 @@ No test caught it because every test in this file asserts on the script as *text
 
 Opening the Explorer on a large org looked like nothing happening. The panel was not created until a finished model existed, so every phase — reading the spec manifest, stat-walking the objects directory for staleness, building the view, serializing it — ran against a window showing nothing at all. On a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values that was roughly two seconds of blank tab, with no way to tell which phase was slow or whether the command had failed.
 
+### CI: bounded jest workers, and a run that says where its memory went
+
+A jest worker on CI was reaching the 4 GB V8 heap ceiling and dying, which failed the build with **zero failing tests** — the OOM and the reported `SIGTERM` are different processes, so the suite named in the log was collateral rather than the culprit. It was not specific to this change: `main` failed identically, and the same commit on another branch went both ways on consecutive runs.
+
+Nothing in the run identified the real consumer, so the test scripts now ask:
+
+- `--logHeapUsage` — every suite reports its heap, so the next failure names the consumer instead of its neighbour
+- `--workerIdleMemoryLimit=512MB` — recycles a worker that grows past the limit, which bounds the accumulation this looks like (no suite exceeds 342 MB on its own, yet a worker reached 4 GB)
+- `--maxWorkers=2` — lowers concurrent peak, and measured *faster* locally rather than slower
+
+Applied to **both** `jest-test` and `jest-test-summary`, because CI runs the latter — flags on `jest-test` alone would have changed nothing about the failure.
+
+This is a mitigation with a diagnostic attached, not a root cause: the failure does not reproduce locally even at CI's exact heap cap, where the suite passes with a 1 GB cap.
+
 ### The panel opens before the work, not after it
 
 The webview shell is static — it carries no model — so it is created and shown the moment the command runs, in **0.01 ms**. What used to be a blank window is now a panel reporting the phase it is in:

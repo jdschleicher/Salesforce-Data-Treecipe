@@ -95,8 +95,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "vscode-test": "vscode-test",
-    "jest-test-summary": "jest --coverage --coverageReporters='json-summary' --json --outputFile=coverage/jest-results.json --config=jest.config.js",
-    "jest-test": "jest --coverage",
+    "jest-test-summary": "jest --coverage --maxWorkers=2 --workerIdleMemoryLimit=512MB --logHeapUsage --coverageReporters='json-summary' --json --outputFile=coverage/jest-results.json --config=jest.config.js",
+    "jest-test": "jest --coverage --maxWorkers=2 --workerIdleMemoryLimit=512MB --logHeapUsage",
     "e2e-test": "ts-node scripts/e2e-recipe-test.ts",
     "apex-test": "sf apex run test --tests SDTPicklistDependencyValidatorTest --tests SDTSchemaPicklistDependencySourceTest --result-format human --code-coverage --wait 20"
   },
