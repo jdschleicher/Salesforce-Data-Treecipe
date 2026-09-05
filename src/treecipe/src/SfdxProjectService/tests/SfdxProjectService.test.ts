@@ -8,7 +8,7 @@ describe('SfdxProjectService', () => {
     const workspaceRoot = path.resolve('/fake/workspace');
 
     const mockSfdxProjectJson = (sfdxProjectJsonContent: string) => {
-        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(SfdxProjectService, 'isExistingFile').mockReturnValue(true);
         jest.spyOn(fs, 'readFileSync').mockReturnValue(sfdxProjectJsonContent);
     };
 
@@ -101,7 +101,7 @@ describe('SfdxProjectService', () => {
 
         test('given no sfdx-project.json, returns no package directories without throwing', () => {
 
-            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+            jest.spyOn(SfdxProjectService, 'isExistingFile').mockReturnValue(false);
 
             expect(SfdxProjectService.resolvePackageDirectoryPaths(workspaceRoot))
                 .toEqual({ packageDirectoryPaths: [] });
@@ -121,7 +121,7 @@ describe('SfdxProjectService', () => {
 
         test('given a non-Error thrown while reading, still returns a message rather than throwing', () => {
 
-            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(SfdxProjectService, 'isExistingFile').mockReturnValue(true);
             jest.spyOn(SfdxProjectService, 'readSfdxProjectJson').mockImplementation(() => { throw 'disk exploded'; });
 
             const resolvedPackageDirectories = SfdxProjectService.resolvePackageDirectoryPaths(workspaceRoot);
@@ -234,6 +234,53 @@ describe('SfdxProjectService', () => {
 
             expect(SfdxProjectService.resolvePackageDirectoryPaths(workspaceRoot))
                 .toEqual({ packageDirectoryPaths: [ workspaceRoot ] });
+
+        });
+
+    });
+
+    describe('isExistingFile', () => {
+
+        test('given a regular file, returns true', () => {
+
+            jest.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => true } as unknown as fs.Stats);
+
+            expect(SfdxProjectService.isExistingFile('/fake/workspace/sfdx-project.json')).toBe(true);
+
+        });
+
+        /*
+            A repository can check sfdx-project.json in as a symlink to a character device, and
+            reading one would hang the extension host rather than fail.
+        */
+        test('given a path that is not a regular file, returns false so it is never read', () => {
+
+            jest.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => false } as unknown as fs.Stats);
+
+            expect(SfdxProjectService.isExistingFile('/fake/workspace/sfdx-project.json')).toBe(false);
+
+        });
+
+        test('given a path that cannot be stat-ed, returns false rather than throwing', () => {
+
+            jest.spyOn(fs, 'statSync').mockImplementation(() => { throw new Error('ENOENT'); });
+
+            expect(SfdxProjectService.isExistingFile('/fake/workspace/missing')).toBe(false);
+
+        });
+
+    });
+
+    describe('resolvePackageDirectoryPaths device guard', () => {
+
+        test('given a project file that is not a regular file, reads nothing and returns no package directories', () => {
+
+            jest.spyOn(SfdxProjectService, 'isExistingFile').mockReturnValue(false);
+            const readSpy = jest.spyOn(fs, 'readFileSync');
+
+            expect(SfdxProjectService.resolvePackageDirectoryPaths(workspaceRoot))
+                .toEqual({ packageDirectoryPaths: [] });
+            expect(readSpy).not.toHaveBeenCalled();
 
         });
 

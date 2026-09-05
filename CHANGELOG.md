@@ -10,13 +10,17 @@ It is worse from the warning notification. VS Code dismisses a notification the 
 
 ### The picker opens first and fills as it scans
 
-`promptForObjectsPath` now builds the quick pick up front, marks it `busy`, shows it, and streams each directory in as the walk discovers it. The dead time is not narrated -- it is gone. A directory found in the first few milliseconds can be selected while the rest of the workspace is still being read.
+`promptForObjectsPath` now builds the quick pick up front, marks it `busy`, shows it, and streams directories in as the walk discovers them. The dead time is not narrated -- it is gone.
 
-Alongside it, the scan runs under a **cancellable** progress notification reporting what it has found so far. `ProgressLocation.Notification` rather than `Window` for the reason the picklist dependency commands already chose it: `Window` "supports neither cancellation nor discrete progress", so the token it hands you never fires. Cancelling stops the walk, closes the picker, and writes no configuration file.
+**The user's answer ends the command, not the scan.** Selecting a directory found in the first few milliseconds returns immediately; the walk is told to stop and unwinds on its own. This is the part that is easy to get wrong -- an earlier draft awaited the whole walk and only then read the selection, which put the original stall back one layer down and, worse, threw away an already-made selection if the user then hit Cancel. Both cases are now covered by tests that fail against that shape.
+
+Item updates are **batched** (200 items or 100ms, whichever comes first). Assigning `.items` is an ext-host to renderer round trip that re-sends the entire list and re-runs the filter, so one assignment per directory is quadratic in payload on exactly the large workspaces this targets. The highlighted item is restored across each flush, because VS Code resets it to the top -- otherwise the scan would drag the user's cursor away from them while they were reading.
+
+Alongside it, the scan runs under a **cancellable** progress notification. `ProgressLocation.Notification` rather than `Window` for the reason the picklist dependency commands already chose it: `Window` "supports neither cancellation nor discrete progress", so the token it hands you never fires. Cancelling before a selection stops the walk, closes the picker, and writes no configuration file.
 
 ### Options come from sfdx-project.json
 
-Where a workspace has an `sfdx-project.json`, the scan is seeded from its `packageDirectories` instead of the workspace root, and the picker says so:
+Where a workspace has an `sfdx-project.json`, the scan is seeded from its `packageDirectories` instead of the workspace root, and the picker says so. To be clear about the size of this win: the walk already skipped `node_modules` and dotfolders, so most of the directory reduction predates this change -- seeding drops the remaining non-DX siblings and, more usefully, puts the directories a Salesforce developer actually wants at the top of the list.
 
 > Select directory that contains the Salesforce objects - options from packageDirectories in sfdx-project.json
 
@@ -33,7 +37,11 @@ The commands that write Apex resolve a package directory through `resolveDefault
 
 ### Internals
 
-`SfdxProjectService` is new, and deliberately a leaf: `fs` and `path`, no `vscode`, no other service. `VSCodeWorkspaceService` needed the containment logic that lived in `PicklistDependencyTestService`, and importing that service would have closed a cycle through `RecipeService` and `ErrorHandlingService` -- and pulled `@salesforce/core` into the very path this release exists to make faster. `PicklistDependencyTestService` keeps its four helpers as delegations, `isPathContainedInWorkspace` injecting its own realpath resolver so it remains the one source of truth for how its paths resolve.
+`SfdxProjectService` is new, and deliberately a leaf: `fs` and `path`, no `vscode`, no other service. `VSCodeWorkspaceService` needed the containment logic that lived in `PicklistDependencyTestService`, and importing that service would have closed a cycle through `RecipeService` and `ErrorHandlingService`. `PicklistDependencyTestService` keeps its four helpers as delegations, `isPathContainedInWorkspace` injecting its own realpath resolver so it remains the one source of truth for how its paths resolve.
+
+The value here is the cycle and the dependency weight of that one module graph, and **not** a startup saving: `extension.ts` imports `ExtensionCommandService`, which imports `@salesforce/core` at the top level, so that dependency is loaded on the first command regardless of what this service does.
+
+Reading `sfdx-project.json` now requires a regular file rather than merely an existing path -- a repository can commit that name as a symlink to a character device, and reading one would hang the extension host on the first command a new user runs.
 
 The walk also stopped calling `getWorkspaceRoot()` once per directory entry; it is resolved once and handed down the recursion.
 

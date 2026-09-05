@@ -11,6 +11,22 @@ import * as path from 'path';
     error. unreadableProjectFileMessage is the one case worth telling the user about -- a project
     file that IS there and cannot be parsed is a typo they want to know about, not an absence.
 */
+/*
+    packageDirectories entries come from a file in the user's repository, so every field is typed as
+    the JSON allows rather than as a well formed project would have it -- path is narrowed at the
+    point of use instead of being trusted to be a string here.
+*/
+export interface ISfdxPackageDirectory {
+    path?: unknown;
+    default?: unknown;
+}
+
+export interface ISfdxProjectJson {
+    packageDirectories?: unknown;
+    sourceApiVersion?: unknown;
+    [additionalProjectKey: string]: unknown;
+}
+
 export interface IResolvedPackageDirectories {
     packageDirectoryPaths: string[];
     unreadableProjectFileMessage?: string;
@@ -31,7 +47,7 @@ export class SfdxProjectService {
         return path.join(workspaceRoot, 'sfdx-project.json');
     }
 
-    static readSfdxProjectJson(sfdxProjectFilePath: string): any {
+    static readSfdxProjectJson(sfdxProjectFilePath: string): ISfdxProjectJson {
 
         const sfdxProjectFileContent = fs.readFileSync(sfdxProjectFilePath, 'utf-8');
 
@@ -53,8 +69,13 @@ export class SfdxProjectService {
                                         resolvedWorkspaceRoot: string,
                                         resolveRealDirectoryPath?: (directoryPath: string) => string): boolean {
 
-        // THE RESOLVER IS INJECTABLE SO A CALLER THAT OWNS ITS OWN getRealDirectoryPath STAYS THE
-        // ONE SOURCE OF TRUTH FOR HOW PATHS RESOLVE, RATHER THAN THIS SERVICE SILENTLY REPLACING IT
+        /*
+            The resolver is injectable so a caller that owns its own getRealDirectoryPath stays the
+            one source of truth for how paths resolve, rather than this service silently replacing
+            it. Pass ONLY a real realpath resolver: an identity function would defeat the symlink
+            half of this check. The lexical half never passes through it, so an injected resolver
+            can never make a "../" or absolute path pass -- but it can hide a symlink escape.
+        */
         const resolveRealPath = resolveRealDirectoryPath ?? ((directoryPath: string) => this.getRealDirectoryPath(directoryPath));
 
         const realPath = resolveRealPath(resolvedPath);
@@ -104,11 +125,16 @@ export class SfdxProjectService {
 
         const sfdxProjectFilePath = this.getSfdxProjectFilePath(workspaceRoot);
 
-        if ( !fs.existsSync(sfdxProjectFilePath) ) {
+        /*
+            isFile rather than existsSync: a repository can check sfdx-project.json in as a symlink
+            to a character device such as /dev/zero, and reading that would hang the extension host
+            on the first command a new user runs.
+        */
+        if ( !this.isExistingFile(sfdxProjectFilePath) ) {
             return { packageDirectoryPaths: [] };
         }
 
-        let sfdxProjectJson: any;
+        let sfdxProjectJson: ISfdxProjectJson;
 
         try {
             sfdxProjectJson = this.readSfdxProjectJson(sfdxProjectFilePath);
@@ -119,7 +145,7 @@ export class SfdxProjectService {
             };
         }
 
-        const packageDirectories = sfdxProjectJson?.packageDirectories;
+        const packageDirectories: unknown = sfdxProjectJson?.packageDirectories;
 
         if ( !Array.isArray(packageDirectories) ) {
             return { packageDirectoryPaths: [] };
@@ -128,7 +154,7 @@ export class SfdxProjectService {
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const usablePackageDirectoryPaths: string[] = [];
 
-        for ( const packageDirectory of packageDirectories ) {
+        for ( const packageDirectory of packageDirectories as ISfdxPackageDirectory[] ) {
 
             const declaredPath = packageDirectory?.path;
 
@@ -160,6 +186,16 @@ export class SfdxProjectService {
         }
 
         return { packageDirectoryPaths: usablePackageDirectoryPaths };
+
+    }
+
+    static isExistingFile(filePath: string): boolean {
+
+        try {
+            return fs.statSync(filePath).isFile();
+        } catch {
+            return false;
+        }
 
     }
 

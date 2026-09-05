@@ -44,6 +44,10 @@ export class VSCodeWorkspaceService {
     */
     static readonly browseAllWorkspaceDirectoriesLabel = 'Browse all workspace directories...';
 
+    // BOUNDS THE .items ROUND TRIPS DESCRIBED IN showObjectsDirectoryQuickPick
+    static readonly maxPendingQuickPickItems = 200;
+    static readonly quickPickFlushIntervalMilliseconds = 100;
+
     /*
         Opens the picker FIRST and fills it as the walk finds directories.
 
@@ -95,6 +99,18 @@ export class VSCodeWorkspaceService {
 
     }
 
+    /*
+        The user's answer ends this, NOT the scan.
+
+        An earlier shape awaited the whole walk and only then awaited the selection, which put the
+        stall this command exists to remove back one layer down: accepting an item 200ms in closed
+        the picker and then waited for every remaining directory. Worse, a Cancel after that point
+        discarded the selection the user had already made and wrote no config at all.
+
+        So the two are raced, and a response is itself a reason to stop walking -- the walk's
+        cancellation predicate ORs it in, and the detached remainder unwinds at its next check
+        without touching a picker that is on its way out.
+    */
     private static async showObjectsDirectoryQuickPick(workspaceRoot: string,
                                                         objectsDirectoryScanRoots: IObjectsDirectoryScanRoots): Promise<string | undefined> {
 
@@ -111,43 +127,102 @@ export class VSCodeWorkspaceService {
         objectsDirectoryQuickPick.items = [...discoveredQuickPickItems];
         objectsDirectoryQuickPick.show();
 
-        /*
-            Registered before the walk starts so a selection made against the first streamed items
-            is honoured rather than waiting on the rest of the scan. onDidAccept resolves with the
-            label and then hides, and the onDidHide that follows is a no-op on a settled promise.
-        */
+        let userHasRespondedToPicker = false;
+
         const objectsDirectorySelection = new Promise<string | undefined>((resolveSelection) => {
 
             objectsDirectoryQuickPick.onDidAccept(() => {
+                userHasRespondedToPicker = true;
                 resolveSelection(objectsDirectoryQuickPick.selectedItems[0]?.label);
                 objectsDirectoryQuickPick.hide();
             });
 
-            objectsDirectoryQuickPick.onDidHide(() => resolveSelection(undefined));
+            objectsDirectoryQuickPick.onDidHide(() => {
+                userHasRespondedToPicker = true;
+                resolveSelection(undefined);
+            });
 
         });
 
-        const scanWasCancelled = await this.runObjectsDirectoryScanWithProgress(
-            workspaceRoot,
-            objectsDirectoryScanRoots,
-            (discoveredQuickPickItem) => {
-                discoveredQuickPickItems.push(discoveredQuickPickItem);
-                objectsDirectoryQuickPick.items = [...discoveredQuickPickItems];
+        /*
+            Assigning .items is an ext-host to renderer round trip that re-sends the WHOLE list and
+            re-runs the filter, so doing it per directory is quadratic in the payload on exactly the
+            large workspaces this command targets. Batching bounds it, and the active item is
+            restored across the assignment because VS Code resets the highlight to the top -- which
+            would otherwise drag the user's selection away from them mid-scan.
+        */
+        let pendingDiscoveredItemCount = 0;
+        let lastItemFlushTime = Date.now();
+
+        const flushDiscoveredItems = () => {
+
+            if ( userHasRespondedToPicker || pendingDiscoveredItemCount === 0 ) {
+                return;
             }
-        );
 
-        objectsDirectoryQuickPick.busy = false;
+            const activeQuickPickItem = objectsDirectoryQuickPick.activeItems[0];
+            objectsDirectoryQuickPick.items = [...discoveredQuickPickItems];
 
-        if ( scanWasCancelled ) {
-            objectsDirectoryQuickPick.hide();
+            if ( activeQuickPickItem ) {
+                objectsDirectoryQuickPick.activeItems = [activeQuickPickItem];
+            }
+
+            pendingDiscoveredItemCount = 0;
+            lastItemFlushTime = Date.now();
+
+        };
+
+        const onItemDiscovered = (discoveredQuickPickItem: vscode.QuickPickItem) => {
+
+            if ( userHasRespondedToPicker ) {
+                return;
+            }
+
+            discoveredQuickPickItems.push(discoveredQuickPickItem);
+            pendingDiscoveredItemCount++;
+
+            const flushIsDue = (pendingDiscoveredItemCount >= this.maxPendingQuickPickItems)
+                                || ((Date.now() - lastItemFlushTime) >= this.quickPickFlushIntervalMilliseconds);
+
+            if ( flushIsDue ) {
+                flushDiscoveredItems();
+            }
+
+        };
+
+        try {
+
+            const scanCompletion = this.runObjectsDirectoryScanWithProgress(
+                workspaceRoot,
+                objectsDirectoryScanRoots,
+                onItemDiscovered,
+                () => userHasRespondedToPicker
+            ).then((wasCancelledByUser) => {
+                flushDiscoveredItems();
+                if ( !userHasRespondedToPicker ) {
+                    objectsDirectoryQuickPick.busy = false;
+                }
+                return wasCancelledByUser;
+            });
+
+            // A RESPONSE WINS THE RACE AND IS NEVER A SCAN CANCELLATION, WHICH IS WHY IT YIELDS false
+            const scanWasCancelled = await Promise.race([
+                scanCompletion,
+                objectsDirectorySelection.then(() => false)
+            ]);
+
+            if ( scanWasCancelled && !userHasRespondedToPicker ) {
+                objectsDirectoryQuickPick.hide();
+                return undefined;
+            }
+
+            return await objectsDirectorySelection;
+
+        } finally {
+            // REACHED ON A readdir REJECTION TOO, WHICH OTHERWISE LEFT A BUSY PICKER ON SCREEN FOREVER
+            userHasRespondedToPicker = true;
             objectsDirectoryQuickPick.dispose();
-            return undefined;
         }
-
-        const selectedLabel = await objectsDirectorySelection;
-        objectsDirectoryQuickPick.dispose();
-
-        return selectedLabel;
 
     }
 
@@ -161,7 +236,8 @@ export class VSCodeWorkspaceService {
     */
     private static async runObjectsDirectoryScanWithProgress(workspaceRoot: string,
                                                                 objectsDirectoryScanRoots: IObjectsDirectoryScanRoots,
-                                                                onItemDiscovered: (discoveredQuickPickItem: vscode.QuickPickItem) => void): Promise<boolean> {
+                                                                onItemDiscovered: (discoveredQuickPickItem: vscode.QuickPickItem) => void,
+                                                                hasUserResponded: () => boolean = () => false): Promise<boolean> {
 
         return await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -177,7 +253,8 @@ export class VSCodeWorkspaceService {
 
             const directoryScanProgress: IDirectoryScanProgress = {
                 report: (message: string) => progress.report({ message }),
-                isCancellationRequested: () => cancellationToken.isCancellationRequested
+                // A RESPONSE STOPS THE WALK, BUT ONLY THE TOKEN COUNTS AS A CANCELLATION BELOW
+                isCancellationRequested: () => cancellationToken.isCancellationRequested || hasUserResponded()
             };
 
             await this.collectObjectDirectoryQuickPickItems(
