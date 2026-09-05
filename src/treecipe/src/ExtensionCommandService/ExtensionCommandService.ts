@@ -8,7 +8,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress } from "../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
     PicklistDependencyExplorerService,
@@ -48,6 +48,10 @@ export const UPDATE_METADATA_ACTION_LABEL = 'Update Metadata';
 export const DEPLOY_UPDATED_METADATA_ACTION_LABEL = 'Deploy to Org';
 export const VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL = 'View Details';
 
+// SHARED WITH THE TESTS SO THESE LABELS CANNOT DRIFT FROM WHAT IS ASSERTED
+export const VIEW_GENERATION_SUMMARY_ACTION_LABEL = 'View Summary';
+export const OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL = 'Open Explorer';
+
 /*
     Everything the explorer webview can post back, as ONE shape with every field optional.
 
@@ -68,7 +72,16 @@ interface IPicklistDependencyGenerationResult {
     classesDirectoryPath: string;
     specsClassFilePath: string;
     specCount: number;
+    /*
+        ONE line. The document below is what carries the run in full -- this is what a toast can show
+        without truncating, and what the end to end command appends its own question to.
+    */
     generationSummary: string;
+    /*
+        Undefined when the document could not be written, which is a report failing rather than the
+        run failing. Every caller treats it as "there is nothing to open", never as an error.
+    */
+    generationSummaryFilePath?: string;
     manifestFilePath: string;
     /*
         Carried out of generation rather than reported inside it, so the command can fold the skips
@@ -274,6 +287,16 @@ export class ExtensionCommandService {
 
         });
 
+    }
+
+    /*
+        tsconfig sets "strict": false, so a catch binding is implicitly any and reading .message off
+        it compiles. A thrown null or undefined would then throw AGAIN inside the catch, which is
+        exactly where the surrounding blocks are trying to keep a failure from escalating -- a
+        report that could not be written would report the whole run as failed.
+    */
+    private describeCaughtError(caughtError: unknown): string {
+        return caughtError instanceof Error ? caughtError.message : String(caughtError);
     }
 
     /*
@@ -554,11 +577,25 @@ export class ExtensionCommandService {
 
         const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
 
-        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}". Registered in the ${PicklistDependencyTestService.getTestSuiteName()} Apex test suite, which is what "Run Picklist Dependency Check" and "sf apex run test --suite-names" invoke. The Picklist Dependency Explorer reads "${manifestFilePath}" to render exactly these specs.`;
-        if ( collectionResult.recordTypeSpecDetails.length > 0 ) {
-            // THE RECORD TYPE SCOPED SPECS ARE NOT IN all(), SO THE SUMMARY SAYS WHERE THEY ARE INSTEAD OF LEAVING THEM UNMENTIONED
-            generationSummary += ` Also generated ${collectionResult.recordTypeSpecDetails.length} record-type-scoped spec(s), aggregated by ${specsClassName}.allRecordTypeScoped(). These are not asserted by ${specsTestClassName}.cls: Schema describe returns picklist values without record type filtering, so they need a record-type-aware ISDTPicklistDependencySource.`;
-        }
+        /*
+            The run as DATA, so the one line the toast gets and the document that carries the run in
+            full are built from the same facts rather than assembled twice.
+        */
+        const generationSummaryDetail: IPicklistDependencyGenerationSummaryDetail = {
+            specCount: collectionResult.specDetails.length,
+            perObjectClassCount,
+            specsClassName,
+            specsTestClassName,
+            testSuiteName: PicklistDependencyTestService.getTestSuiteName(),
+            classesDirectoryPath,
+            manifestFilePath,
+            recordTypeSpecCount: collectionResult.recordTypeSpecDetails.length,
+            scaffoldedClassNames: frameworkScaffoldResult.scaffoldedClassNames,
+            removedStaleClassFileNames: specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath))
+        };
+
+        const generationSummary = PicklistDependencyTestService.buildGenerationSummaryToastMessage(generationSummaryDetail);
+
         /*
             The one thing here that is NOT part of the run report: a missing framework class means the
             generated Apex will not compile at all. Appending that to a success message, as an
@@ -568,11 +605,34 @@ export class ExtensionCommandService {
         if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
         }
-        if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
-            generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
-        }
-        if ( specsClassWriteResult.removedStaleClassFilePaths.length > 0 ) {
-            generationSummary += ` Removed ${specsClassWriteResult.removedStaleClassFilePaths.length} generated class(es) for object(s) no longer declaring a dependent picklist: ${specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath)).join(', ')}.`;
+
+        /*
+            The document is a REPORT ON a finished write, not a step of it: the Apex, the suite and
+            the manifest are all on disk by now, and a workspace that will not take one more markdown
+            file has not undone any of that. So a failure here warns about the report and leaves the
+            run reporting the success it actually had.
+        */
+        let generationSummaryFilePath: string | undefined;
+        try {
+
+            /*
+                Derived from the manifest that was just written rather than re-resolved from the
+                configuration. "The summary is a sibling of the manifest" is load bearing -- a stray
+                file in a package directory breaks "sf project deploy" -- and building the path a
+                second way makes that hold only while two expressions happen to agree.
+            */
+            generationSummaryFilePath = PicklistDependencyTestService.writeGenerationSummaryDocument(
+                path.dirname(manifestFilePath),
+                PicklistDependencyTestService.buildGenerationSummaryMarkdown(generationSummaryDetail)
+            );
+
+        } catch (summaryDocumentError) {
+
+            VSCodeWorkspaceService.showWarningMessage(
+                `The picklist dependency specs were generated, but the summary document could not be written (${this.describeCaughtError(summaryDocumentError)}). `
+                + `Nothing that was generated is affected -- the Apex, the test suite and the manifest are all written.`
+            );
+
         }
 
         /*
@@ -609,6 +669,7 @@ export class ExtensionCommandService {
             specsClassFilePath,
             specCount: collectionResult.specDetails.length,
             generationSummary,
+            generationSummaryFilePath,
             manifestFilePath,
             skippedFields: collectionResult.skippedFields
         };
@@ -848,6 +909,78 @@ export class ExtensionCommandService {
     }
 
     /*
+        Puts the deploy offer, with everything the run has to show alongside it.
+
+        Reading what just happened does not cost the deploy offer -- showing the summary and stopping
+        would make "View Summary" a choice between understanding the run and finishing it, which is
+        the same reason "View Details" has always re-offered. So each inspect action is handled and
+        the offer is put again, and each is offered ONCE, which is what makes the loop terminate:
+        every pass either ends the run or spends an action, and there are at most three.
+    */
+    private async offerPicklistDependencyRunAgainstOrg(generationCompleteMessage: string,
+                                                        generationResult: IPicklistDependencyGenerationResult): Promise<string | undefined> {
+
+        const inspectActionHandlerByLabel: Record<string, () => Promise<void>> = {};
+
+        // NO DOCUMENT MEANS NO BUTTON: THE SUMMARY WRITE IS ALLOWED TO HAVE FAILED WITHOUT FAILING THE RUN
+        if ( generationResult.generationSummaryFilePath ) {
+            const generationSummaryFilePath = generationResult.generationSummaryFilePath;
+            inspectActionHandlerByLabel[VIEW_GENERATION_SUMMARY_ACTION_LABEL] = async () => {
+                await VSCodeWorkspaceService.showMarkdownPreview(generationSummaryFilePath);
+            };
+        }
+
+        inspectActionHandlerByLabel[OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL] = async () => {
+            await vscode.commands.executeCommand('treecipe.openPicklistDependencyExplorer');
+        };
+
+        if ( generationResult.skippedFields.length > 0 ) {
+            inspectActionHandlerByLabel[VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL] = async () => {
+                VSCodeWorkspaceService.showPicklistDependencyCheckReport(
+                    this.buildPicklistDependencyWarningReport(generationResult.skippedFields)
+                );
+            };
+        }
+
+        let offerMessage = generationCompleteMessage;
+
+        while ( true ) {
+
+            const offeredActionLabels = [RUN_AGAINST_ORG_ACTION_LABEL, ...Object.keys(inspectActionHandlerByLabel)];
+
+            const selection = await vscode.window.showInformationMessage(offerMessage, ...offeredActionLabels);
+
+            const selectedInspectActionHandler = selection ? inspectActionHandlerByLabel[selection] : undefined;
+            if ( !selectedInspectActionHandler ) {
+                return selection;
+            }
+
+            /*
+                Opening what the run produced is subject to the SAME rule as writing it: the Apex,
+                the suite and the manifest are already on disk, so a markdown preview that will not
+                open (the built-in markdown extension disabled) or an explorer that throws is a
+                failed VIEW of a successful generation. Unguarded, that rejection would leave the
+                command's catch reporting a completed run as an error -- and would silently drop the
+                deploy offer with it.
+            */
+            try {
+                await selectedInspectActionHandler();
+            } catch (inspectActionError) {
+                VSCodeWorkspaceService.showWarningMessage(
+                    `"${selection}" could not be opened (${this.describeCaughtError(inspectActionError)}). `
+                    + `The generated picklist dependency specs are unaffected.`
+                );
+            }
+
+            delete inspectActionHandlerByLabel[selection as string];
+
+            offerMessage = 'Deploy the generated picklist dependency specs and run them against an org now?';
+
+        }
+
+    }
+
+    /*
         Generates the contract, then OFFERS to run it against an org in the same invocation.
 
         The offer comes after generation rather than before it. Generating is the useful half on its
@@ -872,6 +1005,24 @@ export class ExtensionCommandService {
             await VSCodeWorkspaceService.openFileInEditor(generationResult.specsClassFilePath);
 
             /*
+                Opened after the spec class, so the run report is what the user is left looking at:
+                the class answers "what did it write", the summary answers "what do I do now".
+
+                Guarded for the same reason the button that re-opens it is: a preview that will not
+                open is a failed view of a generation that succeeded, and must not turn one into the
+                other. Silent here rather than a warning -- the toast that follows carries "View
+                Summary", so the document is still one click away and a second interruption before
+                the run has even been reported would be noise.
+            */
+            if ( generationResult.generationSummaryFilePath ) {
+                try {
+                    await VSCodeWorkspaceService.showMarkdownPreview(generationResult.generationSummaryFilePath);
+                } catch {
+                    // THE "View Summary" BUTTON BELOW IS THE RECOVERY, SO THIS NEEDS NO REPORT OF ITS OWN
+                }
+            }
+
+            /*
                 ONE message closes the run: what was generated, what was skipped and why, and the
                 offer to run it. The skips used to arrive as their own toasts partway through the
                 walk; folding them in here is what makes this the report of a finished run rather
@@ -882,32 +1033,7 @@ export class ExtensionCommandService {
                 ? `${generationResult.generationSummary} ${skippedFieldSummary} Deploy and run them against an org now?`
                 : `${generationResult.generationSummary} Deploy and run them against an org now?`;
 
-            const generationCompleteActionLabels = skippedFieldSummary
-                ? [RUN_AGAINST_ORG_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL]
-                : [RUN_AGAINST_ORG_ACTION_LABEL];
-
-            let runAgainstOrgSelection = await vscode.window.showInformationMessage(
-                generationCompleteMessage,
-                ...generationCompleteActionLabels
-            );
-
-            /*
-                Reading the warnings does not cost the deploy offer. Showing the report and stopping
-                would make "View Details" a choice between understanding the run and finishing it,
-                so the offer is put again once the report is open.
-            */
-            if ( runAgainstOrgSelection === VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL ) {
-
-                VSCodeWorkspaceService.showPicklistDependencyCheckReport(
-                    this.buildPicklistDependencyWarningReport(generationResult.skippedFields)
-                );
-
-                runAgainstOrgSelection = await vscode.window.showInformationMessage(
-                    'Deploy the generated picklist dependency specs and run them against an org now?',
-                    RUN_AGAINST_ORG_ACTION_LABEL
-                );
-
-            }
+            const runAgainstOrgSelection = await this.offerPicklistDependencyRunAgainstOrg(generationCompleteMessage, generationResult);
 
             if ( runAgainstOrgSelection !== RUN_AGAINST_ORG_ACTION_LABEL ) {
                 return;

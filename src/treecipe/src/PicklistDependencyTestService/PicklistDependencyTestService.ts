@@ -265,6 +265,39 @@ export interface IFrameworkScaffoldResult {
     unavailableClassNames: string[];
 }
 
+/*
+    Everything a successful generation run reports, as data. The toast and the summary document are
+    both built from ONE of these so they cannot describe the same run differently.
+*/
+export interface IPicklistDependencyGenerationSummaryDetail {
+    specCount: number;
+    perObjectClassCount: number;
+    specsClassName: string;
+    specsTestClassName: string;
+    testSuiteName: string;
+    classesDirectoryPath: string;
+    manifestFilePath: string;
+    recordTypeSpecCount: number;
+    scaffoldedClassNames: string[];
+    // BASE NAMES RATHER THAN FULL PATHS: THE DIRECTORY IS ALREADY ITS OWN BULLET
+    removedStaleClassFileNames: string[];
+}
+
+// THE "category" EVERY COMMAND IN package.json DECLARES, SO THE DOCUMENT NAMES WHAT THE PALETTE SHOWS
+export const TREECIPE_COMMAND_PALETTE_PREFIX = 'Salesforce Treecipe';
+
+/*
+    Absolute rather than relative: the summary document is written into the USER's workspace, so a
+    repository-relative path would resolve against their tree and land nowhere. The anchors are
+    GitHub's slugs for the guide's headings -- a heading renamed there has to be renamed here, which
+    is what the test asserting these links exist is for.
+*/
+const PICKLIST_DEPENDENCY_DOCS_BASE_URL = 'https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs';
+export const PICKLIST_DEPENDENCY_IN_ORG_GUIDE_RUNNING_THE_TESTS_URL = `${PICKLIST_DEPENDENCY_DOCS_BASE_URL}/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md#5-running-the-tests-inside-the-org`;
+export const PICKLIST_DEPENDENCY_IN_ORG_GUIDE_TRIGGERING_A_FAILURE_URL = `${PICKLIST_DEPENDENCY_DOCS_BASE_URL}/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md#7-triggering-a-failure-on-purpose`;
+export const PICKLIST_DEPENDENCY_IN_ORG_GUIDE_FIXING_A_FAILURE_URL = `${PICKLIST_DEPENDENCY_DOCS_BASE_URL}/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md#8-fixing-a-real-failure`;
+export const PICKLIST_DEPENDENCY_TECHNICAL_DESIGN_URL = `${PICKLIST_DEPENDENCY_DOCS_BASE_URL}/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md`;
+
 export class PicklistDependencyTestService {
 
     /*
@@ -274,6 +307,13 @@ export class PicklistDependencyTestService {
         class all derive from it, so they move together.
     */
     private static specsClassName = 'SDTPLDSpecs';
+
+    /*
+        A sibling of manifest.json under the treecipe specs folder, never inside a package directory:
+        a stray markdown file there is not valid Salesforce metadata and would ride into
+        "sf project deploy" and fail the deploy it describes.
+    */
+    private static generationSummaryFileName = 'generation-summary.md';
 
     /*
         Salesforce caps an ApexClass name at 40 characters. The per-object classes are the only
@@ -421,6 +461,155 @@ export class PicklistDependencyTestService {
         });
 
         return summarySentences.join(' ');
+
+    }
+
+    /*
+        Everything the end of a successful generation run has to say, as data rather than as a
+        sentence. The prose is built from this in one place below, so the toast and the summary
+        document cannot describe the same run differently.
+    */
+    static buildGenerationSummaryDocumentFilePath(specsFolderPath: string): string {
+        return path.join(specsFolderPath, this.generationSummaryFileName);
+    }
+
+    static getGenerationSummaryFileName(): string {
+        return this.generationSummaryFileName;
+    }
+
+    /*
+        A value read out of Salesforce metadata rendered as literal text.
+
+        Api names, class names and paths all reach this document from XML the extension does not
+        control, and markdown has no escaping inside a code span -- only a longer fence. So the fence
+        is grown past the longest backtick run in the value, and a value that starts or ends with a
+        backtick is padded, which is what CommonMark requires for the span to close where it should.
+        Anything else lets a crafted value end the span early and restructure the document around it.
+    */
+    static formatAsMarkdownInlineCode(value: string): string {
+
+        /*
+            A LINE BREAK ends the code span whatever the fence is -- a blank line ends the paragraph
+            the span lives in, so a value carrying one becomes markup for everything after it. It is
+            rendered as its escape sequence rather than collapsed to a space, so the document still
+            shows what the value actually contains instead of quietly redrawing it as something
+            tidier that never existed in the metadata.
+        */
+        const singleLineValue = value.replace(/\r\n|\r|\n/g, '\\n');
+
+        const backtickRuns: string[] = singleLineValue.match(/`+/g) ?? [];
+        const longestBacktickRunLength = backtickRuns.reduce((longest, backtickRun) => Math.max(longest, backtickRun.length), 0);
+        const fence = '`'.repeat(longestBacktickRunLength + 1);
+
+        const needsPadding = singleLineValue.startsWith('`') || singleLineValue.endsWith('`');
+        const paddedValue = needsPadding ? ` ${singleLineValue} ` : singleLineValue;
+
+        return `${fence}${paddedValue}${fence}`;
+
+    }
+
+    /*
+        The one line the toast gets.
+
+        A VS Code notification is a single run of unformatted text that truncates, so it carries the
+        two counts and nothing else. Everything the run has to report lives in the document the
+        "View Summary" button opens -- which is the whole reason this is no longer five concatenated
+        sentences competing for the same line.
+    */
+    static buildGenerationSummaryToastMessage(summaryDetail: IPicklistDependencyGenerationSummaryDetail): string {
+
+        return `Generated ${summaryDetail.specCount} picklist dependency spec(s) across ${summaryDetail.perObjectClassCount} per-object class(es).`;
+
+    }
+
+    /*
+        The run report, as bullets.
+
+        Two sections, because a finished run raises two different questions: what did it just write,
+        and what do I do with it. The optional bullets are omitted entirely rather than rendered as
+        "0" -- a run that scaffolded nothing has nothing to say about scaffolding, and a zero row
+        reads as a thing that failed rather than a thing that did not apply.
+
+        The walkthroughs are LINKED rather than reproduced. They carry the mermaid diagrams for
+        running the tests and reading a failure, and a second copy here would be a second derivation
+        to keep in sync -- the same reason the Explorer reads the manifest instead of re-walking XML.
+    */
+    static buildGenerationSummaryMarkdown(summaryDetail: IPicklistDependencyGenerationSummaryDetail): string {
+
+        const asCode = (value: string) => this.formatAsMarkdownInlineCode(value);
+
+        const whatHappenedBullets = [
+            `Generated **${summaryDetail.specCount}** picklist dependency spec(s) across **${summaryDetail.perObjectClassCount}** per-object class(es).`,
+            `Aggregated by ${asCode(`${summaryDetail.specsClassName}.cls`)} and asserted by ${asCode(`${summaryDetail.specsTestClassName}.cls`)}.`,
+            `Written to ${asCode(summaryDetail.classesDirectoryPath)}.`,
+            `Registered in the ${asCode(summaryDetail.testSuiteName)} Apex test suite -- what \`Run Picklist Dependency Check\` and \`sf apex run test --suite-names\` invoke.`,
+            `The Picklist Dependency Explorer reads ${asCode(summaryDetail.manifestFilePath)} to render exactly these specs.`
+        ];
+
+        if ( summaryDetail.recordTypeSpecCount > 0 ) {
+            whatHappenedBullets.push(
+                `Also generated **${summaryDetail.recordTypeSpecCount}** record-type-scoped spec(s), aggregated by `
+                + `${asCode(`${summaryDetail.specsClassName}.allRecordTypeScoped()`)}. These are **not** asserted by `
+                + `${asCode(`${summaryDetail.specsTestClassName}.cls`)}: Schema describe returns picklist values without record type `
+                + `filtering, so they need a record-type-aware ${asCode('ISDTPicklistDependencySource')}.`
+            );
+        }
+
+        if ( summaryDetail.scaffoldedClassNames.length > 0 ) {
+            whatHappenedBullets.push(
+                `Scaffolded the required framework class(es): ${summaryDetail.scaffoldedClassNames.map(asCode).join(', ')}.`
+            );
+        }
+
+        if ( summaryDetail.removedStaleClassFileNames.length > 0 ) {
+            whatHappenedBullets.push(
+                `Removed **${summaryDetail.removedStaleClassFileNames.length}** generated class(es) for object(s) no longer declaring a `
+                + `dependent picklist: ${summaryDetail.removedStaleClassFileNames.map(asCode).join(', ')}.`
+            );
+        }
+
+        const whatToDoNextBullets = [
+            `**Open the Picklist Dependency Explorer** -- run ${asCode(`${TREECIPE_COMMAND_PALETTE_PREFIX}: Open Picklist Dependency Explorer`)} `
+                + `from the Command Palette to see every combination these specs assert, and the result of the last check against an org.`,
+            `**Review the generated Apex as a diff** before deploying it. The classes in ${asCode(summaryDetail.classesDirectoryPath)} are `
+                + `meant to be committed and reviewed -- they are the contract, and a change to them is a change to what your org is held to.`,
+            `**Deploy and run the specs against an org** -- run ${asCode(`${TREECIPE_COMMAND_PALETTE_PREFIX}: Run Picklist Dependency Check`)}, `
+                + `or from the org itself: [Running the tests inside the org](${PICKLIST_DEPENDENCY_IN_ORG_GUIDE_RUNNING_THE_TESTS_URL}).`,
+            `**Prove the gate actually works** by breaking a dependency on purpose: `
+                + `[Triggering a failure on purpose](${PICKLIST_DEPENDENCY_IN_ORG_GUIDE_TRIGGERING_A_FAILURE_URL}).`,
+            `**When something fails**, the guide walks through deciding whether the org or the source is right: `
+                + `[Fixing a real failure](${PICKLIST_DEPENDENCY_IN_ORG_GUIDE_FIXING_A_FAILURE_URL}).`,
+            `For how the generated Apex works end to end, see the `
+                + `[Technical Design](${PICKLIST_DEPENDENCY_TECHNICAL_DESIGN_URL}).`
+        ];
+
+        return [
+            '# Picklist Dependency Generation Summary',
+            '',
+            '## What happened',
+            '',
+            ...whatHappenedBullets.map(bullet => `- ${bullet}`),
+            '',
+            '## What to do next',
+            '',
+            ...whatToDoNextBullets.map(bullet => `- ${bullet}`),
+            '',
+            '---',
+            '',
+            `Regenerated by ${TREECIPE_COMMAND_PALETTE_PREFIX}: Generate Picklist Dependency Tests. This file is overwritten on every run.`,
+            ''
+        ].join('\n');
+
+    }
+
+    static writeGenerationSummaryDocument(specsFolderPath: string, summaryDocumentContent: string): string {
+
+        const summaryDocumentFilePath = this.buildGenerationSummaryDocumentFilePath(specsFolderPath);
+
+        fs.mkdirSync(specsFolderPath, { recursive: true });
+        fs.writeFileSync(summaryDocumentFilePath, summaryDocumentContent);
+
+        return summaryDocumentFilePath;
 
     }
 
