@@ -578,6 +578,13 @@ export class ExtensionCommandService {
                 )
             );
         }
+        if ( mergedTestSuiteContent.isExistingFileUnreadable ) {
+            VSCodeWorkspaceService.showWarningMessage(
+                PicklistDependencyTestService.buildUnreadableTestSuiteWarning(
+                    PicklistDependencyTestService.getTestSuiteFilePath(classesDirectoryPath)
+                )
+            );
+        }
 
         const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath);
         if ( legacyArtifactPaths.length > 0 ) {
@@ -1156,6 +1163,15 @@ export class ExtensionCommandService {
             const packageDirectoryPath = PicklistDependencyTestService.resolveDefaultPackageDirectoryPath(workspaceRoot);
             const classesDirectoryPath = PicklistDependencyTestService.getClassesDirectoryPath(packageDirectoryPath);
             PicklistDependencyTestService.assertClassesDirectoryContainedInWorkspace(classesDirectoryPath, workspaceRoot);
+
+            /*
+                The check derives the same testSuites sibling to put the suite in the deploy, so the
+                containment the generate command applies before WRITING there is applied here before
+                the path is read and sent to an org.
+            */
+            PicklistDependencyTestService.assertTestSuitesDirectoryContainedInWorkspace(
+                PicklistDependencyTestService.getTestSuitesDirectoryPath(classesDirectoryPath), workspaceRoot
+            );
 
             await this.deployRunAndReportPicklistDependencyCheck(
                 targetOrgIdentifier,

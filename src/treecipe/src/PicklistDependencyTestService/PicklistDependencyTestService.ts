@@ -237,13 +237,25 @@ export interface ISpecsChangePlan {
 }
 
 export interface IMergedTestSuiteContent {
-    content: string;
+    /*
+        Undefined means WRITE NOTHING. The only way to leave a file whose content could not be read
+        exactly as it is, is not to write it -- so the absence of content is the instruction.
+    */
+    content?: string;
     /*
         True when the file already on disk could not be read as an ApexTestSuite. "content" is then
         that file's EXACT existing content, so writing it back is a no-op and the user's file
         survives -- the caller reports the warning rather than replacing what it cannot understand.
     */
     isExistingFileUnparseable: boolean;
+    /*
+        True when a file IS there but could not be read at all -- a permissions failure, or a lock
+        held by another process. Distinct from "no file yet", which is the ordinary first run.
+        Collapsing the two would answer an unreadable file by writing a fresh one over it, dropping
+        every member the user had registered: the same silent deletion the unparseable branch exists
+        to prevent, reached through a different door.
+    */
+    isExistingFileUnreadable: boolean;
 }
 
 export interface IFrameworkScaffoldResult {
@@ -559,17 +571,36 @@ export class PicklistDependencyTestService {
     }
 
     /*
-        Resolved through symlinks so two paths reaching the same directory compare equal. Falls
-        back to the given path when it cannot be resolved, which keeps the walk working against a
-        mocked or virtual filesystem.
+        Resolved through symlinks so two paths reaching the same directory compare equal.
+
+        A directory that does not exist yet cannot be resolved at all, and returning its lexical
+        path would silently skip symlink resolution for the whole path -- so a symlinked ANCESTOR
+        would satisfy a containment check that exists to catch exactly that. This is not a corner
+        case: the testSuites directory is guaranteed absent on a first run, which would make the
+        unresolved branch the normal one for it.
+
+        So the nearest EXISTING ancestor is resolved instead, and the not-yet-created segments are
+        re-appended to it. Against a mocked or virtual filesystem nothing resolves, the recursion
+        reaches the root and the lexical path is rebuilt unchanged, which is what keeps the walk
+        working there.
     */
     static getRealDirectoryPath(directoryPath: string): string {
 
+        const resolvedDirectoryPath = path.resolve(directoryPath);
+
         try {
-            return fs.realpathSync(directoryPath);
+            return fs.realpathSync(resolvedDirectoryPath);
         } catch {
-            return path.resolve(directoryPath);
+            // FALLS THROUGH TO THE ANCESTOR WALK BELOW
         }
+
+        const parentDirectoryPath = path.dirname(resolvedDirectoryPath);
+
+        if ( parentDirectoryPath === resolvedDirectoryPath ) {
+            return resolvedDirectoryPath;
+        }
+
+        return path.join(this.getRealDirectoryPath(parentDirectoryPath), path.basename(resolvedDirectoryPath));
 
     }
 
@@ -2616,19 +2647,51 @@ ${recordTypeAggregationMarkup}}
             return undefined;
         }
 
-        const testClassNamePattern = /<testClassName>([^<]*)<\/testClassName>/g;
+        /*
+            Comments and CDATA are removed before anything is counted or read. The pattern below has
+            no XML context, so without this a member a user deliberately COMMENTED OUT would be read
+            as live and silently restored on the next regeneration -- the opposite of what commenting
+            it out asked for.
+        */
+        const membershipMarkup = testSuiteFileContent
+            .replace(/<!--[\s\S]*?-->/g, '')
+            .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
+
+        /*
+            Every occurrence of the element is counted, then matched. If the two disagree the file
+            holds a member written in a form this cannot read -- an attribute, a self-closing tag, an
+            unclosed element -- and the whole file is declared unreadable rather than rewritten.
+
+            This is the difference between the guard and the reader being equally strict. The "is
+            this a suite" test above is deliberately loose, so without this count a legally formed
+            member the reader misses would parse as ABSENT and then be dropped from the merged file
+            -- silently, and with the unparseable escape hatch never firing because the loose guard
+            had already said the file was fine. Dropping a member is the one outcome the merge
+            exists to prevent, so a disagreement resolves to "leave it alone and warn".
+        */
+        const declaredElementCount = (membershipMarkup.match(/<testClassName[\s/>]/g) || []).length;
+
+        const testClassNamePattern = /<testClassName\s*>([^<]*)<\/testClassName\s*>/g;
 
         let testClassNames: string[] = [];
+        let matchedElementCount = 0;
         let testClassNameMatch: RegExpExecArray | null;
 
-        while ( (testClassNameMatch = testClassNamePattern.exec(testSuiteFileContent)) !== null ) {
+        while ( (testClassNameMatch = testClassNamePattern.exec(membershipMarkup)) !== null ) {
 
-            const testClassName = testClassNameMatch[1].trim();
+            matchedElementCount++;
 
+            const testClassName = this.unescapeXmlText(testClassNameMatch[1]).trim();
+
+            // AN EMPTY ELEMENT IS A MATCHED ELEMENT THAT NAMES NOBODY, NOT AN UNREADABLE ONE
             if ( testClassName.length > 0 ) {
                 testClassNames.push(testClassName);
             }
 
+        }
+
+        if ( matchedElementCount !== declaredElementCount ) {
+            return undefined;
         }
 
         return testClassNames;
@@ -2659,6 +2722,26 @@ ${testClassNameElements}
     }
 
     /*
+        The inverse of escapeXmlText, and it has to exist for the pair to round trip. A member read
+        back as raw markup and then re-escaped on write grows an entity every regeneration --
+        "A&amp;B" becomes "A&amp;amp;B" becomes "A&amp;amp;amp;B" -- which would make a file this
+        command claims is byte-for-byte stable change on every run.
+
+        "&amp;" is decoded LAST, so an escaped entity in the source ("&amp;amp;lt;") decodes to the
+        literal text it stood for rather than being decoded twice.
+    */
+    static unescapeXmlText(value: string): string {
+
+        return value
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&amp;/g, '&');
+
+    }
+
+    /*
         The suite content a regeneration should write, merged with whatever is already on disk.
 
         A suite is a grouping a team curates, not a file this command owns outright: someone may
@@ -2677,7 +2760,8 @@ ${testClassNameElements}
         if ( existingTestSuiteFileContent === undefined ) {
             return {
                 content: this.buildTestSuiteXml(this.sortValuesForEmission(generatedTestSuiteClassNames)),
-                isExistingFileUnparseable: false
+                isExistingFileUnparseable: false,
+                isExistingFileUnreadable: false
             };
         }
 
@@ -2691,7 +2775,8 @@ ${testClassNameElements}
         if ( existingTestClassNames === undefined ) {
             return {
                 content: existingTestSuiteFileContent,
-                isExistingFileUnparseable: true
+                isExistingFileUnparseable: true,
+                isExistingFileUnreadable: false
             };
         }
 
@@ -2699,7 +2784,8 @@ ${testClassNameElements}
 
         return {
             content: this.buildTestSuiteXml(this.sortValuesForEmission(mergedTestClassNames)),
-            isExistingFileUnparseable: false
+            isExistingFileUnparseable: false,
+            isExistingFileUnreadable: false
         };
 
     }
@@ -2717,11 +2803,30 @@ ${testClassNameElements}
 
         try {
             existingTestSuiteFileContent = fs.readFileSync(testSuiteFilePath, 'utf-8');
-        } catch {
+        } catch ( readError ) {
+
+            /*
+                Only ENOENT means there is no suite yet. Any other failure means a file IS there and
+                could not be read, and answering that by generating a fresh one would overwrite
+                whatever it held.
+            */
+            if ( (readError as NodeJS.ErrnoException)?.code !== 'ENOENT' ) {
+                return { isExistingFileUnparseable: false, isExistingFileUnreadable: true };
+            }
+
             existingTestSuiteFileContent = undefined;
+
         }
 
         return this.buildMergedTestSuiteContent(existingTestSuiteFileContent);
+
+    }
+
+    static buildUnreadableTestSuiteWarning(testSuiteFilePath: string): string {
+
+        return `The Apex test suite at "${testSuiteFilePath}" exists but could not be read, so it has been left exactly as it is. `
+            + `The generated picklist dependency tests are NOT registered in it, and "Run Picklist Dependency Check" will not find the suite until this is fixed. `
+            + `Check the file's permissions, or whether another process is holding it open, and run "Generate Picklist Dependency Tests" again.`;
 
     }
 
@@ -3174,16 +3279,25 @@ ${testMethods}
         let writtenFilePaths: string[] = [];
         let writtenSpecCount = 0;
 
+        /*
+            The planned set no longer lives in a single directory -- the test suite goes to a
+            testSuites sibling that may not exist yet -- so the directory is created per file rather
+            than once up front. It is remembered, though: without this every one of the hundreds of
+            classes an org produces would repeat the same mkdir for the same directory inside a loop
+            that already cannot yield, to no effect after the first.
+        */
+        let createdDirectoryPaths = new Set<string>();
+
         for ( const plannedFile of plannedFiles ) {
 
             if ( plannedFile.changeType !== 'unchanged' ) {
 
-                /*
-                    Created per file rather than once for the classes directory, because the planned
-                    set no longer lives in a single directory: the test suite is written to a
-                    testSuites sibling that may not exist yet.
-                */
-                fs.mkdirSync(path.dirname(plannedFile.filePath), { recursive: true });
+                const plannedFileDirectoryPath = path.dirname(plannedFile.filePath);
+
+                if ( !createdDirectoryPaths.has(plannedFileDirectoryPath) ) {
+                    fs.mkdirSync(plannedFileDirectoryPath, { recursive: true });
+                    createdDirectoryPaths.add(plannedFileDirectoryPath);
+                }
 
                 fs.writeFileSync(plannedFile.filePath, plannedFile.proposedContent);
                 writtenFilePaths.push(plannedFile.filePath);
@@ -3379,7 +3493,11 @@ ${testMethods}
         change plan previewed. An unparseable existing file arrives here as its own exact content,
         which makes this a no-op for that case without needing to know why.
     */
-    static writeSpecsTestSuiteFile(classesDirectoryPath: string, testSuiteContent: string): string {
+    static writeSpecsTestSuiteFile(classesDirectoryPath: string, testSuiteContent?: string): string | undefined {
+
+        if ( testSuiteContent === undefined ) {
+            return undefined;
+        }
 
         const testSuiteFilePath = this.getTestSuiteFilePath(classesDirectoryPath);
 

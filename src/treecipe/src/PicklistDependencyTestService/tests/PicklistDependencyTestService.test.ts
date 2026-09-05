@@ -4501,6 +4501,201 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        /*
+            Regression cases from PR review. The "is this a suite" guard is loose while the member
+            reader is strict, so a legally formed member the reader misses would parse as ABSENT and
+            then be dropped from the merged file -- silently, because the loose guard had already
+            said the file was fine. Dropping a member is the one thing the merge exists to prevent.
+        */
+        test.each([
+            ['an attribute on the member', '<testClassName xsi:type="xsd:string">TeamOwnedPicklistTest</testClassName>'],
+            ['a self closing member', '<testClassName/>'],
+            ['an unclosed member', '<testClassName>TeamOwnedPicklistTest']
+        ])('given %s, declares the file unreadable rather than dropping it', (_caseName, memberMarkup) => {
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    ${memberMarkup}
+</ApexTestSuite>
+`;
+
+            expect(PicklistDependencyTestService.parseTestSuiteClassNames(existingTestSuiteContent)).toBeUndefined();
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(existingTestSuiteContent);
+
+            expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(true);
+            expect(mergedTestSuiteContent.content).toBe(existingTestSuiteContent);
+
+        });
+
+        test('given whitespace inside the member tags, reads the member rather than declaring the file unreadable', () => {
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <testClassName >TeamOwnedPicklistTest</testClassName >
+</ApexTestSuite>
+`;
+
+            expect(PicklistDependencyTestService.parseTestSuiteClassNames(existingTestSuiteContent))
+                .toEqual(['TeamOwnedPicklistTest']);
+
+        });
+
+        test('given an empty member element, treats it as naming nobody rather than as unreadable', () => {
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <testClassName></testClassName>
+</ApexTestSuite>
+`;
+
+            expect(PicklistDependencyTestService.parseTestSuiteClassNames(existingTestSuiteContent)).toEqual([]);
+
+        });
+
+        /*
+            Commenting a member out is an instruction to remove it. Reading the file without XML
+            context would restore it on the next regeneration, which is the opposite of what the
+            user asked for.
+        */
+        test('given a commented out member, does not resurrect it', () => {
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <!-- <testClassName>LegacyTest</testClassName> -->
+    <testClassName>TeamOwnedPicklistTest</testClassName>
+</ApexTestSuite>
+`;
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildMergedTestSuiteContent(existingTestSuiteContent);
+
+            expect(mergedTestSuiteContent.content).not.toContain('LegacyTest');
+            expect(mergedTestSuiteContent.content).toContain('<testClassName>TeamOwnedPicklistTest</testClassName>');
+
+        });
+
+        test('given a CDATA section naming a member, does not read it as a member', () => {
+
+            const existingTestSuiteContent = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">
+    <![CDATA[ <testClassName>NotAMemberTest</testClassName> ]]>
+</ApexTestSuite>
+`;
+
+            expect(PicklistDependencyTestService.parseTestSuiteClassNames(existingTestSuiteContent)).toEqual([]);
+
+        });
+
+        /*
+            escapeXmlText and the reader are a pair. Without the decode a member on disk as "A&amp;B"
+            is re-escaped to "A&amp;amp;B" on write and grows an entity on every regeneration, which
+            would break the byte-for-byte stability this file claims.
+        */
+        test('given an escaped member, round trips it byte for byte rather than growing an entity', () => {
+
+            const firstEmission = PicklistDependencyTestService.buildTestSuiteXml(['A&B']);
+
+            expect(firstEmission).toContain('<testClassName>A&amp;B</testClassName>');
+
+            const parsedTestClassNames = PicklistDependencyTestService.parseTestSuiteClassNames(firstEmission);
+            expect(parsedTestClassNames).toEqual(['A&B']);
+
+            expect(PicklistDependencyTestService.buildTestSuiteXml(parsedTestClassNames!)).toBe(firstEmission);
+
+        });
+
+        test('given an existing suite that cannot be read at all, writes nothing and reports it unreadable', () => {
+
+            jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+                throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+            });
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildTestSuiteContentByClassesDirectory(fakeClassesDirectoryPath);
+
+            expect(mergedTestSuiteContent.isExistingFileUnreadable).toBe(true);
+            expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(false);
+
+            // NO CONTENT IS THE INSTRUCTION NOT TO WRITE -- A FRESH FILE WOULD DROP EVERY HAND ADDED MEMBER
+            expect(mergedTestSuiteContent.content).toBeUndefined();
+
+        });
+
+        test('given no content to write, the writer writes nothing rather than emptying the file', () => {
+
+            const writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+
+            expect(PicklistDependencyTestService.writeSpecsTestSuiteFile(fakeClassesDirectoryPath, undefined)).toBeUndefined();
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('the unreadable suite warning names the file and points at permissions', () => {
+
+            const unreadableTestSuiteWarning = PicklistDependencyTestService.buildUnreadableTestSuiteWarning(expectedTestSuiteFilePath);
+
+            expect(unreadableTestSuiteWarning).toContain(expectedTestSuiteFilePath);
+            expect(unreadableTestSuiteWarning).toContain('NOT registered');
+            expect(unreadableTestSuiteWarning).toContain('permissions');
+
+        });
+
+        /*
+            A directory that does not exist yet cannot be realpath'd, and testSuites is guaranteed
+            absent on a first run. Falling back to the lexical path there would skip symlink
+            resolution for the whole path, so a symlinked ANCESTOR would pass the containment check
+            that exists to catch exactly that.
+        */
+        test('given a directory that does not exist yet, resolves it through its nearest existing ancestor', () => {
+
+            const temporaryRootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-realpath-'));
+            const notYetCreatedPath = path.join(temporaryRootPath, 'main', 'default', 'testSuites');
+
+            try {
+
+                const realDirectoryPath = PicklistDependencyTestService.getRealDirectoryPath(notYetCreatedPath);
+
+                expect(realDirectoryPath).toEndWith(path.join('main', 'default', 'testSuites'));
+                expect(realDirectoryPath).toBe(
+                    path.join(fs.realpathSync(temporaryRootPath), 'main', 'default', 'testSuites')
+                );
+
+            } finally {
+                fs.rmSync(temporaryRootPath, { recursive: true, force: true });
+            }
+
+        });
+
+        /*
+            The walk has to terminate. Against a mocked or virtual filesystem nothing resolves at
+            all, so it recurses to the filesystem root and rebuilds the lexical path unchanged --
+            which is what keeps the objects-directory walk working under the vscode mock.
+        */
+        test('given a filesystem where nothing resolves, walks to the root and rebuilds the path unchanged', () => {
+
+            jest.spyOn(fs, 'realpathSync').mockImplementation(() => {
+                throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+            });
+
+            const unresolvablePath = path.join(path.parse(process.cwd()).root, 'workspace', 'force-app', 'testSuites');
+
+            expect(PicklistDependencyTestService.getRealDirectoryPath(unresolvablePath)).toBe(unresolvablePath);
+
+        });
+
+        test('given a read that throws something with no error code, treats the suite as unreadable rather than absent', () => {
+
+            jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+                throw 'a thrown string carries no errno';
+            });
+
+            const mergedTestSuiteContent = PicklistDependencyTestService.buildTestSuiteContentByClassesDirectory(fakeClassesDirectoryPath);
+
+            expect(mergedTestSuiteContent.isExistingFileUnreadable).toBe(true);
+            expect(mergedTestSuiteContent.content).toBeUndefined();
+
+        });
+
         test('given a file that is not an ApexTestSuite, keeps its exact content and reports it unparseable', () => {
 
             const notASuite = 'this is not xml at all';
@@ -4568,12 +4763,14 @@ describe('PicklistDependencyTestService', () => {
 
         test('given no suite on disk, buildTestSuiteContentByClassesDirectory emits a new one rather than throwing', () => {
 
+            // A REAL MISSING FILE CARRIES code:'ENOENT' -- WHICH IS WHAT SEPARATES IT FROM AN UNREADABLE ONE
             jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
-                throw new Error('ENOENT');
+                throw Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
             });
 
             const mergedTestSuiteContent = PicklistDependencyTestService.buildTestSuiteContentByClassesDirectory(fakeClassesDirectoryPath);
 
+            expect(mergedTestSuiteContent.isExistingFileUnreadable).toBe(false);
             expect(mergedTestSuiteContent.isExistingFileUnparseable).toBe(false);
             expect(mergedTestSuiteContent.content).toContain(`<testClassName>${PicklistDependencyTestService.getSpecsTestClassName()}</testClassName>`);
 

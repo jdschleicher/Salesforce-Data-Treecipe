@@ -835,14 +835,35 @@ describe('shouldRefuseToProposeADeployWithNothingToSend', () => {
 
     });
 
-    it('shouldOmitTheSuiteFromTheDeployWhenItHasNotBeenGeneratedYet', () => {
+    it('shouldOmitTheSuiteFromTheSourceListWhenItHasNotBeenGeneratedYet', () => {
 
         jest.spyOn(fs, 'existsSync').mockImplementation((candidatePath: any) => !String(candidatePath).endsWith('.testSuite-meta.xml'));
         jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
 
         const sourceFilePaths = PicklistDependencyCheckService.getPicklistDependencySourceFilePaths('/workspace/classes');
 
+        // THE PATH LIST REPORTS WHAT IS ON DISK; REQUIRING THE SUITE IS assertDeployableClassesExist'S JOB
         expect(sourceFilePaths.some(filePath => filePath.endsWith('.testSuite-meta.xml'))).toBe(false);
+
+    });
+
+    /*
+        The upgrade path this release creates. A workspace generated before the suite existed has
+        every class and no suite, so without this the org check reports "not deployed", the deploy is
+        offered and accepted, the classes go up WITHOUT the suite, and the very next step invokes
+        "--suite-names" against an org that has none -- failing with the raw CLI error and nothing to
+        say that regenerating is the fix.
+    */
+    it('shouldRefuseToDeployWhenTheSuiteHasNotBeenGeneratedYet', () => {
+
+        jest.spyOn(fs, 'existsSync').mockImplementation((candidatePath: any) => !String(candidatePath).endsWith('.testSuite-meta.xml'));
+        jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('No Apex test suite was found');
+
+        expect(() => PicklistDependencyCheckService.assertDeployableClassesExist('/workspace/classes'))
+            .toThrow('Generate Picklist Dependency Tests');
 
     });
 

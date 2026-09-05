@@ -380,7 +380,8 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyTestService, 'buildTestSuiteContentByClassesDirectory')
                 .mockReturnValue({
                     content: PicklistDependencyTestService.buildTestSuiteXml(['SDTPLDSpecsTest', 'TeamOwnedPicklistTest']),
-                    isExistingFileUnparseable: false
+                    isExistingFileUnparseable: false,
+                    isExistingFileUnreadable: false
                 });
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
@@ -397,7 +398,7 @@ describe('ExtensionCommandService', () => {
             stubCollectionResult([specDetail]);
 
             jest.spyOn(PicklistDependencyTestService, 'buildTestSuiteContentByClassesDirectory')
-                .mockReturnValue({ content: 'not a suite at all', isExistingFileUnparseable: true });
+                .mockReturnValue({ content: 'not a suite at all', isExistingFileUnparseable: true, isExistingFileUnreadable: false });
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 

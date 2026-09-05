@@ -38,7 +38,7 @@ The "is it deployed" check asks about **membership**, not existence, through one
 
 - The spec manifest records the suite name and file path, written by the run that generated the Apex rather than recomputed by a reader. `manifestVersion` is now **2**; a manifest written by 3.9.0 is refused with the existing "re-run the command" message rather than being read as if it named a suite.
 - The change report no longer filters the suite out. It previously excluded every `-meta.xml`, which the suite file's own name ends with, so a run whose only change was the suite reported nothing. The filter now targets the `.cls-meta.xml` sidecar specifically.
-- The `testSuites` directory gets the same symlink-resolved containment check the `classes` directory has, since it is a second set of path segments the package directory resolution never saw.
+- `writePlannedSpecsFiles` creates each planned file's own directory, since the planned set no longer lives in one place. It remembers which it has created, so a run emitting hundreds of classes does not repeat the same `mkdir` for the same directory inside a loop that cannot yield.
 
 ## [3.9.0] - Generate Picklist Dependency Tests: progress you can watch, warnings you get once
 
