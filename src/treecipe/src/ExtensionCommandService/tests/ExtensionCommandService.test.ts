@@ -1553,6 +1553,12 @@ describe('ExtensionCommandService', () => {
         const registeredMessageSubscriptions: { dispose: jest.Mock }[] = [];
         const postedPanelMessages: any[] = [];
 
+        /*
+            Turned off by the few tests that need to observe the window BEFORE the panel is listening
+            -- what the host stores, and what it refuses to act on, while nothing is on screen yet.
+        */
+        let isPanelReadyAutoAnnounced = true;
+
         // THE MODEL THE PANEL WAS LAST TOLD TO RENDER, WHICH IS WHAT "RENDERED" MEANS NOW THAT IT IS POSTED
         function getRenderedViewModel(): IPicklistDependencyExplorerViewModel {
 
@@ -1610,6 +1616,7 @@ describe('ExtensionCommandService', () => {
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
             postedPanelMessages.length = 0;
+            isPanelReadyAutoAnnounced = true;
 
             createdWebviewPanel = {
                 reveal: jest.fn(),
@@ -1628,10 +1635,20 @@ describe('ExtensionCommandService', () => {
                         postedPanelMessages.push(hostMessage);
                         return Promise.resolve(true);
                     }),
+                    /*
+                        A real webview announces itself once its document has loaded, and the host
+                        posts nothing until it does. The fake does the same on the next turn of the
+                        event loop, so these tests exercise the handshake rather than a host that
+                        posts into the void -- the load yields between phases, so this lands mid-load
+                        exactly as it does in a window.
+                    */
                     onDidReceiveMessage: jest.fn().mockImplementation(messageHandler => {
                         receivedMessageHandler = messageHandler;
                         const messageSubscription = { dispose: jest.fn() };
                         registeredMessageSubscriptions.push(messageSubscription);
+                        if (isPanelReadyAutoAnnounced) {
+                            setImmediate(() => messageHandler({ command: 'ready' }));
+                        }
                         return messageSubscription;
                     })
                 }
@@ -1648,6 +1665,8 @@ describe('ExtensionCommandService', () => {
             (ExtensionCommandService as any).picklistDependencyExplorerRenderMessage = undefined;
             (ExtensionCommandService as any).picklistDependencyExplorerFreshnessMessage = undefined;
             (ExtensionCommandService as any).picklistDependencyExplorerLoadPhaseMessage = '';
+            (ExtensionCommandService as any).picklistDependencyExplorerLoadFailedMessage = undefined;
+            (ExtensionCommandService as any).picklistDependencyExplorerIsPanelReady = false;
 
             (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(createdWebviewPanel);
             (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
@@ -2285,7 +2304,7 @@ describe('ExtensionCommandService', () => {
 
         });
 
-        test('given a ready message before any model has been built, replays the phase it is still on', async () => {
+        test('given a load that failed, a reveal comes back saying it failed rather than reporting a load still running', async () => {
 
             jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
                 .mockImplementation(() => {
@@ -2299,8 +2318,141 @@ describe('ExtensionCommandService', () => {
 
             const replayedMessage = postedPanelMessages[0];
 
-            expect(replayedMessage.command).toBe('loadPhase');
+            expect(replayedMessage.command).toBe('loadFailed');
             expect(replayedMessage.message).toContain('could not finish loading');
+
+        });
+
+        test('given a mid-load reveal before any model exists, replays the phase it is still on', async () => {
+
+            isPanelReadyAutoAnnounced = false;
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            /*
+                Nothing was posted while the panel was not listening -- it was all stored. The first
+                thing it receives on announcing itself is the state the load had reached.
+            */
+            expect(postedPanelMessages).toHaveLength(0);
+
+            (ExtensionCommandService as any).picklistDependencyExplorerRenderMessage = undefined;
+            (ExtensionCommandService as any).picklistDependencyExplorerFreshnessMessage = undefined;
+            (ExtensionCommandService as any).picklistDependencyExplorerLoadPhaseMessage =
+                PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView;
+
+            await receivedMessageHandler({ command: 'ready' });
+
+            expect(postedPanelMessages[0].command).toBe('loadPhase');
+            expect(postedPanelMessages[0].message).toBe(PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView);
+
+        });
+
+        test('posts the model exactly once per open, never both eagerly and again on the handshake', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            /*
+                A webview drops what is posted before it loads, so the host stores every message and
+                posts on the handshake. Doing BOTH would deliver the model twice and re-render the
+                whole panel for nothing -- at this org's size that is a second full serialization of
+                the payload.
+            */
+            const renderMessages = postedPanelMessages.filter(postedMessage => postedMessage.command === 'renderModel');
+
+            expect(renderMessages).toHaveLength(1);
+
+        });
+
+        test('given the panel closed part way through the metadata preview scan, posts nothing and raises no error', async () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            /*
+                The scan takes seconds and the command now awaits it, so the tab can be closed across
+                it -- which was impossible before the panel was opened first. Posting into a disposed
+                webview throws, and that throw would reach the error handler and offer to file a
+                GitHub issue for the ordinary act of closing a tab.
+            */
+            jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
+                .mockImplementation(async () => {
+                    registeredDisposeHandler();
+                    return { specDetails: [chainSpecDetail], recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] };
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(postedPanelMessages.filter(postedMessage => postedMessage.command === 'renderModel')).toHaveLength(0);
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given the panel closed before the model was built, renders nothing into it and posts nothing', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockImplementation(() => {
+                    registeredDisposeHandler();
+                    return { state: 'noResultsFound', message: 'no check has been run' };
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(postedPanelMessages.filter(postedMessage => postedMessage.command === 'renderModel')).toHaveLength(0);
+            expect((ExtensionCommandService as any).picklistDependencyExplorerRenderMessage).toBeUndefined();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given the panel closed while the freshness walk was running, posts no answer into it', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockImplementation(() => {
+                    registeredDisposeHandler();
+                    return { freshness: 'staleMetadata', message: 'metadata has changed' };
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness')).toHaveLength(0);
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a second open, does not replay the previous load freshness answer onto the new model', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({ freshness: 'staleMetadata', message: 'metadata has changed' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            resolveManifestFreshnessSpy.mockImplementation(() => {
+                throw new Error('the second load never gets its answer');
+            });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            postedPanelMessages.length = 0;
+            await receivedMessageHandler({ command: 'ready' });
+
+            // THE FIRST LOAD'S "STALE" MUST NOT BANNER THE SECOND LOAD'S MODEL
+            expect(postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness')).toHaveLength(0);
 
         });
 

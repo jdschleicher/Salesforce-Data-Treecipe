@@ -2750,8 +2750,38 @@ export class PicklistDependencyExplorerService {
     */
     let panelSectionRecords = [];
 
+    /*
+        The provenance banner and its contents entry, kept because the freshness answer arrives after
+        the panel has been built and rewrites both. Held as references rather than looked up by class
+        so a re-render cannot leave the late answer editing the previous render's element.
+    */
+    let provenanceBannerElement;
+    let provenanceBannerSectionRecord;
+
     function registerPanelSection(labelText, sectionElement) {
-        panelSectionRecords.push({ label: labelText, element: sectionElement });
+        const panelSectionRecord = { label: labelText, element: sectionElement, labelElement: undefined };
+        panelSectionRecords.push(panelSectionRecord);
+        return panelSectionRecord;
+    }
+
+    /*
+        Renames a section AFTER the contents has been built.
+
+        The contents entry holds the section's element and its own label span, so a section whose
+        wording changes late -- the provenance banner, once the freshness walk answers -- is renamed
+        in both places rather than re-registered. Registering it again would leave the panel with two
+        entries for one section, one of them pointing at an element no longer in the document.
+    */
+    function updatePanelSectionLabel(panelSectionRecord, labelText) {
+
+        if (!panelSectionRecord) { return; }
+
+        panelSectionRecord.label = labelText;
+
+        if (panelSectionRecord.labelElement) {
+            panelSectionRecord.labelElement.textContent = labelText;
+        }
+
     }
 
     function createElement(tagName, className, textContent) {
@@ -3336,7 +3366,7 @@ export class PicklistDependencyExplorerService {
         asserted by nothing at all. Rendering both the same way and letting the reader assume would
         undo the guarantee the artifact exists to provide.
     */
-    function renderProvenanceBanner() {
+    function fillProvenanceBanner(bannerElement) {
 
         const isPreview = explorerModel.modelSource === 'metadataPreview';
         /*
@@ -3348,8 +3378,8 @@ export class PicklistDependencyExplorerService {
         const isPendingFreshness = explorerModel.manifestFreshness === 'pendingCheck';
         const isStale = !isPendingFreshness && explorerModel.manifestFreshness !== 'fresh';
 
-        const bannerElement = createElement('div',
-            'provenanceBanner' + (isPreview ? ' preview' : (isStale ? ' stale' : '')));
+        bannerElement.textContent = '';
+        bannerElement.className = 'provenanceBanner' + (isPreview ? ' preview' : (isStale ? ' stale' : ''));
 
         if (isPreview) {
 
@@ -3363,9 +3393,7 @@ export class PicklistDependencyExplorerService {
                 bannerElement.appendChild(createElement('div', 'muted', explorerModel.manifestLoadMessage));
             }
 
-            registerPanelSection('Preview from metadata', bannerElement);
-            explorerRoot.appendChild(bannerElement);
-            return;
+            return 'Preview from metadata';
 
         }
 
@@ -3387,7 +3415,18 @@ export class PicklistDependencyExplorerService {
                 + ' — asserted by ' + explorerModel.specsTestClassName + '.cls'));
         bannerElement.appendChild(createElement('div', 'sourcePath', explorerModel.manifestFilePath));
 
-        registerPanelSection(isStale ? 'Generated specs — stale' : 'Generated specs', bannerElement);
+        return isStale ? 'Generated specs — stale' : 'Generated specs';
+
+    }
+
+    function renderProvenanceBanner() {
+
+        const bannerElement = createElement('div');
+        const sectionLabel = fillProvenanceBanner(bannerElement);
+
+        provenanceBannerElement = bannerElement;
+        provenanceBannerSectionRecord = registerPanelSection(sectionLabel, bannerElement);
+
         explorerRoot.appendChild(bannerElement);
 
     }
@@ -3867,7 +3906,9 @@ export class PicklistDependencyExplorerService {
             panelSectionRecords.forEach(function (panelSectionRecord) {
 
                 const entryElement = createElement('div', 'tocEntry');
-                entryElement.appendChild(createElement('span', undefined, panelSectionRecord.label));
+                const entryLabelElement = createElement('span', undefined, panelSectionRecord.label);
+                panelSectionRecord.labelElement = entryLabelElement;
+                entryElement.appendChild(entryLabelElement);
                 entryElement.addEventListener('click', function () {
                     panelSectionRecord.element.scrollIntoView({ block: 'start' });
                 });
@@ -3959,7 +4000,10 @@ export class PicklistDependencyExplorerService {
         explorerRoot.textContent = '';
         objectSectionRecords = [];
         panelSectionRecords = [];
+        provenanceBannerElement = undefined;
+        provenanceBannerSectionRecord = undefined;
         focusedCombinationElement = undefined;
+        matchCountElement = undefined;
         isDeepLinkActive = false;
         filterText = '';
         filterStatus = 'all';
@@ -3990,18 +4034,18 @@ export class PicklistDependencyExplorerService {
         explorerModel.manifestFreshness = freshness;
         explorerModel.manifestFreshnessMessage = freshnessMessage;
 
-        const previousBannerElement = document.querySelector('.provenanceBanner');
-        if (!previousBannerElement) { return; }
+        if (!provenanceBannerElement) { return; }
 
         /*
-            Rebuilt into the same position rather than appended at the bottom, where the reader is no
-            longer looking. renderProvenanceBanner appends to explorerRoot, so the new banner is moved
-            over the old one and the old one removed.
+            Refilled IN PLACE, and the contents entry renamed to match.
+
+            Replacing the element instead would detach the node the contents entry scrolls to -- the
+            entry holds the element by reference, so a rebuilt banner leaves "Generated specs"
+            pointing at a node no longer in the document and still carrying the wording from before
+            the answer arrived.
         */
-        renderProvenanceBanner();
-        const rebuiltBannerElement = explorerRoot.lastElementChild;
-        explorerRoot.insertBefore(rebuiltBannerElement, previousBannerElement);
-        previousBannerElement.remove();
+        const sectionLabel = fillProvenanceBanner(provenanceBannerElement);
+        updatePanelSectionLabel(provenanceBannerSectionRecord, sectionLabel);
 
     }
 

@@ -19,7 +19,11 @@ Each phase appears both in a status line at the top of the panel and in a status
 
 ### The staleness walk no longer blocks the first paint
 
-`resolveManifestFreshness` stats every file under the objects directory to answer "could this have changed since generation". It is the slowest phase on a large or network-mounted org, and it produced a *caveat about* the structure rather than any part of it — so the structure is now painted first and the walk runs after, posting its answer into the banner when it lands.
+`resolveManifestFreshness` stats every file under the objects directory to answer "could this have changed since generation". It produced a *caveat about* the structure rather than any part of it, so the structure is now painted first and the walk runs after, posting its answer into the banner when it lands.
+
+Measured honestly, that walk is ~113 ms — about 5% of the open on local disk, not the largest phase (the manifest parse is, at ~59%). It is the phase most exposed to a slow filesystem, which is why it moved, but the earlier paint it buys on local disk is worth ~113 ms rather than seconds.
+
+The load also now yields the extension host's event loop between phases. Without that, the whole open is one uninterrupted turn: VS Code batches webview posts and status bar writes and flushes them when the turn ends, so every phase line would arrive at once, after the work it describes had finished, and the panel would open having narrated nothing.
 
 Until it lands the banner says so. Manifest freshness has a fourth state, `pendingCheck`, rendered as *"Generated specs — checking whether they still match your metadata…"*. It is deliberately neither "fresh" nor "stale": calling it fresh would assert agreement with metadata nothing had looked at yet, and calling it stale would send you to regenerate over a difference that may not exist.
 
@@ -28,7 +32,7 @@ Until it lands the banner says so. Manifest freshness has a fourth state, `pendi
 The view model used to be serialized into a `<script type="application/json">` block inside the panel document — up to 18 MB of it for a large org. It now travels over `postMessage`, which changes three things:
 
 - The document is independent of the model, which is what lets it be shown before one exists
-- Revealing a hidden panel — the panel is deliberately not retained when hidden — is answered from the host's copy of the model. Nothing is re-read, rebuilt, or re-walked, and a resolved staleness answer survives the reveal instead of being re-walked
+- Revealing a hidden panel — the panel is deliberately not retained when hidden — is answered from the host's copy of the model, so the manifest is not re-read, the model is not rebuilt, and the objects directory is not re-walked. To be precise about what this does *not* buy: the old path did not re-run any of that on a reveal either, because VS Code retained the html it had been given. What changes is where the cost sits — a reveal now costs the host ~58 ms warm to re-serialize the model, in place of the webview re-parsing an 18 MB document
 - **No metadata reaches the panel document at all.** Picklist values, api names and Apex failure messages are written into the DOM through `textContent`, so the escaping this service used to apply on the way into the html is gone rather than merely unused — there is no markup context left for a value to escape out of
 
 ### What did not move

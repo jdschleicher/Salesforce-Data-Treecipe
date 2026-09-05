@@ -17,6 +17,7 @@ import {
     IPicklistDependencyExplorerLoadPhaseMessage,
     IPicklistDependencyExplorerFreshnessMessage,
     IPicklistDependencyExplorerLoadFailedMessage,
+    PicklistDependencyExplorerHostMessage,
     PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES
 } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import {
@@ -1186,12 +1187,14 @@ export class ExtensionCommandService {
             */
             const explorerPanel = this.openPicklistDependencyExplorerShell();
             const explorerLoadStatusItem = VSCodeWorkspaceService.createStatusBarPhaseItem(
-                PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.readingManifest
+                ExtensionCommandService.buildPicklistDependencyExplorerStatusText(
+                    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.readingManifest
+                )
             );
 
             try {
 
-                this.reportPicklistDependencyExplorerPhase(
+                await this.reportPicklistDependencyExplorerPhase(
                     explorerPanel,
                     explorerLoadStatusItem,
                     PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.readingManifest
@@ -1217,14 +1220,14 @@ export class ExtensionCommandService {
                         have not been applied yet. A row the ceiling dropped for lack of a status is a
                         row a failure then has nowhere to land on.
                     */
-                    this.reportPicklistDependencyExplorerPhase(
+                    await this.reportPicklistDependencyExplorerPhase(
                         explorerPanel,
                         explorerLoadStatusItem,
                         PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.loadingResults
                     );
                     const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
 
-                    this.reportPicklistDependencyExplorerPhase(
+                    await this.reportPicklistDependencyExplorerPhase(
                         explorerPanel,
                         explorerLoadStatusItem,
                         PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView
@@ -1242,6 +1245,14 @@ export class ExtensionCommandService {
                         explorerViewModel,
                         PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness
                     );
+
+                    /*
+                        The paint has to actually LEAVE the host before the walk starts. Without this
+                        the post is still sitting in VS Code's outgoing batch when the stat walk
+                        begins, and "after the first paint" would be true of the source order and
+                        false of anything the reader sees.
+                    */
+                    await ExtensionCommandService.yieldToExtensionHost();
 
                     /*
                         Staleness is a stat walk over the objects directory, not a parse of it -- it
@@ -1302,21 +1313,26 @@ export class ExtensionCommandService {
                     rather than into a notification of its own -- the panel is open and in front of
                     the reader by this point, which was not true when this branch was written.
                 */
-                this.reportPicklistDependencyExplorerPhase(
+                await this.reportPicklistDependencyExplorerPhase(
                     explorerPanel,
                     explorerLoadStatusItem,
                     PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.scanningMetadata
                 );
                 const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
 
-                this.reportPicklistDependencyExplorerPhase(
+                // THE SCAN TAKES SECONDS, AND A TAB CLOSED ACROSS IT LEAVES NOTHING TO RENDER INTO
+                if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+                    return;
+                }
+
+                await this.reportPicklistDependencyExplorerPhase(
                     explorerPanel,
                     explorerLoadStatusItem,
                     PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.loadingResults
                 );
                 const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
 
-                this.reportPicklistDependencyExplorerPhase(
+                await this.reportPicklistDependencyExplorerPhase(
                     explorerPanel,
                     explorerLoadStatusItem,
                     PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView
@@ -1391,6 +1407,22 @@ export class ExtensionCommandService {
     private static picklistDependencyExplorerLoadPhaseMessage: string = '';
 
     /*
+        Whether the panel has announced it is listening.
+
+        Every host message is STORED first and posted only once this is true. A webview that has not
+        finished loading drops what is posted to it, and the panel is created before any of the work,
+        so the early phases are always posted into that window -- storing them means the handshake
+        replays them rather than the reader losing the first thing the panel had to say.
+
+        It is also what keeps the protocol idempotent: without it the eager post and the handshake
+        replay both deliver, and the panel renders the whole model twice.
+    */
+    private static picklistDependencyExplorerIsPanelReady: boolean = false;
+
+    // A FAILURE IS REPLAYED AS A FAILURE, NOT AS THE PHASE IT DIED IN -- SEE failPicklistDependencyExplorerLoad
+    private static picklistDependencyExplorerLoadFailedMessage: IPicklistDependencyExplorerLoadFailedMessage | undefined;
+
+    /*
         One allow-list per panel command, each built from the model currently rendered.
 
         Every one of them matches the posted value against what the model NAMES rather than
@@ -1442,7 +1474,9 @@ export class ExtensionCommandService {
         ExtensionCommandService.picklistDependencyExplorerPanel = explorerPanel;
         ExtensionCommandService.picklistDependencyExplorerRenderMessage = undefined;
         ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
+        ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
         ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = '';
+        ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
         ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
         ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
         ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
@@ -1456,6 +1490,12 @@ export class ExtensionCommandService {
                 ExtensionCommandService.picklistDependencyExplorerPanel = undefined;
                 ExtensionCommandService.picklistDependencyExplorerRenderMessage = undefined;
                 ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
+                ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
+                ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
+                ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
+                ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
+                ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
+                ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
             });
 
         }
@@ -1471,16 +1511,74 @@ export class ExtensionCommandService {
 
     }
 
+    /*
+        Posts to the panel only once it has said it is listening; everything is stored either way.
+
+        The one place that decides this, so no post site has to remember the rule.
+    */
+    private static postToPicklistDependencyExplorerPanel(explorerPanel: vscode.WebviewPanel,
+                                                            hostMessage: PicklistDependencyExplorerHostMessage) {
+
+        if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+            return;
+        }
+
+        if ( !ExtensionCommandService.picklistDependencyExplorerIsPanelReady ) {
+            return;
+        }
+
+        explorerPanel.webview.postMessage(hostMessage);
+
+    }
+
+    /*
+        Whether the panel this load is reporting into is still the panel the window has.
+
+        onDidDispose clears the reference, so a tab closed mid-load stops matching -- and the load,
+        which now has awaits in it and so can outlive the tab, has something to check. Posting to a
+        disposed webview throws, and that throw would reach the error handler and offer the user a
+        "report this to GitHub" dialog for the ordinary act of closing a tab.
+    */
+    private static isPicklistDependencyExplorerPanelLive(explorerPanel: vscode.WebviewPanel): boolean {
+
+        return ExtensionCommandService.picklistDependencyExplorerPanel === explorerPanel;
+
+    }
+
+    // ONE FORMAT FOR THE STATUS BAR PHASE, SO THE ITEM READS THE SAME WHEN IT IS CREATED AS WHEN IT IS UPDATED
+    private static buildPicklistDependencyExplorerStatusText(phaseMessage: string): string {
+
+        return `$(sync~spin) Explorer: ${phaseMessage}`;
+
+    }
+
+    /*
+        Hands the extension host's event loop back a turn.
+
+        Without this the whole open is ONE synchronous turn: VS Code batches webview posts and status
+        bar writes and flushes them when the turn ends, so every phase this command reports would
+        arrive at once, after the work they describe had already finished. The panel would open and
+        narrate nothing. It is also what lets the panel's "ready" be received while the load is still
+        running, rather than only after it.
+    */
+    private static async yieldToExtensionHost(): Promise<void> {
+
+        return new Promise<void>(resolveYield => setImmediate(resolveYield));
+
+    }
+
     // THE CURRENT PHASE, IN THE PANEL AND IN THE STATUS BAR, SO IT IS LEGIBLE WHETHER OR NOT THE PANEL HAS FOCUS
-    private reportPicklistDependencyExplorerPhase(explorerPanel: vscode.WebviewPanel,
+    private async reportPicklistDependencyExplorerPhase(explorerPanel: vscode.WebviewPanel,
                                                     explorerLoadStatusItem: vscode.StatusBarItem,
                                                     phaseMessage: string) {
 
         ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = phaseMessage;
-        explorerLoadStatusItem.text = `$(sync~spin) Explorer: ${phaseMessage}`;
+        explorerLoadStatusItem.text = ExtensionCommandService.buildPicklistDependencyExplorerStatusText(phaseMessage);
 
         const loadPhaseMessage: IPicklistDependencyExplorerLoadPhaseMessage = { command: 'loadPhase', message: phaseMessage };
-        explorerPanel.webview.postMessage(loadPhaseMessage);
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, loadPhaseMessage);
+
+        await ExtensionCommandService.yieldToExtensionHost();
 
     }
 
@@ -1494,6 +1592,10 @@ export class ExtensionCommandService {
     private renderPicklistDependencyExplorerModel(explorerPanel: vscode.WebviewPanel,
                                                     explorerViewModel: IPicklistDependencyExplorerViewModel,
                                                     remainingPhaseMessage: string) {
+
+        if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+            return;
+        }
 
         const renderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(explorerViewModel, remainingPhaseMessage);
 
@@ -1509,7 +1611,14 @@ export class ExtensionCommandService {
         ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys =
             new Set(PicklistDependencyExplorerService.collectCombinationKeys(explorerViewModel));
 
-        explorerPanel.webview.postMessage(renderMessage);
+        /*
+            A model belongs to ONE load, and so does the freshness answer. Clearing it here stops a
+            previous load's answer being replayed onto this model on the next reveal, which would
+            banner a fresh manifest as stale or the reverse.
+        */
+        ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
+
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, renderMessage);
 
     }
 
@@ -1553,7 +1662,7 @@ export class ExtensionCommandService {
 
         }
 
-        explorerPanel.webview.postMessage(freshnessMessage);
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, freshnessMessage);
 
     }
 
@@ -1566,8 +1675,15 @@ export class ExtensionCommandService {
 
         ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = failureMessage;
 
+        /*
+            Held as a FAILURE rather than as a phase line, so a reveal after the load died comes back
+            saying it died. Replaying it as a phase would have the panel report a load still running
+            that nothing is going to finish.
+        */
         const loadFailedMessage: IPicklistDependencyExplorerLoadFailedMessage = { command: 'loadFailed', message: failureMessage };
-        explorerPanel.webview.postMessage(loadFailedMessage);
+        ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = loadFailedMessage;
+
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, loadFailedMessage);
 
     }
 
@@ -1585,6 +1701,8 @@ export class ExtensionCommandService {
             */
             if ( panelMessage?.command === 'ready' ) {
 
+                ExtensionCommandService.picklistDependencyExplorerIsPanelReady = true;
+
                 const renderMessage = ExtensionCommandService.picklistDependencyExplorerRenderMessage;
 
                 if ( renderMessage ) {
@@ -1595,15 +1713,26 @@ export class ExtensionCommandService {
 
                 if ( freshnessMessage ) {
                     explorerPanel.webview.postMessage(freshnessMessage);
+                }
+
+                /*
+                    A failure outranks both. It is replayed even when a model was rendered first --
+                    the structure on screen is still worth showing, and the reader still has to be
+                    told the load behind it did not finish.
+                */
+                const loadFailedMessage = ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage;
+
+                if ( loadFailedMessage ) {
+                    explorerPanel.webview.postMessage(loadFailedMessage);
                     return;
                 }
 
                 /*
-                    No freshness answer yet, so the phase line is replayed instead -- a reveal in the
+                    No answer and no failure, so the phase line is replayed instead -- a reveal in the
                     middle of a load has to come back still saying what it is waiting for. A render
                     message carries its own trailing phase, so this is only for the window before one.
                 */
-                if ( !renderMessage && ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage ) {
+                if ( !renderMessage && !freshnessMessage && ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage ) {
 
                     const loadPhaseMessage: IPicklistDependencyExplorerLoadPhaseMessage = {
                         command: 'loadPhase',

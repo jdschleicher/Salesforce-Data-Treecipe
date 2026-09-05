@@ -3649,10 +3649,15 @@ describe('PicklistDependencyExplorerService', () => {
 
                 expect(actualWebviewHtml).toContain('function registerPanelSection(labelText, sectionElement)');
                 expect(actualWebviewHtml).toContain("registerPanelSection('Last check', bannerElement);");
-                expect(actualWebviewHtml).toContain("registerPanelSection('Preview from metadata', bannerElement);");
-                expect(actualWebviewHtml).toContain(
-                    "registerPanelSection(isStale ? 'Generated specs — stale' : 'Generated specs', bannerElement);"
-                );
+
+                /*
+                    The provenance banner registers itself once, in the renderer, from the label its
+                    fill returns. Both of its wordings still come from the same place they always did
+                    -- fillProvenanceBanner decides which, and the renderer registers whichever it got.
+                */
+                expect(actualWebviewHtml).toContain("provenanceBannerSectionRecord = registerPanelSection(sectionLabel, bannerElement);");
+                expect(actualWebviewHtml).toContain("return 'Preview from metadata';");
+                expect(actualWebviewHtml).toContain("return isStale ? 'Generated specs — stale' : 'Generated specs';");
 
                 expect(actualWebviewHtml).toContain(
                     'if (!explorerModel.truncationNotices.length) { return; }'
@@ -3663,6 +3668,27 @@ describe('PicklistDependencyExplorerService', () => {
                     'if (!explorerModel.skippedFieldWarnings.length) { return; }'
                 );
                 expect(actualWebviewHtml).toContain("registerPanelSection('Not asserted', warningsElement);");
+
+            });
+
+            /*
+                The late freshness answer rewrites the provenance banner, and the contents entry holds
+                that banner BY REFERENCE. Replacing the element would leave the entry scrolling to a
+                node no longer in the document and still labelled with the wording from before the
+                answer arrived -- so the banner is refilled where it stands and the entry renamed.
+            */
+            it('refills the provenance banner in place when the freshness answer lands, and renames its contents entry', () => {
+
+                const actualWebviewHtml = buildRenderedHtml();
+
+                expect(actualWebviewHtml).toContain('const sectionLabel = fillProvenanceBanner(provenanceBannerElement);');
+                expect(actualWebviewHtml).toContain('updatePanelSectionLabel(provenanceBannerSectionRecord, sectionLabel);');
+
+                // THE ENTRY KEEPS A HANDLE ON ITS OWN LABEL SPAN, WHICH IS WHAT MAKES A LATE RENAME REACHABLE
+                expect(actualWebviewHtml).toContain('panelSectionRecord.labelElement = entryLabelElement;');
+
+                // AND THE BANNER IS NEVER DETACHED AND RE-APPENDED, WHICH IS WHAT BROKE THE ENTRY
+                expect(actualWebviewHtml).not.toContain('previousBannerElement.remove();');
 
             });
 

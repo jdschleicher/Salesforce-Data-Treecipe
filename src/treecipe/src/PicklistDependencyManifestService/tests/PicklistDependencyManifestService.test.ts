@@ -1,4 +1,7 @@
-import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService";
+import {
+    PicklistDependencyManifestService,
+    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING
+} from "../PicklistDependencyManifestService";
 
 import {
     IPicklistDependencyCollectionResult,
@@ -1011,6 +1014,50 @@ describe('PicklistDependencyManifestService', () => {
             expect(PicklistDependencyManifestService.getGeneratorVersion('/no/such/extension/path')).toBe('unknown');
 
         });
+
+    });
+
+});
+
+describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING', () => {
+
+    it('is the freshness a model carries before the walk has run, and is frozen against a caller editing it', () => {
+
+        expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.freshness).toBe('pendingCheck');
+        expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.message).toBe('');
+
+        /*
+            It is handed to every model build as the pending answer, so it is shared across opens.
+            A caller mutating it would change what every later open starts from.
+        */
+        expect(Object.isFrozen(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING)).toBe(true);
+
+    });
+
+    it('is never what resolveManifestFreshness returns -- the walk always answers one way or the other', () => {
+
+        const manifestDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-freshness-'));
+        const objectsDirectoryPath = path.join(manifestDirectoryPath, 'objects');
+        fs.mkdirSync(objectsDirectoryPath, { recursive: true });
+
+        const manifest = PicklistDependencyManifestService.buildManifest(
+            { specDetails: buildChainSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
+            objectsDirectoryPath,
+            path.join(manifestDirectoryPath, 'classes'),
+            '9.9.9',
+            '2026-01-01T00:00:00Z',
+            PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)
+        );
+
+        const freshResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
+        expect(freshResult.freshness).toBe('fresh');
+
+        fs.writeFileSync(path.join(objectsDirectoryPath, 'Added__c.field-meta.xml'), '<x/>');
+
+        const staleResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
+        expect(staleResult.freshness).toBe('staleMetadata');
+
+        fs.rmSync(manifestDirectoryPath, { recursive: true, force: true });
 
     });
 

@@ -101,22 +101,21 @@ export interface IPicklistDependencyManifestLoad {
     "stale" is deliberately one state with a reason rather than a severity scale. Both reasons mean
     the same thing to a reader -- what is on screen may not be what the org was asked about -- and
     both carry the same next step, which is to regenerate.
-*/
-/*
-    "pendingCheck" is the state a model carries while the freshness walk has not run yet.
 
-    It exists because the walk is stat-per-file over the whole objects directory and now happens
-    AFTER the panel paints, so there is a window where the answer is genuinely not known. Reusing
-    "fresh" for that window would have the provenance banner assert the specs still match metadata
-    nothing has looked at -- the same class of claim the three-state status guarantee exists to
-    prevent one row lower down.
+    "pendingCheck" is the state a model carries while the freshness walk has not run yet. It exists
+    because the walk is stat-per-file over the whole objects directory and now happens AFTER the
+    panel paints, so there is a window where the answer is genuinely not known. Reusing "fresh" for
+    that window would have the provenance banner assert the specs still match metadata nothing has
+    looked at -- the same class of claim the three-state status guarantee exists to prevent one row
+    lower down.
 */
 export type PicklistDependencyManifestFreshness = 'fresh' | 'staleObjectsDirectory' | 'staleMetadata' | 'pendingCheck';
 
-export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING: IPicklistDependencyManifestFreshnessResult = {
-    freshness: 'pendingCheck',
+// FROZEN: IT IS PASSED INTO MODEL BUILDS AS THE PENDING ANSWER, AND ONE CALLER MUTATING IT WOULD CHANGE EVERY LATER OPEN
+export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
+    freshness: 'pendingCheck' as PicklistDependencyManifestFreshness,
     message: ''
-};
+});
 
 export interface IPicklistDependencyManifestFreshnessResult {
     freshness: PicklistDependencyManifestFreshness;
