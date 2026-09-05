@@ -598,6 +598,121 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        /*
+            The document is opened on a successful run, not only when the button is clicked -- the
+            run report is what the user is left looking at once generation finishes.
+        */
+        test('opens the summary document after generating, without waiting for the button', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(VSCodeWorkspaceService.showMarkdownPreview).toHaveBeenCalledWith(generationSummaryFilePath);
+
+            // THE SPEC CLASS FIRST, THEN THE SUMMARY, SO THE REPORT IS WHAT ENDS UP IN FRONT
+            const openClassCallOrder = (VSCodeWorkspaceService.openFileInEditor as jest.Mock).mock.invocationCallOrder[0];
+            const openSummaryCallOrder = (VSCodeWorkspaceService.showMarkdownPreview as jest.Mock).mock.invocationCallOrder[0];
+            expect(openClassCallOrder).toBeLessThan(openSummaryCallOrder);
+
+        });
+
+        test('given no summary document was written, opens nothing and still reports the run', async () => {
+
+            stubCollectionResult([specDetail]);
+            writeGenerationSummaryDocumentSpy.mockImplementation(() => {
+                throw new Error('EACCES: permission denied');
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(VSCodeWorkspaceService.showMarkdownPreview).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            A preview that will not open -- the built-in markdown extension disabled -- is a failed
+            VIEW of a generation that succeeded. Unguarded, the rejection would reach the command's
+            catch and report a completed run as an error.
+        */
+        test('given the summary preview cannot open, the run is still reported as a success', async () => {
+
+            stubCollectionResult([specDetail]);
+            (VSCodeWorkspaceService.showMarkdownPreview as jest.Mock).mockRejectedValue(new Error('command not found'));
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+
+            // THE DEPLOY OFFER STILL ARRIVES: A FAILED OPEN MUST NOT SWALLOW THE REST OF THE RUN
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0])
+                .toContain('Deploy and run them against an org now?');
+
+        });
+
+        test('given an inspect action throws, warns and puts the deploy offer again rather than failing the command', async () => {
+
+            stubCollectionResult([specDetail]);
+            (vscode.window.showInformationMessage as jest.Mock)
+                .mockResolvedValueOnce(OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL)
+                .mockResolvedValue(undefined);
+            /*
+                Scoped with "Once": the jest.fn instances in the vscode module factory are created
+                for the whole module and clearAllMocks clears CALLS, not implementations, so an
+                unscoped rejection here leaks into every later test that opens a diff.
+            */
+            (vscode.commands.executeCommand as jest.Mock).mockRejectedValueOnce(new Error('explorer unavailable'));
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(warningCall => String(warningCall[0]));
+            expect(warningMessages.some(warningMessage => warningMessage.includes('could not be opened'))).toBeTrue();
+
+            // THE OFFER IS PUT AGAIN, SO A FAILED VIEW DOES NOT COST THE DEPLOY
+            const followUpOfferCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[1];
+            expect(followUpOfferCall).toContain(RUN_AGAINST_ORG_ACTION_LABEL);
+
+        });
+
+        /*
+            A catch binding is implicitly any under this tsconfig, so reading .message off a thrown
+            non-Error would throw again INSIDE the catch -- escalating exactly the failure the block
+            exists to contain.
+        */
+        test('given a non-Error thrown by the summary write, still contains it rather than failing the run', async () => {
+
+            stubCollectionResult([specDetail]);
+            writeGenerationSummaryDocumentSpy.mockImplementation(() => {
+                // eslint-disable-next-line no-throw-literal
+                throw 'disk gone';
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(warningCall => String(warningCall[0]));
+            expect(warningMessages.some(warningMessage => warningMessage.includes('disk gone'))).toBeTrue();
+
+        });
+
+        test('writes the summary document as a sibling of the manifest it just wrote', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const writtenSummaryFolderPath = String(writeGenerationSummaryDocumentSpy.mock.calls[0][0]);
+            const writtenManifestFilePath = String(writeManifestSpy.mock.results[0].value);
+
+            expect(writtenSummaryFolderPath).toBe(path.dirname(writtenManifestFilePath));
+
+        });
+
         test('given the offer is dismissed, generation still stands and nothing is deployed', async () => {
 
             stubCollectionResult([specDetail]);

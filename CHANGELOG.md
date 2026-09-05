@@ -8,7 +8,7 @@ A successful run used to report itself by concatenating up to five sentences int
 
 ### The run is now a document, and the toast is one line
 
-The generate command writes `treecipe/PicklistDependencySpecs/generation-summary.md` -- a sibling of `manifest.json`, never inside a package directory, for the same reason the manifest is not: a stray file there is not valid Salesforce metadata and would ride into `sf project deploy` and fail the deploy it describes. It opens in markdown preview, where bullets, headings and links render.
+The generate command writes `treecipe/PicklistDependencySpecs/generation-summary.md` -- a sibling of `manifest.json`, never inside a package directory, for the same reason the manifest is not: a stray file there is not valid Salesforce metadata and would ride into `sf project deploy` and fail the deploy it describes. It opens in markdown preview once the run finishes -- after the spec class, so the report is what you are left looking at -- and the toast's **View Summary** re-opens it later.
 
 **What happened** is one bullet per fact, and the optional ones are *omitted* rather than rendered as zero -- a run that scaffolded nothing has nothing to say about scaffolding, and a "0 classes scaffolded" row reads as something that failed rather than something that did not apply.
 
@@ -19,6 +19,8 @@ The toast is now `Generated N picklist dependency spec(s) across M per-object cl
 ### Reading the run does not cost the deploy offer
 
 Every inspect action re-offers the deploy rather than ending the command on the click -- the principle **View Details** already followed, now generalised. Each is offered once, which is what makes the loop terminate: every pass either ends the run or spends an action, and there are at most three.
+
+Opening what the run produced is subject to the same rule as writing it. A preview that will not open, or an explorer that throws, is a failed *view* of a generation that succeeded -- so it warns and puts the offer again rather than letting the rejection reach the command's catch and report a completed run as an error, dropping the deploy offer with it.
 
 ### What deliberately did not move
 

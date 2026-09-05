@@ -290,6 +290,16 @@ export class ExtensionCommandService {
     }
 
     /*
+        tsconfig sets "strict": false, so a catch binding is implicitly any and reading .message off
+        it compiles. A thrown null or undefined would then throw AGAIN inside the catch, which is
+        exactly where the surrounding blocks are trying to keep a failure from escalating -- a
+        report that could not be written would report the whole run as failed.
+    */
+    private describeCaughtError(caughtError: unknown): string {
+        return caughtError instanceof Error ? caughtError.message : String(caughtError);
+    }
+
+    /*
         Every warning the run raised, one per line, for the output channel behind "View details".
     */
     private buildPicklistDependencyWarningReport(skippedFields: IPicklistDependencySkippedField[]): string {
@@ -605,15 +615,21 @@ export class ExtensionCommandService {
         let generationSummaryFilePath: string | undefined;
         try {
 
+            /*
+                Derived from the manifest that was just written rather than re-resolved from the
+                configuration. "The summary is a sibling of the manifest" is load bearing -- a stray
+                file in a package directory breaks "sf project deploy" -- and building the path a
+                second way makes that hold only while two expressions happen to agree.
+            */
             generationSummaryFilePath = PicklistDependencyTestService.writeGenerationSummaryDocument(
-                path.join(workspaceRoot, ConfigurationService.getPicklistDependencySpecsFolderPath()),
+                path.dirname(manifestFilePath),
                 PicklistDependencyTestService.buildGenerationSummaryMarkdown(generationSummaryDetail)
             );
 
         } catch (summaryDocumentError) {
 
             VSCodeWorkspaceService.showWarningMessage(
-                `The picklist dependency specs were generated, but the summary document could not be written (${summaryDocumentError.message}). `
+                `The picklist dependency specs were generated, but the summary document could not be written (${this.describeCaughtError(summaryDocumentError)}). `
                 + `Nothing that was generated is affected -- the Apex, the test suite and the manifest are all written.`
             );
 
@@ -893,14 +909,6 @@ export class ExtensionCommandService {
     }
 
     /*
-        Generates the contract, then OFFERS to run it against an org in the same invocation.
-
-        The offer comes after generation rather than before it. Generating is the useful half on its
-        own -- a user reviewing what changed, or working without an org to hand, wants the files and
-        nothing else -- so the run is opt in and dismissing the prompt leaves a completed generation
-        rather than a cancelled command.
-    */
-    /*
         Puts the deploy offer, with everything the run has to show alongside it.
 
         Reading what just happened does not cost the deploy offer -- showing the summary and stopping
@@ -947,7 +955,23 @@ export class ExtensionCommandService {
                 return selection;
             }
 
-            await selectedInspectActionHandler();
+            /*
+                Opening what the run produced is subject to the SAME rule as writing it: the Apex,
+                the suite and the manifest are already on disk, so a markdown preview that will not
+                open (the built-in markdown extension disabled) or an explorer that throws is a
+                failed VIEW of a successful generation. Unguarded, that rejection would leave the
+                command's catch reporting a completed run as an error -- and would silently drop the
+                deploy offer with it.
+            */
+            try {
+                await selectedInspectActionHandler();
+            } catch (inspectActionError) {
+                VSCodeWorkspaceService.showWarningMessage(
+                    `"${selection}" could not be opened (${this.describeCaughtError(inspectActionError)}). `
+                    + `The generated picklist dependency specs are unaffected.`
+                );
+            }
+
             delete inspectActionHandlerByLabel[selection as string];
 
             offerMessage = 'Deploy the generated picklist dependency specs and run them against an org now?';
@@ -956,6 +980,14 @@ export class ExtensionCommandService {
 
     }
 
+    /*
+        Generates the contract, then OFFERS to run it against an org in the same invocation.
+
+        The offer comes after generation rather than before it. Generating is the useful half on its
+        own -- a user reviewing what changed, or working without an org to hand, wants the files and
+        nothing else -- so the run is opt in and dismissing the prompt leaves a completed generation
+        rather than a cancelled command.
+    */
     async generatePicklistDependencyTests(extensionPath: string) {
 
         try {
@@ -971,6 +1003,24 @@ export class ExtensionCommandService {
             }
 
             await VSCodeWorkspaceService.openFileInEditor(generationResult.specsClassFilePath);
+
+            /*
+                Opened after the spec class, so the run report is what the user is left looking at:
+                the class answers "what did it write", the summary answers "what do I do now".
+
+                Guarded for the same reason the button that re-opens it is: a preview that will not
+                open is a failed view of a generation that succeeded, and must not turn one into the
+                other. Silent here rather than a warning -- the toast that follows carries "View
+                Summary", so the document is still one click away and a second interruption before
+                the run has even been reported would be noise.
+            */
+            if ( generationResult.generationSummaryFilePath ) {
+                try {
+                    await VSCodeWorkspaceService.showMarkdownPreview(generationResult.generationSummaryFilePath);
+                } catch {
+                    // THE "View Summary" BUTTON BELOW IS THE RECOVERY, SO THIS NEEDS NO REPORT OF ITS OWN
+                }
+            }
 
             /*
                 ONE message closes the run: what was generated, what was skipped and why, and the
