@@ -1,6 +1,7 @@
 import {
     PicklistDependencyManifestService,
-    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING
+    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING,
+    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED
 } from "../PicklistDependencyManifestService";
 
 import {
@@ -1084,6 +1085,118 @@ describe('PicklistDependencyManifestService', () => {
 
     });
 
+
+    describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED', () => {
+
+        /*
+            The resting state, and what an open now produces. It is distinct from pendingCheck on
+            purpose: pending means a walk is in flight, and a panel nobody asked to check would
+            otherwise sit forever behind a progress message for work that is not running.
+        */
+        it('is the freshness a model carries when nobody has asked, and is frozen against a caller editing it', () => {
+
+            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.freshness).toBe('notChecked');
+            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.message).toBe('');
+            expect(Object.isFrozen(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED)).toBe(true);
+
+        });
+
+        it('is never what resolveManifestFreshness returns -- a walk that ran answers one way or another', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint').mockReturnValue('fingerprint-abc');
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).not.toBe('notChecked');
+
+        });
+
+    });
+
+    describe('a freshness check that cannot read the metadata', () => {
+
+        /*
+            The walk stats every file under a directory the extension does not own, and the reader
+            may click check long after the panel opened. A throw escaping here would be reported as
+            the Explorer failing to LOAD -- past a panel that has been on screen and usable.
+        */
+        it('given a walk that throws, reports that it could not check rather than throwing', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    throw new Error('EACCES: permission denied');
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+            expect(freshnessResult.message).toContain('EACCES: permission denied');
+
+        });
+
+        it('given the objects directory gone, names that rather than quoting an ENOENT', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    const missingDirectoryError: NodeJS.ErrnoException = new Error('ENOENT: no such file or directory');
+                    missingDirectoryError.code = 'ENOENT';
+                    throw missingDirectoryError;
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+            expect(freshnessResult.message).toContain('salesforceObjectsPath');
+
+        });
+
+        it('given a throw carrying no message, still reports that it could not check', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    // eslint-disable-next-line no-throw-literal -- THE NON-ERROR THROW IS THE CASE UNDER TEST
+                    throw 'a bare string, which a native binding can still throw';
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+            expect(freshnessResult.message).toContain('a bare string');
+
+        });
+
+        // A FAILED CHECK NEVER CLAIMS AGREEMENT, AND NEVER CLAIMS A CHANGE EITHER
+        it('claims neither fresh nor stale', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    throw new Error('mount went away');
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).not.toBe('fresh');
+            expect(freshnessResult.freshness).not.toBe('staleMetadata');
+            expect(freshnessResult.freshness).not.toBe('staleObjectsDirectory');
+
+        });
+
+    });
 
     describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING', () => {
 

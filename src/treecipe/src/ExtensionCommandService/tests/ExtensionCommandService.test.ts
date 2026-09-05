@@ -2094,22 +2094,24 @@ describe('ExtensionCommandService', () => {
             await extensionCommandService.openPicklistDependencyExplorer();
 
             /*
-                The staleness answer arrives AFTER the panel has painted, because the walk that
-                produces it stats every file under the objects directory. It is posted as its own
-                message, and the model the host holds is updated with it so a reveal comes back with
-                the resolved answer rather than the pending one it was rendered with.
+                The open asks nothing. The walk stats every file under the objects directory to
+                answer a question the reader may not have, so it happens when they ask for it.
             */
+            expect(postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness')).toHaveLength(0);
+
+            /*
+                The model was rendered without the walk having run, so what it carries is
+                "notChecked" -- nobody has looked. Reusing "fresh" for that would have the banner
+                assert agreement with metadata nothing had looked at.
+            */
+            expect(getRenderedViewModel().manifestFreshness).toBe('notChecked');
+
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
             const postedFreshnessMessage = postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness').pop();
 
             expect(postedFreshnessMessage.freshness).toBe('staleMetadata');
             expect(postedFreshnessMessage.message).toContain('Generate Picklist Dependency Tests');
-
-            /*
-                The model was PAINTED before the walk ran, so what it carried at that moment is
-                "pendingCheck" -- not "fresh". Reusing fresh for the window before the answer exists
-                would have the banner assert agreement with metadata nothing had looked at yet.
-            */
-            expect(getRenderedViewModel().manifestFreshness).toBe('pendingCheck');
 
             // AND THE ANSWER IS FOLDED INTO WHAT A REVEAL REPLAYS, SO IT SURVIVES THE PANEL BEING HIDDEN
             expect(getReplayRenderMessage().model.manifestFreshness).toBe('staleMetadata');
@@ -2302,37 +2304,78 @@ describe('ExtensionCommandService', () => {
                 PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView
             ]);
 
-            // THE PANEL PAINTS BEFORE THE FRESHNESS WALK, AND CARRIES THAT PHASE WITH IT
+            // THE WALK IS NO LONGER PART OF THE OPEN, SO NOTHING FOLLOWS THE RENDER AND THE STATUS LINE CLEARS WITH IT
             const renderMessage = postedPanelMessages.filter(postedMessage => postedMessage.command === 'renderModel').pop();
-            expect(renderMessage.message).toBe(PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness);
+            expect(renderMessage.message).toBe('');
 
             expect(statusBarPhaseItem.show).toHaveBeenCalled();
             expect(statusBarPhaseItem.dispose).toHaveBeenCalled();
 
         });
 
-        test('paints the structure before the freshness walk runs, so the slowest phase is not blocking the first paint', async () => {
+        test('opens from the manifest alone, walking the objects directory for neither staleness nor structure', async () => {
 
             jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
                 .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
-            const phaseOrder: string[] = [];
-
-            (createdWebviewPanel.webview.postMessage as jest.Mock).mockImplementation((hostMessage: any) => {
-                phaseOrder.push(hostMessage.command);
-                postedPanelMessages.push(hostMessage);
-                return Promise.resolve(true);
-            });
-
-            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
-                .mockImplementation(() => {
-                    phaseOrder.push('resolveManifestFreshness');
-                    return { freshness: 'fresh', message: '' };
-                });
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness');
+            const buildSourceFingerprintSpy = jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint');
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
-            expect(phaseOrder.indexOf('renderModel')).toBeLessThan(phaseOrder.indexOf('resolveManifestFreshness'));
+            /*
+                The structure a reader opens the panel for is fully derivable from the manifest. The
+                staleness answer is a caveat ABOUT that structure rather than a precondition for it,
+                so nothing in an open touches the objects directory.
+            */
+            expect(resolveManifestFreshnessSpy).not.toHaveBeenCalled();
+            expect(buildSourceFingerprintSpy).not.toHaveBeenCalled();
+            expect(PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory).not.toHaveBeenCalled();
+
+            expect(getRenderedViewModel().objects[0].rootNodes[0].fieldApiName).toBe('State__c');
+
+        });
+
+        test('given a check requested from the panel, walks once and answers into the banner', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({ freshness: 'fresh', message: '' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(resolveManifestFreshnessSpy).toHaveBeenCalledTimes(1);
+
+            const postedFreshnessMessage = postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness').pop();
+            expect(postedFreshnessMessage.freshness).toBe('fresh');
+
+            // A RE-CHECK IS ALLOWED: THE READER MAY HAVE EDITED METADATA SINCE THE LAST ANSWER
+            await receivedMessageHandler({ command: 'checkFreshness' });
+            expect(resolveManifestFreshnessSpy).toHaveBeenCalledTimes(2);
+
+        });
+
+        test('given a check on a metadata preview, answers nothing -- a preview has no manifest to be stale against', async () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Preview from metadata');
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness');
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(resolveManifestFreshnessSpy).not.toHaveBeenCalled();
 
         });
 
@@ -2347,6 +2390,9 @@ describe('ExtensionCommandService', () => {
             const buildExplorerViewModelByManifestSpy = jest.spyOn(PicklistDependencyExplorerService, 'buildExplorerViewModelByManifest');
 
             await extensionCommandService.openPicklistDependencyExplorer();
+
+            // THE ANSWER HAS TO EXIST BEFORE A RELOAD CAN REPLAY IT, AND IT ONLY EXISTS ONCE ASKED FOR
+            await receivedMessageHandler({ command: 'checkFreshness' });
 
             const buildCallCountAfterOpen = buildExplorerViewModelByManifestSpy.mock.calls.length;
             const freshnessCallCountAfterOpen = resolveManifestFreshnessSpy.mock.calls.length;
@@ -2365,6 +2411,220 @@ describe('ExtensionCommandService', () => {
 
             expect(buildExplorerViewModelByManifestSpy).toHaveBeenCalledTimes(buildCallCountAfterOpen);
             expect(resolveManifestFreshnessSpy).toHaveBeenCalledTimes(freshnessCallCountAfterOpen);
+
+        });
+
+        /*
+            The reported bug, from the host's side.
+
+            A webview exception never reaches the extension host, so a panel that threw mid-render
+            left the host believing the load had finished: it posted a model, the post succeeded, and
+            nothing contradicted it. The panel now says so, and the host routes it to the same place
+            a host-side failure goes.
+        */
+        test('given a panel that could not draw the model, reports it through the same error path as a host-side failure', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({
+                command: 'renderFailed',
+                message: "Cannot read properties of undefined (reading 'length')",
+                stack: 'TypeError: Cannot read properties of undefined\n    at renderObjects'
+            });
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+
+            const reportedError = handleCapturedErrorSpy.mock.calls[0][0];
+            const reportedCommandName = handleCapturedErrorSpy.mock.calls[0][1];
+
+            expect(reportedError.message).toContain("Cannot read properties of undefined (reading 'length')");
+            expect(reportedError.stack).toContain('at renderObjects');
+            expect(reportedCommandName).toBe('openPicklistDependencyExplorer');
+
+        });
+
+        test('given a render failure carrying neither message nor stack, still reports something actionable', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'renderFailed' });
+
+            const reportedError = handleCapturedErrorSpy.mock.calls[0][0];
+
+            expect(reportedError.message).toContain('unknown error');
+
+            // NO STACK FROM THE PANEL LEAVES THE HOST'S OWN, WHICH STILL POINTS AT THE HANDLER
+            expect(reportedError.stack).toBeTruthy();
+
+        });
+
+        /*
+            A post that succeeds only says the message left the host. The acknowledgement is what
+            distinguishes "a model was sent" from "something is on screen" -- the distinction a
+            silent render failure erased.
+        */
+        test('given the panel confirming it drew, records that a model is actually on screen', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'rendered' });
+
+            // AN ACK IS NOT A FAILURE, AND MUST NOT REACH THE ERROR PATH
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given an acknowledgement before any model was posted, answers nothing', async () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            handleCapturedErrorSpy.mockClear();
+
+            await receivedMessageHandler({ command: 'rendered' });
+
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a render failure reported before any model was posted, answers nothing', async () => {
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            handleCapturedErrorSpy.mockClear();
+
+            await receivedMessageHandler({ command: 'renderFailed', message: 'from nowhere', stack: '' });
+
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            A panel showing an error notice has no rows for a staleness caveat to attach to, and the
+            walk it would trigger stats every file under the objects directory.
+        */
+        test('given a panel that reported it could not draw, refuses the walk it would otherwise run', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({ freshness: 'fresh', message: '' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'renderFailed', message: 'the panel threw', stack: '' });
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(resolveManifestFreshnessSpy).not.toHaveBeenCalled();
+
+            /*
+                And a panel that recovers -- a reveal rebuilds the document and redraws from the
+                model the host still holds -- can ask again. The refusal tracks the CURRENT draw, not
+                a permanent mark against the panel.
+            */
+            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(resolveManifestFreshnessSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given a check requested before any model exists, answers nothing', async () => {
+
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness');
+
+            jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
+                .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(resolveManifestFreshnessSpy).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            Two clicks land as two messages, and two concurrent stat walks over the same large
+            directory is the one thing this command must not be able to start. The panel disables its
+            button for the same reason; this is the half a message arriving any other way still hits.
+        */
+        test('given a second check while the first walk is still running, does not start an overlapping walk', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({ freshness: 'fresh', message: '' });
+
+            const firstCheck = receivedMessageHandler({ command: 'checkFreshness' });
+            const secondCheck = receivedMessageHandler({ command: 'checkFreshness' });
+
+            await Promise.all([firstCheck, secondCheck]);
+
+            /*
+                Both messages were delivered; only one walk ran. The second arrived while the first
+                was in flight -- between the yield and the answer -- and was dropped rather than
+                queued, because a queued second walk answers a question already being answered.
+            */
+            expect(PicklistDependencyManifestService.resolveManifestFreshness).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given the panel closed across the walk, does not post the answer into a disposed panel', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockImplementation(() => {
+                    // THE TAB CLOSES WHILE THE WALK IS RUNNING, WHICH IS WHAT CLEARS THE HOST'S REFERENCE
+                    registeredDisposeHandler();
+                    return { freshness: 'staleMetadata', message: 'metadata has changed' };
+                });
+
+            postedPanelMessages.length = 0;
+
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness')).toHaveLength(0);
 
         });
 

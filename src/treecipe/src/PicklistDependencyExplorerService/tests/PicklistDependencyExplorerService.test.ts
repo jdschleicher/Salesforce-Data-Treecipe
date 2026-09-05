@@ -1537,10 +1537,10 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualRenderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(
                 actualViewModel,
-                PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness
+                PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.scanningMetadata
             );
 
-            expect(actualRenderMessage.message).toBe(PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness);
+            expect(actualRenderMessage.message).toBe(PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.scanningMetadata);
 
         });
 
@@ -1573,6 +1573,141 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(firstNonce).toMatch(/^[A-Za-z0-9]{32}$/);
             expect(firstNonce).not.toBe(secondNonce);
+
+        });
+
+    });
+
+    describe('the render guard', () => {
+
+        /*
+            The bug this exists for: the panel drew part of a model, threw, and stopped -- and
+            nothing anywhere said so. A webview exception never reaches the extension host, so the
+            host's own failure path could not run: it had posted a model, the post succeeded, and as
+            far as it knew the load had finished. What the reader got was the heading and the
+            scanned-path line over an empty page, which is indistinguishable from a panel that
+            loaded and found nothing.
+        */
+        it('draws the model inside a guard, so a throw becomes a failure notice rather than a blank page', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('function renderPanelGuarded');
+            expect(actualShellHtml).toContain('function renderPanelFailure');
+            expect(actualShellHtml).toContain('could not draw this panel');
+
+            // THE GUARD IS WHAT THE MESSAGE LISTENER CALLS -- AN UNGUARDED RENDER PATH WOULD DEFEAT IT
+            expect(actualShellHtml).toContain('renderPanelGuarded(hostMessage.model, hostMessage.emptyStateMessage)');
+
+        });
+
+        it('tells the host when it could not draw, and when it did', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain(`command: 'renderFailed'`);
+            expect(actualShellHtml).toContain(`postMessage({ command: 'rendered' })`);
+
+        });
+
+        /*
+            A throw outside the message listener -- an expand that builds its body lazily, a click
+            handler on a row -- is as silent as a failed render was, and is reported the same way.
+        */
+        it('reports a throw that happened outside the render through the same path', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain(`window.addEventListener('error'`);
+
+        });
+
+        /*
+            The scanned-path line is the marker that made a failed render look finished: written
+            first, it survived a throw in everything below it. Held back until the render completes,
+            its presence means the panel drew.
+        */
+        it('reveals the scanned path only after the body it describes has drawn', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            const scannedPathRevealIndex = actualShellHtml.indexOf(`scannedPathElement.classList.remove('hidden')`);
+            const renderObjectsIndex = actualShellHtml.indexOf('        renderObjects();');
+
+            expect(renderObjectsIndex).toBeGreaterThan(-1);
+            expect(scannedPathRevealIndex).toBeGreaterThan(renderObjectsIndex);
+
+            // AND A FAILED RENDER TAKES IT BACK OFF, RATHER THAN LEAVING IT OVER AN ERROR
+            expect(actualShellHtml).toContain(`scannedPathElement.classList.add('hidden')`);
+
+        });
+
+    });
+
+    describe('the freshness check as an explicit action', () => {
+
+        /*
+            Asserted against the SHELL rather than against a rendered panel: there is no DOM in this
+            suite, and every heading below is a literal in the panel script, so a payload-based
+            assertion would pass whatever freshness the model carried. What is worth pinning here is
+            that the branch exists and reads as a statement rather than as an activity.
+        */
+        it('given a model nobody has checked, states that rather than reporting progress', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain(`provenanceHeading = 'Generated specs — not checked against your current metadata'`);
+
+            // NOT WORDED AS WORK IN PROGRESS -- NOTHING IS RUNNING, AND NOTHING WILL UNTIL THE READER ASKS
+            expect(actualShellHtml).not.toContain(`provenanceHeading = 'Generated specs — checking against your current metadata…'`);
+
+        });
+
+        it('given a check in flight, disables the button and says it is checking', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('checkButtonElement.disabled = true');
+            expect(actualShellHtml).toContain(`checkButtonElement.textContent = 'Checking…'`);
+
+        });
+
+        it('offers a re-check once an answer exists', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain(`'Check against current metadata' : 'Check again'`);
+            expect(actualShellHtml).toContain(`postMessage({ command: 'checkFreshness' })`);
+
+        });
+
+        /*
+            notChecked and checkFailed are NOT stale. Each is a different thing from "your metadata
+            changed", and styling either as stale sends a reader to regenerate over a difference
+            nothing has established.
+        */
+        it('treats notChecked and checkFailed as not-stale in the banner and its contents entry', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain(`const isNotChecked = explorerModel.manifestFreshness === 'notChecked'`);
+            expect(actualShellHtml).toContain(`const isCheckFailed = explorerModel.manifestFreshness === 'checkFailed'`);
+            expect(actualShellHtml).toContain('!isPendingFreshness && !isNotChecked && !isCheckFailed');
+
+        });
+
+        it('given a check that could not read the metadata, says so without claiming either answer', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain(`provenanceHeading = 'Generated specs — could not be checked against your metadata'`);
+
+            /*
+                The failure message is rendered for checkFailed as it is for stale, because it is the
+                only thing that says WHY the check could not answer. What it must not do is arrive
+                under the stale heading or the stale styling.
+            */
+            expect(actualShellHtml).toContain('if (isStale || isCheckFailed)');
 
         });
 
