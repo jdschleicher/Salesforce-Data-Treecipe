@@ -1,5 +1,64 @@
 # Change Log
 
+## [3.13.0] - The spec manifest carries the information content of the specs, not their cross product
+
+Resolves [#102](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/102).
+
+Reading and parsing `treecipe/PicklistDependencySpecs/manifest.json` was the single largest cost of opening the Picklist Dependency Explorer -- measured during 3.11.0 at roughly **59%** of the open, and named there as tracked rather than fixed.
+
+The size was structural. Every expectation recorded its own `forbiddenValues`, so the file grew with *combinations x declared values* when the information content of those two lists is their **sum**. The view model had already had this exact treatment -- `IPicklistDependencyCombinationViewModel.hasForbiddenAssertion` carries no values for the same reason -- and the manifest had not.
+
+### The complement is derived, not stored
+
+A field entry now records `declaredValues` **once**, and an expectation whose forbidden set is the complement of its `dependentValues` within that universe records one boolean instead of the values:
+
+```jsonc
+{
+    "controllingValue": "cle",
+    "dependentValues": ["ohiocity"],
+    "forbiddenValuesAreDeclaredComplement": true
+}
+```
+
+`buildSpecDetailsByManifest` reconstructs the array on read, so **every consumer is unchanged** -- the Explorer's rows, and `PicklistDependencyMetadataWriterService`, whose whole transpose turns on that list because `expectNotAllowed` is what *removes* a pair. A reconstruction that quietly returned an empty list would leave writeback adding but never removing, so that is asserted directly rather than assumed.
+
+Measured on a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values x 120 declared values, serialized and parsed through the real builder (median of three runs; in-memory, so no disk read is included):
+
+| | before | after |
+|---|---|---|
+| `manifest.json` | **315.7 MB** | **32.2 MB** |
+| `JSON.parse` | ~1,400 ms | **~59 ms** |
+| validate + normalize | ~119 ms | ~33 ms |
+| `buildSpecDetailsByManifest` | ~41 ms | ~145 ms |
+| **read → spec details** | **~1,560 ms** | **~237 ms** |
+
+The reconstruction is the one thing that got *slower*, by ~104 ms, and it is named rather than buried: deriving 48,000 complements is work the old shape did not do. It buys back 13x that on the parse.
+
+The issue's baseline of 153 MB / ~1.37 s came from the same shape with shorter api names; the parse times agree, and the ratios above are within one fixture on one machine, which is the only comparison worth quoting.
+
+### Ordering the universe once per field, not once per complement
+
+The generator emits its complement sorted, so a reconstruction that only filtered would return the right values in the wrong order -- identical to a set comparison, and not identical to the round trip the manifest is now held to. Sorting *inside* the complement measured **594 ms** against **59 ms** for the filter alone, which would have handed back most of what the parse saved. The universe is ordered once per field instead, and `buildDeclaredComplement` takes it already ordered.
+
+### Three forbidden states, still three
+
+- **the marker** -- the complement, which is what the generator always emits
+- **a written-out `forbiddenValues` array** -- a set that is *not* the complement. `expectNone` and `expectUnavailable` both assert an **empty** one against a universe that is not empty, and the panel renders those two differently from each other
+- **neither** -- a spec asserting only the positive half, which the panel must not draw a complement for at all
+
+Deriving the marker is a *comparison*, not an assumption: `buildManifestExpectations` builds the complement and checks it against what the expectation actually declares, recording the values literally when they differ. That is what makes the round trip a property of the manifest rather than a coincidence of what the two generators happen to emit -- an Apex-parsed spec naming a partial `expectNotAllowed` list is entitled to forbid something that is not the complement, and rewriting it into one would assert something the spec never claimed.
+
+The universe recorded is the one each spec was **drawn against**: for a record-type-scoped field that is what the record type assigns, not everything the field declares, which is why it is recorded per field *entry* rather than per field api name. It also has to be **complete** -- a truncated universe would have every consumer deriving a complement understate what the spec forbids, which is a false claim rather than a shorter one.
+
+### `manifestVersion` is now 3
+
+A version 2 manifest is structurally readable -- objects, fields and expectations in shapes this build walks -- which is exactly why it is refused by version rather than by shape. It carries no `declaredValues`, so every complement drawn against it would be empty and the panel would show specs that forbid nothing at all. It is refused with the existing "re-run Generate Picklist Dependency Tests" message.
+
+### Tests
+
+Every new guard was verified by reintroducing the defect -- dropping the reconstruction fails seven tests across all three services, including the existing round trip, the Explorer's row parity and the writeback's proposed metadata. The shape itself is pinned at small scale in `PicklistDependencyManifestService/tests`: a field whose controlling values each unlock exactly one of twelve values writes each value **twice**, where the old shape wrote it thirteen times.
+
+
 ## [3.12.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json
 
 Resolves [#100](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/100).

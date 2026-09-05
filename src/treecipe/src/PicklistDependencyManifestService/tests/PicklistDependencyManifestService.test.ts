@@ -467,6 +467,249 @@ describe('PicklistDependencyManifestService', () => {
 
     });
 
+    /*
+        The manifest used to write forbiddenValues on EVERY expectation, so the file grew with
+        combinations x declared values when the information content of those two lists is their sum.
+        On a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values x 120
+        declared values it reached 153 MB, and parsing it was ~59% of a two-second Explorer open.
+
+        What replaces it has to hold three properties at once, and each test below pins one: the
+        complement is DERIVABLE (so the universe recorded is complete), an empty forbidden assertion
+        stays distinguishable from no assertion at all, and what is read back is IDENTICAL to what
+        generation held in memory rather than merely equivalent to it.
+    */
+    describe('the forbidden complement is recorded once per field, not once per expectation', () => {
+
+        function findFieldEntry(manifest: ReturnType<typeof buildManifestFromCollectionResult>, fieldApiName: string) {
+
+            return manifest.objects[0].fields.find(manifestField => manifestField.fieldApiName === fieldApiName)!;
+
+        }
+
+        test('records the marker instead of the values when the forbidden set IS the complement', () => {
+
+            const cityField = findFieldEntry(buildManifestFromCollectionResult(), 'City__c');
+            const ohioExpectation = cityField.expectations.find(expectation => expectation.controllingValue === 'Ohio')!;
+
+            expect(ohioExpectation.forbiddenValuesAreDeclaredComplement).toBe(true);
+            expect(ohioExpectation.forbiddenValues).toBeUndefined();
+
+        });
+
+        test('records the field declared universe once, complete enough to draw the complement from', () => {
+
+            const cityField = findFieldEntry(buildManifestFromCollectionResult(), 'City__c');
+
+            expect(cityField.declaredValues).toIncludeSameMembers(['Columbus', 'Austin', 'Toronto']);
+
+        });
+
+        /*
+            A record-type-scoped complement is drawn against the values the RECORD TYPE assigns, not
+            everything the field declares -- naming a value the record type never exposes would assert
+            something about the field instead of about this scope. Recording the universe per field
+            ENTRY rather than per field api name is what keeps the two scopes from sharing one.
+        */
+        test('scopes a record type field universe to what that record type assigns', () => {
+
+            const collectionResult = buildCollectionResult();
+
+            collectionResult.recordTypeSpecDetails = [
+                {
+                    objectApiName: 'Chain_Example__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    recordTypeDeveloperName: 'North_America',
+                    expectations: [
+                        { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Toronto'] }
+                    ]
+                }
+            ];
+
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+            const scopedField = manifest.objects[0].recordTypeScopedFields[0];
+            const fieldLevelCityValues = findFieldEntry(manifest, 'City__c').declaredValues;
+
+            expect(scopedField.declaredValues).toIncludeSameMembers(['Columbus', 'Toronto']);
+            expect(fieldLevelCityValues).toContain('Austin');
+            expect(scopedField.declaredValues).not.toContain('Austin');
+
+        });
+
+        /*
+            expectNone and expectUnavailable both assert an EMPTY forbidden set against a universe
+            that is not empty, so neither is the complement. Recording the marker for them would have
+            the panel render every declared value as forbidden under a controlling value whose Apex
+            asserts no such thing.
+        */
+        test('writes an empty forbidden assertion out literally rather than as the complement', () => {
+
+            const cityField = findFieldEntry(buildManifestFromCollectionResult(), 'City__c');
+            const ontarioExpectation = cityField.expectations.find(expectation => expectation.controllingValue === 'Ontario')!;
+
+            expect(ontarioExpectation.forbiddenValuesAreDeclaredComplement).toBeUndefined();
+            expect(ontarioExpectation.forbiddenValues).toEqual([]);
+
+        });
+
+        test('carries neither the marker nor a list for an expectation that asserted nothing', () => {
+
+            const collectionResult = buildCollectionResult({
+                specDetails: [
+                    {
+                        objectApiName: 'Chain_Example__c',
+                        fieldApiName: 'City__c',
+                        controllingFieldApiName: 'State__c',
+                        expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'] }]
+                    }
+                ],
+                recordTypeSpecDetails: []
+            });
+
+            const positiveOnlyExpectation = buildManifestFromCollectionResult(collectionResult).objects[0].fields[0].expectations[0];
+
+            expect(positiveOnlyExpectation.forbiddenValuesAreDeclaredComplement).toBeUndefined();
+            expect(positiveOnlyExpectation.forbiddenValues).toBeUndefined();
+
+            const rebuiltExpectation = PicklistDependencyManifestService
+                .buildExpectationsByManifestExpectations([positiveOnlyExpectation], ['Columbus'])[0];
+
+            expect(rebuiltExpectation.forbiddenValues).toBeUndefined();
+
+        });
+
+        /*
+            "Asserted nothing" and "asserted an empty set" are different claims, and the panel renders
+            them differently -- hasForbiddenAssertion is exactly this distinction. Two shapes now
+            produce an array where one used to, so the three states are asserted together rather than
+            one at a time.
+        */
+        test('keeps all three forbidden states distinguishable through a round trip', () => {
+
+            const manifestExpectations = [
+                { combinationKey: 'k1', controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValuesAreDeclaredComplement: true },
+                { combinationKey: 'k2', controllingValue: 'Ontario', dependentValues: [], forbiddenValues: [] },
+                { combinationKey: 'k3', controllingValue: 'Texas', dependentValues: ['Austin'] }
+            ];
+
+            const rebuiltExpectations = PicklistDependencyManifestService.buildExpectationsByManifestExpectations(
+                manifestExpectations,
+                ['Austin', 'Columbus', 'Toronto']
+            );
+
+            expect(rebuiltExpectations[0].forbiddenValues).toEqual(['Austin', 'Toronto']);
+            expect(rebuiltExpectations[1].forbiddenValues).toEqual([]);
+            expect(rebuiltExpectations[2].forbiddenValues).toBeUndefined();
+
+        });
+
+        /*
+            The complement comes back in EMISSION order, not in the order the universe happens to be
+            recorded in. The manifest records the universe as the expectations declare it, which is a
+            first-seen union and so is not sorted -- reconstructing straight off it would return the
+            right values in the wrong order, which reads as identical to a set comparison and is not
+            identical to the round trip this manifest is held to.
+
+            Asserted through the per-field entry point rather than through buildDeclaredComplement,
+            because ordering the universe once per field instead of once per expectation is the whole
+            shape of that split: the complement itself takes an already ordered universe.
+        */
+        test('rebuilds the complement in the order the generator emits it, whatever order the universe is recorded in', () => {
+
+            const rebuiltExpectations = PicklistDependencyManifestService.buildExpectationsByManifestExpectations(
+                [{ combinationKey: 'k1', controllingValue: 'Ohio', dependentValues: ['Alpha'], forbiddenValuesAreDeclaredComplement: true }],
+                ['Charlie', 'Alpha', 'Bravo']
+            );
+
+            expect(rebuiltExpectations[0].forbiddenValues)
+                .toEqual(PicklistDependencyTestService.sortValuesForEmission(['Charlie', 'Bravo']));
+
+        });
+
+        /*
+            A spec detail assembled by hand -- a test, or a parsed Apex spec naming a partial
+            expectNotAllowed list -- is entitled to forbid something that is not the complement.
+            Deriving it back would rewrite the assertion into one the spec never made, so the values
+            are written out instead. This is what makes the round trip a property rather than a
+            coincidence of what the generator happens to emit.
+        */
+        test('given a forbidden set that is not the complement, records it literally rather than rewriting it', () => {
+
+            const collectionResult = buildCollectionResult({
+                specDetails: [
+                    {
+                        objectApiName: 'Chain_Example__c',
+                        fieldApiName: 'City__c',
+                        controllingFieldApiName: 'State__c',
+                        expectations: [
+                            { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin'] },
+                            { controllingValue: 'Texas', dependentValues: ['Austin'], forbiddenValues: ['Columbus', 'Toronto'] }
+                        ]
+                    }
+                ],
+                recordTypeSpecDetails: []
+            });
+
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+            const partialExpectation = manifest.objects[0].fields[0].expectations
+                .find(expectation => expectation.controllingValue === 'Ohio')!;
+
+            expect(partialExpectation.forbiddenValues).toEqual(['Austin']);
+            expect(partialExpectation.forbiddenValuesAreDeclaredComplement).toBeUndefined();
+
+            expect(PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest).specDetails)
+                .toEqual(collectionResult.specDetails);
+
+        });
+
+        /*
+            The size property itself, asserted rather than described. A field whose controlling values
+            each unlock exactly one of many declared values is the worst case for the old shape: every
+            value appeared once per controlling value that did not unlock it, so the file grew with
+            the PRODUCT of the two picklists.
+        */
+        test('does not write a declared value once per combination that forbids it', () => {
+
+            const declaredDependentValues = Array.from({ length: 12 }, (unusedValue, valueIndex) => `Dependent_${valueIndex}__c`);
+
+            const expectations = declaredDependentValues.map(dependentValue => ({
+                controllingValue: `Controlling_${dependentValue}`,
+                dependentValues: [dependentValue],
+                forbiddenValues: PicklistDependencyTestService.sortValuesForEmission(
+                    declaredDependentValues.filter(declaredValue => declaredValue !== dependentValue)
+                )
+            }));
+
+            const collectionResult = buildCollectionResult({
+                specDetails: [
+                    {
+                        objectApiName: 'Wide__c',
+                        fieldApiName: 'Dependent__c',
+                        controllingFieldApiName: 'Controlling__c',
+                        expectations: expectations
+                    }
+                ],
+                recordTypeSpecDetails: []
+            });
+
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+            const serializedManifest = PicklistDependencyManifestService.serializeManifest(manifest);
+
+            /*
+                Once in declaredValues and once as the value its own controlling value unlocks. The old
+                shape wrote each of these 12 values 13 times; anything above that ceiling means the
+                complement is being written out again.
+            */
+            const occurrenceCount = serializedManifest.split('"Dependent_5__c"').length - 1;
+            expect(occurrenceCount).toBe(2);
+
+            expect(PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest).specDetails)
+                .toEqual(collectionResult.specDetails);
+
+        });
+
+    });
+
     describe('buildCombinationKey', () => {
 
         test('shapes a field level key to match the failure lines the validator emits', () => {
@@ -686,6 +929,43 @@ describe('PicklistDependencyManifestService', () => {
 
             expect(manifestLoad.state).toBe('unreadableManifest');
             expect(manifestLoad.message).toContain('format version 99');
+
+        });
+
+        /*
+            A version 2 manifest is structurally readable -- it has objects, fields and expectations
+            in the shapes this build walks -- which is exactly why it has to be refused by version
+            rather than by shape. It carries no declaredValues, so every complement drawn against it
+            would be empty and the panel would show specs that forbid nothing at all.
+        */
+        test('given a version 2 manifest carrying forbidden values per expectation, refuses it rather than reading it as empty', () => {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                {
+                    manifestVersion: 2,
+                    objects: [
+                        {
+                            objectApiName: 'Chain_Example__c',
+                            fields: [
+                                {
+                                    fieldApiName: 'City__c',
+                                    controllingFieldApiName: 'State__c',
+                                    expectations: [
+                                        { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin', 'Toronto'] }
+                                    ]
+                                }
+                            ],
+                            recordTypeScopedFields: []
+                        }
+                    ]
+                },
+                '/tmp/manifest.json'
+            );
+
+            expect(manifestLoad.state).toBe('unreadableManifest');
+            expect(manifestLoad.message).toContain('format version 2');
+            expect(manifestLoad.message).toContain('Generate Picklist Dependency Tests');
+            expect(manifestLoad.manifest).toBeUndefined();
 
         });
 

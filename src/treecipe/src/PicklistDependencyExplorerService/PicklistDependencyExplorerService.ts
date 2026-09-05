@@ -867,30 +867,15 @@ export class PicklistDependencyExplorerService {
         forbiddenValues is the complement of dependentValues within the declared set, so the union of
         both across every expectation is that declared set exactly. Reconstructing it lets the node
         carry each value once instead of once per controlling value that does not unlock it.
+
+        Delegated rather than derived here: the manifest RECORDS this list once per field so the
+        complement no longer has to be written out per expectation, and the panel renders against it.
+        Two derivations of the universe a complement is drawn against is exactly the panel-versus-Apex
+        disagreement the manifest exists to remove.
     */
     static buildDeclaredValuesByExpectations(specDetail: IPicklistDependencySpecDetail): string[] {
 
-        let declaredValues: string[] = [];
-        let seenValues = new Set<string>();
-
-        specDetail.expectations.forEach(expectation => {
-
-            const expectationValues = [...expectation.dependentValues, ...(expectation.forbiddenValues || [])];
-
-            expectationValues.forEach(expectationValue => {
-
-                if ( seenValues.has(expectationValue) ) {
-                    return;
-                }
-
-                seenValues.add(expectationValue);
-                declaredValues.push(expectationValue);
-
-            });
-
-        });
-
-        return declaredValues;
+        return PicklistDependencyManifestService.buildDeclaredValuesByExpectations(specDetail.expectations);
 
     }
 

@@ -1762,6 +1762,107 @@ describe('PicklistDependencyExplorerService', () => {
 
         const freshResult = { freshness: 'fresh' as const, message: '' };
 
+        /*
+            The manifest stopped writing forbiddenValues on every expectation and records the field's
+            declared universe once instead, with the complement derived on read. That is a change to
+            what the panel is BUILT from, so what the panel RENDERS is asserted against the same specs
+            fed in directly -- every combination, its allowed values, and the "must not unlock"
+            complement each row draws.
+
+            Compared row by row rather than as whole models: the two models differ in provenance by
+            design -- one names a generated class and a manifest file, the other is a metadata preview.
+        */
+        function buildRenderedRows(viewModel: IPicklistDependencyExplorerViewModel): unknown[] {
+
+            let renderedRows: unknown[] = [];
+
+            const collectNodeRows = (node) => {
+
+                node.combinations.forEach((combination: IPicklistDependencyCombinationViewModel) => {
+
+                    renderedRows.push({
+                        combinationKey: combination.combinationKey,
+                        controllingValue: combination.controllingValue,
+                        allowedValues: combination.allowedValues,
+                        hasForbiddenAssertion: combination.hasForbiddenAssertion,
+                        controllingValueUnavailable: combination.controllingValueUnavailable,
+                        forbiddenValues: PicklistDependencyExplorerService.buildForbiddenValues(node.declaredValues, combination)
+                    });
+
+                });
+
+                // A RECORD TYPE SCOPE CARRIES COMBINATIONS WITHOUT CARRYING SCOPES OR DOWNSTREAM NODES OF ITS OWN
+                ( node.recordTypeScopes || [] ).forEach(recordTypeScope => collectNodeRows(recordTypeScope));
+                ( node.downstreamNodes || [] ).forEach(downstreamNode => collectNodeRows(downstreamNode));
+
+            };
+
+            viewModel.objects.forEach(objectViewModel => objectViewModel.rootNodes.forEach(node => collectNodeRows(node)));
+
+            return renderedRows;
+
+        }
+
+        it('renders the same rows from a manifest as from the specs it was built from', () => {
+
+            const collectionResult = buildCollectionResult({
+                recordTypeSpecDetails: buildChainExampleRecordTypeSpecDetails()
+            });
+
+            const manifestSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+            );
+
+            const specSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                collectionResult.specDetails,
+                [],
+                buildNoResultsLoad(),
+                collectionResult.recordTypeSpecDetails
+            );
+
+            const manifestSourcedRows = buildRenderedRows(manifestSourcedViewModel);
+
+            expect(manifestSourcedRows).toEqual(buildRenderedRows(specSourcedViewModel));
+            expect(manifestSourcedRows.length).toBeGreaterThan(0);
+
+        });
+
+        /*
+            The two rows whose forbidden set is NOT the complement, and which are therefore the ones
+            the new manifest shape carries written out rather than derived.
+
+            They render differently from each other and neither changed: an expectNone row asserts
+            the controlling value unlocks nothing, so the panel strikes through the whole universe,
+            while an expectUnavailable row asserts nothing about values at all and strikes through
+            none of it. Losing the distinction between "asserted an empty set" and "asserted nothing"
+            is exactly what would collapse these two into one rendering.
+        */
+        it('keeps an unavailable and an empty forbidden assertion rendering as they did', () => {
+
+            const collectionResult = buildCollectionResult({
+                recordTypeSpecDetails: buildChainExampleRecordTypeSpecDetails()
+            });
+
+            const manifestSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+            );
+
+            const cityNode = manifestSourcedViewModel.objects[0].rootNodes[0].downstreamNodes[0];
+            const ontarioCombination = cityNode.combinations.find(combination => combination.controllingValue === 'Ontario');
+
+            expect(ontarioCombination.hasForbiddenAssertion).toBe(true);
+            expect(PicklistDependencyExplorerService.buildForbiddenValues(cityNode.declaredValues, ontarioCombination))
+                .toIncludeSameMembers(cityNode.declaredValues);
+
+            const scopedCityNode = cityNode.recordTypeScopes[0];
+            const unavailableCombination = scopedCityNode.combinations.find(combination => combination.controllingValue === 'Texas');
+
+            expect(unavailableCombination.controllingValueUnavailable).toBe(true);
+            expect(PicklistDependencyExplorerService.buildForbiddenValues(scopedCityNode.declaredValues, unavailableCombination)).toEqual([]);
+
+        });
+
         it('marks the model as manifest sourced, so the panel can promise what it renders is asserted', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(

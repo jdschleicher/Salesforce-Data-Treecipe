@@ -29,6 +29,29 @@ export interface IPicklistDependencyManifestExpectation {
     combinationKey: string;
     controllingValue: string;
     dependentValues: string[];
+    /*
+        Set when what this controlling value must NOT unlock is exactly the complement of
+        dependentValues within the field's declaredValues, which is what the generator always emits.
+
+        The complement is recorded as this flag rather than as the values themselves because the
+        values are the one part of an expectation that grows with the OTHER picklist: written out per
+        expectation the file grows with combinations x declared values, when the information content
+        is their sum. That is the same reason the view model carries no forbidden values per
+        combination -- see IPicklistDependencyCombinationViewModel.hasForbiddenAssertion. The
+        manifest simply had not had the same treatment.
+    */
+    forbiddenValuesAreDeclaredComplement?: boolean;
+    /*
+        The forbidden set written out, carried ONLY when it is not that complement -- an expectNone
+        or expectUnavailable expectation asserting an empty set against a non-empty universe, or a
+        spec detail assembled by hand rather than by the generator.
+
+        Keeping the escape hatch is what makes the round trip a property of the manifest rather than
+        a coincidence of what the two generators happen to emit today: buildManifestExpectations
+        derives the complement and compares before it records the flag, so anything that does not
+        reconstruct exactly is recorded literally instead of being silently rewritten into something
+        the spec does not claim.
+    */
     forbiddenValues?: string[];
     controllingValueUnavailable?: boolean;
 }
@@ -39,6 +62,18 @@ export interface IPicklistDependencyManifestField {
     upstreamFieldApiName?: string;
     // THE GENERATED APEX METHOD THAT RETURNS THIS FIELD'S SPEC, SO A PANEL ROW NAMES THE CODE ASSERTING IT
     specMethodName: string;
+    /*
+        Every value this field's expectations are drawn from, recorded ONCE for the whole field so a
+        complement can be derived against it on read.
+
+        It has to be the COMPLETE universe: a truncated list would have every consumer deriving a
+        complement understate what the spec forbids, which is a false claim rather than a shorter
+        one. For a record-type-scoped field the universe is the values the RECORD TYPE assigns
+        rather than everything the field declares, exactly as buildRecordTypeExpectations draws its
+        complement -- which is why this is recorded per field entry instead of once per field api
+        name.
+    */
+    declaredValues: string[];
     expectations: IPicklistDependencyManifestExpectation[];
 }
 
@@ -140,10 +175,15 @@ export class PicklistDependencyManifestService {
     /*
         Bumped only when a manifest written by an older version can no longer be read as written.
         An unrecognised version is reported like a malformed file rather than parsed hopefully --
-        rendering a v1 manifest against v2 assumptions is exactly the silent disagreement between
+        rendering a v2 manifest against v3 assumptions is exactly the silent disagreement between
         the panel and the Apex that this artifact exists to eliminate.
+
+        3 stopped writing forbiddenValues on every expectation and records the field's declared
+        universe once instead. A v2 file read as v3 would find no declaredValues to draw a complement
+        against and render every "must not unlock" as empty -- a spec that appears to forbid nothing,
+        which is precisely the false claim the complete-universe rule exists to prevent.
     */
-    private static currentManifestVersion = 2;
+    private static currentManifestVersion = 3;
 
     static getManifestVersion(): number {
         return this.currentManifestVersion;
@@ -210,7 +250,91 @@ export class PicklistDependencyManifestService {
 
     }
 
-    static buildManifestExpectations(specDetail: IPicklistDependencySpecDetail): IPicklistDependencyManifestExpectation[] {
+    /*
+        Every value a set of expectations is drawn from, in first-seen order.
+
+        forbiddenValues is the complement of dependentValues within the universe the expectations
+        were built against, so the union of both across every expectation IS that universe exactly --
+        for a field-level spec the values the field declares, and for a record-type-scoped one the
+        values that record type assigns. Deriving it rather than taking it from the field detail is
+        what lets the same universe be recovered from a manifest, an Apex-parsed spec or a hand
+        assembled one, all of which reach here as expectations and nothing else.
+
+        Lives here rather than in the Explorer, which delegates to it, because the manifest now
+        RECORDS this list and the panel renders against it: two derivations of the universe a
+        complement is drawn against is the disagreement between panel and Apex this artifact exists
+        to remove, one layer down.
+    */
+    static buildDeclaredValuesByExpectations(expectations: IPicklistDependencyExpectation[]): string[] {
+
+        let declaredValues: string[] = [];
+        let seenValues = new Set<string>();
+
+        expectations.forEach(expectation => {
+
+            const expectationValues = [...expectation.dependentValues, ...(expectation.forbiddenValues || [])];
+
+            expectationValues.forEach(expectationValue => {
+
+                if ( seenValues.has(expectationValue) ) {
+                    return;
+                }
+
+                seenValues.add(expectationValue);
+                declaredValues.push(expectationValue);
+
+            });
+
+        });
+
+        return declaredValues;
+
+    }
+
+    /*
+        The universe ordered the way the generator emits values, which is the order a complement
+        drawn from it comes out in.
+
+        Ordered ONCE PER FIELD rather than once per complement, and that is a measured decision
+        rather than a tidy one: sorting inside the complement is ~594 ms of a 1,200-field synthetic
+        org against ~59 ms for the filter alone, which would have handed back most of what this
+        change saves on the parse. The manifest records the universe as the expectations declare it,
+        so a file written by hand can carry it in any order and still reconstruct in emission order.
+    */
+    static buildOrderedDeclaredValues(declaredValues: string[]): string[] {
+
+        return PicklistDependencyTestService.sortValuesForEmission(declaredValues);
+
+    }
+
+    /*
+        What this controlling value must not unlock, as the generator derives it: everything the
+        universe declares that this expectation does not unlock.
+
+        Takes the universe ALREADY in emission order -- see buildOrderedDeclaredValues -- because the
+        order is the whole reason this is not a set operation. A complement returned in the universe's
+        own arbitrary order carries the same values and is not the same array, and "the same values in
+        a different order" is exactly what a round trip comparison is entitled to reject.
+    */
+    static buildDeclaredComplement(orderedDeclaredValues: string[], dependentValues: string[]): string[] {
+
+        const allowedValues = new Set(dependentValues);
+
+        return orderedDeclaredValues.filter(declaredValue => !allowedValues.has(declaredValue));
+
+    }
+
+    static areValueListsIdentical(firstValues: string[], secondValues: string[]): boolean {
+
+        return firstValues.length === secondValues.length
+                && firstValues.every((firstValue, valueIndex) => firstValue === secondValues[valueIndex]);
+
+    }
+
+    static buildManifestExpectations(specDetail: IPicklistDependencySpecDetail,
+                                        declaredValues: string[]): IPicklistDependencyManifestExpectation[] {
+
+        const orderedDeclaredValues = this.buildOrderedDeclaredValues(declaredValues);
 
         return specDetail.expectations.map((expectation: IPicklistDependencyExpectation) => {
 
@@ -226,13 +350,26 @@ export class PicklistDependencyManifestService {
             };
 
             /*
-                Both optional flags are carried only when set, rather than normalised to defaults.
+                Every optional flag is carried only when set, rather than normalised to defaults.
                 An expectation that never declared a forbidden list asserts only the positive half,
-                and the panel renders no complement for it -- writing an empty array here would turn
-                that into a claim that the controlling value unlocks everything.
+                and the panel renders no complement for it -- recording either the marker or an empty
+                array here would turn that into a claim about what the controlling value unlocks.
+
+                The complement is DERIVED and COMPARED rather than assumed: an expectation whose
+                forbidden set is the complement records one boolean, and one whose is not -- expectNone
+                and expectUnavailable both assert an empty set against a non-empty universe -- records
+                the values, so what is read back is what was written whatever produced it.
             */
             if ( Array.isArray(expectation.forbiddenValues) ) {
-                manifestExpectation.forbiddenValues = [...expectation.forbiddenValues];
+
+                const declaredComplement = this.buildDeclaredComplement(orderedDeclaredValues, expectation.dependentValues);
+
+                if ( this.areValueListsIdentical(expectation.forbiddenValues, declaredComplement) ) {
+                    manifestExpectation.forbiddenValuesAreDeclaredComplement = true;
+                } else {
+                    manifestExpectation.forbiddenValues = [...expectation.forbiddenValues];
+                }
+
             }
 
             if ( expectation.controllingValueUnavailable ) {
@@ -294,11 +431,14 @@ export class PicklistDependencyManifestService {
 
             const fields: IPicklistDependencyManifestField[] = objectSpecDetails.map((specDetail, specDetailIndex) => {
 
+                const declaredValues = this.buildDeclaredValuesByExpectations(specDetail.expectations);
+
                 let manifestField: IPicklistDependencyManifestField = {
                     fieldApiName: specDetail.fieldApiName,
                     controllingFieldApiName: specDetail.controllingFieldApiName,
                     specMethodName: allSpecMethodNames[specDetailIndex],
-                    expectations: this.buildManifestExpectations(specDetail)
+                    declaredValues: declaredValues,
+                    expectations: this.buildManifestExpectations(specDetail, declaredValues)
                 };
 
                 if ( specDetail.upstreamFieldApiName ) {
@@ -312,12 +452,15 @@ export class PicklistDependencyManifestService {
             const recordTypeScopedFields: IPicklistDependencyManifestRecordTypeScopedField[] =
                 objectRecordTypeSpecDetails.map((recordTypeSpecDetail, recordTypeSpecDetailIndex) => {
 
+                    const recordTypeDeclaredValues = this.buildDeclaredValuesByExpectations(recordTypeSpecDetail.expectations);
+
                     let manifestRecordTypeScopedField: IPicklistDependencyManifestRecordTypeScopedField = {
                         fieldApiName: recordTypeSpecDetail.fieldApiName,
                         controllingFieldApiName: recordTypeSpecDetail.controllingFieldApiName,
                         recordTypeDeveloperName: recordTypeSpecDetail.recordTypeDeveloperName,
                         specMethodName: allSpecMethodNames[objectSpecDetails.length + recordTypeSpecDetailIndex],
-                        expectations: this.buildManifestExpectations(recordTypeSpecDetail)
+                        declaredValues: recordTypeDeclaredValues,
+                        expectations: this.buildManifestExpectations(recordTypeSpecDetail, recordTypeDeclaredValues)
                     };
 
                     if ( recordTypeSpecDetail.upstreamFieldApiName ) {
@@ -383,7 +526,7 @@ export class PicklistDependencyManifestService {
                     fieldApiName: manifestField.fieldApiName,
                     controllingFieldApiName: manifestField.controllingFieldApiName,
                     upstreamFieldApiName: manifestField.upstreamFieldApiName,
-                    expectations: this.buildExpectationsByManifestExpectations(manifestField.expectations)
+                    expectations: this.buildExpectationsByManifestExpectations(manifestField.expectations, manifestField.declaredValues)
                 });
 
             });
@@ -396,7 +539,10 @@ export class PicklistDependencyManifestService {
                     controllingFieldApiName: manifestRecordTypeScopedField.controllingFieldApiName,
                     upstreamFieldApiName: manifestRecordTypeScopedField.upstreamFieldApiName,
                     recordTypeDeveloperName: manifestRecordTypeScopedField.recordTypeDeveloperName,
-                    expectations: this.buildExpectationsByManifestExpectations(manifestRecordTypeScopedField.expectations)
+                    expectations: this.buildExpectationsByManifestExpectations(
+                        manifestRecordTypeScopedField.expectations,
+                        manifestRecordTypeScopedField.declaredValues
+                    )
                 });
 
             });
@@ -407,7 +553,20 @@ export class PicklistDependencyManifestService {
 
     }
 
-    static buildExpectationsByManifestExpectations(manifestExpectations: IPicklistDependencyManifestExpectation[]): IPicklistDependencyExpectation[] {
+    /*
+        The complement is rebuilt here, so every consumer of a spec detail -- the Explorer's model
+        builder, and anything else handed one -- sees exactly the expectation generation held in
+        memory rather than a manifest-shaped variant of it.
+
+        The two ways an expectation can carry a forbidden set stay distinct from the third way it can
+        carry none at all: a marker and a written-out list both produce an array, and neither present
+        produces undefined. Collapsing those would have the panel render a complement against a spec
+        that only ever asserted the positive half.
+    */
+    static buildExpectationsByManifestExpectations(manifestExpectations: IPicklistDependencyManifestExpectation[],
+                                                    declaredValues: string[]): IPicklistDependencyExpectation[] {
+
+        const orderedDeclaredValues = this.buildOrderedDeclaredValues(declaredValues);
 
         return manifestExpectations.map(manifestExpectation => {
 
@@ -416,7 +575,9 @@ export class PicklistDependencyManifestService {
                 dependentValues: [...manifestExpectation.dependentValues]
             };
 
-            if ( Array.isArray(manifestExpectation.forbiddenValues) ) {
+            if ( manifestExpectation.forbiddenValuesAreDeclaredComplement ) {
+                expectation.forbiddenValues = this.buildDeclaredComplement(orderedDeclaredValues, manifestExpectation.dependentValues);
+            } else if ( Array.isArray(manifestExpectation.forbiddenValues) ) {
                 expectation.forbiddenValues = [...manifestExpectation.forbiddenValues];
             }
 
@@ -664,6 +825,17 @@ export class PicklistDependencyManifestService {
             fieldApiName: fieldApiName,
             controllingFieldApiName: typeof fieldRecord.controllingFieldApiName === 'string' ? fieldRecord.controllingFieldApiName : '',
             specMethodName: typeof fieldRecord.specMethodName === 'string' ? fieldRecord.specMethodName : '',
+            /*
+                A field entry with no readable declared values carries no universe, and every
+                complement drawn against it is empty. That understates what the specs forbid rather
+                than overstating it, and the alternative -- deriving a universe from the expectations
+                that are meant to be drawn FROM it -- would invent one out of the very lists this
+                version no longer writes. An empty list is the honest reading of an entry that does
+                not say.
+            */
+            declaredValues: Array.isArray(fieldRecord.declaredValues)
+                ? fieldRecord.declaredValues.filter((declaredValue: unknown): declaredValue is string => typeof declaredValue === 'string')
+                : [],
             expectations: Array.isArray(fieldRecord.expectations)
                 ? fieldRecord.expectations
                     .map((expectationEntry: unknown) => this.buildManifestExpectationByEntry(
@@ -735,7 +907,9 @@ export class PicklistDependencyManifestService {
                 : []
         };
 
-        if ( Array.isArray(expectationRecord.forbiddenValues) ) {
+        if ( expectationRecord.forbiddenValuesAreDeclaredComplement === true ) {
+            manifestExpectation.forbiddenValuesAreDeclaredComplement = true;
+        } else if ( Array.isArray(expectationRecord.forbiddenValues) ) {
             manifestExpectation.forbiddenValues = expectationRecord.forbiddenValues
                 .filter((forbiddenValue: unknown): forbiddenValue is string => typeof forbiddenValue === 'string');
         }
