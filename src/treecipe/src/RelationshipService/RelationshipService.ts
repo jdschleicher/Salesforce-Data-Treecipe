@@ -97,7 +97,6 @@ export class RelationshipService {
     if (visited.has(objectName)) {
       return;
     }
-    visited.add(objectName);
 
     // Update level if this is higher than current level
     if (relationshipDetail.level < proposedLevel) {
@@ -105,6 +104,27 @@ export class RelationshipService {
     }
 
     relationshipDetail.isProcessed = true;
+
+    /*
+      Added before descending and removed after, rather than handing each child a COPY of the
+      set. The set holds exactly the current path either way -- a child never sees what a
+      sibling's subtree visited, because that subtree removes its own entries on the way out --
+      so the cycle guard behaves identically and the per-child allocation is gone.
+
+      That allocation is what made this method a memory problem rather than merely a slow one.
+      On a layered graph -- the shape an org has when several objects share a child lookup --
+      42 objects produce 7,174,452 recursive calls, each of which was copying the visited set.
+      That allocation rate is what exhausted a 4 GB heap in CI.
+
+      The traversal is still exponential in depth, because an object reachable by many paths is
+      re-walked once per path. Skipping a re-walk that cannot raise a level would fix that, and
+      it is NOT done here: it changes the levels a CYCLIC graph settles on, and those levels
+      decide the insertion order of generated recipes. A differential run over 600 random graphs
+      showed 1,531 level differences, all of them in graphs containing a cycle. That is a
+      behaviour change needing its own issue and its own fixture, not a side effect of a
+      memory fix.
+    */
+    visited.add(objectName);
 
     // Process all child objects at the next level
     const childObjectKeys = Object.keys(relationshipDetail.childObjectToFieldReferences);
@@ -117,12 +137,14 @@ export class RelationshipService {
           objectInfoWrapper,
           childObjectName,
           relationshipDetail.level + 1,
-          new Set(visited)
+          visited
         );
 
       }
 
     }
+
+    visited.delete(objectName);
   }
 
   /**

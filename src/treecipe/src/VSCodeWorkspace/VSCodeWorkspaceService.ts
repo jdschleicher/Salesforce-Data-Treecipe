@@ -379,6 +379,29 @@ export class VSCodeWorkspaceService {
 
     }
 
+    /*
+        A status bar entry naming what a long-running command is currently doing.
+
+        An explicit StatusBarItem rather than ProgressLocation.Window, which is the other way to put
+        progress down there: Window "supports neither cancellation nor discrete progress"
+        (vscode.d.ts), and the reason to be in the status bar at all here is to stay legible while
+        the user is looking at another tab -- not to offer a cancel this load does not have. The
+        generation command chose Notification for the opposite reason, because cancelling its walk
+        IS useful; the two are consistent in picking the surface that can carry what they need.
+
+        The caller owns the returned item and must dispose it -- an item left behind outlives the
+        work it describes and reads as a command still running.
+    */
+    static createStatusBarPhaseItem(initialMessage: string): vscode.StatusBarItem {
+
+        const statusBarPhaseItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+        statusBarPhaseItem.text = initialMessage;
+        statusBarPhaseItem.show();
+
+        return statusBarPhaseItem;
+
+    }
+
     // THE STAGING DIRECTORY BEHIND THE DIFF CURRENTLY OPEN, RECLAIMED WHEN THE NEXT ONE IS STAGED
     private static previousProposedContentDirectoryPath: string | undefined;
 

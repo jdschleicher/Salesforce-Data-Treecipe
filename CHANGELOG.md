@@ -1,5 +1,91 @@
 # Change Log
 
+## [3.11.0] - Picklist Dependency Explorer: the panel opens first and says what it is doing
+
+Resolves [#97](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/97).
+
+### Fixed first: the panel has rendered nothing since 3.8.0
+
+The panel script is emitted from a template literal, so every backslash in it has to be doubled — `'\\n'` in the service source is what puts `'\n'` in the script. One site was written with a single backslash, which the template consumed, so the shipped script contained a string literal broken across a real newline:
+
+```js
+.join('
+')
+```
+
+That is a `SyntaxError`. It kills the entire IIFE, so **every** version from 3.8.0 through 3.10.0 opened the Picklist Dependency Explorer to an empty panel — no structure, no banners, no toolbar. Nothing else in the extension was affected.
+
+No test caught it because every test in this file asserts on the script as *text*, and text does not have to parse. Two guards now stand where it was: one compiles the emitted script with `new Function` (which needs no DOM and no new dependency, and answers the one question `toContain` cannot ask), and one anchors the exact site. Both were verified by reintroducing the defect and watching them fail.
+
+Opening the Explorer on a large org looked like nothing happening. The panel was not created until a finished model existed, so every phase — reading the spec manifest, stat-walking the objects directory for staleness, building the view, serializing it — ran against a window showing nothing at all. On a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values that was roughly two seconds of blank tab, with no way to tell which phase was slow or whether the command had failed.
+
+### Fixed: relationship level calculation allocated a set per path
+
+`RelationshipService.calculateLevelsRecursively` handed every child a **copy** of the visited set. The set holds the current path, so a copy per child means an object reachable by many paths is re-walked once per path — with a fresh allocation each time.
+
+On a layered graph, the shape an org has when several objects share a child lookup:
+
+| objects | recursive calls |
+|---|---|
+| 30 | 88,572 |
+| 36 | 797,160 |
+| 42 | **7,174,452** |
+
+Each of those calls was allocating. That allocation rate is what exhausted CI's 4 GB heap, and on a deep enough org it would have done the same inside the extension while generating recipes.
+
+The set is now added to on entry and removed on exit. A child sees exactly the same set it saw before — a sibling's subtree removes its own entries on the way out — so the cycle guard is unchanged and the per-child allocation is gone. **2.0-2.3x faster** on the graphs above.
+
+Verified by differential run: the levels assigned across 600 random graphs, cyclic and acyclic, are **identical** to the previous implementation. That check earned its place — a first attempt also skipped re-walks that could not raise a level, which is the fix for the exponential *time*, and the differential caught it changing the levels of 1,531 objects, all in graphs containing a cycle. Those levels decide the insertion order of generated recipes, so that change needs its own issue rather than riding along with a memory fix. **The traversal is still exponential in depth.**
+
+### CI: bounded jest workers, and a run that says where its memory went
+
+A jest worker on CI was reaching the 4 GB V8 heap ceiling and dying, which failed the build with **zero failing tests** — the OOM and the reported `SIGTERM` are different processes, so the suite named in the log was collateral rather than the culprit. It was not specific to this change: `main` failed identically, and the same commit on another branch went both ways on consecutive runs.
+
+Nothing in the run identified the real consumer, so the test scripts now ask:
+
+- `--logHeapUsage` — every suite reports its heap, so the next failure names the consumer instead of its neighbour
+- `--workerIdleMemoryLimit=512MB` — recycles a worker that grows past the limit, which bounds the accumulation this looks like (no suite exceeds 342 MB on its own, yet a worker reached 4 GB)
+- `--maxWorkers=2` — lowers concurrent peak, and measured *faster* locally rather than slower
+
+Applied to **both** `jest-test` and `jest-test-summary`, because CI runs the latter — flags on `jest-test` alone would have changed nothing about the failure.
+
+This is a mitigation with a diagnostic attached, not a root cause: the failure does not reproduce locally even at CI's exact heap cap, where the suite passes with a 1 GB cap.
+
+### The panel opens before the work, not after it
+
+The webview shell is static — it carries no model — so it is created and shown the moment the command runs, in **0.01 ms**. What used to be a blank window is now a panel reporting the phase it is in:
+
+- **Reading the generated spec manifest…**
+- **Loading the most recent picklist dependency check results…**
+- **Building the dependency view…**
+- **Checking whether the generated specs still match your metadata…**
+
+Each phase appears both in a status line at the top of the panel and in a status bar entry, so the load stays legible whether or not the panel has focus. The status bar entry is an explicit item rather than `ProgressLocation.Window`, which supports neither cancellation nor discrete progress; the generation command's progress notification is unchanged, because cancelling *its* walk is useful and this load has nothing to cancel.
+
+### The staleness walk no longer blocks the first paint
+
+`resolveManifestFreshness` stats every file under the objects directory to answer "could this have changed since generation". It produced a *caveat about* the structure rather than any part of it, so the structure is now painted first and the walk runs after, posting its answer into the banner when it lands.
+
+Measured honestly, that walk is ~113 ms — about 5% of the open on local disk, not the largest phase (the manifest parse is, at ~59%). It is the phase most exposed to a slow filesystem, which is why it moved, but the earlier paint it buys on local disk is worth ~113 ms rather than seconds.
+
+The load also now yields the extension host's event loop between phases. Without that, the whole open is one uninterrupted turn: VS Code batches webview posts and status bar writes and flushes them when the turn ends, so every phase line would arrive at once, after the work it describes had finished, and the panel would open having narrated nothing.
+
+Until it lands the banner says so. Manifest freshness has a fourth state, `pendingCheck`, rendered as *"Generated specs — checking whether they still match your metadata…"*. It is deliberately neither "fresh" nor "stale": calling it fresh would assert agreement with metadata nothing had looked at yet, and calling it stale would send you to regenerate over a difference that may not exist.
+
+### The model is posted, not embedded
+
+The view model used to be serialized into a `<script type="application/json">` block inside the panel document — up to 18 MB of it for a large org. It now travels over `postMessage`, which changes three things:
+
+- The document is independent of the model, which is what lets it be shown before one exists
+- Revealing a hidden panel — the panel is deliberately not retained when hidden — is answered from the host's copy of the model, so the manifest is not re-read, the model is not rebuilt, and the objects directory is not re-walked. To be precise about what this does *not* buy: the old path did not re-run any of that on a reveal either, because VS Code retained the html it had been given. What changes is where the cost sits — a reveal now costs the host ~58 ms warm to re-serialize the model, in place of the webview re-parsing an 18 MB document
+- **No metadata reaches the panel document at all.** Picklist values, api names and Apex failure messages are written into the DOM through `textContent`, so the escaping this service used to apply on the way into the html is gone rather than merely unused — there is no markup context left for a value to escape out of
+
+### What did not move
+
+The run results overlay stays *before* the first paint, and the measurement is why: loading `results.json` and attributing every failure to its combination costs **17 ms** of a two-second open, under 1%. Deferring it would also break something real — `applyModelLimits` keeps a failing combination over a passing one when the rendering ceiling has to drop rows, and it cannot do that against statuses that have not been applied yet. A row dropped for lack of a status is a row a failure then has nowhere to land on.
+
+Two larger costs are named here rather than fixed: the manifest parse (~1.1 s of that open, because `manifest.json` records `forbiddenValues` per expectation and so grows with combinations x declared values) and the model build (~380 ms). Both are tracked separately.
+
 ## [3.10.0] - A dedicated Apex test suite for the generated picklist dependency tests
 
 Resolves [#96](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/96).
@@ -58,7 +144,6 @@ The check command applies the same containment to `testSuites` that generation d
 - The spec manifest records the suite name and file path, written by the run that generated the Apex rather than recomputed by a reader. `manifestVersion` is now **2**; a manifest written by 3.9.0 is refused with the existing "re-run the command" message rather than being read as if it named a suite.
 - The change report no longer filters the suite out. It previously excluded every `-meta.xml`, which the suite file's own name ends with, so a run whose only change was the suite reported nothing. The filter now targets the `.cls-meta.xml` sidecar specifically.
 - `writePlannedSpecsFiles` creates each planned file's own directory, since the planned set no longer lives in one place. It remembers which it has created, so a run emitting hundreds of classes does not repeat the same `mkdir` for the same directory inside a loop that cannot yield.
-
 ## [3.9.0] - Generate Picklist Dependency Tests: progress you can watch, warnings you get once
 
 Resolves [#92](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/92).

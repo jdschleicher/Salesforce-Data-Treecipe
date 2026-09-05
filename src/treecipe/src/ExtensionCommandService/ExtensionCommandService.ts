@@ -10,8 +10,21 @@ import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipePro
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
-import { PicklistDependencyExplorerService, IPicklistDependencyExplorerViewModel } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
-import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
+import {
+    PicklistDependencyExplorerService,
+    IPicklistDependencyExplorerViewModel,
+    IPicklistDependencyExplorerRenderMessage,
+    IPicklistDependencyExplorerLoadPhaseMessage,
+    IPicklistDependencyExplorerFreshnessMessage,
+    IPicklistDependencyExplorerLoadFailedMessage,
+    PicklistDependencyExplorerHostMessage,
+    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES
+} from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
+import {
+    PicklistDependencyManifestService,
+    IPicklistDependencyManifestFreshnessResult,
+    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING
+} from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 
 import { AuthInfo } from '@salesforce/core';
@@ -1219,97 +1232,171 @@ export class ExtensionCommandService {
             const specsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencySpecsFolderPath());
 
             /*
-                The manifest is read FIRST, and the source metadata is not walked at all when one
-                exists. That is the point of the artifact: the panel renders the specs that were
-                generated and run, rather than a second derivation from metadata that may have moved
-                since. Reading it is a single file read, so it needs no progress notification.
+                The panel is opened BEFORE any of the work, and says what it is doing while the work
+                happens.
+
+                It used to be created only once a finished model existed, which meant every phase
+                below -- the manifest parse most of all -- ran against a window showing nothing at
+                all. Nothing here needs the model: the shell is static, so opening it first costs a
+                document assignment and buys the whole load a place to report itself.
             */
-            const manifestLoad = PicklistDependencyManifestService.loadManifest(specsFolderPath);
+            const explorerPanel = this.openPicklistDependencyExplorerShell();
+            const explorerLoadStatusItem = VSCodeWorkspaceService.createStatusBarPhaseItem(
+                ExtensionCommandService.buildPicklistDependencyExplorerStatusText(
+                    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.readingManifest
+                )
+            );
 
-            if ( manifestLoad.state === 'loaded' && manifestLoad.manifest ) {
+            try {
 
-                const explorerViewModel = await vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: 'Picklist Dependency Explorer',
-                    cancellable: false
-                }, async (progress) => {
+                await this.reportPicklistDependencyExplorerPhase(
+                    explorerPanel,
+                    explorerLoadStatusItem,
+                    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.readingManifest
+                );
+
+                /*
+                    The manifest is read FIRST, and the source metadata is not walked at all when one
+                    exists. That is the point of the artifact: the panel renders the specs that were
+                    generated and run, rather than a second derivation from metadata that may have
+                    moved since.
+                */
+                const manifestLoad = PicklistDependencyManifestService.loadManifest(specsFolderPath);
+
+                if ( manifestLoad.state === 'loaded' && manifestLoad.manifest ) {
+
+                    /*
+                        Results are loaded BEFORE the model is built, and deliberately so.
+
+                        They were measured at single-digit milliseconds -- the whole overlay, load and
+                        failure attribution together, is under 1% of an open -- so deferring them buys
+                        nothing, and it would cost something real: applyModelLimits keeps a FAILING
+                        combination over a passing one, and it cannot do that against statuses that
+                        have not been applied yet. A row the ceiling dropped for lack of a status is a
+                        row a failure then has nowhere to land on.
+                    */
+                    await this.reportPicklistDependencyExplorerPhase(
+                        explorerPanel,
+                        explorerLoadStatusItem,
+                        PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.loadingResults
+                    );
+                    const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
+
+                    await this.reportPicklistDependencyExplorerPhase(
+                        explorerPanel,
+                        explorerLoadStatusItem,
+                        PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView
+                    );
+                    const explorerViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                        manifestLoad,
+                        fullPathToObjectsDirectory,
+                        resultsLoad,
+                        PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING,
+                        workspaceRoot
+                    );
+
+                    this.renderPicklistDependencyExplorerModel(
+                        explorerPanel,
+                        explorerViewModel,
+                        PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness
+                    );
+
+                    /*
+                        The paint has to actually LEAVE the host before the walk starts. Without this
+                        the post is still sitting in VS Code's outgoing batch when the stat walk
+                        begins, and "after the first paint" would be true of the source order and
+                        false of anything the reader sees.
+                    */
+                    await ExtensionCommandService.yieldToExtensionHost();
 
                     /*
                         Staleness is a stat walk over the objects directory, not a parse of it -- it
                         answers "could this have changed since generation", which is all the banner
-                        claims. It still touches every field file, so it is reported like the scan it
-                        replaced rather than left looking inert on a large org.
+                        claims. It touches every field file, so on a large or network-mounted org it
+                        is the slowest phase here, and it runs AFTER the structure is on screen: the
+                        banner it feeds is a caveat about what the reader is already looking at, not
+                        a precondition for showing it to them.
                     */
-                    progress.report({ message: 'Checking whether the generated specs still match your metadata...' });
                     const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
                         manifestLoad.manifest,
                         fullPathToObjectsDirectory
                     );
 
-                    progress.report({ message: 'Loading the most recent picklist dependency check results...' });
-                    const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
+                    this.applyPicklistDependencyExplorerFreshness(explorerPanel, freshnessResult);
+                    return;
 
-                    progress.report({ message: 'Building the dependency view...' });
-                    return PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                        manifestLoad,
-                        fullPathToObjectsDirectory,
-                        resultsLoad,
-                        freshnessResult,
-                        workspaceRoot
-                    );
+                }
 
-                });
+                /*
+                    No manifest, or one that could not be read. Both are reported with the generate
+                    command named, and the metadata scan the panel used to do unconditionally is
+                    offered as an EXPLICIT action rather than performed silently -- 3.1.0's "no setup
+                    required" property is kept, but honestly: every row it produces is banner-marked
+                    un-asserted.
+                */
+                const previewFromMetadataSelection = await vscode.window.showInformationMessage(
+                    manifestLoad.message,
+                    PREVIEW_FROM_METADATA_ACTION_LABEL
+                );
 
-                this.showPicklistDependencyExplorerPanel(explorerViewModel);
-                return;
+                if ( previewFromMetadataSelection !== PREVIEW_FROM_METADATA_ACTION_LABEL ) {
 
-            }
+                    /*
+                        Declining leaves no panel, which is what it did before the shell was opened
+                        up front -- a tab the reader just refused is clutter, and the message that
+                        offered the scan already named the command that produces a manifest.
 
-            /*
-                No manifest, or one that could not be read. Both are reported with the generate
-                command named, and the metadata scan the panel used to do unconditionally is offered
-                as an EXPLICIT action rather than performed silently -- 3.1.0's "no setup required"
-                property is kept, but honestly: every row it produces is banner-marked un-asserted.
-            */
-            const previewFromMetadataSelection = await vscode.window.showInformationMessage(
-                manifestLoad.message,
-                PREVIEW_FROM_METADATA_ACTION_LABEL
-            );
+                        The panel is only on screen at all here for the manifest read, and a workspace
+                        with no manifest fails that on the existsSync, so what is disposed is a panel
+                        that was visible for a moment rather than one that showed anything.
+                    */
+                    explorerPanel.dispose();
+                    return;
 
-            if ( previewFromMetadataSelection !== PREVIEW_FROM_METADATA_ACTION_LABEL ) {
-                return;
-            }
+                }
 
-            const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+                const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
 
-            // THE PREVIEW READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
-            const isMissingGlobalValueSetsDirectoryWarningShown = false;
-            const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
-            await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
+                // THE PREVIEW READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
+                const isMissingGlobalValueSetsDirectoryWarningShown = false;
+                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
-            /*
-                Walking a real org's objects directory parses every field file and takes seconds, so
-                it runs under a progress notification rather than leaving the command looking inert.
-                The check command already reports its long phase the same way.
-            */
-            const previewViewModel = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Picklist Dependency Explorer',
-                cancellable: false
-            }, async (progress) => {
-
-                progress.report({ message: `Scanning ${fullPathToObjectsDirectory} for dependent picklists...` });
+                /*
+                    Walking a real org's objects directory parses every field file and takes seconds.
+                    It reports into the same panel banner and status bar entry as every other phase
+                    rather than into a notification of its own -- the panel is open and in front of
+                    the reader by this point, which was not true when this branch was written.
+                */
+                await this.reportPicklistDependencyExplorerPhase(
+                    explorerPanel,
+                    explorerLoadStatusItem,
+                    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.scanningMetadata
+                );
                 const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(objectsTargetUri);
 
-                progress.report({ message: 'Loading the most recent picklist dependency check results...' });
+                // THE SCAN TAKES SECONDS, AND A TAB CLOSED ACROSS IT LEAVES NOTHING TO RENDER INTO
+                if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+                    return;
+                }
+
+                await this.reportPicklistDependencyExplorerPhase(
+                    explorerPanel,
+                    explorerLoadStatusItem,
+                    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.loadingResults
+                );
                 const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
 
-                progress.report({ message: 'Building the dependency view...' });
+                await this.reportPicklistDependencyExplorerPhase(
+                    explorerPanel,
+                    explorerLoadStatusItem,
+                    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView
+                );
 
                 const previewContext = PicklistDependencyExplorerService.buildMetadataPreviewContext(manifestLoad);
                 previewContext.skippedFields = collectionResult.skippedFields;
 
-                return PicklistDependencyExplorerService.buildExplorerViewModel(
+                const previewViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
                     fullPathToObjectsDirectory,
                     collectionResult.specDetails,
                     collectionResult.skippedFieldWarnings,
@@ -1318,11 +1405,25 @@ export class ExtensionCommandService {
                     previewContext
                 );
 
-            });
+                // A PREVIEW HAS NO MANIFEST TO BE STALE AGAINST, SO NOTHING FOLLOWS THE RENDER AND THE STATUS LINE CLEARS WITH IT
+                this.renderPicklistDependencyExplorerModel(explorerPanel, previewViewModel, '');
 
-            this.showPicklistDependencyExplorerPanel(previewViewModel);
+            } finally {
+                explorerLoadStatusItem.dispose();
+            }
 
         } catch(error) {
+
+            /*
+                The panel opens before the work now, so a failure has somewhere visible to land: a
+                panel left showing the phase it died in would report a load still in progress
+                forever. The notification the handler raises stays the primary report -- this is the
+                same message put where the reader is already looking.
+            */
+            this.failPicklistDependencyExplorerLoad(
+                ExtensionCommandService.picklistDependencyExplorerPanel,
+                `The Picklist Dependency Explorer could not finish loading: ${error?.message ?? error}`
+            );
 
             const commandName = 'openPicklistDependencyExplorer';
             ErrorHandlingService.handleCapturedError(error, commandName);
@@ -1341,13 +1442,67 @@ export class ExtensionCommandService {
     private static picklistDependencyExplorerPanel: vscode.WebviewPanel | undefined;
 
     /*
-        The message listener registered for the panel's CURRENT model. Re-running the command
-        re-renders the panel against freshly scanned metadata, and a listener left over from the
-        previous render would still be answering reveal messages from its own stale allow-list.
+        The message listener registered for the panel. One per panel rather than one per render: the
+        allow-lists it checks against live in the render state below and are replaced whenever a
+        model is rendered, so the listener always answers from the model currently on screen without
+        being torn down and rebuilt to say so.
     */
     private static picklistDependencyExplorerMessageSubscription: vscode.Disposable | undefined;
 
-    private showPicklistDependencyExplorerPanel(explorerViewModel: IPicklistDependencyExplorerViewModel) {
+    /*
+        Everything the panel needs to be restored from, held by the host.
+
+        The panel is not retained when hidden, so revealing it reloads the document and it asks for
+        its content again. Answering from here is what makes a reveal cost a postMessage rather than
+        a re-read of the manifest and a rebuild of the model -- and it is why the freshness answer,
+        which arrives late, survives a reveal instead of being re-walked.
+    */
+    private static picklistDependencyExplorerRenderMessage: IPicklistDependencyExplorerRenderMessage | undefined;
+    private static picklistDependencyExplorerFreshnessMessage: IPicklistDependencyExplorerFreshnessMessage | undefined;
+    private static picklistDependencyExplorerLoadPhaseMessage: string = '';
+
+    /*
+        Whether the panel has announced it is listening.
+
+        Every host message is STORED first and posted only once this is true. A webview that has not
+        finished loading drops what is posted to it, and the panel is created before any of the work,
+        so the early phases are always posted into that window -- storing them means the handshake
+        replays them rather than the reader losing the first thing the panel had to say.
+
+        It is also what keeps the protocol idempotent: without it the eager post and the handshake
+        replay both deliver, and the panel renders the whole model twice.
+    */
+    private static picklistDependencyExplorerIsPanelReady: boolean = false;
+
+    // A FAILURE IS REPLAYED AS A FAILURE, NOT AS THE PHASE IT DIED IN -- SEE failPicklistDependencyExplorerLoad
+    private static picklistDependencyExplorerLoadFailedMessage: IPicklistDependencyExplorerLoadFailedMessage | undefined;
+
+    /*
+        One allow-list per panel command, each built from the model currently rendered.
+
+        Every one of them matches the posted value against what the model NAMES rather than
+        validating it as a path, so a message arriving from anywhere else cannot make the extension
+        host open an arbitrary file on the user's disk. The spec and report lists are keyed on the
+        file AND the method together, so a legitimate file cannot be combined with a method name of
+        the sender's choosing either.
+
+        They start EMPTY and are only filled when a model is rendered. The panel now exists before
+        any model does, and in that window every action is refused -- there is nothing on screen for
+        one to have come from.
+    */
+    private static picklistDependencyExplorerRevealableSourceFilePaths: Set<string> = new Set();
+    private static picklistDependencyExplorerOpenableSpecTargets: Set<string> = new Set();
+    private static picklistDependencyExplorerOpenableRunReportTargets: Set<string> = new Set();
+    private static picklistDependencyExplorerCopyableCombinationKeys: Set<string> = new Set();
+
+    /*
+        Opens (or reveals) the panel with its static shell, before any of the load has run.
+
+        Re-running the command resets the shell and the render state: the previous model is no longer
+        what the workspace holds, and leaving it on screen under a fresh load's status line would
+        have the panel showing one org's structure while reporting another's progress.
+    */
+    private openPicklistDependencyExplorerShell(): vscode.WebviewPanel {
 
         const existingExplorerPanel = ExtensionCommandService.picklistDependencyExplorerPanel;
 
@@ -1359,18 +1514,28 @@ export class ExtensionCommandService {
                 /*
                     localResourceRoots is set EMPTY rather than omitted. Omitting it does not deny
                     the grant -- VS Code then defaults to the extension directory plus every open
-                    workspace folder. Everything the panel renders is inlined into the html, so it
-                    needs no file access at all, and enableScripts is what the nonced inline script
-                    requires rather than a resource grant.
+                    workspace folder. The panel loads no file of any kind: its shell is inline and
+                    its model arrives over postMessage, and enableScripts is what the nonced inline
+                    script requires rather than a resource grant.
 
                     retainContextWhenHidden is deliberately NOT set: the panel's state is entirely
-                    derived from the model, so a hidden panel costs nothing to rebuild and holding
-                    a full DOM per hidden tab is what VS Code warns against.
+                    derived from the model, so a hidden panel costs nothing to rebuild -- the host
+                    holds the model and re-posts it on the reload a reveal triggers -- and holding a
+                    full DOM per hidden tab is what VS Code warns against.
                 */
                 { enableScripts: true, localResourceRoots: [] }
             );
 
         ExtensionCommandService.picklistDependencyExplorerPanel = explorerPanel;
+        ExtensionCommandService.picklistDependencyExplorerRenderMessage = undefined;
+        ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
+        ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
+        ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = '';
+        ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
+        ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
+        ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
+        ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
+        ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
 
         if ( !existingExplorerPanel ) {
 
@@ -1378,34 +1543,267 @@ export class ExtensionCommandService {
                 ExtensionCommandService.picklistDependencyExplorerMessageSubscription?.dispose();
                 ExtensionCommandService.picklistDependencyExplorerMessageSubscription = undefined;
                 ExtensionCommandService.picklistDependencyExplorerPanel = undefined;
+                ExtensionCommandService.picklistDependencyExplorerRenderMessage = undefined;
+                ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
+                ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
+                ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
+                ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
+                ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
+                ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
+                ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
             });
 
         }
 
         const nonce = PicklistDependencyExplorerService.buildNonce();
-        explorerPanel.webview.html = PicklistDependencyExplorerService.buildWebviewHtml(explorerViewModel, nonce);
+        explorerPanel.webview.html = PicklistDependencyExplorerService.buildWebviewShellHtml(nonce);
+
+        this.registerPicklistDependencyExplorerMessageSubscription(explorerPanel);
+
+        explorerPanel.reveal(vscode.ViewColumn.One);
+
+        return explorerPanel;
+
+    }
+
+    /*
+        Posts to the panel only once it has said it is listening; everything is stored either way.
+
+        The one place that decides this, so no post site has to remember the rule.
+    */
+    private static postToPicklistDependencyExplorerPanel(explorerPanel: vscode.WebviewPanel,
+                                                            hostMessage: PicklistDependencyExplorerHostMessage) {
+
+        if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+            return;
+        }
+
+        if ( !ExtensionCommandService.picklistDependencyExplorerIsPanelReady ) {
+            return;
+        }
+
+        explorerPanel.webview.postMessage(hostMessage);
+
+    }
+
+    /*
+        Whether the panel this load is reporting into is still the panel the window has.
+
+        onDidDispose clears the reference, so a tab closed mid-load stops matching -- and the load,
+        which now has awaits in it and so can outlive the tab, has something to check. Posting to a
+        disposed webview throws, and that throw would reach the error handler and offer the user a
+        "report this to GitHub" dialog for the ordinary act of closing a tab.
+    */
+    private static isPicklistDependencyExplorerPanelLive(explorerPanel: vscode.WebviewPanel): boolean {
+
+        return ExtensionCommandService.picklistDependencyExplorerPanel === explorerPanel;
+
+    }
+
+    // ONE FORMAT FOR THE STATUS BAR PHASE, SO THE ITEM READS THE SAME WHEN IT IS CREATED AS WHEN IT IS UPDATED
+    private static buildPicklistDependencyExplorerStatusText(phaseMessage: string): string {
+
+        return `$(sync~spin) Explorer: ${phaseMessage}`;
+
+    }
+
+    /*
+        Hands the extension host's event loop back a turn.
+
+        Without this the whole open is ONE synchronous turn: VS Code batches webview posts and status
+        bar writes and flushes them when the turn ends, so every phase this command reports would
+        arrive at once, after the work they describe had already finished. The panel would open and
+        narrate nothing. It is also what lets the panel's "ready" be received while the load is still
+        running, rather than only after it.
+    */
+    private static async yieldToExtensionHost(): Promise<void> {
+
+        return new Promise<void>(resolveYield => setImmediate(resolveYield));
+
+    }
+
+    // THE CURRENT PHASE, IN THE PANEL AND IN THE STATUS BAR, SO IT IS LEGIBLE WHETHER OR NOT THE PANEL HAS FOCUS
+    private async reportPicklistDependencyExplorerPhase(explorerPanel: vscode.WebviewPanel,
+                                                    explorerLoadStatusItem: vscode.StatusBarItem,
+                                                    phaseMessage: string) {
+
+        ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = phaseMessage;
+        explorerLoadStatusItem.text = ExtensionCommandService.buildPicklistDependencyExplorerStatusText(phaseMessage);
+
+        const loadPhaseMessage: IPicklistDependencyExplorerLoadPhaseMessage = { command: 'loadPhase', message: phaseMessage };
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, loadPhaseMessage);
+
+        await ExtensionCommandService.yieldToExtensionHost();
+
+    }
+
+    /*
+        Hands the panel a model to draw, and rebuilds the allow-lists from it in the same step.
+
+        The two belong together: a model on screen whose targets are not in the allow-lists has
+        buttons that silently do nothing, and allow-lists outliving the model they came from is the
+        stale-permission bug the per-render listener used to prevent.
+    */
+    private renderPicklistDependencyExplorerModel(explorerPanel: vscode.WebviewPanel,
+                                                    explorerViewModel: IPicklistDependencyExplorerViewModel,
+                                                    remainingPhaseMessage: string) {
+
+        if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+            return;
+        }
+
+        const renderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(explorerViewModel, remainingPhaseMessage);
+
+        ExtensionCommandService.picklistDependencyExplorerRenderMessage = renderMessage;
+        ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = remainingPhaseMessage;
+
+        ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths =
+            new Set(PicklistDependencyExplorerService.collectSourceFilePaths(explorerViewModel));
+        ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets =
+            new Set(PicklistDependencyExplorerService.collectOpenableSpecTargets(explorerViewModel));
+        ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets =
+            new Set(PicklistDependencyExplorerService.collectOpenableRunReportTargets(explorerViewModel));
+        ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys =
+            new Set(PicklistDependencyExplorerService.collectCombinationKeys(explorerViewModel));
 
         /*
-            One allow-list per panel command, each built from the model this render was built from.
-
-            Every one of them matches the posted value against what the model NAMES rather than
-            validating it as a path, so a message arriving from anywhere else cannot make the
-            extension host open an arbitrary file on the user's disk. The spec and report lists are
-            keyed on the file AND the method together, so a legitimate file cannot be combined with
-            a method name of the sender's choosing either.
+            A model belongs to ONE load, and so does the freshness answer. Clearing it here stops a
+            previous load's answer being replayed onto this model on the next reveal, which would
+            banner a fresh manifest as stale or the reverse.
         */
-        const revealableSourceFilePaths = new Set(PicklistDependencyExplorerService.collectSourceFilePaths(explorerViewModel));
-        const openableSpecTargets = new Set(PicklistDependencyExplorerService.collectOpenableSpecTargets(explorerViewModel));
-        const openableRunReportTargets = new Set(PicklistDependencyExplorerService.collectOpenableRunReportTargets(explorerViewModel));
-        const copyableCombinationKeys = new Set(PicklistDependencyExplorerService.collectCombinationKeys(explorerViewModel));
+        ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
+
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, renderMessage);
+
+    }
+
+    /*
+        The staleness answer, once the walk that produces it has finished.
+
+        Kept on the stored render message as well as posted, so the reload a reveal triggers gets the
+        resolved answer rather than the pending one the model was built with.
+    */
+    private applyPicklistDependencyExplorerFreshness(explorerPanel: vscode.WebviewPanel,
+                                                        freshnessResult: IPicklistDependencyManifestFreshnessResult) {
+
+        const freshnessMessage: IPicklistDependencyExplorerFreshnessMessage = {
+            command: 'applyFreshness',
+            freshness: freshnessResult.freshness,
+            message: freshnessResult.message
+        };
+
+        ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = freshnessMessage;
+        ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = '';
+
+        const renderMessage = ExtensionCommandService.picklistDependencyExplorerRenderMessage;
+
+        if ( renderMessage ) {
+
+            /*
+                REPLACED rather than mutated. That message has already been handed to postMessage,
+                and editing an object after posting it is a race whose outcome depends on when the
+                webview host serializes -- the replay copy is a different object precisely so what
+                was sent and what is held for a reveal cannot disagree.
+            */
+            ExtensionCommandService.picklistDependencyExplorerRenderMessage = {
+                ...renderMessage,
+                message: '',
+                model: {
+                    ...renderMessage.model,
+                    manifestFreshness: freshnessResult.freshness,
+                    manifestFreshnessMessage: freshnessResult.message
+                }
+            };
+
+        }
+
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, freshnessMessage);
+
+    }
+
+    // WHY THE PANEL IS SHOWING NOTHING, IN THE PANEL ITSELF -- A LOAD THAT ENDED HAS TO STOP LOOKING LIKE ONE STILL RUNNING
+    private failPicklistDependencyExplorerLoad(explorerPanel: vscode.WebviewPanel | undefined, failureMessage: string) {
+
+        if ( !explorerPanel ) {
+            return;
+        }
+
+        ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = failureMessage;
+
+        /*
+            Held as a FAILURE rather than as a phase line, so a reveal after the load died comes back
+            saying it died. Replaying it as a phase would have the panel report a load still running
+            that nothing is going to finish.
+        */
+        const loadFailedMessage: IPicklistDependencyExplorerLoadFailedMessage = { command: 'loadFailed', message: failureMessage };
+        ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = loadFailedMessage;
+
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, loadFailedMessage);
+
+    }
+
+    private registerPicklistDependencyExplorerMessageSubscription(explorerPanel: vscode.WebviewPanel) {
 
         ExtensionCommandService.picklistDependencyExplorerMessageSubscription?.dispose();
 
         ExtensionCommandService.picklistDependencyExplorerMessageSubscription = explorerPanel.webview.onDidReceiveMessage(async (panelMessage: IPicklistDependencyExplorerPanelMessage) => {
 
+            /*
+                The panel announcing it has loaded -- on first open, and again on every reveal after
+                it was hidden, because the document is rebuilt each time. Everything the host holds
+                is replayed in the order it was first sent, so the panel comes back in the state it
+                was in rather than in the state a fresh load would leave it.
+            */
+            if ( panelMessage?.command === 'ready' ) {
+
+                ExtensionCommandService.picklistDependencyExplorerIsPanelReady = true;
+
+                const renderMessage = ExtensionCommandService.picklistDependencyExplorerRenderMessage;
+
+                if ( renderMessage ) {
+                    explorerPanel.webview.postMessage(renderMessage);
+                }
+
+                const freshnessMessage = ExtensionCommandService.picklistDependencyExplorerFreshnessMessage;
+
+                if ( freshnessMessage ) {
+                    explorerPanel.webview.postMessage(freshnessMessage);
+                }
+
+                /*
+                    A failure outranks both. It is replayed even when a model was rendered first --
+                    the structure on screen is still worth showing, and the reader still has to be
+                    told the load behind it did not finish.
+                */
+                const loadFailedMessage = ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage;
+
+                if ( loadFailedMessage ) {
+                    explorerPanel.webview.postMessage(loadFailedMessage);
+                    return;
+                }
+
+                /*
+                    No answer and no failure, so the phase line is replayed instead -- a reveal in the
+                    middle of a load has to come back still saying what it is waiting for. A render
+                    message carries its own trailing phase, so this is only for the window before one.
+                */
+                if ( !renderMessage && !freshnessMessage && ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage ) {
+
+                    const loadPhaseMessage: IPicklistDependencyExplorerLoadPhaseMessage = {
+                        command: 'loadPhase',
+                        message: ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage
+                    };
+                    explorerPanel.webview.postMessage(loadPhaseMessage);
+
+                }
+
+                return;
+
+            }
+
             if ( panelMessage?.command === 'revealFieldSource' && panelMessage.sourceFilePath ) {
 
-                if ( !revealableSourceFilePaths.has(panelMessage.sourceFilePath) ) {
+                if ( !ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths.has(panelMessage.sourceFilePath) ) {
                     return;
                 }
 
@@ -1426,7 +1824,7 @@ export class ExtensionCommandService {
 
                 const openTargetKey = PicklistDependencyExplorerService.buildOpenTargetKey(panelMessage.specFilePath, panelMessage.methodName);
 
-                if ( !openableSpecTargets.has(openTargetKey) ) {
+                if ( !ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets.has(openTargetKey) ) {
                     return;
                 }
 
@@ -1448,7 +1846,7 @@ export class ExtensionCommandService {
 
                 const openTargetKey = PicklistDependencyExplorerService.buildOpenTargetKey(panelMessage.reportFilePath, panelMessage.methodName);
 
-                if ( !openableRunReportTargets.has(openTargetKey) ) {
+                if ( !ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets.has(openTargetKey) ) {
                     return;
                 }
 
@@ -1468,7 +1866,7 @@ export class ExtensionCommandService {
 
             if ( panelMessage?.command === 'copyCombinationReference' && panelMessage.combinationKey ) {
 
-                if ( !copyableCombinationKeys.has(panelMessage.combinationKey) ) {
+                if ( !ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys.has(panelMessage.combinationKey) ) {
                     return;
                 }
 
@@ -1478,8 +1876,6 @@ export class ExtensionCommandService {
             }
 
         });
-
-        explorerPanel.reveal(vscode.ViewColumn.One);
 
     }
 

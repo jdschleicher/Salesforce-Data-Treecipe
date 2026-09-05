@@ -289,6 +289,56 @@ export interface IPicklistDependencyExplorerViewModel {
 }
 
 /*
+    What the host sends the panel. The panel sends back only the four action commands it always has,
+    plus "ready" -- see IPicklistDependencyExplorerPanelMessage.
+
+    These exist because the model is no longer serialized into the panel's html. A message shape is
+    the contract that replaced that document, so it is typed here beside the model it carries rather
+    than assembled ad hoc at each post site.
+*/
+export interface IPicklistDependencyExplorerRenderMessage {
+    command: 'renderModel';
+    model: IPicklistDependencyExplorerViewModel;
+    emptyStateMessage: string;
+    // THE STATUS LINE TO LEAVE ON SCREEN AFTER RENDERING -- EMPTY ONCE NOTHING IS STILL LOADING
+    message: string;
+}
+
+export interface IPicklistDependencyExplorerLoadPhaseMessage {
+    command: 'loadPhase';
+    message: string;
+}
+
+export interface IPicklistDependencyExplorerFreshnessMessage {
+    command: 'applyFreshness';
+    freshness: PicklistDependencyManifestFreshness;
+    message: string;
+}
+
+export interface IPicklistDependencyExplorerLoadFailedMessage {
+    command: 'loadFailed';
+    message: string;
+}
+
+export type PicklistDependencyExplorerHostMessage = IPicklistDependencyExplorerRenderMessage
+                                                        | IPicklistDependencyExplorerLoadPhaseMessage
+                                                        | IPicklistDependencyExplorerFreshnessMessage
+                                                        | IPicklistDependencyExplorerLoadFailedMessage;
+
+/*
+    The phases an open reports, in the order they run. Named here so the panel banner, the status bar
+    item and the tests all say the same words -- three copies of "Building the dependency view..."
+    is how a phase gets renamed in one place and not the others.
+*/
+export const PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES = {
+    readingManifest: 'Reading the generated spec manifest…',
+    loadingResults: 'Loading the most recent picklist dependency check results…',
+    buildingView: 'Building the dependency view…',
+    checkingFreshness: 'Checking whether the generated specs still match your metadata…',
+    scanningMetadata: 'Scanning your object metadata for dependent picklists…'
+};
+
+/*
     What the panel will render before it starts dropping rows.
 
     An unbounded payload was the ceiling before this existed: the model is serialized into the html
@@ -1808,12 +1858,6 @@ export class PicklistDependencyExplorerService {
     }
 
     /*
-        Escaped for HTML text and attribute contexts alike. Picklist values, api names and Apex
-        failure messages all reach the panel unmodified from metadata an admin controls, so none of
-        it is interpolated raw. The JSON payload takes the same treatment below.
-    */
-
-    /*
         Keeps at most "cap" items, and never drops one the caller marked as retained.
 
         Retained items are taken FIRST and the remainder fills what is left, but the result is
@@ -2300,40 +2344,28 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    static escapeHtml(value: string): string {
-
-        return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-
-    }
-
     /*
-        Neutralises the characters that can end a <script> block early, for any JSON literal being
-        placed inside one. The escapes are JSON's own, so the text still parses to the identical
-        value -- a picklist value of "</script>" reads back as "</script>" and simply cannot close
-        the element it is sitting in on the way there.
+        The message that hands the panel a model to render.
+
+        The model no longer passes through html at all: it is posted to the webview and arrives as a
+        structured value, so there is no script block for a picklist value of "</script>" to close
+        and no markup for one to inject into. That is why the escaping this class used to do on the
+        way into the document is gone rather than merely unused -- the document it protected does not
+        carry metadata any more, and every node the panel builds is written through textContent.
+
+        The empty-state message travels with the model because it is prose ABOUT the model that the
+        service composes: deriving it a second time inside the panel script would be the parallel
+        derivation this feature keeps removing.
     */
-    static escapeJsonForScriptBlock(jsonText: string): string {
+    static buildRenderModelMessage(viewModel: IPicklistDependencyExplorerViewModel,
+                                        loadStatusMessage: string = ''): IPicklistDependencyExplorerRenderMessage {
 
-        return jsonText
-            .replace(/</g, '\\u003c')
-            .replace(/>/g, '\\u003e')
-            .replace(/&/g, '\\u0026');
-
-    }
-
-    /*
-        The model is handed to the panel script as JSON inside a <script type="application/json">
-        block rather than as a JS literal, so nothing in it is ever evaluated -- and it is escaped
-        above so it cannot close that block either.
-    */
-    static buildEmbeddedModelJson(viewModel: IPicklistDependencyExplorerViewModel): string {
-
-        return this.escapeJsonForScriptBlock(JSON.stringify(viewModel));
+        return {
+            command: 'renderModel',
+            model: viewModel,
+            emptyStateMessage: this.buildEmptyStateMessage(viewModel),
+            message: loadStatusMessage
+        };
 
     }
 
@@ -2385,11 +2417,26 @@ export class PicklistDependencyExplorerService {
     }
 
     /*
-        The shell only. Every colour is a VS Code theme variable, so the panel follows the active
-        light, dark or high contrast theme without the extension having to know which is active, and
-        the structure itself is rendered by the inline script from the embedded model.
+        The shell only, and it no longer carries the model.
+
+        Every colour is a VS Code theme variable, so the panel follows the active light, dark or high
+        contrast theme without the extension having to know which is active, and the structure itself
+        is rendered by the inline script.
+
+        The model used to be serialized into a script block in this document, which meant the panel
+        could not exist until the model did: the tab stayed blank through the manifest parse and the
+        model build, and the whole payload was re-parsed out of the html on every reveal (the panel
+        is deliberately not retained when hidden). The shell is now independent of the model and is
+        set the moment the command runs, so the panel appears immediately and says what it is doing;
+        the model arrives over postMessage, which is also what lets a reveal be answered from the
+        host's copy rather than by re-serializing a multi-megabyte document.
+
+        Nothing in here is derived from metadata, so nothing in here needs escaping. What arrives
+        later is written through textContent by createElement, never through innerHTML -- the panel's
+        "renders no unescaped metadata" property is now carried by the DOM api rather than by
+        escaping into a script block.
     */
-    static buildWebviewHtml(viewModel: IPicklistDependencyExplorerViewModel, nonce: string): string {
+    static buildWebviewShellHtml(nonce: string): string {
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -2570,6 +2617,17 @@ export class PicklistDependencyExplorerService {
         font-size: 0.9em;
     }
     .emptyState { padding: 1rem; border: 1px dashed var(--vscode-panel-border); }
+    /*
+        The phase the load is in, above the structure rather than inside it. It is the only thing on
+        screen before the model arrives, and it is removed -- not just emptied -- once the last phase
+        resolves, so a loaded panel carries no residue of how it got there.
+    */
+    .loadStatus {
+        padding: 0.6rem 0.75rem;
+        margin-bottom: 0.6rem;
+        border-left: 3px solid var(--vscode-testing-iconQueued);
+        color: var(--vscode-descriptionForeground);
+    }
     .specOrigin { font-family: var(--vscode-editor-font-family); font-size: 0.8rem; color: var(--vscode-descriptionForeground); margin: 0.1rem 0 0.3rem 0; }
     .provenanceBanner { padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; border-left: 3px solid var(--vscode-panel-border); }
     .provenanceBanner.stale { border-left-color: var(--vscode-testing-iconQueued); }
@@ -2641,15 +2699,25 @@ export class PicklistDependencyExplorerService {
 </head>
 <body>
 <h1>Picklist Dependency Explorer</h1>
-<div class="muted">Scanned <span class="sourcePath">${this.escapeHtml(viewModel.scannedObjectsDirectoryPath)}</span></div>
+<div id="scannedPath" class="muted hidden">Scanned <span id="scannedPathValue" class="sourcePath"></span></div>
+<div id="loadStatus" class="loadStatus">Opening the Picklist Dependency Explorer…</div>
 <div id="explorerRoot"></div>
-<script id="explorerModel" type="application/json" nonce="${nonce}">${this.buildEmbeddedModelJson(viewModel)}</script>
 <script nonce="${nonce}">
 (function () {
 
     const vscodeApi = acquireVsCodeApi();
-    const explorerModel = JSON.parse(document.getElementById('explorerModel').textContent);
     const explorerRoot = document.getElementById('explorerRoot');
+    const loadStatusElement = document.getElementById('loadStatus');
+    const scannedPathElement = document.getElementById('scannedPath');
+    const scannedPathValueElement = document.getElementById('scannedPathValue');
+
+    /*
+        Assigned when the host posts the model. Everything below reads it, and nothing below runs
+        before it exists -- renderPanel is the only caller of the render functions, and it is called
+        only from the renderModel message.
+    */
+    let explorerModel;
+    let emptyStateMessage = '';
 
     const EXPAND_ALL_OBJECT_LIMIT = ${PICKLIST_DEPENDENCY_EXPLORER_EXPAND_ALL_OBJECT_LIMIT};
 
@@ -2682,8 +2750,38 @@ export class PicklistDependencyExplorerService {
     */
     let panelSectionRecords = [];
 
+    /*
+        The provenance banner and its contents entry, kept because the freshness answer arrives after
+        the panel has been built and rewrites both. Held as references rather than looked up by class
+        so a re-render cannot leave the late answer editing the previous render's element.
+    */
+    let provenanceBannerElement;
+    let provenanceBannerSectionRecord;
+
     function registerPanelSection(labelText, sectionElement) {
-        panelSectionRecords.push({ label: labelText, element: sectionElement });
+        const panelSectionRecord = { label: labelText, element: sectionElement, labelElement: undefined };
+        panelSectionRecords.push(panelSectionRecord);
+        return panelSectionRecord;
+    }
+
+    /*
+        Renames a section AFTER the contents has been built.
+
+        The contents entry holds the section's element and its own label span, so a section whose
+        wording changes late -- the provenance banner, once the freshness walk answers -- is renamed
+        in both places rather than re-registered. Registering it again would leave the panel with two
+        entries for one section, one of them pointing at an element no longer in the document.
+    */
+    function updatePanelSectionLabel(panelSectionRecord, labelText) {
+
+        if (!panelSectionRecord) { return; }
+
+        panelSectionRecord.label = labelText;
+
+        if (panelSectionRecord.labelElement) {
+            panelSectionRecord.labelElement.textContent = labelText;
+        }
+
     }
 
     function createElement(tagName, className, textContent) {
@@ -3235,7 +3333,7 @@ export class PicklistDependencyExplorerService {
             */
             recordTypeSearchText = node.recordTypeScopes
                 .map(function (recordTypeScope) { return recordTypeScope.recordTypeDeveloperName; })
-                .join('\n')
+                .join('\\n')
                 .toLowerCase();
 
         }
@@ -3268,13 +3366,20 @@ export class PicklistDependencyExplorerService {
         asserted by nothing at all. Rendering both the same way and letting the reader assume would
         undo the guarantee the artifact exists to provide.
     */
-    function renderProvenanceBanner() {
+    function fillProvenanceBanner(bannerElement) {
 
         const isPreview = explorerModel.modelSource === 'metadataPreview';
-        const isStale = explorerModel.manifestFreshness !== 'fresh';
+        /*
+            Pending is NOT stale. The walk that answers this has not run yet, so the banner says it
+            is checking rather than reporting either answer -- claiming "fresh" here would assert
+            agreement with metadata nothing has looked at, and claiming "stale" would send a reader
+            to regenerate over a difference that may not exist.
+        */
+        const isPendingFreshness = explorerModel.manifestFreshness === 'pendingCheck';
+        const isStale = !isPendingFreshness && explorerModel.manifestFreshness !== 'fresh';
 
-        const bannerElement = createElement('div',
-            'provenanceBanner' + (isPreview ? ' preview' : (isStale ? ' stale' : '')));
+        bannerElement.textContent = '';
+        bannerElement.className = 'provenanceBanner' + (isPreview ? ' preview' : (isStale ? ' stale' : ''));
 
         if (isPreview) {
 
@@ -3288,16 +3393,18 @@ export class PicklistDependencyExplorerService {
                 bannerElement.appendChild(createElement('div', 'muted', explorerModel.manifestLoadMessage));
             }
 
-            registerPanelSection('Preview from metadata', bannerElement);
-            explorerRoot.appendChild(bannerElement);
-            return;
+            return 'Preview from metadata';
 
         }
 
-        bannerElement.appendChild(createElement('div', 'fieldName',
-            isStale
-                ? 'Generated specs — your metadata has changed since they were generated'
-                : 'Generated specs'));
+        let provenanceHeading = 'Generated specs';
+        if (isStale) {
+            provenanceHeading = 'Generated specs — your metadata has changed since they were generated';
+        } else if (isPendingFreshness) {
+            provenanceHeading = 'Generated specs — checking whether they still match your metadata…';
+        }
+
+        bannerElement.appendChild(createElement('div', 'fieldName', provenanceHeading));
 
         if (isStale) {
             bannerElement.appendChild(createElement('div', undefined, explorerModel.manifestFreshnessMessage));
@@ -3308,7 +3415,18 @@ export class PicklistDependencyExplorerService {
                 + ' — asserted by ' + explorerModel.specsTestClassName + '.cls'));
         bannerElement.appendChild(createElement('div', 'sourcePath', explorerModel.manifestFilePath));
 
-        registerPanelSection(isStale ? 'Generated specs — stale' : 'Generated specs', bannerElement);
+        return isStale ? 'Generated specs — stale' : 'Generated specs';
+
+    }
+
+    function renderProvenanceBanner() {
+
+        const bannerElement = createElement('div');
+        const sectionLabel = fillProvenanceBanner(bannerElement);
+
+        provenanceBannerElement = bannerElement;
+        provenanceBannerSectionRecord = registerPanelSection(sectionLabel, bannerElement);
+
         explorerRoot.appendChild(bannerElement);
 
     }
@@ -3788,7 +3906,9 @@ export class PicklistDependencyExplorerService {
             panelSectionRecords.forEach(function (panelSectionRecord) {
 
                 const entryElement = createElement('div', 'tocEntry');
-                entryElement.appendChild(createElement('span', undefined, panelSectionRecord.label));
+                const entryLabelElement = createElement('span', undefined, panelSectionRecord.label);
+                panelSectionRecord.labelElement = entryLabelElement;
+                entryElement.appendChild(entryLabelElement);
                 entryElement.addEventListener('click', function () {
                     panelSectionRecord.element.scrollIntoView({ block: 'start' });
                 });
@@ -3830,7 +3950,7 @@ export class PicklistDependencyExplorerService {
     function renderObjects() {
 
         if (!explorerModel.objects.length) {
-            explorerRoot.appendChild(createElement('div', 'emptyState', ${this.escapeJsonForScriptBlock(JSON.stringify(this.buildEmptyStateMessage(viewModel)))}));
+            explorerRoot.appendChild(createElement('div', 'emptyState', emptyStateMessage));
             return;
         }
 
@@ -3863,11 +3983,121 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    renderProvenanceBanner();
-    renderRunBanner();
-    renderTruncationNotices();
-    renderSkippedFieldWarnings();
-    renderObjects();
+    /*
+        Everything the panel draws, from a model that has just arrived.
+
+        Called on every renderModel message rather than once at load: the panel is not retained when
+        hidden, so a reveal reloads this document and asks the host for the model again, and a
+        re-render has to leave no trace of the previous one. Every piece of render state lives in the
+        variables reset here -- a section record left behind would have the find box counting objects
+        that are no longer on screen.
+    */
+    function renderPanel(renderedModel, renderedEmptyStateMessage) {
+
+        explorerModel = renderedModel;
+        emptyStateMessage = renderedEmptyStateMessage || '';
+
+        explorerRoot.textContent = '';
+        objectSectionRecords = [];
+        panelSectionRecords = [];
+        provenanceBannerElement = undefined;
+        provenanceBannerSectionRecord = undefined;
+        focusedCombinationElement = undefined;
+        matchCountElement = undefined;
+        isDeepLinkActive = false;
+        filterText = '';
+        filterStatus = 'all';
+
+        scannedPathValueElement.textContent = explorerModel.scannedObjectsDirectoryPath;
+        scannedPathElement.classList.remove('hidden');
+
+        renderProvenanceBanner();
+        renderRunBanner();
+        renderTruncationNotices();
+        renderSkippedFieldWarnings();
+        renderObjects();
+
+    }
+
+    /*
+        The freshness answer, which arrives AFTER the panel has painted because the walk that
+        produces it stats every file under the objects directory.
+
+        The banner is re-rendered in place rather than patched: it is the one element whose whole
+        wording changes with the answer -- a stale manifest reads differently from a fresh one at the
+        heading, not just in an appended sentence.
+    */
+    function applyFreshness(freshness, freshnessMessage) {
+
+        if (!explorerModel) { return; }
+
+        explorerModel.manifestFreshness = freshness;
+        explorerModel.manifestFreshnessMessage = freshnessMessage;
+
+        if (!provenanceBannerElement) { return; }
+
+        /*
+            Refilled IN PLACE, and the contents entry renamed to match.
+
+            Replacing the element instead would detach the node the contents entry scrolls to -- the
+            entry holds the element by reference, so a rebuilt banner leaves "Generated specs"
+            pointing at a node no longer in the document and still carrying the wording from before
+            the answer arrived.
+        */
+        const sectionLabel = fillProvenanceBanner(provenanceBannerElement);
+        updatePanelSectionLabel(provenanceBannerSectionRecord, sectionLabel);
+
+    }
+
+    function setLoadStatus(statusMessage) {
+
+        if (!statusMessage) {
+            loadStatusElement.classList.add('hidden');
+            return;
+        }
+
+        loadStatusElement.textContent = statusMessage;
+        loadStatusElement.classList.remove('hidden');
+
+    }
+
+    window.addEventListener('message', function (messageEvent) {
+
+        const hostMessage = messageEvent.data;
+        if (!hostMessage) { return; }
+
+        if (hostMessage.command === 'loadPhase') {
+            setLoadStatus(hostMessage.message);
+            return;
+        }
+
+        if (hostMessage.command === 'renderModel') {
+            renderPanel(hostMessage.model, hostMessage.emptyStateMessage);
+            setLoadStatus(hostMessage.message);
+            return;
+        }
+
+        if (hostMessage.command === 'applyFreshness') {
+            applyFreshness(hostMessage.freshness, hostMessage.message);
+            setLoadStatus('');
+            return;
+        }
+
+        if (hostMessage.command === 'loadFailed') {
+            setLoadStatus(hostMessage.message);
+        }
+
+    });
+
+    /*
+        Posted on every load of this document, not only the first.
+
+        A reveal after the panel was hidden reloads it from scratch, and the host answers "ready"
+        with whatever it currently holds -- so the model is restored from the host's copy rather than
+        rebuilt from the manifest, and a panel that has already resolved its freshness comes back
+        with that answer rather than re-walking the objects directory.
+    */
+    vscodeApi.postMessage({ command: 'ready' });
 
 }());
 </script>
