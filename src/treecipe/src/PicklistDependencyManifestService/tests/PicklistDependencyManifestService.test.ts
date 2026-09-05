@@ -1,6 +1,5 @@
 import {
     PicklistDependencyManifestService,
-    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING,
     PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED
 } from "../PicklistDependencyManifestService";
 
@@ -942,9 +941,53 @@ describe('PicklistDependencyManifestService', () => {
 
         });
 
-        test('given an unreadable directory, returns a fingerprint rather than throwing', () => {
+        /*
+            The root and everything below it are treated differently ON PURPOSE.
 
-            expect(() => PicklistDependencyManifestService.buildSourceFingerprint('/no/such/directory/anywhere')).not.toThrow();
+            A locked subdirectory costs that subdirectory. An unreadable ROOT means there is no
+            metadata to fingerprint at all, and swallowing it yields sha256('') -- a digest that
+            mismatches whatever was recorded and gets reported as "your metadata has changed",
+            which is a false claim about a directory that is missing.
+        */
+        test('given an unreadable ROOT, throws so the caller can report that it could not check', () => {
+
+            expect(() => PicklistDependencyManifestService.buildSourceFingerprint('/no/such/directory/anywhere')).toThrow();
+
+        });
+
+        test('given an unreadable directory BELOW the root, still returns a fingerprint', () => {
+
+            const objectsDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-fingerprint-'));
+            const objectDirectoryPath = path.join(objectsDirectoryPath, 'Locked__c');
+            fs.mkdirSync(objectDirectoryPath);
+
+            // CAPTURED BEFORE THE SPY: requireActual('fs') hands back the SAME module object, so
+            // delegating through it re-enters the mock and blows the stack rather than reading a directory
+            const actualReaddirSync = fs.readdirSync;
+
+            const readdirSpy = jest.spyOn(fs, 'readdirSync').mockImplementation(((requestedPath: any, options: any) => {
+
+                if ( String(requestedPath) === objectDirectoryPath ) {
+                    const permissionError: NodeJS.ErrnoException = new Error('EACCES: permission denied');
+                    permissionError.code = 'EACCES';
+                    throw permissionError;
+                }
+
+                return actualReaddirSync(requestedPath, options);
+
+            }) as any);
+
+            /*
+                Restored in a finally rather than after the assertion. This spy is on the GLOBAL fs
+                module, so a failed expectation that skipped the restore would leave every later
+                suite in this worker reading directories through it.
+            */
+            try {
+                expect(() => PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)).not.toThrow();
+            } finally {
+                readdirSpy.mockRestore();
+                fs.rmSync(objectsDirectoryPath, { recursive: true, force: true });
+            }
 
         });
 
@@ -1123,6 +1166,47 @@ describe('PicklistDependencyManifestService', () => {
             may click check long after the panel opened. A throw escaping here would be reported as
             the Explorer failing to LOAD -- past a panel that has been on screen and usable.
         */
+        /*
+            THE REGRESSION THIS DESCRIBE BLOCK EXISTS FOR.
+
+            Every other test here mocks buildSourceFingerprint to throw, which asserts the catch
+            block rather than any reachable path. The first version of checkFailed passed all of them
+            and was DEAD CODE: collectSourceFingerprintEntries swallowed readdirSync and statSync
+            failures internally, so a missing objects directory produced sha256('') -- a digest that
+            mismatched whatever was recorded and got reported as "your metadata has changed since
+            these specs were generated", telling the reader to regenerate from a directory that is
+            not there.
+
+            This test uses the REAL walk against a REAL missing directory, so it fails if that
+            swallowing ever comes back.
+        */
+        it('given a genuinely missing objects directory and no mocking at all, reports checkFailed', () => {
+
+            const missingObjectsDirectoryPath = path.join(os.tmpdir(), 'treecipe-definitely-not-here', 'objects');
+
+            expect(fs.existsSync(missingObjectsDirectoryPath)).toBe(false);
+
+            /*
+                Recorded against the SAME directory, so the walk is what answers -- a manifest naming
+                a different directory is reported as that, before any walk happens.
+            */
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                {
+                    objectsDirectoryPath: missingObjectsDirectoryPath,
+                    sourceFingerprint: 'recorded-when-the-directory-still-existed',
+                    generatedAt: '2026-09-01T00:00:00.000Z'
+                },
+                missingObjectsDirectoryPath
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+
+            // AND EMPHATICALLY NOT THE FALSE CLAIM IT REPLACED
+            expect(freshnessResult.message).not.toContain('has changed since these specs were generated');
+            expect(freshnessResult.message).toContain('salesforceObjectsPath');
+
+        });
+
         it('given a walk that throws, reports that it could not check rather than throwing', () => {
 
             jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
@@ -1193,49 +1277,6 @@ describe('PicklistDependencyManifestService', () => {
             expect(freshnessResult.freshness).not.toBe('fresh');
             expect(freshnessResult.freshness).not.toBe('staleMetadata');
             expect(freshnessResult.freshness).not.toBe('staleObjectsDirectory');
-
-        });
-
-    });
-
-    describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING', () => {
-
-        it('is the freshness a model carries before the walk has run, and is frozen against a caller editing it', () => {
-
-            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.freshness).toBe('pendingCheck');
-            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.message).toBe('');
-
-            /*
-                It is handed to every model build as the pending answer, so it is shared across opens.
-                A caller mutating it would change what every later open starts from.
-            */
-            expect(Object.isFrozen(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING)).toBe(true);
-
-        });
-
-        it('is never what resolveManifestFreshness returns -- the walk always answers one way or the other', () => {
-
-            // THROUGH THE TRACKED HELPER, SO CLEANUP IS THE FILE'S TOLERANT afterEach RATHER THAN AN rmSync THAT CAN ENOTEMPTY
-            const manifestDirectoryPath = buildTemporaryDirectory('treecipe-freshness-');
-            const objectsDirectoryPath = path.join(manifestDirectoryPath, 'objects');
-            fs.mkdirSync(objectsDirectoryPath, { recursive: true });
-
-            const manifest = PicklistDependencyManifestService.buildManifest(
-                { specDetails: buildChainSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
-                objectsDirectoryPath,
-                path.join(manifestDirectoryPath, 'classes'),
-                '9.9.9',
-                '2026-01-01T00:00:00Z',
-                PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)
-            );
-
-            const freshResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
-            expect(freshResult.freshness).toBe('fresh');
-
-            fs.writeFileSync(path.join(objectsDirectoryPath, 'Added__c.field-meta.xml'), '<x/>');
-
-            const staleResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
-            expect(staleResult.freshness).toBe('staleMetadata');
 
         });
 

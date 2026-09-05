@@ -136,19 +136,30 @@ export type PicklistDependencyManifestFreshness = 'fresh'
                                                     | 'notChecked'
                                                     | 'checkFailed';
 
-// FROZEN: IT IS PASSED INTO MODEL BUILDS AS THE PENDING ANSWER, AND ONE CALLER MUTATING IT WOULD CHANGE EVERY LATER OPEN
-export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
-    freshness: 'pendingCheck' as PicklistDependencyManifestFreshness,
-    message: ''
-});
-
 /*
-    What a model built by an open carries. Frozen for the same reason as the pending answer above.
+    What a model built by an open carries.
+
+    There is deliberately no PENDING equivalent: "pendingCheck" is now PANEL-LOCAL state, set by the
+    panel when the reader clicks check and resolved by the answer that follows. The host never builds
+    a model carrying it, so a constant for it would be a shape nothing produces.
+
+    Frozen: it is passed into model builds, and one caller mutating it would change every later open.
 */
 export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
     freshness: 'notChecked' as PicklistDependencyManifestFreshness,
     message: ''
 });
+
+/*
+    The three fields a freshness check actually reads, named as their own type.
+
+    The Explorer holds this across the life of a panel so a check can answer about the model ON
+    SCREEN rather than about whatever the manifest says by the time the reader clicks. Narrowed to a
+    Pick so what is held is three strings: pinning the whole parsed manifest for them retained tens
+    of megabytes on a large org, for a comparison that never touches the objects list.
+*/
+export type IPicklistDependencyManifestFreshnessSubject =
+    Pick<IPicklistDependencyManifest, 'objectsDirectoryPath' | 'sourceFingerprint' | 'generatedAt'>;
 
 export interface IPicklistDependencyManifestFreshnessResult {
     freshness: PicklistDependencyManifestFreshness;
@@ -841,6 +852,22 @@ export class PicklistDependencyManifestService {
     */
     static collectSourceFingerprintEntries(objectsDirectoryPath: string): string[] {
 
+        /*
+            The ROOT is read unguarded, and that asymmetry is the whole point.
+
+            Every directory BELOW this one is allowed to be unreadable and contribute nothing: one
+            locked subdirectory on a real org should cost that subdirectory, not the answer. The root
+            is different in kind. If it cannot be read there is no metadata to fingerprint at all,
+            and folding that into an empty entry list produces sha256('') -- a digest that mismatches
+            whatever was recorded and is then reported as "your metadata has changed since these
+            specs were generated".
+
+            That was a false claim about a directory that is missing or locked, and it sent the
+            reader to regenerate from a directory that is not there. It is exactly the reading
+            checkFailed exists to prevent, so the root's failure has to reach the caller.
+        */
+        fs.readdirSync(objectsDirectoryPath);
+
         let fingerprintEntries: string[] = [];
         let visitedDirectoryPaths = new Set<string>();
 
@@ -994,7 +1021,7 @@ export class PicklistDependencyManifestService {
         never "this specific thing changed" -- and a banner that overstates is one users learn to
         dismiss.
     */
-    static resolveManifestFreshness(manifest: IPicklistDependencyManifest,
+    static resolveManifestFreshness(manifest: IPicklistDependencyManifestFreshnessSubject,
                                         objectsDirectoryPath: string): IPicklistDependencyManifestFreshnessResult {
 
         if ( this.normalizeDirectoryPathForComparison(manifest.objectsDirectoryPath)

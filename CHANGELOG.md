@@ -16,6 +16,8 @@ Three changes, together:
 - **The scanned-path line is revealed last**, after the body it describes has drawn. It was the marker that made a failed render look like a finished one.
 - **The panel tells the host either way.** A new `renderFailed` message carries the error and stack to `ErrorHandlingService.handleCapturedError`, the same path a host-side failure takes, and a `rendered` acknowledgement records that something is actually on screen. A `window` `error` listener catches throws outside the render -- a lazy expand, a row handler -- through the same channel.
 
+A `render` failure is distinguished from a `runtime` throw after a successful draw. Only the first invalidates the panel and empties its action allow-lists; a handler that threw on a keystroke leaves the rows readable. Each distinct failure is reported once, because the `error` listener fires per event. `unhandledrejection` is covered too — an async throw in the panel was as silent as the bug this fixes.
+
 **This is containment, not a root-cause fix.** The specific throw behind the report that prompted this has not been reproduced: every model array the panel dereferences is built as a concrete array by the model builders in the same process, and `buildManifestLoadByParsedContent` validates the manifest structurally before any of it. What changes today is that the next occurrence names itself instead of looking like an empty org.
 
 ### The freshness check is an action, not a toll
@@ -33,7 +35,11 @@ The check is gated on the render state rather than on a path allow-list, because
 
 ### Freshness checks contain their own I/O failures
 
-`resolveManifestFreshness` now catches a throw out of the fingerprint walk and returns `checkFailed` with the reason, naming the objects directory specifically when the cause is `ENOENT`. The walk happens on a click that may come long after the panel opened, and a throw escaping it would have been reported as the Explorer failing to *load* -- past a panel that had been on screen and usable the whole time.
+`resolveManifestFreshness` catches a throw out of the fingerprint walk and returns `checkFailed` with the reason, naming the objects directory specifically when the cause is `ENOENT`. The walk happens on a click that may come long after the panel opened, and a throw escaping it would have been reported as the Explorer failing to *load* -- past a panel that had been on screen and usable the whole time.
+
+Reaching that state required changing the **walk**, not just adding a `try`/`catch` around it. `collectSourceFingerprintEntries` swallows `readdirSync` and `statSync` failures per directory -- deliberately, so one locked subdirectory costs that subdirectory rather than the answer -- which meant a missing objects directory produced `sha256('')`, mismatched the recorded fingerprint, and was reported as *"your metadata has changed since these specs were generated"*, sending the reader to regenerate from a directory that is not there. The root is now read unguarded: below it, tolerance is unchanged. There is a regression test that uses the real walk against a real missing directory, because a mocked-throw test passes against the broken version.
+
+Every refusal of a check also **answers** the panel. The click optimistically shows "checking" before the host has agreed to anything, so a silent return left a disabled button narrating a walk that was not running -- recoverable only by reopening the panel, and the exact state `notChecked` was introduced to abolish.
 
 
 ## [3.12.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json

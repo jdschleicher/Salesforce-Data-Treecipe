@@ -2543,7 +2543,7 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
-            await receivedMessageHandler({ command: 'renderFailed', message: 'the panel threw', stack: '' });
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'the panel threw', stack: '' });
             await receivedMessageHandler({ command: 'checkFreshness' });
 
             expect(resolveManifestFreshnessSpy).not.toHaveBeenCalled();
@@ -2557,6 +2557,184 @@ describe('ExtensionCommandService', () => {
             await receivedMessageHandler({ command: 'checkFreshness' });
 
             expect(resolveManifestFreshnessSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        /*
+            The panel's click is OPTIMISTIC: it disables the button and puts the banner into
+            "checking" before the host has agreed to do anything. A refusal that returns silently
+            leaves it there permanently -- a disabled button narrating a walk that is not running,
+            recoverable only by reopening the panel. That is precisely the state notChecked exists to
+            abolish, so every refusal has to answer.
+        */
+        test('given a refused check, restores the banner rather than leaving it narrating a walk that is not running', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'the panel threw', stack: '' });
+
+            postedPanelMessages.length = 0;
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            const restoredFreshness = postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness').pop();
+
+            expect(restoredFreshness).toBeDefined();
+            expect(restoredFreshness.freshness).toBe('notChecked');
+
+        });
+
+        test('given a refused check after an answer already exists, restores that answer rather than notChecked', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({ freshness: 'staleMetadata', message: 'metadata has changed' });
+
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'the panel threw', stack: '' });
+
+            postedPanelMessages.length = 0;
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            const restoredFreshness = postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness').pop();
+
+            expect(restoredFreshness.freshness).toBe('staleMetadata');
+
+        });
+
+        /*
+            A handler that threw AFTER a successful draw leaves the rows on screen and readable.
+            Treating that as a dead panel would refuse a freshness check for a model the reader is
+            looking at -- and the panel's error listener fires for exactly these, long after render.
+        */
+        test('given a runtime throw after a successful draw, keeps the panel usable', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockReturnValue({ freshness: 'fresh', message: '' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'runtime', message: 'expand handler exploded', stack: '' });
+
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(resolveManifestFreshnessSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given a render failure, empties every action allow-list built from the model that is not on screen', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            const revealableSourceFilePath = getRenderedViewModel().objects[0].rootNodes[0].sourceFilePath;
+
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'the panel threw', stack: '' });
+
+            (vscode.commands.executeCommand as jest.Mock).mockClear();
+
+            await receivedMessageHandler({ command: 'revealFieldSource', sourceFilePath: revealableSourceFilePath });
+
+            // THE PATH WAS LEGITIMATE, BUT IT ADDRESSES A ROW NOBODY CAN SEE
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('revealInExplorer', expect.anything());
+
+        });
+
+        /*
+            The panel's error listener fires per uncaught error, and the events it covers repeat --
+            a throw in the filter's input handler fires on every keystroke. One notification per
+            distinct failure, not one per event.
+        */
+        test('given the same panel failure repeatedly, reports it once rather than once per event', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            handleCapturedErrorSpy.mockClear();
+
+            for ( let keystrokeCount = 0; keystrokeCount < 20; keystrokeCount++ ) {
+                await receivedMessageHandler({ command: 'renderFailed', phase: 'runtime', message: 'filter handler exploded', stack: '' });
+            }
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+
+            // A DIFFERENT FAILURE IS STILL WORTH TELLING
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'runtime', message: 'a different explosion', stack: '' });
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(2);
+
+        });
+
+        /*
+            resolveManifestFreshness contains its own walk failures, so reaching the handler's catch
+            means something OUTSIDE it threw. The banner is in "checking" either way, and leaving it
+            there is the wedge again -- so even an unexpected throw has to answer.
+        */
+        test('given the check itself throwing unexpectedly, still answers rather than leaving the banner checking', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockImplementation(() => {
+                    throw new Error('something outside the walk exploded');
+                });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            postedPanelMessages.length = 0;
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            const answeredFreshness = postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness').pop();
+
+            expect(answeredFreshness).toBeDefined();
+            expect(answeredFreshness.freshness).toBe('checkFailed');
+            expect(answeredFreshness.message).toContain('something outside the walk exploded');
+
+        });
+
+        // AND THE IN-FLIGHT FLAG IS RELEASED, SO ONE UNEXPECTED THROW DOES NOT BLOCK EVERY LATER CHECK
+        test('given the check throwing, releases the in-flight guard so a later check still runs', async () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
+                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+
+            const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
+                .mockImplementationOnce(() => { throw new Error('transient explosion'); })
+                .mockReturnValue({ freshness: 'fresh', message: '' });
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({ command: 'checkFreshness' });
+            await receivedMessageHandler({ command: 'checkFreshness' });
+
+            expect(resolveManifestFreshnessSpy).toHaveBeenCalledTimes(2);
+
+            const finalFreshness = postedPanelMessages.filter(postedMessage => postedMessage.command === 'applyFreshness').pop();
+            expect(finalFreshness.freshness).toBe('fresh');
 
         });
 

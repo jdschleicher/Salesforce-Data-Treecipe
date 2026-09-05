@@ -4149,6 +4149,38 @@ export class PicklistDependencyExplorerService {
         The host is told either way: it holds the model and the allow-lists built from it, and a
         panel that did not draw is a panel whose buttons address rows that are not on screen.
     */
+    function describeFailure(failureCause) {
+
+        if (!failureCause) { return 'unknown error'; }
+        if (typeof failureCause === 'string') { return failureCause; }
+
+        /*
+            A resource that failed to load delivers a plain Event with no message, and String()ing it
+            yields "[object Event]" -- a report that names nothing and cannot be acted on. Falling
+            back to the event's type at least says what kind of thing failed.
+        */
+        if (failureCause.message) { return String(failureCause.message); }
+        if (failureCause.type) { return 'a ' + String(failureCause.type) + ' event with no message'; }
+
+        return String(failureCause);
+
+    }
+
+    /*
+        The one place a panel failure is described and sent, so the render guard and the two window
+        listeners cannot drift in what they report or how they tag it.
+    */
+    function postRenderFailure(failurePhase, failureCause) {
+
+        vscodeApi.postMessage({
+            command: 'renderFailed',
+            phase: failurePhase,
+            message: describeFailure(failureCause),
+            stack: String(failureCause && failureCause.stack ? failureCause.stack : '')
+        });
+
+    }
+
     function renderPanelGuarded(renderedModel, renderedEmptyStateMessage) {
 
         try {
@@ -4162,11 +4194,7 @@ export class PicklistDependencyExplorerService {
 
             renderPanelFailure(renderError);
 
-            vscodeApi.postMessage({
-                command: 'renderFailed',
-                message: String(renderError && renderError.message ? renderError.message : renderError),
-                stack: String(renderError && renderError.stack ? renderError.stack : '')
-            });
+            postRenderFailure('render', renderError);
 
             return false;
 
@@ -4272,12 +4300,28 @@ export class PicklistDependencyExplorerService {
     */
     window.addEventListener('error', function (errorEvent) {
 
-        vscodeApi.postMessage({
-            command: 'renderFailed',
-            message: String(errorEvent && errorEvent.message ? errorEvent.message : errorEvent),
-            stack: String(errorEvent && errorEvent.error && errorEvent.error.stack ? errorEvent.error.stack : '')
+        /*
+            An ErrorEvent carries the description on ITSELF and the stack on its .error. Reading only
+            one of the two loses half the report -- .error alone drops the message for a plain throw,
+            and the event alone drops the stack.
+        */
+        const thrownError = errorEvent && errorEvent.error;
+
+        postRenderFailure('runtime', {
+            message: (errorEvent && errorEvent.message) || (thrownError && thrownError.message),
+            type: errorEvent && errorEvent.type,
+            stack: thrownError && thrownError.stack
         });
 
+    });
+
+    /*
+        An async throw inside the panel -- a rejected promise nothing catches. It does not surface
+        through the "error" event, so without this it stays exactly as silent as the render failures
+        this whole mechanism exists to end.
+    */
+    window.addEventListener('unhandledrejection', function (rejectionEvent) {
+        postRenderFailure('runtime', rejectionEvent && rejectionEvent.reason);
     });
 
     vscodeApi.postMessage({ command: 'ready' });

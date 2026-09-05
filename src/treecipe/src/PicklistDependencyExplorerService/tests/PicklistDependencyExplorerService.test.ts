@@ -1578,6 +1578,242 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+    /*
+        Runs the panel's ACTUAL script against a fake DOM.
+
+        Every other panel test asserts on the shell as a string, which is enough to say a function is
+        present but says nothing about what it does. For the render guard that is not enough: its
+        entire purpose is behaviour under a throw, and "the string contains try/catch" would have
+        been just as true of a guard that swallowed the error and left the page blank -- the exact
+        bug it exists to prevent.
+
+        The script uses only three DOM globals (getElementById, createElement, addEventListener), so
+        standing one up costs less than a jsdom dependency this project does not otherwise have.
+    */
+    function runPanelScript() {
+
+        const postedHostMessages: any[] = [];
+        const windowListenersByType: Record<string, Function> = {};
+
+        const buildFakeElement = (tagName: string): any => ({
+            tagName: tagName,
+            className: '',
+            /*
+                textContent is a real accessor, not a plain field: assigning '' is how the panel
+                CLEARS a container, and a fake that kept its children would let a half-drawn page
+                still read as complete -- which would have this harness pass on the very bug it
+                exists to catch.
+            */
+            ownTextContent: '',
+            get textContent() { return this.ownTextContent; },
+            set textContent(nextTextContent: string) {
+                this.ownTextContent = nextTextContent;
+                if (!nextTextContent) { this.children.length = 0; }
+            },
+            children: [] as any[],
+            classList: {
+                added: [] as string[],
+                removed: [] as string[],
+                add(className: string) { this.added.push(className); },
+                remove(className: string) { this.removed.push(className); },
+                toggle(className: string, shouldBePresent: boolean) {
+                    if (shouldBePresent) { this.add(className); } else { this.remove(className); }
+                },
+                contains(className: string) { return this.added.includes(className); }
+            },
+            appendChild(childElement: any) { this.children.push(childElement); return childElement; },
+            addEventListener() { /* NO PANEL TEST DRIVES A CLICK -- THE HANDLERS ARE ASSERTED IN THE SHELL */ },
+            setAttribute() { /* NOOP */ },
+            scrollIntoView() { /* NOOP */ }
+        });
+
+        const elementsById: Record<string, any> = {
+            explorerRoot: buildFakeElement('div'),
+            loadStatus: buildFakeElement('div'),
+            scannedPath: buildFakeElement('div'),
+            scannedPathValue: buildFakeElement('span')
+        };
+
+        const fakeDocument = {
+            getElementById: (elementId: string) => elementsById[elementId],
+            createElement: (tagName: string) => buildFakeElement(tagName)
+        };
+
+        const fakeWindow = {
+            addEventListener: (eventType: string, listener: Function) => { windowListenersByType[eventType] = listener; }
+        };
+
+        const acquireVsCodeApi = () => ({ postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); } });
+
+        const shellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+        const panelScript = shellHtml.substring(
+            shellHtml.indexOf('<script nonce="testNonce">') + '<script nonce="testNonce">'.length,
+            shellHtml.lastIndexOf('</script>')
+        );
+
+        // RUNNING THE REAL PANEL SCRIPT IS THE POINT OF THIS HARNESS
+        new Function('document', 'window', 'acquireVsCodeApi', panelScript)(fakeDocument, fakeWindow, acquireVsCodeApi);
+
+        const collectText = (element: any): string =>
+            String(element.ownTextContent || '') + ' ' + element.children.map(collectText).join(' ');
+
+        return {
+            postedHostMessages,
+            elementsById,
+            collectText,
+            postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
+            raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent),
+            raiseUnhandledRejection: (rejectionEvent: any) => windowListenersByType['unhandledrejection'](rejectionEvent)
+        };
+
+    }
+
+    describe('the render guard, executed', () => {
+
+        it('announces itself ready on load', () => {
+
+            const panel = runPanelScript();
+
+            expect(panel.postedHostMessages).toEqual([{ command: 'ready' }]);
+
+        });
+
+        /*
+            THE REPORTED BUG, reproduced and then contained.
+
+            A model whose truncationNotices is missing is exactly the shape that used to end the
+            render mid-way: renderTruncationNotices dereferences .length, throws, and every function
+            after it never runs -- leaving the heading and the scanned-path line over an empty page
+            with nothing anywhere saying why.
+        */
+        it('given a model it cannot draw, shows a failure notice instead of a half-drawn page', () => {
+
+            const panel = runPanelScript();
+            const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+            );
+            delete viewModel.truncationNotices;
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            const renderedText = panel.collectText(panel.elementsById.explorerRoot);
+
+            expect(renderedText).toContain('could not draw this panel');
+
+            // THE ACTUAL THROW IS QUOTED, NOT A GENERIC APOLOGY -- IT IS THE ONLY LEAD ANYONE GETS
+            expect(renderedText).toContain('TypeError');
+            expect(renderedText).toContain("Cannot read properties of undefined (reading 'length')");
+
+            // AND NOT A TRACE OF THE PARTIAL RENDER: THE ROWS THAT DID DRAW ARE AN ARBITRARY PREFIX
+            expect(renderedText).not.toContain('Chain_Example__c');
+
+        });
+
+        it('given a model it cannot draw, keeps the scanned-path line hidden', () => {
+
+            const panel = runPanelScript();
+            const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+            );
+            delete viewModel.truncationNotices;
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            /*
+                Written first, this line was the marker that made a failed render read as a finished
+                one -- a heading and a path is what a panel that found nothing looks like.
+            */
+            expect(panel.elementsById.scannedPath.classList.contains('hidden')).toBe(true);
+            expect(panel.elementsById.scannedPath.classList.removed).not.toContain('hidden');
+
+        });
+
+        it('given a model it cannot draw, tells the host with the error and the render phase', () => {
+
+            const panel = runPanelScript();
+            const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+            );
+            delete viewModel.truncationNotices;
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            const renderFailedMessage = panel.postedHostMessages.find(hostMessage => hostMessage.command === 'renderFailed');
+
+            expect(renderFailedMessage).toBeDefined();
+            expect(renderFailedMessage.phase).toBe('render');
+            expect(renderFailedMessage.message).toContain("Cannot read properties of undefined (reading 'length')");
+            expect(renderFailedMessage.stack).toBeTruthy();
+
+            // A FAILED RENDER IS NOT ACKNOWLEDGED AS A DRAW
+            expect(panel.postedHostMessages.some(hostMessage => hostMessage.command === 'rendered')).toBe(false);
+
+        });
+
+        it('given a model it can draw, renders it, reveals the scanned path and acknowledges', () => {
+
+            const panel = runPanelScript();
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+            );
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            expect(panel.collectText(panel.elementsById.explorerRoot)).toContain('Chain_Example__c');
+            expect(panel.elementsById.scannedPath.classList.removed).toContain('hidden');
+            expect(panel.postedHostMessages.some(hostMessage => hostMessage.command === 'rendered')).toBe(true);
+            expect(panel.postedHostMessages.some(hostMessage => hostMessage.command === 'renderFailed')).toBe(false);
+
+        });
+
+        /*
+            A throw AFTER a successful draw is a different thing from a failed draw: the rows are
+            still on screen and readable. Tagging it as such is what stops the host treating a
+            transient handler error as a dead panel and refusing a freshness check for a model the
+            reader is looking at.
+        */
+        it('reports a throw outside the render as a runtime failure, not a render failure', () => {
+
+            const panel = runPanelScript();
+
+            panel.raiseWindowError({ message: 'expand handler exploded', error: { stack: 'at buildObjectBody' } });
+
+            const runtimeFailure = panel.postedHostMessages.find(hostMessage => hostMessage.command === 'renderFailed');
+
+            expect(runtimeFailure.phase).toBe('runtime');
+            expect(runtimeFailure.message).toBe('expand handler exploded');
+
+        });
+
+        it('reports an unhandled rejection, which no error event would have surfaced', () => {
+
+            const panel = runPanelScript();
+
+            panel.raiseUnhandledRejection({ reason: new Error('async panel work rejected') });
+
+            const rejectionFailure = panel.postedHostMessages.find(hostMessage => hostMessage.command === 'renderFailed');
+
+            expect(rejectionFailure.phase).toBe('runtime');
+            expect(rejectionFailure.message).toBe('async panel work rejected');
+
+        });
+
+        // A FAILED RESOURCE LOAD DELIVERS A BARE EVENT; "[object Event]" NAMES NOTHING A READER CAN ACT ON
+        it('given a failure carrying no message, describes it by kind rather than as [object Event]', () => {
+
+            const panel = runPanelScript();
+
+            panel.raiseWindowError({ type: 'error' });
+
+            const bareFailure = panel.postedHostMessages.find(hostMessage => hostMessage.command === 'renderFailed');
+
+            expect(bareFailure.message).not.toContain('[object');
+            expect(bareFailure.message).toContain('error');
+
+        });
+
+    });
+
     describe('the render guard', () => {
 
         /*
