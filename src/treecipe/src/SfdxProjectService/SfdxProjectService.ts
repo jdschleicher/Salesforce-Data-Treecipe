@@ -2,16 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /*
-    The result of a TOLERANT read of sfdx-project.json.
-
-    Deliberately separate from PicklistDependencyTestService.resolveDefaultPackageDirectoryPath,
-    which throws on every one of these cases because the commands that write Apex cannot proceed
-    without a package directory. Config initiation can: a user who is not in a DX project still
-    gets the full workspace walk, so every failure here degrades to an empty list rather than an
-    error. unreadableProjectFileMessage is the one case worth telling the user about -- a project
-    file that IS there and cannot be parsed is a typo they want to know about, not an absence.
-*/
-/*
     packageDirectories entries come from a file in the user's repository, so every field is typed as
     the JSON allows rather than as a well formed project would have it -- path is narrowed at the
     point of use instead of being trusted to be a string here.
@@ -27,6 +17,16 @@ export interface ISfdxProjectJson {
     [additionalProjectKey: string]: unknown;
 }
 
+/*
+    The result of a TOLERANT read of sfdx-project.json.
+
+    Deliberately separate from PicklistDependencyTestService.resolveDefaultPackageDirectoryPath,
+    which throws on every one of these cases because the commands that write Apex cannot proceed
+    without a package directory. Config initiation can: a user who is not in a DX project still
+    gets the full workspace walk, so every failure here degrades to an empty list rather than an
+    error. unreadableProjectFileMessage is the one case worth telling the user about -- a project
+    file that IS there and cannot be parsed is a typo they want to know about, not an absence.
+*/
 export interface IResolvedPackageDirectories {
     packageDirectoryPaths: string[];
     unreadableProjectFileMessage?: string;
@@ -38,8 +38,11 @@ export interface IResolvedPackageDirectories {
     VSCodeWorkspaceService needs the containment logic that already lived in
     PicklistDependencyTestService, but importing that service would close the cycle
     VSCodeWorkspaceService -> PicklistDependencyTestService -> RecipeService ->
-    ErrorHandlingService -> VSCodeWorkspaceService, and would pull @salesforce/core into
-    the config-initiation path -- the path this exists to make faster.
+    ErrorHandlingService -> VSCodeWorkspaceService.
+
+    What that buys is the cycle and this module graph's weight, NOT a startup saving: extension.ts
+    imports ExtensionCommandService, which imports @salesforce/core at the top level, so that
+    dependency loads on the first command whatever this service does.
 */
 export class SfdxProjectService {
 

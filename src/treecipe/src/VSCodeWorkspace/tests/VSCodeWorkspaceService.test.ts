@@ -28,9 +28,11 @@ jest.mock('vscode', () => ({
         createOutputChannel: jest.fn(),
         showTextDocument: jest.fn(),
         createQuickPick: jest.fn(),
-        withProgress: jest.fn()
+        withProgress: jest.fn(),
+        createStatusBarItem: jest.fn()
     },
     ProgressLocation: { Notification: 15, Window: 10 },
+    StatusBarAlignment: { Left: 1, Right: 2 },
     env: {
         clipboard: {
             writeText: jest.fn()
@@ -1656,6 +1658,27 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
 });
 
+describe('createStatusBarPhaseItem', () => {
 
+    it('creates a left aligned status bar item, shows it, and hands it back for the caller to dispose', () => {
 
+        const statusBarItem = { text: '', show: jest.fn(), dispose: jest.fn() };
+        (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
 
+        const actualStatusBarItem = VSCodeWorkspaceService.createStatusBarPhaseItem('Reading the manifest…');
+
+        expect(vscode.window.createStatusBarItem).toHaveBeenCalledWith(vscode.StatusBarAlignment.Left);
+        expect(actualStatusBarItem.text).toBe('Reading the manifest…');
+        expect(statusBarItem.show).toHaveBeenCalled();
+
+        /*
+            Deliberately NOT disposed here. The item describes work that outlives this call, and an
+            item left showing after that work ends reads as a command still running -- so ownership
+            passing to the caller is the contract being asserted.
+        */
+        expect(statusBarItem.dispose).not.toHaveBeenCalled();
+        expect(actualStatusBarItem).toBe(statusBarItem);
+
+    });
+
+});
