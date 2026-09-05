@@ -1,5 +1,42 @@
 # Change Log
 
+## [3.11.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json
+
+Resolves [#100](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/100).
+
+**Initiate Configuration File** built its entire directory list before it showed anything. `promptForObjectsPath` walked every non-hidden, non-`node_modules` directory in the workspace -- one `readdir` per directory, recursively -- and only then called `showQuickPick`. On a real repository that is thousands of stat calls with an empty screen in front of them.
+
+It is worse from the warning notification. VS Code dismisses a notification the instant one of its buttons is clicked, and offers no way to keep it open, disable the button, or put a spinner in it. So clicking **Run Treecipe Initiation Setup** removed the last thing on screen that said anything was happening, and nothing replaced it until the walk finished.
+
+### The picker opens first and fills as it scans
+
+`promptForObjectsPath` now builds the quick pick up front, marks it `busy`, shows it, and streams each directory in as the walk discovers it. The dead time is not narrated -- it is gone. A directory found in the first few milliseconds can be selected while the rest of the workspace is still being read.
+
+Alongside it, the scan runs under a **cancellable** progress notification reporting what it has found so far. `ProgressLocation.Notification` rather than `Window` for the reason the picklist dependency commands already chose it: `Window` "supports neither cancellation nor discrete progress", so the token it hands you never fires. Cancelling stops the walk, closes the picker, and writes no configuration file.
+
+### Options come from sfdx-project.json
+
+Where a workspace has an `sfdx-project.json`, the scan is seeded from its `packageDirectories` instead of the workspace root, and the picker says so:
+
+> Select directory that contains the Salesforce objects - options from packageDirectories in sfdx-project.json
+
+**Every** usable entry, not just the one marked `default` -- a multi-package repository can keep objects under several, and seeding from only the default would hide the rest. Entries are scanned in file order, so a team that lists `force-app` first means it. A `Browse all workspace directories...` item is always offered for the case where the answer is somewhere else.
+
+### Every way the project file can disappoint you degrades to the old behavior
+
+The commands that write Apex resolve a package directory through `resolveDefaultPackageDirectoryPath`, which **throws** on each of these, because they cannot proceed without one. Config initiation can, so it reads the same file through a tolerant resolver instead:
+
+- No `sfdx-project.json` -- the user is not in a DX project, and still gets the full walk
+- `packageDirectories` missing, empty, or with no usable `path` -- full walk
+- A path that is absolute, escapes the workspace, or is not on disk -- skipped, and the remaining valid entries still seed the picker
+- A project file that is present and **unparseable** -- full walk, plus a warning naming the file, because that one is a typo the user wants to know about rather than an absence
+
+### Internals
+
+`SfdxProjectService` is new, and deliberately a leaf: `fs` and `path`, no `vscode`, no other service. `VSCodeWorkspaceService` needed the containment logic that lived in `PicklistDependencyTestService`, and importing that service would have closed a cycle through `RecipeService` and `ErrorHandlingService` -- and pulled `@salesforce/core` into the very path this release exists to make faster. `PicklistDependencyTestService` keeps its four helpers as delegations, `isPathContainedInWorkspace` injecting its own realpath resolver so it remains the one source of truth for how its paths resolve.
+
+The walk also stopped calling `getWorkspaceRoot()` once per directory entry; it is resolved once and handed down the recursion.
+
 ## [3.10.0] - A dedicated Apex test suite for the generated picklist dependency tests
 
 Resolves [#96](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/96).
