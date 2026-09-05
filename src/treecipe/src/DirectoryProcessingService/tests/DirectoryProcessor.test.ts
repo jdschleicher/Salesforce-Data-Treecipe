@@ -334,6 +334,90 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
   });
 
+  /*
+      The memoized accessor is what puts a user's treecipe.config.json mappings in front of every
+      Lookup field missing a referenceTo tag. It is read once per processed directory rather than
+      once per field, and a workspace with no config file at all still has to process normally --
+      so the throw is swallowed into an empty map rather than aborting the walk.
+  */
+  describe('getCustomRelationshipMappings', () => {
+
+    const readCustomRelationshipMappings = (processor: DirectoryProcessor): Record<string, string> => {
+      return processor['getCustomRelationshipMappings']();
+    };
+
+    test('given a config file with custom relationship mappings, the configured mappings are returned', () => {
+
+      const expectedMappings = {
+        "CustomObject__c.Primary_Contact__c": "Contact"
+      };
+
+      jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings')
+        .mockReturnValue(expectedMappings);
+
+      const actualMappings = readCustomRelationshipMappings(directoryProcessor);
+
+      expect(actualMappings).toEqual(expectedMappings);
+
+    });
+
+    test('given repeated reads while processing a directory, the configuration file is only read once', () => {
+
+      const configurationSpy = jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings')
+        .mockReturnValue({ "CustomObject__c.Primary_Contact__c": "Contact" });
+
+      readCustomRelationshipMappings(directoryProcessor);
+      readCustomRelationshipMappings(directoryProcessor);
+      readCustomRelationshipMappings(directoryProcessor);
+
+      expect(configurationSpy).toHaveBeenCalledTimes(1);
+
+    });
+
+    test('given a missing treecipe configuration file, an empty map is returned rather than the error propagating', () => {
+
+      jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings')
+        .mockImplementation(() => {
+          throw new Error('Missing treecipe configuration setup at expected path of: /fake/path -- or unknown failure');
+        });
+
+      const actualMappings = readCustomRelationshipMappings(directoryProcessor);
+
+      expect(actualMappings).toEqual({});
+
+    });
+
+    test('given a missing treecipe configuration file, the failed read is not retried on every field', () => {
+
+      const configurationSpy = jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings')
+        .mockImplementation(() => {
+          throw new Error('Missing treecipe configuration setup at expected path of: /fake/path -- or unknown failure');
+        });
+
+      readCustomRelationshipMappings(directoryProcessor);
+      readCustomRelationshipMappings(directoryProcessor);
+
+      expect(configurationSpy).toHaveBeenCalledTimes(1);
+
+    });
+
+    test('given separate DirectoryProcessor instances, each reads its own configuration rather than sharing a cached map', () => {
+
+      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+        .mockImplementation(() => new SnowfakeryRecipeFakerService());
+
+      const configurationSpy = jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings')
+        .mockReturnValue({ "CustomObject__c.Primary_Contact__c": "Contact" });
+
+      readCustomRelationshipMappings(directoryProcessor);
+      readCustomRelationshipMappings(new DirectoryProcessor());
+
+      expect(configurationSpy).toHaveBeenCalledTimes(2);
+
+    });
+
+  });
+
 
 });
 

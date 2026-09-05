@@ -5,6 +5,7 @@ import { MockRelationshipService } from './mocks/MockRelationshipService';
 
 import { RelationshipDetail, RelationshipService, RelationshipTree } from '../RelationshipService';
 import { ObjectInfo } from '../../ObjectInfoWrapper/ObjectInfo';
+import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -840,7 +841,13 @@ describe("Shared Relationship Service Tests", () => {
 
         });
 
-        test('given custom mapping that collides with an OOTB key, OOTB entry is preserved (custom does not override)', () => {
+        /*
+            An OOTB key is a bare field api name and a valid custom key is always
+            "ObjectApiName.FieldApiName", so the two key spaces cannot intersect. A custom entry
+            shaped like an OOTB key is therefore rejected as a malformed key -- which is what
+            actually preserves the OOTB entry here, rather than any last-writer-wins ordering.
+        */
+        test('given custom mapping shaped like an OOTB key, the OOTB entry is preserved and the custom entry is not added', () => {
 
             const relationshipService = new RelationshipService();
             const customMappings = {
@@ -850,6 +857,23 @@ describe("Shared Relationship Service Tests", () => {
             const merged = relationshipService.getMergedReferenceLookupMap(customMappings);
 
             expect(merged["AccountId"]).toBe("Account");
+            expect(merged).toEqual({ "AccountId": "Account" });
+
+        });
+
+        test('given a dotted custom key whose field segment matches an OOTB key, both entries coexist', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "CustomObject__c.AccountId": "Some_Other_Account__c"
+            };
+
+            const merged = relationshipService.getMergedReferenceLookupMap(customMappings);
+
+            expect(merged).toEqual({
+                "AccountId": "Account",
+                "CustomObject__c.AccountId": "Some_Other_Account__c"
+            });
 
         });
 
@@ -983,6 +1007,201 @@ describe("Shared Relationship Service Tests", () => {
             );
 
             expect(parent).toBe('Account');
+
+        });
+
+    });
+
+    /*
+        The resolver tests above stop at "which parent api name comes back". These carry a custom
+        mapping the rest of the way -- into the bidirectional references, the relationship trees and
+        the generated recipe files -- because that whole path is what the config property exists for.
+    */
+    describe('custom relationship mappings resolved through to relationship trees and recipe files', () => {
+
+        const buildWrapperWithLookupFieldMissingReferenceTo = (
+            childObjectApiName: string,
+            lookupFieldApiName: string
+        ): { objectInfoWrapper: ObjectInfoWrapper, lookupFieldDetail: FieldInfo } => {
+
+            const objectInfoWrapper = new ObjectInfoWrapper();
+            objectInfoWrapper.addKeyToObjectInfoMap(childObjectApiName);
+
+            // referenceTo deliberately omitted -- this is the pulled-down metadata the issue describes
+            const lookupFieldDetail = new FieldInfo(
+                childObjectApiName,
+                lookupFieldApiName,
+                'Primary Contact',
+                'Lookup'
+            );
+
+            objectInfoWrapper.ObjectToObjectInfoMap[childObjectApiName].Fields = [lookupFieldDetail];
+
+            return { objectInfoWrapper, lookupFieldDetail };
+
+        };
+
+        test('given a custom-mapped lookup field, the child object is grouped under the mapped parent in one tree with the parent inserted first', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "CustomObject__c.Primary_Contact__c": "Contact"
+            };
+
+            const { objectInfoWrapper, lookupFieldDetail } = buildWrapperWithLookupFieldMissingReferenceTo(
+                'CustomObject__c',
+                'Primary_Contact__c'
+            );
+
+            const parentReferenceApiName = relationshipService.resolveParentReferenceForField(
+                'CustomObject__c',
+                'Primary_Contact__c',
+                customMappings
+            );
+
+            expect(parentReferenceApiName).toBe('Contact');
+
+            relationshipService.buildBidirectionalChildAndParentRelationshipReferences(
+                lookupFieldDetail,
+                objectInfoWrapper,
+                'CustomObject__c',
+                parentReferenceApiName
+            );
+
+            relationshipService.processAllRelationships(objectInfoWrapper);
+
+            const contactRelationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap['Contact'].RelationshipDetail;
+            const customObjectRelationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap['CustomObject__c'].RelationshipDetail;
+
+            // the child appears under the mapped parent, and the parent above the child
+            expect(contactRelationshipDetail.childObjectToFieldReferences['CustomObject__c']).toEqual(['Primary_Contact__c']);
+            expect(customObjectRelationshipDetail.parentObjectToFieldReferences['Contact']).toEqual(['Primary_Contact__c']);
+
+            expect(contactRelationshipDetail.level).toBe(0);
+            expect(customObjectRelationshipDetail.level).toBe(1);
+
+            // both objects land in the same tree, so they are written to the same Treecipe file
+            expect(objectInfoWrapper.RelationshipTrees.length).toBe(1);
+            expect(objectInfoWrapper.RelationshipTrees[0].allObjects).toIncludeAllMembers(['Contact', 'CustomObject__c']);
+            expect(contactRelationshipDetail.relationshipTreeId).toBe(customObjectRelationshipDetail.relationshipTreeId);
+
+            const recipeFiles = relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+
+            expect(recipeFiles.length).toBe(1);
+            expect(recipeFiles[0].objectCount).toBe(2);
+            // insertion order -- the mapped parent is inserted before the child that looks up to it
+            expect(recipeFiles[0].objects).toEqual(['Contact', 'CustomObject__c']);
+
+        });
+
+        test('given no custom mappings for a lookup field missing referenceTo, no parent resolves and the child stays its own tree', () => {
+
+            const relationshipService = new RelationshipService();
+
+            const { objectInfoWrapper, lookupFieldDetail } = buildWrapperWithLookupFieldMissingReferenceTo(
+                'CustomObject__c',
+                'Primary_Contact__c'
+            );
+
+            const parentReferenceApiName = relationshipService.resolveParentReferenceForField(
+                'CustomObject__c',
+                'Primary_Contact__c',
+                {}
+            );
+
+            expect(parentReferenceApiName).toBeUndefined();
+
+            relationshipService.buildBidirectionalChildAndParentRelationshipReferences(
+                lookupFieldDetail,
+                objectInfoWrapper,
+                'CustomObject__c',
+                parentReferenceApiName
+            );
+
+            expect(objectInfoWrapper.ObjectToObjectInfoMap['Contact']).toBeUndefined();
+
+        });
+
+        test('given a custom mapping whose key is missing the dot separator, the mapping is ignored and no relationship is built', () => {
+
+            const relationshipService = new RelationshipService();
+            const misspelledCustomMappings = {
+                "CustomObject__cPrimary_Contact__c": "Contact"
+            };
+
+            const { objectInfoWrapper, lookupFieldDetail } = buildWrapperWithLookupFieldMissingReferenceTo(
+                'CustomObject__c',
+                'Primary_Contact__c'
+            );
+
+            const parentReferenceApiName = relationshipService.resolveParentReferenceForField(
+                'CustomObject__c',
+                'Primary_Contact__c',
+                misspelledCustomMappings
+            );
+
+            expect(parentReferenceApiName).toBeUndefined();
+
+            relationshipService.buildBidirectionalChildAndParentRelationshipReferences(
+                lookupFieldDetail,
+                objectInfoWrapper,
+                'CustomObject__c',
+                parentReferenceApiName
+            );
+
+            relationshipService.processAllRelationships(objectInfoWrapper);
+
+            expect(objectInfoWrapper.ObjectToObjectInfoMap['Contact']).toBeUndefined();
+            expect(objectInfoWrapper.RelationshipTrees.length).toBe(0);
+
+        });
+
+        test('given a custom mapping alongside an OOTB lookup field, both parents are resolved into the same tree with both above the child', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "CustomObject__c.Primary_Contact__c": "Contact"
+            };
+
+            const objectInfoWrapper = new ObjectInfoWrapper();
+            objectInfoWrapper.addKeyToObjectInfoMap('CustomObject__c');
+
+            const customMappedField = new FieldInfo('CustomObject__c', 'Primary_Contact__c', 'Primary Contact', 'Lookup');
+            const ootbMappedField = new FieldInfo('CustomObject__c', 'AccountId', 'Account', 'Lookup');
+            objectInfoWrapper.ObjectToObjectInfoMap['CustomObject__c'].Fields = [customMappedField, ootbMappedField];
+
+            [customMappedField, ootbMappedField].forEach(fieldDetail => {
+
+                const parentReferenceApiName = relationshipService.resolveParentReferenceForField(
+                    'CustomObject__c',
+                    fieldDetail.fieldName,
+                    customMappings
+                );
+
+                relationshipService.buildBidirectionalChildAndParentRelationshipReferences(
+                    fieldDetail,
+                    objectInfoWrapper,
+                    'CustomObject__c',
+                    parentReferenceApiName
+                );
+
+            });
+
+            relationshipService.processAllRelationships(objectInfoWrapper);
+
+            const customObjectRelationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap['CustomObject__c'].RelationshipDetail;
+
+            expect(Object.keys(customObjectRelationshipDetail.parentObjectToFieldReferences)).toIncludeAllMembers(['Contact', 'Account']);
+
+            const recipeFiles = relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+
+            expect(recipeFiles.length).toBe(1);
+            expect(recipeFiles[0].objects).toIncludeAllMembers(['Contact', 'Account', 'CustomObject__c']);
+
+            // the child is inserted after both of its parents
+            const insertionOrder = recipeFiles[0].objects;
+            expect(insertionOrder.indexOf('CustomObject__c')).toBeGreaterThan(insertionOrder.indexOf('Contact'));
+            expect(insertionOrder.indexOf('CustomObject__c')).toBeGreaterThan(insertionOrder.indexOf('Account'));
 
         });
 
