@@ -3333,7 +3333,7 @@ export class PicklistDependencyExplorerService {
             */
             recordTypeSearchText = node.recordTypeScopes
                 .map(function (recordTypeScope) { return recordTypeScope.recordTypeDeveloperName; })
-                .join('\n')
+                .join('\\n')
                 .toLowerCase();
 
         }

@@ -4,6 +4,19 @@
 
 Resolves [#97](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/97).
 
+### Fixed first: the panel has rendered nothing since 3.8.0
+
+The panel script is emitted from a template literal, so every backslash in it has to be doubled — `'\\n'` in the service source is what puts `'\n'` in the script. One site was written with a single backslash, which the template consumed, so the shipped script contained a string literal broken across a real newline:
+
+```js
+.join('
+')
+```
+
+That is a `SyntaxError`. It kills the entire IIFE, so **every** version from 3.8.0 through 3.10.0 opened the Picklist Dependency Explorer to an empty panel — no structure, no banners, no toolbar. Nothing else in the extension was affected.
+
+No test caught it because every test in this file asserts on the script as *text*, and text does not have to parse. Two guards now stand where it was: one compiles the emitted script with `new Function` (which needs no DOM and no new dependency, and answers the one question `toContain` cannot ask), and one anchors the exact site. Both were verified by reintroducing the defect and watching them fail.
+
 Opening the Explorer on a large org looked like nothing happening. The panel was not created until a finished model existed, so every phase — reading the spec manifest, stat-walking the objects directory for staleness, building the view, serializing it — ran against a window showing nothing at all. On a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values that was roughly two seconds of blank tab, with no way to tell which phase was slow or whether the command had failed.
 
 ### The panel opens before the work, not after it

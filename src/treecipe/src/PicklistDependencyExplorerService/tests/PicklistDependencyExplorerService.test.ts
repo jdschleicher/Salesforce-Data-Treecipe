@@ -1601,6 +1601,47 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
+        /*
+            The panel script is emitted from a TEMPLATE LITERAL, so every backslash in it has to be
+            doubled: `'\\n'` in this source is what puts `'\n'` in the script. A single backslash is
+            consumed when the template is evaluated, and `.join('\n')` reached the panel as a string
+            literal containing a real newline -- a SyntaxError that kills the whole IIFE, so the panel
+            rendered NOTHING at all. It shipped that way in 3.8.0 and no test noticed, because every
+            other test in this file asserts on the script as TEXT and text does not have to parse.
+
+            Compiling it is the cheapest guard that would have caught it. new Function compiles the
+            body without running it, so this needs no dom and no new dependency -- it answers "is this
+            script valid javascript", which is the question all the toContain assertions cannot ask.
+        */
+        it('emits a panel script that actually parses as javascript', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            const scriptMatches = [...actualShellHtml.matchAll(/<script nonce="testNonce">([\s\S]*?)<\/script>/g)];
+
+            expect(scriptMatches.length).toBeGreaterThan(0);
+
+            scriptMatches.forEach(scriptMatch => {
+                // THROWS SyntaxError IF THE EMITTED SCRIPT IS NOT VALID -- WHICH IS THE ENTIRE POINT
+                expect(() => new Function(scriptMatch[1])).not.toThrow();
+            });
+
+        });
+
+        it('emits the record type search join as an escaped newline rather than a real one', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            /*
+                The exact site of the 3.8.0 defect, anchored so a future edit that drops the doubling
+                fails HERE with the reason rather than only as an opaque parse error above.
+            */
+            expect(actualShellHtml).toContain(
+                `.map(function (recordTypeScope) { return recordTypeScope.recordTypeDeveloperName; })\n                .join('\\n')`
+            );
+
+        });
+
         it('shows a status line before any model arrives, so an open in progress is never a blank panel', () => {
 
             const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
