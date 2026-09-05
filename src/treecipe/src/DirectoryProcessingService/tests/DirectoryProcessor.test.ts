@@ -8,6 +8,7 @@ import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/Snowfa
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
 import { RecordTypeService } from "../../RecordTypeService/RecordTypeService";
+import { FieldInfo } from "../../ObjectInfoWrapper/FieldInfo";
 
 
 jest.mock('vscode', () => ({
@@ -397,6 +398,70 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
       readCustomRelationshipMappings(directoryProcessor);
       readCustomRelationshipMappings(directoryProcessor);
 
+      expect(configurationSpy).toHaveBeenCalledTimes(1);
+
+    });
+
+    /*
+        The tests above pin the accessor. This one pins the CALL SITE, which is the part that
+        carries the cost: the read sits inside a per-field forEach inside the recursive object
+        walk, so moving it back out of the accessor -- or calling ConfigurationService directly at
+        line 130 -- would restore a synchronous existsSync + readFileSync + JSON.parse per
+        unresolved lookup field while every accessor test above still passed.
+    */
+    test('given a walk over multiple objects each with unresolved lookup fields, the configuration is read once for the whole walk', async () => {
+
+      const objectsRootPath = '/fake/multi-object/objects';
+      const objectApiNames = ['First_Example__c', 'Second_Example__c', 'Third_Example__c'];
+
+      jest.spyOn(vscode.window, 'showWarningMessage').mockImplementation();
+      jest.spyOn(RecordTypeService, 'getRecordTypeToApiFieldToRecordTypeWrapper').mockResolvedValue({} as any);
+
+      // own joinPath rather than the ambient module mock -- an earlier test pins it to a fixed uri
+      jest.spyOn(vscode.Uri, 'joinPath').mockImplementation((baseUri: any, ...segments: string[]) => ({
+        fsPath: `${baseUri.fsPath}/${segments.join('/')}`,
+        path: `${baseUri.fsPath}/${segments.join('/')}`
+      }) as any);
+
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation((directoryUri: any) => {
+
+        if (directoryUri.fsPath === objectsRootPath) {
+          return Promise.resolve(
+            objectApiNames.map(objectApiName => [objectApiName, vscode.FileType.Directory])
+          ) as any;
+        }
+
+        const isObjectDirectory = objectApiNames.some(
+          objectApiName => directoryUri.fsPath === `${objectsRootPath}/${objectApiName}`
+        );
+
+        if (isObjectDirectory) {
+          return Promise.resolve([['fields', vscode.FileType.Directory]]) as any;
+        }
+
+        return Promise.resolve([]) as any;
+
+      });
+
+      // every object contributes lookup fields with no referenceTo -- the branch that consults the config
+      jest.spyOn(directoryProcessor, 'processFieldsDirectory').mockImplementation((_fieldsUri, objectName) => {
+
+        const unresolvedLookupFields = [
+          new FieldInfo(objectName, 'Primary_Contact__c', 'Primary Contact', 'Lookup'),
+          new FieldInfo(objectName, 'Secondary_Contact__c', 'Secondary Contact', 'Lookup'),
+          new FieldInfo(objectName, 'Owning_Account__c', 'Owning Account', 'MasterDetail')
+        ];
+
+        return Promise.resolve(unresolvedLookupFields);
+
+      });
+
+      const configurationSpy = jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings')
+        .mockReturnValue({ "First_Example__c.Primary_Contact__c": "Contact" });
+
+      await directoryProcessor.processDirectory(vscode.Uri.file(objectsRootPath), new ObjectInfoWrapper());
+
+      // 3 objects x 3 unresolved lookup fields = 9 resolution attempts, 1 configuration read
       expect(configurationSpy).toHaveBeenCalledTimes(1);
 
     });
