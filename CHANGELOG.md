@@ -1,5 +1,35 @@
 # Change Log
 
+## [3.12.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
+
+Closes [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).
+
+The `customRelationshipMappings` property itself shipped in 3.5.0. Auditing it against the acceptance criteria on #47 turned up three things the original change left open. No runtime behavior changes here -- this is the evidence that the feature does what it claims, plus the user-facing documentation it never got.
+
+### The result the property exists for was never asserted
+
+The existing tests stopped at `resolveParentReferenceForField` -- "which parent api name comes back". The criterion is about what happens *after* that: the object has to end up a child of the mapped parent, in the same relationship tree, written to the same Treecipe file, with the parent inserted first. Nothing carried a mapping that far.
+
+Four tests now do, driving a mapping through `resolveParentReferenceForField` into `buildBidirectionalChildAndParentRelationshipReferences`, `processAllRelationships` and `generateSeparateRecipeFiles`, and asserting the levels, the tree grouping and the insertion order that comes out the far end. One of them mixes a custom-mapped lookup with an OOTB `AccountId` on the same object, since "custom entries extend OOTB entries" is only really shown when both resolve in one pass.
+
+### The config read had no tests of its own
+
+`DirectoryProcessor.getCustomRelationshipMappings` is what actually puts a user's `treecipe.config.json` in front of every `Lookup` field missing a `<referenceTo>` tag, and nothing tested it directly. Its lines were already *executed* by the existing `processDirectory` tests -- `DirectoryProcessor.ts` coverage does not move in this change, and is 63.57% before and after -- but executed is not asserted, and none of that reached the behavior below. It is memoized for a reason -- it is consulted per field but must read the file once per directory -- and it swallows the missing-config throw for a reason: a workspace with no Treecipe config still has to process normally rather than aborting the walk. Both of those are now pinned, including that a *failed* read is cached too, so a config-less workspace does not re-throw and re-catch once per field.
+
+Pinning the accessor is not enough on its own, though, and a performance review of this change caught the gap: every one of those tests reaches the memo directly, so moving the read back into the per-field `forEach` -- or calling `ConfigurationService` straight from the call site -- would restore a synchronous `existsSync` + `readFileSync` + `JSON.parse` per unresolved lookup field and leave all of them green. A sixth test drives `processDirectory` over three objects contributing three unresolved lookup fields each and asserts **one** configuration read for the whole walk. Against that regression it reports nine.
+
+### One test passed for the wrong reason, over unreachable code
+
+`getMergedReferenceLookupMap` guards against a custom entry overwriting an OOTB one, and a test claimed to cover it using the key `"AccountId"`. It does not. A valid custom key is always `"ObjectApiName.FieldApiName"` and an OOTB key is always a bare field api name, so the two key spaces cannot intersect -- `"AccountId"` is rejected several lines earlier as a malformed key, and the override guard is unreachable. The assertion was right and the reason was wrong, which is the kind of test that stops being true without anyone noticing.
+
+The test now says what actually preserves the OOTB entry, and a second one covers the case the old name implied: `"CustomObject__c.AccountId"` is a well-formed custom key whose field segment collides with an OOTB key, and both entries coexist. The guard is left in place as a cheap invariant for any future OOTB entry that is not a bare field name.
+
+### Documentation
+
+`customRelationshipMappings` was described here and nowhere a user would look. `README.md` now documents it under **Initiate Configuration File** -- the key format, a worked example, and the four ways an entry is quietly skipped, since a misspelled key fails silently by design and "check the key spelling" is the first thing to try when an object is still landing in the wrong tree.
+
+Newly generated configs still omit the property. Absent already means `{}`, and a placeholder in every generated file buys nothing.
+
 ## [3.12.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json
 
 Resolves [#100](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/100).
