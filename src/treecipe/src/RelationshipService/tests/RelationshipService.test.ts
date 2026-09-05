@@ -297,6 +297,108 @@ describe("Shared Relationship Service Tests", () => {
 
         });
 
+        /*
+            The shape that made calculateLevelsRecursively a memory problem: several objects in one
+            layer all referencing every object in the next, which is what an org looks like when a
+            group of objects share a child lookup. An object reachable by many paths is walked once
+            per path, and the method used to allocate a COPY of the visited set for every one of
+            those walks -- 7,174,452 copies for 42 objects, which is what exhausted CI's heap.
+
+            The traversal is still exponential in depth; only the allocation is gone. This test
+            pins the LEVELS such a graph settles on, so the follow-up that makes it polynomial has
+            to preserve them rather than discover them.
+        */
+        test('INPUT: layered graph where every object references the whole next layer → OUTPUT: level equals layer depth', () => {
+
+            const layerCount = 5;
+            const objectsPerLayer = 3;
+            const objectApiNameFor = (layer: number, index: number) => `L${layer}_O${index}__c`;
+
+            let objectInfoWrapper = new ObjectInfoWrapper();
+
+            for ( let layer = 0; layer < layerCount; layer++ ) {
+                for ( let index = 0; index < objectsPerLayer; index++ ) {
+                    const objectApiName = objectApiNameFor(layer, index);
+                    const layeredObjectInfo = new ObjectInfo(objectApiName);
+                    layeredObjectInfo.RelationshipDetail = {
+                        objectApiName: objectApiName,
+                        level: -1,
+                        parentObjectToFieldReferences: {},
+                        childObjectToFieldReferences: {},
+                        isProcessed: false
+                    };
+                    objectInfoWrapper.ObjectToObjectInfoMap[objectApiName] = layeredObjectInfo;
+                }
+            }
+
+            for ( let layer = 0; layer < layerCount - 1; layer++ ) {
+                for ( let parentIndex = 0; parentIndex < objectsPerLayer; parentIndex++ ) {
+                    for ( let childIndex = 0; childIndex < objectsPerLayer; childIndex++ ) {
+
+                        const parentApiName = objectApiNameFor(layer, parentIndex);
+                        const childApiName = objectApiNameFor(layer + 1, childIndex);
+
+                        objectInfoWrapper.ObjectToObjectInfoMap[parentApiName]
+                            .RelationshipDetail.childObjectToFieldReferences[childApiName] = ['Ref__c'];
+                        objectInfoWrapper.ObjectToObjectInfoMap[childApiName]
+                            .RelationshipDetail.parentObjectToFieldReferences[parentApiName] = ['Ref__c'];
+
+                    }
+                }
+            }
+
+            const relationshipService = new RelationshipService();
+            const relatedObjects = new Set<string>(Object.keys(objectInfoWrapper.ObjectToObjectInfoMap));
+
+            (relationshipService as any).calculateRelationshipLevels(objectInfoWrapper, relatedObjects);
+
+            for ( let layer = 0; layer < layerCount; layer++ ) {
+                for ( let index = 0; index < objectsPerLayer; index++ ) {
+                    const objectApiName = objectApiNameFor(layer, index);
+                    expect(objectInfoWrapper.ObjectToObjectInfoMap[objectApiName].RelationshipDetail.level)
+                        .toBe(layer);
+                }
+            }
+
+        });
+
+        /*
+            The cycle guard is what the visited set is FOR, and swapping the per-child copy for
+            add-on-entry / remove-on-exit is only safe if it still holds. A two-object cycle is the
+            smallest graph that would recurse forever without it.
+        */
+        test('INPUT: A and B referencing each other → OUTPUT: terminates rather than recursing forever', () => {
+
+            let objectInfoWrapper = new ObjectInfoWrapper();
+
+            const cyclicPairApiNames = ['Cycle_A__c', 'Cycle_B__c'];
+
+            cyclicPairApiNames.forEach(objectApiName => {
+                const cyclicObjectInfo = new ObjectInfo(objectApiName);
+                cyclicObjectInfo.RelationshipDetail = {
+                    objectApiName: objectApiName,
+                    level: -1,
+                    parentObjectToFieldReferences: {},
+                    childObjectToFieldReferences: {},
+                    isProcessed: false
+                };
+                objectInfoWrapper.ObjectToObjectInfoMap[objectApiName] = cyclicObjectInfo;
+            });
+
+            objectInfoWrapper.ObjectToObjectInfoMap['Cycle_A__c'].RelationshipDetail.childObjectToFieldReferences['Cycle_B__c'] = ['B__c'];
+            objectInfoWrapper.ObjectToObjectInfoMap['Cycle_B__c'].RelationshipDetail.parentObjectToFieldReferences['Cycle_A__c'] = ['B__c'];
+            objectInfoWrapper.ObjectToObjectInfoMap['Cycle_B__c'].RelationshipDetail.childObjectToFieldReferences['Cycle_A__c'] = ['A__c'];
+            objectInfoWrapper.ObjectToObjectInfoMap['Cycle_A__c'].RelationshipDetail.parentObjectToFieldReferences['Cycle_B__c'] = ['A__c'];
+
+            const relationshipService = new RelationshipService();
+
+            (relationshipService as any).calculateLevelsRecursively(objectInfoWrapper, 'Cycle_A__c', 0, new Set<string>());
+
+            expect(objectInfoWrapper.ObjectToObjectInfoMap['Cycle_A__c'].RelationshipDetail.level).toBe(0);
+            expect(objectInfoWrapper.ObjectToObjectInfoMap['Cycle_B__c'].RelationshipDetail.level).toBe(1);
+
+        });
+
         test('INPUT: A→B chain, start at A → OUTPUT: Found [A, B] with A at level 0, B at level 1', () => {
             // Given: Account has a child Contact
             let objectInfoWrapper = new ObjectInfoWrapper();

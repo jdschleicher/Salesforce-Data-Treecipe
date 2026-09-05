@@ -19,6 +19,24 @@ No test caught it because every test in this file asserts on the script as *text
 
 Opening the Explorer on a large org looked like nothing happening. The panel was not created until a finished model existed, so every phase — reading the spec manifest, stat-walking the objects directory for staleness, building the view, serializing it — ran against a window showing nothing at all. On a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values that was roughly two seconds of blank tab, with no way to tell which phase was slow or whether the command had failed.
 
+### Fixed: relationship level calculation allocated a set per path
+
+`RelationshipService.calculateLevelsRecursively` handed every child a **copy** of the visited set. The set holds the current path, so a copy per child means an object reachable by many paths is re-walked once per path — with a fresh allocation each time.
+
+On a layered graph, the shape an org has when several objects share a child lookup:
+
+| objects | recursive calls |
+|---|---|
+| 30 | 88,572 |
+| 36 | 797,160 |
+| 42 | **7,174,452** |
+
+Each of those calls was allocating. That allocation rate is what exhausted CI's 4 GB heap, and on a deep enough org it would have done the same inside the extension while generating recipes.
+
+The set is now added to on entry and removed on exit. A child sees exactly the same set it saw before — a sibling's subtree removes its own entries on the way out — so the cycle guard is unchanged and the per-child allocation is gone. **2.0-2.3x faster** on the graphs above.
+
+Verified by differential run: the levels assigned across 600 random graphs, cyclic and acyclic, are **identical** to the previous implementation. That check earned its place — a first attempt also skipped re-walks that could not raise a level, which is the fix for the exponential *time*, and the differential caught it changing the levels of 1,531 objects, all in graphs containing a cycle. Those levels decide the insertion order of generated recipes, so that change needs its own issue rather than riding along with a memory fix. **The traversal is still exponential in depth.**
+
 ### CI: bounded jest workers, and a run that says where its memory went
 
 A jest worker on CI was reaching the 4 GB V8 heap ceiling and dying, which failed the build with **zero failing tests** — the OOM and the reported `SIGTERM` are different processes, so the suite named in the log was collateral rather than the culprit. It was not specific to this change: `main` failed identically, and the same commit on another branch went both ways on consecutive runs.
