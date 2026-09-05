@@ -53,7 +53,7 @@ jest.mock('@salesforce/core', () => ({
 
 import { AuthInfo } from '@salesforce/core';
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -95,7 +95,19 @@ describe('ExtensionCommandService', () => {
         let writeSpecsTestClassFilesSpy: jest.SpyInstance;
         let writeSpecsTestSuiteFileSpy: jest.SpyInstance;
         let writeManifestSpy: jest.SpyInstance;
+        let writeGenerationSummaryDocumentSpy: jest.SpyInstance;
         let handleCapturedErrorSpy: jest.SpyInstance;
+
+        const generationSummaryFilePath = `${workspaceRoot}/treecipe/PicklistDependencySpecs/generation-summary.md`;
+
+        /*
+            The run report moved OUT of the toast and into this document, so what the run has to say
+            is asserted where it is now written. The builder that produces it is the real one -- only
+            the write is stubbed, for the same reason every other writer in this describe is.
+        */
+        function getWrittenGenerationSummaryMarkdown(): string {
+            return String(writeGenerationSummaryDocumentSpy.mock.calls[0][1]);
+        }
 
         function stubCollectionResult(specDetails: IPicklistDependencySpecDetail[],
                                         skippedFieldWarnings: string[] = [],
@@ -149,6 +161,9 @@ describe('ExtensionCommandService', () => {
                 catch and every later assertion in this describe sees a call that never happened.
             */
             writeManifestSpy = jest.spyOn(PicklistDependencyManifestService, 'writeManifest').mockReturnValue(manifestFilePath);
+            writeGenerationSummaryDocumentSpy = jest.spyOn(PicklistDependencyTestService, 'writeGenerationSummaryDocument')
+                .mockReturnValue(generationSummaryFilePath);
+            jest.spyOn(VSCodeWorkspaceService, 'showMarkdownPreview').mockResolvedValue(undefined);
             jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint').mockReturnValue('stub-fingerprint');
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
@@ -256,10 +271,10 @@ describe('ExtensionCommandService', () => {
                 summary has to say so -- otherwise a user would reasonably read a green check run as
                 covering them.
             */
-            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
-            expect(informationMessage).toContain('1 record-type-scoped spec(s)');
-            expect(informationMessage).toContain('allRecordTypeScoped()');
-            expect(informationMessage).toContain('not asserted by');
+            const generationSummaryMarkdown = getWrittenGenerationSummaryMarkdown();
+            expect(generationSummaryMarkdown).toContain('**1** record-type-scoped spec(s)');
+            expect(generationSummaryMarkdown).toContain('allRecordTypeScoped()');
+            expect(generationSummaryMarkdown).toContain('**not** asserted by');
 
         });
 
@@ -284,10 +299,15 @@ describe('ExtensionCommandService', () => {
             );
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
 
+            /*
+                The counts are the one thing short enough for a toast that truncates; the destination
+                is reported in the document, which is why it is asserted there.
+            */
             const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
             expect(informationMessage).toContain('1 picklist dependency spec(s)');
             expect(informationMessage).toContain('1 per-object class(es)');
-            expect(informationMessage).toContain(classesDirectoryPath);
+
+            expect(getWrittenGenerationSummaryMarkdown()).toContain(classesDirectoryPath);
 
         });
 
@@ -333,10 +353,10 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            const informationMessage = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0];
+            const generationSummaryMarkdown = getWrittenGenerationSummaryMarkdown();
 
-            expect(informationMessage).toContain('SDTPLDSpecs_Retired_Object_c.cls');
-            expect(informationMessage).toContain('no longer declaring a dependent picklist');
+            expect(generationSummaryMarkdown).toContain('SDTPLDSpecs_Retired_Object_c.cls');
+            expect(generationSummaryMarkdown).toContain('no longer declaring a');
 
         });
 
@@ -357,7 +377,7 @@ describe('ExtensionCommandService', () => {
             expect(emittedTestClassBody).toContain('static void Dependency_Example_c_picklistDependenciesMatchSourceMetadata()');
             expect(emittedTestClassBody).toContain('static void specRegistryIsNotEmpty()');
 
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SDTPLDSpecsTest.cls');
+            expect(getWrittenGenerationSummaryMarkdown()).toContain('SDTPLDSpecsTest.cls');
 
         });
 
@@ -375,8 +395,8 @@ describe('ExtensionCommandService', () => {
             const emittedTestSuiteContent = writeSpecsTestSuiteFileSpy.mock.calls[0][1];
             expect(emittedTestSuiteContent).toContain('<ApexTestSuite xmlns="http://soap.sforce.com/2006/04/metadata">');
 
-            // THE SUITE IS THE HANDLE A PIPELINE ADDRESSES, SO THE SUCCESS MESSAGE HAS TO NAME IT
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('SDTPicklistDependencyTests');
+            // THE SUITE IS THE HANDLE A PIPELINE ADDRESSES, SO THE RUN REPORT HAS TO NAME IT
+            expect(getWrittenGenerationSummaryMarkdown()).toContain('SDTPicklistDependencyTests');
 
         });
 
@@ -431,6 +451,150 @@ describe('ExtensionCommandService', () => {
             const offerCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0];
             expect(offerCall[0]).toContain('Deploy and run them against an org now?');
             expect(offerCall[1]).toBe(RUN_AGAINST_ORG_ACTION_LABEL);
+
+        });
+
+        test('offers the summary and the explorer alongside the deploy offer', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const offerCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0];
+
+            // THE DEPLOY OFFER STAYS THE PRIMARY ACTION -- THE NEW BUTTONS ARE ADDED AFTER IT, NOT AHEAD OF IT
+            expect(offerCall[1]).toBe(RUN_AGAINST_ORG_ACTION_LABEL);
+            expect(offerCall).toContain(VIEW_GENERATION_SUMMARY_ACTION_LABEL);
+            expect(offerCall).toContain(OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL);
+
+        });
+
+        test('given the summary document could not be written, offers no button for it and still reports the run', async () => {
+
+            stubCollectionResult([specDetail]);
+            writeGenerationSummaryDocumentSpy.mockImplementation(() => {
+                throw new Error('EACCES: permission denied');
+            });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const offerCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0];
+
+            expect(offerCall[0]).toContain('Generated 1 picklist dependency spec(s)');
+            expect(offerCall).not.toContain(VIEW_GENERATION_SUMMARY_ACTION_LABEL);
+
+            /*
+                The Apex, the suite and the manifest were all written before this failed, so the run
+                is a success that could not write its own report -- not a failed generation.
+            */
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+            expect(writeSpecsClassFilesSpy).toHaveBeenCalled();
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(warningCall => String(warningCall[0]));
+            expect(warningMessages.some(warningMessage => warningMessage.includes('summary document could not be written'))).toBeTrue();
+
+        });
+
+        test('given View Summary chosen, opens the document in preview and puts the deploy offer again', async () => {
+
+            stubCollectionResult([specDetail]);
+            (vscode.window.showInformationMessage as jest.Mock)
+                .mockResolvedValueOnce(VIEW_GENERATION_SUMMARY_ACTION_LABEL)
+                .mockResolvedValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(VSCodeWorkspaceService.showMarkdownPreview).toHaveBeenCalledWith(generationSummaryFilePath);
+
+            /*
+                Reading the run does not cost the deploy offer -- it is put again rather than the
+                command ending on the click that opened the document.
+            */
+            const followUpOfferCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[1];
+            expect(followUpOfferCall[0]).toContain('Deploy the generated picklist dependency specs');
+            expect(followUpOfferCall).toContain(RUN_AGAINST_ORG_ACTION_LABEL);
+
+            // OFFERED ONCE: THE FOLLOW UP CANNOT RE-OPEN WHAT WAS JUST OPENED, WHICH IS WHAT ENDS THE LOOP
+            expect(followUpOfferCall).not.toContain(VIEW_GENERATION_SUMMARY_ACTION_LABEL);
+
+        });
+
+        test('given Open Explorer chosen, runs the explorer command and puts the deploy offer again', async () => {
+
+            stubCollectionResult([specDetail]);
+            (vscode.window.showInformationMessage as jest.Mock)
+                .mockResolvedValueOnce(OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL)
+                .mockResolvedValue(undefined);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith('treecipe.openPicklistDependencyExplorer');
+
+            const followUpOfferCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[1];
+            expect(followUpOfferCall).toContain(RUN_AGAINST_ORG_ACTION_LABEL);
+
+        });
+
+        test('given the summary read first, the deploy still runs when it is then accepted', async () => {
+
+            stubCollectionResult([specDetail]);
+            (vscode.window.showInformationMessage as jest.Mock)
+                .mockResolvedValueOnce(VIEW_GENERATION_SUMMARY_ACTION_LABEL)
+                .mockResolvedValue(RUN_AGAINST_ORG_ACTION_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Deploy and Run');
+
+            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue('devHub');
+            jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
+            jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts').mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-x');
+            jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist')
+                .mockReturnValue([`${classesDirectoryPath}/SDTPLDSpecsTest.cls`]);
+
+            const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
+                .mockResolvedValue('Deployed 8 component(s) to the target org.');
+            jest.spyOn(PicklistDependencyCheckService, 'runPicklistDependencyTests')
+                .mockResolvedValue({ passed: true, failureCount: 0, methodOutcomes: [{ methodName: 'specRegistryIsNotEmpty', passed: true }] });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(deploySpy).toHaveBeenCalled();
+
+        });
+
+        /*
+            The warnings keep their own path: a skipped field is not part of the success report, and
+            folding it into the summary document would be the roll-up rolled back up.
+        */
+        test('given skipped fields, still offers View Details beside the new buttons', async () => {
+
+            stubCollectionResult([specDetail], [], [], [
+                {
+                    objectApiName: 'Dependency_Example__c',
+                    fieldApiName: 'Thing__c',
+                    warning: 'Skipped "Thing__c": no valueSettings.',
+                    reason: 'noValueSettings' as any
+                }
+            ]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const offerCall = (vscode.window.showInformationMessage as jest.Mock).mock.calls[0];
+
+            expect(offerCall).toContain(VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL);
+            expect(offerCall).toContain(VIEW_GENERATION_SUMMARY_ACTION_LABEL);
+            expect(offerCall[0]).toContain('field(s) skipped');
+
+        });
+
+        test('writes the summary document beside the manifest, never into a package directory', async () => {
+
+            stubCollectionResult([specDetail]);
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const writtenSpecsFolderPath = String(writeGenerationSummaryDocumentSpy.mock.calls[0][0]);
+
+            expect(writtenSpecsFolderPath).toContain(path.join('treecipe', 'PicklistDependencySpecs'));
+            expect(writtenSpecsFolderPath).not.toContain('force-app');
 
         });
 
@@ -821,7 +985,7 @@ describe('ExtensionCommandService', () => {
 
         });
 
-        test('given scaffolded framework classes, names them in the success message', async () => {
+        test('given scaffolded framework classes, names them in the run report', async () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
@@ -829,7 +993,7 @@ describe('ExtensionCommandService', () => {
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls[0][0]).toContain('Also scaffolded');
+            expect(getWrittenGenerationSummaryMarkdown()).toContain('Scaffolded the required framework class(es)');
 
         });
 

@@ -1,5 +1,35 @@
 # Change Log
 
+## [3.13.0] - Generating picklist dependency tests reports what happened, and what to do about it
+
+Resolves [#107](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/107).
+
+A successful run used to report itself by concatenating up to five sentences into `vscode.window.showInformationMessage`. A VS Code notification is one line of unformatted text that truncates, so what a user actually saw was the spec counts and the beginning of the classes directory -- the manifest path, the record-type caveat, the scaffolded framework classes and the removed stale classes were all past the cut. And nothing in it said what to do next, which is the question a finished run leaves you with.
+
+### The run is now a document, and the toast is one line
+
+The generate command writes `treecipe/PicklistDependencySpecs/generation-summary.md` -- a sibling of `manifest.json`, never inside a package directory, for the same reason the manifest is not: a stray file there is not valid Salesforce metadata and would ride into `sf project deploy` and fail the deploy it describes. It opens in markdown preview, where bullets, headings and links render.
+
+**What happened** is one bullet per fact, and the optional ones are *omitted* rather than rendered as zero -- a run that scaffolded nothing has nothing to say about scaffolding, and a "0 classes scaffolded" row reads as something that failed rather than something that did not apply.
+
+**What to do next** names the Explorer by its exact Command Palette title, says to review the generated Apex as a diff before deploying it, and links the walkthroughs: [running the tests inside the org](docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md), triggering a failure on purpose to prove the gate works, deciding whether the org or the source is right when one fails, and the technical design. The diagrams are **linked, not copied** -- a second rendering of those flows here would be a second derivation to keep in sync, which is the same reason the Explorer reads the manifest instead of re-walking the source XML.
+
+The toast is now `Generated N picklist dependency spec(s) across M per-object class(es).` plus the deploy question, and carries **View Summary** and **Open Explorer** beside **Deploy and Run Against Org**.
+
+### Reading the run does not cost the deploy offer
+
+Every inspect action re-offers the deploy rather than ending the command on the click -- the principle **View Details** already followed, now generalised. Each is offered once, which is what makes the loop terminate: every pass either ends the run or spends an action, and there are at most three.
+
+### What deliberately did not move
+
+The warnings keep their own path. A missing framework class means the generated Apex will not compile at all, and an unparseable test suite means `Run Picklist Dependency Check` will not find the tests -- those are blockers, and folding them into a success document would bury them under good news. The skipped-field roll-up and its **View Details** output channel are unchanged.
+
+The summary is a **report on** a finished write, not a step of it. By the time it is written the Apex, the suite and the manifest are all on disk, so a workspace that will not take one more markdown file warns about the report and leaves the run reporting the success it actually had -- no button for a document that does not exist, and no error for a generation that worked.
+
+### Values from metadata cannot restructure the document
+
+Api names, class names and paths reach this document from XML the extension does not control, and markdown has no escaping inside a code span -- only a longer fence. So the fence is grown past the longest backtick run in the value, a value that starts or ends with a backtick is padded, and **a line break is rendered as its escape sequence**: a blank line ends the paragraph the span lives in, so a value carrying one would otherwise become markup for everything after it. That last case was found by the test written for it, not by reading the code.
+
 ## [3.12.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json
 
 Resolves [#100](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/100).
