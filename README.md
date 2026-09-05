@@ -139,7 +139,7 @@ Add an optional `customRelationshipMappings` property to `treecipe.config.json` 
 
 * The property is **optional** — leave it out entirely and Treecipe behaves exactly as before.
 * A mapping is only consulted when the field's own `<referenceTo>` tag is missing. Metadata always wins.
-* These entries **extend** the built-in lookups (such as `AccountId` → `Account`); they never replace them.
+* These entries **extend** the built-in lookup map (currently the single entry `AccountId` → `Account`); they never replace it.
 * A key without exactly one dot separator (`"CustomObject__cPrimary_Contact__c"`, `"Too.Many.Dots__c"`) is ignored, and an entry with an empty parent value is skipped. A typo is silently skipped rather than failing the run — if an object is still landing in the wrong tree, check the key spelling first.
 
 #### Corresponding Video:

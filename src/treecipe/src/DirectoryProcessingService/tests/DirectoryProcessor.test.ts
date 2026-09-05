@@ -468,12 +468,10 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
     test('given separate DirectoryProcessor instances, each reads its own configuration rather than sharing a cached map', () => {
 
-      jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
-        .mockImplementation(() => new SnowfakeryRecipeFakerService());
-
       const configurationSpy = jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings')
         .mockReturnValue({ "CustomObject__c.Primary_Contact__c": "Contact" });
 
+      // the enclosing beforeEach spy on the faker service selection is still live here
       readCustomRelationshipMappings(directoryProcessor);
       readCustomRelationshipMappings(new DirectoryProcessor());
 
