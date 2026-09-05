@@ -1017,47 +1017,47 @@ describe('PicklistDependencyManifestService', () => {
 
     });
 
-});
 
-describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING', () => {
+    describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING', () => {
 
-    it('is the freshness a model carries before the walk has run, and is frozen against a caller editing it', () => {
+        it('is the freshness a model carries before the walk has run, and is frozen against a caller editing it', () => {
 
-        expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.freshness).toBe('pendingCheck');
-        expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.message).toBe('');
+            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.freshness).toBe('pendingCheck');
+            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.message).toBe('');
 
-        /*
-            It is handed to every model build as the pending answer, so it is shared across opens.
-            A caller mutating it would change what every later open starts from.
-        */
-        expect(Object.isFrozen(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING)).toBe(true);
+            /*
+                It is handed to every model build as the pending answer, so it is shared across opens.
+                A caller mutating it would change what every later open starts from.
+            */
+            expect(Object.isFrozen(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING)).toBe(true);
 
-    });
+        });
 
-    it('is never what resolveManifestFreshness returns -- the walk always answers one way or the other', () => {
+        it('is never what resolveManifestFreshness returns -- the walk always answers one way or the other', () => {
 
-        const manifestDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-freshness-'));
-        const objectsDirectoryPath = path.join(manifestDirectoryPath, 'objects');
-        fs.mkdirSync(objectsDirectoryPath, { recursive: true });
+            // THROUGH THE TRACKED HELPER, SO CLEANUP IS THE FILE'S TOLERANT afterEach RATHER THAN AN rmSync THAT CAN ENOTEMPTY
+            const manifestDirectoryPath = buildTemporaryDirectory('treecipe-freshness-');
+            const objectsDirectoryPath = path.join(manifestDirectoryPath, 'objects');
+            fs.mkdirSync(objectsDirectoryPath, { recursive: true });
 
-        const manifest = PicklistDependencyManifestService.buildManifest(
-            { specDetails: buildChainSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
-            objectsDirectoryPath,
-            path.join(manifestDirectoryPath, 'classes'),
-            '9.9.9',
-            '2026-01-01T00:00:00Z',
-            PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)
-        );
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                { specDetails: buildChainSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
+                objectsDirectoryPath,
+                path.join(manifestDirectoryPath, 'classes'),
+                '9.9.9',
+                '2026-01-01T00:00:00Z',
+                PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)
+            );
 
-        const freshResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
-        expect(freshResult.freshness).toBe('fresh');
+            const freshResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
+            expect(freshResult.freshness).toBe('fresh');
 
-        fs.writeFileSync(path.join(objectsDirectoryPath, 'Added__c.field-meta.xml'), '<x/>');
+            fs.writeFileSync(path.join(objectsDirectoryPath, 'Added__c.field-meta.xml'), '<x/>');
 
-        const staleResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
-        expect(staleResult.freshness).toBe('staleMetadata');
+            const staleResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
+            expect(staleResult.freshness).toBe('staleMetadata');
 
-        fs.rmSync(manifestDirectoryPath, { recursive: true, force: true });
+        });
 
     });
 
