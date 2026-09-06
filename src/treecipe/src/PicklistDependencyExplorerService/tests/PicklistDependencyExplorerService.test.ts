@@ -1893,6 +1893,99 @@ describe('PicklistDependencyExplorerService', () => {
     /*
         Slice 2 of #83: a stated ceiling instead of an unbounded payload.
     */
+    /*
+        The guards on the paths and budgets that reach the filesystem or the ceiling. Each answers a
+        degenerate input -- an empty manifest string, a budget of zero -- and each one silently
+        stopped being exercised when the run surface that used to drive it was removed.
+    */
+    describe('degenerate inputs to the path and budget guards', () => {
+
+        it('given no manifest path at all, resolves to empty rather than to the workspace root', () => {
+
+            expect(PicklistDependencyExplorerService.resolveOpenableManifestFilePath('', '/workspace')).toBe('');
+
+        });
+
+        /*
+            An empty objects directory in the manifest falls back to the CONFIGURED one. An older
+            manifest recorded no directory, and the structure it declares is still renderable -- only
+            the reveal targets need a real directory to be built under.
+        */
+        it('given no objects directory in the manifest, falls back to the configured one', () => {
+
+            expect(PicklistDependencyExplorerService.resolveRenderableObjectsDirectoryPath('', '/workspace/objects', '/workspace'))
+                .toBe('/workspace/objects');
+
+        });
+
+        // A BUDGET OF ZERO DISABLES THE TOTAL, IT DOES NOT DROP EVERY ROW
+        it('given a total budget of zero, drops nothing rather than emptying the panel', () => {
+
+            const viewModel = buildViewModel(buildChainExampleSpecDetails());
+
+            expect(PicklistDependencyExplorerService.applyTotalCombinationBudget(viewModel, 0)).toBe(0);
+            expect(viewModel.objects[0].rootNodes[0].combinations).not.toBeEmpty();
+
+        });
+
+        /*
+            The declared value ceiling applies to a record type SCOPE as well as to a field. A scope
+            draws its complement against what the record type assigns, so a capped scope universe
+            understates what the spec forbids exactly as a capped field one does -- and the panel has
+            to be told, per scope, not per field.
+        */
+        it('given a record type scope declaring more values than the ceiling allows, caps that scope too', () => {
+
+            const viewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath,
+                    buildChainExampleSpecDetails(),
+                    [],
+                    buildChainExampleRecordTypeSpecDetails()
+                ),
+                buildLimits({ maxDeclaredValuesPerNode: 1 })
+            );
+
+            const recordTypeScope = viewModel.objects[0].rootNodes[0].recordTypeScopes[0];
+
+            expect(recordTypeScope.declaredValues).toHaveLength(1);
+            expect(recordTypeScope.declaredValuesTruncated).toBeTrue();
+
+        });
+
+        /*
+            An empty panel has two quite different causes. A MANIFEST that declares no specs is not
+            the same as a workspace with no dependent picklists, and the message keys off the source
+            rather than off the empty list.
+        */
+        it('given a manifest declaring no specs, names the manifest rather than the objects directory', () => {
+
+            const viewModel = buildViewModel([]);
+            viewModel.modelSource = 'manifest';
+            viewModel.manifestFilePath = '/workspace/treecipe/PicklistDependencySpecs/manifest.json';
+
+            expect(PicklistDependencyExplorerService.buildEmptyStateMessage(viewModel))
+                .toContain('manifest.json" declares no generated specs');
+
+        });
+
+        /*
+            The third case: a preview whose manifest DID load. It is the one combination neither
+            branch above covers, and its message is about the objects directory -- a manifest that
+            read cleanly says nothing about why a metadata scan found no dependent picklists.
+        */
+        it('given a preview whose manifest loaded, names the objects directory that was scanned', () => {
+
+            const viewModel = buildViewModel([]);
+            viewModel.manifestLoadState = 'loaded';
+
+            expect(PicklistDependencyExplorerService.buildEmptyStateMessage(viewModel))
+                .toContain(`No dependent picklists were found in "${mockObjectsDirectoryPath}"`);
+
+        });
+
+    });
+
     describe('selectWithinCap', () => {
 
         it('given fewer items than the cap, returns them untouched', () => {
