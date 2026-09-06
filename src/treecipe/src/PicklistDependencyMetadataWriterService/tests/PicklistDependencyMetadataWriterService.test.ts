@@ -1,5 +1,6 @@
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService";
 import { IPicklistDependencySpecDetail, PicklistDependencyTestService } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyManifestService } from "../../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { XmlFileProcessor } from "../../XMLProcessingService/XmlFileProcessor";
 
 import * as fs from 'fs';
@@ -1046,6 +1047,77 @@ describe('PicklistDependencyMetadataWriterService', () => {
 
             expect(writtenFilePaths).toEqual([containedPlan.fieldFilePath]);
             expect(writeFileSyncSpy).toHaveBeenCalledWith(containedPlan.fieldFilePath, 'anything');
+
+        });
+
+    });
+
+    /*
+        Writeback reads its spec details from the Apex, not from the manifest -- but the manifest
+        rebuilds the same IPicklistDependencySpecDetail shape, and it stopped recording the forbidden
+        list on every expectation. The whole transpose turns on that list: expectNotAllowed is what
+        REMOVES a pair, and a reconstruction that quietly returned an empty list would leave the
+        writeback adding but never removing, which no test asserting on the additions would catch.
+    */
+    describe('spec details rebuilt from a manifest drive the same writeback', () => {
+
+        const buildSpecDetail = (): IPicklistDependencySpecDetail => ({
+            objectApiName: 'Dependency_Example__c',
+            fieldApiName: 'Neighborhood__c',
+            controllingFieldApiName: 'City__c',
+            expectations: PicklistDependencyTestService.sortValuesForEmission(['cle', 'eastlake']).map(controllingValue => ({
+                controllingValue,
+                dependentValues: controllingValue === 'cle' ? ['ohiocity'] : ['willowick'],
+                forbiddenValues: controllingValue === 'cle' ? ['tremont', 'willowick'] : ['ohiocity', 'tremont']
+            }))
+        });
+
+        const rebuildThroughManifest = (specDetail: IPicklistDependencySpecDetail): IPicklistDependencySpecDetail => {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                { specDetails: [specDetail], recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
+                '/workspace/force-app/main/default/objects',
+                '/workspace/force-app/main/default/classes',
+                '3.13.0',
+                '2026-09-05T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            return PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest).specDetails[0];
+
+        };
+
+        it('rebuilds the forbidden list the transpose removes pairs by', () => {
+
+            const specDetail = buildSpecDetail();
+
+            expect(rebuildThroughManifest(specDetail)).toEqual(specDetail);
+
+        });
+
+        it('proposes byte-identical metadata from a manifest-rebuilt spec', () => {
+
+            const specDetail = buildSpecDetail();
+            const originalContent = readMock('FlatShape.field-meta.xml');
+
+            const inMemoryOutcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                specDetail, '/fields/Neighborhood__c.field-meta.xml', originalContent
+            );
+
+            const manifestOutcome = PicklistDependencyMetadataWriterService.buildFieldWritebackOutcome(
+                rebuildThroughManifest(specDetail), '/fields/Neighborhood__c.field-meta.xml', originalContent
+            );
+
+            expect(manifestOutcome.refusal).toBeUndefined();
+            expect(manifestOutcome.plan.proposedContent).toBe(inMemoryOutcome.plan.proposedContent);
+
+            /*
+                And the comparison is load-bearing: "cle" must not unlock "tremont", so the pair the
+                file currently declares is gone. Two outcomes that both removed nothing would also
+                have matched.
+            */
+            expect(originalContent).toContain('<valueName>tremont</valueName>');
+            expect(manifestOutcome.plan.proposedContent).not.toContain('<valueName>tremont</valueName>');
 
         });
 
