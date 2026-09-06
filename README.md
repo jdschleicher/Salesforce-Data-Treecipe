@@ -310,7 +310,7 @@ The offer comes *after* generation rather than before, because generating is use
 
 This path **always deploys**, unlike "Run Picklist Dependency Check" below, which deploys only when the test class is missing. The classes were just rewritten, so the org copy is stale by definition — a conditional deploy would run yesterday's contract against today's metadata.
 
-Once generated, you can also run the check any time with "Run Picklist Dependency Check" below.
+Once generated, you can also run the check any time with "Run Picklist Dependency Check" below, and browse the structure it generated with the [Explorer](#7-salesforce-treecipe-open-picklist-dependency-explorer).
 
 #### Once the classes are in your org
 
@@ -345,53 +345,47 @@ Notes:
 
 ### <a name="7-salesforce-treecipe-open-picklist-dependency-explorer"></a>7. **Salesforce Treecipe: Open Picklist Dependency Explorer**
 
-This command opens a read-only visual view of your picklist dependency structure, with the most recent check's pass/fail state overlaid on it. It answers "which controlling value unlocks what, and which combination just broke" without you reading generated Apex or a markdown dump.
+This command opens a read-only visual view of your picklist dependency structure. It answers "which controlling value unlocks what" without you reading generated Apex or a markdown dump.
 
-**Prerequisite:** run [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests) first. The panel renders the **spec manifest** that command writes, so what you see is exactly what your generated tests assert. No org, no CLI and no previous check run are required — and if you have not generated yet, the panel offers a metadata preview instead (see below).
+It is a **picture of the structure, and only that.** The panel reads no check results: no pass/fail badges, no status filter, no last-run banner, and no links into a generated `.cls` or a run's `report.md`. Whether your org still *agrees* with the structure is what ["Run Picklist Dependency Check"](#6-salesforce-treecipe-run-picklist-dependency-check) answers, and it reports that in its own output channel and report.
+
+**Prerequisite:** run [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests) first. The panel renders the **spec manifest** that command writes, so what you see is exactly what your generated tests assert. No org, no CLI and no check run are required — and if you have not generated yet, the panel offers a metadata preview instead (see below).
 
 The command:
 
 1. Reads `treecipe/PicklistDependencySpecs/manifest.json` — the machine-readable description of the specs that were generated — and builds the dependency structure from it: object → controlling field → controlling value → the values it unlocks, and the values it must *not* unlock. Your source metadata is **not** re-walked, so a panel row always corresponds to a spec method that exists
 2. Renders chained dependencies as a connected graph — a field controlled by another dependent picklist is nested under it rather than repeated as a flat row
 3. Names the generated class and spec method asserting each field, and the test method covering each object
-4. Finds the most recent run under `treecipe/PicklistDependencyResults/` and overlays it, marking each combination passed, failed, or not checked
-5. Shows the failure kind (`MISSING_VALUES`, `FORBIDDEN_VALUES_PRESENT`, `CONTROLLING_FIELD_MISMATCH`, ...) and message on a failing combination, attributed by the manifest's stable combination keys — and beneath it, a **likely cause** and a **next step** in plain language
-6. Lists any field the generator **skipped** as its own row marked *not asserted*, with the reason — rather than leaving it out, where it would be indistinguishable from a field with no dependency
-7. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`, an **Open spec method** action that opens the generated `.cls` at the method asserting that row, an **Open run report entry** action that opens the run's `report.md` at that object's entry, and a **Copy reference** action
-8. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
+4. Lists any field the generator **skipped** as its own row marked *not asserted*, with the reason — rather than leaving it out, where it would be indistinguishable from a field with no dependency
+5. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`, and a **Copy reference** action
+6. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
 
 **Finding your way around a large org:**
 
 A toolbar sits above the structure:
 
 * **Find object or field** matches on object, field, controlling field, record type and generated method name. Searching for a field name reaches the object holding it, so you do not have to know which object that was — and when exactly one object matches, it opens by itself
-* **Status** filters to *failed*, *passed* or *not checked*
-* **Jump to object** opens and scrolls to any object by name, even one the filter is hiding
+* **Contents** lists every section and object the panel is showing, and scrolls to any of them
 * **Expand all / Collapse all**, bounded at 25 visible objects — past that the panel asks for a narrower filter rather than freezing
 
-Filtering only ever hides rows. No status is recomputed, and none is inferred from a row being hidden.
+Filtering only ever hides rows. Nothing about a row is recomputed, and nothing is inferred from a row being hidden.
 
 **Copy reference** on any combination copies its stable key — `Object__c.Field__c [RecordType] @ Controlling Value` — and pasting that back into the find box reopens exactly that combination. It is stable across re-renders, so it is something you can put in a review comment or a ticket.
 
 Notes:
 
 * The panel is a **VS Code webview** — no local HTTP server, no open port, no extra runtime dependency. Its content security policy allows only the extension's own inline style and script, so it loads nothing from the network
-* **Built as you open it.** An object's rows are built when you expand it, not when the panel loads, and the model itself is bounded: at most 250 objects, 25 dependent picklists per object, 200 combinations per field, 25 record type scopes per field, 200 declared values per field, and **20,000 rendered combinations in total** — which measures to under 12MB of embedded data even when every combination in a large org has failed. Anything the ceiling drops is counted and stated in a notice at the top. A combination, scope or object the check reported a failure for is never dropped in favour of a passing one; past the total budget even failures can be dropped, and the notice says so and points you at the run's `report.md` as the complete record
+* **Built as you open it.** An object's rows are built when you expand it, not when the panel loads, and the model itself is bounded: at most 250 objects, 25 dependent picklists per object, 200 combinations per field, 25 record type scopes per field, 200 declared values per field, and **20,000 rendered combinations in total**. Anything the ceiling drops is counted and stated in a notice at the top. What survives a cap is whatever the **manifest declares first** — the same order on every axis, so the same manifest always truncates to the same rows and a row you cannot find was cut rather than moved. The one exception keeps an object carrying a **skipped field** past the cap, since that is the only row nothing asserts
 * **Where a field declares more values than the panel renders, the "must not unlock" list is withheld** rather than shortened — a complement drawn against a partial list would understate what the spec forbids, and the row says so
-* **Every failed combination explains itself.** All ten validator failure kinds carry a likely cause and a next step. The two that no org state can cause — `CONTRADICTORY_EXPECTATION` and `CIRCULAR_DEPENDENCY` — say so, and tell you to fix the generated spec rather than the org. A kind this version has never seen is not explained away: the panel says it has no explanation and points you at the raw Apex message
 * It follows your active color theme, light, dark or high contrast
-* **No check has been run yet?** The structure still renders in full, marked "not checked" throughout, with the directory it looked in named
-* **A corrupt `results.json`?** You get a readable message and the structure without the overlay, not a blank panel
-* **Not generated yet?** You get a message naming the generate command, plus a **"Preview from metadata (not generated)"** action. The preview scans your source metadata exactly as previous versions did, and banners every row as asserted by nothing — because nothing has been generated for it, so no check can have run against it. No row in a preview claims a spec method
+* **No org, no CLI, no check run?** None of them is involved. The panel renders from `manifest.json` on disk and nothing else, so it works the same in a fresh clone as in a workspace that runs the check nightly
+* **Not generated yet?** You get a message naming the generate command, plus a **"Preview from metadata (not generated)"** action. The preview scans your source metadata exactly as previous versions did, and banners every row as asserted by nothing — because nothing has been generated for it. No row in a preview claims a spec method
 * **A corrupt `manifest.json`?** The parse failure is reported and the same preview is offered — never a blank panel
 * **Metadata changed since you generated?** The panel says so in a banner naming the generate command, and keeps showing what the generated Apex actually asserts. It never silently re-derives the structure from metadata your tests have not been regenerated against
 * **No dependent picklists at all?** You get an empty state naming the objects directory that was scanned
-* A combination is only shown as passed when the loaded run actually covered it. If **any** of an object's reported failures cannot be tied back to a specific combination, that text is surfaced on the object and its combinations stay "not checked" rather than being reported green
-* Where a combination did fail, **every** failure reported against it is shown — the validator raises `MISSING_VALUES` and `FORBIDDEN_VALUES_PRESENT` independently, and both matter
-* **Record-type-scoped rows never go green, by design.** They are generated from source metadata and deployed with the contract, but Apex describe returns picklist values without record type filtering, so the check cannot verify them — see the record type section under [Generate Picklist Dependency Tests](#5-salesforce-treecipe-generate-picklist-dependency-tests). Each scope says so beside its own rows rather than relying on a note elsewhere in the panel, and a value the record type does not assign is shown as *not available* rather than as unlocking nothing, which is a different claim
-* Scoped combinations are counted separately in the header (`N combination(s) + M record-type-scoped`) so a green run is never read as covering more than it did
+* **Record-type-scoped rows are the same dependency, narrowed.** Each scope says so beside its own rows rather than relying on a note elsewhere in the panel, and a value the record type does not assign is shown as *not available* rather than as unlocking nothing, which is a different claim
+* Scoped combinations are counted separately in the header (`N combination(s) + M record-type-scoped`), because a record type narrows a field-level dependency rather than adding one of its own
 * **Commit `manifest.json`** alongside your generated `.cls` files. It is the record of what was generated, and reviewing it as a diff shows dependency changes in the same commit as the Apex that asserts them
-* Results are still recorded per object rather than per combination, so a combination added to `valueSettings` *after* the last check run shows as not checked rather than passed once you regenerate. The staleness banner is what tells you the two are out of step — re-run the check after regenerating
 
 ---
 

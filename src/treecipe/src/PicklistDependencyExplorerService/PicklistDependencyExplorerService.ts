@@ -20,51 +20,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /*
-    A combination is either confirmed good, confirmed drifted, or not covered by the run that was
-    loaded. "unknown" is a distinct state on purpose: a check that has not run, or a failure that
-    could not be tied to a combination, must never render as a green tick -- the panel would then
-    report a dependency as verified when nothing verified it.
-*/
-export type PicklistDependencyCheckStatus = 'passed' | 'failed' | 'unknown';
-
-/*
-    Why the panel has no results to overlay, which the empty states are keyed off. "noResultsFound"
-    and "unreadableResults" are both non-error states -- the structure still renders either way.
-*/
-export type PicklistDependencyRunLoadState = 'loaded' | 'noResultsFound' | 'unreadableResults';
-
-/*
     Where the structure on screen came from. Kept as an explicit field rather than inferred from the
     presence of a manifest, because the panel's central promise -- that what is rendered is what the
     generated tests assert -- is only true for one of these two, and a reader has to be told which.
 */
 export type PicklistDependencyExplorerModelSource = 'manifest' | 'metadataPreview';
-
-/*
-    A failure kind restated as a likely cause and a next step, in the words of someone who
-    administers the org rather than someone who reads the validator.
-
-    Carried ALONGSIDE the Apex kind and message and never instead of them. The kind is what
-    SDTPicklistDependencyValidator actually reported, and is the string a reader greps the framework
-    source for; the triage is this extension's reading of it. Replacing one with the other would
-    leave the panel describing a failure in words that appear nowhere else in the toolchain.
-*/
-export interface IPicklistDependencyFailureTriage {
-    likelyCause: string;
-    nextStep: string;
-}
-
-export interface IPicklistDependencyFailureDetailViewModel {
-    kind: string;
-    message: string;
-    /*
-        Present ONLY for a kind this version does not recognise, whose triage text names the kind
-        and so cannot be shared. Every recognised kind is looked up in the model's
-        failureTriageByKind instead: the triage is two sentences of prose, and inlining it on every
-        failure made the panel's payload grow with the org's drift rather than with its size.
-    */
-    triage?: IPicklistDependencyFailureTriage;
-}
 
 export interface IPicklistDependencyCombinationViewModel {
     /*
@@ -90,9 +50,6 @@ export interface IPicklistDependencyCombinationViewModel {
         a record type that does not assign a controlling value does not expose it as an empty choice.
     */
     controllingValueUnavailable: boolean;
-    status: PicklistDependencyCheckStatus;
-    // EVERY FAILURE THE RUN REPORTED FOR THIS COMBINATION. THE VALIDATOR CAN RAISE MORE THAN ONE.
-    failures: IPicklistDependencyFailureDetailViewModel[];
 }
 
 /*
@@ -107,9 +64,7 @@ export interface IPicklistDependencyRecordTypeScopeViewModel {
     // WHAT THE RECORD TYPE ASSIGNS TO THE DEPENDENT FIELD -- THE UNIVERSE ITS FORBIDDEN SETS COMPLEMENT AGAINST
     declaredValues: string[];
     combinations: IPicklistDependencyCombinationViewModel[];
-    status: PicklistDependencyCheckStatus;
-    failureCount: number;
-    // COMBINATIONS DROPPED BY THE RENDERING CEILING, NEVER ONES THE CHECK REPORTED A FAILURE FOR
+    // COMBINATIONS DROPPED BY THE RENDERING CEILING -- SEE applyModelLimits
     truncatedCombinationCount: number;
     // SEE IPicklistDependencyNodeViewModel.declaredValuesTruncated
     declaredValuesTruncated: boolean;
@@ -133,10 +88,6 @@ export interface IPicklistDependencyNodeViewModel {
     combinations: IPicklistDependencyCombinationViewModel[];
     // FIELDS CONTROLLED BY THIS ONE, WHICH IS WHAT MAKES A CHAIN A GRAPH RATHER THAN REPEATED ROWS
     downstreamNodes: IPicklistDependencyNodeViewModel[];
-    status: PicklistDependencyCheckStatus;
-    failureCount: number;
-    // FAILURES THE VALIDATOR RAISED AGAINST THE FIELD RATHER THAN AGAINST ONE COMBINATION
-    fieldLevelFailures: IPicklistDependencyFailureDetailViewModel[];
     // ONE PER RECORD TYPE THAT NARROWS THIS FIELD, EMPTY WHERE THE OBJECT DECLARES NO RECORD TYPES
     recordTypeScopes: IPicklistDependencyRecordTypeScopeViewModel[];
     /*
@@ -146,7 +97,7 @@ export interface IPicklistDependencyNodeViewModel {
         second implementation living only inside a script string.
     */
     searchText: string;
-    // COMBINATIONS AND SCOPES DROPPED BY THE RENDERING CEILING, FAILING ONES LAST -- SEE applyModelLimits
+    // COMBINATIONS AND SCOPES DROPPED BY THE RENDERING CEILING -- SEE applyModelLimits
     truncatedCombinationCount: number;
     truncatedRecordTypeScopeCount: number;
     /*
@@ -180,23 +131,19 @@ export interface IPicklistDependencyObjectViewModel {
     dependentFieldCount: number;
     combinationCount: number;
     /*
-        Counted apart from combinationCount rather than folded into it. combinationCount is what the
-        generated test class actually verifies; no source shipped with the framework can check a
-        record-type scoped combination, so adding them to one total would overstate what a green run
-        proves.
+        Counted apart from combinationCount rather than folded into it. A record-type scoped
+        combination narrows a field-level one rather than adding a dependency of its own, so folding
+        the two into a single total would report an org as declaring more dependencies than it does.
     */
     recordTypeCombinationCount: number;
-    status: PicklistDependencyCheckStatus;
-    failureCount: number;
     /*
-        The generated Apex test method that covers this object. Held so a reader can tie a panel row
-        back to the line in results.json, and so an object present in the metadata but absent from
-        the loaded run is distinguishable from one that ran and passed.
+        The generated Apex test method that covers this object, as the manifest recorded it. Held as
+        PROVENANCE -- it names the code generated alongside the rows on screen. Nothing in the panel
+        reads a run, so it is never resolved against one.
     */
     testMethodName: string;
     // THE GENERATED PER-OBJECT CLASS CARRYING THIS OBJECT'S SPECS, EMPTY IN A METADATA PREVIEW
     generatedClassName: string;
-    generatedClassFilePath: string;
     /*
         Dependent picklists on this object that the generator declined to spec. Rendered as rows in
         their own right rather than omitted: a field absent from both the Apex and the panel is
@@ -204,12 +151,6 @@ export interface IPicklistDependencyObjectViewModel {
         two readings.
     */
     skippedFields: IPicklistDependencySkippedFieldViewModel[];
-    /*
-        Failure text from the run that could NOT be tied to a combination in this object -- either
-        the message named no combination at all, or it named one this metadata no longer describes.
-        Its presence is what holds the object's combinations at "unknown".
-    */
-    unattributedFailureMessages: string[];
     // THE FIND BOX HAYSTACK FOR THIS OBJECT AND EVERY NODE BENEATH IT -- SEE IPicklistDependencyNodeViewModel.searchText
     searchText: string;
     /*
@@ -220,37 +161,18 @@ export interface IPicklistDependencyObjectViewModel {
     truncatedNodeCount: number;
 }
 
-export interface IPicklistDependencyRunSummary {
-    targetOrg: string;
-    ranAt: string;
-    passed: boolean;
-    failureCount: number;
-    methodsRun: number;
-    resultsFilePath: string;
-    /*
-        The human-readable "report.md" written beside results.json by the same run, so a failed
-        combination can link to the entry that reported it. Empty when the run folder holds no
-        report -- an artifact written by an older version, or one that was pruned.
-    */
-    reportFilePath: string;
-}
-
 export interface IPicklistDependencyExplorerViewModel {
     scannedObjectsDirectoryPath: string;
     objects: IPicklistDependencyObjectViewModel[];
     dependentFieldCount: number;
     combinationCount: number;
     recordTypeCombinationCount: number;
-    runLoadState: PicklistDependencyRunLoadState;
-    runSummary?: IPicklistDependencyRunSummary;
-    // WHY A RUN COULD NOT BE LOADED, IN WORDS A READER CAN ACT ON
-    runLoadMessage: string;
     skippedFieldWarnings: string[];
     /*
         How this model was sourced. "manifest" is the honest rendering -- these are the specs that
         were generated and are what the tests assert. "metadataPreview" is the explicit opt-in for a
         workspace that has never generated, and every row it produces is un-asserted by definition:
-        nothing has been emitted for it, so nothing can have run against it.
+        nothing has been emitted for it.
     */
     modelSource: PicklistDependencyExplorerModelSource;
     manifestLoadState: PicklistDependencyManifestLoadState;
@@ -273,24 +195,11 @@ export interface IPicklistDependencyExplorerViewModel {
     truncatedObjectCount: number;
     // WHAT THE CEILING DROPPED, IN WORDS, RENDERED AT THE TOP OF THE PANEL. EMPTY WHEN NOTHING WAS DROPPED.
     truncationNotices: string[];
-    /*
-        Combinations the check reported a failure for that the TOTAL budget still could not fit.
-
-        Held apart from every other truncation count because it is the one drop the panel would
-        rather not make: past this point the run report is the complete record and the panel is not,
-        which the notice says in those words.
-    */
-    truncatedFailedCombinationCount: number;
-    /*
-        The triage prose, once per failure KIND rather than once per failure. The panel looks a
-        failure's kind up in here; a kind absent from it carries its own inline triage.
-    */
-    failureTriageByKind: Record<string, IPicklistDependencyFailureTriage>;
 }
 
 /*
-    What the host sends the panel. The panel sends back only the four action commands it always has,
-    plus "ready" -- see IPicklistDependencyExplorerPanelMessage.
+    What the host sends the panel. The panel sends back only its two action commands -- reveal and
+    copy -- plus "ready" and its failure reports; see IPicklistDependencyExplorerPanelMessage.
 
     These exist because the model is no longer serialized into the panel's html. A message shape is
     the contract that replaced that document, so it is typed here beside the model it carries rather
@@ -332,7 +241,6 @@ export type PicklistDependencyExplorerHostMessage = IPicklistDependencyExplorerR
 */
 export const PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES = {
     readingManifest: 'Reading the generated spec manifest…',
-    loadingResults: 'Loading the most recent picklist dependency check results…',
     buildingView: 'Building the dependency view…',
     scanningMetadata: 'Scanning your object metadata for dependent picklists…'
 };
@@ -343,8 +251,10 @@ export const PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES = {
     An unbounded payload was the ceiling before this existed: the model is serialized into the html
     in full, so a large org's panel was a multi-megabyte document whose size nothing stated. These
     are deliberately generous -- they are a backstop against a pathological org, not a page size --
-    and the rule that decides what survives them is fixed: a combination, scope or object the check
-    reported a failure for is never the thing dropped.
+    and the rule that decides what survives them is fixed: MANIFEST ORDER, taking the first that fit
+    on each axis. The manifest is emitted deterministically, so the same org truncates to the same
+    rows on every open, and a reader scanning a capped list is reading a prefix of the generated
+    specs rather than a selection made on some property of the rows.
 */
 export interface IPicklistDependencyExplorerModelLimits {
     maxObjects: number;
@@ -359,6 +269,9 @@ export interface IPicklistDependencyExplorerModelLimits {
         millions of rows, so caps alone left the embedded json as large as the org happened to be.
         This is the total, across every object, field and record type scope, and it is the number
         the measured payload figures in the changelog are derived from.
+
+        Spent in manifest order, so the rows it keeps are the first the generator emitted rather
+        than a set chosen on some property the panel no longer carries.
     */
     maxRenderedCombinations: number;
     /*
@@ -431,316 +344,21 @@ export interface IPicklistDependencyExplorerContext {
     specsTestClassName: string;
     classesDirectoryPath: string;
     generatedNamesByObjectApiName: Record<string, IPicklistDependencyGeneratedNames>;
-    generatedClassFilePathsByObjectApiName: Record<string, string>;
     /*
         The generated test method per object, as the MANIFEST recorded it.
 
-        Read rather than re-derived, because this name is what the run outcome is looked up by: a
-        re-derivation would be a second derivation of exactly the kind this artifact exists to
-        remove, and the two inputs are not identical -- the manifest's name was computed from the
-        pre-serialization object set, and a re-derivation would use the set rebuilt through the
-        parse boundary. Those differ the moment an entry is dropped on load, and a shifted
-        collision suffix would attribute one object's pass or fail to another.
+        Read rather than re-derived, and still read rather than re-derived now that nothing looks a
+        run outcome up by it: a re-derivation would be a second derivation of exactly the kind this
+        artifact exists to remove, and the two inputs are not identical -- the manifest's name was
+        computed from the pre-serialization object set, and a re-derivation would use the set
+        rebuilt through the parse boundary. Those differ the moment an entry is dropped on load,
+        which would leave the panel naming a test method the generated class does not declare.
     */
     testMethodNamesByObjectApiName: Record<string, string>;
     skippedFields: IPicklistDependencySkippedField[];
 }
 
-export interface IParsedPicklistDependencyFailure {
-    objectApiName: string;
-    fieldApiName: string;
-    /*
-        Set when the failure line carried a "[RecordType]" scope, which SDTPicklistDependencyValidator
-        emits for a record-type scoped spec. Absent for a field-level failure.
-    */
-    recordTypeDeveloperName?: string;
-    kind: string;
-    /*
-        The raw text after "@ " for a scoped failure, which is "<controllingValue>: <message>".
-        A Salesforce picklist value may itself contain ": ", so where that split falls cannot be
-        decided by the line alone -- it is resolved against the controlling values the metadata
-        actually declares. Absent for a failure raised against the whole field.
-    */
-    controllingValueAndMessage?: string;
-    // SET ONLY FOR A FIELD LEVEL FAILURE, WHERE NO CONTROLLING VALUE IS IN PLAY
-    fieldLevelMessage?: string;
-}
-
-export interface IPicklistDependencyResultsMethodOutcome {
-    methodName: string;
-    passed: boolean;
-    message?: string;
-}
-
-export interface IPicklistDependencyResultsFile {
-    targetOrg: string;
-    ranAt: string;
-    passed: boolean;
-    failureCount: number;
-    methodsRun: number;
-    methodOutcomes: IPicklistDependencyResultsMethodOutcome[];
-}
-
-export interface IPicklistDependencyResultsLoad {
-    state: PicklistDependencyRunLoadState;
-    message: string;
-    results?: IPicklistDependencyResultsFile;
-    resultsFilePath?: string;
-}
-
 export class PicklistDependencyExplorerService {
-
-    static getResultsFileName(): string {
-        return 'results.json';
-    }
-
-    /*
-        The run folder name is "check-{org}-{timestamp}" and the org identifier can itself contain
-        hyphens, so the timestamp is anchored at the END of the name rather than split out by
-        position. VSCodeWorkspaceService writes it as an ISO string with the colons replaced, which
-        is fixed width and therefore sorts chronologically as plain text.
-    */
-    private static resultsFolderTimestampPattern = /-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})$/;
-
-    static getResultsFolderTimestamp(resultsFolderName: string): string | undefined {
-
-        const timestampMatch = this.resultsFolderTimestampPattern.exec(resultsFolderName);
-        return timestampMatch ? timestampMatch[1] : undefined;
-
-    }
-
-    /*
-        The most recent run folder holding a results.json.
-
-        Ordering is by the timestamp in the folder name rather than by mtime: every file in a fresh
-        clone carries the checkout time, which would make the "most recent" run arbitrary for anyone
-        who committed their check artifacts. A folder whose name carries no parseable timestamp is
-        skipped rather than guessed at -- it was not written by the check command.
-    */
-    static findLatestResultsFilePath(resultsFolderPath: string): string | undefined {
-
-        if ( !fs.existsSync(resultsFolderPath) ) {
-            return undefined;
-        }
-
-        let latestTimestamp: string | undefined;
-        let latestResultsFilePath: string | undefined;
-
-        const resultsFolderEntries = fs.readdirSync(resultsFolderPath, { withFileTypes: true });
-
-        resultsFolderEntries.forEach(resultsFolderEntry => {
-
-            if ( !resultsFolderEntry.isDirectory() ) {
-                return;
-            }
-
-            const runFolderTimestamp = this.getResultsFolderTimestamp(resultsFolderEntry.name);
-            if ( !runFolderTimestamp ) {
-                return;
-            }
-
-            const candidateResultsFilePath = path.join(resultsFolderPath, resultsFolderEntry.name, this.getResultsFileName());
-            if ( !fs.existsSync(candidateResultsFilePath) ) {
-                return;
-            }
-
-            if ( latestTimestamp === undefined || runFolderTimestamp > latestTimestamp ) {
-                latestTimestamp = runFolderTimestamp;
-                latestResultsFilePath = candidateResultsFilePath;
-            }
-
-        });
-
-        return latestResultsFilePath;
-
-    }
-
-    /*
-        A results.json that cannot be read is reported as a state rather than thrown. The dependency
-        STRUCTURE is readable without any run at all, so a corrupt artifact must degrade the overlay
-        and nothing else -- throwing here would leave the user with a blank panel and no way to see
-        the dependencies the file has nothing to do with.
-    */
-    static loadLatestResults(resultsFolderPath: string): IPicklistDependencyResultsLoad {
-
-        const latestResultsFilePath = this.findLatestResultsFilePath(resultsFolderPath);
-
-        if ( !latestResultsFilePath ) {
-            return {
-                state: 'noResultsFound',
-                message: `No picklist dependency check has been run yet -- no run results were found in "${resultsFolderPath}". Run "Salesforce Treecipe: Run Picklist Dependency Check" to overlay pass/fail state on the structure below.`
-            };
-        }
-
-        let parsedResultsFileContent: unknown;
-
-        try {
-            parsedResultsFileContent = JSON.parse(fs.readFileSync(latestResultsFilePath, 'utf-8'));
-        } catch (error) {
-            return {
-                state: 'unreadableResults',
-                message: `The most recent check results at "${latestResultsFilePath}" could not be read as JSON (${error.message}). The dependency structure below is shown without pass/fail state -- re-run the picklist dependency check to replace the file.`,
-                resultsFilePath: latestResultsFilePath
-            };
-        }
-
-        const resultsFileRecord = parsedResultsFileContent as Record<string, unknown> | null;
-
-        // A FILE THAT PARSES BUT CARRIES NO OUTCOMES IS AS UNUSABLE AS ONE THAT DOES NOT PARSE, AND IS REPORTED THE SAME WAY
-        if ( !resultsFileRecord || !Array.isArray(resultsFileRecord.methodOutcomes) ) {
-            return {
-                state: 'unreadableResults',
-                message: `The most recent check results at "${latestResultsFilePath}" are missing the "methodOutcomes" list, so no pass/fail state could be overlaid. Re-run the picklist dependency check to replace the file.`,
-                resultsFilePath: latestResultsFilePath
-            };
-        }
-
-        const methodOutcomes: IPicklistDependencyResultsMethodOutcome[] = resultsFileRecord.methodOutcomes.map(
-            (methodOutcomeEntry: unknown) => {
-
-                const methodOutcome = methodOutcomeEntry as Record<string, unknown> | null;
-
-                return {
-                    methodName: typeof methodOutcome?.methodName === 'string' ? methodOutcome.methodName : 'unknown',
-                    passed: methodOutcome?.passed === true,
-                    message: typeof methodOutcome?.message === 'string' ? methodOutcome.message : undefined
-                };
-
-            }
-        );
-
-        return {
-            state: 'loaded',
-            message: '',
-            resultsFilePath: latestResultsFilePath,
-            results: {
-                targetOrg: typeof resultsFileRecord.targetOrg === 'string' ? resultsFileRecord.targetOrg : 'unknown org',
-                ranAt: typeof resultsFileRecord.ranAt === 'string' ? resultsFileRecord.ranAt : 'unknown time',
-                passed: resultsFileRecord.passed === true,
-                failureCount: typeof resultsFileRecord.failureCount === 'number' ? resultsFileRecord.failureCount : 0,
-                methodsRun: typeof resultsFileRecord.methodsRun === 'number' ? resultsFileRecord.methodsRun : methodOutcomes.length,
-                methodOutcomes: methodOutcomes
-            }
-        };
-
-    }
-
-    /*
-        Matches "KIND — Object.Field" and hands back everything after it, rather than trying to split
-        the remainder in the same expression.
-
-        The kind group requires all caps, which is what keeps the generated header line -- "Picklist
-        dependency drift on Account -- 3 combination(s)..." -- from matching.
-    */
-    private static failureLinePattern = /^\s*(?:-\s*)?([A-Z][A-Z0-9_]*)\s+(?:—|--|-)\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)([\s\S]*)$/;
-
-    /*
-        A record-type scoped failure names its scope between the field and the rest of the line:
-        "MISSING_VALUES — Account.Region__c [US_Only] @ United States: ...". Matched off the front of
-        the tail so a field-level line, which has no such segment, is untouched.
-    */
-    private static recordTypeScopeTailPattern = /^\s+\[([A-Za-z0-9_]+)\]([\s\S]*)$/;
-
-    private static scopedFailureTailPattern = /^\s+@\s+([\s\S]+)$/;
-
-    private static fieldLevelFailureTailPattern = /^\s*:\s*([\s\S]*)$/;
-
-    /*
-        Pulls the failures out of an Apex assertion message.
-
-        The generated test class joins SDTPicklistDependencyValidator.Failure.toLine() output, whose
-        shape is "KIND — Object.Field @ ControllingValue: message". The message reaching results.json
-        is that text wrapped in whatever the CLI adds around a failed assertion, so every line is
-        scanned rather than the message being parsed as a whole.
-
-        The controlling value is NOT split from the message here. A picklist value may contain ": "
-        -- "Tier 1: Premium" is a legal value -- so the line alone cannot say where the boundary is,
-        and guessing at the first colon silently mis-attributed the failure. The raw tail is carried
-        instead and resolved against the controlling values the metadata declares.
-
-        Both an em dash and a plain hyphen are accepted as the separator: the Apex emits an em dash,
-        but a message that has been through a lossy encoding on its way out of the org should still
-        attribute rather than degrading the whole object to "unknown".
-    */
-    static parseFailureLines(assertionMessage: string | undefined): IParsedPicklistDependencyFailure[] {
-
-        if ( !assertionMessage ) {
-            return [];
-        }
-
-        let parsedFailures: IParsedPicklistDependencyFailure[] = [];
-
-        assertionMessage.split(/\r\n|\r|\n/).forEach(messageLine => {
-
-            const failureLineMatch = this.failureLinePattern.exec(messageLine);
-            if ( !failureLineMatch ) {
-                return;
-            }
-
-            const [, failureKind, objectApiName, fieldApiName, rawFailureLineTail] = failureLineMatch;
-
-            const recordTypeScopeMatch = this.recordTypeScopeTailPattern.exec(rawFailureLineTail);
-            const recordTypeDeveloperName = recordTypeScopeMatch ? recordTypeScopeMatch[1] : undefined;
-            const failureLineTail = recordTypeScopeMatch ? recordTypeScopeMatch[2] : rawFailureLineTail;
-
-            const scopedTailMatch = this.scopedFailureTailPattern.exec(failureLineTail);
-
-            if ( scopedTailMatch ) {
-
-                parsedFailures.push({
-                    objectApiName: objectApiName,
-                    fieldApiName: fieldApiName,
-                    recordTypeDeveloperName: recordTypeDeveloperName,
-                    kind: failureKind,
-                    controllingValueAndMessage: scopedTailMatch[1]
-                });
-
-                return;
-
-            }
-
-            const fieldLevelTailMatch = this.fieldLevelFailureTailPattern.exec(failureLineTail);
-
-            // NEITHER SHAPE MEANS THE LINE IS NOT A FAILURE LINE, SO IT IS NOT COUNTED AS ONE
-            if ( !fieldLevelTailMatch ) {
-                return;
-            }
-
-            parsedFailures.push({
-                objectApiName: objectApiName,
-                fieldApiName: fieldApiName,
-                recordTypeDeveloperName: recordTypeDeveloperName,
-                kind: failureKind,
-                fieldLevelMessage: fieldLevelTailMatch[1].trim()
-            });
-
-        });
-
-        return parsedFailures;
-
-    }
-
-    /*
-        Splits a scoped failure's tail against a known controlling value.
-
-        The tail is "<controllingValue>: <message>", and the controlling value is the ground truth
-        the metadata provides -- so rather than guessing where the colon falls, each candidate value
-        is tested as a prefix. Returns the message when the value matches, undefined when it does
-        not, which is what lets an unmatched failure be reported rather than quietly dropped.
-    */
-    static extractFailureMessageForControllingValue(controllingValueAndMessage: string, controllingValue: string): string | undefined {
-
-        if ( controllingValueAndMessage === controllingValue ) {
-            return '';
-        }
-
-        if ( !controllingValueAndMessage.startsWith(`${controllingValue}:`) ) {
-            return undefined;
-        }
-
-        return controllingValueAndMessage.slice(controllingValue.length + 1).trim();
-
-    }
 
     /*
         The ".field-meta.xml" that produced a spec. Derived from the scanned objects directory rather
@@ -752,102 +370,6 @@ export class PicklistDependencyExplorerService {
         that it cannot produce a path outside the objects directory belongs to it rather than to a
         caller that happens to check first.
     */
-
-    /*
-        Every FailureKind SDTPicklistDependencyValidator can raise, restated as a cause and a step.
-
-        Keyed by the enum name the Apex emits rather than by anything re-derived here, so a kind the
-        framework stops raising simply stops being looked up, and a kind it starts raising falls
-        through to the default below instead of being silently explained as something else. The two
-        hand-edit kinds -- CONTRADICTORY_EXPECTATION and CIRCULAR_DEPENDENCY -- say so explicitly:
-        pointing an admin at the org for a spec no org can satisfy is the most expensive wrong turn
-        this panel could send someone on.
-    */
-    private static failureTriageByKind: Record<string, IPicklistDependencyFailureTriage> = {
-        MISSING_VALUES: {
-            likelyCause: 'A value this controlling value used to unlock is no longer valid for it in the org. Usually the value was unassigned from the dependent field, or the dependency matrix was re-drawn for this controlling value.',
-            nextStep: 'Open Setup > Object Manager > this field > Field Dependencies, select the controlling value named below, and re-tick the missing values -- or, if the org is now correct, re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" to re-baseline the spec.'
-        },
-        UNEXPECTED_VALUES: {
-            likelyCause: 'The org unlocks values this combination\'s exact expectation does not list. Values were added to the dependency matrix for this controlling value after the spec was generated.',
-            nextStep: 'Compare the values below against the field dependency matrix in Setup. Untick them there if the addition was unintended, or re-generate the specs to accept the org as the new baseline.'
-        },
-        FORBIDDEN_VALUES_PRESENT: {
-            likelyCause: 'A value the spec asserts this controlling value must NOT unlock is now reachable through it. The dependency was widened in the org -- this is the direction that silently lets bad data in.',
-            nextStep: 'Untick the values below for this controlling value in Setup > Field Dependencies, or re-generate the specs if widening the dependency was deliberate.'
-        },
-        UNKNOWN_CONTROLLING_VALUE: {
-            likelyCause: 'The controlling value itself no longer exists on the controlling field -- it was renamed, deactivated, or deleted. Nothing about the dependent values could be checked, because there is no controlling value to check them under.',
-            nextStep: 'Check the controlling field\'s value set in Setup against the values the message below lists as present in the org. A rename needs the spec re-generated; a deactivation needs the value reactivated or the dependency retired.'
-        },
-        UNEXPECTED_CONTROLLING_VALUE: {
-            likelyCause: 'A controlling value the spec asserts is unreachable under this record type is now available. The record type was widened to assign it, or the value was added to the record type\'s picklist.',
-            nextStep: 'Check this record type\'s picklist value assignment for the controlling field in Setup. Re-generate the specs if the record type was meant to be widened.'
-        },
-        CONTROLLING_FIELD_MISMATCH: {
-            likelyCause: 'The dependent field is now controlled by a different field than the spec declares. The dependency was re-pointed at another controlling field in the org, which invalidates every combination for this field at once.',
-            nextStep: 'Confirm the intended controlling field in Setup > Field Dependencies, then re-run the generate command so the spec targets the field the org actually uses. Nothing under this field is verified until it is re-pointed.'
-        },
-        CONTRADICTORY_EXPECTATION: {
-            likelyCause: 'The spec requires and forbids the same value under one controlling value, so no org can satisfy it. This is a hand edit to generated Apex rather than org drift -- the generator emits the forbidden list as the complement of the expected one, and the two cannot overlap in generated output.',
-            nextStep: 'Edit the generated spec method and remove the values below from either the expected list or the not-allowed list -- or re-run the generate command to replace the hand edit. Do not change the org: nothing in it caused this.'
-        },
-        UPSTREAM_FAILURE: {
-            likelyCause: 'This combination was not evaluated at all. The controlling field is itself a dependent picklist, and its own spec failed first, so anything reported here would be an echo of that break rather than a fact about this field.',
-            nextStep: 'Fix the upstream spec named in the message below and re-run the check. This row stays unverified until the upstream one passes.'
-        },
-        CIRCULAR_DEPENDENCY: {
-            likelyCause: 'The dependsOn chain loops back on itself, so the spec cannot be validated. Salesforce cannot express a cyclic picklist dependency, which makes this a hand edit to the generated dependsOn wiring rather than something the org did.',
-            nextStep: 'Open the generated spec method and remove the dependsOn link that closes the loop, or re-run the generate command to replace the hand edit.'
-        },
-        LOOKUP_ERROR: {
-            likelyCause: 'The describe call for this field failed in the target org. The field or object may not exist there, may not be deployed yet, or may not be visible to the user the check ran as.',
-            nextStep: 'Confirm the object and field are deployed to the target org and readable by the running user, then re-run "Salesforce Treecipe: Run Picklist Dependency Check". The Apex message below carries the org\'s own error text.'
-        }
-    };
-
-    /*
-        The triage for a kind, or an honest default for one this version has never heard of.
-
-        A kind with no entry is NOT explained away: the default says so, and points at the raw
-        message, which is the only thing that can still be trusted about a failure the panel does
-        not recognise.
-    */
-    static buildFailureTriage(failureKind: string): IPicklistDependencyFailureTriage {
-
-        return this.failureTriageByKind[failureKind] ?? {
-            likelyCause: `This version of the Explorer has no explanation for a "${failureKind}" failure -- it was raised by a picklist dependency framework newer or older than the panel.`,
-            nextStep: 'Read the Apex message below, which is reported exactly as the check received it, and re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" so the deployed framework and this extension are the same version.'
-        };
-
-    }
-
-    /*
-        A failure detail carries its triage INLINE only when the kind is one this version does not
-        recognise -- that text names the kind, so it cannot be shared. Every recognised kind is
-        resolved through the model's failureTriageByKind, which holds each prose pair once.
-    */
-    static buildFailureDetailViewModel(failureKind: string, failureMessage: string): IPicklistDependencyFailureDetailViewModel {
-
-        if ( this.failureTriageByKind[failureKind] ) {
-            return { kind: failureKind, message: failureMessage };
-        }
-
-        return {
-            kind: failureKind,
-            message: failureMessage,
-            triage: this.buildFailureTriage(failureKind)
-        };
-
-    }
-
-    // THE SHARED PROSE THE PANEL LOOKS A RECOGNISED KIND UP IN, COPIED SO THE PRIVATE MAP IS NOT HANDED OUT
-    static buildFailureTriageByKind(): Record<string, IPicklistDependencyFailureTriage> {
-
-        return { ...this.failureTriageByKind };
-
-    }
-
     static buildFieldSourceFilePath(objectsDirectoryPath: string, objectApiName: string, fieldApiName: string): string {
 
         const invalidApiName = [objectApiName, fieldApiName].find(apiName => !PicklistDependencyTestService.isValidSalesforceApiName(apiName));
@@ -900,9 +422,7 @@ export class PicklistDependencyExplorerService {
                 is still an assertion -- it means this controlling value unlocks everything.
             */
             hasForbiddenAssertion: Array.isArray(expectation.forbiddenValues),
-            controllingValueUnavailable: !!expectation.controllingValueUnavailable,
-            status: 'unknown' as PicklistDependencyCheckStatus,
-            failures: []
+            controllingValueUnavailable: !!expectation.controllingValueUnavailable
         }));
 
     }
@@ -1015,9 +535,6 @@ export class PicklistDependencyExplorerService {
                 declaredValues: this.buildDeclaredValuesByExpectations(specDetail),
                 combinations: this.buildCombinationViewModels(specDetail),
                 downstreamNodes: downstreamSpecDetails.map(downstreamSpecDetail => buildNode(downstreamSpecDetail, alreadyVisitedFieldApiNames)),
-                status: 'unknown',
-                failureCount: 0,
-                fieldLevelFailures: [],
                 recordTypeScopes: this.buildRecordTypeScopeViewModels(
                     recordTypeSpecDetailsByFieldApiName[specDetail.fieldApiName] || [],
                     generatedNames
@@ -1080,9 +597,6 @@ export class PicklistDependencyExplorerService {
         expectations rather than from the field, so the panel's forbidden complement is drawn against
         what the RECORD TYPE assigns -- a value it does not expose is already unreachable through it,
         and showing it struck through would claim the spec asserts something it does not.
-
-        Status stays "unknown" rather than inheriting the field's. Nothing shipped with the framework
-        can verify a scoped combination, so a green field-level run says nothing about these.
     */
     static buildRecordTypeScopeViewModels(recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[],
                                             generatedNames: IPicklistDependencyGeneratedNames = EMPTY_GENERATED_NAMES): IPicklistDependencyRecordTypeScopeViewModel[] {
@@ -1100,8 +614,6 @@ export class PicklistDependencyExplorerService {
                 ] ?? '',
                 declaredValues: this.buildDeclaredValuesByExpectations(recordTypeSpecDetail),
                 combinations: this.buildCombinationViewModels(recordTypeSpecDetail),
-                status: 'unknown' as PicklistDependencyCheckStatus,
-                failureCount: 0,
                 truncatedCombinationCount: 0,
                 declaredValuesTruncated: false
             }));
@@ -1194,180 +706,6 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    /*
-        Applies one object's parsed failures down its graph, and reports which of them found nowhere
-        to land.
-
-        A failure naming a controlling value marks that combination; one without names the field as a
-        whole (LOOKUP_ERROR, CONTROLLING_FIELD_MISMATCH, UPSTREAM_FAILURE, CIRCULAR_DEPENDENCY all
-        arrive that way). A failure naming a field or combination this metadata no longer describes
-        can be applied to nothing, and is RETURNED rather than discarded -- discarding it was what
-        let a drifted combination render green while its Apex message disappeared.
-
-        Every failure matching a combination is kept, not just the first: the validator raises
-        MISSING_VALUES and FORBIDDEN_VALUES_PRESENT independently for the same controlling value, and
-        showing one of the two hides a real drift fact.
-    */
-    static applyFailuresToNodes(nodes: IPicklistDependencyNodeViewModel[],
-                                    parsedFailures: IParsedPicklistDependencyFailure[],
-                                    objectRan: boolean): IParsedPicklistDependencyFailure[] {
-
-        const allNodes = this.flattenNodes(nodes);
-        let appliedFailures = new Set<IParsedPicklistDependencyFailure>();
-
-        allNodes.forEach(node => {
-
-            const failuresForAnyScopeOfField = parsedFailures.filter(
-                parsedFailure => parsedFailure.objectApiName === node.objectApiName && parsedFailure.fieldApiName === node.fieldApiName
-            );
-
-            /*
-                A failure naming a record type belongs to that scope, not to the field-level rows. Left
-                in this list it would attribute to the field-level combination with the same
-                controlling value and read as drift in a spec the run never evaluated.
-            */
-            const failuresForField = failuresForAnyScopeOfField.filter(parsedFailure => parsedFailure.recordTypeDeveloperName === undefined);
-
-            let nodeFailureCount = 0;
-
-            node.combinations.forEach(combination => {
-
-                let combinationFailures: IPicklistDependencyFailureDetailViewModel[] = [];
-
-                failuresForField.forEach(parsedFailure => {
-
-                    if ( parsedFailure.controllingValueAndMessage === undefined ) {
-                        return;
-                    }
-
-                    const failureMessage = this.extractFailureMessageForControllingValue(
-                        parsedFailure.controllingValueAndMessage,
-                        combination.controllingValue
-                    );
-
-                    if ( failureMessage === undefined ) {
-                        return;
-                    }
-
-                    combinationFailures.push(this.buildFailureDetailViewModel(parsedFailure.kind, failureMessage));
-                    appliedFailures.add(parsedFailure);
-
-                });
-
-                combination.failures = combinationFailures;
-
-                if ( combinationFailures.length > 0 ) {
-                    combination.status = 'failed';
-                    nodeFailureCount += combinationFailures.length;
-                    return;
-                }
-
-                combination.status = objectRan ? 'passed' : 'unknown';
-
-            });
-
-            const fieldLevelFailures = failuresForField.filter(parsedFailure => parsedFailure.fieldLevelMessage !== undefined);
-
-            node.fieldLevelFailures = fieldLevelFailures.map(parsedFailure => {
-                appliedFailures.add(parsedFailure);
-                return this.buildFailureDetailViewModel(parsedFailure.kind, parsedFailure.fieldLevelMessage);
-            });
-
-            nodeFailureCount += node.fieldLevelFailures.length;
-
-            /*
-                Grouped once per node rather than re-scanned per scope. A field carrying many record
-                types and an object reporting many failures multiply otherwise, and this runs twice
-                per object -- once for the dry run that asks whether every failure can be placed.
-            */
-            let failuresByRecordTypeDeveloperName: Record<string, IParsedPicklistDependencyFailure[]> = {};
-            failuresForAnyScopeOfField.forEach(parsedFailure => {
-
-                if ( parsedFailure.recordTypeDeveloperName === undefined ) {
-                    return;
-                }
-
-                const recordTypeDeveloperName = parsedFailure.recordTypeDeveloperName;
-                failuresByRecordTypeDeveloperName[recordTypeDeveloperName] = failuresByRecordTypeDeveloperName[recordTypeDeveloperName] || [];
-                failuresByRecordTypeDeveloperName[recordTypeDeveloperName].push(parsedFailure);
-
-            });
-
-            node.recordTypeScopes.forEach(recordTypeScope => {
-
-                const failuresForScope = failuresByRecordTypeDeveloperName[recordTypeScope.recordTypeDeveloperName] || [];
-
-                let scopeFailureCount = 0;
-
-                recordTypeScope.combinations.forEach(combination => {
-
-                    let combinationFailures: IPicklistDependencyFailureDetailViewModel[] = [];
-
-                    failuresForScope.forEach(parsedFailure => {
-
-                        if ( parsedFailure.controllingValueAndMessage === undefined ) {
-                            return;
-                        }
-
-                        const failureMessage = this.extractFailureMessageForControllingValue(
-                            parsedFailure.controllingValueAndMessage,
-                            combination.controllingValue
-                        );
-
-                        if ( failureMessage === undefined ) {
-                            return;
-                        }
-
-                        combinationFailures.push(this.buildFailureDetailViewModel(parsedFailure.kind, failureMessage));
-                        appliedFailures.add(parsedFailure);
-
-                    });
-
-                    combination.failures = combinationFailures;
-
-                    /*
-                        A scoped combination that was not named goes to "unknown" rather than
-                        "passed" even when the object ran. The run validates SDTPLDSpecs.all(), which
-                        holds the field-level specs only -- calling these passed would report a scope
-                        nothing checked as verified.
-                    */
-                    combination.status = combinationFailures.length > 0 ? 'failed' : 'unknown';
-                    scopeFailureCount += combinationFailures.length;
-
-                });
-
-                recordTypeScope.failureCount = scopeFailureCount;
-                recordTypeScope.status = scopeFailureCount > 0 ? 'failed' : 'unknown';
-                nodeFailureCount += scopeFailureCount;
-
-            });
-
-            node.failureCount = nodeFailureCount;
-
-            if ( nodeFailureCount > 0 ) {
-                node.status = 'failed';
-            } else if ( objectRan ) {
-                node.status = 'passed';
-            } else {
-                node.status = 'unknown';
-            }
-
-        });
-
-        return parsedFailures.filter(parsedFailure => !appliedFailures.has(parsedFailure));
-
-    }
-
-    static buildUnattributedFailureMessage(parsedFailure: IParsedPicklistDependencyFailure): string {
-
-        const recordTypeScope = parsedFailure.recordTypeDeveloperName ? ` [${parsedFailure.recordTypeDeveloperName}]` : '';
-        const failureScope = `${parsedFailure.objectApiName}.${parsedFailure.fieldApiName}${recordTypeScope}`;
-        const failureDetail = parsedFailure.controllingValueAndMessage ?? parsedFailure.fieldLevelMessage ?? '';
-
-        return `${parsedFailure.kind} — ${failureScope}${parsedFailure.controllingValueAndMessage !== undefined ? ' @ ' : ': '}${failureDetail}`;
-
-    }
-
     static groupSpecDetailsByObjectApiName(specDetails: IPicklistDependencySpecDetail[]): Record<string, IPicklistDependencySpecDetail[]> {
 
         let specDetailsByObjectApiName: Record<string, IPicklistDependencySpecDetail[]> = {};
@@ -1382,20 +720,17 @@ export class PicklistDependencyExplorerService {
     }
 
     /*
-        The whole view model: dependency structure from local source metadata, with the most recent
-        check overlaid onto it when one exists.
+        The whole view model: the dependency STRUCTURE, and nothing about any run against it.
 
-        An object whose test method failed but whose failures cannot ALL be tied to a combination
-        keeps every combination at "unknown" and surfaces the unattributable text instead. Marking
-        them all failed would overstate a drift that touched one combination, and marking them
-        passed would report green for a combination the org may well have broken -- neither is a
-        claim the loaded artifact supports. Attribution is therefore decided BEFORE the statuses are
-        assigned: a failure that lands nowhere has to be able to hold the whole object back.
+        This panel reads no check results. A picklist dependency is a fact about the metadata --
+        which controlling value unlocks which dependent values -- and it is fully derivable from the
+        spec manifest alone, so the structure is readable in a workspace that has never had an org,
+        a CLI or a deployed test. Whether the org still AGREES with that structure is what "Run
+        Picklist Dependency Check" answers, and it answers it in its own report.
     */
     static buildExplorerViewModel(objectsDirectoryPath: string,
                                     specDetails: IPicklistDependencySpecDetail[],
                                     skippedFieldWarnings: string[],
-                                    resultsLoad: IPicklistDependencyResultsLoad,
                                     recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
                                     explorerContext: IPicklistDependencyExplorerContext = this.buildMetadataPreviewContext()): IPicklistDependencyExplorerViewModel {
 
@@ -1426,11 +761,6 @@ export class PicklistDependencyExplorerService {
 
         const skippedFieldViewModelsByObjectApiName = this.groupSkippedFieldViewModelsByObjectApiName(explorerContext.skippedFields);
 
-        let methodOutcomesByMethodName: Record<string, IPicklistDependencyResultsMethodOutcome> = {};
-        ( resultsLoad.results?.methodOutcomes || [] ).forEach(methodOutcome => {
-            methodOutcomesByMethodName[methodOutcome.methodName] = methodOutcome;
-        });
-
         const objects: IPicklistDependencyObjectViewModel[] = distinctObjectApiNames.map(objectApiName => {
 
             const objectSpecDetails = specDetailsByObjectApiName[objectApiName] || [];
@@ -1447,42 +777,6 @@ export class PicklistDependencyExplorerService {
 
             const testMethodName = explorerContext.testMethodNamesByObjectApiName[objectApiName]
                                         ?? derivedTestMethodNamesByObjectApiName[objectApiName];
-            const methodOutcome = methodOutcomesByMethodName[testMethodName];
-
-            const parsedFailures = methodOutcome && !methodOutcome.passed
-                ? this.parseFailureLines(methodOutcome.message)
-                : [];
-
-            /*
-                A dry run first, purely to learn whether every failure can be placed. Its status
-                assignments are discarded by the second pass below -- what it is being asked is
-                "does anything land nowhere", which cannot be known without attempting the match.
-            */
-            const unattributedFailures = this.applyFailuresToNodes(rootNodes, parsedFailures, true);
-
-            const failureIsUnattributable = !!( methodOutcome && !methodOutcome.passed
-                                                    && ( parsedFailures.length === 0 || unattributedFailures.length > 0 ) );
-
-            const objectRan = !!methodOutcome && !failureIsUnattributable;
-
-            this.applyFailuresToNodes(rootNodes, parsedFailures, objectRan);
-
-            const attributedFailureCount = this.flattenNodes(rootNodes)
-                .reduce((failureCount, node) => failureCount + node.failureCount, 0);
-
-            let objectStatus: PicklistDependencyCheckStatus = 'unknown';
-            if ( methodOutcome ) {
-                objectStatus = methodOutcome.passed ? 'passed' : 'failed';
-            }
-
-            let unattributedFailureMessages: string[] = [];
-            if ( failureIsUnattributable ) {
-
-                unattributedFailureMessages = unattributedFailures.length > 0
-                    ? unattributedFailures.map(unattributedFailure => this.buildUnattributedFailureMessage(unattributedFailure))
-                    : [methodOutcome.message ?? ''];
-
-            }
 
             return {
                 objectApiName: objectApiName,
@@ -1490,13 +784,9 @@ export class PicklistDependencyExplorerService {
                 dependentFieldCount: this.countNodes(rootNodes),
                 combinationCount: this.countCombinations(rootNodes),
                 recordTypeCombinationCount: this.countRecordTypeCombinations(rootNodes),
-                status: objectStatus,
-                failureCount: attributedFailureCount,
                 testMethodName: testMethodName,
                 generatedClassName: generatedNames.generatedClassName,
-                generatedClassFilePath: explorerContext.generatedClassFilePathsByObjectApiName[objectApiName] ?? '',
                 skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName] ?? [],
-                unattributedFailureMessages: unattributedFailureMessages,
                 searchText: '',
                 truncatedNodeCount: 0
             };
@@ -1522,13 +812,9 @@ export class PicklistDependencyExplorerService {
             dependentFieldCount: 0,
             combinationCount: 0,
             recordTypeCombinationCount: 0,
-            status: 'unknown' as PicklistDependencyCheckStatus,
-            failureCount: 0,
             testMethodName: '',
             generatedClassName: '',
-            generatedClassFilePath: '',
             skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName],
-            unattributedFailureMessages: [],
             truncatedNodeCount: 0,
             searchText: [objectApiName, ...skippedFieldViewModelsByObjectApiName[objectApiName].map(skippedField => skippedField.fieldApiName)]
                             .filter(searchableValue => !!searchableValue)
@@ -1537,18 +823,6 @@ export class PicklistDependencyExplorerService {
         }));
 
         const allObjects = objects.concat(skipOnlyObjects);
-
-        const runSummary: IPicklistDependencyRunSummary | undefined = ( resultsLoad.state === 'loaded' && resultsLoad.results )
-            ? {
-                targetOrg: resultsLoad.results.targetOrg,
-                ranAt: resultsLoad.results.ranAt,
-                passed: resultsLoad.results.passed,
-                failureCount: resultsLoad.results.failureCount,
-                methodsRun: resultsLoad.results.methodsRun,
-                resultsFilePath: resultsLoad.resultsFilePath ?? '',
-                reportFilePath: this.resolveRunReportFilePath(resultsLoad.resultsFilePath ?? '')
-            }
-            : undefined;
 
         const explorerViewModel: IPicklistDependencyExplorerViewModel = {
             scannedObjectsDirectoryPath: objectsDirectoryPath,
@@ -1559,9 +833,6 @@ export class PicklistDependencyExplorerService {
                 (recordTypeCombinationCount, objectViewModel) => recordTypeCombinationCount + objectViewModel.recordTypeCombinationCount,
                 0
             ),
-            runLoadState: resultsLoad.state,
-            runSummary: runSummary,
-            runLoadMessage: resultsLoad.message,
             skippedFieldWarnings: [...skippedFieldWarnings],
             modelSource: explorerContext.modelSource,
             manifestLoadState: explorerContext.manifestLoadState,
@@ -1575,9 +846,7 @@ export class PicklistDependencyExplorerService {
             specsTestClassName: explorerContext.specsTestClassName,
             classesDirectoryPath: explorerContext.classesDirectoryPath,
             truncatedObjectCount: 0,
-            truncationNotices: [],
-            truncatedFailedCombinationCount: 0,
-            failureTriageByKind: this.buildFailureTriageByKind()
+            truncationNotices: []
         };
 
         /*
@@ -1610,7 +879,6 @@ export class PicklistDependencyExplorerService {
             specsTestClassName: '',
             classesDirectoryPath: '',
             generatedNamesByObjectApiName: {},
-            generatedClassFilePathsByObjectApiName: {},
             // A PREVIEW HAS NO GENERATED TEST CLASS, SO THESE ARE DERIVED RATHER THAN READ -- SEE buildExplorerViewModel
             testMethodNamesByObjectApiName: {},
             skippedFields: []
@@ -1629,8 +897,14 @@ export class PicklistDependencyExplorerService {
         a safety property once the model can name anything on the disk.
 
         Returning EMPTY rather than falling back to a guess is what makes this safe by default
-        downstream: an object with no generated class file path contributes no spec target and
-        renders no "Open spec method" button, which is already how a metadata preview behaves.
+        downstream: a path the extension host cannot be asked to open is one it cannot be tricked
+        into opening.
+
+        generatedClassFilePath used to come through here and no longer exists on the model at all.
+        A path in the payload whose only consumer has been removed is not merely unused -- it is an
+        unguarded string one future button away from being opened, so it was deleted rather than
+        left resolved-but-idle. Any manifest path that becomes openable again must be added back
+        HERE first.
     */
     static resolveOpenableManifestFilePath(manifestFilePath: string, workspaceRoot?: string): string {
 
@@ -1662,7 +936,6 @@ export class PicklistDependencyExplorerService {
                                     workspaceRoot?: string): IPicklistDependencyExplorerContext {
 
         let generatedNamesByObjectApiName: Record<string, IPicklistDependencyGeneratedNames> = {};
-        let generatedClassFilePathsByObjectApiName: Record<string, string> = {};
         let testMethodNamesByObjectApiName: Record<string, string> = {};
 
         manifest.objects.forEach(manifestObject => {
@@ -1688,10 +961,6 @@ export class PicklistDependencyExplorerService {
                 specMethodNamesByFieldKey: specMethodNamesByFieldKey
             };
 
-            generatedClassFilePathsByObjectApiName[manifestObject.objectApiName] = this.resolveOpenableManifestFilePath(
-                manifestObject.generatedClassFilePath,
-                workspaceRoot
-            );
             testMethodNamesByObjectApiName[manifestObject.objectApiName] = manifestObject.testMethodName;
 
         });
@@ -1709,7 +978,6 @@ export class PicklistDependencyExplorerService {
             specsTestClassName: manifest.specsTestClassName,
             classesDirectoryPath: this.resolveOpenableManifestFilePath(manifest.classesDirectoryPath, workspaceRoot),
             generatedNamesByObjectApiName: generatedNamesByObjectApiName,
-            generatedClassFilePathsByObjectApiName: generatedClassFilePathsByObjectApiName,
             testMethodNamesByObjectApiName: testMethodNamesByObjectApiName,
             skippedFields: manifest.skippedFields
         };
@@ -1756,7 +1024,6 @@ export class PicklistDependencyExplorerService {
     */
     static buildExplorerViewModelByManifest(manifestLoad: IPicklistDependencyManifestLoad,
                                                 objectsDirectoryPath: string,
-                                                resultsLoad: IPicklistDependencyResultsLoad,
                                                 freshnessResult: IPicklistDependencyManifestFreshnessResult,
                                                 workspaceRoot?: string): IPicklistDependencyExplorerViewModel {
 
@@ -1773,7 +1040,6 @@ export class PicklistDependencyExplorerService {
             this.resolveRenderableObjectsDirectoryPath(manifest.objectsDirectoryPath, objectsDirectoryPath, workspaceRoot),
             manifestSpecDetails.specDetails,
             manifest.skippedFieldWarnings,
-            resultsLoad,
             manifestSpecDetails.recordTypeSpecDetails,
             explorerContext
         );
@@ -1845,11 +1111,18 @@ export class PicklistDependencyExplorerService {
         Keeps at most "cap" items, and never drops one the caller marked as retained.
 
         Retained items are taken FIRST and the remainder fills what is left, but the result is
-        returned in the caller's original order rather than with the retained ones hoisted -- a
-        combination list that reorders itself once an org drifts is a list a reader can no longer
-        scan against the field it came from. When the retained items alone exceed the cap they are
-        all kept anyway: the cap exists to bound a pathological render, and dropping a reported
-        failure to honour it would break the one promise the panel makes.
+        returned in the caller's original order rather than with the retained ones hoisted -- a list
+        that reorders itself is a list a reader can no longer scan against the manifest it came
+        from. When the retained items alone exceed the cap they are all kept anyway: the cap exists
+        to bound a pathological render, not to hide a row the caller said must be shown.
+
+        Exactly ONE axis retains anything now: an object carrying a skipped field. Everywhere else
+        the predicate is constant-false, which makes this "the first `cap` in manifest order" -- and
+        that is deliberate rather than a leftover. The panel used to retain rows a check had
+        reported a failure for; it reads no check, so there is no property of a row left to prefer
+        by, and inventing one (longest, most combinations, alphabetical) would order the panel by
+        something the generated Apex does not order by. Manifest order is what the generator emitted,
+        so a capped list is a PREFIX of the specs rather than a selection.
     */
     static selectWithinCap<TItem>(items: TItem[], cap: number, isRetained: (item: TItem) => boolean): TItem[] {
 
@@ -1885,12 +1158,15 @@ export class PicklistDependencyExplorerService {
         The payload is serialized into the panel html in full, so before this existed the panel's
         size was whatever the org happened to be -- around 17MB of embedded JSON for a large one,
         with no number anywhere saying so. Truncation is preferred to a silently enormous document,
-        but only on the axis that costs nothing to lose: anything the check reported a failure for,
-        and any object carrying a skipped field, is retained regardless of the cap.
+        and what survives it is decided by MANIFEST ORDER on every axis -- see selectWithinCap for
+        why that, and not some property of the rows.
 
-        Nothing here changes a status. A dropped row is ABSENT and counted in a notice, never
-        rendered as something it was not -- the three-state guarantee holds under the ceiling exactly
-        as it holds under a filter.
+        One exception, and it is not about a run: an object carrying a SKIPPED field is retained
+        regardless of the cap. A skipped field is the one thing the panel shows that nothing
+        asserts, and dropping the object holding it would leave a dependency that was never specced
+        indistinguishable from one that does not exist.
+
+        A dropped row is ABSENT and counted in a notice, never rendered as something it was not.
     */
     static applyModelLimits(viewModel: IPicklistDependencyExplorerViewModel,
                                 limits: IPicklistDependencyExplorerModelLimits = DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS): IPicklistDependencyExplorerViewModel {
@@ -1902,10 +1178,7 @@ export class PicklistDependencyExplorerService {
         viewModel.objects = this.selectWithinCap(
             viewModel.objects,
             limits.maxObjects,
-            objectViewModel => objectViewModel.status === 'failed'
-                                || objectViewModel.failureCount > 0
-                                || objectViewModel.unattributedFailureMessages.length > 0
-                                || objectViewModel.skippedFields.length > 0
+            objectViewModel => objectViewModel.skippedFields.length > 0
         );
 
         /*
@@ -1919,10 +1192,10 @@ export class PicklistDependencyExplorerService {
 
         if ( truncatedObjectCount > 0 ) {
             truncationNotices.push(
-                `Showing ${viewModel.objects.length} of ${declaredObjectCount} objects. `
-                    + `${truncatedObjectCount} object(s) with no reported failure and no skipped field are not rendered, `
+                `Showing the first ${viewModel.objects.length} of ${declaredObjectCount} objects, in the order the `
+                    + `manifest declares them. ${truncatedObjectCount} object(s) are not rendered, `
                     + 'so they cannot be found with the filter above either. '
-                    + 'Every object the check reported on, and every object carrying a skipped field, is shown. '
+                    + 'Every object carrying a skipped field is shown regardless of that limit. '
                     + 'Generate against a narrower objects directory to bring the rest onto the panel.'
             );
         }
@@ -1931,8 +1204,8 @@ export class PicklistDependencyExplorerService {
         let truncatedRecordTypeScopeCount = 0;
         let truncatedNodeCount = 0;
 
-        const isFailedCombination = (combination: IPicklistDependencyCombinationViewModel) =>
-            combination.status === 'failed' || combination.failures.length > 0;
+        // MANIFEST ORDER ON EVERY AXIS BELOW -- SEE selectWithinCap
+        const retainsNothing = () => false;
 
         viewModel.objects.forEach(objectViewModel => {
 
@@ -1946,7 +1219,7 @@ export class PicklistDependencyExplorerService {
             objectViewModel.rootNodes = this.selectWithinCap(
                 objectViewModel.rootNodes,
                 limits.maxNodesPerObject,
-                rootNode => this.flattenNodes([rootNode]).some(node => node.status === 'failed' || node.failureCount > 0)
+                retainsNothing
             );
 
             const objectTruncatedNodeCount = declaredNodeCount - this.countNodes(objectViewModel.rootNodes);
@@ -1961,7 +1234,7 @@ export class PicklistDependencyExplorerService {
                 }
 
                 const declaredCombinationCount = node.combinations.length;
-                node.combinations = this.selectWithinCap(node.combinations, limits.maxCombinationsPerNode, isFailedCombination);
+                node.combinations = this.selectWithinCap(node.combinations, limits.maxCombinationsPerNode, retainsNothing);
                 node.truncatedCombinationCount += declaredCombinationCount - node.combinations.length;
                 truncatedCombinationCount += declaredCombinationCount - node.combinations.length;
 
@@ -1969,7 +1242,7 @@ export class PicklistDependencyExplorerService {
                 node.recordTypeScopes = this.selectWithinCap(
                     node.recordTypeScopes,
                     limits.maxRecordTypeScopesPerNode,
-                    recordTypeScope => recordTypeScope.status === 'failed' || recordTypeScope.failureCount > 0
+                    retainsNothing
                 );
                 node.truncatedRecordTypeScopeCount += declaredRecordTypeScopeCount - node.recordTypeScopes.length;
                 truncatedRecordTypeScopeCount += declaredRecordTypeScopeCount - node.recordTypeScopes.length;
@@ -1982,7 +1255,7 @@ export class PicklistDependencyExplorerService {
                     }
 
                     const declaredScopeCombinationCount = recordTypeScope.combinations.length;
-                    recordTypeScope.combinations = this.selectWithinCap(recordTypeScope.combinations, limits.maxCombinationsPerNode, isFailedCombination);
+                    recordTypeScope.combinations = this.selectWithinCap(recordTypeScope.combinations, limits.maxCombinationsPerNode, retainsNothing);
                     recordTypeScope.truncatedCombinationCount += declaredScopeCombinationCount - recordTypeScope.combinations.length;
                     truncatedCombinationCount += declaredScopeCombinationCount - recordTypeScope.combinations.length;
 
@@ -1992,13 +1265,12 @@ export class PicklistDependencyExplorerService {
 
         });
 
-        const totalBudgetResult = this.applyTotalCombinationBudget(viewModel, limits.maxRenderedCombinations);
-        truncatedCombinationCount += totalBudgetResult.truncatedCombinationCount;
+        truncatedCombinationCount += this.applyTotalCombinationBudget(viewModel, limits.maxRenderedCombinations);
 
         if ( truncatedNodeCount > 0 ) {
             truncationNotices.push(
                 `${truncatedNodeCount} dependent picklist(s) are not rendered: no object shows more than `
-                    + `${limits.maxNodesPerObject} at once. Every chain the check reported a failure in is shown.`
+                    + `${limits.maxNodesPerObject} at once, and the first ${limits.maxNodesPerObject} the manifest declares are shown.`
             );
         }
 
@@ -2006,28 +1278,14 @@ export class PicklistDependencyExplorerService {
             truncationNotices.push(
                 `${truncatedCombinationCount} combination(s) are not rendered, against a panel total of `
                     + `${limits.maxRenderedCombinations} and a per-field limit of ${limits.maxCombinationsPerNode}. `
-                    + 'Combinations the check reported a failure for are kept ahead of every passing one.'
+                    + 'Each list keeps the combinations the manifest declares first.'
             );
         }
 
         if ( truncatedRecordTypeScopeCount > 0 ) {
             truncationNotices.push(
                 `${truncatedRecordTypeScopeCount} record type scope(s) are not rendered: no field shows more than `
-                    + `${limits.maxRecordTypeScopesPerNode} at once. Every scope the check reported a failure for is shown.`
-            );
-        }
-
-        /*
-            Said separately and last, because it is the only drop that costs the reader something
-            the panel cannot give back: past the total budget even a reported failure is not on
-            screen, and the run report is then the complete record while the panel is not.
-        */
-        if ( totalBudgetResult.truncatedFailedCombinationCount > 0 ) {
-            viewModel.truncatedFailedCombinationCount += totalBudgetResult.truncatedFailedCombinationCount;
-            truncationNotices.push(
-                `${totalBudgetResult.truncatedFailedCombinationCount} combination(s) the check reported a FAILURE for are not `
-                    + `rendered either: there are more failures than the panel's total of ${limits.maxRenderedCombinations} rows can hold. `
-                    + 'The run report beside results.json lists every one of them -- treat it, not this panel, as the complete record of this run.'
+                    + `${limits.maxRecordTypeScopesPerNode} at once, and the first ${limits.maxRecordTypeScopesPerNode} the manifest declares are shown.`
             );
         }
 
@@ -2043,19 +1301,22 @@ export class PicklistDependencyExplorerService {
 
         This is what makes the ceiling a size rather than a shape. The per-axis caps above bound
         each axis independently, and their product is millions of rows -- so before this existed a
-        drifted org still serialized a payload as large as the org, which is the condition the
-        ceiling was introduced to remove.
+        large org still serialized a payload as large as the org, which is the condition the ceiling
+        was introduced to remove.
 
-        Failing combinations fill the budget FIRST, in document order, so a failure is never dropped
-        in favour of a passing row. Past the budget they are dropped too and counted separately: an
-        unbounded payload is worse for the reader than a bounded one that says what is missing and
-        where the complete list lives.
+        The budget is spent in DOCUMENT ORDER, which is manifest order: objects as the manifest
+        declares them, each field's chain depth-first, each field's own combinations before its
+        record type scopes. It used to be spent in two passes -- every combination a check had
+        reported a failure for first, then the remainder -- and that split is gone with the statuses
+        it read. One pass in a fixed order is what keeps the ceiling reproducible: the same manifest
+        truncates to the same rows every time, so a reader who cannot find a combination can tell
+        from the notice that it was cut rather than wondering whether it moved.
     */
     static applyTotalCombinationBudget(viewModel: IPicklistDependencyExplorerViewModel,
-                                        maxRenderedCombinations: number): { truncatedCombinationCount: number; truncatedFailedCombinationCount: number } {
+                                        maxRenderedCombinations: number): number {
 
         if ( maxRenderedCombinations <= 0 ) {
-            return { truncatedCombinationCount: 0, truncatedFailedCombinationCount: 0 };
+            return 0;
         }
 
         type CombinationHolder = { combinations: IPicklistDependencyCombinationViewModel[] };
@@ -2069,158 +1330,30 @@ export class PicklistDependencyExplorerService {
             });
         });
 
-        const isFailedCombination = (combination: IPicklistDependencyCombinationViewModel) =>
-            combination.status === 'failed' || combination.failures.length > 0;
-
         const renderedCombinationCount = combinationHolders.reduce(
             (combinationCount, combinationHolder) => combinationCount + combinationHolder.combinations.length,
             0
         );
 
         if ( renderedCombinationCount <= maxRenderedCombinations ) {
-            return { truncatedCombinationCount: 0, truncatedFailedCombinationCount: 0 };
+            return 0;
         }
 
-        const failedCombinationCount = combinationHolders.reduce(
-            (combinationCount, combinationHolder) => combinationCount + combinationHolder.combinations.filter(isFailedCombination).length,
-            0
-        );
-
-        /*
-            Two budgets rather than one pass: how many FAILING rows fit, and how much is left over
-            for the rest. Spending the remainder on passing rows only after every failure that fits
-            has been placed is what keeps "a failure is never dropped for a passing row" true
-            without needing to reorder anything on screen.
-        */
-        let failedBudgetRemaining = Math.min(failedCombinationCount, maxRenderedCombinations);
-        let passingBudgetRemaining = maxRenderedCombinations - failedBudgetRemaining;
-
+        let budgetRemaining = maxRenderedCombinations;
         let truncatedCombinationCount = 0;
-        let truncatedFailedCombinationCount = 0;
 
         combinationHolders.forEach(combinationHolder => {
 
-            let keptCombinations: IPicklistDependencyCombinationViewModel[] = [];
+            const keptCombinationCount = Math.min(budgetRemaining, combinationHolder.combinations.length);
 
-            combinationHolder.combinations.forEach(combination => {
+            truncatedCombinationCount += combinationHolder.combinations.length - keptCombinationCount;
+            budgetRemaining -= keptCombinationCount;
 
-                if ( isFailedCombination(combination) ) {
-
-                    if ( failedBudgetRemaining > 0 ) {
-                        failedBudgetRemaining--;
-                        keptCombinations.push(combination);
-                        return;
-                    }
-
-                    truncatedFailedCombinationCount++;
-                    truncatedCombinationCount++;
-                    return;
-
-                }
-
-                if ( passingBudgetRemaining > 0 ) {
-                    passingBudgetRemaining--;
-                    keptCombinations.push(combination);
-                    return;
-                }
-
-                truncatedCombinationCount++;
-
-            });
-
-            combinationHolder.combinations = keptCombinations;
+            combinationHolder.combinations = combinationHolder.combinations.slice(0, keptCombinationCount);
 
         });
 
-        return {
-            truncatedCombinationCount: truncatedCombinationCount,
-            truncatedFailedCombinationCount: truncatedFailedCombinationCount
-        };
-
-    }
-
-    /*
-        The "report.md" the same run wrote beside its results.json, when it wrote one.
-
-        Resolved from the results path rather than searched for, because the two are written into
-        the same run folder in one call -- and returned empty rather than guessed at when the file
-        is not there, so the panel offers the link only where following it would land somewhere.
-    */
-    static resolveRunReportFilePath(resultsFilePath: string): string {
-
-        if ( !resultsFilePath ) {
-            return '';
-        }
-
-        const runReportFilePath = path.join(path.dirname(resultsFilePath), 'report.md');
-
-        return fs.existsSync(runReportFilePath) ? runReportFilePath : '';
-
-    }
-
-    /*
-        One allow-list entry: a file the panel may open, paired with the method inside it the panel
-        may scroll to. The pair is the unit rather than the path alone, so a panel message cannot
-        combine a legitimate file with a method name of its own choosing and have the host go
-        looking for it.
-    */
-    static buildOpenTargetKey(filePath: string, methodName: string): string {
-        return `${filePath}::${methodName}`;
-    }
-
-    /*
-        Every generated spec method the model names, keyed by the class file it lives in. An object
-        whose class file path is unknown -- every object in a metadata preview -- contributes
-        nothing, which is correct: no generated code asserts it, so there is nothing to open.
-    */
-    static collectOpenableSpecTargets(viewModel: IPicklistDependencyExplorerViewModel): string[] {
-
-        let openableSpecTargets: string[] = [];
-
-        viewModel.objects.forEach(objectViewModel => {
-
-            if ( !objectViewModel.generatedClassFilePath ) {
-                return;
-            }
-
-            this.flattenNodes(objectViewModel.rootNodes).forEach(node => {
-
-                if ( node.specMethodName ) {
-                    openableSpecTargets.push(this.buildOpenTargetKey(objectViewModel.generatedClassFilePath, node.specMethodName));
-                }
-
-                node.recordTypeScopes.forEach(recordTypeScope => {
-
-                    if ( recordTypeScope.specMethodName ) {
-                        openableSpecTargets.push(this.buildOpenTargetKey(objectViewModel.generatedClassFilePath, recordTypeScope.specMethodName));
-                    }
-
-                });
-
-            });
-
-        });
-
-        return openableSpecTargets;
-
-    }
-
-    /*
-        Every run report entry the model names. There is exactly one report file, so the pair is
-        what constrains this: the panel may scroll to the entry for an object the model rendered,
-        and to nothing else in the file.
-    */
-    static collectOpenableRunReportTargets(viewModel: IPicklistDependencyExplorerViewModel): string[] {
-
-        const runReportFilePath = viewModel.runSummary?.reportFilePath;
-
-        if ( !runReportFilePath ) {
-            return [];
-        }
-
-        return viewModel.objects
-            .filter(objectViewModel => !!objectViewModel.testMethodName)
-            .map(objectViewModel => this.buildOpenTargetKey(runReportFilePath, objectViewModel.testMethodName));
+        return truncatedCombinationCount;
 
     }
 
@@ -2249,82 +1382,6 @@ export class PicklistDependencyExplorerService {
         });
 
         return combinationKeys;
-
-    }
-
-    /*
-        The 1-based line a generated Apex method is DECLARED on, or 0 when the file does not declare
-        it.
-
-        A generated class names each spec method twice -- once where it is declared and once in the
-        aggregate that returns them all -- so the first textual hit is as likely to be the call site
-        as the declaration. A line opening with a modifier or an annotation is taken as the
-        declaration; the first hit is the fallback, which still lands the reader inside the right
-        class rather than nowhere.
-    */
-    static findApexMethodDeclarationLineNumber(apexClassContent: string, methodName: string): number {
-
-        if ( !apexClassContent || !methodName ) {
-            return 0;
-        }
-
-        const apexClassLines = apexClassContent.split(/\r?\n/);
-        let firstMentionLineNumber = 0;
-
-        for ( let lineIndex = 0; lineIndex < apexClassLines.length; lineIndex++ ) {
-
-            const apexClassLine = apexClassLines[lineIndex];
-
-            if ( apexClassLine.indexOf(`${methodName}(`) === -1 ) {
-                continue;
-            }
-
-            if ( firstMentionLineNumber === 0 ) {
-                firstMentionLineNumber = lineIndex + 1;
-            }
-
-            if ( /^\s*(?:@|public\b|private\b|protected\b|global\b|static\b|testmethod\b)/i.test(apexClassLine) ) {
-                return lineIndex + 1;
-            }
-
-        }
-
-        return firstMentionLineNumber;
-
-    }
-
-    /*
-        The 1-based line the run report describes a test method on, or 0 when it describes none.
-
-        "report.md" names a method twice: once in the methods table and once as a "### " heading
-        under the failure detail. The heading is preferred because it is the entry that carries the
-        message, and the table row is the fallback for a run where the method passed and no heading
-        was written.
-    */
-    static findRunReportEntryLineNumber(runReportContent: string, methodName: string): number {
-
-        if ( !runReportContent || !methodName ) {
-            return 0;
-        }
-
-        const runReportLines = runReportContent.split(/\r?\n/);
-        let methodsTableLineNumber = 0;
-
-        for ( let lineIndex = 0; lineIndex < runReportLines.length; lineIndex++ ) {
-
-            const runReportLine = runReportLines[lineIndex];
-
-            if ( runReportLine.trim() === `### ${methodName}` ) {
-                return lineIndex + 1;
-            }
-
-            if ( methodsTableLineNumber === 0 && runReportLine.indexOf(`\`${methodName}\``) !== -1 ) {
-                methodsTableLineNumber = lineIndex + 1;
-            }
-
-        }
-
-        return methodsTableLineNumber;
 
     }
 
@@ -2438,15 +1495,6 @@ export class PicklistDependencyExplorerService {
         padding: 0 1rem 2rem 1rem;
     }
     h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
-    .runBanner {
-        border: 1px solid var(--vscode-panel-border);
-        border-left-width: 4px;
-        padding: 0.6rem 0.8rem;
-        margin: 0.75rem 0 1rem 0;
-    }
-    .runBanner.passed { border-left-color: var(--vscode-testing-iconPassed); }
-    .runBanner.failed { border-left-color: var(--vscode-testing-iconFailed); }
-    .runBanner.unknown { border-left-color: var(--vscode-testing-iconQueued); }
     .muted { color: var(--vscode-descriptionForeground); }
     .objectSection { margin-bottom: 1.5rem; }
     .objectHeading {
@@ -2492,20 +1540,7 @@ export class PicklistDependencyExplorerService {
         cursor: pointer;
     }
     .combination:hover { background-color: var(--vscode-list-hoverBackground); }
-    .combination.passed { border-left-color: var(--vscode-testing-iconPassed); }
-    .combination.failed { border-left-color: var(--vscode-testing-iconFailed); }
-    .combination.unknown { border-left-color: var(--vscode-testing-iconQueued); }
     .combination.focused { outline: 2px solid var(--vscode-focusBorder); }
-    .statusBadge {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        border: 1px solid var(--vscode-panel-border);
-        padding: 0 0.35rem;
-    }
-    .statusBadge.passed { color: var(--vscode-testing-iconPassed); }
-    .statusBadge.failed { color: var(--vscode-testing-iconFailed); }
-    .statusBadge.unknown { color: var(--vscode-descriptionForeground); }
     .valueList { margin: 0.2rem 0; }
     .valueLabel { color: var(--vscode-descriptionForeground); margin-right: 0.35rem; }
     .value {
@@ -2532,22 +1567,6 @@ export class PicklistDependencyExplorerService {
     .recordTypeName { font-weight: 600; }
     .combination.unavailable { border-left-style: dashed; }
     .scopeNote { font-size: 0.85rem; color: var(--vscode-descriptionForeground); margin: 0.2rem 0 0.3rem 0; }
-    .failureDetail {
-        margin-top: 0.35rem;
-        padding: 0.35rem 0.5rem;
-        background-color: var(--vscode-textCodeBlock-background);
-        white-space: pre-wrap;
-        font-family: var(--vscode-editor-font-family);
-        font-size: 0.85em;
-    }
-    /* THE TRIAGE SITS BENEATH THE APEX TEXT, NEVER IN PLACE OF IT -- SEE IPicklistDependencyFailureTriage */
-    .triage {
-        border-left: 3px solid var(--vscode-testing-iconFailed);
-        padding: 0.3rem 0.6rem;
-        margin: 0 0 0.35rem 0;
-    }
-    .triageLine { margin: 0.15rem 0; }
-    .triageLabel { font-weight: 600; margin-right: 0.35rem; }
     .sourceDetail { margin-top: 0.4rem; }
     .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
     .sourcePath {
@@ -2582,7 +1601,7 @@ export class PicklistDependencyExplorerService {
     }
     .toolbarField { display: flex; flex-direction: column; gap: 0.15rem; }
     .toolbarLabel { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-descriptionForeground); }
-    .toolbar input, .toolbar select {
+    .toolbar input {
         color: var(--vscode-input-foreground);
         background-color: var(--vscode-input-background);
         border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
@@ -2732,7 +1751,6 @@ export class PicklistDependencyExplorerService {
     let objectSectionRecords = [];
 
     let filterText = '';
-    let filterStatus = 'all';
     /*
         A pasted combination reference addresses ONE row, and the row it addresses does not match the
         reference as ordinary search text -- the key carries a controlling value no field name
@@ -2792,10 +1810,6 @@ export class PicklistDependencyExplorerService {
         return element;
     }
 
-    function appendStatusBadge(parentElement, status) {
-        parentElement.appendChild(createElement('span', 'statusBadge ' + status, status === 'unknown' ? 'not checked' : status));
-    }
-
     function appendValueList(parentElement, labelText, values, valueClassName) {
 
         if (!values.length) { return; }
@@ -2818,23 +1832,24 @@ export class PicklistDependencyExplorerService {
         a collapsed row still states how many values it is holding, and the count is taken from the
         rendered list rather than computed a second way.
 
-        startExpanded is the failed row: it opens with its detail already showing for the same
-        reason, and the forbidden set is what a MISSING_VALUES or EXTRA_VALUES failure is about.
+        Every row starts collapsed. It used to open for a row a check had reported a failure on --
+        there is no such row now, and opening some subset on any other basis would put a claim about
+        the rows into a disclosure state.
     */
-    function appendCollapsibleValueList(parentElement, labelText, values, valueClassName, startExpanded) {
+    function appendCollapsibleValueList(parentElement, labelText, values, valueClassName) {
 
         if (!values.length) { return; }
 
         const valueListElement = createElement('div', 'valueList');
 
         const summaryElement = createElement('div', 'valueListSummary');
-        const disclosureElement = createElement('span', 'disclosure', startExpanded ? '▾' : '▸');
+        const disclosureElement = createElement('span', 'disclosure', '▸');
         summaryElement.appendChild(disclosureElement);
         summaryElement.appendChild(createElement('span', 'valueLabel', labelText));
         summaryElement.appendChild(createElement('span', 'valueCount', '(' + values.length + ')'));
         valueListElement.appendChild(summaryElement);
 
-        const valuesElement = createElement('div', 'valueListValues' + (startExpanded ? '' : ' hidden'));
+        const valuesElement = createElement('div', 'valueListValues hidden');
         values.forEach(function (value) {
             valuesElement.appendChild(createElement('span', valueClassName, value));
         });
@@ -2872,65 +1887,23 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    function appendTriage(parentElement, triage) {
-
-        if (!triage) { return; }
-
-        const triageElement = createElement('div', 'triage');
-
-        const likelyCauseElement = createElement('div', 'triageLine');
-        likelyCauseElement.appendChild(createElement('span', 'triageLabel', 'Likely cause'));
-        likelyCauseElement.appendChild(createElement('span', undefined, triage.likelyCause));
-        triageElement.appendChild(likelyCauseElement);
-
-        const nextStepElement = createElement('div', 'triageLine');
-        nextStepElement.appendChild(createElement('span', 'triageLabel', 'Next step'));
-        nextStepElement.appendChild(createElement('span', undefined, triage.nextStep));
-        triageElement.appendChild(nextStepElement);
-
-        parentElement.appendChild(triageElement);
-
-    }
-
-    /*
-        The Apex kind and message FIRST, the plain-language reading beneath it. A reader who already
-        knows what MISSING_VALUES means should not have to scroll past a paragraph to find the values
-        it names, and a reader who does not should not have to look the kind up elsewhere.
-    */
-    /*
-        A recognised kind's triage lives once in the model, keyed by kind; only an unrecognised kind
-        carries its own, because that text names the kind. Looked up here rather than inlined per
-        failure so the payload grows with the org's SIZE rather than with its drift.
-    */
-    function resolveTriage(failure) {
-        return failure.triage || explorerModel.failureTriageByKind[failure.kind];
-    }
-
-    function appendFailureDetails(parentElement, failures) {
-        failures.forEach(function (failure) {
-            parentElement.appendChild(createElement('div', 'failureDetail', failure.kind + '\\n' + failure.message));
-            appendTriage(parentElement, resolveTriage(failure));
-        });
-    }
-
     function appendTruncationNotice(parentElement, truncatedCount, itemLabel) {
 
         if (!truncatedCount) { return; }
 
         parentElement.appendChild(createElement('div', 'truncationNotice',
             truncatedCount + ' ' + itemLabel + ' not shown at this panel\\'s rendering limit. '
-                + 'Every one the check reported a failure for is shown.'));
+                + 'The ones shown are the first the generated spec manifest declares.'));
 
     }
 
-    function buildCombinationElement(node, objectViewModel, combination, declaredValues, declaredValuesTruncated, specMethodName, sectionRecord) {
+    function buildCombinationElement(node, combination, declaredValues, declaredValuesTruncated, sectionRecord) {
 
         const unavailableClass = combination.controllingValueUnavailable ? ' unavailable' : '';
-        const combinationElement = createElement('div', 'combination ' + combination.status + unavailableClass);
+        const combinationElement = createElement('div', 'combination' + unavailableClass);
 
         const combinationHeading = createElement('div');
         combinationHeading.appendChild(createElement('span', 'fieldName', node.controllingFieldApiName + ' = ' + combination.controllingValue));
-        appendStatusBadge(combinationHeading, combination.status);
         combinationElement.appendChild(combinationHeading);
 
         if (combination.controllingValueUnavailable) {
@@ -2960,11 +1933,9 @@ export class PicklistDependencyExplorerService {
                 combinationElement,
                 'must not unlock',
                 buildForbiddenValues(declaredValues, combination),
-                'value forbidden',
-                combination.status === 'failed'
+                'value forbidden'
             );
         }
-        appendFailureDetails(combinationElement, combination.failures);
 
         const detailElement = createElement('div', 'sourceDetail');
         detailElement.appendChild(createElement('div', 'sourcePath', node.sourceFilePath));
@@ -2977,43 +1948,6 @@ export class PicklistDependencyExplorerService {
             vscodeApi.postMessage({ command: 'revealFieldSource', sourceFilePath: node.sourceFilePath });
         });
         actionsElement.appendChild(revealButton);
-
-        /*
-            Offered only where the model NAMES the generated code. A metadata preview names none of
-            it, and a button that opened nothing would suggest a spec exists for a row nothing
-            asserts -- the exact confusion the provenance banner exists to prevent.
-        */
-        if (specMethodName && objectViewModel.generatedClassFilePath) {
-
-            const specMethodButton = createElement('button', undefined, 'Open spec method');
-            specMethodButton.addEventListener('click', function (clickEvent) {
-                clickEvent.stopPropagation();
-                vscodeApi.postMessage({
-                    command: 'openSpecMethod',
-                    specFilePath: objectViewModel.generatedClassFilePath,
-                    methodName: specMethodName
-                });
-            });
-            actionsElement.appendChild(specMethodButton);
-
-        }
-
-        const runReportFilePath = explorerModel.runSummary ? explorerModel.runSummary.reportFilePath : '';
-
-        if (runReportFilePath && objectViewModel.testMethodName) {
-
-            const runReportButton = createElement('button', undefined, 'Open run report entry');
-            runReportButton.addEventListener('click', function (clickEvent) {
-                clickEvent.stopPropagation();
-                vscodeApi.postMessage({
-                    command: 'openRunReport',
-                    reportFilePath: runReportFilePath,
-                    methodName: objectViewModel.testMethodName
-                });
-            });
-            actionsElement.appendChild(runReportButton);
-
-        }
 
         /*
             The combination key is the panel's address for one row: pasting it back into the find box
@@ -3031,15 +1965,8 @@ export class PicklistDependencyExplorerService {
         detailElement.appendChild(actionsElement);
         combinationElement.appendChild(detailElement);
 
-        /*
-            A FAILED combination opens with its detail already showing. It is the row the reader came
-            for, and the links to the spec method and the run entry are what turns "what broke" into
-            "where do I go" -- putting them behind a click on a row already marked failed is a step
-            with nothing on the other side of it.
-        */
-        if (combination.status !== 'failed') {
-            detailElement.classList.add('hidden');
-        }
+        // EVERY ROW STARTS CLOSED: THERE IS NO PROPERTY OF A ROW LEFT THAT WOULD JUSTIFY SINGLING ONE OUT
+        detailElement.classList.add('hidden');
 
         combinationElement.addEventListener('click', function () {
             detailElement.classList.toggle('hidden');
@@ -3051,14 +1978,13 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    function buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord, revealRecordTypeGroup) {
+    function buildRecordTypeScopeElement(node, recordTypeScope, sectionRecord, revealRecordTypeGroup) {
 
         const scopeElement = createElement('div', 'recordTypeScope');
 
         const scopeHeading = createElement('div', 'recordTypeScopeHeading');
         scopeHeading.appendChild(createElement('span', 'recordTypeName', 'record type: ' + recordTypeScope.recordTypeDeveloperName));
         scopeHeading.appendChild(createElement('span', 'muted', recordTypeScope.combinations.length + ' combination(s)'));
-        appendStatusBadge(scopeHeading, recordTypeScope.status);
         scopeElement.appendChild(scopeHeading);
 
         if (recordTypeScope.specMethodName) {
@@ -3084,25 +2010,23 @@ export class PicklistDependencyExplorerService {
             scopeBodyBuilt = true;
 
             /*
-                Said on every scope rather than once at the top of the panel: these rows sit beside
-                field-level rows that a green run really does verify, and a reader scrolling to one of
-                them should not have to remember a note from elsewhere to know the difference.
+                Said on every scope rather than once at the top of the panel: these rows look exactly
+                like the field-level rows above them and mean something narrower, and a reader who
+                scrolled straight to one should not have to find a note elsewhere to know that.
             */
             scopeBodyElement.appendChild(createElement(
                 'div',
                 'scopeNote',
-                'Generated from source metadata and deployed with the contract, but not asserted by the check: '
-                    + 'Apex describe returns picklist values without record type filtering.'
+                'This record type narrows the field-level dependency above. A controlling value it '
+                    + 'does not assign is shown as not available rather than as unlocking nothing.'
             ));
 
             recordTypeScope.combinations.forEach(function (combination) {
                 scopeBodyElement.appendChild(buildCombinationElement(
                     node,
-                    objectViewModel,
                     combination,
                     recordTypeScope.declaredValues,
                     recordTypeScope.declaredValuesTruncated,
-                    recordTypeScope.specMethodName,
                     sectionRecord
                 ));
             });
@@ -3135,33 +2059,21 @@ export class PicklistDependencyExplorerService {
         Every record type that narrows this field, under ONE labelled disclosure rather than appended
         flat beneath the field level rows.
 
-        The separation is the point. A field level combination is asserted by the generated check; a
-        record-type-scoped one is not, and running them together as siblings made a reader work out
-        which kind of row they were reading from the wording of a note. It is also where the volume
-        is -- every record type repeats the whole field's combinations.
-
-        The header carries NO passed/unknown status badge. Apex describe returns picklist values
-        without record type filtering, so nothing in the shipped framework verifies a scoped row; a
-        green badge over the group would assert exactly what each scope's note exists to deny. A
-        failed count is different -- it is a statement about scopes a run DID report against.
+        The separation is the point. A field level combination is the dependency as the field
+        declares it; a record-type-scoped one is that same dependency as one record type exposes it.
+        Running the two together as siblings made a reader work out which kind of row they were
+        reading from the wording of a note. It is also where the volume is -- every record type
+        repeats the whole field's combinations.
     */
-    function buildRecordTypeGroupElement(node, objectViewModel, sectionRecord) {
+    function buildRecordTypeGroupElement(node, sectionRecord) {
 
         const groupElement = createElement('div', 'recordTypeGroup');
-
-        const failedScopeCount = node.recordTypeScopes.filter(function (recordTypeScope) {
-            return recordTypeScope.status === 'failed';
-        }).length;
 
         const headingElement = createElement('div', 'recordTypeGroupHeading');
         const disclosureElement = createElement('span', 'disclosure', '▸');
         headingElement.appendChild(disclosureElement);
         headingElement.appendChild(createElement('span', 'recordTypeGroupLabel',
             'Record Types (' + node.recordTypeScopes.length + ')'));
-
-        if (failedScopeCount) {
-            headingElement.appendChild(createElement('span', 'statusBadge failed', failedScopeCount + ' failed'));
-        }
 
         groupElement.appendChild(headingElement);
 
@@ -3246,7 +2158,7 @@ export class PicklistDependencyExplorerService {
         */
         node.recordTypeScopes.forEach(function (recordTypeScope) {
             groupBodyElement.appendChild(buildRecordTypeScopeElement(
-                node, objectViewModel, recordTypeScope, sectionRecord, revealRecordTypeGroup));
+                node, recordTypeScope, sectionRecord, revealRecordTypeGroup));
         });
 
         headingElement.addEventListener('click', function () {
@@ -3273,14 +2185,13 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    function buildNodeElement(node, objectViewModel, sectionRecord) {
+    function buildNodeElement(node, sectionRecord) {
 
         const nodeElement = createElement('div', 'node');
 
         const nodeHeading = createElement('div', 'nodeHeading');
         nodeHeading.appendChild(createElement('span', 'fieldName', node.fieldApiName));
         nodeHeading.appendChild(createElement('span', 'muted', 'controlled by ' + node.controllingFieldApiName));
-        appendStatusBadge(nodeHeading, node.status);
         nodeElement.appendChild(nodeHeading);
 
         /*
@@ -3292,10 +2203,8 @@ export class PicklistDependencyExplorerService {
                 'asserted by ' + node.generatedClassName + '.' + node.specMethodName + '()'));
         }
 
-        appendFailureDetails(nodeElement, node.fieldLevelFailures);
-
         node.combinations.forEach(function (combination) {
-            nodeElement.appendChild(buildCombinationElement(node, objectViewModel, combination, node.declaredValues, node.declaredValuesTruncated, node.specMethodName, sectionRecord));
+            nodeElement.appendChild(buildCombinationElement(node, combination, node.declaredValues, node.declaredValuesTruncated, sectionRecord));
         });
 
         appendTruncationNotice(nodeElement, node.truncatedCombinationCount, 'combination(s) are');
@@ -3311,7 +2220,7 @@ export class PicklistDependencyExplorerService {
 
         if (node.recordTypeScopes.length) {
 
-            const recordTypeGroup = buildRecordTypeGroupElement(node, objectViewModel, sectionRecord);
+            const recordTypeGroup = buildRecordTypeGroupElement(node, sectionRecord);
             revealRecordTypeGroup = recordTypeGroup.reveal;
             applyRecordTypeGroupFilterMatch = recordTypeGroup.applyFilterMatch;
             nodeElement.appendChild(recordTypeGroup.element);
@@ -3342,7 +2251,7 @@ export class PicklistDependencyExplorerService {
         if (node.downstreamNodes.length) {
             const childrenElement = createElement('div', 'nodeChildren');
             node.downstreamNodes.forEach(function (downstreamNode) {
-                childrenElement.appendChild(buildNodeElement(downstreamNode, objectViewModel, sectionRecord));
+                childrenElement.appendChild(buildNodeElement(downstreamNode, sectionRecord));
             });
             nodeElement.appendChild(childrenElement);
         }
@@ -3396,7 +2305,7 @@ export class PicklistDependencyExplorerService {
             bannerElement.appendChild(createElement('div', 'fieldName', 'Preview from metadata — not generated'));
             bannerElement.appendChild(createElement('div', 'muted',
                 'These rows were read from your source metadata. No Apex specs have been generated for them, '
-                    + 'so nothing asserts any combination below and no check can have run against them. '
+                    + 'so nothing asserts any combination below. '
                     + 'Run "Salesforce Treecipe: Generate Picklist Dependency Tests" to generate the specs.'));
 
             if (explorerModel.manifestLoadMessage) {
@@ -3495,32 +2404,6 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    function renderRunBanner() {
-
-        const bannerStatus = explorerModel.runSummary
-            ? (explorerModel.runSummary.passed ? 'passed' : 'failed')
-            : 'unknown';
-
-        const bannerElement = createElement('div', 'runBanner ' + bannerStatus);
-
-        if (explorerModel.runSummary) {
-
-            const runSummary = explorerModel.runSummary;
-            bannerElement.appendChild(createElement('div', 'fieldName',
-                'Last check ' + (runSummary.passed ? 'passed' : 'failed') + ' against ' + runSummary.targetOrg));
-            bannerElement.appendChild(createElement('div', 'muted',
-                'Ran at ' + runSummary.ranAt + ' — ' + runSummary.methodsRun + ' method(s), ' + runSummary.failureCount + ' failure(s)'));
-            bannerElement.appendChild(createElement('div', 'sourcePath', runSummary.resultsFilePath));
-
-        } else {
-            bannerElement.appendChild(createElement('div', undefined, explorerModel.runLoadMessage));
-        }
-
-        registerPanelSection('Last check', bannerElement);
-        explorerRoot.appendChild(bannerElement);
-
-    }
-
     /*
         What the rendering ceiling dropped, at the top rather than beside the rows that survived it.
         A reader who cannot find a field needs to know the panel is not showing everything before
@@ -3567,8 +2450,8 @@ export class PicklistDependencyExplorerService {
 
         /*
             Rendered BEFORE the nodes rather than after them. A skipped field is the one thing on
-            this panel that no assertion covers, and putting it below a long list of green rows
-            is how it gets missed.
+            this panel that no generated spec covers, and putting it below a long list of rows that
+            are covered is how it gets missed.
         */
         objectViewModel.skippedFields.forEach(function (skippedField) {
 
@@ -3589,15 +2472,8 @@ export class PicklistDependencyExplorerService {
 
         });
 
-        if (objectViewModel.unattributedFailureMessages.length) {
-            bodyElement.appendChild(createElement('div', 'failureDetail',
-                'This object\\'s check reported failures that could not be tied to a specific combination below, '
-                    + 'so those combinations are shown as not checked rather than passed.\\n\\n'
-                    + objectViewModel.unattributedFailureMessages.join('\\n')));
-        }
-
         objectViewModel.rootNodes.forEach(function (rootNode) {
-            bodyElement.appendChild(buildNodeElement(rootNode, objectViewModel, sectionRecord));
+            bodyElement.appendChild(buildNodeElement(rootNode, sectionRecord));
         });
 
         appendTruncationNotice(bodyElement, objectViewModel.truncatedNodeCount, 'dependent picklist(s) on this object are');
@@ -3649,7 +2525,6 @@ export class PicklistDependencyExplorerService {
         objectHeading.appendChild(createElement('span', 'muted',
             objectViewModel.dependentFieldCount + ' dependent picklist(s), ' + objectViewModel.combinationCount + ' combination(s)'
                 + (objectViewModel.recordTypeCombinationCount ? ' + ' + objectViewModel.recordTypeCombinationCount + ' record-type-scoped' : '')));
-        appendStatusBadge(objectHeading, objectViewModel.status);
 
         if (objectViewModel.skippedFields.length) {
             objectHeading.appendChild(createElement('span', 'skippedBadge', objectViewModel.skippedFields.length + ' not asserted'));
@@ -3682,8 +2557,6 @@ export class PicklistDependencyExplorerService {
 
     function objectMatchesFilter(objectViewModel) {
 
-        if (filterStatus !== 'all' && objectViewModel.status !== filterStatus) { return false; }
-
         if (!filterText) { return true; }
 
         return objectViewModel.searchText.indexOf(filterText) !== -1;
@@ -3695,16 +2568,15 @@ export class PicklistDependencyExplorerService {
         containment, so hiding a parent whose child matches would take the matching row off the panel
         along with it.
 
-        Filtering only ever toggles visibility. No status is recomputed here, and none is inferred
-        from a row being hidden: an unverified combination stays unverified whether or not the filter
-        is showing it.
+        Filtering only ever toggles visibility. Nothing about a row is recomputed here, and nothing
+        is inferred from a row being hidden -- a hidden dependency is one the query did not name,
+        never one the panel is making a different claim about.
     */
     function nodeMatchesFilter(node, isObjectNameMatch) {
 
         const textMatches = isObjectNameMatch || !filterText || node.searchText.indexOf(filterText) !== -1;
-        const statusMatches = filterStatus === 'all' || node.status === filterStatus;
 
-        if (textMatches && statusMatches) { return true; }
+        if (textMatches) { return true; }
 
         for (let downstreamIndex = 0; downstreamIndex < node.downstreamNodes.length; downstreamIndex++) {
             if (nodeMatchesFilter(node.downstreamNodes[downstreamIndex], isObjectNameMatch)) { return true; }
@@ -3837,7 +2709,7 @@ export class PicklistDependencyExplorerService {
 
         if (deepLinkRecord) {
             focusCombination(deepLinkRecord, filterText);
-        } else if (visibleSectionRecords.length === 1 && (filterText || filterStatus !== 'all')) {
+        } else if (visibleSectionRecords.length === 1 && filterText) {
             // ONE MATCH IS AN ANSWER, NOT A LIST -- OPENING IT IS WHAT MAKES A NAMED FIELD REACHABLE WITHOUT SCROLLING
             expandObject(visibleSectionRecords[0]);
         }
@@ -3883,23 +2755,6 @@ export class PicklistDependencyExplorerService {
         });
         findFieldElement.appendChild(findInputElement);
         toolbarElement.appendChild(findFieldElement);
-
-        const statusFieldElement = createElement('label', 'toolbarField');
-        statusFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Status'));
-
-        const statusSelectElement = document.createElement('select');
-        [['all', 'any status'], ['failed', 'failed'], ['passed', 'passed'], ['unknown', 'not checked']].forEach(function (statusOption) {
-            const statusOptionElement = document.createElement('option');
-            statusOptionElement.value = statusOption[0];
-            statusOptionElement.textContent = statusOption[1];
-            statusSelectElement.appendChild(statusOptionElement);
-        });
-        statusSelectElement.addEventListener('change', function () {
-            filterStatus = statusSelectElement.value;
-            applyFilter();
-        });
-        statusFieldElement.appendChild(statusSelectElement);
-        toolbarElement.appendChild(statusFieldElement);
 
         const expandAllButton = createElement('button', undefined, 'Expand all');
         expandAllButton.addEventListener('click', expandAllVisibleObjects);
@@ -3995,7 +2850,6 @@ export class PicklistDependencyExplorerService {
             entryElement.appendChild(createElement('span', 'muted',
                 objectViewModel.dependentFieldCount + ' dependent picklist(s), '
                     + objectViewModel.combinationCount + ' combination(s)'));
-            appendStatusBadge(entryElement, objectViewModel.status);
 
             if (objectViewModel.skippedFields.length) {
                 entryElement.appendChild(createElement('span', 'skippedBadge',
@@ -4070,7 +2924,6 @@ export class PicklistDependencyExplorerService {
         matchCountElement = undefined;
         isDeepLinkActive = false;
         filterText = '';
-        filterStatus = 'all';
 
         /*
             The scanned path is revealed only once everything below it has drawn.
@@ -4081,7 +2934,6 @@ export class PicklistDependencyExplorerService {
             Held back, a render that dies leaves the failure notice as the only thing on screen.
         */
         renderProvenanceBanner();
-        renderRunBanner();
         renderTruncationNotices();
         renderSkippedFieldWarnings();
         renderObjects();
@@ -4120,8 +2972,8 @@ export class PicklistDependencyExplorerService {
             'The Picklist Dependency Explorer could not draw this panel'));
         failureElement.appendChild(createElement('div', undefined,
             'The dependency structure was loaded, but rendering it failed part way through. Nothing '
-                + 'below is a complete view of your specs, so none of it is shown. The run report in '
-                + 'your picklist dependency results folder remains the complete record.'));
+                + 'below is a complete view of your specs, so none of it is shown. The generated '
+                + 'spec manifest remains the complete record of what was generated.'));
         failureElement.appendChild(createElement('div', 'muted', String(renderError)));
 
         explorerRoot.appendChild(failureElement);

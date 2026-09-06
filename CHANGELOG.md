@@ -1,5 +1,59 @@
 # Change Log
 
+## [3.17.0] - The Picklist Dependency Explorer is a picture of the structure, and reads no check results
+
+Closes [#123](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/123).
+
+The Explorer did two jobs. It drew the dependency structure -- which controlling value unlocks what -- and it reported the last Apex check run over the top of it: pass/fail badges on every row, a "Last check" banner, failure triage prose, a status filter, and buttons that opened the generated `.cls` at a spec method or the run's `report.md` at an object's entry.
+
+Those two jobs answer different questions, and fusing them made the first one wait on the second. A picklist dependency is a fact about your metadata. It is fully described by `manifest.json`, which the generate command already writes. Whether your **org** still agrees with it is a different question, and `Run Picklist Dependency Check` already answers that one in its own output channel and its own report.
+
+So the panel now does the first job only.
+
+### What is gone from the panel
+
+Results loading, failure attribution, triage prose, pass/fail/not-checked badges, the **Status** filter, the last-run banner, and the two actions that opened Apex. `openPicklistDependencyExplorer` no longer resolves the picklist dependency results folder at all -- a test asserts on that read rather than on the absence of an overlay, because it is the first step of the whole coupling and nothing downstream can reach a run without it.
+
+Seventeen methods and six interfaces went with them, along with the `loadingResults` load phase. An open now reports `readingManifest` then `buildingView`.
+
+### What deliberately stayed
+
+**Both Apex commands are untouched.** `Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The generator is still what produces the model the panel renders; it simply stopped being surfaced *in* the panel.
+
+**The panel still names the generated Apex.** `SDTPLDAccountSpecs.specStatus__c()` on a row, the test method on an object heading, and the provenance banner naming `SDTPicklistDependencyTests.cls` are all still there. That naming *is* the manifest's promise -- a row on screen corresponds to a spec method that exists -- and a panel that stopped saying which one could no longer make it.
+
+**The freshness check is untouched.** Its button, its five states (`notChecked`, `pendingCheck`, `checkFailed`, stale, fresh) and its refusal paths are unchanged. Freshness is a question about your *metadata*, not about a run.
+
+**The render guard is untouched.** `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener, and the `render` vs `runtime` distinction all behave exactly as they did in 3.15.0.
+
+### The truncation rule had to be replaced, not just deleted
+
+`applyModelLimits` kept a combination, scope or object the check had reported a failure for ahead of a passing one. With no check to read there is no such property left, and this is the part of the change that needed a decision rather than a deletion.
+
+What survives a cap is now **manifest order** -- the first that fit, on every axis, including the total budget, which is spent in document order. The manifest is emitted deterministically, so the same org truncates to the same rows on every open, and a reader who cannot find a combination can tell from the notice that it was *cut* rather than wondering whether it *moved*. Inventing any other order (longest, most combinations, alphabetical) would have sorted the panel by something the generated Apex does not.
+
+Five tests pin it, including one that runs the ceiling twice over the same model and asserts the same rows come back. An ordering nothing asserts is one a later refactor turns into "whatever the iteration produced".
+
+One retention rule survived, and it is not about a run: an object carrying a **skipped field** is still kept past the cap. A skipped field is the only thing the panel shows that no generated spec covers, and dropping the object holding it would leave a dependency that was never specced indistinguishable from one that does not exist.
+
+`truncatedFailedCombinationCount` and its notice -- the one that pointed at `report.md` as the complete record -- are gone, since there is no failure for the budget to drop.
+
+### Two allow-lists went with the buttons
+
+Every panel action is gated by an allow-list built from the rendered model. There were four; there are two. The two keyed on a file **and** an Apex method together -- the generated spec class and the run report -- went with the actions that addressed them.
+
+`generatedClassFilePath` is **deleted from the model**, not left resolved-but-idle. It arrives from a json file on disk that a hand edit controls, and a path in the payload whose only consumer has been removed is one future button away from being opened. `resolveOpenableManifestFilePath` still guards `classesDirectoryPath`, and any manifest path that becomes openable again has to go through it first.
+
+A test asserts the panel posts neither `openSpecMethod` nor `openRunReport`, and another asserts the host answers both with nothing.
+
+### Everything a row no longer claims is removed rather than defaulted
+
+`status`, `failures`, `failureCount`, `fieldLevelFailures`, `unattributedFailureMessages`, `runSummary`, `runLoadState`, `runLoadMessage` and `failureTriageByKind` are off the view model interfaces. The tests assert on the absence of the **keys** rather than on their values, deliberately: a `status` of `'unknown'` left in place would satisfy a value assertion while leaving the whole three-state rendering one line away from being back on screen.
+
+Every combination row now starts collapsed. It used to open for a row a check had reported a failure on, and singling out a subset on any other basis would put a claim about the rows into a disclosure state.
+
+The record type scope note changed for the same reason. It used to read "not asserted by the check: Apex describe returns picklist values without record type filtering" -- a statement about what verifies the row. It now says what the row **is**: the record type narrows the field-level dependency above it.
+
 ## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 
 Closes [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).
