@@ -710,6 +710,192 @@ describe('PicklistDependencyManifestService', () => {
 
     });
 
+    /*
+        Two properties the manifest gained ALONG WITH the marker, both about a file a hand edit
+        controls -- manifest.json is committed into a repo other people clone.
+    */
+    describe('a universe read from disk is complete or it is nothing', () => {
+
+        function buildFieldEntry(declaredValues: unknown) {
+
+            return {
+                objectApiName: 'Chain_Example__c',
+                generatedClassName: 'SDTPLDSpecs_Chain_Example',
+                fields: [
+                    {
+                        fieldApiName: 'City__c',
+                        controllingFieldApiName: 'State__c',
+                        declaredValues,
+                        expectations: [
+                            { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValuesAreDeclaredComplement: true }
+                        ]
+                    }
+                ],
+                recordTypeScopedFields: []
+            };
+
+        }
+
+        function loadFieldEntry(declaredValues: unknown) {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                { manifestVersion: PicklistDependencyManifestService.getManifestVersion(), objects: [buildFieldEntry(declaredValues)] },
+                '/tmp/manifest.json'
+            );
+
+            return manifestLoad.manifest.objects[0].fields[0];
+
+        }
+
+        /*
+            The dangerous case is a PARTIALLY readable list. Filtering the unreadable entries out and
+            keeping the rest leaves a universe that looks whole, and every complement drawn from it
+            names fewer values than the spec forbids -- a false claim rather than a shorter one, which
+            is the one thing the complete-universe rule exists to prevent.
+        */
+        test('given a declared value list that is not all strings, keeps none of it rather than a subset', () => {
+
+            const manifestField = loadFieldEntry(['Columbus', 42, 'Austin', null, 'Toronto']);
+
+            expect(manifestField.declaredValues).toBeEmpty();
+
+        });
+
+        test('given an unreadable universe, draws no complement at all rather than a short one', () => {
+
+            const partialUniverseField = loadFieldEntry(['Columbus', 42, 'Austin']);
+
+            const rebuiltExpectations = PicklistDependencyManifestService.buildExpectationsByManifestExpectations(
+                partialUniverseField.expectations,
+                partialUniverseField.declaredValues
+            );
+
+            // STILL AN ASSERTION -- WHAT IT NAMES IS EMPTY, WHICH IS THE HONEST DIRECTION TO BE WRONG IN
+            expect(rebuiltExpectations[0].forbiddenValues).toEqual([]);
+
+        });
+
+        test('given a fully readable universe, keeps every value', () => {
+
+            expect(loadFieldEntry(['Columbus', 'Austin', 'Toronto']).declaredValues)
+                .toEqual(['Columbus', 'Austin', 'Toronto']);
+
+        });
+
+        test('given no declared values at all, still reads the field rather than dropping it', () => {
+
+            const manifestField = loadFieldEntry(undefined);
+
+            expect(manifestField.fieldApiName).toBe('City__c');
+            expect(manifestField.declaredValues).toBeEmpty();
+
+        });
+
+    });
+
+    /*
+        Recording the complement as a marker made the FILE carry the sum of the two picklists while
+        READING it still materializes their product, so the format became decompressive. Under
+        version 2 an expansion of forty million values needed a file that literally contained them
+        -- roughly 400 MB -- so file size was its own ceiling. It no longer is.
+
+        Measured through the real builder: a 0.70 MB manifest reconstructs 40,000,000 values in
+        2,356 ms and 352 MB, and the expansion happens on LOAD, before applyModelLimits, which
+        bounds what is rendered from a finished view model rather than what building one allocates.
+    */
+    describe('reading a manifest is bounded by what it expands to, not by its size', () => {
+
+        function buildManifestRecordByShape(declaredValueCount: number, expectationCount: number, useMarker: boolean = true) {
+
+            const declaredValues = Array.from({ length: declaredValueCount }, (unusedValue, valueIndex) => `Dependent_Value_${valueIndex}`);
+
+            return {
+                manifestVersion: PicklistDependencyManifestService.getManifestVersion(),
+                objects: [
+                    {
+                        objectApiName: 'Bomb__c',
+                        fields: [
+                            {
+                                fieldApiName: 'Dependent__c',
+                                controllingFieldApiName: 'Controlling__c',
+                                declaredValues,
+                                expectations: Array.from({ length: expectationCount }, (unusedValue, expectationIndex) => ({
+                                    controllingValue: `Controlling_Value_${expectationIndex}`,
+                                    dependentValues: [],
+                                    ...( useMarker ? { forbiddenValuesAreDeclaredComplement: true } : { forbiddenValues: [] } )
+                                }))
+                            }
+                        ],
+                        recordTypeScopedFields: []
+                    }
+                ]
+            };
+
+        }
+
+        test('refuses a small file that expands past the ceiling, rather than exhausting the editor', () => {
+
+            const ceiling = PicklistDependencyManifestService.getMaximumReconstructedDeclaredValues();
+            const declaredValueCount = 20000;
+            const expectationCount = Math.ceil(ceiling / declaredValueCount) + 1;
+
+            const manifestRecord = buildManifestRecordByShape(declaredValueCount, expectationCount);
+
+            // THE POINT OF THE GUARD: THE FILE ITSELF IS SMALL
+            expect(Buffer.byteLength(JSON.stringify(manifestRecord), 'utf-8')).toBeLessThan(5 * 1024 * 1024);
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(manifestRecord, '/tmp/manifest.json');
+
+            expect(manifestLoad.state).toBe('unreadableManifest');
+            expect(manifestLoad.message).toContain('Generate Picklist Dependency Tests');
+            expect(manifestLoad.manifest).toBeUndefined();
+
+        });
+
+        /*
+            Only the MARKER amplifies. An expectation carrying its forbidden list literally already
+            costs the file what it costs memory, which is the ratio version 2 had throughout, so it
+            must not be counted against a budget that exists to bound expansion.
+        */
+        test('counts only what the marker expands, not what the file already carries', () => {
+
+            const markerObjects = PicklistDependencyManifestService
+                .buildManifestLoadByParsedContent(buildManifestRecordByShape(100, 10, true), '/tmp/manifest.json').manifest.objects;
+
+            const literalObjects = PicklistDependencyManifestService
+                .buildManifestLoadByParsedContent(buildManifestRecordByShape(100, 10, false), '/tmp/manifest.json').manifest.objects;
+
+            expect(PicklistDependencyManifestService.countReconstructedDeclaredValues(markerObjects)).toBe(1000);
+            expect(PicklistDependencyManifestService.countReconstructedDeclaredValues(literalObjects)).toBe(0);
+
+        });
+
+        /*
+            The ceiling has to clear a real org by a wide margin or it is a bug rather than a guard.
+            The largest measured -- 150 objects x 8 dependent picklists x 40 controlling values x 120
+            declared values -- reconstructs 5.7 M values, and this asserts the headroom rather than
+            trusting the comment.
+        */
+        test('leaves room for the largest org measured', () => {
+
+            const largeOrgReconstructedValues = 150 * 8 * 40 * 120;
+
+            expect(PicklistDependencyManifestService.getMaximumReconstructedDeclaredValues())
+                .toBeGreaterThan(largeOrgReconstructedValues * 4);
+
+        });
+
+        test('reads a manifest at a realistic large org shape rather than refusing it', () => {
+
+            const manifestLoad = PicklistDependencyManifestService
+                .buildManifestLoadByParsedContent(buildManifestRecordByShape(120, 40), '/tmp/manifest.json');
+
+            expect(manifestLoad.state).toBe('loaded');
+
+        });
+
+    });
+
     describe('buildCombinationKey', () => {
 
         test('shapes a field level key to match the failure lines the validator emits', () => {

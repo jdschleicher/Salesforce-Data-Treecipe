@@ -54,6 +54,25 @@ The universe recorded is the one each spec was **drawn against**: for a record-t
 
 A version 2 manifest is structurally readable -- objects, fields and expectations in shapes this build walks -- which is exactly why it is refused by version rather than by shape. It carries no `declaredValues`, so every complement drawn against it would be empty and the panel would show specs that forbid nothing at all. It is refused with the existing "re-run Generate Picklist Dependency Tests" message.
 
+### Two things the marker changed about reading a manifest from disk
+
+`manifest.json` is a file a hand edit controls, and it is committed into repositories other people clone. Recording the complement as a marker changed the read path in two ways that the security review caught and this release closes.
+
+**The format became decompressive.** The file now carries the *sum* of the two picklists while reading it still materializes their *product*. Under version 2 an expansion of forty million values needed a file that literally contained them — roughly 400 MB — so file size was its own ceiling. It no longer is: a **0.70 MB** manifest expands to **40,000,000** values, and the expansion happens on load, *before* `applyModelLimits`, which bounds what is rendered from a finished view model rather than what building one allocates.
+
+Reading is now bounded by what a manifest expands to. The ceiling was **measured through the real builder**, not chosen:
+
+| shape | file | reconstructed | time | heap |
+|---|---|---|---|---|
+| real large org, 1,200 fields | 8.95 MB | 5.7 M | 268 ms | 61 MB |
+| 1 field, 5k values x 5k combos | 0.74 MB | 25.0 M | 1,716 ms | 261 MB |
+| 1 field, 20k values x 2k combos | 0.70 MB | 40.0 M | 2,356 ms | 352 MB |
+| 1 field, 20k values x 4k combos | 0.95 MB | 80.0 M | 3,022 ms | — |
+
+**25 M** is 4.3x the largest real org measured and holds the load to roughly 260 MB. Only an expectation carrying the *marker* counts against it — one carrying its forbidden list literally already costs the file what it costs memory, which is the ratio version 2 had throughout. A test asserts the headroom over a real org rather than trusting the comment.
+
+**A universe read from disk is complete or it is nothing.** `declaredValues` was filtered to strings on load, like every other tolerant entry parse. For this field that filter was itself the bug: a list read *partially* looks whole, and every complement drawn from it names fewer values than the spec forbids — a false claim rather than a shorter one, which is precisely what the complete-universe rule exists to prevent. It is also worse than the same edit was under version 2, where one bad element cost one expectation's list; here it would silently narrow the universe for **every** expectation on the field. A list that cannot be read whole is now treated exactly like one that is not there: no universe, and no "must not unlock" rendered anywhere on that field.
+
 ### Tests
 
 Every new guard was verified by reintroducing the defect -- dropping the reconstruction fails seven tests across all three services, including the existing round trip, the Explorer's row parity and the writeback's proposed metadata. The shape itself is pinned at small scale in `PicklistDependencyManifestService/tests`: a field whose controlling values each unlock exactly one of twelve values writes each value **twice**, where the old shape wrote it thirteen times.

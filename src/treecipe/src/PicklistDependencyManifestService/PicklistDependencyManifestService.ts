@@ -185,6 +185,66 @@ export class PicklistDependencyManifestService {
     */
     private static currentManifestVersion = 3;
 
+    /*
+        The most values reconstruction is allowed to materialize across the whole manifest.
+
+        Recording the complement as a marker made the FILE carry the sum of the two picklists while
+        reading it still materializes their product, so the format became decompressive: the 0.70 MB
+        manifest below expands to 40,000,000 strings. Under version 2 the same expansion needed a
+        file that literally contained them, around 400 MB, so the amplification was about 1:1 and
+        the file size was its own ceiling. It no longer is, and this is what replaces it.
+
+        The expansion happens on load, BEFORE applyModelLimits -- those caps bound what is rendered
+        from a finished view model and cannot bound what building one allocates.
+
+        MEASURED through the real builder rather than reasoned, per the re-measure rule:
+
+        | shape                              | file    | reconstructed | time    | heap   |
+        |------------------------------------|---------|---------------|---------|--------|
+        | real large org, 1200 fields        | 8.95 MB |         5.7 M |  268 ms |  61 MB |
+        | 1 field, 5k values x 5k combos     | 0.74 MB |        25.0 M | 1716 ms | 261 MB |
+        | 1 field, 20k values x 2k combos    | 0.70 MB |        40.0 M | 2356 ms | 352 MB |
+        | 1 field, 20k values x 4k combos    | 0.95 MB |        80.0 M | 3022 ms |  OOM-y |
+
+        25 M is 4.3x the largest real org measured and holds the load to roughly 260 MB, so no
+        manifest this generator writes can reach it while a hand built one is stopped before it
+        exhausts the extension host. A manifest that trips this is reported like any other one that
+        cannot be read, naming the numbers, so a genuine org large enough to hit it reports a
+        ceiling that is too low rather than a panel that never opens.
+    */
+    private static maximumReconstructedDeclaredValues = 25000000;
+
+    static getMaximumReconstructedDeclaredValues(): number {
+        return this.maximumReconstructedDeclaredValues;
+    }
+
+    /*
+        How many values reading this manifest would materialize.
+
+        Only an expectation carrying the MARKER amplifies: it names a complement it does not contain,
+        and reconstruction draws one value per member of the field's universe. An expectation that
+        carries its forbidden list literally already costs the file what it costs memory, which is
+        the ratio version 2 had throughout.
+    */
+    static countReconstructedDeclaredValues(objects: IPicklistDependencyManifestObject[]): number {
+
+        return objects.reduce((objectTotal, manifestObject) => {
+
+            const fieldEntries: IPicklistDependencyManifestField[] = [...manifestObject.fields, ...manifestObject.recordTypeScopedFields];
+
+            return objectTotal + fieldEntries.reduce((fieldTotal, manifestField) => {
+
+                const markerExpectationCount = manifestField.expectations
+                    .filter(manifestExpectation => manifestExpectation.forbiddenValuesAreDeclaredComplement).length;
+
+                return fieldTotal + ( markerExpectationCount * manifestField.declaredValues.length );
+
+            }, 0);
+
+        }, 0);
+
+    }
+
     static getManifestVersion(): number {
         return this.currentManifestVersion;
     }
@@ -729,6 +789,22 @@ export class PicklistDependencyManifestService {
             .map((objectEntry: unknown) => this.buildManifestObjectByEntry(objectEntry))
             .filter((manifestObject): manifestObject is IPicklistDependencyManifestObject => manifestObject !== undefined);
 
+        /*
+            Checked here rather than per field because the budget is what READING THE WHOLE FILE
+            costs -- a per field ceiling multiplied by the number of fields is not a bound at all.
+            Counted from the parsed entries, which is cheap, and before buildSpecDetailsByManifest
+            materializes anything.
+        */
+        const reconstructedDeclaredValueCount = this.countReconstructedDeclaredValues(objects);
+
+        if ( reconstructedDeclaredValueCount > this.maximumReconstructedDeclaredValues ) {
+            return {
+                state: 'unreadableManifest',
+                message: `The picklist dependency spec manifest at "${manifestFilePath}" describes ${reconstructedDeclaredValueCount.toLocaleString()} values once its "must not unlock" lists are expanded, and this version of Salesforce Data Treecipe reads at most ${this.maximumReconstructedDeclaredValues.toLocaleString()}. Reading it would exhaust the editor rather than open the panel. Re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" to replace it.`,
+                manifestFilePath: manifestFilePath
+            };
+        }
+
         return {
             state: 'loaded',
             message: '',
@@ -832,10 +908,19 @@ export class PicklistDependencyManifestService {
                 that are meant to be drawn FROM it -- would invent one out of the very lists this
                 version no longer writes. An empty list is the honest reading of an entry that does
                 not say.
+
+                A PARTIALLY readable list is the case that has to be caught here rather than
+                filtered. Dropping the entries that are not strings and keeping the rest would leave
+                a universe that LOOKS complete, and every complement drawn from it would name fewer
+                values than the spec forbids -- a false claim rather than a shorter one, which is the
+                one thing the complete-universe rule exists to prevent. It is also worse than the
+                same edit was under version 2, where a bad element cost one expectation's list; here
+                one bad element would narrow the universe for every expectation on the field.
+
+                So a list that cannot be read WHOLE is treated exactly like one that is not there:
+                no universe, no complement rendered anywhere on the field.
             */
-            declaredValues: Array.isArray(fieldRecord.declaredValues)
-                ? fieldRecord.declaredValues.filter((declaredValue: unknown): declaredValue is string => typeof declaredValue === 'string')
-                : [],
+            declaredValues: this.buildDeclaredValuesByEntry(fieldRecord.declaredValues),
             expectations: Array.isArray(fieldRecord.expectations)
                 ? fieldRecord.expectations
                     .map((expectationEntry: unknown) => this.buildManifestExpectationByEntry(
@@ -853,6 +938,25 @@ export class PicklistDependencyManifestService {
         }
 
         return manifestField;
+
+    }
+
+    /*
+        The field's declared universe as recorded, or nothing at all.
+
+        Deliberately all-or-nothing: see the note at the call site. Anything that is not an array of
+        strings end to end yields an empty universe, which renders no "must not unlock" rather than a
+        short one.
+    */
+    static buildDeclaredValuesByEntry(declaredValuesEntry: unknown): string[] {
+
+        if ( !Array.isArray(declaredValuesEntry) ) {
+            return [];
+        }
+
+        const isEveryValueReadable = declaredValuesEntry.every((declaredValue: unknown) => typeof declaredValue === 'string');
+
+        return isEveryValueReadable ? [...declaredValuesEntry] as string[] : [];
 
     }
 
