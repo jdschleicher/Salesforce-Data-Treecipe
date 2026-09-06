@@ -47,6 +47,7 @@ docs/**
 CLAUDE.md
 tasks.md
 jest.config.js
+jestSetup/**
 
 # A debug dump of an ObjectInfoWrapper from a development run. 160KB, referenced by no code.
 wrappers.json

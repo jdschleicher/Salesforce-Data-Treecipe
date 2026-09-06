@@ -1,5 +1,48 @@
 # Change Log
 
+## [3.15.1] - The CI heap failures were a test mock escaping its own suite
+
+### One assignment, in one test, could exhaust a 4 GB heap in a different suite
+
+The Jest job on GitHub Actions had been failing roughly half the time with a worker exhausting its heap, always reported against `RelationshipService.test.ts`:
+
+```
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+FAIL src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts
+  A jest worker process (pid=2191) was terminated by another process: signal=SIGTERM
+```
+
+`RelationshipService.test.ts` is not where the memory went. Run on its own it peaks at 220 MB and passes under a 256 MB cap. The cause was in `VSCodeWorkspaceService.test.ts`:
+
+```ts
+const mockReaddir = jest.fn().mockResolvedValue([
+    { name: 'other1', isDirectory: () => true },
+    { name: 'other2', isDirectory: () => true }
+]);
+fs.promises.readdir = mockReaddir;
+```
+
+That is an **assignment**, not a `jest.spyOn`, and `fs` is a **Node core module**. Jest gives every test file a fresh module registry, but a core module is not part of it -- `require('fs')` hands every suite in a worker the same object -- and `restoreMocks` only restores what `jest.spyOn` registered, so an assignment leaves Jest nothing to undo. The replacement stayed installed for the rest of that worker's life.
+
+What it left installed is the worst possible answer for a recursive walk: **every path, forever, reads as two entries, both directories.** `DirectoryProcessor.processDirectory` descends into every directory it is handed, and `RelationshipService.test.ts` opens with a `beforeAll` that walks a real metadata directory through `vscode.workspace.fs.readDirectory` -- which its own mock implements with `fs.promises.readdir`. So the walk branched 2^depth and never terminated, taking the worker to 4 GB in CI (8 GB locally) before Jest killed it.
+
+Jest attributes a dead worker's failure to the file it was running, never to the file that poisoned it, which is why every report named the suite with no memory problem and none named the one with the defect.
+
+**Why it was intermittent, and why it never reproduced locally.** It fires only when Jest schedules `RelationshipService.test.ts` onto the same worker after `VSCodeWorkspaceService.test.ts`. That is a scheduling outcome, not a property of the code, so it hit about half of CI runs. It essentially never hits a developer's machine because a warm Jest cache changes the per-file timings that drive the scheduling: cold-cache runs -- which is every CI run, on a fresh checkout -- reproduced it two times in three, warm-cache runs zero times in many.
+
+**Why the 3.11.0 change did not fix it.** `10d1ce7` removed the per-child `Set` copy in `calculateLevelsRecursively`, which was a real allocation reduction and is still worth having. But it was not what exhausted the heap. The recursion this failure actually rides is in `processDirectory`, driven by a `readdir` that never returns a leaf, and no change to level calculation could have bounded it.
+
+### Two fixes: the test, and the class of bug
+
+- **The test uses `jest.spyOn`**, so `restoreMocks` can put `fs.promises.readdir` back. With this alone, the pair that reproduced the OOM deterministically now passes.
+- **`jestSetup/CoreModuleIsolation.ts` restores core module functions after every test**, registered through `setupFilesAfterEnv`. It snapshots the plain function properties of `fs` and `fs.promises` before a suite loads and puts back anything whose identity changed -- so a future assignment costs the test that wrote it rather than an unrelated suite scheduled after it. Getter-backed properties are read through a descriptor and left alone, since a getter is not something an assignment could have replaced.
+
+The regression test is executed, not asserted as text: one test replaces `fs.promises.readdir` by assignment exactly as the defect did, and the next test reads a real directory through it. Removing the guard fails that test.
+
+No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
+
+26 suites, 1328 tests, coverage 90.86/85.73/92.40/90.82 against a 90.85/85.72/92.37/90.81 baseline. Five consecutive cold-cache runs pass, against two failures in three before the fix.
+
 ## [3.15.0] - The Explorer says when it cannot draw, and the freshness check becomes something you ask for
 
 Resolves [#108](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/108).
