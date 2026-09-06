@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.15.1] - The CI heap failures were a test mock escaping its own suite
+## [3.16.2] - The CI heap failures were a test mock escaping its own suite
 
 ### One assignment, in one test, could exhaust a 4 GB heap in a different suite
 
@@ -41,7 +41,153 @@ The regression test is executed, not asserted as text: one test replaces `fs.pro
 
 No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
 
-26 suites, 1328 tests, coverage 90.86/85.73/92.40/90.82 against a 90.85/85.72/92.37/90.81 baseline. Five consecutive cold-cache runs pass, against two failures in three before the fix.
+### A green run on 3.16.1 is scheduling luck, not a fix
+
+Measured after merging 3.16.1: **`main` now passes four cold-cache runs in four.** Nothing about the defect changed -- the assignment is still there, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf. What changed is the per-file timing that decides which suites share a worker, because 3.16.0 and 3.16.1 added roughly 33 tests and took a cold run from ~30 s to ~76 s.
+
+Run the two suites on one worker and the defect answers for itself:
+
+```
+# 3.16.1
+jest --maxWorkers=1 --runTestsByPath VSCodeWorkspaceService.test.ts RelationshipService.test.ts
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+
+# same command, this release
+Test Suites: 2 passed, 2 total
+Tests:       96 passed, 96 total
+```
+
+So this is not a fix chasing a failure that has gone away. It is a fix for one that stopped being scheduled, and that the next test file added anywhere in the project can schedule again.
+
+26 suites, 1361 tests, coverage 90.96/85.90/92.48/90.92 against 3.16.1's 90.93/85.84/92.46/90.88. Four cold-cache runs pass, and the pair that reproduces the heap exhaustion on 3.16.1 passes here. Before the merge, on 3.15.0, cold-cache runs of the whole suite failed two times in three.
+
+## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
+
+Closes [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).
+
+The `customRelationshipMappings` property itself shipped in 3.5.0. Auditing it against the acceptance criteria on #47 turned up three things the original change left open. No runtime behavior changes here -- this is the evidence that the feature does what it claims, plus the user-facing documentation it never got.
+
+### The result the property exists for was never asserted
+
+The existing tests stopped at `resolveParentReferenceForField` -- "which parent api name comes back". The criterion is about what happens *after* that: the object has to end up a child of the mapped parent, in the same relationship tree, written to the same Treecipe file, with the parent inserted first. Nothing carried a mapping that far.
+
+Four tests now do, driving a mapping through `resolveParentReferenceForField` into `buildBidirectionalChildAndParentRelationshipReferences`, `processAllRelationships` and `generateSeparateRecipeFiles`, and asserting the levels, the tree grouping and the insertion order that comes out the far end. One of them mixes a custom-mapped lookup with an OOTB `AccountId` on the same object, since "custom entries extend OOTB entries" is only really shown when both resolve in one pass.
+
+### The config read had no tests of its own
+
+`DirectoryProcessor.getCustomRelationshipMappings` is what actually puts a user's `treecipe.config.json` in front of every `Lookup` field missing a `<referenceTo>` tag, and nothing tested it directly. Its lines were already *executed* by the existing `processDirectory` tests -- `DirectoryProcessor.ts` coverage does not move in this change, and is 63.57% before and after -- but executed is not asserted, and none of that reached the behavior below. It is memoized for a reason -- it is consulted per field but must read the file once per directory -- and it swallows the missing-config throw for a reason: a workspace with no Treecipe config still has to process normally rather than aborting the walk. Both of those are now pinned, including that a *failed* read is cached too, so a config-less workspace does not re-throw and re-catch once per field.
+
+Pinning the accessor is not enough on its own, though, and a performance review of this change caught the gap: every one of those tests reaches the memo directly, so moving the read back into the per-field `forEach` -- or calling `ConfigurationService` straight from the call site -- would restore a synchronous `existsSync` + `readFileSync` + `JSON.parse` per unresolved lookup field and leave all of them green. A sixth test drives `processDirectory` over three objects contributing three unresolved lookup fields each and asserts **one** configuration read for the whole walk. Against that regression it reports nine.
+
+### One test passed for the wrong reason, over unreachable code
+
+`getMergedReferenceLookupMap` guards against a custom entry overwriting an OOTB one, and a test claimed to cover it using the key `"AccountId"`. It does not. A valid custom key is always `"ObjectApiName.FieldApiName"` and an OOTB key is always a bare field api name, so the two key spaces cannot intersect -- `"AccountId"` is rejected several lines earlier as a malformed key, and the override guard is unreachable. The assertion was right and the reason was wrong, which is the kind of test that stops being true without anyone noticing.
+
+The test now says what actually preserves the OOTB entry, and a second one covers the case the old name implied: `"CustomObject__c.AccountId"` is a well-formed custom key whose field segment collides with an OOTB key, and both entries coexist. The guard is left in place as a cheap invariant for any future OOTB entry that is not a bare field name.
+
+### Documentation
+
+`customRelationshipMappings` was described here and nowhere a user would look. `README.md` now documents it under **Initiate Configuration File** -- the key format, a worked example, and the four ways an entry is quietly skipped, since a misspelled key fails silently by design and "check the key spelling" is the first thing to try when an object is still landing in the wrong tree.
+
+Newly generated configs still omit the property. Absent already means `{}`, and a placeholder in every generated file buys nothing.
+
+## [3.16.0] - The spec manifest carries the information content of the specs, not their cross product
+
+Resolves [#102](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/102).
+
+Reading and parsing `treecipe/PicklistDependencySpecs/manifest.json` was the single largest cost of opening the Picklist Dependency Explorer -- measured during 3.11.0 at roughly **59%** of the open, and named there as tracked rather than fixed.
+
+The size was structural. Every expectation recorded its own `forbiddenValues`, so the file grew with *combinations x declared values* when the information content of those two lists is their **sum**. The view model had already had this exact treatment -- `IPicklistDependencyCombinationViewModel.hasForbiddenAssertion` carries no values for the same reason -- and the manifest had not.
+
+### The complement is derived, not stored
+
+A field entry now records `declaredValues` **once**, and an expectation whose forbidden set is the complement of its `dependentValues` within that universe records one boolean instead of the values:
+
+```jsonc
+{
+    "controllingValue": "cle",
+    "dependentValues": ["ohiocity"],
+    "forbiddenValuesAreDeclaredComplement": true
+}
+```
+
+`buildSpecDetailsByManifest` reconstructs the array on read, so **every consumer is unchanged** -- the Explorer's rows, and `PicklistDependencyMetadataWriterService`, whose whole transpose turns on that list because `expectNotAllowed` is what *removes* a pair. A reconstruction that quietly returned an empty list would leave writeback adding but never removing, so that is asserted directly rather than assumed.
+
+Measured on a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values x 120 declared values, serialized and parsed through the real builder (median of three runs; in-memory, so no disk read is included):
+
+| | before | after |
+|---|---|---|
+| `manifest.json` | **315.7 MB** | **32.2 MB** |
+| `JSON.parse` | ~1,400 ms | **~59 ms** |
+| validate + normalize | ~119 ms | ~33 ms |
+| `buildSpecDetailsByManifest` | ~41 ms | ~145 ms |
+| **read → spec details** | **~1,560 ms** | **~237 ms** |
+
+The reconstruction is the one thing that got *slower*, by ~104 ms, and it is named rather than buried: deriving 48,000 complements is work the old shape did not do. It buys back 13x that on the parse.
+
+The issue's baseline of 153 MB / ~1.37 s came from the same shape with shorter api names; the parse times agree, and the ratios above are within one fixture on one machine, which is the only comparison worth quoting.
+
+### Ordering the universe once per field, not once per complement
+
+The generator emits its complement sorted, so a reconstruction that only filtered would return the right values in the wrong order -- identical to a set comparison, and not identical to the round trip the manifest is now held to. Sorting *inside* the complement measured **594 ms** against **59 ms** for the filter alone, which would have handed back most of what the parse saved. The universe is ordered once per field instead, and `buildDeclaredComplement` takes it already ordered.
+
+### Three forbidden states, still three
+
+- **the marker** -- the complement, which is what the generator always emits
+- **a written-out `forbiddenValues` array** -- a set that is *not* the complement. `expectNone` and `expectUnavailable` both assert an **empty** one against a universe that is not empty, and the panel renders those two differently from each other
+- **neither** -- a spec asserting only the positive half, which the panel must not draw a complement for at all
+
+Deriving the marker is a *comparison*, not an assumption: `buildManifestExpectations` builds the complement and checks it against what the expectation actually declares, recording the values literally when they differ. That is what makes the round trip a property of the manifest rather than a coincidence of what the two generators happen to emit -- an Apex-parsed spec naming a partial `expectNotAllowed` list is entitled to forbid something that is not the complement, and rewriting it into one would assert something the spec never claimed.
+
+The universe recorded is the one each spec was **drawn against**: for a record-type-scoped field that is what the record type assigns, not everything the field declares, which is why it is recorded per field *entry* rather than per field api name. It also has to be **complete** -- a truncated universe would have every consumer deriving a complement understate what the spec forbids, which is a false claim rather than a shorter one.
+
+### `manifestVersion` is now 3
+
+A version 2 manifest is structurally readable -- objects, fields and expectations in shapes this build walks -- which is exactly why it is refused by version rather than by shape. It carries no `declaredValues`, so every complement drawn against it would be empty and the panel would show specs that forbid nothing at all. It is refused with the existing "re-run Generate Picklist Dependency Tests" message.
+
+### Two things the marker changed about reading a manifest from disk
+
+`manifest.json` is a file a hand edit controls, and it is committed into repositories other people clone. Recording the complement as a marker changed the read path in two ways that the security review caught and this release closes.
+
+**The format became decompressive.** The file now carries the *sum* of the two picklists while reading it still materializes their *product*. Under version 2 an expansion of forty million values needed a file that literally contained them — roughly 400 MB — so file size was its own ceiling. It no longer is: a **0.70 MB** manifest expands to **40,000,000** values, and the expansion happens on load, *before* `applyModelLimits`, which bounds what is rendered from a finished view model rather than what building one allocates.
+
+Reading is now bounded by what a manifest expands to. The ceiling was **measured through the real builder**, not chosen:
+
+| shape | file | reconstructed | time | heap |
+|---|---|---|---|---|
+| real large org, 1,200 fields | 8.95 MB | 5.7 M | 268 ms | 61 MB |
+| 1 field, 5k values x 5k combos | 0.74 MB | 25.0 M | 1,716 ms | 261 MB |
+| 1 field, 20k values x 2k combos | 0.70 MB | 40.0 M | 2,356 ms | 352 MB |
+| 1 field, 20k values x 4k combos | 0.95 MB | 80.0 M | 3,022 ms | — |
+
+**25 M** is 4.3x the largest real org measured and holds the load to roughly 260 MB. Only an expectation carrying the *marker* counts against it — one carrying its forbidden list literally already costs the file what it costs memory, which is the ratio version 2 had throughout. A test asserts the headroom over a real org rather than trusting the comment.
+
+**A universe read from disk is complete or it is nothing.** `declaredValues` was filtered to strings on load, like every other tolerant entry parse. For this field that filter was itself the bug: a list read *partially* looks whole, and every complement drawn from it names fewer values than the spec forbids — a false claim rather than a shorter one, which is precisely what the complete-universe rule exists to prevent. It is also worse than the same edit was under version 2, where one bad element cost one expectation's list; here it would silently narrow the universe for **every** expectation on the field. A list that cannot be read whole is now treated exactly like one that is not there: no universe, and no "must not unlock" rendered anywhere on that field.
+
+### CI: the worker recycle threshold now recycles before the suite that needs a clean one
+
+This change added twenty-two tests and turned CI red — `RelationshipService.test.ts` OOM-ing a worker at the 4 GB ceiling, reported as `SIGTERM` with **zero failing tests**, which is the failure 3.11.0 mitigated and explicitly did not root-cause.
+
+Measured rather than assumed, because the obvious reading — "the new tests are heavy" — is wrong:
+
+- The manifest suite grew by **3 MB** (235 → 238 MB) across 18 new tests. The new tests are not the memory.
+- `RelationshipService.test.ts` passes **alone under a 1 GB cap**. It is not a large allocation; it is a high allocation *rate*, which is only fatal on a worker that is already warm.
+- What the twenty-two tests actually changed is *scheduling* — which suite lands last on a hot worker.
+
+So the defect is unchanged and still main's: `calculateLevelsRecursively` is still exponential in depth, and any PR that adds tests can shuffle it onto a warm worker. `--workerIdleMemoryLimit` is the existing lever for exactly this, and 512 MB was above the ~500 MB a worker reaches before picking up the next file, so it never recycled in time. At **250 MB** the worker is recycled first.
+
+Measured at CI's exact 4 GB cap, on this branch:
+
+| `--workerIdleMemoryLimit` | result |
+|---|---|
+| 512 MB (before) | 1 of 2 runs green |
+| **250 MB (now)** | **4 of 4 runs green** |
+
+Applied to **both** `jest-test` and `jest-test-summary`, because CI runs the latter — flags on the former alone would have changed nothing, which is the same trap 3.11.0 called out. No test is skipped, disabled or quarantined. This remains a mitigation with a measurement attached, not a root cause: the traversal still wants its own issue.
+
+### Tests
+
+Every new guard was verified by reintroducing the defect -- dropping the reconstruction fails seven tests across all three services, including the existing round trip, the Explorer's row parity and the writeback's proposed metadata. The shape itself is pinned at small scale in `PicklistDependencyManifestService/tests`: a field whose controlling values each unlock exactly one of twelve values writes each value **twice**, where the old shape wrote it thirteen times.
 
 ## [3.15.0] - The Explorer says when it cannot draw, and the freshness check becomes something you ask for
 
@@ -150,7 +296,6 @@ The summary is a **report on** a finished write, not a step of it. By the time i
 ### Values from metadata cannot restructure the document
 
 Api names, class names and paths reach this document from XML the extension does not control, and markdown has no escaping inside a code span -- only a longer fence. So the fence is grown past the longest backtick run in the value, a value that starts or ends with a backtick is padded, and **a line break is rendered as its escape sequence**: a blank line ends the paragraph the span lives in, so a value carrying one would otherwise become markup for everything after it. That last case was found by the test written for it, not by reading the code.
-
 ## [3.12.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json
 
 Resolves [#100](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/100).

@@ -120,6 +120,28 @@ The end result treecipe.config.json file is expected to look like the below:
 
 Once the configuration file is generated, you can begin using the **Generate Treecipe** command.
 
+#### Optional: `customRelationshipMappings`
+
+When Salesforce metadata is pulled down, a lookup field on a custom object sometimes arrives without a `<referenceTo>` tag. Treecipe cannot tell what that field points at, so the object is left out of the relationship tree and ends up in the wrong Treecipe file with the wrong insertion order.
+
+Add an optional `customRelationshipMappings` property to `treecipe.config.json` to resolve those fields by hand. Each key is `"ObjectApiName.FieldApiName"` and each value is the parent object's API name:
+
+```json
+{
+    "salesforceObjectsPath": "./force-app/main/default/objects/",
+    "dataFakerService": "faker-js",
+    "customRelationshipMappings": {
+        "CustomObject__c.Primary_Contact__c": "Contact",
+        "Order__c.Related_Account__c": "Account"
+    }
+}
+```
+
+* The property is **optional** — leave it out entirely and Treecipe behaves exactly as before.
+* A mapping is only consulted when the field's own `<referenceTo>` tag is missing. Metadata always wins.
+* These entries **extend** the built-in lookup map (currently the single entry `AccountId` → `Account`); they never replace it.
+* A key without exactly one dot separator (`"CustomObject__cPrimary_Contact__c"`, `"Too.Many.Dots__c"`) is ignored, and an entry with an empty parent value is skipped. A typo is silently skipped rather than failing the run — if an object is still landing in the wrong tree, check the key spelling first.
+
 #### Corresponding Video:
 
 [https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#initiate-treecipe-configuration-with-expected-objects-directory](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#initiate-treecipe-configuration-with-expected-objects-directory)
