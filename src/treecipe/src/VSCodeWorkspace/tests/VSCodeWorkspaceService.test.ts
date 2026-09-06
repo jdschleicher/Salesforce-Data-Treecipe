@@ -337,6 +337,33 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
+    describe('showMarkdownPreview', () => {
+
+        /*
+            A PREVIEW rather than a text editor: the generation summary's bullets, headings and links
+            to the walkthroughs are the reason it is markdown rather than the plain output channel
+            the warnings use, and none of that renders in a text editor.
+        */
+        test('opens the file through the markdown preview command', async () => {
+
+            /*
+                The jest.fn instances in the vscode module factory are created once for the module,
+                so restoreMocks does not clear them and calls from earlier tests are still queued
+                here. Cleared so calls[0] is this test's call rather than the file's first.
+            */
+            (vscode.commands.executeCommand as jest.Mock).mockClear();
+
+            await VSCodeWorkspaceService.showMarkdownPreview('/workspace/treecipe/PicklistDependencySpecs/generation-summary.md');
+
+            const [previewCommand, previewedUri] = (vscode.commands.executeCommand as jest.Mock).mock.calls[0];
+
+            expect(previewCommand).toBe('markdown.showPreview');
+            expect(previewedUri.fsPath).toBe('/workspace/treecipe/PicklistDependencySpecs/generation-summary.md');
+
+        });
+
+    });
+
     describe('promptForObjectsPath', () => {
 
         /*
