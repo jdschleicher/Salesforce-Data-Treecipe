@@ -151,14 +151,50 @@ export interface IPicklistDependencyManifestLoad {
     that window would have the provenance banner assert the specs still match metadata nothing has
     looked at -- the same class of claim the three-state status guarantee exists to prevent one row
     lower down.
-*/
-export type PicklistDependencyManifestFreshness = 'fresh' | 'staleObjectsDirectory' | 'staleMetadata' | 'pendingCheck';
 
-// FROZEN: IT IS PASSED INTO MODEL BUILDS AS THE PENDING ANSWER, AND ONE CALLER MUTATING IT WOULD CHANGE EVERY LATER OPEN
-export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
-    freshness: 'pendingCheck' as PicklistDependencyManifestFreshness,
+    "notChecked" is the RESTING state, and it is what an open now produces: the walk is no longer
+    part of opening the panel, so the ordinary case is that nobody has looked. "pendingCheck" is
+    reserved for a walk that is actually in flight, which is only ever true between a reader
+    clicking the banner's check button and the answer coming back. Collapsing the two would have a
+    panel nobody asked to check sit forever behind a progress message for work that is not running.
+
+    "checkFailed" is the walk that ran and could not answer -- a deleted directory, a permission
+    error, a network mount that went away mid-stat. It is separate from the two stale values on the
+    same principle: reporting "your metadata changed" for an EACCES sends a reader looking for an
+    edit they never made. None of the four non-fresh values claims agreement with metadata, which is
+    the property the banner depends on.
+*/
+export type PicklistDependencyManifestFreshness = 'fresh'
+                                                    | 'staleObjectsDirectory'
+                                                    | 'staleMetadata'
+                                                    | 'pendingCheck'
+                                                    | 'notChecked'
+                                                    | 'checkFailed';
+
+/*
+    What a model built by an open carries.
+
+    There is deliberately no PENDING equivalent: "pendingCheck" is now PANEL-LOCAL state, set by the
+    panel when the reader clicks check and resolved by the answer that follows. The host never builds
+    a model carrying it, so a constant for it would be a shape nothing produces.
+
+    Frozen: it is passed into model builds, and one caller mutating it would change every later open.
+*/
+export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
+    freshness: 'notChecked' as PicklistDependencyManifestFreshness,
     message: ''
 });
+
+/*
+    The three fields a freshness check actually reads, named as their own type.
+
+    The Explorer holds this across the life of a panel so a check can answer about the model ON
+    SCREEN rather than about whatever the manifest says by the time the reader clicks. Narrowed to a
+    Pick so what is held is three strings: pinning the whole parsed manifest for them retained tens
+    of megabytes on a large org, for a comparison that never touches the objects list.
+*/
+export type IPicklistDependencyManifestFreshnessSubject =
+    Pick<IPicklistDependencyManifest, 'objectsDirectoryPath' | 'sourceFingerprint' | 'generatedAt'>;
 
 export interface IPicklistDependencyManifestFreshnessResult {
     freshness: PicklistDependencyManifestFreshness;
@@ -1094,6 +1130,22 @@ export class PicklistDependencyManifestService {
     */
     static collectSourceFingerprintEntries(objectsDirectoryPath: string): string[] {
 
+        /*
+            The ROOT is read unguarded, and that asymmetry is the whole point.
+
+            Every directory BELOW this one is allowed to be unreadable and contribute nothing: one
+            locked subdirectory on a real org should cost that subdirectory, not the answer. The root
+            is different in kind. If it cannot be read there is no metadata to fingerprint at all,
+            and folding that into an empty entry list produces sha256('') -- a digest that mismatches
+            whatever was recorded and is then reported as "your metadata has changed since these
+            specs were generated".
+
+            That was a false claim about a directory that is missing or locked, and it sent the
+            reader to regenerate from a directory that is not there. It is exactly the reading
+            checkFailed exists to prevent, so the root's failure has to reach the caller.
+        */
+        fs.readdirSync(objectsDirectoryPath);
+
         let fingerprintEntries: string[] = [];
         let visitedDirectoryPaths = new Set<string>();
 
@@ -1247,7 +1299,7 @@ export class PicklistDependencyManifestService {
         never "this specific thing changed" -- and a banner that overstates is one users learn to
         dismiss.
     */
-    static resolveManifestFreshness(manifest: IPicklistDependencyManifest,
+    static resolveManifestFreshness(manifest: IPicklistDependencyManifestFreshnessSubject,
                                         objectsDirectoryPath: string): IPicklistDependencyManifestFreshnessResult {
 
         if ( this.normalizeDirectoryPathForComparison(manifest.objectsDirectoryPath)
@@ -1260,7 +1312,38 @@ export class PicklistDependencyManifestService {
 
         }
 
-        const currentSourceFingerprint = this.buildSourceFingerprint(objectsDirectoryPath);
+        /*
+            The walk is stat-per-file over a directory the extension does not own, and every one of
+            those stats can fail for a reason that has nothing to do with staleness: the directory
+            deleted between the panel opening and the reader clicking check, a permission change, a
+            network mount that went away mid-walk.
+
+            Contained HERE rather than at the call site because this is the only place that knows the
+            failure was a freshness question rather than the load. A throw escaping to the command
+            would be reported as the Explorer failing to load -- past a panel that has been on screen
+            and usable for however long the reader took to click the button.
+        */
+        let currentSourceFingerprint: string;
+
+        try {
+            currentSourceFingerprint = this.buildSourceFingerprint(objectsDirectoryPath);
+        } catch (error) {
+
+            /*
+                The directory being gone is the common case and is named as itself. Every other
+                reason -- a permission change, a mount that went away -- carries the error, because
+                guessing at a cause the reader can act on is worse than quoting the one we have.
+            */
+            const isMissingDirectory = error?.code === 'ENOENT';
+
+            return {
+                freshness: 'checkFailed',
+                message: isMissingDirectory
+                    ? `The objects directory "${objectsDirectoryPath}" could not be found, so these specs could not be checked against your current metadata. Check the "salesforceObjectsPath" value in treecipe.config.json. What is shown below is what the generated Apex asserts.`
+                    : `The object metadata in "${objectsDirectoryPath}" could not be read to check whether these specs still match it (${error?.message ?? error}). What is shown below is what the generated Apex asserts; whether it still matches your metadata is unknown.`
+            };
+
+        }
 
         if ( manifest.sourceFingerprint.length > 0 && manifest.sourceFingerprint !== currentSourceFingerprint ) {
 

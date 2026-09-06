@@ -840,6 +840,17 @@ export class VSCodeWorkspaceService {
 
     }
 
+    /*
+        Opened as a PREVIEW rather than as a text editor: the document is a report to read, and its
+        bullets, links and headings are the whole reason it is markdown instead of the output channel
+        the warnings use.
+    */
+    static async showMarkdownPreview(markdownFilePath: string) {
+
+        await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(markdownFilePath));
+
+    }
+
     static showPicklistDependencyCheckReport(report: string) {
 
         const outputChannel = this.getPicklistDependencyCheckOutputChannel();

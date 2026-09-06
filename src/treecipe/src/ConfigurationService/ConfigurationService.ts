@@ -21,6 +21,7 @@ export interface TreecipeConfigDetail {
     salesforceObjectsPath: string;
     dataFakerService: string;
     customRelationshipMappings?: Record<string, string>;
+    customCompoundAddressFields?: string[];
 }
 
 export class ConfigurationService {
@@ -57,6 +58,24 @@ export class ConfigurationService {
         }
 
         return customRelationshipMappings;
+
+    }
+
+    /*
+        A compound Address field whose XML carries no usable <type> tag parses as AUTO_GENERATED and
+        cannot be detected from metadata alone, so this list lets a user name those fields explicitly.
+        Malformed config degrades to no configured fields rather than throwing -- recipe generation
+        for every other field in the workspace is worth more than reporting a hand edit here.
+    */
+    static getCustomCompoundAddressFields(): string[] {
+
+        const configurationDetail = this.getTreecipeConfigurationDetail();
+        const customCompoundAddressFields = configurationDetail?.customCompoundAddressFields;
+        if (!Array.isArray(customCompoundAddressFields)) {
+            return [];
+        }
+
+        return customCompoundAddressFields.filter((fieldApiName) => typeof fieldApiName === 'string');
 
     }
 

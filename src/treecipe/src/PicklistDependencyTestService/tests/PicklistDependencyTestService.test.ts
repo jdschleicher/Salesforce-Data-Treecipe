@@ -1,4 +1,15 @@
-import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, PicklistDependencySkipReason } from "../PicklistDependencyTestService";
+import {
+    PicklistDependencyTestService,
+    IPicklistDependencySpecDetail,
+    IRecordTypePicklistDependencySpecDetail,
+    PicklistDependencySkipReason,
+    IPicklistDependencyGenerationSummaryDetail,
+    TREECIPE_COMMAND_PALETTE_PREFIX,
+    PICKLIST_DEPENDENCY_IN_ORG_GUIDE_RUNNING_THE_TESTS_URL,
+    PICKLIST_DEPENDENCY_IN_ORG_GUIDE_TRIGGERING_A_FAILURE_URL,
+    PICKLIST_DEPENDENCY_IN_ORG_GUIDE_FIXING_A_FAILURE_URL,
+    PICKLIST_DEPENDENCY_TECHNICAL_DESIGN_URL
+} from "../PicklistDependencyTestService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { XmlFileProcessor } from "../../XMLProcessingService/XmlFileProcessor";
 import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
@@ -4895,5 +4906,279 @@ describe('PicklistDependencyTestService', () => {
         });
 
     });
+
+
+describe('generation summary reporting', () => {
+
+    /*
+        A run with nothing optional to report: no record type scoped specs, nothing scaffolded,
+        nothing removed. Every optional bullet is asserted ABSENT here, because the failure this
+        guards against is a run being described as having done something it did not.
+    */
+    const buildMinimalSummaryDetail = (): IPicklistDependencyGenerationSummaryDetail => ({
+        specCount: 4,
+        perObjectClassCount: 2,
+        specsClassName: 'SDTPLDSpecs',
+        specsTestClassName: 'SDTPLDSpecsTest',
+        testSuiteName: 'SDTPicklistDependencyTests',
+        classesDirectoryPath: '/workspace/force-app/main/default/classes',
+        manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json',
+        recordTypeSpecCount: 0,
+        scaffoldedClassNames: [],
+        removedStaleClassFileNames: []
+    });
+
+    describe('buildGenerationSummaryToastMessage', () => {
+
+        test('is one sentence carrying both counts and nothing else', () => {
+
+            const toastMessage = PicklistDependencyTestService.buildGenerationSummaryToastMessage(buildMinimalSummaryDetail());
+
+            expect(toastMessage).toBe('Generated 4 picklist dependency spec(s) across 2 per-object class(es).');
+
+        });
+
+        test('says nothing about the optional outcomes, which are the document\'s to report', () => {
+
+            const summaryDetail = buildMinimalSummaryDetail();
+            summaryDetail.recordTypeSpecCount = 3;
+            summaryDetail.scaffoldedClassNames = ['SDTPicklistDependencyValidator'];
+            summaryDetail.removedStaleClassFileNames = ['SDTPLDSpecsForOldThing__c.cls'];
+
+            const toastMessage = PicklistDependencyTestService.buildGenerationSummaryToastMessage(summaryDetail);
+
+            expect(toastMessage).not.toContain('record-type-scoped');
+            expect(toastMessage).not.toContain('Scaffolded');
+            expect(toastMessage).not.toContain('Removed');
+
+        });
+
+    });
+
+    describe('buildGenerationSummaryMarkdown', () => {
+
+        test('renders both sections as bullets', () => {
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(buildMinimalSummaryDetail());
+
+            expect(summaryMarkdown).toContain('# Picklist Dependency Generation Summary');
+            expect(summaryMarkdown).toContain('## What happened');
+            expect(summaryMarkdown).toContain('## What to do next');
+
+            const bulletLines = summaryMarkdown.split('\n').filter(summaryLine => summaryLine.startsWith('- '));
+            expect(bulletLines.length).toBeGreaterThanOrEqual(10);
+
+        });
+
+        test('reports what the run wrote, naming the classes directory and the manifest', () => {
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(buildMinimalSummaryDetail());
+
+            expect(summaryMarkdown).toContain('**4** picklist dependency spec(s) across **2** per-object class(es)');
+            expect(summaryMarkdown).toContain('`SDTPLDSpecs.cls`');
+            expect(summaryMarkdown).toContain('`SDTPLDSpecsTest.cls`');
+            expect(summaryMarkdown).toContain('`SDTPicklistDependencyTests`');
+            expect(summaryMarkdown).toContain('`/workspace/force-app/main/default/classes`');
+            expect(summaryMarkdown).toContain('`/workspace/treecipe/PicklistDependencySpecs/manifest.json`');
+
+        });
+
+        test('omits every optional bullet when the run had nothing optional to report', () => {
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(buildMinimalSummaryDetail());
+
+            expect(summaryMarkdown).not.toContain('record-type-scoped spec(s)');
+            expect(summaryMarkdown).not.toContain('Scaffolded the required framework class(es)');
+            expect(summaryMarkdown).not.toContain('no longer declaring a');
+
+        });
+
+        test('reports the record type scoped specs, the scaffolded classes and the removed stale classes when there are any', () => {
+
+            const summaryDetail = buildMinimalSummaryDetail();
+            summaryDetail.recordTypeSpecCount = 3;
+            summaryDetail.scaffoldedClassNames = ['SDTPicklistDependencyValidator', 'SDTPicklistDependencySpec'];
+            summaryDetail.removedStaleClassFileNames = ['SDTPLDSpecsForOldThing__c.cls'];
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(summaryDetail);
+
+            expect(summaryMarkdown).toContain('**3** record-type-scoped spec(s)');
+            expect(summaryMarkdown).toContain('`SDTPLDSpecs.allRecordTypeScoped()`');
+            expect(summaryMarkdown).toContain('`SDTPicklistDependencyValidator`, `SDTPicklistDependencySpec`');
+            expect(summaryMarkdown).toContain('`SDTPLDSpecsForOldThing__c.cls`');
+
+        });
+
+        test('names the explorer and the check by their exact command palette titles', () => {
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(buildMinimalSummaryDetail());
+
+            expect(summaryMarkdown).toContain(`\`${TREECIPE_COMMAND_PALETTE_PREFIX}: Open Picklist Dependency Explorer\``);
+            expect(summaryMarkdown).toContain(`\`${TREECIPE_COMMAND_PALETTE_PREFIX}: Run Picklist Dependency Check\``);
+
+        });
+
+        /*
+            The walkthroughs are the reason "what to do next" is worth anything -- they carry the
+            mermaid diagrams for running the tests and reading a failure. A link silently dropped
+            leaves a bullet telling the reader to go somewhere it no longer names.
+        */
+        test('links every walkthrough as an absolute url, since the document lives in the user workspace', () => {
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(buildMinimalSummaryDetail());
+
+            const expectedDocumentationUrls = [
+                PICKLIST_DEPENDENCY_IN_ORG_GUIDE_RUNNING_THE_TESTS_URL,
+                PICKLIST_DEPENDENCY_IN_ORG_GUIDE_TRIGGERING_A_FAILURE_URL,
+                PICKLIST_DEPENDENCY_IN_ORG_GUIDE_FIXING_A_FAILURE_URL,
+                PICKLIST_DEPENDENCY_TECHNICAL_DESIGN_URL
+            ];
+
+            expectedDocumentationUrls.forEach(expectedDocumentationUrl => {
+                expect(expectedDocumentationUrl.startsWith('https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs')).toBe(true);
+                expect(summaryMarkdown).toContain(`(${expectedDocumentationUrl})`);
+            });
+
+        });
+
+    });
+
+    /*
+        Api names and paths reach this document from metadata the extension does not control, so the
+        question is not whether they render prettily -- it is whether a value can end its own code
+        span and become markup for the rest of the document.
+    */
+    describe('formatAsMarkdownInlineCode', () => {
+
+        test('renders markdown control characters as literal text', () => {
+
+            const formattedValue = PicklistDependencyTestService.formatAsMarkdownInlineCode('Odd_#|[]*Name__c');
+
+            expect(formattedValue).toBe('`Odd_#|[]*Name__c`');
+
+        });
+
+        test('grows the fence past the longest backtick run in the value', () => {
+
+            expect(PicklistDependencyTestService.formatAsMarkdownInlineCode('a`b')).toBe('``a`b``');
+            expect(PicklistDependencyTestService.formatAsMarkdownInlineCode('a``b')).toBe('```a``b```');
+
+        });
+
+        test('pads a value that starts or ends with a backtick so the span closes where it should', () => {
+
+            expect(PicklistDependencyTestService.formatAsMarkdownInlineCode('`leading')).toBe('`` `leading ``');
+            expect(PicklistDependencyTestService.formatAsMarkdownInlineCode('trailing`')).toBe('`` trailing` ``');
+
+        });
+
+        test('a crafted api name cannot break out of its code span in the rendered summary', () => {
+
+            const summaryDetail = buildMinimalSummaryDetail();
+            summaryDetail.removedStaleClassFileNames = ['SDTPLDSpecsFor`.cls\n\n# Injected Heading\n\n- injected bullet'];
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(summaryDetail);
+
+            expect(summaryMarkdown).not.toContain('\n# Injected Heading');
+            expect(summaryMarkdown).not.toContain('\n- injected bullet');
+
+        });
+
+    });
+
+    /*
+        The links are the whole value of "what to do next", and an anchor is silent when it rots:
+        GitHub serves the page and drops the reader at the top, so a renamed heading looks like a
+        working link. Resolved against the real documents rather than trusted.
+    */
+    describe('walkthrough anchors', () => {
+
+        const buildGitHubHeadingSlug = (headingText: string) => headingText
+            .toLowerCase()
+            .replace(/[^a-z0-9 -]/g, '')
+            .trim()
+            .replace(/ /g, '-');
+
+        test('every linked anchor resolves to a heading the guide actually declares', () => {
+
+            const inOrgGuideFilePath = path.join(__dirname, '..', '..', '..', '..', '..', 'docs', 'PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md');
+            const inOrgGuideContent = fs.readFileSync(inOrgGuideFilePath, 'utf-8');
+
+            const declaredHeadingSlugs = inOrgGuideContent
+                .split('\n')
+                .filter(guideLine => guideLine.startsWith('#'))
+                .map(headingLine => buildGitHubHeadingSlug(headingLine.replace(/^#+\s*/, '')));
+
+            const linkedGuideUrls = [
+                PICKLIST_DEPENDENCY_IN_ORG_GUIDE_RUNNING_THE_TESTS_URL,
+                PICKLIST_DEPENDENCY_IN_ORG_GUIDE_TRIGGERING_A_FAILURE_URL,
+                PICKLIST_DEPENDENCY_IN_ORG_GUIDE_FIXING_A_FAILURE_URL
+            ];
+
+            linkedGuideUrls.forEach(linkedGuideUrl => {
+                const linkedAnchor = linkedGuideUrl.split('#')[1];
+                expect(declaredHeadingSlugs).toContain(linkedAnchor);
+            });
+
+        });
+
+        test('every linked document is on disk under docs', () => {
+
+            const linkedDocumentFileNames = [
+                'PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md',
+                'PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md'
+            ];
+
+            linkedDocumentFileNames.forEach(linkedDocumentFileName => {
+                const linkedDocumentFilePath = path.join(__dirname, '..', '..', '..', '..', '..', 'docs', linkedDocumentFileName);
+                expect(fs.existsSync(linkedDocumentFilePath)).toBe(true);
+            });
+
+            expect(PICKLIST_DEPENDENCY_TECHNICAL_DESIGN_URL).toContain('PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md');
+
+        });
+
+    });
+
+    describe('writeGenerationSummaryDocument', () => {
+
+        const fakeSpecsFolderPath = path.join('/workspace', 'treecipe', 'PicklistDependencySpecs');
+
+        test('writes the document into the specs folder beside the manifest, creating the folder when missing', () => {
+
+            const madeDirectoryPaths: string[] = [];
+            jest.spyOn(fs, 'mkdirSync').mockImplementation((directoryPath) => {
+                madeDirectoryPaths.push(directoryPath as string);
+                return undefined;
+            });
+
+            let writtenContentByFilePath: Record<string, string> = {};
+            jest.spyOn(fs, 'writeFileSync').mockImplementation((filePath, fileContent) => {
+                writtenContentByFilePath[filePath as string] = fileContent as string;
+            });
+
+            const writtenSummaryFilePath = PicklistDependencyTestService.writeGenerationSummaryDocument(fakeSpecsFolderPath, '# Summary');
+
+            expect(writtenSummaryFilePath).toBe(path.join(fakeSpecsFolderPath, 'generation-summary.md'));
+            expect(madeDirectoryPaths).toContain(fakeSpecsFolderPath);
+            expect(writtenContentByFilePath[writtenSummaryFilePath]).toBe('# Summary');
+
+        });
+
+        /*
+            A json file in a package directory breaks "sf project deploy"; a markdown file there is
+            no different. The summary is a sibling of the manifest for exactly that reason.
+        */
+        test('is named as markdown and never lands in a package directory', () => {
+
+            expect(PicklistDependencyTestService.getGenerationSummaryFileName()).toBe('generation-summary.md');
+            expect(PicklistDependencyTestService.buildGenerationSummaryDocumentFilePath(fakeSpecsFolderPath))
+                .toBe(path.join(fakeSpecsFolderPath, 'generation-summary.md'));
+
+        });
+
+    });
+
+});
 
 });

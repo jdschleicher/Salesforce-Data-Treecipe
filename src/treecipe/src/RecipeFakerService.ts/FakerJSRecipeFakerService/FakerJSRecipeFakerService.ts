@@ -327,6 +327,25 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return salesforceFieldToNPMFakerMap;
     }
 
+    /*
+        Keyed by address component, NOT by component api name -- the compound field's api name decides
+        whether a component is "BillingStreet" or "Site_Address__Street__s", and that derivation is
+        Salesforce metadata knowledge that RecipeService owns rather than a faker concern.
+    */
+    getAddressComponentToRecipeValueMap(): Record<string, string> {
+
+        const addressComponentToFakerValue: Record<string, string> = {
+            'Street': `\${{faker.location.streetAddress()}}`,
+            'City': `\${{faker.location.city()}}`,
+            'State': `\${{faker.location.state()}}`,
+            'PostalCode': `\${{faker.location.zipCode()}}`,
+            'Country': `\${{faker.location.country()}}`
+        };
+
+        return addressComponentToFakerValue;
+
+    }
+
     getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>> {
 
         const salesforceFakerMappings: Record<string, Record<string, string>> = {

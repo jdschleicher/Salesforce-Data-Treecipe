@@ -15,6 +15,8 @@ export interface IRecipeFakerService {
         fieldApiName): string;
     generateTabs(tabCount: number): string;
     getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>>;
+    getAddressComponentToRecipeValueMap(): Record<string, string>;
+
     buildRecordTypeBasedPicklistRecipeValue(
         recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
         associatedFieldApiName: string): string;
