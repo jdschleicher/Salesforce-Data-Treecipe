@@ -491,4 +491,86 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
     });
 
+    describe('buildCompoundAddressComponentApiName', () => {
+
+        test('given a custom compound address field, returns the "__s" suffixed component name off the base name', () => {
+
+            expect(RecipeService.buildCompoundAddressComponentApiName('Site_Address__c', 'Street')).toBe('Site_Address__Street__s');
+            expect(RecipeService.buildCompoundAddressComponentApiName('Site_Address__c', 'PostalCode')).toBe('Site_Address__PostalCode__s');
+
+        });
+
+        test('given a namespaced custom compound address field, keeps the namespace prefix on the component', () => {
+
+            expect(RecipeService.buildCompoundAddressComponentApiName('ns__Site_Address__c', 'City')).toBe('ns__Site_Address__City__s');
+
+        });
+
+        test('given a standard compound address field, swaps the "Address" suffix for the component', () => {
+
+            expect(RecipeService.buildCompoundAddressComponentApiName('BillingAddress', 'Street')).toBe('BillingStreet');
+            expect(RecipeService.buildCompoundAddressComponentApiName('ShippingAddress', 'PostalCode')).toBe('ShippingPostalCode');
+            expect(RecipeService.buildCompoundAddressComponentApiName('MailingAddress', 'Country')).toBe('MailingCountry');
+
+        });
+
+        /*
+            Lead's compound field is named "Address" outright, so the empty prefix and the bare
+            component names it produces are the correct answer rather than a degenerate case.
+        */
+        test('given the bare "Address" compound field, returns the unprefixed component names', () => {
+
+            expect(RecipeService.buildCompoundAddressComponentApiName('Address', 'Street')).toBe('Street');
+            expect(RecipeService.buildCompoundAddressComponentApiName('Address', 'State')).toBe('State');
+
+        });
+
+    });
+
+    describe('buildCompoundAddressComponentRecipes', () => {
+
+        test('given a custom compound address field, returns one recipe per component with snowfakery values', () => {
+
+            const compoundAddressComponentRecipes = recipeServiceWithSnow.buildCompoundAddressComponentRecipes('Site_Address__c');
+
+            expect(compoundAddressComponentRecipes.map(componentRecipe => componentRecipe.componentApiName)).toEqual([
+                'Site_Address__Street__s',
+                'Site_Address__City__s',
+                'Site_Address__State__s',
+                'Site_Address__PostalCode__s',
+                'Site_Address__Country__s'
+            ]);
+
+            expect(compoundAddressComponentRecipes[0].recipeValue).toBe('${{fake.street_address}}');
+            expect(compoundAddressComponentRecipes[3].recipeValue).toBe('${{fake.zipcode}}');
+
+        });
+
+        test('given a standard compound address field, returns the unsuffixed component names', () => {
+
+            const compoundAddressComponentRecipes = recipeServiceWithSnow.buildCompoundAddressComponentRecipes('BillingAddress');
+
+            expect(compoundAddressComponentRecipes.map(componentRecipe => componentRecipe.componentApiName)).toEqual([
+                'BillingStreet',
+                'BillingCity',
+                'BillingState',
+                'BillingPostalCode',
+                'BillingCountry'
+            ]);
+
+        });
+
+        test('every component carries a defined recipe value', () => {
+
+            const compoundAddressComponentRecipes = recipeServiceWithSnow.buildCompoundAddressComponentRecipes('Site_Address__c');
+
+            compoundAddressComponentRecipes.forEach((componentRecipe) => {
+                expect(componentRecipe.recipeValue).toBeDefined();
+                expect(componentRecipe.recipeValue).not.toBe('');
+            });
+
+        });
+
+    });
+
 });

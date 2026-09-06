@@ -20,6 +20,7 @@ export class DirectoryProcessor {
   private recipeService: RecipeService;
   private relationshipService: RelationshipService;
   private customRelationshipMappings: Record<string, string> | undefined;
+  private customCompoundAddressFields: string[] | undefined;
   constructor() {
     const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
     this.recipeService = new RecipeService(selectedDataFakerService);
@@ -39,6 +40,85 @@ export class DirectoryProcessor {
     }
 
     return this.customRelationshipMappings;
+
+  }
+
+  private getCustomCompoundAddressFields(): string[] {
+
+    if (this.customCompoundAddressFields !== undefined) {
+      return this.customCompoundAddressFields;
+    }
+
+    try {
+      this.customCompoundAddressFields = ConfigurationService.getCustomCompoundAddressFields();
+    } catch {
+      this.customCompoundAddressFields = [];
+    }
+
+    return this.customCompoundAddressFields;
+
+  }
+
+  isCompoundAddressField(fieldInfo: FieldInfo, associatedObjectName: string): boolean {
+
+    const compoundAddressFieldType = 'address';
+    if ( fieldInfo?.type?.toLowerCase() === compoundAddressFieldType ) {
+      return true;
+    }
+
+    /*
+      A compound address field file can carry no <type> tag at all, in which case it has already
+      parsed as AUTO_GENERATED and no metadata signal is left to key on -- the configured list is
+      the only way such a field can be recognised.
+
+      Keyed by object AND field, like customRelationshipMappings: a field api name repeats across
+      objects, so a bare name would make "Legacy_Address__c" on one object silently replace the
+      identically named field on every other object with five bogus component lines.
+    */
+    if ( !fieldInfo?.fieldName || !associatedObjectName ) {
+      return false;
+    }
+
+    const objectQualifiedFieldKey = `${associatedObjectName}.${fieldInfo.fieldName}`;
+    return this.getCustomCompoundAddressFields().includes(objectQualifiedFieldKey);
+
+  }
+
+  /*
+    Returns one FieldInfo per writable component and NONE for the compound field itself, which is why
+    an empty array is a valid result: on an object whose OOTB mappings already name every component
+    (Account's BillingStreet/BillingCity/...) the compound field contributes nothing rather than a
+    second set of the same recipe lines.
+
+    A component is dropped for either of two reasons, and both produce the same duplicate key in the
+    object recipe if missed: the OOTB mappings already emit it, or the object HAS that component as
+    its own field file. The second is why Asset matters -- it is in the OOTB mappings but names no
+    address components, so its bare "Address" compound field expands to Street/City/... and collides
+    with any Street.field-meta.xml retrieved alongside it.
+  */
+  buildCompoundAddressComponentFieldInfos(compoundFieldInfo: FieldInfo,
+                                            associatedObjectName: string,
+                                            salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
+                                            alreadyProcessedFieldInfos: FieldInfo[] = []
+                                          ): FieldInfo[] {
+
+    const ootbFieldApiNamesForObject = salesforceOOTBFakerMappings?.[associatedObjectName] ?? {};
+    const alreadyProcessedFieldApiNames = new Set(alreadyProcessedFieldInfos.map(fieldInfo => fieldInfo?.fieldName));
+    const compoundAddressComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
+
+    return compoundAddressComponentRecipes
+      .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
+      .filter((componentRecipe) => !alreadyProcessedFieldApiNames.has(componentRecipe.componentApiName))
+      .map((componentRecipe) => FieldInfo.create(
+        associatedObjectName,
+        componentRecipe.componentApiName,
+        `${compoundFieldInfo.fieldLabel} ${componentRecipe.componentKey}`,
+        'Text',
+        null,
+        null,
+        null,
+        componentRecipe.recipeValue
+      ));
 
   }
 
@@ -178,6 +258,7 @@ export class DirectoryProcessor {
     const vsCodeDirectoryTuples = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
+    let compoundAddressFieldInfos: FieldInfo[] = [];
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
       if ( XmlFileProcessor.isSalesforceFieldMetadataFile(fileName, directoryItemTypeEnum) && !this.isInMappingsOfOotbSalesforceFields(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
@@ -191,11 +272,37 @@ export class DirectoryProcessor {
                                                               recordTypeApiToRecordTypeWrapperMap,
                                                               fileName
                                                             );
-        fieldInfoDetails.push(fieldInfo);
+
+        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName) ) {
+
+          compoundAddressFieldInfos.push(fieldInfo);
+
+        } else {
+
+          fieldInfoDetails.push(fieldInfo);
+
+        }
 
       }
 
     }
+
+    /*
+      Expansion runs AFTER the walk so a component can be checked against every field file the object
+      actually has rather than only the ones read so far -- directory order decides whether a
+      component's own field file is seen before or after the compound field, and a duplicate recipe
+      key is invalid either way.
+    */
+    compoundAddressFieldInfos.forEach((compoundAddressFieldInfo) => {
+
+      const compoundAddressComponentFieldInfos = this.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo,
+                                                                                                associatedObjectName,
+                                                                                                salesforceOOTBFakerMappings,
+                                                                                                fieldInfoDetails
+                                                                                              );
+      fieldInfoDetails.push(...compoundAddressComponentFieldInfos);
+
+    });
 
     return fieldInfoDetails;
 

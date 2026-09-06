@@ -232,6 +232,84 @@ describe('Shared ConfigurationService Tests', () => {
 
     });
 
+    describe('getCustomCompoundAddressFields', () => {
+
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+
+        test('given config with customCompoundAddressFields present, returns the configured field api names', () => {
+
+            const expectedConfigDetailJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery",
+    "customCompoundAddressFields": ["Site_Address__c", "BillingAddress"]
+}`;
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+
+            const actualCompoundAddressFields = ConfigurationService.getCustomCompoundAddressFields();
+
+            expect(actualCompoundAddressFields).toEqual(["Site_Address__c", "BillingAddress"]);
+
+        });
+
+        test('given config without customCompoundAddressFields property, returns empty array', () => {
+
+            const expectedConfigDetailJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery"
+}`;
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+
+            expect(ConfigurationService.getCustomCompoundAddressFields()).toEqual([]);
+
+        });
+
+        /*
+            A hand edit that makes this an object rather than a list must not stop recipe generation
+            for every other field in the workspace.
+        */
+        test('given customCompoundAddressFields that is not an array, returns empty array rather than throwing', () => {
+
+            const expectedConfigDetailJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery",
+    "customCompoundAddressFields": { "Site_Address__c": true }
+}`;
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+
+            expect(() => ConfigurationService.getCustomCompoundAddressFields()).not.toThrow();
+            expect(ConfigurationService.getCustomCompoundAddressFields()).toEqual([]);
+
+        });
+
+        test('given customCompoundAddressFields containing non-string entries, drops them and keeps the field api names', () => {
+
+            const expectedConfigDetailJson = `{
+    "salesforceObjectsPath": "/mock/objects/path",
+    "dataFakerService": "snowfakery",
+    "customCompoundAddressFields": ["Site_Address__c", 42, null, "BillingAddress"]
+}`;
+
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+
+            expect(ConfigurationService.getCustomCompoundAddressFields()).toEqual(["Site_Address__c", "BillingAddress"]);
+
+        });
+
+    });
+
     describe('getCustomRelationshipMappings', () => {
 
         beforeEach(() => {
