@@ -16,7 +16,6 @@ import {
 } from '../PicklistDependencyManifestService/PicklistDependencyManifestService';
 
 import * as crypto from 'crypto';
-import * as fs from 'fs';
 import * as path from 'path';
 
 /*
@@ -1267,10 +1266,21 @@ export class PicklistDependencyExplorerService {
 
         truncatedCombinationCount += this.applyTotalCombinationBudget(viewModel, limits.maxRenderedCombinations);
 
+        /*
+            Counted in FIELDS and capped in CHAINS, and the notice has to say both.
+
+            The cap is applied to an object's ROOT nodes -- a chain is dropped whole, because half a
+            chain drawn as a graph misstates what controls what -- so the surviving chains carry
+            their downstream fields with them and an object can render many more fields than the
+            cap. Saying "no object shows more than N" was simply false: at a cap of 2, three chains
+            of five fields renders 10 fields, not 2.
+        */
         if ( truncatedNodeCount > 0 ) {
             truncationNotices.push(
                 `${truncatedNodeCount} dependent picklist(s) are not rendered: no object shows more than `
-                    + `${limits.maxNodesPerObject} at once, and the first ${limits.maxNodesPerObject} the manifest declares are shown.`
+                    + `${limits.maxNodesPerObject} dependency chain(s) at once, and the first ${limits.maxNodesPerObject} `
+                    + 'the manifest declares are shown. A chain is kept or dropped whole, so a rendered chain shows '
+                    + 'every field beneath it.'
             );
         }
 
@@ -1319,7 +1329,16 @@ export class PicklistDependencyExplorerService {
             return 0;
         }
 
-        type CombinationHolder = { combinations: IPicklistDependencyCombinationViewModel[] };
+        /*
+            truncatedCombinationCount is part of the shape on purpose: this budget drops rows from a
+            holder, and the panel renders each holder's own count beneath its rows. A holder emptied
+            here without being told would render as a field that declares no combinations at all --
+            "rendered as something it was not", which is the one thing the ceiling must never do.
+        */
+        type CombinationHolder = {
+            combinations: IPicklistDependencyCombinationViewModel[];
+            truncatedCombinationCount: number;
+        };
 
         let combinationHolders: CombinationHolder[] = [];
 
@@ -1345,9 +1364,17 @@ export class PicklistDependencyExplorerService {
         combinationHolders.forEach(combinationHolder => {
 
             const keptCombinationCount = Math.min(budgetRemaining, combinationHolder.combinations.length);
+            const droppedCombinationCount = combinationHolder.combinations.length - keptCombinationCount;
 
-            truncatedCombinationCount += combinationHolder.combinations.length - keptCombinationCount;
             budgetRemaining -= keptCombinationCount;
+
+            // A HOLDER WHOLLY INSIDE THE BUDGET IS LEFT ALONE RATHER THAN SLICED INTO AN IDENTICAL COPY
+            if ( droppedCombinationCount === 0 ) {
+                return;
+            }
+
+            truncatedCombinationCount += droppedCombinationCount;
+            combinationHolder.truncatedCombinationCount += droppedCombinationCount;
 
             combinationHolder.combinations = combinationHolder.combinations.slice(0, keptCombinationCount);
 

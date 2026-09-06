@@ -29,10 +29,6 @@ expect.extend(matchers);
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
-const mockResultsDirectoryPath = path.join(__dirname, 'mocks', 'MockPicklistDependencyResults');
-const mockMalformedResultsDirectoryPath = path.join(__dirname, 'mocks', 'MockMalformedResults');
-const mockResultsWithoutOutcomesDirectoryPath = path.join(__dirname, 'mocks', 'MockResultsWithoutOutcomes');
-const mockResultsWithReportDirectoryPath = path.join(__dirname, 'mocks', 'MockResultsWithReport');
 
 const mockObjectsDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'objects');
 
@@ -289,7 +285,9 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
 
-            expect(actualViewModel).not.toContainKeys(['runLoadState', 'runSummary', 'runLoadMessage', 'failureTriageByKind']);
+            expect(actualViewModel).not.toContainKeys([
+                'runLoadState', 'runSummary', 'runLoadMessage', 'failureTriageByKind', 'truncatedFailedCombinationCount'
+            ]);
 
             const stateNode = actualViewModel.objects[0].rootNodes[0];
 
@@ -2152,6 +2150,104 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualViewModel.objects[1].rootNodes[0].combinations.map(combination => combination.controllingValue))
                 .toEqual(['USA']);
             expect(actualViewModel.objects[2].rootNodes[0].combinations).toBeEmpty();
+
+        });
+
+        /*
+            The node cap is applied to ROOT CHAINS, and a surviving chain brings every field beneath
+            it. The notice therefore has to talk about chains: it previously said "no object shows
+            more than N at once", which a three-chains-of-five model falsifies outright -- 2 chains
+            kept renders 10 fields, not 2. The count was right and the sentence was not.
+        */
+        it('given the node cap, counts dropped FIELDS but describes the cap in chains', () => {
+
+            let chainedSpecDetails: IPicklistDependencySpecDetail[] = [];
+            for ( let chainIndex = 0; chainIndex < 3; chainIndex++ ) {
+                for ( let depthIndex = 0; depthIndex < 5; depthIndex++ ) {
+                    chainedSpecDetails.push({
+                        objectApiName: 'Big__c',
+                        fieldApiName: `C${chainIndex}_D${depthIndex}__c`,
+                        controllingFieldApiName: depthIndex === 0 ? 'Root__c' : `C${chainIndex}_D${depthIndex - 1}__c`,
+                        upstreamFieldApiName: depthIndex === 0 ? undefined : `C${chainIndex}_D${depthIndex - 1}__c`,
+                        expectations: [{ controllingValue: 'A', dependentValues: ['x'], forbiddenValues: [] }]
+                    });
+                }
+            }
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, chainedSpecDetails, []),
+                buildLimits({ maxNodesPerObject: 2 })
+            );
+
+            expect(actualViewModel.objects[0].rootNodes).toHaveLength(2);
+
+            // TEN FIELDS ARE ON SCREEN AT A CAP OF TWO, WHICH IS WHY THE NOTICE MAY NOT SAY "no object shows more than 2"
+            expect(PicklistDependencyExplorerService.countNodes(actualViewModel.objects[0].rootNodes)).toBe(10);
+            expect(actualViewModel.objects[0].truncatedNodeCount).toBe(5);
+
+            const nodeNotice = actualViewModel.truncationNotices.find(notice => notice.includes('dependent picklist(s) are not rendered'));
+
+            expect(nodeNotice).toContain('2 dependency chain(s) at once');
+            expect(nodeNotice).not.toContain('no object shows more than 2 at once');
+
+        });
+
+        /*
+            The total budget drops rows from a specific field, and the panel renders each field's own
+            dropped count beneath its rows. A field the budget emptied without incrementing that
+            count rendered as a field that declares NO combinations -- "rendered as something it was
+            not", which is precisely what the ceiling must never do.
+        */
+        it('given the total budget emptying a field, tells that field how many it lost', () => {
+
+            const budgetedSpecDetails: IPicklistDependencySpecDetail[] = ['F1__c', 'F2__c'].map(fieldApiName => ({
+                objectApiName: 'Big__c',
+                fieldApiName: fieldApiName,
+                controllingFieldApiName: 'Root__c',
+                expectations: Array.from({ length: 10 }, (unusedValue, expectationIndex) => ({
+                    controllingValue: `V${expectationIndex}`,
+                    dependentValues: ['x'],
+                    forbiddenValues: []
+                }))
+            }));
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, budgetedSpecDetails, []),
+                buildLimits({ maxRenderedCombinations: 10 })
+            );
+
+            const firstNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'F1__c');
+            const emptiedNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'F2__c');
+
+            // THE FIELD INSIDE THE BUDGET KEEPS EVERYTHING AND CLAIMS NO LOSS
+            expect(firstNode.combinations).toHaveLength(10);
+            expect(firstNode.truncatedCombinationCount).toBe(0);
+
+            // THE EMPTIED FIELD SAYS SO, RATHER THAN LOOKING LIKE A FIELD WITH NO COMBINATIONS
+            expect(emptiedNode.combinations).toBeEmpty();
+            expect(emptiedNode.truncatedCombinationCount).toBe(10);
+
+        });
+
+        // A SCOPE IS A COMBINATION HOLDER TOO, AND CARRIES ITS OWN COUNT FOR THE SAME REASON
+        it('given the total budget emptying a record type scope, tells that scope too', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath,
+                    buildChainExampleSpecDetails(),
+                    [],
+                    buildChainExampleRecordTypeSpecDetails()
+                ),
+                buildLimits({ maxRenderedCombinations: 1 })
+            );
+
+            const allScopes = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .reduce((scopes, node) => scopes.concat(node.recordTypeScopes), []);
+            const emptiedScopes = allScopes.filter(recordTypeScope => recordTypeScope.combinations.length === 0);
+
+            expect(emptiedScopes).not.toBeEmpty();
+            emptiedScopes.forEach(recordTypeScope => expect(recordTypeScope.truncatedCombinationCount).toBeGreaterThan(0));
 
         });
 

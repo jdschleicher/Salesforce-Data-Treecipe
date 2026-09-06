@@ -46,6 +46,16 @@ Every panel action is gated by an allow-list built from the rendered model. Ther
 
 A test asserts the panel posts neither `openSpecMethod` nor `openRunReport`, and another asserts the host answers both with nothing.
 
+### Two truncation notices that were not true
+
+Review of this change caught both, and both are about the ceiling describing itself accurately rather than about what it drops.
+
+The node cap is applied to **root chains** — a chain is dropped whole, because half a chain drawn as a graph misstates what controls what — so a surviving chain brings every field beneath it. The notice nonetheless read "no object shows more than N at once". At a cap of 2, three chains of five fields renders **10** fields. The dropped count was right and the sentence was false; it now describes the cap in chains and says a rendered chain shows every field beneath it.
+
+`applyTotalCombinationBudget` sliced a holder's combinations without incrementing that holder's own `truncatedCombinationCount`, and the panel renders those per-field and per-scope counts beneath their rows. A field the budget emptied therefore rendered as a field that declares **no combinations at all**, with no local notice — "rendered as something it was not", one level below where the aggregate notice was telling the truth. Each holder is now told what it lost, and a holder wholly inside the budget is left alone rather than sliced into an identical copy.
+
+Both were reachable on `main` too; this change rewrote the code and the wording around them, so they are fixed here rather than deferred. Three regression tests pin them.
+
 ### Everything a row no longer claims is removed rather than defaulted
 
 `status`, `failures`, `failureCount`, `fieldLevelFailures`, `unattributedFailureMessages`, `runSummary`, `runLoadState`, `runLoadMessage` and `failureTriageByKind` are off the view model interfaces. The tests assert on the absence of the **keys** rather than on their values, deliberately: a `status` of `'unknown'` left in place would satisfy a value assertion while leaving the whole three-state rendering one line away from being back on screen.
@@ -53,6 +63,14 @@ A test asserts the panel posts neither `openSpecMethod` nor `openRunReport`, and
 Every combination row now starts collapsed. It used to open for a row a check had reported a failure on, and singling out a subset on any other basis would put a claim about the rows into a disclosure state.
 
 The record type scope note changed for the same reason. It used to read "not asserted by the check: Apex describe returns picklist values without record type filtering" -- a statement about what verifies the row. It now says what the row **is**: the record type narrows the field-level dependency above it.
+
+### Orphans the removal created
+
+`PicklistDependencyExplorerService` no longer does file I/O of any kind, so its `fs` import is gone -- the import is one edit away from letting synchronous I/O back into a file whose whole thesis is that it needs none.
+
+`VSCodeWorkspaceService.openFileInEditor` took an optional one-based line number, which existed for the two Apex actions and got its line from the panel's line finders. Both actions and both finders are gone, every caller passed one argument, and the reveal branch was unreachable; the parameter and the branch are removed. Its tests now pin that opening a file moves the reader's cursor nowhere.
+
+The four `Mock*Results*` fixture directories under the explorer's `tests/mocks/` held `results.json` and `report.md` samples for the deleted parsers, and are deleted with them. `.vscodeignore` already excluded them from the package, so this is hygiene rather than a shipping change.
 
 ## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 

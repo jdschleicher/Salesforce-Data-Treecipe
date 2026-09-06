@@ -628,26 +628,20 @@ export class VSCodeWorkspaceService {
     }
 
     /*
-        oneBasedLineNumber is optional and ignored when it is 0, which is what the panel's line
-        finders return for "the file does not declare this". Opening the file at the top is the
-        right answer there -- the reader still lands in the class or report they asked for, rather
-        than at a line that happens to be first.
+        Opens a file at the top. It used to take an optional oneBasedLineNumber, which existed for
+        the Explorer's two Apex actions -- "open the generated .cls at the spec method" and "open
+        report.md at this object's entry" -- and the line it scrolled to came from the panel's line
+        finders. Both actions and both finders are gone, so every caller passed one argument and the
+        whole reveal branch was unreachable. Re-adding line targeting means re-adding a caller that
+        knows which line it wants.
     */
-    static async openFileInEditor(filePath: string, oneBasedLineNumber?: number) {
+    static async openFileInEditor(filePath: string) {
 
         try {
 
           const uri = vscode.Uri.file(filePath);
           const document = await vscode.workspace.openTextDocument(uri); 
-          const textEditor = await vscode.window.showTextDocument(document);     
-
-          if ( !oneBasedLineNumber || oneBasedLineNumber < 1 ) {
-            return;
-          }
-
-          const targetPosition = new vscode.Position(oneBasedLineNumber - 1, 0);
-          textEditor.selection = new vscode.Selection(targetPosition, targetPosition);
-          textEditor.revealRange(new vscode.Range(targetPosition, targetPosition), vscode.TextEditorRevealType.InCenter);
+          await vscode.window.showTextDocument(document);     
 
         } catch (error) {
 
