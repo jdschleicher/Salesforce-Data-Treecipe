@@ -59,7 +59,7 @@ export class DirectoryProcessor {
 
   }
 
-  isCompoundAddressField(fieldInfo: FieldInfo): boolean {
+  isCompoundAddressField(fieldInfo: FieldInfo, associatedObjectName: string): boolean {
 
     const compoundAddressFieldType = 'address';
     if ( fieldInfo?.type?.toLowerCase() === compoundAddressFieldType ) {
@@ -70,8 +70,17 @@ export class DirectoryProcessor {
       A compound address field file can carry no <type> tag at all, in which case it has already
       parsed as AUTO_GENERATED and no metadata signal is left to key on -- the configured list is
       the only way such a field can be recognised.
+
+      Keyed by object AND field, like customRelationshipMappings: a field api name repeats across
+      objects, so a bare name would make "Legacy_Address__c" on one object silently replace the
+      identically named field on every other object with five bogus component lines.
     */
-    return this.getCustomCompoundAddressFields().includes(fieldInfo?.fieldName);
+    if ( !fieldInfo?.fieldName || !associatedObjectName ) {
+      return false;
+    }
+
+    const objectQualifiedFieldKey = `${associatedObjectName}.${fieldInfo.fieldName}`;
+    return this.getCustomCompoundAddressFields().includes(objectQualifiedFieldKey);
 
   }
 
@@ -80,17 +89,26 @@ export class DirectoryProcessor {
     an empty array is a valid result: on an object whose OOTB mappings already name every component
     (Account's BillingStreet/BillingCity/...) the compound field contributes nothing rather than a
     second set of the same recipe lines.
+
+    A component is dropped for either of two reasons, and both produce the same duplicate key in the
+    object recipe if missed: the OOTB mappings already emit it, or the object HAS that component as
+    its own field file. The second is why Asset matters -- it is in the OOTB mappings but names no
+    address components, so its bare "Address" compound field expands to Street/City/... and collides
+    with any Street.field-meta.xml retrieved alongside it.
   */
   buildCompoundAddressComponentFieldInfos(compoundFieldInfo: FieldInfo,
                                             associatedObjectName: string,
-                                            salesforceOOTBFakerMappings: Record<string, Record<string, string>>
+                                            salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
+                                            alreadyProcessedFieldInfos: FieldInfo[] = []
                                           ): FieldInfo[] {
 
     const ootbFieldApiNamesForObject = salesforceOOTBFakerMappings?.[associatedObjectName] ?? {};
+    const alreadyProcessedFieldApiNames = new Set(alreadyProcessedFieldInfos.map(fieldInfo => fieldInfo?.fieldName));
     const compoundAddressComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
 
     return compoundAddressComponentRecipes
-      .filter((componentRecipe) => !(componentRecipe.componentApiName in ootbFieldApiNamesForObject))
+      .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
+      .filter((componentRecipe) => !alreadyProcessedFieldApiNames.has(componentRecipe.componentApiName))
       .map((componentRecipe) => FieldInfo.create(
         associatedObjectName,
         componentRecipe.componentApiName,
@@ -240,6 +258,7 @@ export class DirectoryProcessor {
     const vsCodeDirectoryTuples = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
+    let compoundAddressFieldInfos: FieldInfo[] = [];
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
       if ( XmlFileProcessor.isSalesforceFieldMetadataFile(fileName, directoryItemTypeEnum) && !this.isInMappingsOfOotbSalesforceFields(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
@@ -254,13 +273,9 @@ export class DirectoryProcessor {
                                                               fileName
                                                             );
 
-        if ( this.isCompoundAddressField(fieldInfo) ) {
+        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName) ) {
 
-          const compoundAddressComponentFieldInfos = this.buildCompoundAddressComponentFieldInfos(fieldInfo,
-                                                                                                    associatedObjectName,
-                                                                                                    salesforceOOTBFakerMappings
-                                                                                                  );
-          fieldInfoDetails.push(...compoundAddressComponentFieldInfos);
+          compoundAddressFieldInfos.push(fieldInfo);
 
         } else {
 
@@ -271,6 +286,23 @@ export class DirectoryProcessor {
       }
 
     }
+
+    /*
+      Expansion runs AFTER the walk so a component can be checked against every field file the object
+      actually has rather than only the ones read so far -- directory order decides whether a
+      component's own field file is seen before or after the compound field, and a duplicate recipe
+      key is invalid either way.
+    */
+    compoundAddressFieldInfos.forEach((compoundAddressFieldInfo) => {
+
+      const compoundAddressComponentFieldInfos = this.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo,
+                                                                                                associatedObjectName,
+                                                                                                salesforceOOTBFakerMappings,
+                                                                                                fieldInfoDetails
+                                                                                              );
+      fieldInfoDetails.push(...compoundAddressComponentFieldInfos);
+
+    });
 
     return fieldInfoDetails;
 

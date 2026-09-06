@@ -217,19 +217,6 @@ export class XMLMarkupMockService {
 `;
         return numberFieldMarkup;    }
 
-    static getCompoundAddressXMLFieldDetail(): XMLFieldDetail {
-
-        const compoundAddressXMLField: XMLFieldDetail = {
-            fieldType: "Address",
-            apiName: "Site_Address__c",
-            fieldLabel: "Site Address",
-            xmlMarkup: this.getCompoundAddressFieldTypeXMLMarkup()
-        };
-
-        return compoundAddressXMLField;
-
-    }
-
     static getCompoundAddressFieldTypeXMLMarkup(): string {
         const compoundAddressFieldMarkup = `
 <?xml version="1.0" encoding="UTF-8"?>

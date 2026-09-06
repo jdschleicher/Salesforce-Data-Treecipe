@@ -4,12 +4,7 @@ import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerServic
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
-
-export interface ICompoundAddressComponentRecipe {
-    componentKey: string;
-    componentApiName: string;
-    recipeValue: string;
-}
+import { ICompoundAddressComponentRecipe } from "./ICompoundAddressComponentRecipe";
 
 export class RecipeService {
 
