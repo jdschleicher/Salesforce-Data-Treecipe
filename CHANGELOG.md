@@ -1,5 +1,45 @@
 # Change Log
 
+## [3.15.0] - The Explorer says when it cannot draw, and the freshness check becomes something you ask for
+
+Resolves [#108](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/108).
+
+### A render that fails now says so
+
+The Picklist Dependency Explorer could fail silently and completely. `renderPanel` ran its five render functions top to bottom inside the webview's message listener with no `try`/`catch` and no `onerror` anywhere in the panel script, and it wrote the scanned-path line FIRST. So a throw in any one of them left the heading and one line naming the objects directory over an empty page -- which is indistinguishable from a panel that loaded and found nothing.
+
+Nothing reported it, and nothing could. A webview exception never reaches the extension host, so `failPicklistDependencyExplorerLoad` never ran: the host had posted a model, the post had succeeded, the status bar item disposed on schedule, and as far as it knew the load had finished. The error existed only in the webview developer tools, which nobody opens because nothing suggests there is anything to look at.
+
+Three changes, together:
+
+- **The render runs inside a guard.** A throw now replaces the body with a failure notice naming the error, rather than leaving a partial page. The partial page is not a smaller correct answer -- the objects that did draw are an arbitrary prefix of the model -- so it is cleared rather than left under a warning.
+- **The scanned-path line is revealed last**, after the body it describes has drawn. It was the marker that made a failed render look like a finished one.
+- **The panel tells the host either way.** A new `renderFailed` message carries the error and stack to `ErrorHandlingService.handleCapturedError`, the same path a host-side failure takes, and a `rendered` acknowledgement records that something is actually on screen. A `window` `error` listener catches throws outside the render -- a lazy expand, a row handler -- through the same channel.
+
+A `render` failure is distinguished from a `runtime` throw after a successful draw. Only the first invalidates the panel and empties its action allow-lists; a handler that threw on a keystroke leaves the rows readable. Each distinct failure is reported once, because the `error` listener fires per event. `unhandledrejection` is covered too — an async throw in the panel was as silent as the bug this fixes.
+
+**This is containment, not a root-cause fix.** The specific throw behind the report that prompted this has not been reproduced: every model array the panel dereferences is built as a concrete array by the model builders in the same process, and `buildManifestLoadByParsedContent` validates the manifest structurally before any of it. What changes today is that the next occurrence names itself instead of looking like an empty org.
+
+### The freshness check is an action, not a toll
+
+Opening the Explorer ran a recursive `statSync` walk of the entire objects directory -- ~113 ms across 7,800 field files, and materially worse on Windows-with-Defender or a network mount -- to answer a question the reader may not have asked. 3.11.0 moved that walk after the first paint, which fixed the blank window but not the cost.
+
+The structure a reader opens the panel for is fully derivable from `manifest.json` alone. Staleness is a caveat *about* that structure, not a precondition for it. So the walk is gone from the open path entirely, and the provenance banner carries a **Check against current metadata** button. After an answer it reads **Check again**.
+
+- **`notChecked` is a new resting state**, distinct from `pendingCheck`. `notChecked` means nobody has looked; `pendingCheck` means a walk is in flight. Collapsing the two would leave a panel nobody asked to check sitting forever behind a progress message for work that is not running. The banner states it -- *"Generated specs -- not checked against your current metadata"* -- rather than narrating it.
+- **`checkFailed` is a new answer**: the walk ran and could not read the directory. It is separate from the two stale values because reporting "your metadata changed" for an `EACCES` sends a reader looking for an edit they never made.
+- Neither is styled or labelled as stale, and neither ever claims `fresh`. All four non-fresh values keep the property the banner depends on: a panel that has not established agreement with metadata does not assert it.
+- The `checkingFreshness` load phase is gone; an open's last reported phase is `buildingView`, and the status bar item is disposed when the model renders.
+
+The check is gated on the render state rather than on a path allow-list, because the command carries no path: the host answers from the manifest it stored when it rendered, and refuses when it stored nothing. A metadata preview has no manifest to be stale against and is refused, as is the window before any model exists. A second click while a walk is in flight is dropped rather than queued, and an answer is not posted into a panel closed across the walk.
+
+### Freshness checks contain their own I/O failures
+
+`resolveManifestFreshness` catches a throw out of the fingerprint walk and returns `checkFailed` with the reason, naming the objects directory specifically when the cause is `ENOENT`. The walk happens on a click that may come long after the panel opened, and a throw escaping it would have been reported as the Explorer failing to *load* -- past a panel that had been on screen and usable the whole time.
+
+Reaching that state required changing the **walk**, not just adding a `try`/`catch` around it. `collectSourceFingerprintEntries` swallows `readdirSync` and `statSync` failures per directory -- deliberately, so one locked subdirectory costs that subdirectory rather than the answer -- which meant a missing objects directory produced `sha256('')`, mismatched the recorded fingerprint, and was reported as *"your metadata has changed since these specs were generated"*, sending the reader to regenerate from a directory that is not there. The root is now read unguarded: below it, tolerance is unchanged. There is a regression test that uses the real walk against a real missing directory, because a mocked-throw test passes against the broken version.
+
+Every refusal of a check also **answers** the panel. The click optimistically shows "checking" before the host has agreed to anything, so a silent return left a disabled button narrating a walk that was not running -- recoverable only by reopening the panel, and the exact state `notChecked` was introduced to abolish.
 ## [3.14.0] - Address compound fields expand into the component fields that can actually be inserted
 
 Resolves [#4](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/4).

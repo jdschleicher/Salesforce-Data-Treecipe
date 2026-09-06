@@ -22,8 +22,9 @@ import {
 } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import {
     PicklistDependencyManifestService,
+    IPicklistDependencyManifestFreshnessSubject,
     IPicklistDependencyManifestFreshnessResult,
-    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING
+    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED
 } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 
@@ -66,6 +67,32 @@ interface IPicklistDependencyExplorerPanelMessage {
     reportFilePath?: string;
     methodName?: string;
     combinationKey?: string;
+    // renderFailed ONLY -- what the panel threw, which no other channel can carry
+    message?: string;
+    stack?: string;
+    /*
+        "render" means the model could not be DRAWN and nothing usable is on screen. "runtime" means
+        a handler threw after a successful draw -- a lazy expand, a filter keystroke -- with the rows
+        still in front of the reader. Only the first invalidates the panel.
+    */
+    phase?: string;
+}
+
+/*
+    What a rendered panel's freshness check compares, and the directory to compare it against.
+
+    Held rather than re-read: the check answers a question about the model ON SCREEN, and re-reading
+    the manifest at click time would let a regeneration in between silently change what is being
+    compared. Only the three fields the comparison reads are kept -- holding the whole parsed
+    manifest for them pinned tens of megabytes on a large org for the life of the panel.
+
+    objectsDirectoryPath is the CONFIGURED directory, derived from treecipe.config.json and the
+    workspace root, never the one the manifest records. A hand-edited manifest therefore cannot
+    redirect the walk; its recorded path is compared, not followed.
+*/
+interface IPicklistDependencyExplorerFreshnessCheckContext {
+    freshnessSubject: IPicklistDependencyManifestFreshnessSubject;
+    objectsDirectoryPath: string;
 }
 
 interface IPicklistDependencyGenerationResult {
@@ -1417,38 +1444,31 @@ export class ExtensionCommandService {
                         manifestLoad,
                         fullPathToObjectsDirectory,
                         resultsLoad,
-                        PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING,
+                        PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED,
                         workspaceRoot
                     );
 
-                    this.renderPicklistDependencyExplorerModel(
-                        explorerPanel,
-                        explorerViewModel,
-                        PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness
-                    );
-
                     /*
-                        The paint has to actually LEAVE the host before the walk starts. Without this
-                        the post is still sitting in VS Code's outgoing batch when the stat walk
-                        begins, and "after the first paint" would be true of the source order and
-                        false of anything the reader sees.
-                    */
-                    await ExtensionCommandService.yieldToExtensionHost();
+                        What the check needs, held for a click that may never come.
 
-                    /*
-                        Staleness is a stat walk over the objects directory, not a parse of it -- it
-                        answers "could this have changed since generation", which is all the banner
-                        claims. It touches every field file, so on a large or network-mounted org it
-                        is the slowest phase here, and it runs AFTER the structure is on screen: the
-                        banner it feeds is a caveat about what the reader is already looking at, not
-                        a precondition for showing it to them.
+                        The walk itself is no longer part of opening the panel. It stats every file
+                        under the objects directory to answer a question the reader may not have
+                        asked -- the structure they came for is fully derivable from the manifest,
+                        and staleness is a caveat ABOUT that structure rather than a precondition for
+                        it. Moving it here turns the slowest thing the panel can do from a toll on
+                        every open into an action with a button.
                     */
-                    const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
-                        manifestLoad.manifest,
-                        fullPathToObjectsDirectory
-                    );
+                    ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = {
+                        freshnessSubject: {
+                            objectsDirectoryPath: manifestLoad.manifest.objectsDirectoryPath,
+                            sourceFingerprint: manifestLoad.manifest.sourceFingerprint,
+                            generatedAt: manifestLoad.manifest.generatedAt
+                        },
+                        objectsDirectoryPath: fullPathToObjectsDirectory
+                    };
 
-                    this.applyPicklistDependencyExplorerFreshness(explorerPanel, freshnessResult);
+                    // NOTHING FOLLOWS THE RENDER NOW, SO THE STATUS LINE CLEARS WITH IT
+                    this.renderPicklistDependencyExplorerModel(explorerPanel, explorerViewModel, '');
                     return;
 
                 }
@@ -1532,6 +1552,7 @@ export class ExtensionCommandService {
                 );
 
                 // A PREVIEW HAS NO MANIFEST TO BE STALE AGAINST, SO NOTHING FOLLOWS THE RENDER AND THE STATUS LINE CLEARS WITH IT
+                ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = undefined;
                 this.renderPicklistDependencyExplorerModel(explorerPanel, previewViewModel, '');
 
             } finally {
@@ -1604,6 +1625,40 @@ export class ExtensionCommandService {
     private static picklistDependencyExplorerLoadFailedMessage: IPicklistDependencyExplorerLoadFailedMessage | undefined;
 
     /*
+        What a freshness check needs, set only when a MANIFEST-sourced model is rendered.
+
+        It is the gate as well as the payload: a metadata preview has no manifest to be stale
+        against and leaves this undefined, and so does the window before any model exists. The
+        checkFreshness command carries no path of its own, so there is nothing to match against an
+        allow-list -- what makes it safe is that the host answers from what it stored when it
+        rendered, and refuses when it stored nothing.
+    */
+    private static picklistDependencyExplorerFreshnessCheckContext: IPicklistDependencyExplorerFreshnessCheckContext | undefined;
+
+    /*
+        Whether a walk is already in flight. The panel disables its button for the same reason, but
+        the button is not the only way a message can arrive, and two concurrent stat walks over the
+        same large directory is the one thing this command must not be able to start.
+    */
+    private static picklistDependencyExplorerIsFreshnessCheckRunning: boolean = false;
+
+    /*
+        Whether the panel told us it could not draw the model it was given.
+
+        A post that succeeds only says the message left the host; the panel's own acknowledgement is
+        what distinguishes a model SENT from something on screen. Tracked as the FAILURE rather than
+        as the success so its default cannot wedge anything: a panel that never speaks is treated as
+        having drawn, which is what it did for every version before it could say otherwise.
+
+        It is read by the freshness check, which walks every file under the objects directory --
+        work worth refusing on behalf of a panel that is showing an error notice instead of rows.
+    */
+    private static picklistDependencyExplorerIsPanelRenderFailed: boolean = false;
+
+    // ONE NOTIFICATION PER DISTINCT PANEL FAILURE -- SEE THE renderFailed HANDLER
+    private static picklistDependencyExplorerReportedFailureDescriptions: Set<string> = new Set();
+
+    /*
         One allow-list per panel command, each built from the model currently rendered.
 
         Every one of them matches the posted value against what the model NAMES rather than
@@ -1658,6 +1713,10 @@ export class ExtensionCommandService {
         ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
         ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = '';
         ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
+        ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = undefined;
+        ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = false;
+        ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
+        ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
         ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
         ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
         ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
@@ -1673,6 +1732,10 @@ export class ExtensionCommandService {
                 ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
                 ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
                 ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
+                ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = undefined;
+                ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = false;
+                ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
+                ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
                 ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
                 ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
                 ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
@@ -1782,6 +1845,7 @@ export class ExtensionCommandService {
 
         ExtensionCommandService.picklistDependencyExplorerRenderMessage = renderMessage;
         ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = remainingPhaseMessage;
+        ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
 
         ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths =
             new Set(PicklistDependencyExplorerService.collectSourceFilePaths(explorerViewModel));
@@ -1809,6 +1873,28 @@ export class ExtensionCommandService {
         Kept on the stored render message as well as posted, so the reload a reveal triggers gets the
         resolved answer rather than the pending one the model was built with.
     */
+    /*
+        Puts the banner back to the last answer the panel actually has, after a check was refused.
+
+        The panel's click is optimistic -- it shows "checking" before the host has agreed to do
+        anything -- so a refusal has to be told, or the optimism becomes a permanent state. The last
+        RESOLVED answer is replayed when there is one, and notChecked when there is not, which is
+        exactly what the banner would say had the click never happened.
+    */
+    private restorePicklistDependencyExplorerFreshness(explorerPanel: vscode.WebviewPanel) {
+
+        const resolvedFreshnessMessage = ExtensionCommandService.picklistDependencyExplorerFreshnessMessage;
+
+        const restoredFreshnessMessage: IPicklistDependencyExplorerFreshnessMessage = resolvedFreshnessMessage ?? {
+            command: 'applyFreshness',
+            freshness: PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.freshness,
+            message: PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.message
+        };
+
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, restoredFreshnessMessage);
+
+    }
+
     private applyPicklistDependencyExplorerFreshness(explorerPanel: vscode.WebviewPanel,
                                                         freshnessResult: IPicklistDependencyManifestFreshnessResult) {
 
@@ -1922,6 +2008,172 @@ export class ExtensionCommandService {
                     explorerPanel.webview.postMessage(loadPhaseMessage);
 
                 }
+
+                return;
+
+            }
+
+            /*
+                The reader asking whether the specs on screen still match their metadata.
+
+                Gated on the stored check context rather than on a path allow-list, because this
+                command carries no path: what it addresses is the model the host itself rendered.
+                A metadata preview and the window before any model exists both leave that context
+                undefined and are answered with nothing at all.
+            */
+            if ( panelMessage?.command === 'checkFreshness' ) {
+
+                const freshnessCheckContext = ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext;
+
+                /*
+                    Every refusal below ANSWERS. The panel puts its own banner into "checking" on the
+                    click so the button does not read as a click that did not register, and a silent
+                    return would leave it there permanently -- a disabled button under a banner
+                    narrating a walk that is not running, recoverable only by reopening the panel.
+
+                    That is the exact state notChecked was introduced to abolish, so a refusal has to
+                    put the banner back where it was rather than simply not proceeding.
+                */
+                if ( !freshnessCheckContext ) {
+                    this.restorePicklistDependencyExplorerFreshness(explorerPanel);
+                    return;
+                }
+
+                // NOT ON BEHALF OF A PANEL THAT COULD NOT DRAW -- THERE ARE NO ROWS FOR THE ANSWER TO CAVEAT
+                if ( ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed ) {
+                    this.restorePicklistDependencyExplorerFreshness(explorerPanel);
+                    return;
+                }
+
+                /*
+                    A second click while the first walk is still running is DROPPED, not queued -- but
+                    the banner is left alone here rather than restored, because the walk it is
+                    narrating really is running and will answer.
+                */
+                if ( ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning ) {
+                    return;
+                }
+
+                ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = true;
+
+                try {
+
+                    /*
+                        The panel put its own banner into "checking" on the click, and that paint has
+                        to leave the host before a walk that blocks it for seconds begins -- the same
+                        reason the load yields between its phases.
+                    */
+                    await ExtensionCommandService.yieldToExtensionHost();
+
+                    const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                        freshnessCheckContext.freshnessSubject,
+                        freshnessCheckContext.objectsDirectoryPath
+                    );
+
+                    // THE WALK TAKES SECONDS, AND A TAB CLOSED ACROSS IT LEAVES NOTHING TO ANSWER INTO
+                    if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+                        return;
+                    }
+
+                    this.applyPicklistDependencyExplorerFreshness(explorerPanel, freshnessResult);
+
+                } catch (freshnessCheckError) {
+
+                    /*
+                        resolveManifestFreshness contains its own walk failures, so reaching here
+                        means something outside it threw. The banner is still in "checking" either
+                        way, and leaving it there would be the wedge again.
+                    */
+                    this.applyPicklistDependencyExplorerFreshness(explorerPanel, {
+                        freshness: 'checkFailed',
+                        message: `These specs could not be checked against your current metadata (${freshnessCheckError?.message ?? freshnessCheckError}). What is shown below is what the generated Apex asserts.`
+                    });
+
+                } finally {
+                    ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = false;
+                }
+
+                return;
+
+            }
+
+            /*
+                The panel telling the host it could not draw the model it was given.
+
+                Without this the failure has no reader: a webview exception never reaches the
+                extension host, so a panel that threw mid-render used to leave the host believing the
+                load finished. Routed through the same error handler as a host-side failure so it
+                reaches the same report, rather than inventing a second way to tell the user.
+            */
+            if ( panelMessage?.command === 'renderFailed' ) {
+
+                // ONLY FROM A PANEL THAT WAS ACTUALLY GIVEN SOMETHING TO DRAW
+                if ( !ExtensionCommandService.picklistDependencyExplorerRenderMessage ) {
+                    return;
+                }
+
+                const panelFailureDescription = panelMessage.message ?? 'unknown error';
+
+                /*
+                    Reported ONCE per distinct failure.
+
+                    The panel's error listener fires per uncaught error, and the events it covers
+                    repeat: a throw in the filter's input handler fires on every keystroke. Without
+                    this, a twenty character search puts twenty modal error notifications in front of
+                    a reader who has already been told.
+                */
+                if ( ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions.has(panelFailureDescription) ) {
+                    return;
+                }
+
+                ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions.add(panelFailureDescription);
+
+                /*
+                    Only a failure to DRAW invalidates the panel. A handler that threw after the rows
+                    were on screen leaves them there and readable, and treating that as a dead panel
+                    would refuse a freshness check for a model the reader is looking at.
+                */
+                if ( panelMessage.phase !== 'runtime' ) {
+
+                    ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = true;
+
+                    /*
+                        The allow-lists go with it. They were built from a model that is NOT on
+                        screen, so every action they authorise addresses a row the reader cannot see
+                        -- the same reason they start empty before the first render.
+                    */
+                    ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
+                    ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
+                    ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
+                    ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
+
+                }
+
+                const renderFailureError = new Error(
+                    `The Picklist Dependency Explorer panel could not render the dependency view: ${panelFailureDescription}`
+                );
+                renderFailureError.stack = panelMessage.stack || renderFailureError.stack;
+
+                ErrorHandlingService.handleCapturedError(renderFailureError, 'openPicklistDependencyExplorer');
+
+                return;
+
+            }
+
+            /*
+                The panel confirming it drew what it was given.
+
+                This is what CLEARS a previous failure -- posting a new model does not, because a
+                post only says the message left the host. Gated the same way, so an ack cannot
+                precede a model.
+            */
+            if ( panelMessage?.command === 'rendered' ) {
+
+                if ( !ExtensionCommandService.picklistDependencyExplorerRenderMessage ) {
+                    return;
+                }
+
+                ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
 
                 return;
 
