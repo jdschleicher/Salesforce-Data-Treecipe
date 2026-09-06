@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.12.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
+## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 
 Closes [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).
 
@@ -30,6 +30,211 @@ The test now says what actually preserves the OOTB entry, and a second one cover
 
 Newly generated configs still omit the property. Absent already means `{}`, and a placeholder in every generated file buys nothing.
 
+## [3.16.0] - The spec manifest carries the information content of the specs, not their cross product
+
+Resolves [#102](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/102).
+
+Reading and parsing `treecipe/PicklistDependencySpecs/manifest.json` was the single largest cost of opening the Picklist Dependency Explorer -- measured during 3.11.0 at roughly **59%** of the open, and named there as tracked rather than fixed.
+
+The size was structural. Every expectation recorded its own `forbiddenValues`, so the file grew with *combinations x declared values* when the information content of those two lists is their **sum**. The view model had already had this exact treatment -- `IPicklistDependencyCombinationViewModel.hasForbiddenAssertion` carries no values for the same reason -- and the manifest had not.
+
+### The complement is derived, not stored
+
+A field entry now records `declaredValues` **once**, and an expectation whose forbidden set is the complement of its `dependentValues` within that universe records one boolean instead of the values:
+
+```jsonc
+{
+    "controllingValue": "cle",
+    "dependentValues": ["ohiocity"],
+    "forbiddenValuesAreDeclaredComplement": true
+}
+```
+
+`buildSpecDetailsByManifest` reconstructs the array on read, so **every consumer is unchanged** -- the Explorer's rows, and `PicklistDependencyMetadataWriterService`, whose whole transpose turns on that list because `expectNotAllowed` is what *removes* a pair. A reconstruction that quietly returned an empty list would leave writeback adding but never removing, so that is asserted directly rather than assumed.
+
+Measured on a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values x 120 declared values, serialized and parsed through the real builder (median of three runs; in-memory, so no disk read is included):
+
+| | before | after |
+|---|---|---|
+| `manifest.json` | **315.7 MB** | **32.2 MB** |
+| `JSON.parse` | ~1,400 ms | **~59 ms** |
+| validate + normalize | ~119 ms | ~33 ms |
+| `buildSpecDetailsByManifest` | ~41 ms | ~145 ms |
+| **read → spec details** | **~1,560 ms** | **~237 ms** |
+
+The reconstruction is the one thing that got *slower*, by ~104 ms, and it is named rather than buried: deriving 48,000 complements is work the old shape did not do. It buys back 13x that on the parse.
+
+The issue's baseline of 153 MB / ~1.37 s came from the same shape with shorter api names; the parse times agree, and the ratios above are within one fixture on one machine, which is the only comparison worth quoting.
+
+### Ordering the universe once per field, not once per complement
+
+The generator emits its complement sorted, so a reconstruction that only filtered would return the right values in the wrong order -- identical to a set comparison, and not identical to the round trip the manifest is now held to. Sorting *inside* the complement measured **594 ms** against **59 ms** for the filter alone, which would have handed back most of what the parse saved. The universe is ordered once per field instead, and `buildDeclaredComplement` takes it already ordered.
+
+### Three forbidden states, still three
+
+- **the marker** -- the complement, which is what the generator always emits
+- **a written-out `forbiddenValues` array** -- a set that is *not* the complement. `expectNone` and `expectUnavailable` both assert an **empty** one against a universe that is not empty, and the panel renders those two differently from each other
+- **neither** -- a spec asserting only the positive half, which the panel must not draw a complement for at all
+
+Deriving the marker is a *comparison*, not an assumption: `buildManifestExpectations` builds the complement and checks it against what the expectation actually declares, recording the values literally when they differ. That is what makes the round trip a property of the manifest rather than a coincidence of what the two generators happen to emit -- an Apex-parsed spec naming a partial `expectNotAllowed` list is entitled to forbid something that is not the complement, and rewriting it into one would assert something the spec never claimed.
+
+The universe recorded is the one each spec was **drawn against**: for a record-type-scoped field that is what the record type assigns, not everything the field declares, which is why it is recorded per field *entry* rather than per field api name. It also has to be **complete** -- a truncated universe would have every consumer deriving a complement understate what the spec forbids, which is a false claim rather than a shorter one.
+
+### `manifestVersion` is now 3
+
+A version 2 manifest is structurally readable -- objects, fields and expectations in shapes this build walks -- which is exactly why it is refused by version rather than by shape. It carries no `declaredValues`, so every complement drawn against it would be empty and the panel would show specs that forbid nothing at all. It is refused with the existing "re-run Generate Picklist Dependency Tests" message.
+
+### Two things the marker changed about reading a manifest from disk
+
+`manifest.json` is a file a hand edit controls, and it is committed into repositories other people clone. Recording the complement as a marker changed the read path in two ways that the security review caught and this release closes.
+
+**The format became decompressive.** The file now carries the *sum* of the two picklists while reading it still materializes their *product*. Under version 2 an expansion of forty million values needed a file that literally contained them — roughly 400 MB — so file size was its own ceiling. It no longer is: a **0.70 MB** manifest expands to **40,000,000** values, and the expansion happens on load, *before* `applyModelLimits`, which bounds what is rendered from a finished view model rather than what building one allocates.
+
+Reading is now bounded by what a manifest expands to. The ceiling was **measured through the real builder**, not chosen:
+
+| shape | file | reconstructed | time | heap |
+|---|---|---|---|---|
+| real large org, 1,200 fields | 8.95 MB | 5.7 M | 268 ms | 61 MB |
+| 1 field, 5k values x 5k combos | 0.74 MB | 25.0 M | 1,716 ms | 261 MB |
+| 1 field, 20k values x 2k combos | 0.70 MB | 40.0 M | 2,356 ms | 352 MB |
+| 1 field, 20k values x 4k combos | 0.95 MB | 80.0 M | 3,022 ms | — |
+
+**25 M** is 4.3x the largest real org measured and holds the load to roughly 260 MB. Only an expectation carrying the *marker* counts against it — one carrying its forbidden list literally already costs the file what it costs memory, which is the ratio version 2 had throughout. A test asserts the headroom over a real org rather than trusting the comment.
+
+**A universe read from disk is complete or it is nothing.** `declaredValues` was filtered to strings on load, like every other tolerant entry parse. For this field that filter was itself the bug: a list read *partially* looks whole, and every complement drawn from it names fewer values than the spec forbids — a false claim rather than a shorter one, which is precisely what the complete-universe rule exists to prevent. It is also worse than the same edit was under version 2, where one bad element cost one expectation's list; here it would silently narrow the universe for **every** expectation on the field. A list that cannot be read whole is now treated exactly like one that is not there: no universe, and no "must not unlock" rendered anywhere on that field.
+
+### CI: the worker recycle threshold now recycles before the suite that needs a clean one
+
+This change added twenty-two tests and turned CI red — `RelationshipService.test.ts` OOM-ing a worker at the 4 GB ceiling, reported as `SIGTERM` with **zero failing tests**, which is the failure 3.11.0 mitigated and explicitly did not root-cause.
+
+Measured rather than assumed, because the obvious reading — "the new tests are heavy" — is wrong:
+
+- The manifest suite grew by **3 MB** (235 → 238 MB) across 18 new tests. The new tests are not the memory.
+- `RelationshipService.test.ts` passes **alone under a 1 GB cap**. It is not a large allocation; it is a high allocation *rate*, which is only fatal on a worker that is already warm.
+- What the twenty-two tests actually changed is *scheduling* — which suite lands last on a hot worker.
+
+So the defect is unchanged and still main's: `calculateLevelsRecursively` is still exponential in depth, and any PR that adds tests can shuffle it onto a warm worker. `--workerIdleMemoryLimit` is the existing lever for exactly this, and 512 MB was above the ~500 MB a worker reaches before picking up the next file, so it never recycled in time. At **250 MB** the worker is recycled first.
+
+Measured at CI's exact 4 GB cap, on this branch:
+
+| `--workerIdleMemoryLimit` | result |
+|---|---|
+| 512 MB (before) | 1 of 2 runs green |
+| **250 MB (now)** | **4 of 4 runs green** |
+
+Applied to **both** `jest-test` and `jest-test-summary`, because CI runs the latter — flags on the former alone would have changed nothing, which is the same trap 3.11.0 called out. No test is skipped, disabled or quarantined. This remains a mitigation with a measurement attached, not a root cause: the traversal still wants its own issue.
+
+### Tests
+
+Every new guard was verified by reintroducing the defect -- dropping the reconstruction fails seven tests across all three services, including the existing round trip, the Explorer's row parity and the writeback's proposed metadata. The shape itself is pinned at small scale in `PicklistDependencyManifestService/tests`: a field whose controlling values each unlock exactly one of twelve values writes each value **twice**, where the old shape wrote it thirteen times.
+
+## [3.15.0] - The Explorer says when it cannot draw, and the freshness check becomes something you ask for
+
+Resolves [#108](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/108).
+
+### A render that fails now says so
+
+The Picklist Dependency Explorer could fail silently and completely. `renderPanel` ran its five render functions top to bottom inside the webview's message listener with no `try`/`catch` and no `onerror` anywhere in the panel script, and it wrote the scanned-path line FIRST. So a throw in any one of them left the heading and one line naming the objects directory over an empty page -- which is indistinguishable from a panel that loaded and found nothing.
+
+Nothing reported it, and nothing could. A webview exception never reaches the extension host, so `failPicklistDependencyExplorerLoad` never ran: the host had posted a model, the post had succeeded, the status bar item disposed on schedule, and as far as it knew the load had finished. The error existed only in the webview developer tools, which nobody opens because nothing suggests there is anything to look at.
+
+Three changes, together:
+
+- **The render runs inside a guard.** A throw now replaces the body with a failure notice naming the error, rather than leaving a partial page. The partial page is not a smaller correct answer -- the objects that did draw are an arbitrary prefix of the model -- so it is cleared rather than left under a warning.
+- **The scanned-path line is revealed last**, after the body it describes has drawn. It was the marker that made a failed render look like a finished one.
+- **The panel tells the host either way.** A new `renderFailed` message carries the error and stack to `ErrorHandlingService.handleCapturedError`, the same path a host-side failure takes, and a `rendered` acknowledgement records that something is actually on screen. A `window` `error` listener catches throws outside the render -- a lazy expand, a row handler -- through the same channel.
+
+A `render` failure is distinguished from a `runtime` throw after a successful draw. Only the first invalidates the panel and empties its action allow-lists; a handler that threw on a keystroke leaves the rows readable. Each distinct failure is reported once, because the `error` listener fires per event. `unhandledrejection` is covered too — an async throw in the panel was as silent as the bug this fixes.
+
+**This is containment, not a root-cause fix.** The specific throw behind the report that prompted this has not been reproduced: every model array the panel dereferences is built as a concrete array by the model builders in the same process, and `buildManifestLoadByParsedContent` validates the manifest structurally before any of it. What changes today is that the next occurrence names itself instead of looking like an empty org.
+
+### The freshness check is an action, not a toll
+
+Opening the Explorer ran a recursive `statSync` walk of the entire objects directory -- ~113 ms across 7,800 field files, and materially worse on Windows-with-Defender or a network mount -- to answer a question the reader may not have asked. 3.11.0 moved that walk after the first paint, which fixed the blank window but not the cost.
+
+The structure a reader opens the panel for is fully derivable from `manifest.json` alone. Staleness is a caveat *about* that structure, not a precondition for it. So the walk is gone from the open path entirely, and the provenance banner carries a **Check against current metadata** button. After an answer it reads **Check again**.
+
+- **`notChecked` is a new resting state**, distinct from `pendingCheck`. `notChecked` means nobody has looked; `pendingCheck` means a walk is in flight. Collapsing the two would leave a panel nobody asked to check sitting forever behind a progress message for work that is not running. The banner states it -- *"Generated specs -- not checked against your current metadata"* -- rather than narrating it.
+- **`checkFailed` is a new answer**: the walk ran and could not read the directory. It is separate from the two stale values because reporting "your metadata changed" for an `EACCES` sends a reader looking for an edit they never made.
+- Neither is styled or labelled as stale, and neither ever claims `fresh`. All four non-fresh values keep the property the banner depends on: a panel that has not established agreement with metadata does not assert it.
+- The `checkingFreshness` load phase is gone; an open's last reported phase is `buildingView`, and the status bar item is disposed when the model renders.
+
+The check is gated on the render state rather than on a path allow-list, because the command carries no path: the host answers from the manifest it stored when it rendered, and refuses when it stored nothing. A metadata preview has no manifest to be stale against and is refused, as is the window before any model exists. A second click while a walk is in flight is dropped rather than queued, and an answer is not posted into a panel closed across the walk.
+
+### Freshness checks contain their own I/O failures
+
+`resolveManifestFreshness` catches a throw out of the fingerprint walk and returns `checkFailed` with the reason, naming the objects directory specifically when the cause is `ENOENT`. The walk happens on a click that may come long after the panel opened, and a throw escaping it would have been reported as the Explorer failing to *load* -- past a panel that had been on screen and usable the whole time.
+
+Reaching that state required changing the **walk**, not just adding a `try`/`catch` around it. `collectSourceFingerprintEntries` swallows `readdirSync` and `statSync` failures per directory -- deliberately, so one locked subdirectory costs that subdirectory rather than the answer -- which meant a missing objects directory produced `sha256('')`, mismatched the recorded fingerprint, and was reported as *"your metadata has changed since these specs were generated"*, sending the reader to regenerate from a directory that is not there. The root is now read unguarded: below it, tolerance is unchanged. There is a regression test that uses the real walk against a real missing directory, because a mocked-throw test passes against the broken version.
+
+Every refusal of a check also **answers** the panel. The click optimistically shows "checking" before the host has agreed to anything, so a silent return left a disabled button narrating a walk that was not running -- recoverable only by reopening the panel, and the exact state `notChecked` was introduced to abolish.
+## [3.14.0] - Address compound fields expand into the component fields that can actually be inserted
+
+Resolves [#4](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/4).
+
+The Salesforce Collections API cannot accept a compound `Address` field -- a record is inserted with its *components*: `Street`, `City`, `State`, `PostalCode`, `Country`. Recipe generation had no way to say that. `RecipeService` emits exactly one line per field file, and `'address'` was absent from `getMapSalesforceFieldToFakerValue()`, so a `<type>Address</type>` field fell through to the default branch and produced `### TODO -- FieldType Not Handled -- address does not exist in this programs Salesforce field map.` A compound address field file carrying no `<type>` tag at all did worse: it parsed as `AUTO_GENERATED` and produced the "may be auto generated by Salesforce" placeholder. Either way the user hand-authored five lines per address field, per object.
+
+The OOTB half of this was already done and is untouched -- Account, Contact, Lead and Contract have carried their `Billing*`/`Shipping*`/`Mailing*`/`Other*` components in `getOOTBObjectApiNameToFieldApiNameMap()` for some time. What was missing is every address field those four static maps do not name.
+
+### One field file can now produce several recipe lines
+
+`processFieldsDirectory` pushed one `FieldInfo` per field file and `processDirectory` appended one recipe line per `FieldInfo`. Rather than change that contract -- every other field type depends on it -- a compound address field returns *several* `FieldInfo` objects and none for the compound field itself. The one-line-per-`FieldInfo` invariant holds; only the number of `FieldInfo`s changes.
+
+An empty result is therefore meaningful, and is the duplicate guard. A component is dropped for either of two reasons, and both would otherwise put the same key in an object recipe twice: the OOTB mappings already emit it, or the object HAS that component as its own field file. The second is why `Asset` matters -- it is in the OOTB mappings but names no address components, so its bare `Address` compound field expands to `Street`/`City`/... and would collide with a `Street.field-meta.xml` retrieved alongside it. Expansion therefore runs after the directory walk rather than inline, because directory order decides whether a component's own field file is read before or after the compound field and a duplicate key is invalid either way.
+
+### Detection is metadata first, config second
+
+`<type>Address</type>` is the primary signal, consistent with every other field type handler. For a compound field whose XML carries no usable type, an optional `customCompoundAddressFields` array in `treecipe.config.json` names those fields explicitly -- following `customRelationshipMappings` in both respects that matter. Its entries are keyed by object AND field (`Store__c.Legacy_Address__c`), not by bare field api name: a field api name repeats across objects, so a bare key would expand `Legacy_Address__c` on every object that happens to have one. And it is equally tolerant -- a value that is not an array, or entries that are not strings, degrade to nothing configured rather than throwing. Recipe generation for every other field in the workspace is worth more than reporting a hand edit.
+
+### Component api names are derived, not listed
+
+Salesforce names compound address components two ways and the compound field's own api name is the only signal for which:
+
+| Compound field | Components |
+|---|---|
+| `Site_Address__c` | `Site_Address__Street__s`, `__City__s`, `__State__s`, `__PostalCode__s`, `__Country__s` |
+| `BillingAddress` | `BillingStreet`, `BillingCity`, `BillingState`, `BillingPostalCode`, `BillingCountry` |
+| `Address` (Lead) | `Street`, `City`, `State`, `PostalCode`, `Country` |
+
+Lead's compound field is named `Address` outright, so the empty prefix and the bare component names it produces are a correct result rather than a fallback.
+
+### State and Country, not StateCode and CountryCode
+
+`StateCode` and `CountryCode` only exist in an org with State and Country Picklists enabled. `State` and `Country` exist either way, and source metadata does not say which org a recipe is destined for -- so emitting the coded form by default would produce recipes that fail to insert everywhere the feature is off. Both faker services assert they carry the plain components and neither coded one.
+
+`GeocodeAccuracy` is not emitted: it is a component of the compound field but is populated by the org's geocoding clean rules, not by an insert.
+
+## [3.13.0] - Generating picklist dependency tests reports what happened, and what to do about it
+
+Resolves [#107](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/107).
+
+A successful run used to report itself by concatenating up to five sentences into `vscode.window.showInformationMessage`. A VS Code notification is one line of unformatted text that truncates, so what a user actually saw was the spec counts and the beginning of the classes directory -- the manifest path, the record-type caveat, the scaffolded framework classes and the removed stale classes were all past the cut. And nothing in it said what to do next, which is the question a finished run leaves you with.
+
+### The run is now a document, and the toast is one line
+
+The generate command writes `treecipe/PicklistDependencySpecs/generation-summary.md` -- a sibling of `manifest.json`, never inside a package directory, for the same reason the manifest is not: a stray file there is not valid Salesforce metadata and would ride into `sf project deploy` and fail the deploy it describes. It opens in markdown preview once the run finishes -- after the spec class, so the report is what you are left looking at -- and the toast's **View Summary** re-opens it later.
+
+**What happened** is one bullet per fact, and the optional ones are *omitted* rather than rendered as zero -- a run that scaffolded nothing has nothing to say about scaffolding, and a "0 classes scaffolded" row reads as something that failed rather than something that did not apply.
+
+**What to do next** names the Explorer by its exact Command Palette title, says to review the generated Apex as a diff before deploying it, and links the walkthroughs: [running the tests inside the org](docs/PICKLIST-DEPENDENCY-IN-ORG-GUIDE.md), triggering a failure on purpose to prove the gate works, deciding whether the org or the source is right when one fails, and the technical design. The diagrams are **linked, not copied** -- a second rendering of those flows here would be a second derivation to keep in sync, which is the same reason the Explorer reads the manifest instead of re-walking the source XML.
+
+The toast is now `Generated N picklist dependency spec(s) across M per-object class(es).` plus the deploy question, and carries **View Summary** and **Open Explorer** beside **Deploy and Run Against Org**.
+
+### Reading the run does not cost the deploy offer
+
+Every inspect action re-offers the deploy rather than ending the command on the click -- the principle **View Details** already followed, now generalised. Each is offered once, which is what makes the loop terminate: every pass either ends the run or spends an action, and there are at most three.
+
+Opening what the run produced is subject to the same rule as writing it. A preview that will not open, or an explorer that throws, is a failed *view* of a generation that succeeded -- so it warns and puts the offer again rather than letting the rejection reach the command's catch and report a completed run as an error, dropping the deploy offer with it.
+
+### What deliberately did not move
+
+The warnings keep their own path. A missing framework class means the generated Apex will not compile at all, and an unparseable test suite means `Run Picklist Dependency Check` will not find the tests -- those are blockers, and folding them into a success document would bury them under good news. The skipped-field roll-up and its **View Details** output channel are unchanged.
+
+The summary is a **report on** a finished write, not a step of it. By the time it is written the Apex, the suite and the manifest are all on disk, so a workspace that will not take one more markdown file warns about the report and leaves the run reporting the success it actually had -- no button for a document that does not exist, and no error for a generation that worked.
+
+### Values from metadata cannot restructure the document
+
+Api names, class names and paths reach this document from XML the extension does not control, and markdown has no escaping inside a code span -- only a longer fence. So the fence is grown past the longest backtick run in the value, a value that starts or ends with a backtick is padded, and **a line break is rendered as its escape sequence**: a blank line ends the paragraph the span lives in, so a value carrying one would otherwise become markup for everything after it. That last case was found by the test written for it, not by reading the code.
 ## [3.12.0] - Initiate Configuration: a picker that opens immediately, seeded from sfdx-project.json
 
 Resolves [#100](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/100).

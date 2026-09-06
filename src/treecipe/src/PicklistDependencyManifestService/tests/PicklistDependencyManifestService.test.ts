@@ -1,6 +1,6 @@
 import {
     PicklistDependencyManifestService,
-    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING
+    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED
 } from "../PicklistDependencyManifestService";
 
 import {
@@ -467,6 +467,435 @@ describe('PicklistDependencyManifestService', () => {
 
     });
 
+    /*
+        The manifest used to write forbiddenValues on EVERY expectation, so the file grew with
+        combinations x declared values when the information content of those two lists is their sum.
+        On a synthetic org of 150 objects x 8 dependent picklists x 40 controlling values x 120
+        declared values it reached 153 MB, and parsing it was ~59% of a two-second Explorer open.
+
+        What replaces it has to hold three properties at once, and each test below pins one: the
+        complement is DERIVABLE (so the universe recorded is complete), an empty forbidden assertion
+        stays distinguishable from no assertion at all, and what is read back is IDENTICAL to what
+        generation held in memory rather than merely equivalent to it.
+    */
+    describe('the forbidden complement is recorded once per field, not once per expectation', () => {
+
+        function findFieldEntry(manifest: ReturnType<typeof buildManifestFromCollectionResult>, fieldApiName: string) {
+
+            return manifest.objects[0].fields.find(manifestField => manifestField.fieldApiName === fieldApiName)!;
+
+        }
+
+        test('records the marker instead of the values when the forbidden set IS the complement', () => {
+
+            const cityField = findFieldEntry(buildManifestFromCollectionResult(), 'City__c');
+            const ohioExpectation = cityField.expectations.find(expectation => expectation.controllingValue === 'Ohio')!;
+
+            expect(ohioExpectation.forbiddenValuesAreDeclaredComplement).toBe(true);
+            expect(ohioExpectation.forbiddenValues).toBeUndefined();
+
+        });
+
+        test('records the field declared universe once, complete enough to draw the complement from', () => {
+
+            const cityField = findFieldEntry(buildManifestFromCollectionResult(), 'City__c');
+
+            expect(cityField.declaredValues).toIncludeSameMembers(['Columbus', 'Austin', 'Toronto']);
+
+        });
+
+        /*
+            A record-type-scoped complement is drawn against the values the RECORD TYPE assigns, not
+            everything the field declares -- naming a value the record type never exposes would assert
+            something about the field instead of about this scope. Recording the universe per field
+            ENTRY rather than per field api name is what keeps the two scopes from sharing one.
+        */
+        test('scopes a record type field universe to what that record type assigns', () => {
+
+            const collectionResult = buildCollectionResult();
+
+            collectionResult.recordTypeSpecDetails = [
+                {
+                    objectApiName: 'Chain_Example__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    recordTypeDeveloperName: 'North_America',
+                    expectations: [
+                        { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Toronto'] }
+                    ]
+                }
+            ];
+
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+            const scopedField = manifest.objects[0].recordTypeScopedFields[0];
+            const fieldLevelCityValues = findFieldEntry(manifest, 'City__c').declaredValues;
+
+            expect(scopedField.declaredValues).toIncludeSameMembers(['Columbus', 'Toronto']);
+            expect(fieldLevelCityValues).toContain('Austin');
+            expect(scopedField.declaredValues).not.toContain('Austin');
+
+        });
+
+        /*
+            expectNone and expectUnavailable both assert an EMPTY forbidden set against a universe
+            that is not empty, so neither is the complement. Recording the marker for them would have
+            the panel render every declared value as forbidden under a controlling value whose Apex
+            asserts no such thing.
+        */
+        test('writes an empty forbidden assertion out literally rather than as the complement', () => {
+
+            const cityField = findFieldEntry(buildManifestFromCollectionResult(), 'City__c');
+            const ontarioExpectation = cityField.expectations.find(expectation => expectation.controllingValue === 'Ontario')!;
+
+            expect(ontarioExpectation.forbiddenValuesAreDeclaredComplement).toBeUndefined();
+            expect(ontarioExpectation.forbiddenValues).toEqual([]);
+
+        });
+
+        test('carries neither the marker nor a list for an expectation that asserted nothing', () => {
+
+            const collectionResult = buildCollectionResult({
+                specDetails: [
+                    {
+                        objectApiName: 'Chain_Example__c',
+                        fieldApiName: 'City__c',
+                        controllingFieldApiName: 'State__c',
+                        expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'] }]
+                    }
+                ],
+                recordTypeSpecDetails: []
+            });
+
+            const positiveOnlyExpectation = buildManifestFromCollectionResult(collectionResult).objects[0].fields[0].expectations[0];
+
+            expect(positiveOnlyExpectation.forbiddenValuesAreDeclaredComplement).toBeUndefined();
+            expect(positiveOnlyExpectation.forbiddenValues).toBeUndefined();
+
+            const rebuiltExpectation = PicklistDependencyManifestService
+                .buildExpectationsByManifestExpectations([positiveOnlyExpectation], ['Columbus'])[0];
+
+            expect(rebuiltExpectation.forbiddenValues).toBeUndefined();
+
+        });
+
+        /*
+            "Asserted nothing" and "asserted an empty set" are different claims, and the panel renders
+            them differently -- hasForbiddenAssertion is exactly this distinction. Two shapes now
+            produce an array where one used to, so the three states are asserted together rather than
+            one at a time.
+        */
+        test('keeps all three forbidden states distinguishable through a round trip', () => {
+
+            const manifestExpectations = [
+                { combinationKey: 'k1', controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValuesAreDeclaredComplement: true },
+                { combinationKey: 'k2', controllingValue: 'Ontario', dependentValues: [], forbiddenValues: [] },
+                { combinationKey: 'k3', controllingValue: 'Texas', dependentValues: ['Austin'] }
+            ];
+
+            const rebuiltExpectations = PicklistDependencyManifestService.buildExpectationsByManifestExpectations(
+                manifestExpectations,
+                ['Austin', 'Columbus', 'Toronto']
+            );
+
+            expect(rebuiltExpectations[0].forbiddenValues).toEqual(['Austin', 'Toronto']);
+            expect(rebuiltExpectations[1].forbiddenValues).toEqual([]);
+            expect(rebuiltExpectations[2].forbiddenValues).toBeUndefined();
+
+        });
+
+        /*
+            The complement comes back in EMISSION order, not in the order the universe happens to be
+            recorded in. The manifest records the universe as the expectations declare it, which is a
+            first-seen union and so is not sorted -- reconstructing straight off it would return the
+            right values in the wrong order, which reads as identical to a set comparison and is not
+            identical to the round trip this manifest is held to.
+
+            Asserted through the per-field entry point rather than through buildDeclaredComplement,
+            because ordering the universe once per field instead of once per expectation is the whole
+            shape of that split: the complement itself takes an already ordered universe.
+        */
+        test('rebuilds the complement in the order the generator emits it, whatever order the universe is recorded in', () => {
+
+            const rebuiltExpectations = PicklistDependencyManifestService.buildExpectationsByManifestExpectations(
+                [{ combinationKey: 'k1', controllingValue: 'Ohio', dependentValues: ['Alpha'], forbiddenValuesAreDeclaredComplement: true }],
+                ['Charlie', 'Alpha', 'Bravo']
+            );
+
+            expect(rebuiltExpectations[0].forbiddenValues)
+                .toEqual(PicklistDependencyTestService.sortValuesForEmission(['Charlie', 'Bravo']));
+
+        });
+
+        /*
+            A spec detail assembled by hand -- a test, or a parsed Apex spec naming a partial
+            expectNotAllowed list -- is entitled to forbid something that is not the complement.
+            Deriving it back would rewrite the assertion into one the spec never made, so the values
+            are written out instead. This is what makes the round trip a property rather than a
+            coincidence of what the generator happens to emit.
+        */
+        test('given a forbidden set that is not the complement, records it literally rather than rewriting it', () => {
+
+            const collectionResult = buildCollectionResult({
+                specDetails: [
+                    {
+                        objectApiName: 'Chain_Example__c',
+                        fieldApiName: 'City__c',
+                        controllingFieldApiName: 'State__c',
+                        expectations: [
+                            { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin'] },
+                            { controllingValue: 'Texas', dependentValues: ['Austin'], forbiddenValues: ['Columbus', 'Toronto'] }
+                        ]
+                    }
+                ],
+                recordTypeSpecDetails: []
+            });
+
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+            const partialExpectation = manifest.objects[0].fields[0].expectations
+                .find(expectation => expectation.controllingValue === 'Ohio')!;
+
+            expect(partialExpectation.forbiddenValues).toEqual(['Austin']);
+            expect(partialExpectation.forbiddenValuesAreDeclaredComplement).toBeUndefined();
+
+            expect(PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest).specDetails)
+                .toEqual(collectionResult.specDetails);
+
+        });
+
+        /*
+            The size property itself, asserted rather than described. A field whose controlling values
+            each unlock exactly one of many declared values is the worst case for the old shape: every
+            value appeared once per controlling value that did not unlock it, so the file grew with
+            the PRODUCT of the two picklists.
+        */
+        test('does not write a declared value once per combination that forbids it', () => {
+
+            const declaredDependentValues = Array.from({ length: 12 }, (unusedValue, valueIndex) => `Dependent_${valueIndex}__c`);
+
+            const expectations = declaredDependentValues.map(dependentValue => ({
+                controllingValue: `Controlling_${dependentValue}`,
+                dependentValues: [dependentValue],
+                forbiddenValues: PicklistDependencyTestService.sortValuesForEmission(
+                    declaredDependentValues.filter(declaredValue => declaredValue !== dependentValue)
+                )
+            }));
+
+            const collectionResult = buildCollectionResult({
+                specDetails: [
+                    {
+                        objectApiName: 'Wide__c',
+                        fieldApiName: 'Dependent__c',
+                        controllingFieldApiName: 'Controlling__c',
+                        expectations: expectations
+                    }
+                ],
+                recordTypeSpecDetails: []
+            });
+
+            const manifest = buildManifestFromCollectionResult(collectionResult);
+            const serializedManifest = PicklistDependencyManifestService.serializeManifest(manifest);
+
+            /*
+                Once in declaredValues and once as the value its own controlling value unlocks. The old
+                shape wrote each of these 12 values 13 times; anything above that ceiling means the
+                complement is being written out again.
+            */
+            const occurrenceCount = serializedManifest.split('"Dependent_5__c"').length - 1;
+            expect(occurrenceCount).toBe(2);
+
+            expect(PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest).specDetails)
+                .toEqual(collectionResult.specDetails);
+
+        });
+
+    });
+
+    /*
+        Two properties the manifest gained ALONG WITH the marker, both about a file a hand edit
+        controls -- manifest.json is committed into a repo other people clone.
+    */
+    describe('a universe read from disk is complete or it is nothing', () => {
+
+        function buildFieldEntry(declaredValues: unknown) {
+
+            return {
+                objectApiName: 'Chain_Example__c',
+                generatedClassName: 'SDTPLDSpecs_Chain_Example',
+                fields: [
+                    {
+                        fieldApiName: 'City__c',
+                        controllingFieldApiName: 'State__c',
+                        declaredValues,
+                        expectations: [
+                            { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValuesAreDeclaredComplement: true }
+                        ]
+                    }
+                ],
+                recordTypeScopedFields: []
+            };
+
+        }
+
+        function loadFieldEntry(declaredValues: unknown) {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                { manifestVersion: PicklistDependencyManifestService.getManifestVersion(), objects: [buildFieldEntry(declaredValues)] },
+                '/tmp/manifest.json'
+            );
+
+            return manifestLoad.manifest.objects[0].fields[0];
+
+        }
+
+        /*
+            The dangerous case is a PARTIALLY readable list. Filtering the unreadable entries out and
+            keeping the rest leaves a universe that looks whole, and every complement drawn from it
+            names fewer values than the spec forbids -- a false claim rather than a shorter one, which
+            is the one thing the complete-universe rule exists to prevent.
+        */
+        test('given a declared value list that is not all strings, keeps none of it rather than a subset', () => {
+
+            const manifestField = loadFieldEntry(['Columbus', 42, 'Austin', null, 'Toronto']);
+
+            expect(manifestField.declaredValues).toBeEmpty();
+
+        });
+
+        test('given an unreadable universe, draws no complement at all rather than a short one', () => {
+
+            const partialUniverseField = loadFieldEntry(['Columbus', 42, 'Austin']);
+
+            const rebuiltExpectations = PicklistDependencyManifestService.buildExpectationsByManifestExpectations(
+                partialUniverseField.expectations,
+                partialUniverseField.declaredValues
+            );
+
+            // STILL AN ASSERTION -- WHAT IT NAMES IS EMPTY, WHICH IS THE HONEST DIRECTION TO BE WRONG IN
+            expect(rebuiltExpectations[0].forbiddenValues).toEqual([]);
+
+        });
+
+        test('given a fully readable universe, keeps every value', () => {
+
+            expect(loadFieldEntry(['Columbus', 'Austin', 'Toronto']).declaredValues)
+                .toEqual(['Columbus', 'Austin', 'Toronto']);
+
+        });
+
+        test('given no declared values at all, still reads the field rather than dropping it', () => {
+
+            const manifestField = loadFieldEntry(undefined);
+
+            expect(manifestField.fieldApiName).toBe('City__c');
+            expect(manifestField.declaredValues).toBeEmpty();
+
+        });
+
+    });
+
+    /*
+        Recording the complement as a marker made the FILE carry the sum of the two picklists while
+        READING it still materializes their product, so the format became decompressive. Under
+        version 2 an expansion of forty million values needed a file that literally contained them
+        -- roughly 400 MB -- so file size was its own ceiling. It no longer is.
+
+        Measured through the real builder: a 0.70 MB manifest reconstructs 40,000,000 values in
+        2,356 ms and 352 MB, and the expansion happens on LOAD, before applyModelLimits, which
+        bounds what is rendered from a finished view model rather than what building one allocates.
+    */
+    describe('reading a manifest is bounded by what it expands to, not by its size', () => {
+
+        function buildManifestRecordByShape(declaredValueCount: number, expectationCount: number, useMarker: boolean = true) {
+
+            const declaredValues = Array.from({ length: declaredValueCount }, (unusedValue, valueIndex) => `Dependent_Value_${valueIndex}`);
+
+            return {
+                manifestVersion: PicklistDependencyManifestService.getManifestVersion(),
+                objects: [
+                    {
+                        objectApiName: 'Bomb__c',
+                        fields: [
+                            {
+                                fieldApiName: 'Dependent__c',
+                                controllingFieldApiName: 'Controlling__c',
+                                declaredValues,
+                                expectations: Array.from({ length: expectationCount }, (unusedValue, expectationIndex) => ({
+                                    controllingValue: `Controlling_Value_${expectationIndex}`,
+                                    dependentValues: [],
+                                    ...( useMarker ? { forbiddenValuesAreDeclaredComplement: true } : { forbiddenValues: [] } )
+                                }))
+                            }
+                        ],
+                        recordTypeScopedFields: []
+                    }
+                ]
+            };
+
+        }
+
+        test('refuses a small file that expands past the ceiling, rather than exhausting the editor', () => {
+
+            const ceiling = PicklistDependencyManifestService.getMaximumReconstructedDeclaredValues();
+            const declaredValueCount = 20000;
+            const expectationCount = Math.ceil(ceiling / declaredValueCount) + 1;
+
+            const manifestRecord = buildManifestRecordByShape(declaredValueCount, expectationCount);
+
+            // THE POINT OF THE GUARD: THE FILE ITSELF IS SMALL
+            expect(Buffer.byteLength(JSON.stringify(manifestRecord), 'utf-8')).toBeLessThan(5 * 1024 * 1024);
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(manifestRecord, '/tmp/manifest.json');
+
+            expect(manifestLoad.state).toBe('unreadableManifest');
+            expect(manifestLoad.message).toContain('Generate Picklist Dependency Tests');
+            expect(manifestLoad.manifest).toBeUndefined();
+
+        });
+
+        /*
+            Only the MARKER amplifies. An expectation carrying its forbidden list literally already
+            costs the file what it costs memory, which is the ratio version 2 had throughout, so it
+            must not be counted against a budget that exists to bound expansion.
+        */
+        test('counts only what the marker expands, not what the file already carries', () => {
+
+            const markerObjects = PicklistDependencyManifestService
+                .buildManifestLoadByParsedContent(buildManifestRecordByShape(100, 10, true), '/tmp/manifest.json').manifest.objects;
+
+            const literalObjects = PicklistDependencyManifestService
+                .buildManifestLoadByParsedContent(buildManifestRecordByShape(100, 10, false), '/tmp/manifest.json').manifest.objects;
+
+            expect(PicklistDependencyManifestService.countReconstructedDeclaredValues(markerObjects)).toBe(1000);
+            expect(PicklistDependencyManifestService.countReconstructedDeclaredValues(literalObjects)).toBe(0);
+
+        });
+
+        /*
+            The ceiling has to clear a real org by a wide margin or it is a bug rather than a guard.
+            The largest measured -- 150 objects x 8 dependent picklists x 40 controlling values x 120
+            declared values -- reconstructs 5.7 M values, and this asserts the headroom rather than
+            trusting the comment.
+        */
+        test('leaves room for the largest org measured', () => {
+
+            const largeOrgReconstructedValues = 150 * 8 * 40 * 120;
+
+            expect(PicklistDependencyManifestService.getMaximumReconstructedDeclaredValues())
+                .toBeGreaterThan(largeOrgReconstructedValues * 4);
+
+        });
+
+        test('reads a manifest at a realistic large org shape rather than refusing it', () => {
+
+            const manifestLoad = PicklistDependencyManifestService
+                .buildManifestLoadByParsedContent(buildManifestRecordByShape(120, 40), '/tmp/manifest.json');
+
+            expect(manifestLoad.state).toBe('loaded');
+
+        });
+
+    });
+
     describe('buildCombinationKey', () => {
 
         test('shapes a field level key to match the failure lines the validator emits', () => {
@@ -686,6 +1115,43 @@ describe('PicklistDependencyManifestService', () => {
 
             expect(manifestLoad.state).toBe('unreadableManifest');
             expect(manifestLoad.message).toContain('format version 99');
+
+        });
+
+        /*
+            A version 2 manifest is structurally readable -- it has objects, fields and expectations
+            in the shapes this build walks -- which is exactly why it has to be refused by version
+            rather than by shape. It carries no declaredValues, so every complement drawn against it
+            would be empty and the panel would show specs that forbid nothing at all.
+        */
+        test('given a version 2 manifest carrying forbidden values per expectation, refuses it rather than reading it as empty', () => {
+
+            const manifestLoad = PicklistDependencyManifestService.buildManifestLoadByParsedContent(
+                {
+                    manifestVersion: 2,
+                    objects: [
+                        {
+                            objectApiName: 'Chain_Example__c',
+                            fields: [
+                                {
+                                    fieldApiName: 'City__c',
+                                    controllingFieldApiName: 'State__c',
+                                    expectations: [
+                                        { controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin', 'Toronto'] }
+                                    ]
+                                }
+                            ],
+                            recordTypeScopedFields: []
+                        }
+                    ]
+                },
+                '/tmp/manifest.json'
+            );
+
+            expect(manifestLoad.state).toBe('unreadableManifest');
+            expect(manifestLoad.message).toContain('format version 2');
+            expect(manifestLoad.message).toContain('Generate Picklist Dependency Tests');
+            expect(manifestLoad.manifest).toBeUndefined();
 
         });
 
@@ -941,9 +1407,53 @@ describe('PicklistDependencyManifestService', () => {
 
         });
 
-        test('given an unreadable directory, returns a fingerprint rather than throwing', () => {
+        /*
+            The root and everything below it are treated differently ON PURPOSE.
 
-            expect(() => PicklistDependencyManifestService.buildSourceFingerprint('/no/such/directory/anywhere')).not.toThrow();
+            A locked subdirectory costs that subdirectory. An unreadable ROOT means there is no
+            metadata to fingerprint at all, and swallowing it yields sha256('') -- a digest that
+            mismatches whatever was recorded and gets reported as "your metadata has changed",
+            which is a false claim about a directory that is missing.
+        */
+        test('given an unreadable ROOT, throws so the caller can report that it could not check', () => {
+
+            expect(() => PicklistDependencyManifestService.buildSourceFingerprint('/no/such/directory/anywhere')).toThrow();
+
+        });
+
+        test('given an unreadable directory BELOW the root, still returns a fingerprint', () => {
+
+            const objectsDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-fingerprint-'));
+            const objectDirectoryPath = path.join(objectsDirectoryPath, 'Locked__c');
+            fs.mkdirSync(objectDirectoryPath);
+
+            // CAPTURED BEFORE THE SPY: requireActual('fs') hands back the SAME module object, so
+            // delegating through it re-enters the mock and blows the stack rather than reading a directory
+            const actualReaddirSync = fs.readdirSync;
+
+            const readdirSpy = jest.spyOn(fs, 'readdirSync').mockImplementation(((requestedPath: any, options: any) => {
+
+                if ( String(requestedPath) === objectDirectoryPath ) {
+                    const permissionError: NodeJS.ErrnoException = new Error('EACCES: permission denied');
+                    permissionError.code = 'EACCES';
+                    throw permissionError;
+                }
+
+                return actualReaddirSync(requestedPath, options);
+
+            }) as any);
+
+            /*
+                Restored in a finally rather than after the assertion. This spy is on the GLOBAL fs
+                module, so a failed expectation that skipped the restore would leave every later
+                suite in this worker reading directories through it.
+            */
+            try {
+                expect(() => PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)).not.toThrow();
+            } finally {
+                readdirSpy.mockRestore();
+                fs.rmSync(objectsDirectoryPath, { recursive: true, force: true });
+            }
 
         });
 
@@ -1085,44 +1595,154 @@ describe('PicklistDependencyManifestService', () => {
     });
 
 
-    describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING', () => {
+    describe('PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED', () => {
 
-        it('is the freshness a model carries before the walk has run, and is frozen against a caller editing it', () => {
+        /*
+            The resting state, and what an open now produces. It is distinct from pendingCheck on
+            purpose: pending means a walk is in flight, and a panel nobody asked to check would
+            otherwise sit forever behind a progress message for work that is not running.
+        */
+        it('is the freshness a model carries when nobody has asked, and is frozen against a caller editing it', () => {
 
-            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.freshness).toBe('pendingCheck');
-            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING.message).toBe('');
-
-            /*
-                It is handed to every model build as the pending answer, so it is shared across opens.
-                A caller mutating it would change what every later open starts from.
-            */
-            expect(Object.isFrozen(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING)).toBe(true);
+            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.freshness).toBe('notChecked');
+            expect(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.message).toBe('');
+            expect(Object.isFrozen(PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED)).toBe(true);
 
         });
 
-        it('is never what resolveManifestFreshness returns -- the walk always answers one way or the other', () => {
+        it('is never what resolveManifestFreshness returns -- a walk that ran answers one way or another', () => {
 
-            // THROUGH THE TRACKED HELPER, SO CLEANUP IS THE FILE'S TOLERANT afterEach RATHER THAN AN rmSync THAT CAN ENOTEMPTY
-            const manifestDirectoryPath = buildTemporaryDirectory('treecipe-freshness-');
-            const objectsDirectoryPath = path.join(manifestDirectoryPath, 'objects');
-            fs.mkdirSync(objectsDirectoryPath, { recursive: true });
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint').mockReturnValue('fingerprint-abc');
 
-            const manifest = PicklistDependencyManifestService.buildManifest(
-                { specDetails: buildChainSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
-                objectsDirectoryPath,
-                path.join(manifestDirectoryPath, 'classes'),
-                '9.9.9',
-                '2026-01-01T00:00:00Z',
-                PicklistDependencyManifestService.buildSourceFingerprint(objectsDirectoryPath)
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
             );
 
-            const freshResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
-            expect(freshResult.freshness).toBe('fresh');
+            expect(freshnessResult.freshness).not.toBe('notChecked');
 
-            fs.writeFileSync(path.join(objectsDirectoryPath, 'Added__c.field-meta.xml'), '<x/>');
+        });
 
-            const staleResult = PicklistDependencyManifestService.resolveManifestFreshness(manifest, objectsDirectoryPath);
-            expect(staleResult.freshness).toBe('staleMetadata');
+    });
+
+    describe('a freshness check that cannot read the metadata', () => {
+
+        /*
+            The walk stats every file under a directory the extension does not own, and the reader
+            may click check long after the panel opened. A throw escaping here would be reported as
+            the Explorer failing to LOAD -- past a panel that has been on screen and usable.
+        */
+        /*
+            THE REGRESSION THIS DESCRIBE BLOCK EXISTS FOR.
+
+            Every other test here mocks buildSourceFingerprint to throw, which asserts the catch
+            block rather than any reachable path. The first version of checkFailed passed all of them
+            and was DEAD CODE: collectSourceFingerprintEntries swallowed readdirSync and statSync
+            failures internally, so a missing objects directory produced sha256('') -- a digest that
+            mismatched whatever was recorded and got reported as "your metadata has changed since
+            these specs were generated", telling the reader to regenerate from a directory that is
+            not there.
+
+            This test uses the REAL walk against a REAL missing directory, so it fails if that
+            swallowing ever comes back.
+        */
+        it('given a genuinely missing objects directory and no mocking at all, reports checkFailed', () => {
+
+            const missingObjectsDirectoryPath = path.join(os.tmpdir(), 'treecipe-definitely-not-here', 'objects');
+
+            expect(fs.existsSync(missingObjectsDirectoryPath)).toBe(false);
+
+            /*
+                Recorded against the SAME directory, so the walk is what answers -- a manifest naming
+                a different directory is reported as that, before any walk happens.
+            */
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                {
+                    objectsDirectoryPath: missingObjectsDirectoryPath,
+                    sourceFingerprint: 'recorded-when-the-directory-still-existed',
+                    generatedAt: '2026-09-01T00:00:00.000Z'
+                },
+                missingObjectsDirectoryPath
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+
+            // AND EMPHATICALLY NOT THE FALSE CLAIM IT REPLACED
+            expect(freshnessResult.message).not.toContain('has changed since these specs were generated');
+            expect(freshnessResult.message).toContain('salesforceObjectsPath');
+
+        });
+
+        it('given a walk that throws, reports that it could not check rather than throwing', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    throw new Error('EACCES: permission denied');
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+            expect(freshnessResult.message).toContain('EACCES: permission denied');
+
+        });
+
+        it('given the objects directory gone, names that rather than quoting an ENOENT', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    const missingDirectoryError: NodeJS.ErrnoException = new Error('ENOENT: no such file or directory');
+                    missingDirectoryError.code = 'ENOENT';
+                    throw missingDirectoryError;
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+            expect(freshnessResult.message).toContain('salesforceObjectsPath');
+
+        });
+
+        it('given a throw carrying no message, still reports that it could not check', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    // eslint-disable-next-line no-throw-literal -- THE NON-ERROR THROW IS THE CASE UNDER TEST
+                    throw 'a bare string, which a native binding can still throw';
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).toBe('checkFailed');
+            expect(freshnessResult.message).toContain('a bare string');
+
+        });
+
+        // A FAILED CHECK NEVER CLAIMS AGREEMENT, AND NEVER CLAIMS A CHANGE EITHER
+        it('claims neither fresh nor stale', () => {
+
+            jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint')
+                .mockImplementation(() => {
+                    throw new Error('mount went away');
+                });
+
+            const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                buildManifestFromCollectionResult(),
+                '/workspace/force-app/main/default/objects'
+            );
+
+            expect(freshnessResult.freshness).not.toBe('fresh');
+            expect(freshnessResult.freshness).not.toBe('staleMetadata');
+            expect(freshnessResult.freshness).not.toBe('staleObjectsDirectory');
 
         });
 

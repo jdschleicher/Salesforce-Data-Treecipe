@@ -334,7 +334,6 @@ export const PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES = {
     readingManifest: 'Reading the generated spec manifest…',
     loadingResults: 'Loading the most recent picklist dependency check results…',
     buildingView: 'Building the dependency view…',
-    checkingFreshness: 'Checking whether the generated specs still match your metadata…',
     scanningMetadata: 'Scanning your object metadata for dependent picklists…'
 };
 
@@ -867,30 +866,15 @@ export class PicklistDependencyExplorerService {
         forbiddenValues is the complement of dependentValues within the declared set, so the union of
         both across every expectation is that declared set exactly. Reconstructing it lets the node
         carry each value once instead of once per controlling value that does not unlock it.
+
+        Delegated rather than derived here: the manifest RECORDS this list once per field so the
+        complement no longer has to be written out per expectation, and the panel renders against it.
+        Two derivations of the universe a complement is drawn against is exactly the panel-versus-Apex
+        disagreement the manifest exists to remove.
     */
     static buildDeclaredValuesByExpectations(specDetail: IPicklistDependencySpecDetail): string[] {
 
-        let declaredValues: string[] = [];
-        let seenValues = new Set<string>();
-
-        specDetail.expectations.forEach(expectation => {
-
-            const expectationValues = [...expectation.dependentValues, ...(expectation.forbiddenValues || [])];
-
-            expectationValues.forEach(expectationValue => {
-
-                if ( seenValues.has(expectationValue) ) {
-                    return;
-                }
-
-                seenValues.add(expectationValue);
-                declaredValues.push(expectationValue);
-
-            });
-
-        });
-
-        return declaredValues;
+        return PicklistDependencyManifestService.buildDeclaredValuesByExpectations(specDetail.expectations);
 
     }
 
@@ -2617,6 +2601,11 @@ export class PicklistDependencyExplorerService {
         font-size: 0.9em;
     }
     .emptyState { padding: 1rem; border: 1px dashed var(--vscode-panel-border); }
+    .renderFailure {
+        padding: 0.75rem;
+        border-left: 3px solid var(--vscode-editorError-foreground, var(--vscode-testing-iconFailed));
+    }
+    .renderFailure .muted { font-family: var(--vscode-editor-font-family); margin-top: 0.4rem; }
     /*
         The phase the load is in, above the structure rather than inside it. It is the only thing on
         screen before the model arrives, and it is removed -- not just emptied -- once the last phase
@@ -2631,6 +2620,18 @@ export class PicklistDependencyExplorerService {
     .specOrigin { font-family: var(--vscode-editor-font-family); font-size: 0.8rem; color: var(--vscode-descriptionForeground); margin: 0.1rem 0 0.3rem 0; }
     .provenanceBanner { padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; border-left: 3px solid var(--vscode-panel-border); }
     .provenanceBanner.stale { border-left-color: var(--vscode-testing-iconQueued); }
+    .freshnessCheckButton {
+        margin-top: 0.5rem;
+        padding: 0.25rem 0.7rem;
+        font-family: inherit;
+        font-size: inherit;
+        cursor: pointer;
+        color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+        background-color: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+        border: 1px solid var(--vscode-button-border, transparent);
+    }
+    .freshnessCheckButton:hover:enabled { background-color: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)); }
+    .freshnessCheckButton:disabled { cursor: default; opacity: 0.6; }
     .provenanceBanner.preview { border-left-color: var(--vscode-testing-iconQueued); }
     .skippedField { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; margin: 0.35rem 0; }
     .skippedBadge { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-testing-iconQueued); margin-left: 0.5rem; }
@@ -3376,7 +3377,16 @@ export class PicklistDependencyExplorerService {
             to regenerate over a difference that may not exist.
         */
         const isPendingFreshness = explorerModel.manifestFreshness === 'pendingCheck';
-        const isStale = !isPendingFreshness && explorerModel.manifestFreshness !== 'fresh';
+        const isNotChecked = explorerModel.manifestFreshness === 'notChecked';
+        const isCheckFailed = explorerModel.manifestFreshness === 'checkFailed';
+        /*
+            Only the two stale answers are stale. A walk that has not run, one in flight and one that
+            could not read the directory are each a DIFFERENT thing from "your metadata changed", and
+            styling any of them as stale would send a reader to regenerate over a difference nothing
+            has established.
+        */
+        const isStale = !isPendingFreshness && !isNotChecked && !isCheckFailed
+                            && explorerModel.manifestFreshness !== 'fresh';
 
         bannerElement.textContent = '';
         bannerElement.className = 'provenanceBanner' + (isPreview ? ' preview' : (isStale ? ' stale' : ''));
@@ -3402,13 +3412,24 @@ export class PicklistDependencyExplorerService {
             provenanceHeading = 'Generated specs — your metadata has changed since they were generated';
         } else if (isPendingFreshness) {
             provenanceHeading = 'Generated specs — checking whether they still match your metadata…';
+        } else if (isNotChecked) {
+            /*
+                A statement, not a progress message. The walk is not running and nothing is going to
+                start it but the reader, so wording it as an activity would have the banner describe
+                work that does not exist.
+            */
+            provenanceHeading = 'Generated specs — not checked against your current metadata';
+        } else if (isCheckFailed) {
+            provenanceHeading = 'Generated specs — could not be checked against your metadata';
         }
 
         bannerElement.appendChild(createElement('div', 'fieldName', provenanceHeading));
 
-        if (isStale) {
+        if (isStale || isCheckFailed) {
             bannerElement.appendChild(createElement('div', undefined, explorerModel.manifestFreshnessMessage));
         }
+
+        bannerElement.appendChild(buildFreshnessCheckButton(isPendingFreshness, isNotChecked));
 
         bannerElement.appendChild(createElement('div', 'muted',
             'Generated at ' + explorerModel.generatedAt + ' by Treecipe ' + explorerModel.generatorVersion
@@ -3416,6 +3437,49 @@ export class PicklistDependencyExplorerService {
         bannerElement.appendChild(createElement('div', 'sourcePath', explorerModel.manifestFilePath));
 
         return isStale ? 'Generated specs — stale' : 'Generated specs';
+
+    }
+
+    /*
+        The freshness check, as an action the reader takes.
+
+        It is a button rather than something the open does because the walk stats every file under
+        the objects directory: on a large org that is the slowest thing the panel can do, and it
+        answers a question a reader opening the panel to look at structure never asked. Asking costs
+        one click; not asking now costs nothing at all.
+    */
+    function buildFreshnessCheckButton(isPendingFreshness, isNotChecked) {
+
+        const checkButtonElement = createElement('button', 'freshnessCheckButton',
+            isNotChecked ? 'Check against current metadata' : 'Check again');
+
+        checkButtonElement.type = 'button';
+
+        /*
+            Disabled for the duration of the walk, which is what stops a second click starting a
+            second walk over the same directory. The host refuses an overlapping check as well --
+            this is the half the reader can see.
+        */
+        if (isPendingFreshness) {
+            checkButtonElement.disabled = true;
+            checkButtonElement.textContent = 'Checking…';
+        }
+
+        checkButtonElement.addEventListener('click', function () {
+
+            if (checkButtonElement.disabled) { return; }
+
+            /*
+                The banner enters pendingCheck immediately rather than waiting for the host to say
+                the walk began. The click IS the start of it, and a button that stays idle until a
+                round trip completes reads as a click that did not register.
+            */
+            applyFreshness('pendingCheck', '');
+            vscodeApi.postMessage({ command: 'checkFreshness' });
+
+        });
+
+        return checkButtonElement;
 
     }
 
@@ -4008,14 +4072,118 @@ export class PicklistDependencyExplorerService {
         filterText = '';
         filterStatus = 'all';
 
-        scannedPathValueElement.textContent = explorerModel.scannedObjectsDirectoryPath;
-        scannedPathElement.classList.remove('hidden');
+        /*
+            The scanned path is revealed only once everything below it has drawn.
 
+            It used to be written FIRST, which is what made a failed render indistinguishable from a
+            finished one: a throw out of any function below left the heading and this one line on
+            screen and nothing else, which reads exactly like a panel that loaded and found nothing.
+            Held back, a render that dies leaves the failure notice as the only thing on screen.
+        */
         renderProvenanceBanner();
         renderRunBanner();
         renderTruncationNotices();
         renderSkippedFieldWarnings();
         renderObjects();
+
+        scannedPathValueElement.textContent = explorerModel.scannedObjectsDirectoryPath;
+        scannedPathElement.classList.remove('hidden');
+
+    }
+
+    /*
+        Why the panel is showing nothing, when the reason is a throw inside the panel itself.
+
+        Nothing else can report this. A webview exception does not reach the extension host, so the
+        host's own failure path never runs: it posted a model, the post succeeded, and as far as it
+        knows the load finished. Every render function below dereferences the model directly, so one
+        unexpected shape used to end the render mid-way and leave a half-drawn page that claimed to
+        be a whole one -- silently, with no notification and nothing in any log the user can see.
+
+        The notice REPLACES the body rather than being appended to it. A partial render is not a
+        smaller correct answer: the objects that did draw are an arbitrary prefix of the model, and
+        leaving them under an error would invite reading them as the complete set.
+    */
+    function renderPanelFailure(renderError) {
+
+        explorerRoot.textContent = '';
+        objectSectionRecords = [];
+        panelSectionRecords = [];
+        provenanceBannerElement = undefined;
+        provenanceBannerSectionRecord = undefined;
+        matchCountElement = undefined;
+
+        scannedPathElement.classList.add('hidden');
+
+        const failureElement = createElement('div', 'renderFailure');
+        failureElement.appendChild(createElement('div', 'fieldName',
+            'The Picklist Dependency Explorer could not draw this panel'));
+        failureElement.appendChild(createElement('div', undefined,
+            'The dependency structure was loaded, but rendering it failed part way through. Nothing '
+                + 'below is a complete view of your specs, so none of it is shown. The run report in '
+                + 'your picklist dependency results folder remains the complete record.'));
+        failureElement.appendChild(createElement('div', 'muted', String(renderError)));
+
+        explorerRoot.appendChild(failureElement);
+
+    }
+
+    /*
+        The render, and the only place that decides what a failed one looks like.
+
+        The host is told either way: it holds the model and the allow-lists built from it, and a
+        panel that did not draw is a panel whose buttons address rows that are not on screen.
+    */
+    function describeFailure(failureCause) {
+
+        if (!failureCause) { return 'unknown error'; }
+        if (typeof failureCause === 'string') { return failureCause; }
+
+        /*
+            A resource that failed to load delivers a plain Event with no message, and String()ing it
+            yields "[object Event]" -- a report that names nothing and cannot be acted on. Falling
+            back to the event's type at least says what kind of thing failed.
+        */
+        if (failureCause.message) { return String(failureCause.message); }
+        if (failureCause.type) { return 'a ' + String(failureCause.type) + ' event with no message'; }
+
+        return String(failureCause);
+
+    }
+
+    /*
+        The one place a panel failure is described and sent, so the render guard and the two window
+        listeners cannot drift in what they report or how they tag it.
+    */
+    function postRenderFailure(failurePhase, failureCause) {
+
+        vscodeApi.postMessage({
+            command: 'renderFailed',
+            phase: failurePhase,
+            message: describeFailure(failureCause),
+            stack: String(failureCause && failureCause.stack ? failureCause.stack : '')
+        });
+
+    }
+
+    function renderPanelGuarded(renderedModel, renderedEmptyStateMessage) {
+
+        try {
+
+            renderPanel(renderedModel, renderedEmptyStateMessage);
+            vscodeApi.postMessage({ command: 'rendered' });
+
+            return true;
+
+        } catch (renderError) {
+
+            renderPanelFailure(renderError);
+
+            postRenderFailure('render', renderError);
+
+            return false;
+
+        }
 
     }
 
@@ -4072,9 +4240,18 @@ export class PicklistDependencyExplorerService {
         }
 
         if (hostMessage.command === 'renderModel') {
-            renderPanel(hostMessage.model, hostMessage.emptyStateMessage);
-            setLoadStatus(hostMessage.message);
+
+            /*
+                The status line is left alone when the render failed. Clearing it would take the
+                panel from "still loading" to "finished" at the exact moment it drew nothing, which
+                is the reading the guard exists to prevent.
+            */
+            if (renderPanelGuarded(hostMessage.model, hostMessage.emptyStateMessage)) {
+                setLoadStatus(hostMessage.message);
+            }
+
             return;
+
         }
 
         if (hostMessage.command === 'applyFreshness') {
@@ -4097,6 +4274,41 @@ export class PicklistDependencyExplorerService {
         rebuilt from the manifest, and a panel that has already resolved its freshness comes back
         with that answer rather than re-walking the objects directory.
     */
+    /*
+        A throw that did not come out of the render -- an event handler on a row, an expand that
+        builds its body lazily long after the model arrived.
+
+        Those run outside the message listener, so the guard around the render cannot see them, and
+        without this they are as silent as the render failures were: the panel stops responding to
+        one interaction and nothing anywhere says why. Reported through the same path so the host has
+        one place to handle a panel that broke.
+    */
+    window.addEventListener('error', function (errorEvent) {
+
+        /*
+            An ErrorEvent carries the description on ITSELF and the stack on its .error. Reading only
+            one of the two loses half the report -- .error alone drops the message for a plain throw,
+            and the event alone drops the stack.
+        */
+        const thrownError = errorEvent && errorEvent.error;
+
+        postRenderFailure('runtime', {
+            message: (errorEvent && errorEvent.message) || (thrownError && thrownError.message),
+            type: errorEvent && errorEvent.type,
+            stack: thrownError && thrownError.stack
+        });
+
+    });
+
+    /*
+        An async throw inside the panel -- a rejected promise nothing catches. It does not surface
+        through the "error" event, so without this it stays exactly as silent as the render failures
+        this whole mechanism exists to end.
+    */
+    window.addEventListener('unhandledrejection', function (rejectionEvent) {
+        postRenderFailure('runtime', rejectionEvent && rejectionEvent.reason);
+    });
+
     vscodeApi.postMessage({ command: 'ready' });
 
 }());

@@ -29,6 +29,29 @@ export interface IPicklistDependencyManifestExpectation {
     combinationKey: string;
     controllingValue: string;
     dependentValues: string[];
+    /*
+        Set when what this controlling value must NOT unlock is exactly the complement of
+        dependentValues within the field's declaredValues, which is what the generator always emits.
+
+        The complement is recorded as this flag rather than as the values themselves because the
+        values are the one part of an expectation that grows with the OTHER picklist: written out per
+        expectation the file grows with combinations x declared values, when the information content
+        is their sum. That is the same reason the view model carries no forbidden values per
+        combination -- see IPicklistDependencyCombinationViewModel.hasForbiddenAssertion. The
+        manifest simply had not had the same treatment.
+    */
+    forbiddenValuesAreDeclaredComplement?: boolean;
+    /*
+        The forbidden set written out, carried ONLY when it is not that complement -- an expectNone
+        or expectUnavailable expectation asserting an empty set against a non-empty universe, or a
+        spec detail assembled by hand rather than by the generator.
+
+        Keeping the escape hatch is what makes the round trip a property of the manifest rather than
+        a coincidence of what the two generators happen to emit today: buildManifestExpectations
+        derives the complement and compares before it records the flag, so anything that does not
+        reconstruct exactly is recorded literally instead of being silently rewritten into something
+        the spec does not claim.
+    */
     forbiddenValues?: string[];
     controllingValueUnavailable?: boolean;
 }
@@ -39,6 +62,18 @@ export interface IPicklistDependencyManifestField {
     upstreamFieldApiName?: string;
     // THE GENERATED APEX METHOD THAT RETURNS THIS FIELD'S SPEC, SO A PANEL ROW NAMES THE CODE ASSERTING IT
     specMethodName: string;
+    /*
+        Every value this field's expectations are drawn from, recorded ONCE for the whole field so a
+        complement can be derived against it on read.
+
+        It has to be the COMPLETE universe: a truncated list would have every consumer deriving a
+        complement understate what the spec forbids, which is a false claim rather than a shorter
+        one. For a record-type-scoped field the universe is the values the RECORD TYPE assigns
+        rather than everything the field declares, exactly as buildRecordTypeExpectations draws its
+        complement -- which is why this is recorded per field entry instead of once per field api
+        name.
+    */
+    declaredValues: string[];
     expectations: IPicklistDependencyManifestExpectation[];
 }
 
@@ -116,14 +151,50 @@ export interface IPicklistDependencyManifestLoad {
     that window would have the provenance banner assert the specs still match metadata nothing has
     looked at -- the same class of claim the three-state status guarantee exists to prevent one row
     lower down.
-*/
-export type PicklistDependencyManifestFreshness = 'fresh' | 'staleObjectsDirectory' | 'staleMetadata' | 'pendingCheck';
 
-// FROZEN: IT IS PASSED INTO MODEL BUILDS AS THE PENDING ANSWER, AND ONE CALLER MUTATING IT WOULD CHANGE EVERY LATER OPEN
-export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
-    freshness: 'pendingCheck' as PicklistDependencyManifestFreshness,
+    "notChecked" is the RESTING state, and it is what an open now produces: the walk is no longer
+    part of opening the panel, so the ordinary case is that nobody has looked. "pendingCheck" is
+    reserved for a walk that is actually in flight, which is only ever true between a reader
+    clicking the banner's check button and the answer coming back. Collapsing the two would have a
+    panel nobody asked to check sit forever behind a progress message for work that is not running.
+
+    "checkFailed" is the walk that ran and could not answer -- a deleted directory, a permission
+    error, a network mount that went away mid-stat. It is separate from the two stale values on the
+    same principle: reporting "your metadata changed" for an EACCES sends a reader looking for an
+    edit they never made. None of the four non-fresh values claims agreement with metadata, which is
+    the property the banner depends on.
+*/
+export type PicklistDependencyManifestFreshness = 'fresh'
+                                                    | 'staleObjectsDirectory'
+                                                    | 'staleMetadata'
+                                                    | 'pendingCheck'
+                                                    | 'notChecked'
+                                                    | 'checkFailed';
+
+/*
+    What a model built by an open carries.
+
+    There is deliberately no PENDING equivalent: "pendingCheck" is now PANEL-LOCAL state, set by the
+    panel when the reader clicks check and resolved by the answer that follows. The host never builds
+    a model carrying it, so a constant for it would be a shape nothing produces.
+
+    Frozen: it is passed into model builds, and one caller mutating it would change every later open.
+*/
+export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
+    freshness: 'notChecked' as PicklistDependencyManifestFreshness,
     message: ''
 });
+
+/*
+    The three fields a freshness check actually reads, named as their own type.
+
+    The Explorer holds this across the life of a panel so a check can answer about the model ON
+    SCREEN rather than about whatever the manifest says by the time the reader clicks. Narrowed to a
+    Pick so what is held is three strings: pinning the whole parsed manifest for them retained tens
+    of megabytes on a large org, for a comparison that never touches the objects list.
+*/
+export type IPicklistDependencyManifestFreshnessSubject =
+    Pick<IPicklistDependencyManifest, 'objectsDirectoryPath' | 'sourceFingerprint' | 'generatedAt'>;
 
 export interface IPicklistDependencyManifestFreshnessResult {
     freshness: PicklistDependencyManifestFreshness;
@@ -140,10 +211,75 @@ export class PicklistDependencyManifestService {
     /*
         Bumped only when a manifest written by an older version can no longer be read as written.
         An unrecognised version is reported like a malformed file rather than parsed hopefully --
-        rendering a v1 manifest against v2 assumptions is exactly the silent disagreement between
+        rendering a v2 manifest against v3 assumptions is exactly the silent disagreement between
         the panel and the Apex that this artifact exists to eliminate.
+
+        3 stopped writing forbiddenValues on every expectation and records the field's declared
+        universe once instead. A v2 file read as v3 would find no declaredValues to draw a complement
+        against and render every "must not unlock" as empty -- a spec that appears to forbid nothing,
+        which is precisely the false claim the complete-universe rule exists to prevent.
     */
-    private static currentManifestVersion = 2;
+    private static currentManifestVersion = 3;
+
+    /*
+        The most values reconstruction is allowed to materialize across the whole manifest.
+
+        Recording the complement as a marker made the FILE carry the sum of the two picklists while
+        reading it still materializes their product, so the format became decompressive: the 0.70 MB
+        manifest below expands to 40,000,000 strings. Under version 2 the same expansion needed a
+        file that literally contained them, around 400 MB, so the amplification was about 1:1 and
+        the file size was its own ceiling. It no longer is, and this is what replaces it.
+
+        The expansion happens on load, BEFORE applyModelLimits -- those caps bound what is rendered
+        from a finished view model and cannot bound what building one allocates.
+
+        MEASURED through the real builder rather than reasoned, per the re-measure rule:
+
+        | shape                              | file    | reconstructed | time    | heap   |
+        |------------------------------------|---------|---------------|---------|--------|
+        | real large org, 1200 fields        | 8.95 MB |         5.7 M |  268 ms |  61 MB |
+        | 1 field, 5k values x 5k combos     | 0.74 MB |        25.0 M | 1716 ms | 261 MB |
+        | 1 field, 20k values x 2k combos    | 0.70 MB |        40.0 M | 2356 ms | 352 MB |
+        | 1 field, 20k values x 4k combos    | 0.95 MB |        80.0 M | 3022 ms |  OOM-y |
+
+        25 M is 4.3x the largest real org measured and holds the load to roughly 260 MB, so no
+        manifest this generator writes can reach it while a hand built one is stopped before it
+        exhausts the extension host. A manifest that trips this is reported like any other one that
+        cannot be read, naming the numbers, so a genuine org large enough to hit it reports a
+        ceiling that is too low rather than a panel that never opens.
+    */
+    private static maximumReconstructedDeclaredValues = 25000000;
+
+    static getMaximumReconstructedDeclaredValues(): number {
+        return this.maximumReconstructedDeclaredValues;
+    }
+
+    /*
+        How many values reading this manifest would materialize.
+
+        Only an expectation carrying the MARKER amplifies: it names a complement it does not contain,
+        and reconstruction draws one value per member of the field's universe. An expectation that
+        carries its forbidden list literally already costs the file what it costs memory, which is
+        the ratio version 2 had throughout.
+    */
+    static countReconstructedDeclaredValues(objects: IPicklistDependencyManifestObject[]): number {
+
+        return objects.reduce((objectTotal, manifestObject) => {
+
+            const fieldEntries: IPicklistDependencyManifestField[] = [...manifestObject.fields, ...manifestObject.recordTypeScopedFields];
+
+            return objectTotal + fieldEntries.reduce((fieldTotal, manifestField) => {
+
+                const markerExpectationCount = manifestField.expectations
+                    .filter(manifestExpectation => manifestExpectation.forbiddenValuesAreDeclaredComplement).length;
+
+                return fieldTotal + ( markerExpectationCount * manifestField.declaredValues.length );
+
+            }, 0);
+
+        }, 0);
+
+    }
 
     static getManifestVersion(): number {
         return this.currentManifestVersion;
@@ -210,7 +346,91 @@ export class PicklistDependencyManifestService {
 
     }
 
-    static buildManifestExpectations(specDetail: IPicklistDependencySpecDetail): IPicklistDependencyManifestExpectation[] {
+    /*
+        Every value a set of expectations is drawn from, in first-seen order.
+
+        forbiddenValues is the complement of dependentValues within the universe the expectations
+        were built against, so the union of both across every expectation IS that universe exactly --
+        for a field-level spec the values the field declares, and for a record-type-scoped one the
+        values that record type assigns. Deriving it rather than taking it from the field detail is
+        what lets the same universe be recovered from a manifest, an Apex-parsed spec or a hand
+        assembled one, all of which reach here as expectations and nothing else.
+
+        Lives here rather than in the Explorer, which delegates to it, because the manifest now
+        RECORDS this list and the panel renders against it: two derivations of the universe a
+        complement is drawn against is the disagreement between panel and Apex this artifact exists
+        to remove, one layer down.
+    */
+    static buildDeclaredValuesByExpectations(expectations: IPicklistDependencyExpectation[]): string[] {
+
+        let declaredValues: string[] = [];
+        let seenValues = new Set<string>();
+
+        expectations.forEach(expectation => {
+
+            const expectationValues = [...expectation.dependentValues, ...(expectation.forbiddenValues || [])];
+
+            expectationValues.forEach(expectationValue => {
+
+                if ( seenValues.has(expectationValue) ) {
+                    return;
+                }
+
+                seenValues.add(expectationValue);
+                declaredValues.push(expectationValue);
+
+            });
+
+        });
+
+        return declaredValues;
+
+    }
+
+    /*
+        The universe ordered the way the generator emits values, which is the order a complement
+        drawn from it comes out in.
+
+        Ordered ONCE PER FIELD rather than once per complement, and that is a measured decision
+        rather than a tidy one: sorting inside the complement is ~594 ms of a 1,200-field synthetic
+        org against ~59 ms for the filter alone, which would have handed back most of what this
+        change saves on the parse. The manifest records the universe as the expectations declare it,
+        so a file written by hand can carry it in any order and still reconstruct in emission order.
+    */
+    static buildOrderedDeclaredValues(declaredValues: string[]): string[] {
+
+        return PicklistDependencyTestService.sortValuesForEmission(declaredValues);
+
+    }
+
+    /*
+        What this controlling value must not unlock, as the generator derives it: everything the
+        universe declares that this expectation does not unlock.
+
+        Takes the universe ALREADY in emission order -- see buildOrderedDeclaredValues -- because the
+        order is the whole reason this is not a set operation. A complement returned in the universe's
+        own arbitrary order carries the same values and is not the same array, and "the same values in
+        a different order" is exactly what a round trip comparison is entitled to reject.
+    */
+    static buildDeclaredComplement(orderedDeclaredValues: string[], dependentValues: string[]): string[] {
+
+        const allowedValues = new Set(dependentValues);
+
+        return orderedDeclaredValues.filter(declaredValue => !allowedValues.has(declaredValue));
+
+    }
+
+    static areValueListsIdentical(firstValues: string[], secondValues: string[]): boolean {
+
+        return firstValues.length === secondValues.length
+                && firstValues.every((firstValue, valueIndex) => firstValue === secondValues[valueIndex]);
+
+    }
+
+    static buildManifestExpectations(specDetail: IPicklistDependencySpecDetail,
+                                        declaredValues: string[]): IPicklistDependencyManifestExpectation[] {
+
+        const orderedDeclaredValues = this.buildOrderedDeclaredValues(declaredValues);
 
         return specDetail.expectations.map((expectation: IPicklistDependencyExpectation) => {
 
@@ -226,13 +446,26 @@ export class PicklistDependencyManifestService {
             };
 
             /*
-                Both optional flags are carried only when set, rather than normalised to defaults.
+                Every optional flag is carried only when set, rather than normalised to defaults.
                 An expectation that never declared a forbidden list asserts only the positive half,
-                and the panel renders no complement for it -- writing an empty array here would turn
-                that into a claim that the controlling value unlocks everything.
+                and the panel renders no complement for it -- recording either the marker or an empty
+                array here would turn that into a claim about what the controlling value unlocks.
+
+                The complement is DERIVED and COMPARED rather than assumed: an expectation whose
+                forbidden set is the complement records one boolean, and one whose is not -- expectNone
+                and expectUnavailable both assert an empty set against a non-empty universe -- records
+                the values, so what is read back is what was written whatever produced it.
             */
             if ( Array.isArray(expectation.forbiddenValues) ) {
-                manifestExpectation.forbiddenValues = [...expectation.forbiddenValues];
+
+                const declaredComplement = this.buildDeclaredComplement(orderedDeclaredValues, expectation.dependentValues);
+
+                if ( this.areValueListsIdentical(expectation.forbiddenValues, declaredComplement) ) {
+                    manifestExpectation.forbiddenValuesAreDeclaredComplement = true;
+                } else {
+                    manifestExpectation.forbiddenValues = [...expectation.forbiddenValues];
+                }
+
             }
 
             if ( expectation.controllingValueUnavailable ) {
@@ -294,11 +527,14 @@ export class PicklistDependencyManifestService {
 
             const fields: IPicklistDependencyManifestField[] = objectSpecDetails.map((specDetail, specDetailIndex) => {
 
+                const declaredValues = this.buildDeclaredValuesByExpectations(specDetail.expectations);
+
                 let manifestField: IPicklistDependencyManifestField = {
                     fieldApiName: specDetail.fieldApiName,
                     controllingFieldApiName: specDetail.controllingFieldApiName,
                     specMethodName: allSpecMethodNames[specDetailIndex],
-                    expectations: this.buildManifestExpectations(specDetail)
+                    declaredValues: declaredValues,
+                    expectations: this.buildManifestExpectations(specDetail, declaredValues)
                 };
 
                 if ( specDetail.upstreamFieldApiName ) {
@@ -312,12 +548,15 @@ export class PicklistDependencyManifestService {
             const recordTypeScopedFields: IPicklistDependencyManifestRecordTypeScopedField[] =
                 objectRecordTypeSpecDetails.map((recordTypeSpecDetail, recordTypeSpecDetailIndex) => {
 
+                    const recordTypeDeclaredValues = this.buildDeclaredValuesByExpectations(recordTypeSpecDetail.expectations);
+
                     let manifestRecordTypeScopedField: IPicklistDependencyManifestRecordTypeScopedField = {
                         fieldApiName: recordTypeSpecDetail.fieldApiName,
                         controllingFieldApiName: recordTypeSpecDetail.controllingFieldApiName,
                         recordTypeDeveloperName: recordTypeSpecDetail.recordTypeDeveloperName,
                         specMethodName: allSpecMethodNames[objectSpecDetails.length + recordTypeSpecDetailIndex],
-                        expectations: this.buildManifestExpectations(recordTypeSpecDetail)
+                        declaredValues: recordTypeDeclaredValues,
+                        expectations: this.buildManifestExpectations(recordTypeSpecDetail, recordTypeDeclaredValues)
                     };
 
                     if ( recordTypeSpecDetail.upstreamFieldApiName ) {
@@ -383,7 +622,7 @@ export class PicklistDependencyManifestService {
                     fieldApiName: manifestField.fieldApiName,
                     controllingFieldApiName: manifestField.controllingFieldApiName,
                     upstreamFieldApiName: manifestField.upstreamFieldApiName,
-                    expectations: this.buildExpectationsByManifestExpectations(manifestField.expectations)
+                    expectations: this.buildExpectationsByManifestExpectations(manifestField.expectations, manifestField.declaredValues)
                 });
 
             });
@@ -396,7 +635,10 @@ export class PicklistDependencyManifestService {
                     controllingFieldApiName: manifestRecordTypeScopedField.controllingFieldApiName,
                     upstreamFieldApiName: manifestRecordTypeScopedField.upstreamFieldApiName,
                     recordTypeDeveloperName: manifestRecordTypeScopedField.recordTypeDeveloperName,
-                    expectations: this.buildExpectationsByManifestExpectations(manifestRecordTypeScopedField.expectations)
+                    expectations: this.buildExpectationsByManifestExpectations(
+                        manifestRecordTypeScopedField.expectations,
+                        manifestRecordTypeScopedField.declaredValues
+                    )
                 });
 
             });
@@ -407,7 +649,20 @@ export class PicklistDependencyManifestService {
 
     }
 
-    static buildExpectationsByManifestExpectations(manifestExpectations: IPicklistDependencyManifestExpectation[]): IPicklistDependencyExpectation[] {
+    /*
+        The complement is rebuilt here, so every consumer of a spec detail -- the Explorer's model
+        builder, and anything else handed one -- sees exactly the expectation generation held in
+        memory rather than a manifest-shaped variant of it.
+
+        The two ways an expectation can carry a forbidden set stay distinct from the third way it can
+        carry none at all: a marker and a written-out list both produce an array, and neither present
+        produces undefined. Collapsing those would have the panel render a complement against a spec
+        that only ever asserted the positive half.
+    */
+    static buildExpectationsByManifestExpectations(manifestExpectations: IPicklistDependencyManifestExpectation[],
+                                                    declaredValues: string[]): IPicklistDependencyExpectation[] {
+
+        const orderedDeclaredValues = this.buildOrderedDeclaredValues(declaredValues);
 
         return manifestExpectations.map(manifestExpectation => {
 
@@ -416,7 +671,9 @@ export class PicklistDependencyManifestService {
                 dependentValues: [...manifestExpectation.dependentValues]
             };
 
-            if ( Array.isArray(manifestExpectation.forbiddenValues) ) {
+            if ( manifestExpectation.forbiddenValuesAreDeclaredComplement ) {
+                expectation.forbiddenValues = this.buildDeclaredComplement(orderedDeclaredValues, manifestExpectation.dependentValues);
+            } else if ( Array.isArray(manifestExpectation.forbiddenValues) ) {
                 expectation.forbiddenValues = [...manifestExpectation.forbiddenValues];
             }
 
@@ -568,6 +825,22 @@ export class PicklistDependencyManifestService {
             .map((objectEntry: unknown) => this.buildManifestObjectByEntry(objectEntry))
             .filter((manifestObject): manifestObject is IPicklistDependencyManifestObject => manifestObject !== undefined);
 
+        /*
+            Checked here rather than per field because the budget is what READING THE WHOLE FILE
+            costs -- a per field ceiling multiplied by the number of fields is not a bound at all.
+            Counted from the parsed entries, which is cheap, and before buildSpecDetailsByManifest
+            materializes anything.
+        */
+        const reconstructedDeclaredValueCount = this.countReconstructedDeclaredValues(objects);
+
+        if ( reconstructedDeclaredValueCount > this.maximumReconstructedDeclaredValues ) {
+            return {
+                state: 'unreadableManifest',
+                message: `The picklist dependency spec manifest at "${manifestFilePath}" describes ${reconstructedDeclaredValueCount.toLocaleString()} values once its "must not unlock" lists are expanded, and this version of Salesforce Data Treecipe reads at most ${this.maximumReconstructedDeclaredValues.toLocaleString()}. Reading it would exhaust the editor rather than open the panel. Re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" to replace it.`,
+                manifestFilePath: manifestFilePath
+            };
+        }
+
         return {
             state: 'loaded',
             message: '',
@@ -664,6 +937,26 @@ export class PicklistDependencyManifestService {
             fieldApiName: fieldApiName,
             controllingFieldApiName: typeof fieldRecord.controllingFieldApiName === 'string' ? fieldRecord.controllingFieldApiName : '',
             specMethodName: typeof fieldRecord.specMethodName === 'string' ? fieldRecord.specMethodName : '',
+            /*
+                A field entry with no readable declared values carries no universe, and every
+                complement drawn against it is empty. That understates what the specs forbid rather
+                than overstating it, and the alternative -- deriving a universe from the expectations
+                that are meant to be drawn FROM it -- would invent one out of the very lists this
+                version no longer writes. An empty list is the honest reading of an entry that does
+                not say.
+
+                A PARTIALLY readable list is the case that has to be caught here rather than
+                filtered. Dropping the entries that are not strings and keeping the rest would leave
+                a universe that LOOKS complete, and every complement drawn from it would name fewer
+                values than the spec forbids -- a false claim rather than a shorter one, which is the
+                one thing the complete-universe rule exists to prevent. It is also worse than the
+                same edit was under version 2, where a bad element cost one expectation's list; here
+                one bad element would narrow the universe for every expectation on the field.
+
+                So a list that cannot be read WHOLE is treated exactly like one that is not there:
+                no universe, no complement rendered anywhere on the field.
+            */
+            declaredValues: this.buildDeclaredValuesByEntry(fieldRecord.declaredValues),
             expectations: Array.isArray(fieldRecord.expectations)
                 ? fieldRecord.expectations
                     .map((expectationEntry: unknown) => this.buildManifestExpectationByEntry(
@@ -681,6 +974,25 @@ export class PicklistDependencyManifestService {
         }
 
         return manifestField;
+
+    }
+
+    /*
+        The field's declared universe as recorded, or nothing at all.
+
+        Deliberately all-or-nothing: see the note at the call site. Anything that is not an array of
+        strings end to end yields an empty universe, which renders no "must not unlock" rather than a
+        short one.
+    */
+    static buildDeclaredValuesByEntry(declaredValuesEntry: unknown): string[] {
+
+        if ( !Array.isArray(declaredValuesEntry) ) {
+            return [];
+        }
+
+        const isEveryValueReadable = declaredValuesEntry.every((declaredValue: unknown) => typeof declaredValue === 'string');
+
+        return isEveryValueReadable ? [...declaredValuesEntry] as string[] : [];
 
     }
 
@@ -735,7 +1047,9 @@ export class PicklistDependencyManifestService {
                 : []
         };
 
-        if ( Array.isArray(expectationRecord.forbiddenValues) ) {
+        if ( expectationRecord.forbiddenValuesAreDeclaredComplement === true ) {
+            manifestExpectation.forbiddenValuesAreDeclaredComplement = true;
+        } else if ( Array.isArray(expectationRecord.forbiddenValues) ) {
             manifestExpectation.forbiddenValues = expectationRecord.forbiddenValues
                 .filter((forbiddenValue: unknown): forbiddenValue is string => typeof forbiddenValue === 'string');
         }
@@ -815,6 +1129,22 @@ export class PicklistDependencyManifestService {
         cannot contain a spec-contributing file at all.
     */
     static collectSourceFingerprintEntries(objectsDirectoryPath: string): string[] {
+
+        /*
+            The ROOT is read unguarded, and that asymmetry is the whole point.
+
+            Every directory BELOW this one is allowed to be unreadable and contribute nothing: one
+            locked subdirectory on a real org should cost that subdirectory, not the answer. The root
+            is different in kind. If it cannot be read there is no metadata to fingerprint at all,
+            and folding that into an empty entry list produces sha256('') -- a digest that mismatches
+            whatever was recorded and is then reported as "your metadata has changed since these
+            specs were generated".
+
+            That was a false claim about a directory that is missing or locked, and it sent the
+            reader to regenerate from a directory that is not there. It is exactly the reading
+            checkFailed exists to prevent, so the root's failure has to reach the caller.
+        */
+        fs.readdirSync(objectsDirectoryPath);
 
         let fingerprintEntries: string[] = [];
         let visitedDirectoryPaths = new Set<string>();
@@ -969,7 +1299,7 @@ export class PicklistDependencyManifestService {
         never "this specific thing changed" -- and a banner that overstates is one users learn to
         dismiss.
     */
-    static resolveManifestFreshness(manifest: IPicklistDependencyManifest,
+    static resolveManifestFreshness(manifest: IPicklistDependencyManifestFreshnessSubject,
                                         objectsDirectoryPath: string): IPicklistDependencyManifestFreshnessResult {
 
         if ( this.normalizeDirectoryPathForComparison(manifest.objectsDirectoryPath)
@@ -982,7 +1312,38 @@ export class PicklistDependencyManifestService {
 
         }
 
-        const currentSourceFingerprint = this.buildSourceFingerprint(objectsDirectoryPath);
+        /*
+            The walk is stat-per-file over a directory the extension does not own, and every one of
+            those stats can fail for a reason that has nothing to do with staleness: the directory
+            deleted between the panel opening and the reader clicking check, a permission change, a
+            network mount that went away mid-walk.
+
+            Contained HERE rather than at the call site because this is the only place that knows the
+            failure was a freshness question rather than the load. A throw escaping to the command
+            would be reported as the Explorer failing to load -- past a panel that has been on screen
+            and usable for however long the reader took to click the button.
+        */
+        let currentSourceFingerprint: string;
+
+        try {
+            currentSourceFingerprint = this.buildSourceFingerprint(objectsDirectoryPath);
+        } catch (error) {
+
+            /*
+                The directory being gone is the common case and is named as itself. Every other
+                reason -- a permission change, a mount that went away -- carries the error, because
+                guessing at a cause the reader can act on is worse than quoting the one we have.
+            */
+            const isMissingDirectory = error?.code === 'ENOENT';
+
+            return {
+                freshness: 'checkFailed',
+                message: isMissingDirectory
+                    ? `The objects directory "${objectsDirectoryPath}" could not be found, so these specs could not be checked against your current metadata. Check the "salesforceObjectsPath" value in treecipe.config.json. What is shown below is what the generated Apex asserts.`
+                    : `The object metadata in "${objectsDirectoryPath}" could not be read to check whether these specs still match it (${error?.message ?? error}). What is shown below is what the generated Apex asserts; whether it still matches your metadata is unknown.`
+            };
+
+        }
 
         if ( manifest.sourceFingerprint.length > 0 && manifest.sourceFingerprint !== currentSourceFingerprint ) {
 

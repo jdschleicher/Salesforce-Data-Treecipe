@@ -280,6 +280,388 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
           
   });
 
+  describe('processFieldsDirectory compound address expansion', () => {
+
+    const mockSingleFieldFileDirectory = (fieldFileName: string, xmlMarkup: string) => {
+
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(
+        () => Promise.resolve([[fieldFileName, vscode.FileType.File]]) as any
+      );
+      jest.spyOn(vscode.Uri, 'joinPath').mockReturnValue(MockVSCodeWorkspaceService.getFakeVSCodeUri());
+      jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(
+        () => Promise.resolve(Buffer.from(xmlMarkup)) as any
+      );
+
+    };
+
+    test('given an Address field file, the walk yields the five component fields and no line for the compound field', async () => {
+
+      mockSingleFieldFileDirectory('Site_Address__c.field-meta.xml', XMLMarkupMockService.getCompoundAddressFieldTypeXMLMarkup());
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+      const fieldInfoDetails = await directoryProcessor.processFieldsDirectory(
+        vscode.Uri.file('/fake/Store__c/fields'),
+        'Store__c',
+        {},
+        {}
+      );
+
+      expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).toEqual([
+        'Site_Address__Street__s',
+        'Site_Address__City__s',
+        'Site_Address__State__s',
+        'Site_Address__PostalCode__s',
+        'Site_Address__Country__s'
+      ]);
+
+    });
+
+    test('given an Address field file, each component carries the snowfakery recipe value for its component', async () => {
+
+      mockSingleFieldFileDirectory('Site_Address__c.field-meta.xml', XMLMarkupMockService.getCompoundAddressFieldTypeXMLMarkup());
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+      const fieldInfoDetails = await directoryProcessor.processFieldsDirectory(
+        vscode.Uri.file('/fake/Store__c/fields'),
+        'Store__c',
+        {},
+        {}
+      );
+
+      const componentApiNameToRecipeValue = Object.fromEntries(
+        fieldInfoDetails.map(fieldInfo => [fieldInfo.fieldName, fieldInfo.recipeValue])
+      );
+
+      expect(componentApiNameToRecipeValue['Site_Address__Street__s']).toBe('${{fake.street_address}}');
+      expect(componentApiNameToRecipeValue['Site_Address__City__s']).toBe('${{fake.city}}');
+      expect(componentApiNameToRecipeValue['Site_Address__State__s']).toBe('${{fake.state}}');
+      expect(componentApiNameToRecipeValue['Site_Address__PostalCode__s']).toBe('${{fake.zipcode}}');
+      expect(componentApiNameToRecipeValue['Site_Address__Country__s']).toBe('${{fake.country}}');
+
+    });
+
+    /*
+      Directory order decides whether a component's own field file is read before or after the
+      compound field. Expansion therefore runs after the walk, and this asserts BOTH orders so a
+      future change back to inline expansion fails here rather than shipping a duplicate recipe key.
+    */
+    const buildOrderedDirectoryMock = (fieldFileNames: string[]) => {
+
+      const fieldFileNameToXmlMarkup: Record<string, string> = {
+        'Address.field-meta.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Address</fullName>
+    <label>Address</label>
+    <type>Address</type>
+</CustomField>`,
+        'Street.field-meta.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Street</fullName>
+    <label>Street</label>
+    <length>255</length>
+    <type>Text</type>
+</CustomField>`
+      };
+
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(
+        () => Promise.resolve(fieldFileNames.map(fieldFileName => [fieldFileName, vscode.FileType.File])) as any
+      );
+      jest.spyOn(vscode.Uri, 'joinPath').mockImplementation(
+        (baseUri: any, ...pathSegments: string[]) => ({ fsPath: `${baseUri.fsPath}/${pathSegments.join('/')}` }) as any
+      );
+      jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(
+        (fieldUri: any) => {
+          const fieldFileName = fieldUri.fsPath.split('/').pop();
+          return Promise.resolve(Buffer.from(fieldFileNameToXmlMarkup[fieldFileName])) as any;
+        }
+      );
+
+    };
+
+    test.each([
+      ['component field file first', ['Street.field-meta.xml', 'Address.field-meta.xml']],
+      ['compound field file first', ['Address.field-meta.xml', 'Street.field-meta.xml']]
+    ])('given %s, Street is emitted exactly once', async (_orderDescription, fieldFileNames) => {
+
+      buildOrderedDirectoryMock(fieldFileNames as string[]);
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+      const fieldInfoDetails = await directoryProcessor.processFieldsDirectory(
+        vscode.Uri.file('/fake/Asset/fields'),
+        'Asset',
+        {},
+        {}
+      );
+
+      const emittedFieldApiNames = fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName);
+
+      expect(emittedFieldApiNames.filter(fieldApiName => fieldApiName === 'Street').length).toBe(1);
+      expect(emittedFieldApiNames.sort()).toEqual(['City', 'Country', 'PostalCode', 'State', 'Street']);
+
+    });
+
+    test('given a Text field file, the walk still yields exactly one field and does not expand it', async () => {
+
+      mockSingleFieldFileDirectory('Text__c.field-meta.xml', XMLMarkupMockService.getTextFieldTypeXMLMarkup());
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+      const fieldInfoDetails = await directoryProcessor.processFieldsDirectory(
+        vscode.Uri.file('/fake/Store__c/fields'),
+        'Store__c',
+        {},
+        {}
+      );
+
+      expect(fieldInfoDetails.length).toBe(1);
+      expect(fieldInfoDetails[0].fieldName).toBe('Text__c');
+
+    });
+
+    /*
+      The only signal a typeless compound address field leaves is its api name, so this is the case
+      the configured list exists for -- the same file expands or does not purely on config.
+    */
+    test('given a Text field file named in customCompoundAddressFields, the walk expands it into components', async () => {
+
+      mockSingleFieldFileDirectory('Text__c.field-meta.xml', XMLMarkupMockService.getTextFieldTypeXMLMarkup());
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue(['Store__c.Text__c']);
+
+      const fieldInfoDetails = await directoryProcessor.processFieldsDirectory(
+        vscode.Uri.file('/fake/Store__c/fields'),
+        'Store__c',
+        {},
+        {}
+      );
+
+      expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).toEqual([
+        'Text__Street__s',
+        'Text__City__s',
+        'Text__State__s',
+        'Text__PostalCode__s',
+        'Text__Country__s'
+      ]);
+
+    });
+
+  });
+
+  describe('isCompoundAddressField', () => {
+
+    test('given a field whose xml type is Address, returns true', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', type: 'Address' };
+
+      expect(directoryProcessor.isCompoundAddressField(compoundAddressFieldInfo, 'Store__c')).toBe(true);
+
+    });
+
+    test('given a Text field merely named like an address, returns false', () => {
+
+      const textFieldInfo: any = { fieldName: 'Address__c', type: 'Text' };
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+      expect(directoryProcessor.isCompoundAddressField(textFieldInfo, 'Store__c')).toBe(false);
+
+    });
+
+    /*
+      A compound address field file carrying no <type> tag has already parsed as AUTO_GENERATED, so
+      the configured list is the only signal left -- it has to win over the parsed type.
+    */
+    test('given a field named in customCompoundAddressFields for its object, returns true regardless of its parsed type', () => {
+
+      const configuredFieldInfo: any = { fieldName: 'Legacy_Address__c', type: 'Text' };
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue(['Store__c.Legacy_Address__c']);
+
+      expect(directoryProcessor.isCompoundAddressField(configuredFieldInfo, 'Store__c')).toBe(true);
+
+    });
+
+    /*
+      A field api name repeats across objects. A bare-name config would make one object's entry
+      expand the identically named field on every other object into five bogus component lines.
+    */
+    test('given the same field name on a DIFFERENT object than the config names, returns false', () => {
+
+      const configuredFieldInfo: any = { fieldName: 'Legacy_Address__c', type: 'Text' };
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue(['Store__c.Legacy_Address__c']);
+
+      expect(directoryProcessor.isCompoundAddressField(configuredFieldInfo, 'Site__c')).toBe(false);
+
+    });
+
+    test('given a bare field api name in config rather than an object-qualified key, returns false', () => {
+
+      const configuredFieldInfo: any = { fieldName: 'Legacy_Address__c', type: 'Text' };
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue(['Legacy_Address__c']);
+
+      expect(directoryProcessor.isCompoundAddressField(configuredFieldInfo, 'Store__c')).toBe(false);
+
+    });
+
+    test('given no associated object name, returns false rather than matching on the bare field name', () => {
+
+      const configuredFieldInfo: any = { fieldName: 'Legacy_Address__c', type: 'Text' };
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue(['Store__c.Legacy_Address__c']);
+
+      expect(directoryProcessor.isCompoundAddressField(configuredFieldInfo, undefined as any)).toBe(false);
+
+    });
+
+    test('given a field with no type at all, does not throw', () => {
+
+      const typelessFieldInfo: any = {};
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+      expect(() => directoryProcessor.isCompoundAddressField(typelessFieldInfo, 'Store__c')).not.toThrow();
+      expect(directoryProcessor.isCompoundAddressField(typelessFieldInfo, 'Store__c')).toBe(false);
+
+    });
+
+    test('given ConfigurationService throwing, degrades to the xml type signal rather than failing the walk', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Legacy_Address__c', type: 'Text' };
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockImplementation(() => {
+        throw new Error('no treecipe config file');
+      });
+
+      expect(directoryProcessor.isCompoundAddressField(compoundAddressFieldInfo, 'Store__c')).toBe(false);
+
+    });
+
+  });
+
+  describe('buildCompoundAddressComponentFieldInfos', () => {
+
+    test('given a custom compound address field, returns one FieldInfo per component and none for the compound field itself', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', fieldLabel: 'Site Address', type: 'Address' };
+
+      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', {});
+
+      expect(componentFieldInfos.map(componentFieldInfo => componentFieldInfo.fieldName)).toEqual([
+        'Site_Address__Street__s',
+        'Site_Address__City__s',
+        'Site_Address__State__s',
+        'Site_Address__PostalCode__s',
+        'Site_Address__Country__s'
+      ]);
+
+      expect(componentFieldInfos.map(componentFieldInfo => componentFieldInfo.fieldName)).not.toContain('Site_Address__c');
+
+    });
+
+    test('every returned component carries the associated object name and a recipe value', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', fieldLabel: 'Site Address', type: 'Address' };
+
+      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', {});
+
+      componentFieldInfos.forEach((componentFieldInfo) => {
+        expect(componentFieldInfo.objectName).toBe('Store__c');
+        expect(componentFieldInfo.recipeValue).toBeTruthy();
+      });
+
+    });
+
+    /*
+      Account already emits BillingStreet/BillingCity/... from the OOTB static mappings, so expanding
+      a BillingAddress field file on top of them would put duplicate keys in the same object recipe.
+    */
+    test('given components already named in the object OOTB mappings, emits nothing rather than duplicate recipe lines', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'BillingAddress', fieldLabel: 'Billing Address', type: 'Address' };
+      const salesforceOOTBFakerMappings = {
+        'Account': {
+          'BillingStreet': 'already mapped',
+          'BillingCity': 'already mapped',
+          'BillingState': 'already mapped',
+          'BillingPostalCode': 'already mapped',
+          'BillingCountry': 'already mapped'
+        }
+      };
+
+      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Account', salesforceOOTBFakerMappings);
+
+      expect(componentFieldInfos).toEqual([]);
+
+    });
+
+    test('given only SOME components already in the OOTB mappings, emits exactly the components that are missing', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'BillingAddress', fieldLabel: 'Billing Address', type: 'Address' };
+      const salesforceOOTBFakerMappings = {
+        'Account': {
+          'BillingStreet': 'already mapped',
+          'BillingCity': 'already mapped'
+        }
+      };
+
+      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Account', salesforceOOTBFakerMappings);
+
+      expect(componentFieldInfos.map(componentFieldInfo => componentFieldInfo.fieldName)).toEqual([
+        'BillingState',
+        'BillingPostalCode',
+        'BillingCountry'
+      ]);
+
+    });
+
+    /*
+      Asset is in the OOTB mappings but names NO address components, so its bare "Address" compound
+      field expands to Street/City/... -- exactly the names a retrieved Street.field-meta.xml would
+      already have contributed. Two "Street:" keys in one object recipe is invalid YAML intent.
+    */
+    test('given a component that the object already has as its own field file, drops it rather than emitting a duplicate key', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Address', fieldLabel: 'Address', type: 'Address' };
+      const alreadyProcessedFieldInfos: any = [
+        { fieldName: 'Street' },
+        { fieldName: 'PostalCode' }
+      ];
+
+      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(
+        compoundAddressFieldInfo,
+        'Asset',
+        { 'Asset': { 'Name': 'already mapped' } },
+        alreadyProcessedFieldInfos
+      );
+
+      expect(componentFieldInfos.map(componentFieldInfo => componentFieldInfo.fieldName)).toEqual([
+        'City',
+        'State',
+        'Country'
+      ]);
+
+    });
+
+    test('given no already-processed fields, the sibling guard drops nothing', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Address', fieldLabel: 'Address', type: 'Address' };
+
+      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(
+        compoundAddressFieldInfo,
+        'Asset',
+        {},
+        []
+      );
+
+      expect(componentFieldInfos.length).toBe(5);
+
+    });
+
+    test('given an object with no OOTB mappings entry, emits every component', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', fieldLabel: 'Site Address', type: 'Address' };
+
+      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', { 'Account': { 'BillingStreet': 'x' } });
+
+      expect(componentFieldInfos.length).toBe(5);
+
+    });
+
+  });
+
   describe('isInMappingsOfOotbSalesforceFields', () => {
 
     test('given expected file name and associated object name, returns true if in mappings of ootb salesforce fields', () => {

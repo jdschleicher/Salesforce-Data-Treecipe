@@ -8,7 +8,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress } from "../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
     PicklistDependencyExplorerService,
@@ -22,8 +22,9 @@ import {
 } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import {
     PicklistDependencyManifestService,
+    IPicklistDependencyManifestFreshnessSubject,
     IPicklistDependencyManifestFreshnessResult,
-    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING
+    PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED
 } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 
@@ -48,6 +49,10 @@ export const UPDATE_METADATA_ACTION_LABEL = 'Update Metadata';
 export const DEPLOY_UPDATED_METADATA_ACTION_LABEL = 'Deploy to Org';
 export const VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL = 'View Details';
 
+// SHARED WITH THE TESTS SO THESE LABELS CANNOT DRIFT FROM WHAT IS ASSERTED
+export const VIEW_GENERATION_SUMMARY_ACTION_LABEL = 'View Summary';
+export const OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL = 'Open Explorer';
+
 /*
     Everything the explorer webview can post back, as ONE shape with every field optional.
 
@@ -62,13 +67,48 @@ interface IPicklistDependencyExplorerPanelMessage {
     reportFilePath?: string;
     methodName?: string;
     combinationKey?: string;
+    // renderFailed ONLY -- what the panel threw, which no other channel can carry
+    message?: string;
+    stack?: string;
+    /*
+        "render" means the model could not be DRAWN and nothing usable is on screen. "runtime" means
+        a handler threw after a successful draw -- a lazy expand, a filter keystroke -- with the rows
+        still in front of the reader. Only the first invalidates the panel.
+    */
+    phase?: string;
+}
+
+/*
+    What a rendered panel's freshness check compares, and the directory to compare it against.
+
+    Held rather than re-read: the check answers a question about the model ON SCREEN, and re-reading
+    the manifest at click time would let a regeneration in between silently change what is being
+    compared. Only the three fields the comparison reads are kept -- holding the whole parsed
+    manifest for them pinned tens of megabytes on a large org for the life of the panel.
+
+    objectsDirectoryPath is the CONFIGURED directory, derived from treecipe.config.json and the
+    workspace root, never the one the manifest records. A hand-edited manifest therefore cannot
+    redirect the walk; its recorded path is compared, not followed.
+*/
+interface IPicklistDependencyExplorerFreshnessCheckContext {
+    freshnessSubject: IPicklistDependencyManifestFreshnessSubject;
+    objectsDirectoryPath: string;
 }
 
 interface IPicklistDependencyGenerationResult {
     classesDirectoryPath: string;
     specsClassFilePath: string;
     specCount: number;
+    /*
+        ONE line. The document below is what carries the run in full -- this is what a toast can show
+        without truncating, and what the end to end command appends its own question to.
+    */
     generationSummary: string;
+    /*
+        Undefined when the document could not be written, which is a report failing rather than the
+        run failing. Every caller treats it as "there is nothing to open", never as an error.
+    */
+    generationSummaryFilePath?: string;
     manifestFilePath: string;
     /*
         Carried out of generation rather than reported inside it, so the command can fold the skips
@@ -274,6 +314,16 @@ export class ExtensionCommandService {
 
         });
 
+    }
+
+    /*
+        tsconfig sets "strict": false, so a catch binding is implicitly any and reading .message off
+        it compiles. A thrown null or undefined would then throw AGAIN inside the catch, which is
+        exactly where the surrounding blocks are trying to keep a failure from escalating -- a
+        report that could not be written would report the whole run as failed.
+    */
+    private describeCaughtError(caughtError: unknown): string {
+        return caughtError instanceof Error ? caughtError.message : String(caughtError);
     }
 
     /*
@@ -554,11 +604,25 @@ export class ExtensionCommandService {
 
         const perObjectClassCount = Object.keys(specsClassWriteResult.perObjectClassFilePathsByObjectApiName).length;
 
-        let generationSummary = `Generated ${collectionResult.specDetails.length} picklist dependency spec(s) across ${perObjectClassCount} per-object class(es), aggregated by ${specsClassName}.cls and asserted by ${specsTestClassName}.cls, in "${classesDirectoryPath}". Registered in the ${PicklistDependencyTestService.getTestSuiteName()} Apex test suite, which is what "Run Picklist Dependency Check" and "sf apex run test --suite-names" invoke. The Picklist Dependency Explorer reads "${manifestFilePath}" to render exactly these specs.`;
-        if ( collectionResult.recordTypeSpecDetails.length > 0 ) {
-            // THE RECORD TYPE SCOPED SPECS ARE NOT IN all(), SO THE SUMMARY SAYS WHERE THEY ARE INSTEAD OF LEAVING THEM UNMENTIONED
-            generationSummary += ` Also generated ${collectionResult.recordTypeSpecDetails.length} record-type-scoped spec(s), aggregated by ${specsClassName}.allRecordTypeScoped(). These are not asserted by ${specsTestClassName}.cls: Schema describe returns picklist values without record type filtering, so they need a record-type-aware ISDTPicklistDependencySource.`;
-        }
+        /*
+            The run as DATA, so the one line the toast gets and the document that carries the run in
+            full are built from the same facts rather than assembled twice.
+        */
+        const generationSummaryDetail: IPicklistDependencyGenerationSummaryDetail = {
+            specCount: collectionResult.specDetails.length,
+            perObjectClassCount,
+            specsClassName,
+            specsTestClassName,
+            testSuiteName: PicklistDependencyTestService.getTestSuiteName(),
+            classesDirectoryPath,
+            manifestFilePath,
+            recordTypeSpecCount: collectionResult.recordTypeSpecDetails.length,
+            scaffoldedClassNames: frameworkScaffoldResult.scaffoldedClassNames,
+            removedStaleClassFileNames: specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath))
+        };
+
+        const generationSummary = PicklistDependencyTestService.buildGenerationSummaryToastMessage(generationSummaryDetail);
+
         /*
             The one thing here that is NOT part of the run report: a missing framework class means the
             generated Apex will not compile at all. Appending that to a success message, as an
@@ -568,11 +632,34 @@ export class ExtensionCommandService {
         if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
         }
-        if ( frameworkScaffoldResult.scaffoldedClassNames.length > 0 ) {
-            generationSummary += ` Also scaffolded the required framework class(es): ${frameworkScaffoldResult.scaffoldedClassNames.join(', ')}.`;
-        }
-        if ( specsClassWriteResult.removedStaleClassFilePaths.length > 0 ) {
-            generationSummary += ` Removed ${specsClassWriteResult.removedStaleClassFilePaths.length} generated class(es) for object(s) no longer declaring a dependent picklist: ${specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath)).join(', ')}.`;
+
+        /*
+            The document is a REPORT ON a finished write, not a step of it: the Apex, the suite and
+            the manifest are all on disk by now, and a workspace that will not take one more markdown
+            file has not undone any of that. So a failure here warns about the report and leaves the
+            run reporting the success it actually had.
+        */
+        let generationSummaryFilePath: string | undefined;
+        try {
+
+            /*
+                Derived from the manifest that was just written rather than re-resolved from the
+                configuration. "The summary is a sibling of the manifest" is load bearing -- a stray
+                file in a package directory breaks "sf project deploy" -- and building the path a
+                second way makes that hold only while two expressions happen to agree.
+            */
+            generationSummaryFilePath = PicklistDependencyTestService.writeGenerationSummaryDocument(
+                path.dirname(manifestFilePath),
+                PicklistDependencyTestService.buildGenerationSummaryMarkdown(generationSummaryDetail)
+            );
+
+        } catch (summaryDocumentError) {
+
+            VSCodeWorkspaceService.showWarningMessage(
+                `The picklist dependency specs were generated, but the summary document could not be written (${this.describeCaughtError(summaryDocumentError)}). `
+                + `Nothing that was generated is affected -- the Apex, the test suite and the manifest are all written.`
+            );
+
         }
 
         /*
@@ -609,6 +696,7 @@ export class ExtensionCommandService {
             specsClassFilePath,
             specCount: collectionResult.specDetails.length,
             generationSummary,
+            generationSummaryFilePath,
             manifestFilePath,
             skippedFields: collectionResult.skippedFields
         };
@@ -848,6 +936,78 @@ export class ExtensionCommandService {
     }
 
     /*
+        Puts the deploy offer, with everything the run has to show alongside it.
+
+        Reading what just happened does not cost the deploy offer -- showing the summary and stopping
+        would make "View Summary" a choice between understanding the run and finishing it, which is
+        the same reason "View Details" has always re-offered. So each inspect action is handled and
+        the offer is put again, and each is offered ONCE, which is what makes the loop terminate:
+        every pass either ends the run or spends an action, and there are at most three.
+    */
+    private async offerPicklistDependencyRunAgainstOrg(generationCompleteMessage: string,
+                                                        generationResult: IPicklistDependencyGenerationResult): Promise<string | undefined> {
+
+        const inspectActionHandlerByLabel: Record<string, () => Promise<void>> = {};
+
+        // NO DOCUMENT MEANS NO BUTTON: THE SUMMARY WRITE IS ALLOWED TO HAVE FAILED WITHOUT FAILING THE RUN
+        if ( generationResult.generationSummaryFilePath ) {
+            const generationSummaryFilePath = generationResult.generationSummaryFilePath;
+            inspectActionHandlerByLabel[VIEW_GENERATION_SUMMARY_ACTION_LABEL] = async () => {
+                await VSCodeWorkspaceService.showMarkdownPreview(generationSummaryFilePath);
+            };
+        }
+
+        inspectActionHandlerByLabel[OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL] = async () => {
+            await vscode.commands.executeCommand('treecipe.openPicklistDependencyExplorer');
+        };
+
+        if ( generationResult.skippedFields.length > 0 ) {
+            inspectActionHandlerByLabel[VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL] = async () => {
+                VSCodeWorkspaceService.showPicklistDependencyCheckReport(
+                    this.buildPicklistDependencyWarningReport(generationResult.skippedFields)
+                );
+            };
+        }
+
+        let offerMessage = generationCompleteMessage;
+
+        while ( true ) {
+
+            const offeredActionLabels = [RUN_AGAINST_ORG_ACTION_LABEL, ...Object.keys(inspectActionHandlerByLabel)];
+
+            const selection = await vscode.window.showInformationMessage(offerMessage, ...offeredActionLabels);
+
+            const selectedInspectActionHandler = selection ? inspectActionHandlerByLabel[selection] : undefined;
+            if ( !selectedInspectActionHandler ) {
+                return selection;
+            }
+
+            /*
+                Opening what the run produced is subject to the SAME rule as writing it: the Apex,
+                the suite and the manifest are already on disk, so a markdown preview that will not
+                open (the built-in markdown extension disabled) or an explorer that throws is a
+                failed VIEW of a successful generation. Unguarded, that rejection would leave the
+                command's catch reporting a completed run as an error -- and would silently drop the
+                deploy offer with it.
+            */
+            try {
+                await selectedInspectActionHandler();
+            } catch (inspectActionError) {
+                VSCodeWorkspaceService.showWarningMessage(
+                    `"${selection}" could not be opened (${this.describeCaughtError(inspectActionError)}). `
+                    + `The generated picklist dependency specs are unaffected.`
+                );
+            }
+
+            delete inspectActionHandlerByLabel[selection as string];
+
+            offerMessage = 'Deploy the generated picklist dependency specs and run them against an org now?';
+
+        }
+
+    }
+
+    /*
         Generates the contract, then OFFERS to run it against an org in the same invocation.
 
         The offer comes after generation rather than before it. Generating is the useful half on its
@@ -872,6 +1032,24 @@ export class ExtensionCommandService {
             await VSCodeWorkspaceService.openFileInEditor(generationResult.specsClassFilePath);
 
             /*
+                Opened after the spec class, so the run report is what the user is left looking at:
+                the class answers "what did it write", the summary answers "what do I do now".
+
+                Guarded for the same reason the button that re-opens it is: a preview that will not
+                open is a failed view of a generation that succeeded, and must not turn one into the
+                other. Silent here rather than a warning -- the toast that follows carries "View
+                Summary", so the document is still one click away and a second interruption before
+                the run has even been reported would be noise.
+            */
+            if ( generationResult.generationSummaryFilePath ) {
+                try {
+                    await VSCodeWorkspaceService.showMarkdownPreview(generationResult.generationSummaryFilePath);
+                } catch {
+                    // THE "View Summary" BUTTON BELOW IS THE RECOVERY, SO THIS NEEDS NO REPORT OF ITS OWN
+                }
+            }
+
+            /*
                 ONE message closes the run: what was generated, what was skipped and why, and the
                 offer to run it. The skips used to arrive as their own toasts partway through the
                 walk; folding them in here is what makes this the report of a finished run rather
@@ -882,32 +1060,7 @@ export class ExtensionCommandService {
                 ? `${generationResult.generationSummary} ${skippedFieldSummary} Deploy and run them against an org now?`
                 : `${generationResult.generationSummary} Deploy and run them against an org now?`;
 
-            const generationCompleteActionLabels = skippedFieldSummary
-                ? [RUN_AGAINST_ORG_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL]
-                : [RUN_AGAINST_ORG_ACTION_LABEL];
-
-            let runAgainstOrgSelection = await vscode.window.showInformationMessage(
-                generationCompleteMessage,
-                ...generationCompleteActionLabels
-            );
-
-            /*
-                Reading the warnings does not cost the deploy offer. Showing the report and stopping
-                would make "View Details" a choice between understanding the run and finishing it,
-                so the offer is put again once the report is open.
-            */
-            if ( runAgainstOrgSelection === VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL ) {
-
-                VSCodeWorkspaceService.showPicklistDependencyCheckReport(
-                    this.buildPicklistDependencyWarningReport(generationResult.skippedFields)
-                );
-
-                runAgainstOrgSelection = await vscode.window.showInformationMessage(
-                    'Deploy the generated picklist dependency specs and run them against an org now?',
-                    RUN_AGAINST_ORG_ACTION_LABEL
-                );
-
-            }
+            const runAgainstOrgSelection = await this.offerPicklistDependencyRunAgainstOrg(generationCompleteMessage, generationResult);
 
             if ( runAgainstOrgSelection !== RUN_AGAINST_ORG_ACTION_LABEL ) {
                 return;
@@ -1291,38 +1444,31 @@ export class ExtensionCommandService {
                         manifestLoad,
                         fullPathToObjectsDirectory,
                         resultsLoad,
-                        PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_PENDING,
+                        PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED,
                         workspaceRoot
                     );
 
-                    this.renderPicklistDependencyExplorerModel(
-                        explorerPanel,
-                        explorerViewModel,
-                        PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.checkingFreshness
-                    );
-
                     /*
-                        The paint has to actually LEAVE the host before the walk starts. Without this
-                        the post is still sitting in VS Code's outgoing batch when the stat walk
-                        begins, and "after the first paint" would be true of the source order and
-                        false of anything the reader sees.
-                    */
-                    await ExtensionCommandService.yieldToExtensionHost();
+                        What the check needs, held for a click that may never come.
 
-                    /*
-                        Staleness is a stat walk over the objects directory, not a parse of it -- it
-                        answers "could this have changed since generation", which is all the banner
-                        claims. It touches every field file, so on a large or network-mounted org it
-                        is the slowest phase here, and it runs AFTER the structure is on screen: the
-                        banner it feeds is a caveat about what the reader is already looking at, not
-                        a precondition for showing it to them.
+                        The walk itself is no longer part of opening the panel. It stats every file
+                        under the objects directory to answer a question the reader may not have
+                        asked -- the structure they came for is fully derivable from the manifest,
+                        and staleness is a caveat ABOUT that structure rather than a precondition for
+                        it. Moving it here turns the slowest thing the panel can do from a toll on
+                        every open into an action with a button.
                     */
-                    const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
-                        manifestLoad.manifest,
-                        fullPathToObjectsDirectory
-                    );
+                    ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = {
+                        freshnessSubject: {
+                            objectsDirectoryPath: manifestLoad.manifest.objectsDirectoryPath,
+                            sourceFingerprint: manifestLoad.manifest.sourceFingerprint,
+                            generatedAt: manifestLoad.manifest.generatedAt
+                        },
+                        objectsDirectoryPath: fullPathToObjectsDirectory
+                    };
 
-                    this.applyPicklistDependencyExplorerFreshness(explorerPanel, freshnessResult);
+                    // NOTHING FOLLOWS THE RENDER NOW, SO THE STATUS LINE CLEARS WITH IT
+                    this.renderPicklistDependencyExplorerModel(explorerPanel, explorerViewModel, '');
                     return;
 
                 }
@@ -1406,6 +1552,7 @@ export class ExtensionCommandService {
                 );
 
                 // A PREVIEW HAS NO MANIFEST TO BE STALE AGAINST, SO NOTHING FOLLOWS THE RENDER AND THE STATUS LINE CLEARS WITH IT
+                ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = undefined;
                 this.renderPicklistDependencyExplorerModel(explorerPanel, previewViewModel, '');
 
             } finally {
@@ -1478,6 +1625,40 @@ export class ExtensionCommandService {
     private static picklistDependencyExplorerLoadFailedMessage: IPicklistDependencyExplorerLoadFailedMessage | undefined;
 
     /*
+        What a freshness check needs, set only when a MANIFEST-sourced model is rendered.
+
+        It is the gate as well as the payload: a metadata preview has no manifest to be stale
+        against and leaves this undefined, and so does the window before any model exists. The
+        checkFreshness command carries no path of its own, so there is nothing to match against an
+        allow-list -- what makes it safe is that the host answers from what it stored when it
+        rendered, and refuses when it stored nothing.
+    */
+    private static picklistDependencyExplorerFreshnessCheckContext: IPicklistDependencyExplorerFreshnessCheckContext | undefined;
+
+    /*
+        Whether a walk is already in flight. The panel disables its button for the same reason, but
+        the button is not the only way a message can arrive, and two concurrent stat walks over the
+        same large directory is the one thing this command must not be able to start.
+    */
+    private static picklistDependencyExplorerIsFreshnessCheckRunning: boolean = false;
+
+    /*
+        Whether the panel told us it could not draw the model it was given.
+
+        A post that succeeds only says the message left the host; the panel's own acknowledgement is
+        what distinguishes a model SENT from something on screen. Tracked as the FAILURE rather than
+        as the success so its default cannot wedge anything: a panel that never speaks is treated as
+        having drawn, which is what it did for every version before it could say otherwise.
+
+        It is read by the freshness check, which walks every file under the objects directory --
+        work worth refusing on behalf of a panel that is showing an error notice instead of rows.
+    */
+    private static picklistDependencyExplorerIsPanelRenderFailed: boolean = false;
+
+    // ONE NOTIFICATION PER DISTINCT PANEL FAILURE -- SEE THE renderFailed HANDLER
+    private static picklistDependencyExplorerReportedFailureDescriptions: Set<string> = new Set();
+
+    /*
         One allow-list per panel command, each built from the model currently rendered.
 
         Every one of them matches the posted value against what the model NAMES rather than
@@ -1532,6 +1713,10 @@ export class ExtensionCommandService {
         ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
         ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = '';
         ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
+        ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = undefined;
+        ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = false;
+        ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
+        ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
         ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
         ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
         ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
@@ -1547,6 +1732,10 @@ export class ExtensionCommandService {
                 ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
                 ExtensionCommandService.picklistDependencyExplorerLoadFailedMessage = undefined;
                 ExtensionCommandService.picklistDependencyExplorerIsPanelReady = false;
+                ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext = undefined;
+                ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = false;
+                ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
+                ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
                 ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
                 ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
                 ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
@@ -1656,6 +1845,7 @@ export class ExtensionCommandService {
 
         ExtensionCommandService.picklistDependencyExplorerRenderMessage = renderMessage;
         ExtensionCommandService.picklistDependencyExplorerLoadPhaseMessage = remainingPhaseMessage;
+        ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
 
         ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths =
             new Set(PicklistDependencyExplorerService.collectSourceFilePaths(explorerViewModel));
@@ -1683,6 +1873,28 @@ export class ExtensionCommandService {
         Kept on the stored render message as well as posted, so the reload a reveal triggers gets the
         resolved answer rather than the pending one the model was built with.
     */
+    /*
+        Puts the banner back to the last answer the panel actually has, after a check was refused.
+
+        The panel's click is optimistic -- it shows "checking" before the host has agreed to do
+        anything -- so a refusal has to be told, or the optimism becomes a permanent state. The last
+        RESOLVED answer is replayed when there is one, and notChecked when there is not, which is
+        exactly what the banner would say had the click never happened.
+    */
+    private restorePicklistDependencyExplorerFreshness(explorerPanel: vscode.WebviewPanel) {
+
+        const resolvedFreshnessMessage = ExtensionCommandService.picklistDependencyExplorerFreshnessMessage;
+
+        const restoredFreshnessMessage: IPicklistDependencyExplorerFreshnessMessage = resolvedFreshnessMessage ?? {
+            command: 'applyFreshness',
+            freshness: PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.freshness,
+            message: PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED.message
+        };
+
+        ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, restoredFreshnessMessage);
+
+    }
+
     private applyPicklistDependencyExplorerFreshness(explorerPanel: vscode.WebviewPanel,
                                                         freshnessResult: IPicklistDependencyManifestFreshnessResult) {
 
@@ -1796,6 +2008,172 @@ export class ExtensionCommandService {
                     explorerPanel.webview.postMessage(loadPhaseMessage);
 
                 }
+
+                return;
+
+            }
+
+            /*
+                The reader asking whether the specs on screen still match their metadata.
+
+                Gated on the stored check context rather than on a path allow-list, because this
+                command carries no path: what it addresses is the model the host itself rendered.
+                A metadata preview and the window before any model exists both leave that context
+                undefined and are answered with nothing at all.
+            */
+            if ( panelMessage?.command === 'checkFreshness' ) {
+
+                const freshnessCheckContext = ExtensionCommandService.picklistDependencyExplorerFreshnessCheckContext;
+
+                /*
+                    Every refusal below ANSWERS. The panel puts its own banner into "checking" on the
+                    click so the button does not read as a click that did not register, and a silent
+                    return would leave it there permanently -- a disabled button under a banner
+                    narrating a walk that is not running, recoverable only by reopening the panel.
+
+                    That is the exact state notChecked was introduced to abolish, so a refusal has to
+                    put the banner back where it was rather than simply not proceeding.
+                */
+                if ( !freshnessCheckContext ) {
+                    this.restorePicklistDependencyExplorerFreshness(explorerPanel);
+                    return;
+                }
+
+                // NOT ON BEHALF OF A PANEL THAT COULD NOT DRAW -- THERE ARE NO ROWS FOR THE ANSWER TO CAVEAT
+                if ( ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed ) {
+                    this.restorePicklistDependencyExplorerFreshness(explorerPanel);
+                    return;
+                }
+
+                /*
+                    A second click while the first walk is still running is DROPPED, not queued -- but
+                    the banner is left alone here rather than restored, because the walk it is
+                    narrating really is running and will answer.
+                */
+                if ( ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning ) {
+                    return;
+                }
+
+                ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = true;
+
+                try {
+
+                    /*
+                        The panel put its own banner into "checking" on the click, and that paint has
+                        to leave the host before a walk that blocks it for seconds begins -- the same
+                        reason the load yields between its phases.
+                    */
+                    await ExtensionCommandService.yieldToExtensionHost();
+
+                    const freshnessResult = PicklistDependencyManifestService.resolveManifestFreshness(
+                        freshnessCheckContext.freshnessSubject,
+                        freshnessCheckContext.objectsDirectoryPath
+                    );
+
+                    // THE WALK TAKES SECONDS, AND A TAB CLOSED ACROSS IT LEAVES NOTHING TO ANSWER INTO
+                    if ( !ExtensionCommandService.isPicklistDependencyExplorerPanelLive(explorerPanel) ) {
+                        return;
+                    }
+
+                    this.applyPicklistDependencyExplorerFreshness(explorerPanel, freshnessResult);
+
+                } catch (freshnessCheckError) {
+
+                    /*
+                        resolveManifestFreshness contains its own walk failures, so reaching here
+                        means something outside it threw. The banner is still in "checking" either
+                        way, and leaving it there would be the wedge again.
+                    */
+                    this.applyPicklistDependencyExplorerFreshness(explorerPanel, {
+                        freshness: 'checkFailed',
+                        message: `These specs could not be checked against your current metadata (${freshnessCheckError?.message ?? freshnessCheckError}). What is shown below is what the generated Apex asserts.`
+                    });
+
+                } finally {
+                    ExtensionCommandService.picklistDependencyExplorerIsFreshnessCheckRunning = false;
+                }
+
+                return;
+
+            }
+
+            /*
+                The panel telling the host it could not draw the model it was given.
+
+                Without this the failure has no reader: a webview exception never reaches the
+                extension host, so a panel that threw mid-render used to leave the host believing the
+                load finished. Routed through the same error handler as a host-side failure so it
+                reaches the same report, rather than inventing a second way to tell the user.
+            */
+            if ( panelMessage?.command === 'renderFailed' ) {
+
+                // ONLY FROM A PANEL THAT WAS ACTUALLY GIVEN SOMETHING TO DRAW
+                if ( !ExtensionCommandService.picklistDependencyExplorerRenderMessage ) {
+                    return;
+                }
+
+                const panelFailureDescription = panelMessage.message ?? 'unknown error';
+
+                /*
+                    Reported ONCE per distinct failure.
+
+                    The panel's error listener fires per uncaught error, and the events it covers
+                    repeat: a throw in the filter's input handler fires on every keystroke. Without
+                    this, a twenty character search puts twenty modal error notifications in front of
+                    a reader who has already been told.
+                */
+                if ( ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions.has(panelFailureDescription) ) {
+                    return;
+                }
+
+                ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions.add(panelFailureDescription);
+
+                /*
+                    Only a failure to DRAW invalidates the panel. A handler that threw after the rows
+                    were on screen leaves them there and readable, and treating that as a dead panel
+                    would refuse a freshness check for a model the reader is looking at.
+                */
+                if ( panelMessage.phase !== 'runtime' ) {
+
+                    ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = true;
+
+                    /*
+                        The allow-lists go with it. They were built from a model that is NOT on
+                        screen, so every action they authorise addresses a row the reader cannot see
+                        -- the same reason they start empty before the first render.
+                    */
+                    ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
+                    ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
+                    ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
+                    ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
+
+                }
+
+                const renderFailureError = new Error(
+                    `The Picklist Dependency Explorer panel could not render the dependency view: ${panelFailureDescription}`
+                );
+                renderFailureError.stack = panelMessage.stack || renderFailureError.stack;
+
+                ErrorHandlingService.handleCapturedError(renderFailureError, 'openPicklistDependencyExplorer');
+
+                return;
+
+            }
+
+            /*
+                The panel confirming it drew what it was given.
+
+                This is what CLEARS a previous failure -- posting a new model does not, because a
+                post only says the message left the host. Gated the same way, so an ack cannot
+                precede a model.
+            */
+            if ( panelMessage?.command === 'rendered' ) {
+
+                if ( !ExtensionCommandService.picklistDependencyExplorerRenderMessage ) {
+                    return;
+                }
+
+                ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
 
                 return;
 
