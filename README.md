@@ -355,16 +355,17 @@ The command:
 
 1. Reads `treecipe/PicklistDependencySpecs/manifest.json` — the machine-readable description of the specs that were generated — and builds the dependency structure from it: object → controlling field → controlling value → the values it unlocks, and the values it must *not* unlock. Your source metadata is **not** re-walked, so a panel row always corresponds to a spec method that exists
 2. Renders chained dependencies as a connected graph — a field controlled by another dependent picklist is nested under it rather than repeated as a flat row
-3. Names the generated class and spec method asserting each field, and the test method covering each object
-4. Lists any field the generator **skipped** as its own row marked *not asserted*, with the reason — rather than leaving it out, where it would be indistinguishable from a field with no dependency
-5. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`, and a **Copy reference** action
-6. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
+3. Lists any field the generator **skipped** as its own row marked *not covered*, with the reason — rather than leaving it out, where it would be indistinguishable from a field with no dependency
+4. Clicking any combination reveals the generating field's source XML path, with a **Reveal in Explorer** action that opens the `.field-meta.xml`, and a **Copy reference** action
+5. Nests each **record type's** narrowed combinations under the field they narrow, collapsed until you open them — the same dependency as the record type actually exposes it
+
+The panel **names no Apex**. Which class or spec method was generated is not a fact about a dependency, so it is not on screen — it is in `manifest.json` and in the generated `.cls` files themselves.
 
 **Finding your way around a large org:**
 
 A toolbar sits above the structure:
 
-* **Find object or field** matches on object, field, controlling field, record type and generated method name. Searching for a field name reaches the object holding it, so you do not have to know which object that was — and when exactly one object matches, it opens by itself
+* **Find object or field** matches on object, field, controlling field and record type — everything the panel actually shows you, and nothing it does not. Searching for a field name reaches the object holding it, so you do not have to know which object that was — and when exactly one object matches, it opens by itself
 * **Contents** lists every section and object the panel is showing, and scrolls to any of them
 * **Expand all / Collapse all**, bounded at 25 visible objects — past that the panel asks for a narrower filter rather than freezing
 
@@ -379,7 +380,7 @@ Notes:
 * **Where a field declares more values than the panel renders, the "must not unlock" list is withheld** rather than shortened — a complement drawn against a partial list would understate what the spec forbids, and the row says so
 * It follows your active color theme, light, dark or high contrast
 * **No org, no CLI, no check run?** None of them is involved. The panel renders from `manifest.json` on disk and nothing else, so it works the same in a fresh clone as in a workspace that runs the check nightly
-* **Not generated yet?** You get a message naming the generate command, plus a **"Preview from metadata (not generated)"** action. The preview scans your source metadata exactly as previous versions did, and banners every row as asserted by nothing — because nothing has been generated for it. No row in a preview claims a spec method
+* **Not generated yet?** You get a message naming the generate command, plus a **"Preview from metadata (not generated)"** action. The preview scans your source metadata exactly as previous versions did, and banners every row as read straight off the XML rather than from a generated manifest
 * **A corrupt `manifest.json`?** The parse failure is reported and the same preview is offered — never a blank panel
 * **Metadata changed since you generated?** The panel says so in a banner naming the generate command, and keeps showing what the generated Apex actually asserts. It never silently re-derives the structure from metadata your tests have not been regenerated against
 * **No dependent picklists at all?** You get an empty state naming the objects directory that was scanned

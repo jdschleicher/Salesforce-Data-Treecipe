@@ -1818,7 +1818,7 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('renders the preview banner saying nothing asserts the rows below', () => {
+        it('renders the preview banner saying where the rows came from', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
                 mockObjectsDirectoryPath,
@@ -1831,7 +1831,23 @@ describe('PicklistDependencyExplorerService', () => {
             const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
 
             expect(actualWebviewHtml).toContain('Preview from metadata');
-            expect(actualWebviewHtml).toContain('nothing asserts any combination below');
+            expect(actualWebviewHtml).toContain('read from your source metadata rather than from a generated spec manifest');
+
+            /*
+                The panel names no generated Apex anywhere, preview or not.
+
+                Asserted against the SHELL alone rather than the document-plus-payload this helper
+                builds: the model still CARRIES the generated names -- they are manifest provenance
+                and nothing was deleted -- so a substring check over the payload would match data
+                the panel never renders. And asserted on the label CONSTRUCTIONS rather than on the
+                words, because the shell carries comments that legitimately discuss assertion.
+            */
+            const shellOnly = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(shellOnly).not.toContain("'asserted by ' +");
+            expect(shellOnly).not.toContain("' — test method '");
+            expect(shellOnly).not.toContain('explorerModel.specsTestClassName');
+            expect(shellOnly).not.toContain("generatedClassName + '.cls'");
 
         });
 
@@ -4567,7 +4583,7 @@ describe('PicklistDependencyExplorerService', () => {
                 expect(actualWebviewHtml).toContain(
                     'if (!explorerModel.skippedFieldWarnings.length) { return; }'
                 );
-                expect(actualWebviewHtml).toContain("registerPanelSection('Not asserted', warningsElement);");
+                expect(actualWebviewHtml).toContain("registerPanelSection('Not covered', warningsElement);");
 
             });
 

@@ -261,7 +261,7 @@ export interface IPicklistDependencyExplorerViewModel {
     /*
         How this model was sourced. "manifest" is the honest rendering -- these are the specs that
         were generated and are what the tests assert. "metadataPreview" is the explicit opt-in for a
-        workspace that has never generated, and every row it produces is un-asserted by definition:
+        workspace that has never generated, and every row it produces is uncovered by definition:
         nothing has been emitted for it.
     */
     modelSource: PicklistDependencyExplorerModelSource;
@@ -1109,10 +1109,14 @@ export class PicklistDependencyExplorerService {
         The haystack the panel's find box matches one node against.
 
         Lowercased once here rather than per keystroke in the webview, and built from the names a
-        reader would actually type: the field, what controls it, the object it belongs to, the
-        generated method that asserts it, and every record type that narrows it. Downstream nodes
-        are deliberately absent -- each is its own row with its own haystack, and folding a child's
-        names into its parent would make a parent match a search for a field it merely controls.
+        reader would actually type: the field, what controls it, the object it belongs to, and every
+        record type that narrows it. Downstream nodes are deliberately absent -- each is its own row
+        with its own haystack, and folding a child's names into its parent would make a parent match
+        a search for a field it merely controls.
+
+        The generated class and spec method names are deliberately NOT in here. The panel does not
+        render them, and a query that matches text the reader cannot see returns a row with no
+        visible reason for matching. What is searchable is what is on screen.
     */
     static buildNodeSearchText(node: IPicklistDependencyNodeViewModel): string {
 
@@ -1120,10 +1124,7 @@ export class PicklistDependencyExplorerService {
             node.objectApiName,
             node.fieldApiName,
             node.controllingFieldApiName,
-            node.generatedClassName,
-            node.specMethodName,
-            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName),
-            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.specMethodName)
+            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName)
         ];
 
         return searchableValues.filter(searchableValue => !!searchableValue).join(' ').toLowerCase();
@@ -1142,8 +1143,6 @@ export class PicklistDependencyExplorerService {
 
         const searchableValues = [
             objectViewModel.objectApiName,
-            objectViewModel.generatedClassName,
-            objectViewModel.testMethodName,
             ...this.flattenNodes(objectViewModel.rootNodes).map(node => node.searchText),
             ...objectViewModel.skippedFields.map(skippedField => skippedField.fieldApiName),
             ...objectViewModel.skippedFields.map(skippedField => skippedField.recordTypeDeveloperName)
@@ -2638,7 +2637,6 @@ export class PicklistDependencyExplorerService {
         border-left: 3px solid var(--vscode-testing-iconQueued);
         color: var(--vscode-descriptionForeground);
     }
-    .specOrigin { font-family: var(--vscode-editor-font-family); font-size: 0.8rem; color: var(--vscode-descriptionForeground); margin: 0.1rem 0 0.3rem 0; }
     .provenanceBanner { padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; border-left: 3px solid var(--vscode-panel-border); }
     .provenanceBanner.stale { border-left-color: var(--vscode-testing-iconQueued); }
     .freshnessCheckButton {
@@ -2989,11 +2987,6 @@ export class PicklistDependencyExplorerService {
         scopeHeading.appendChild(createElement('span', 'muted', recordTypeScope.combinations.length + ' combination(s)'));
         scopeElement.appendChild(scopeHeading);
 
-        if (recordTypeScope.specMethodName) {
-            scopeElement.appendChild(createElement('div', 'specOrigin',
-                'asserted by ' + node.generatedClassName + '.' + recordTypeScope.specMethodName + '()'));
-        }
-
         const scopeBodyElement = createElement('div', 'hidden');
         scopeElement.appendChild(scopeBodyElement);
 
@@ -3196,15 +3189,6 @@ export class PicklistDependencyExplorerService {
         nodeHeading.appendChild(createElement('span', 'muted', 'controlled by ' + node.controllingFieldApiName));
         nodeElement.appendChild(nodeHeading);
 
-        /*
-            The generated method that asserts this node, named on the row itself. Absent only in a
-            metadata preview, where no generated code asserts it and naming one would be a lie.
-        */
-        if (node.specMethodName) {
-            nodeElement.appendChild(createElement('div', 'specOrigin',
-                'asserted by ' + node.generatedClassName + '.' + node.specMethodName + '()'));
-        }
-
         node.combinations.forEach(function (combination) {
             nodeElement.appendChild(buildCombinationElement(node, combination, node.declaredValues, node.declaredValuesTruncated, sectionRecord));
         });
@@ -3274,9 +3258,11 @@ export class PicklistDependencyExplorerService {
         What the reader is looking at, before anything else on the panel.
 
         The distinction this banner carries is the whole point of the manifest: rows sourced from a
-        manifest ARE what the generated tests assert, and rows sourced from a metadata preview are
-        asserted by nothing at all. Rendering both the same way and letting the reader assume would
-        undo the guarantee the artifact exists to provide.
+        manifest are the dependencies a generation run actually emitted specs for, and rows sourced
+        from a metadata preview were read straight off the source XML with nothing generated for
+        them. Rendering both the same way and letting the reader assume would undo the guarantee the
+        artifact exists to provide. It names no Apex either way -- which class was generated is not
+        a fact about a dependency.
     */
     function fillProvenanceBanner(bannerElement) {
 
@@ -3306,9 +3292,8 @@ export class PicklistDependencyExplorerService {
 
             bannerElement.appendChild(createElement('div', 'fieldName', 'Preview from metadata — not generated'));
             bannerElement.appendChild(createElement('div', 'muted',
-                'These rows were read from your source metadata. No Apex specs have been generated for them, '
-                    + 'so nothing asserts any combination below. '
-                    + 'Run "Salesforce Treecipe: Generate Picklist Dependency Tests" to generate the specs.'));
+                'These rows were read from your source metadata rather than from a generated spec manifest. '
+                    + 'Run "Salesforce Treecipe: Generate Picklist Dependency Tests" to generate one.'));
 
             if (explorerModel.manifestLoadMessage) {
                 bannerElement.appendChild(createElement('div', 'muted', explorerModel.manifestLoadMessage));
@@ -3343,8 +3328,7 @@ export class PicklistDependencyExplorerService {
         bannerElement.appendChild(buildFreshnessCheckButton(isPendingFreshness, isNotChecked));
 
         bannerElement.appendChild(createElement('div', 'muted',
-            'Generated at ' + explorerModel.generatedAt + ' by Treecipe ' + explorerModel.generatorVersion
-                + ' — asserted by ' + explorerModel.specsTestClassName + '.cls'));
+            'Generated at ' + explorerModel.generatedAt + ' by Treecipe ' + explorerModel.generatorVersion));
         bannerElement.appendChild(createElement('div', 'sourcePath', explorerModel.manifestFilePath));
 
         return isStale ? 'Generated specs — stale' : 'Generated specs';
@@ -3433,11 +3417,11 @@ export class PicklistDependencyExplorerService {
         const warningsElement = createElement('div', 'warningList');
         warningsElement.appendChild(createElement('div', 'fieldName',
             explorerModel.skippedFieldWarnings.length
-                + ' item(s) were skipped and are asserted by nothing — each is also listed under its object below'));
+                + ' item(s) were skipped and have no generated coverage — each is also listed under its object below'));
         explorerModel.skippedFieldWarnings.forEach(function (skippedFieldWarning) {
             warningsElement.appendChild(createElement('div', 'muted', skippedFieldWarning));
         });
-        registerPanelSection('Not asserted', warningsElement);
+        registerPanelSection('Not covered', warningsElement);
         explorerRoot.appendChild(warningsElement);
 
     }
@@ -3452,8 +3436,8 @@ export class PicklistDependencyExplorerService {
 
         /*
             Rendered BEFORE the nodes rather than after them. A skipped field is the one thing on
-            this panel that no generated spec covers, and putting it below a long list of rows that
-            are covered is how it gets missed.
+            this panel that no generated spec covers, and putting it below a long list of covered
+            rows is how it gets missed.
         */
         objectViewModel.skippedFields.forEach(function (skippedField) {
 
@@ -3465,7 +3449,7 @@ export class PicklistDependencyExplorerService {
                     ? 'record type ' + skippedField.recordTypeDeveloperName
                     : 'this object');
             skippedHeading.appendChild(createElement('span', 'fieldName', skippedLabel));
-            skippedHeading.appendChild(createElement('span', 'skippedBadge', 'not asserted'));
+            skippedHeading.appendChild(createElement('span', 'skippedBadge', 'not covered'));
             skippedElement.appendChild(skippedHeading);
 
             skippedElement.appendChild(createElement('div', 'muted', skippedField.warning));
@@ -3529,7 +3513,7 @@ export class PicklistDependencyExplorerService {
                 + (objectViewModel.recordTypeCombinationCount ? ' + ' + objectViewModel.recordTypeCombinationCount + ' record-type-scoped' : '')));
 
         if (objectViewModel.skippedFields.length) {
-            objectHeading.appendChild(createElement('span', 'skippedBadge', objectViewModel.skippedFields.length + ' not asserted'));
+            objectHeading.appendChild(createElement('span', 'skippedBadge', objectViewModel.skippedFields.length + ' not covered'));
         }
 
         objectHeading.addEventListener('click', function () {
@@ -3544,13 +3528,6 @@ export class PicklistDependencyExplorerService {
         });
 
         sectionElement.appendChild(objectHeading);
-
-        if (objectViewModel.generatedClassName) {
-            sectionElement.appendChild(createElement('div', 'specOrigin',
-                objectViewModel.generatedClassName + '.cls'
-                    + (objectViewModel.testMethodName ? ' — test method ' + objectViewModel.testMethodName + '()' : '')));
-        }
-
         sectionElement.appendChild(sectionRecord.bodyElement);
 
         return sectionRecord;
@@ -3855,7 +3832,7 @@ export class PicklistDependencyExplorerService {
 
             if (objectViewModel.skippedFields.length) {
                 entryElement.appendChild(createElement('span', 'skippedBadge',
-                    objectViewModel.skippedFields.length + ' not asserted'));
+                    objectViewModel.skippedFields.length + ' not covered'));
             }
 
             entryElement.addEventListener('click', function () { jumpToObject(sectionRecord); });

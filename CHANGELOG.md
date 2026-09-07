@@ -45,6 +45,18 @@ That keeps three things true at once. A structural model carries no verdict, so 
 
 `generatedClassFilePath` is retained for the same reason -- `collectOpenableSpecTargets` reads it -- and still passes through `resolveOpenableManifestFilePath` on the way in. The guard is what makes keeping it safe; the current absence of a caller is not, because a future button would silently remove that.
 
+### The panel names no Apex at all
+
+`asserted by SDTPLDAccountSpecs.specAccountState()` on a field, `SDTPLDAccountSpecs.cls — test method …()` on an object, and `— asserted by SDTPicklistDependencyTests.cls` in the provenance banner are all gone from the panel. Which class or spec method was generated is not a fact about a dependency, and the panel is a picture of dependencies.
+
+The names are NOT deleted -- they are on the view model and in `manifest.json`, and the retained overlay still reads them. They are simply not rendered.
+
+They also come out of the find box. `buildNodeSearchText` and `buildObjectSearchText` no longer fold in the generated class, spec method or test method names: a query that matches text the reader cannot see returns a row with no visible reason for matching, so what is searchable is now exactly what is on screen.
+
+The skipped-field wording moved to dependency language with it -- "asserted by nothing" is now "no generated coverage", the badge reads `not covered`, and the contents section is `Not covered`. Same rows, same reasons, no assertion vocabulary.
+
+The provenance banner stays, minus the class name: it distinguishes a manifest-sourced model from a metadata preview, which is a statement about where the ROWS came from.
+
 ### Both Apex commands are untouched
 
 `Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The panel still **names** what was generated for each row -- `SDTPLDAccountSpecs.specStatus__c()` on a field, the test method on an object heading, the provenance banner naming `SDTPicklistDependencyTests.cls`. That naming is the manifest's promise that a row on screen corresponds to a spec method that exists.
