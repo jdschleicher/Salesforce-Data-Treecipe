@@ -1346,8 +1346,18 @@ describe('PicklistDependencyExplorerService', () => {
             expect(panel.collectText(matchCountElement)).toContain('1 of 2 object(s) shown');
             expect(panel.collectText(sectionElements.find((sectionElement: any) => !sectionElement.classList.contains('hidden')))).toContain('Chain_Example__c');
 
-            // A VALUE NO ROW IS HEADED BY MATCHES NOTHING, AND THE COUNT SAYS SO RATHER THAN SHOWING EVERYTHING
+            /*
+                #127 changed what this line asserts. Under #125 "Columbus" was a leaf -- no row is
+                HEADED by it, so it matched nothing and the count read "0 of 2". It is now matched on
+                the rows that UNLOCK it, so the object declaring City__c is shown. A value in neither
+                position still matches nothing, which is what the third query below pins.
+            */
             findInputElement.value = 'Columbus';
+            findInputElement.raiseEvent('input');
+
+            expect(panel.collectText(matchCountElement)).toContain('1 of 2 object(s) shown');
+
+            findInputElement.value = 'Reykjavik';
             findInputElement.raiseEvent('input');
 
             expect(panel.collectText(matchCountElement)).toContain('0 of 2 object(s) shown');
@@ -1467,6 +1477,687 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(panel.elementsById.generatedStamp.classList.contains('hidden')).toBe(true);
             expect(panel.elementsById.generatedStamp.classList.removed).not.toContain('hidden');
+
+        });
+
+    });
+
+
+    /*
+        #127: the panel answers "what does this controlling value unlock" directly, rather than
+        leaving the reader to find the row that says so.
+
+        Every test here drives the REAL panel script through the fake DOM, because all of it is a
+        property of the rendered page: which rows are hidden, which disclosures opened, what the
+        count says. Asserting on the script as a string would be just as true of a filter that
+        hid everything.
+    */
+    describe('the controlling value lookup, executed', () => {
+
+        function renderChainPanel(extraSpecDetails: IPicklistDependencySpecDetail[] = []) {
+
+            const panel = runPanelScript();
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath,
+                    [...buildChainExampleSpecDetails(), ...extraSpecDetails],
+                    [],
+                    buildChainExampleRecordTypeSpecDetails()
+                ),
+                ''
+            ));
+
+            const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+
+            return {
+                panel,
+                findInputElement: panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1],
+                matchCountElement: panel.collectElementsByClassName(toolbarElement, 'matchCount')[0]
+            };
+
+        }
+
+        function typeIntoFindBox(rendered: any, queryText: string) {
+            rendered.findInputElement.value = queryText;
+            rendered.findInputElement.raiseEvent('input');
+        }
+
+        /*
+            The row HEADING, which is the "Field = Value" line, rather than the whole row. A row's
+            text also carries its "must not unlock" list, so asserting on all of it would count a
+            value the row explicitly does NOT unlock as a match for it.
+        */
+        function collectVisibleCombinationHeadings(panel: any) {
+            return panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'combination')
+                .filter((combinationElement: any) => !combinationElement.classList.contains('hidden'))
+                .map((combinationElement: any) => panel.collectText(combinationElement.children[0]));
+        }
+
+        // ROWS ARE BUILT ON EXPAND, SO THERE IS NOTHING TO FILTER UNTIL THE OBJECT HAS BEEN OPENED
+        function expandOnlyObject(rendered: any) {
+            typeIntoFindBox(rendered, 'Chain_Example__c');
+            return collectVisibleCombinationHeadings(rendered.panel).length;
+        }
+
+        describe('row level filtering', () => {
+
+            /*
+                The gap this closes. Before #127 a controlling value narrowed the panel to the NODE
+                holding it and stopped -- the reader still scanned every row of that node for the one
+                headed by their value, up to maxCombinationsPerNode of them.
+            */
+            it('given a controlling value, hides the rows that are not headed by it', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Canada');
+
+                const visibleCombinationHeadings = collectVisibleCombinationHeadings(rendered.panel);
+
+                expect(visibleCombinationHeadings.length).toBeGreaterThan(0);
+                visibleCombinationHeadings.forEach((combinationHeading: string) => {
+                    expect(combinationHeading).toContain('Canada');
+                });
+
+                expect(visibleCombinationHeadings.some((combinationHeading: string) => combinationHeading.includes('USA')))
+                    .toBe(false);
+
+            });
+
+            it('reports how many of the expanded object\'s combinations matched', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Canada');
+
+                expect(rendered.panel.collectText(rendered.matchCountElement))
+                    .toContain('combination(s) in the expanded object(s)');
+
+            });
+
+            /*
+                Filtering HIDES. Nothing is recomputed and nothing is discarded, so clearing the box
+                has to put every row back -- a filter that rebuilt rows would be a filter that could
+                lose one.
+            */
+            it('given the query cleared, shows every row again', () => {
+
+                const rendered = renderChainPanel();
+
+                const beforeFilterCount = expandOnlyObject(rendered);
+
+                typeIntoFindBox(rendered, 'Canada');
+                expect(collectVisibleCombinationHeadings(rendered.panel).length).toBeLessThan(beforeFilterCount);
+
+                typeIntoFindBox(rendered, '');
+                expect(collectVisibleCombinationHeadings(rendered.panel).length).toBe(beforeFilterCount);
+
+            });
+
+            /*
+                Naming the CONTAINER outranks filtering inside it. A reader who typed a field name
+                asked for that field, not for one value in it, and narrowing its rows would answer a
+                question they did not ask.
+            */
+            it('given a field api name, leaves every row of that field showing', () => {
+
+                const rendered = renderChainPanel();
+
+                const beforeFilterCount = expandOnlyObject(rendered);
+
+                typeIntoFindBox(rendered, 'State__c');
+
+                expect(collectVisibleCombinationHeadings(rendered.panel).length).toBe(beforeFilterCount);
+
+            });
+
+            it('given an object api name, leaves every row of that object showing', () => {
+
+                const rendered = renderChainPanel();
+
+                const beforeFilterCount = expandOnlyObject(rendered);
+
+                typeIntoFindBox(rendered, '');
+                typeIntoFindBox(rendered, 'Chain_Example__c');
+
+                expect(collectVisibleCombinationHeadings(rendered.panel).length).toBe(beforeFilterCount);
+
+            });
+
+            /*
+                A node the filter emptied still renders its own heading and stays visible only while
+                something beneath it matches. What it must never do is read as a field that declares
+                no combinations -- the same false claim the rendering ceiling is forbidden from
+                making one level up.
+            */
+            it('given a query no row of a node matches, hides the node rather than emptying it', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Canada');
+
+                const nodeElements = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'node');
+
+                nodeElements.forEach((nodeElement: any) => {
+
+                    if (nodeElement.classList.contains('hidden')) { return; }
+
+                    const visibleRowCount = rendered.panel
+                        .collectElementsByClassName(nodeElement, 'combination')
+                        .filter((combinationElement: any) => !combinationElement.classList.contains('hidden'))
+                        .length;
+
+                    expect(visibleRowCount).toBeGreaterThan(0);
+
+                });
+
+            });
+
+        });
+
+        describe('the controlling value summary', () => {
+
+            it('given a controlling value, composes what it makes available per dependent field', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Canada');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(summaryElement.classList.contains('hidden')).toBe(false);
+
+                const summaryText = rendered.panel.collectText(summaryElement);
+
+                expect(summaryText).toContain('Canada');
+                expect(summaryText).toContain('makes available');
+                expect(summaryText).toContain('State__c');
+                expect(summaryText).toContain('Ontario');
+
+            });
+
+            /*
+                The summary reports what a value UNLOCKS and nothing else. The complement is the one
+                claim that needs a COMPLETE declared list to be true, and the rows already carry it
+                with the caveat that goes with it.
+            */
+            it('makes no "must not unlock" claim of its own', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Canada');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(rendered.panel.collectText(summaryElement)).not.toContain('must not unlock');
+
+            });
+
+            /*
+                Not the same statement as "unlocks nothing", and the summary draws the distinction
+                the same way the row does. North_America does not assign Texas at all.
+            */
+            it('given a controlling value a record type does not assign, says it is not available', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Texas');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+                const summaryText = rendered.panel.collectText(summaryElement);
+
+                expect(summaryText).toContain('City__c [North_America]');
+                expect(summaryText).toContain('not available under this record type');
+
+            });
+
+            it('given a controlling value that unlocks nothing, says so rather than rendering an empty list', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Ontario');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(rendered.panel.collectText(summaryElement)).toContain('unlocks nothing');
+
+            });
+
+            /*
+                A query that named the object is a request for the tree, not for a value. Summarising
+                every controlling value it has would restate the whole panel above the panel.
+            */
+            it('given an object name rather than a value, draws no summary at all', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Chain_Example__c');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(summaryElement.classList.contains('hidden')).toBe(true);
+
+            });
+
+            it('given the query cleared, takes the summary back down', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Canada');
+                typeIntoFindBox(rendered, '');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(summaryElement.classList.contains('hidden')).toBe(true);
+                expect(rendered.panel.collectText(summaryElement).trim()).toBe('');
+
+            });
+
+        });
+
+        describe('dependent values', () => {
+
+            /*
+                #125 option 2, taken here. "Columbus" is a City__c value that controls nothing, so
+                no row is HEADED by it -- before this it matched nothing at all.
+            */
+            it('given a leaf dependent value, matches the rows that unlock it', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Columbus');
+
+                const visibleCombinationHeadings = collectVisibleCombinationHeadings(rendered.panel);
+
+                /*
+                    A row is HEADED by its controlling value, so the row that unlocks Columbus reads
+                    "State__c = Ohio" -- the dependent value the query named is in the row's unlocks
+                    list, not in its heading. What the query has to produce is that row and no row
+                    that fails to unlock it.
+                */
+                expect(visibleCombinationHeadings.length).toBeGreaterThan(0);
+                expect(visibleCombinationHeadings.some((combinationHeading: string) =>
+                    combinationHeading.includes('State__c = Ohio'))).toBe(true);
+
+                expect(visibleCombinationHeadings.some((combinationHeading: string) =>
+                    combinationHeading.includes('Country__c ='))).toBe(false);
+
+                const visibleUnlockLists = rendered.panel
+                    .collectElementsByClassName(rendered.panel.elementsById.explorerRoot, 'combination')
+                    .filter((combinationElement: any) => !combinationElement.classList.contains('hidden'))
+                    .map((combinationElement: any) => rendered.panel.collectText(combinationElement.children[1]));
+
+                visibleUnlockLists.forEach((unlockListText: string) => {
+                    expect(unlockListText).toContain('Columbus');
+                });
+
+            });
+
+            /*
+                A row matches on what it UNLOCKS, never on its forbidden complement. Every row that
+                does not unlock a value forbids it, so matching the complement would show every row
+                of the field and bury the answer among the rows that are not it.
+            */
+            it('does not match a row that merely forbids the value', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Columbus');
+
+                const visibleCombinationHeadings = collectVisibleCombinationHeadings(rendered.panel);
+
+                // Ohio UNLOCKS Columbus; Texas FORBIDS it, so only the Ohio row survives the query
+                expect(visibleCombinationHeadings.some((combinationHeading: string) => combinationHeading.includes('= Ohio')))
+                    .toBe(true);
+                expect(visibleCombinationHeadings.some((combinationHeading: string) => combinationHeading.includes('= Texas')))
+                    .toBe(false);
+
+            });
+
+            it('given a value in neither position, matches nothing and says so', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Reykjavik');
+
+                expect(rendered.panel.collectText(rendered.matchCountElement)).toContain('0 of 1 object(s) shown');
+
+            });
+
+            /*
+                A picklist value can carry spaces, so the index is joined on a NEWLINE. A space join
+                would let "america canada" match the tail of one value and the head of the next --
+                a match with no row on screen to show for it.
+            */
+            it('does not match a phrase spanning two adjacent values', () => {
+
+                const panel = runPanelScript();
+
+                const adjacentValueSpecDetails: IPicklistDependencySpecDetail[] = [{
+                    objectApiName: 'Region_Example__c',
+                    fieldApiName: 'Territory__c',
+                    controllingFieldApiName: 'Region__c',
+                    expectations: [
+                        {
+                            controllingValue: 'Global',
+                            dependentValues: ['North America', 'Canada Central'],
+                            forbiddenValues: []
+                        }
+                    ]
+                }];
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath, adjacentValueSpecDetails, []
+                    ),
+                    ''
+                ));
+
+                const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+                const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
+                const matchCountElement = panel.collectElementsByClassName(toolbarElement, 'matchCount')[0];
+
+                findInputElement.value = 'America Canada';
+                findInputElement.raiseEvent('input');
+
+                expect(panel.collectText(matchCountElement)).toContain('0 of 1 object(s) shown');
+
+                findInputElement.value = 'North America';
+                findInputElement.raiseEvent('input');
+
+                expect(panel.collectText(matchCountElement)).toContain('1 of 1 object(s) shown');
+
+            });
+
+        });
+
+        describe('the record type disclosure', () => {
+
+            /*
+                Without this a value query filters the panel down to the field holding the answer and
+                then leaves the answer itself behind two collapsed disclosures -- the same gap the
+                record type NAME match was added to close, one level further in.
+            */
+            it('given a match inside a record type scope, opens the group holding it', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Toronto');
+
+                const groupBodyElements = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'recordTypeScopes');
+
+                expect(groupBodyElements.length).toBeGreaterThan(0);
+                expect(groupBodyElements.some((groupBodyElement: any) =>
+                    !groupBodyElement.classList.contains('hidden'))).toBe(true);
+
+            });
+
+            it('closes the group again once the query stops matching inside it', () => {
+
+                const rendered = renderChainPanel();
+
+                typeIntoFindBox(rendered, 'Toronto');
+                typeIntoFindBox(rendered, 'Chain_Example__c');
+
+                const groupBodyElements = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'recordTypeScopes');
+
+                groupBodyElements.forEach((groupBodyElement: any) => {
+                    expect(groupBodyElement.classList.contains('hidden')).toBe(true);
+                });
+
+            });
+
+        });
+
+        /*
+            The whole point of deriving this in the panel rather than posting it: the index is built
+            from allowedValues the model already carries, so the message the host sends is byte for
+            byte what it sent before the lookup existed.
+        */
+        describe('the posted payload', () => {
+
+            it('carries no per row search text for dependent values', () => {
+
+                const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath,
+                    buildChainExampleSpecDetails(),
+                    [],
+                    buildChainExampleRecordTypeSpecDetails()
+                );
+
+                const serializedMessage = JSON.stringify(
+                    PicklistDependencyExplorerService.buildRenderModelMessage(viewModel));
+
+                const cityNode = viewModel.objects[0].rootNodes[0].downstreamNodes[0];
+
+                // COLUMBUS IS IN declaredValues AND IN allowedValues, AND IN NO HAYSTACK
+                expect(cityNode.searchText).not.toContain('columbus');
+                expect(viewModel.objects[0].searchText).not.toContain('columbus');
+
+                const searchTextValues = serializedMessage.match(/"searchText":"[^"]*"/g) || [];
+                searchTextValues.forEach(searchTextValue => {
+                    expect(searchTextValue.toLowerCase()).not.toContain('columbus');
+                });
+
+            });
+
+        });
+
+        /*
+            A throw on a keystroke leaves the rows on screen and readable, so it is a "runtime"
+            failure rather than a "render" one -- only the second invalidates the panel and empties
+            its action allow-lists. The host is what collapses repeats into one notification; what
+            the panel must get right is the phase.
+        */
+        /*
+            What the lookup costs, and why the rendering ceiling did not have to move for it.
+
+            #125 deferred dependent-value search because indexing it "materialises the product in
+            the payload". The index here is built in the PANEL from allowedValues already posted, so
+            the payload is untouched -- but the expansion is real, it has only moved, and moving it
+            is not the same as bounding it. What bounds it is the SOURCE: the pre-filter is drawn
+            from declaredValues, which is already deduplicated per field and already capped by
+            maxDeclaredValuesPerNode, rather than from allowedValues, which repeats the same picklist
+            once per combination.
+
+            Measured by serializing synthetic models through the real builder, at the combination
+            ceiling (200 objects x 5 fields x 20 combinations = maxRenderedCombinations), with each
+            field declaring a picklist of the given size and each combination unlocking a quarter of
+            it:
+
+                picklist/field   payload    index     build     per keystroke
+                40               12.25 MB   1.04 MB   8.4 ms    0.41 ms
+                100              22.37 MB   2.61 MB   18.2 ms   1.04 ms
+                200 (the cap)    39.79 MB   5.32 MB   35.3 ms   2.08 ms
+
+            Two earlier drafts indexed allowedValues per combination instead -- one as entries, one
+            as a joined string -- and measured 84 MB / 398 ms and 91 MB / 886 ms at the same ceiling.
+            Both were chosen by reasoning about the shape and both were wrong by an order of
+            magnitude, which is the same way the 3.7.0 ceiling was wrong twice before it was
+            measured. Re-measure rather than re-reason if any of these caps change.
+        */
+        describe('what the lookup costs', () => {
+
+            /*
+                The property the bound rests on: the pre-filter is the deduplicated union of
+                declaredValues, so it grows with the org's PICKLISTS rather than with its
+                combinations. If this stops holding, the numbers above stop meaning anything.
+            */
+            it('draws the pre-filter from declaredValues, deduplicated, rather than from allowedValues', () => {
+
+                const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+                const indexFunctionSource = actualWebviewHtml
+                    .split('function buildObjectDependentValueIndex(sectionRecord) {')[1]
+                    .split('\n    }')[0];
+
+                expect(indexFunctionSource).toContain('node.declaredValues');
+                expect(indexFunctionSource).toContain('recordTypeScope.declaredValues');
+                expect(indexFunctionSource).not.toContain('allowedValues');
+
+                // BUILT ONCE AND HELD: A READER TYPING DOES NOT REBUILD IT PER KEYSTROKE
+                expect(indexFunctionSource).toContain('if (sectionRecord.dependentValueIndex !== undefined)');
+
+            });
+
+            /*
+                And that it is built LAZILY -- the posted haystack is asked first, so a reader who
+                looked an object up by name never pays for the index at all.
+            */
+            it('asks the posted haystack before building the index', () => {
+
+                const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+                const objectMatchSource = actualWebviewHtml
+                    .split('function objectMatchesFilter(sectionRecord) {')[1]
+                    .split('\n    }')[0];
+
+                const postedHaystackIndex = objectMatchSource.indexOf('objectViewModel.searchText.indexOf(filterText)');
+                const buildIndexIndex = objectMatchSource.indexOf('buildObjectDependentValueIndex(sectionRecord)');
+
+                expect(postedHaystackIndex).toBeGreaterThan(-1);
+                expect(buildIndexIndex).toBeGreaterThan(postedHaystackIndex);
+
+            });
+
+            /*
+                The cap the measured numbers actually rest on.
+
+                maxNodesPerObject is NOT that cap: it is applied to root CHAINS, and a surviving
+                chain brings every field beneath it, so an object can render far more nodes than it
+                allows. What does bound a node's contribution is maxDeclaredValuesPerNode -- each
+                node and each record type scope contributes at most that many values, once, however
+                many combinations it declares. That is the whole difference between this index and
+                the allowedValues-per-combination drafts that measured 84 MB and 91 MB.
+
+                Pinned as a ratio against the measurement above so that raising the declared value
+                cap without re-measuring fails here rather than in a user's panel.
+            */
+            it('rests on the declared value cap, and holds the measured headroom against the payload', () => {
+
+                const limits = DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS;
+
+                // THE MEASUREMENT ABOVE WAS TAKEN AT EXACTLY THIS CAP -- A HIGHER ONE IS UNMEASURED
+                expect(limits.maxDeclaredValuesPerNode).toBe(200);
+                expect(limits.maxRenderedCombinations).toBe(20000);
+
+                const measuredIndexMegabytes = 5.32;
+                const measuredPayloadMegabytes = 39.79;
+
+                expect(measuredPayloadMegabytes / measuredIndexMegabytes).toBeGreaterThan(7);
+
+            });
+
+            /*
+                A field whose declared values the ceiling capped is a field whose pre-filter is
+                incomplete, and the panel says so rather than reporting a miss as an absence. The
+                same sentence covers rows the combination budget dropped.
+            */
+            it('given a truncated model and no match, says it is not searching everything', () => {
+
+                const panel = runPanelScript();
+
+                let dependentValues: string[] = [];
+                for (let valueIndex = 0; valueIndex < 40; valueIndex++) {
+                    dependentValues.push(`Dependent_Value_${valueIndex}`);
+                }
+
+                const wideSpecDetails: IPicklistDependencySpecDetail[] = [{
+                    objectApiName: 'Wide_Values__c',
+                    fieldApiName: 'Dependent__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'USA', dependentValues, forbiddenValues: [] }]
+                }];
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                    PicklistDependencyExplorerService.applyModelLimits(
+                        PicklistDependencyExplorerService.buildExplorerViewModel(
+                            mockObjectsDirectoryPath, wideSpecDetails, []
+                        ),
+                        buildLimits({ maxDeclaredValuesPerNode: 10 })
+                    ),
+                    ''
+                ));
+
+                const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+                const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
+                const matchCountElement = panel.collectElementsByClassName(toolbarElement, 'matchCount')[0];
+
+                findInputElement.value = 'Dependent_Value_39';
+                findInputElement.raiseEvent('input');
+
+                const matchCountText = panel.collectText(matchCountElement);
+
+                expect(matchCountText).toContain('0 of 1 object(s) shown');
+                expect(matchCountText).toContain('not showing every combination or declared value');
+
+            });
+
+            it('given an untruncated model and no match, claims nothing about dropped rows', () => {
+
+                const panel = runPanelScript();
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+                    ),
+                    ''
+                ));
+
+                const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+                const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
+                const matchCountElement = panel.collectElementsByClassName(toolbarElement, 'matchCount')[0];
+
+                findInputElement.value = 'Reykjavik';
+                findInputElement.raiseEvent('input');
+
+                const matchCountText = panel.collectText(matchCountElement);
+
+                expect(matchCountText).toContain('0 of 1 object(s) shown');
+                expect(matchCountText).not.toContain('not showing every combination');
+
+            });
+
+        });
+
+        describe('a throw while filtering', () => {
+
+            it('reports a keystroke failure as runtime, leaving the drawn rows valid', () => {
+
+                const panel = runPanelScript();
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+                    ),
+                    ''
+                ));
+
+                panel.raiseWindowError({
+                    type: 'error',
+                    message: 'filter blew up',
+                    error: { message: 'filter blew up', stack: 'at applyFilter' }
+                });
+
+                const failureMessages = panel.postedHostMessages
+                    .filter((hostMessage: any) => hostMessage.command === 'renderFailed');
+
+                expect(failureMessages).toHaveLength(1);
+                expect(failureMessages[0].phase).toBe('runtime');
+                expect(panel.postedHostMessages.some((hostMessage: any) => hostMessage.command === 'rendered'))
+                    .toBe(true);
+
+            });
 
         });
 
@@ -4910,7 +5601,7 @@ describe('PicklistDependencyExplorerService', () => {
 
                 const actualWebviewHtml = buildRenderedHtml();
 
-                expect(actualWebviewHtml).toContain('function buildRecordTypeGroupElement(node, sectionRecord)');
+                expect(actualWebviewHtml).toContain('function buildRecordTypeGroupElement(node, sectionRecord, scopeFilterAppliers)');
                 expect(actualWebviewHtml).toContain("'Record Types (' + node.recordTypeScopes.length + ')'");
                 expect(actualWebviewHtml).toContain('if (node.recordTypeScopes.length) {');
                 expect(actualWebviewHtml).toContain("createElement('div', 'recordTypeScopes hidden')");
@@ -4962,7 +5653,7 @@ describe('PicklistDependencyExplorerService', () => {
                     'sectionRecord.scopeRevealers.push(function () {\n            revealRecordTypeGroup();'
                 );
                 expect(actualWebviewHtml).toContain(
-                    'buildRecordTypeScopeElement(node, recordTypeScope, sectionRecord, revealRecordTypeGroup)'
+                    'buildRecordTypeScopeElement(node, recordTypeScope, sectionRecord, revealRecordTypeGroup, scopeFilterAppliers)'
                 );
 
             });
@@ -4971,9 +5662,9 @@ describe('PicklistDependencyExplorerService', () => {
 
                 const actualWebviewHtml = buildRenderedHtml();
 
-                expect(actualWebviewHtml).toContain('function applyRecordTypeGroupFilter(nodeRecord)');
+                expect(actualWebviewHtml).toContain('function applyRecordTypeGroupFilter(nodeRecord, anyScopeRowMatches)');
                 expect(actualWebviewHtml).toContain('nodeRecord.recordTypeSearchText.indexOf(filterText) !== -1');
-                expect(actualWebviewHtml).toContain('nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeMatch);');
+                expect(actualWebviewHtml).toContain('nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeNameMatch || !!anyScopeRowMatches);');
 
             });
 
@@ -4992,7 +5683,7 @@ describe('PicklistDependencyExplorerService', () => {
                 const actualWebviewHtml = buildRenderedHtml();
 
                 const filterFunctionSource = actualWebviewHtml
-                    .split('function applyRecordTypeGroupFilter(nodeRecord) {')[1]
+                    .split('function applyRecordTypeGroupFilter(nodeRecord, anyScopeRowMatches) {')[1]
                     .split('\n    }')[0];
 
                 expect(filterFunctionSource).not.toContain('toLowerCase');

@@ -1,5 +1,47 @@
 # Change Log
 
+## [3.19.0] - The Explorer answers "what does this controlling value unlock", instead of leaving the reader to find the row that says so
+
+Closes [#127](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/127).
+
+3.18.0 put controlling values in the find box, and stopped one level short of the answer. Typing `Canada` narrowed the panel to the objects and the fields whose rows carry it -- and then left the reader scanning up to `maxCombinationsPerNode` rows for the one headed `= Canada`. Worse, the tree is indexed by the DEPENDENT field: a node is a dependent picklist labelled `controlled by X`, so one controlling field governing three dependent fields is three sibling nodes, and "what does Canada unlock" was spread across all three with nothing composing it.
+
+### Rows are filtered, not just nodes
+
+A query that names a VALUE now hides the rows that do not carry it, and the match count reads `N of M combination(s) in the expanded object(s)` beside the object count. A query that names a CONTAINER -- an object or a field -- still shows every row that node has: the reader asked for the node, not for one value inside it, and narrowing it would answer a question they did not ask. That distinction needed a haystack the panel did not have. Since 3.18.0 `searchText` folds controlling values in with the api names, so it can no longer say whether the reader named the node; the panel now builds `nodeNameSearchText` from the names alone, lowercased once at build time like everything else in that path.
+
+Filtering still only ever HIDES. Nothing is recomputed, nothing is dropped, and clearing the box puts every row back.
+
+### One block that composes the answer
+
+When the query matches a controlling value, each expanded object draws a summary above its tree: the value, then every dependent field it affects with what each one makes available. A value a record type does not assign reads *not available under this record type* rather than as an empty list -- the same distinction the row itself draws. It reports only what a value UNLOCKS: the complement is the one claim that needs a COMPLETE declared list to be true, and the rows already carry it with the caveat that goes with it.
+
+A match inside a record type scope now opens the group and the scope holding it, on the same terms a record type NAME already did. Without that, a value query filtered the panel down to the field holding the answer and left the answer behind two collapsed disclosures.
+
+### Dependent values are searchable, and the payload did not grow
+
+This is issue #125's deferred option 2, taken on a different footing. #125 declined it because indexing dependent values "materialises the product in the payload" -- the expansion the manifest was restructured in 3.16.0 to stop. It is now derived IN THE PANEL from `allowedValues` the model already carries, so the posted message is byte for byte what it was; a test pins that no `searchText` in the payload names a dependent value.
+
+The expansion is real, though, and moving it is not the same as bounding it. What bounds it is the source: the panel's pre-filter is drawn from `declaredValues` -- already deduplicated per field, already capped by `maxDeclaredValuesPerNode` -- rather than from `allowedValues`, which repeats the same picklist once per combination. `declaredValues` is a superset of every combination's `allowedValues`, so a query it does not contain cannot match any row, which is what makes skipping an object on it sound. A query it does contain still goes to the exact per-row rule. It is built lazily, on the first query the posted haystack does not already answer, so looking an object up by name costs nothing.
+
+A row matches on its controlling value or on what it UNLOCKS, never on its forbidden complement. Every row that does not unlock a value forbids it, so matching the complement would show every row of the field and bury the answer among the rows that are not it.
+
+### The ceiling did not move, and that is a measurement
+
+Measured by serializing synthetic models through the real builder at the combination ceiling -- 200 objects x 5 fields x 20 combinations, which is exactly `maxRenderedCombinations` -- with each field declaring a picklist of the stated size and each combination unlocking a quarter of it:
+
+| dependent picklist per field | payload | index | build | per keystroke |
+|---|---|---|---|---|
+| 40 | 12.25 MB | 1.04 MB | 8.4 ms | 0.41 ms |
+| 100 | 22.37 MB | 2.61 MB | 18.2 ms | 1.04 ms |
+| 200 (`maxDeclaredValuesPerNode`) | 39.79 MB | 5.32 MB | 35.3 ms | 2.08 ms |
+
+Two earlier drafts indexed `allowedValues` per combination instead -- one as entry objects, one as a joined string -- and measured 84 MB / 398 ms and 91 MB / 886 ms at the same ceiling. Both were chosen by reasoning about the shape and both were wrong by an order of magnitude, which is how the 3.7.0 ceiling was wrong twice before it was measured. A test pins the ratio and the cap it was taken at, so raising `maxDeclaredValuesPerNode` without re-measuring fails there rather than in a panel.
+
+### A miss says whether it is a miss
+
+Where the ceiling dropped rows, or a field declared more values than `maxDeclaredValuesPerNode` allows, a value the reader types may be absent from what the panel holds rather than from their org -- and `0 of 12 objects shown` reads as the second. The count now says so, and only when it is true: an untruncated model that matches nothing claims nothing about dropped rows.
+
 ## [3.18.0] - The Explorer's find box matches controlling values, and only the ones with a row on screen
 
 Closes [#125](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/125).

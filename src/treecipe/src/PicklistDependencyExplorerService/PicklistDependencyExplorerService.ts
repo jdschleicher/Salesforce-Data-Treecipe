@@ -2638,6 +2638,20 @@ export class PicklistDependencyExplorerService {
         margin: 0.1rem 0.2rem 0.1rem 0;
     }
     .value.forbidden { text-decoration: line-through; color: var(--vscode-descriptionForeground); }
+    /*
+        The answer to a value query, above the tree it summarises. Bordered on the leading edge
+        rather than boxed: it is a reading of the rows below it, not a section of its own.
+    */
+    .valueSummary {
+        border-left: 3px solid var(--vscode-focusBorder);
+        padding: 0.3rem 0 0.3rem 0.6rem;
+        margin: 0.3rem 0 0.6rem 0;
+    }
+    .valueSummaryGroup { margin: 0.3rem 0; }
+    .valueSummaryHeading { margin-bottom: 0.2rem; }
+    .valueSummaryHeading .muted { margin-left: 0.35rem; }
+    .valueSummaryRow { margin: 0.15rem 0 0.15rem 0.8rem; }
+    .valueSummaryRow .fieldName { margin-right: 0.5rem; }
     /* NESTED INSIDE .recordTypeGroup, WHICH ALREADY CARRIES THE INDENT AND THE RULE */
     .recordTypeScopes { margin: 0.2rem 0; }
     .recordTypeScope {
@@ -2995,7 +3009,7 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    function buildCombinationElement(node, combination, declaredValues, declaredValuesTruncated, sectionRecord) {
+    function buildCombinationElement(node, combination, declaredValues, declaredValuesTruncated, sectionRecord, combinationRecords) {
 
         const unavailableClass = combination.controllingValueUnavailable ? ' unavailable' : '';
         const combinationElement = createElement('div', 'combination' + unavailableClass);
@@ -3072,11 +3086,31 @@ export class PicklistDependencyExplorerService {
 
         sectionRecord.combinationElementsByKey[combination.combinationKey.toLowerCase()] = combinationElement;
 
+        /*
+            What the row filter matches this row against, lowercased ONCE here rather than per
+            keystroke. applyNodeFilter runs over every built row on every input event, and
+            lowercasing a combination's values inside that loop allocates a fresh string per value
+            per keystroke -- the same cost #125 measured at 27ms per keystroke and moved to build
+            time for the node haystack.
+
+            Only rows that were BUILT are held, which is what bounds this: a record type scope's
+            rows do not exist until its body is expanded, and an object's rows do not exist until it
+            is. The list grows as the reader opens things, never with the size of the model.
+        */
+        combinationRecords.push({
+            combination: combination,
+            element: combinationElement,
+            lowercasedControllingValue: combination.controllingValue.toLowerCase(),
+            lowercasedAllowedValues: combination.allowedValues.map(function (allowedValue) {
+                return allowedValue.toLowerCase();
+            })
+        });
+
         return combinationElement;
 
     }
 
-    function buildRecordTypeScopeElement(node, recordTypeScope, sectionRecord, revealRecordTypeGroup) {
+    function buildRecordTypeScopeElement(node, recordTypeScope, sectionRecord, revealRecordTypeGroup, scopeFilterAppliers) {
 
         const scopeElement = createElement('div', 'recordTypeScope');
 
@@ -3096,6 +3130,13 @@ export class PicklistDependencyExplorerService {
             elements themselves.
         */
         let scopeBodyBuilt = false;
+
+        /*
+            This scope's own rows, filled as its body is built. Held here rather than on the node so
+            a scope that is never opened contributes nothing -- the laziness that keeps the element
+            count down would be undone by a filter that had to build every row to decide.
+        */
+        const scopeCombinationRecords = [];
 
         const buildScopeBody = function () {
 
@@ -3120,13 +3161,54 @@ export class PicklistDependencyExplorerService {
                     combination,
                     recordTypeScope.declaredValues,
                     recordTypeScope.declaredValuesTruncated,
-                    sectionRecord
+                    sectionRecord,
+                    scopeCombinationRecords
                 ));
             });
 
             appendTruncationNotice(scopeBodyElement, recordTypeScope.truncatedCombinationCount, 'combination(s) in this scope are');
 
+            /*
+                Built rows start out matching whatever query is already typed. A scope opened while a
+                filter is active would otherwise show every row it has, including the ones the query
+                excludes -- the reader's own click would undo the filtering they asked for.
+            */
+            applyCombinationRecordFilter(scopeCombinationRecords, isNodeNameMatchForScope);
+
         };
+
+        /*
+            Whether any row in this scope matches, which is what decides if the group holding it is
+            opened. Answering it must not BUILD the scope: the model is right here, so the question
+            is asked of the combinations rather than of elements that may not exist yet.
+        */
+        const doesScopeMatchFilter = function (isNodeNameMatch) {
+            return recordTypeScope.combinations.some(function (combination) {
+                return combinationMatchesFilter(combination, isNodeNameMatch);
+            });
+        };
+
+        let isNodeNameMatchForScope = true;
+
+        scopeFilterAppliers.push(function (isNodeNameMatch) {
+
+            isNodeNameMatchForScope = isNodeNameMatch;
+
+            if (scopeBodyBuilt) {
+                applyCombinationRecordFilter(scopeCombinationRecords, isNodeNameMatch);
+            }
+
+            /*
+                Only a VALUE query opens the group. A reader who typed the object or the field named
+                the node, and every scope under it trivially "matches" that -- opening them all would
+                leave exactly the wall of record type headings the group exists to collapse, this
+                time raised by a query that never mentioned a record type.
+            */
+            if (!filterText || isNodeNameMatch) { return false; }
+
+            return doesScopeMatchFilter(false);
+
+        });
 
         /*
             BUILDS AND SHOWS THE SCOPE, FOR A DEEP LINK THAT LANDS INSIDE IT RATHER THAN ON A FIELD LEVEL ROW.
@@ -3158,7 +3240,7 @@ export class PicklistDependencyExplorerService {
         reading from the wording of a note. It is also where the volume is -- every record type
         repeats the whole field's combinations.
     */
-    function buildRecordTypeGroupElement(node, sectionRecord) {
+    function buildRecordTypeGroupElement(node, sectionRecord, scopeFilterAppliers) {
 
         const groupElement = createElement('div', 'recordTypeGroup');
 
@@ -3251,7 +3333,7 @@ export class PicklistDependencyExplorerService {
         */
         node.recordTypeScopes.forEach(function (recordTypeScope) {
             groupBodyElement.appendChild(buildRecordTypeScopeElement(
-                node, recordTypeScope, sectionRecord, revealRecordTypeGroup));
+                node, recordTypeScope, sectionRecord, revealRecordTypeGroup, scopeFilterAppliers));
         });
 
         headingElement.addEventListener('click', function () {
@@ -3287,8 +3369,12 @@ export class PicklistDependencyExplorerService {
         nodeHeading.appendChild(createElement('span', 'muted', 'controlled by ' + node.controllingFieldApiName));
         nodeElement.appendChild(nodeHeading);
 
+        const combinationRecords = [];
+        const scopeFilterAppliers = [];
+
         node.combinations.forEach(function (combination) {
-            nodeElement.appendChild(buildCombinationElement(node, combination, node.declaredValues, node.declaredValuesTruncated, sectionRecord));
+            nodeElement.appendChild(buildCombinationElement(
+                node, combination, node.declaredValues, node.declaredValuesTruncated, sectionRecord, combinationRecords));
         });
 
         appendTruncationNotice(nodeElement, node.truncatedCombinationCount, 'combination(s) are');
@@ -3304,7 +3390,7 @@ export class PicklistDependencyExplorerService {
 
         if (node.recordTypeScopes.length) {
 
-            const recordTypeGroup = buildRecordTypeGroupElement(node, sectionRecord);
+            const recordTypeGroup = buildRecordTypeGroupElement(node, sectionRecord, scopeFilterAppliers);
             revealRecordTypeGroup = recordTypeGroup.reveal;
             applyRecordTypeGroupFilterMatch = recordTypeGroup.applyFilterMatch;
             nodeElement.appendChild(recordTypeGroup.element);
@@ -3340,12 +3426,35 @@ export class PicklistDependencyExplorerService {
             nodeElement.appendChild(childrenElement);
         }
 
+        /*
+            The node's NAMES on their own, separate from node.searchText.
+
+            Since #125 the posted haystack folds controlling VALUES in with the api names, so it can
+            no longer answer "did the reader name this node?" -- and that is the question the row
+            filter turns on: naming an object or a field shows every row it has, while naming a
+            value shows the rows carrying it. One haystack that matches both makes those two
+            indistinguishable, and every value query would show every row of the node it matched.
+
+            Built from what is already posted, lowercased once here for the same reason the rest is.
+            Joined on a NEWLINE so one indexOf is equivalent to testing each name separately.
+        */
+        const nodeNameSearchText = [node.objectApiName, node.fieldApiName, node.controllingFieldApiName]
+            .concat(node.recordTypeScopes.map(function (recordTypeScope) {
+                return recordTypeScope.recordTypeDeveloperName;
+            }))
+            .filter(function (searchableValue) { return !!searchableValue; })
+            .join('\\n')
+            .toLowerCase();
+
         sectionRecord.nodeRecords.push({
             node: node,
             element: nodeElement,
             revealRecordTypeGroup: revealRecordTypeGroup,
             applyRecordTypeGroupFilterMatch: applyRecordTypeGroupFilterMatch,
-            recordTypeSearchText: recordTypeSearchText
+            recordTypeSearchText: recordTypeSearchText,
+            nodeNameSearchText: nodeNameSearchText,
+            combinationRecords: combinationRecords,
+            scopeFilterAppliers: scopeFilterAppliers
         });
 
         return nodeElement;
@@ -3614,6 +3723,16 @@ export class PicklistDependencyExplorerService {
             objectViewModel: objectViewModel,
             sectionElement: sectionElement,
             bodyElement: createElement('div', 'objectBody hidden'),
+            /*
+                The answer to a value query, drawn ABOVE the tree it summarises.
+
+                It sits above the skipped-field warnings, which are otherwise first. That rule
+                exists so a skipped field is not lost below a long list of covered rows, and this
+                block does not put it there: it is a handful of lines, scoped to the query, and the
+                warnings still come before every node. Created here rather than in buildObjectBody
+                so it is the body's first child whenever the body is built.
+            */
+            valueSummaryElement: createElement('div', 'valueSummary hidden'),
             disclosureElement: createElement('span', 'disclosure', '▸'),
             built: false,
             nodeRecords: [],
@@ -3651,6 +3770,8 @@ export class PicklistDependencyExplorerService {
 
         });
 
+        sectionRecord.bodyElement.appendChild(sectionRecord.valueSummaryElement);
+
         sectionElement.appendChild(objectHeading);
         sectionElement.appendChild(sectionRecord.bodyElement);
 
@@ -3658,11 +3779,133 @@ export class PicklistDependencyExplorerService {
 
     }
 
-    function objectMatchesFilter(objectViewModel) {
+    /*
+        Whether a row carries what the reader typed.
+
+        A row matches on its CONTROLLING value or on what it UNLOCKS, and deliberately not on its
+        forbidden complement. "What unlocks Ontario" has to stay a narrower question than "what
+        mentions Ontario": every row that does not unlock a value forbids it, so matching the
+        complement would show every row of the field and bury the answer in the rows that are not
+        it. The complement is still on screen under "must not unlock" for any row that renders.
+
+        isNodeNameMatch short-circuits ahead of any value work: naming an object or a field is a
+        request for that whole node, so its rows are shown without being tested.
+    */
+    function combinationMatchesFilter(combination, isNodeNameMatch) {
+
+        if (!filterText || isNodeNameMatch) { return true; }
+
+        if (combination.controllingValue.toLowerCase().indexOf(filterText) !== -1) { return true; }
+
+        return combination.allowedValues.some(function (allowedValue) {
+            return allowedValue.toLowerCase().indexOf(filterText) !== -1;
+        });
+
+    }
+
+    /*
+        The same rule against a BUILT row, whose values were lowercased when its element was made.
+
+        Two forms rather than one because they answer for different things: a scope that has never
+        been opened has combinations but no rows, and asking whether it matches must not build them.
+        The rule itself is stated once above and mirrored here; the tests pin the two agreeing.
+    */
+    function combinationRecordMatchesFilter(combinationRecord, isNodeNameMatch) {
+
+        if (!filterText || isNodeNameMatch) { return true; }
+
+        if (combinationRecord.lowercasedControllingValue.indexOf(filterText) !== -1) { return true; }
+
+        return combinationRecord.lowercasedAllowedValues.some(function (lowercasedAllowedValue) {
+            return lowercasedAllowedValue.indexOf(filterText) !== -1;
+        });
+
+    }
+
+    function applyCombinationRecordFilter(combinationRecords, isNodeNameMatch) {
+
+        let matchedCount = 0;
+
+        combinationRecords.forEach(function (combinationRecord) {
+
+            const isMatch = combinationRecordMatchesFilter(combinationRecord, isNodeNameMatch);
+
+            combinationRecord.element.classList.toggle('hidden', !isMatch);
+
+            if (isMatch) { matchedCount++; }
+
+        });
+
+        return matchedCount;
+
+    }
+
+    /*
+        Every dependent value an object's rows could possibly carry, as ONE lowercased string.
+
+        This is a PRE-FILTER, not the match itself. declaredValues is the union of every
+        expectation's dependent and forbidden values, so it is a superset of every combination's
+        allowedValues -- a query it does not contain cannot match any row of this object, which
+        makes it sound to skip the object entirely. A query it DOES contain still goes to
+        combinationMatchesFilter, because the superset includes forbidden values that no row unlocks.
+
+        It is built from the posted model, so it costs the payload nothing, and it is bounded by an
+        axis the ceiling already caps: maxNodesPerObject x maxDeclaredValuesPerNode. Measured at the
+        combination ceiling with a 200-value picklist per field -- the cap itself -- it is 5.3MB of
+        index against a 39.8MB payload, 35ms to build once and 2.1ms per keystroke. Two earlier
+        drafts indexed allowedValues per combination instead and measured 84MB and 886ms; the
+        difference is entirely that declaredValues is already deduplicated per field.
+
+        Built LAZILY, on the first query the posted search text does not already satisfy. A reader
+        looking an object up by name never pays for it.
+    */
+    function buildObjectDependentValueIndex(sectionRecord) {
+
+        if (sectionRecord.dependentValueIndex !== undefined) { return sectionRecord.dependentValueIndex; }
+
+        const distinctDeclaredValues = {};
+
+        const indexNode = function (node) {
+
+            node.declaredValues.forEach(function (declaredValue) {
+                distinctDeclaredValues[declaredValue.toLowerCase()] = true;
+            });
+
+            node.recordTypeScopes.forEach(function (recordTypeScope) {
+                recordTypeScope.declaredValues.forEach(function (declaredValue) {
+                    distinctDeclaredValues[declaredValue.toLowerCase()] = true;
+                });
+            });
+
+            node.downstreamNodes.forEach(indexNode);
+
+        };
+
+        sectionRecord.objectViewModel.rootNodes.forEach(indexNode);
+
+        // SEE buildNodeSearchText: A NEWLINE, BECAUSE A PICKLIST VALUE CAN CARRY SPACES
+        sectionRecord.dependentValueIndex = Object.keys(distinctDeclaredValues).join('\\n');
+
+        return sectionRecord.dependentValueIndex;
+
+    }
+
+    function objectMatchesFilter(sectionRecord) {
 
         if (!filterText) { return true; }
 
-        return objectViewModel.searchText.indexOf(filterText) !== -1;
+        if (sectionRecord.objectViewModel.searchText.indexOf(filterText) !== -1) { return true; }
+
+        /*
+            The posted haystack did not answer, so the dependent values are what is left to ask --
+            and only now is the index worth building. A miss here is a real miss: allowedValues is a
+            subset of declaredValues, so nothing this string lacks can be on a row.
+        */
+        if (buildObjectDependentValueIndex(sectionRecord).indexOf(filterText) === -1) { return false; }
+
+        return sectionRecord.objectViewModel.rootNodes.some(function (rootNode) {
+            return nodeMatchesFilter(rootNode, false);
+        });
 
     }
 
@@ -3681,6 +3924,21 @@ export class PicklistDependencyExplorerService {
 
         if (textMatches) { return true; }
 
+        /*
+            The posted haystack carries names and controlling values; a DEPENDENT value is matched
+            here, on the rows themselves. Asked of the model rather than of elements so a node whose
+            record type scopes have never been opened still answers for the rows inside them.
+        */
+        const anyCombinationMatches = node.combinations.some(function (combination) {
+            return combinationMatchesFilter(combination, false);
+        }) || node.recordTypeScopes.some(function (recordTypeScope) {
+            return recordTypeScope.combinations.some(function (combination) {
+                return combinationMatchesFilter(combination, false);
+            });
+        });
+
+        if (anyCombinationMatches) { return true; }
+
         for (let downstreamIndex = 0; downstreamIndex < node.downstreamNodes.length; downstreamIndex++) {
             if (nodeMatchesFilter(node.downstreamNodes[downstreamIndex], isObjectNameMatch)) { return true; }
         }
@@ -3697,6 +3955,116 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        One block per object answering the question the reader typed: given this controlling value,
+        what does each dependent field make available?
+
+        It exists because the tree is indexed the other way round. A node is a DEPENDENT field
+        labelled "controlled by X", so one controlling field governing three dependent fields is
+        three sibling nodes, and "what does Canada unlock" is spread across all of them with nothing
+        composing it. Everything here is read from the rows already on the model -- it introduces no
+        new payload, and it names nothing the tree beneath it does not also show.
+
+        It reports only what a value UNLOCKS. The complement is deliberately absent: it is the one
+        claim that depends on a COMPLETE declared list, and a summary that had to carry the
+        "not shown at this ceiling" caveat per field would say less than the rows already say it
+        better. A reader who wants the forbidden half opens the row.
+    */
+    function renderControllingValueSummary(sectionRecord, isObjectNameMatch) {
+
+        const summaryElement = sectionRecord.valueSummaryElement;
+
+        summaryElement.textContent = '';
+
+        /*
+            Only a VALUE query draws this. With no query there is nothing to summarise, and a query
+            that named the object or a field is a request for the tree itself -- summarising every
+            controlling value the object has would restate the whole panel above the panel.
+        */
+        if (!filterText || isObjectNameMatch) {
+            summaryElement.classList.add('hidden');
+            return;
+        }
+
+        const entriesByControllingValue = {};
+        const orderedControllingValues = [];
+
+        const collectCombination = function (node, combination, recordTypeDeveloperName) {
+
+            if (combination.controllingValue.toLowerCase().indexOf(filterText) === -1) { return; }
+
+            if (!entriesByControllingValue[combination.controllingValue]) {
+                entriesByControllingValue[combination.controllingValue] = [];
+                orderedControllingValues.push(combination.controllingValue);
+            }
+
+            entriesByControllingValue[combination.controllingValue].push({
+                node: node,
+                combination: combination,
+                recordTypeDeveloperName: recordTypeDeveloperName
+            });
+
+        };
+
+        sectionRecord.nodeRecords.forEach(function (nodeRecord) {
+
+            nodeRecord.node.combinations.forEach(function (combination) {
+                collectCombination(nodeRecord.node, combination, '');
+            });
+
+            nodeRecord.node.recordTypeScopes.forEach(function (recordTypeScope) {
+                recordTypeScope.combinations.forEach(function (combination) {
+                    collectCombination(nodeRecord.node, combination, recordTypeScope.recordTypeDeveloperName);
+                });
+            });
+
+        });
+
+        if (!orderedControllingValues.length) {
+            summaryElement.classList.add('hidden');
+            return;
+        }
+
+        orderedControllingValues.forEach(function (controllingValue) {
+
+            const groupElement = createElement('div', 'valueSummaryGroup');
+
+            const headingElement = createElement('div', 'valueSummaryHeading');
+            headingElement.appendChild(createElement('span', 'value', controllingValue));
+            headingElement.appendChild(createElement('span', 'muted', 'makes available'));
+            groupElement.appendChild(headingElement);
+
+            entriesByControllingValue[controllingValue].forEach(function (summaryEntry) {
+
+                const rowElement = createElement('div', 'valueSummaryRow');
+
+                const fieldLabel = summaryEntry.node.fieldApiName
+                    + (summaryEntry.recordTypeDeveloperName ? ' [' + summaryEntry.recordTypeDeveloperName + ']' : '');
+                rowElement.appendChild(createElement('span', 'fieldName', fieldLabel));
+
+                if (summaryEntry.combination.controllingValueUnavailable) {
+                    // NOT "UNLOCKS NOTHING" -- SEE buildCombinationElement, WHICH DRAWS THE SAME DISTINCTION
+                    rowElement.appendChild(createElement('span', 'muted', 'not available under this record type'));
+                } else if (summaryEntry.combination.allowedValues.length) {
+                    summaryEntry.combination.allowedValues.forEach(function (allowedValue) {
+                        rowElement.appendChild(createElement('span', 'value', allowedValue));
+                    });
+                } else {
+                    rowElement.appendChild(createElement('span', 'muted', 'unlocks nothing'));
+                }
+
+                groupElement.appendChild(rowElement);
+
+            });
+
+            summaryElement.appendChild(groupElement);
+
+        });
+
+        summaryElement.classList.remove('hidden');
+
+    }
+
     function applyNodeFilter(sectionRecord) {
 
         if (!sectionRecord.built) { return; }
@@ -3709,10 +4077,39 @@ export class PicklistDependencyExplorerService {
         const isObjectNameMatch = !filterText
             || sectionRecord.objectViewModel.objectApiName.toLowerCase().indexOf(filterText) !== -1;
 
+        let matchedCombinationCount = 0;
+        let builtCombinationCount = 0;
+
         sectionRecord.nodeRecords.forEach(function (nodeRecord) {
+
             nodeRecord.element.classList.toggle('hidden', !nodeMatchesFilter(nodeRecord.node, isObjectNameMatch));
-            applyRecordTypeGroupFilter(nodeRecord);
+
+            /*
+                Naming the CONTAINER outranks filtering inside it: an object or field the reader
+                named shows every row it has, because they asked for the node rather than for one
+                value in it. Only a value query narrows a node down to rows.
+            */
+            const isNodeNameMatch = isObjectNameMatch
+                || !filterText
+                || nodeRecord.nodeNameSearchText.indexOf(filterText) !== -1;
+
+            builtCombinationCount += nodeRecord.combinationRecords.length;
+            matchedCombinationCount += applyCombinationRecordFilter(nodeRecord.combinationRecords, isNodeNameMatch);
+
+            let anyScopeRowMatches = false;
+
+            nodeRecord.scopeFilterAppliers.forEach(function (applyScopeFilter) {
+                if (applyScopeFilter(isNodeNameMatch)) { anyScopeRowMatches = true; }
+            });
+
+            applyRecordTypeGroupFilter(nodeRecord, anyScopeRowMatches);
+
         });
+
+        sectionRecord.matchedCombinationCount = matchedCombinationCount;
+        sectionRecord.builtCombinationCount = builtCombinationCount;
+
+        renderControllingValueSummary(sectionRecord, isObjectNameMatch);
 
     }
 
@@ -3730,15 +4127,21 @@ export class PicklistDependencyExplorerService {
         This still only toggles visibility. No status is recomputed, and none is inferred from a group
         being open or shut.
     */
-    function applyRecordTypeGroupFilter(nodeRecord) {
+    function applyRecordTypeGroupFilter(nodeRecord, anyScopeRowMatches) {
 
         if (!nodeRecord.applyRecordTypeGroupFilterMatch) { return; }
 
         // ONE indexOf AGAINST A HAYSTACK LOWERCASED AT BUILD TIME -- SEE buildNodeElement
-        const isRecordTypeMatch = !!filterText
+        const isRecordTypeNameMatch = !!filterText
             && nodeRecord.recordTypeSearchText.indexOf(filterText) !== -1;
 
-        nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeMatch);
+        /*
+            A ROW inside a scope opens the group too, on the same terms a record type NAME does.
+            Without it a value query filters the panel down to the field holding the answer and
+            then leaves the answer itself behind two collapsed disclosures -- the same gap the name
+            match was added to close, one level further in.
+        */
+        nodeRecord.applyRecordTypeGroupFilterMatch(isRecordTypeNameMatch || !!anyScopeRowMatches);
 
     }
 
@@ -3796,7 +4199,7 @@ export class PicklistDependencyExplorerService {
 
             const isVisible = deepLinkRecord
                 ? sectionRecord === deepLinkRecord
-                : objectMatchesFilter(sectionRecord.objectViewModel);
+                : objectMatchesFilter(sectionRecord);
 
             sectionRecord.sectionElement.classList.toggle('hidden', !isVisible);
 
@@ -3817,8 +4220,77 @@ export class PicklistDependencyExplorerService {
             expandObject(visibleSectionRecords[0]);
         }
 
-        matchCountElement.textContent = visibleSectionRecords.length + ' of ' + objectSectionRecords.length
-            + ' object(s) shown' + (deepLinkRecord ? ' — showing the object that declares the pasted reference' : '');
+        matchCountElement.textContent = buildMatchCountText(visibleSectionRecords, !!deepLinkRecord);
+
+    }
+
+    /*
+        Whether the panel is searching everything it was given.
+
+        Where the ceiling dropped rows, or a field declared more values than maxDeclaredValuesPerNode
+        allows, a value the reader types may be absent from what the panel holds rather than from
+        their org -- and "0 of 12 objects shown" reads as the second. Saying so is the same
+        obligation the rows already carry for the forbidden complement: a shorter answer is fine, a
+        false one is not.
+    */
+    function isModelTruncated() {
+
+        if (explorerModel.truncationNotices.length) { return true; }
+
+        return objectSectionRecords.some(function (sectionRecord) {
+            return sectionRecord.objectViewModel.rootNodes.some(function nodeIsTruncated(node) {
+                return node.declaredValuesTruncated
+                    || node.recordTypeScopes.some(function (recordTypeScope) {
+                        return recordTypeScope.declaredValuesTruncated;
+                    })
+                    || node.downstreamNodes.some(nodeIsTruncated);
+            });
+        });
+
+    }
+
+    function buildMatchCountText(visibleSectionRecords, isDeepLink) {
+
+        const objectCountText = visibleSectionRecords.length + ' of ' + objectSectionRecords.length + ' object(s) shown';
+
+        if (isDeepLink) {
+            return objectCountText + ' — showing the object that declares the pasted reference';
+        }
+
+        if (!filterText) { return objectCountText; }
+
+        /*
+            Counted over EXPANDED objects only, and said so. Rows are built on expand, so a
+            collapsed object has no row count to report -- a total that silently skipped them would
+            shrink as the reader collapsed things.
+        */
+        const builtSectionRecords = visibleSectionRecords.filter(function (sectionRecord) {
+            return sectionRecord.built && sectionRecord.builtCombinationCount;
+        });
+
+        let matchCountText = objectCountText;
+
+        if (builtSectionRecords.length) {
+
+            const matchedCombinationCount = builtSectionRecords.reduce(function (total, sectionRecord) {
+                return total + sectionRecord.matchedCombinationCount;
+            }, 0);
+
+            const builtCombinationCount = builtSectionRecords.reduce(function (total, sectionRecord) {
+                return total + sectionRecord.builtCombinationCount;
+            }, 0);
+
+            matchCountText += ', ' + matchedCombinationCount + ' of ' + builtCombinationCount
+                + ' combination(s) in the expanded object(s)';
+
+        }
+
+        if (!visibleSectionRecords.length && isModelTruncated()) {
+            matchCountText += ' — this panel is not showing every combination or declared value in your metadata, '
+                + 'so a value it does not match may still exist in the rows it dropped';
+        }
+
+        return matchCountText;
 
     }
 
