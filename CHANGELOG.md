@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.17.0] - The Picklist Dependency Explorer is a picture of the structure, and reads no check results
+## [3.17.0] - The Picklist Dependency Explorer is a picture of the structure; the run overlay is disconnected, not deleted
 
 Closes [#123](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/123).
 
@@ -8,69 +8,67 @@ The Explorer did two jobs. It drew the dependency structure -- which controlling
 
 Those two jobs answer different questions, and fusing them made the first one wait on the second. A picklist dependency is a fact about your metadata. It is fully described by `manifest.json`, which the generate command already writes. Whether your **org** still agrees with it is a different question, and `Run Picklist Dependency Check` already answers that one in its own output channel and its own report.
 
-So the panel now does the first job only.
+So the panel now does the first job only. **The overlay code is retained in full and simply has no caller** -- this is a disconnection, not a deletion.
 
-### What is gone from the panel
+### What the panel no longer does
 
-Results loading, failure attribution, triage prose, pass/fail/not-checked badges, the **Status** filter, the last-run banner, and the two actions that opened Apex. `openPicklistDependencyExplorer` no longer resolves the picklist dependency results folder at all -- a test asserts on that read rather than on the absence of an overlay, because it is the first step of the whole coupling and nothing downstream can reach a run without it.
+`openPicklistDependencyExplorer` does not resolve the picklist dependency results folder at all, and the panel renders no badge, no banner, no triage, no status filter, and neither of the two actions that opened Apex. A test asserts on the *configuration read* rather than on the absence of an overlay, because that read is the first step of the whole coupling and nothing downstream can reach a run without it.
 
-Seventeen methods and six interfaces went with them, along with the `loadingResults` load phase. An open now reports `readingManifest` then `buildingView`.
+The `loadingResults` load phase is gone with it: an open now reports `readingManifest` then `buildingView`.
 
-### What deliberately stayed
+### What is retained, and still tested
 
-**Both Apex commands are untouched.** `Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The generator is still what produces the model the panel renders; it simply stopped being surfaced *in* the panel.
+Every method the overlay is built from is still on `PicklistDependencyExplorerService`, still exported, and still held to the behaviour it always had: `loadLatestResults` and the run-folder walk beneath it, `parseFailureLines` and `extractFailureMessageForControllingValue`, `applyFailuresToNodes`, `buildUnattributedFailureMessage`, the ten-kind triage map and its three accessors, `resolveRunReportFilePath`, `collectOpenableSpecTargets`, `collectOpenableRunReportTargets`, `buildOpenTargetKey`, and both Apex/report line finders. Their tests and their `Mock*Results*` fixtures come with them.
 
-**The panel still names the generated Apex.** `SDTPLDAccountSpecs.specStatus__c()` on a row, the test method on an object heading, and the provenance banner naming `SDTPicklistDependencyTests.cls` are all still there. That naming *is* the manifest's promise -- a row on screen corresponds to a spec method that exists -- and a panel that stopped saying which one could no longer make it.
+The orchestration that used to live *inside* `buildExplorerViewModel` -- look each object's generated test method up in the run, parse its failure lines, attribute them down the graph, decide whether anything landed nowhere, then set the statuses -- is now **`applyRunToViewModel`**, a method of its own. That is what makes "disconnected rather than deleted" concrete: the capability is whole and callable in one step, and re-connecting it is a wiring change rather than an archaeology exercise.
 
-**The freshness check is untouched.** Its button, its five states (`notChecked`, `pendingCheck`, `checkFailed`, stale, fresh) and its refusal paths are unchanged. Freshness is a question about your *metadata*, not about a run.
+```ts
+// what an Explorer open does
+const viewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(...);
 
-**The render guard is untouched.** `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener, and the `render` vs `runtime` distinction all behave exactly as they did in 3.15.0.
+// what nothing currently does, but still works
+PicklistDependencyExplorerService.applyRunToViewModel(viewModel, resultsLoad);
+```
 
-### The truncation rule had to be replaced, not just deleted
+### The overlay fields are OPTIONAL, which is the load-bearing detail
 
-`applyModelLimits` kept a combination, scope or object the check had reported a failure for ahead of a passing one. With no check to read there is no such property left, and this is the part of the change that needed a decision rather than a deletion.
+`status`, `failures`, `failureCount`, `fieldLevelFailures`, `unattributedFailureMessages`, `runSummary`, `runLoadState`, `runLoadMessage` and `failureTriageByKind` are back on the view model interfaces as **optional**. `buildExplorerViewModel` never sets them; `applyRunToViewModel` assigns them.
+
+That keeps three things true at once. A structural model carries no verdict, so the posted payload does not grow by one status and one empty array per rendered row. The panel cannot read a verdict that is not there. And **absent** and **`'unknown'`** stay different statements: absent means "this model is not about a run", `'unknown'` means "a run was overlaid and did not cover this row". Making them required with an `'unknown'` default would collapse the two and leave the three-state rendering one line away from the panel.
+
+`generatedClassFilePath` is retained for the same reason -- `collectOpenableSpecTargets` reads it -- and still passes through `resolveOpenableManifestFilePath` on the way in. The guard is what makes keeping it safe; the current absence of a caller is not, because a future button would silently remove that.
+
+### Both Apex commands are untouched
+
+`Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The panel still **names** what was generated for each row -- `SDTPLDAccountSpecs.specStatus__c()` on a field, the test method on an object heading, the provenance banner naming `SDTPicklistDependencyTests.cls`. That naming is the manifest's promise that a row on screen corresponds to a spec method that exists.
+
+The freshness check is untouched: its button, its five states (`notChecked`, `pendingCheck`, `checkFailed`, stale, fresh) and its refusal paths all behave exactly as before. Freshness is a question about your *metadata*, not about a run. So is the render guard -- `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener and the `render` vs `runtime` distinction are as they were in 3.15.0.
+
+### The truncation rule had to be replaced, not just unwired
+
+`applyModelLimits` kept a combination, scope or object the check had reported a failure for ahead of a passing one. A structural model has no statuses to prefer by, so that rule had nothing left to read.
 
 What survives a cap is now **manifest order** -- the first that fit, on every axis, including the total budget, which is spent in document order. The manifest is emitted deterministically, so the same org truncates to the same rows on every open, and a reader who cannot find a combination can tell from the notice that it was *cut* rather than wondering whether it *moved*. Inventing any other order (longest, most combinations, alphabetical) would have sorted the panel by something the generated Apex does not.
 
-Five tests pin it, including one that runs the ceiling twice over the same model and asserts the same rows come back. An ordering nothing asserts is one a later refactor turns into "whatever the iteration produced".
+Eight tests pin it, including one that runs the ceiling twice over the same model and asserts the same rows come back. An ordering nothing asserts is one a later refactor turns into "whatever the iteration produced".
 
 One retention rule survived, and it is not about a run: an object carrying a **skipped field** is still kept past the cap. A skipped field is the only thing the panel shows that no generated spec covers, and dropping the object holding it would leave a dependency that was never specced indistinguishable from one that does not exist.
-
-`truncatedFailedCombinationCount` and its notice -- the one that pointed at `report.md` as the complete record -- are gone, since there is no failure for the budget to drop.
-
-### Two allow-lists went with the buttons
-
-Every panel action is gated by an allow-list built from the rendered model. There were four; there are two. The two keyed on a file **and** an Apex method together -- the generated spec class and the run report -- went with the actions that addressed them.
-
-`generatedClassFilePath` is **deleted from the model**, not left resolved-but-idle. It arrives from a json file on disk that a hand edit controls, and a path in the payload whose only consumer has been removed is one future button away from being opened. `resolveOpenableManifestFilePath` still guards `classesDirectoryPath`, and any manifest path that becomes openable again has to go through it first.
-
-A test asserts the panel posts neither `openSpecMethod` nor `openRunReport`, and another asserts the host answers both with nothing.
 
 ### Two truncation notices that were not true
 
 Review of this change caught both, and both are about the ceiling describing itself accurately rather than about what it drops.
 
-The node cap is applied to **root chains** — a chain is dropped whole, because half a chain drawn as a graph misstates what controls what — so a surviving chain brings every field beneath it. The notice nonetheless read "no object shows more than N at once". At a cap of 2, three chains of five fields renders **10** fields. The dropped count was right and the sentence was false; it now describes the cap in chains and says a rendered chain shows every field beneath it.
+The node cap is applied to **root chains** -- a chain is dropped whole, because half a chain drawn as a graph misstates what controls what -- so a surviving chain brings every field beneath it. The notice nonetheless read "no object shows more than N at once". At a cap of 2, three chains of five fields renders **10** fields. The dropped count was right and the sentence was false; it now describes the cap in chains and says a rendered chain shows every field beneath it.
 
-`applyTotalCombinationBudget` sliced a holder's combinations without incrementing that holder's own `truncatedCombinationCount`, and the panel renders those per-field and per-scope counts beneath their rows. A field the budget emptied therefore rendered as a field that declares **no combinations at all**, with no local notice — "rendered as something it was not", one level below where the aggregate notice was telling the truth. Each holder is now told what it lost, and a holder wholly inside the budget is left alone rather than sliced into an identical copy.
+`applyTotalCombinationBudget` sliced a holder's combinations without incrementing that holder's own `truncatedCombinationCount`, and the panel renders those per-field and per-scope counts beneath their rows. A field the budget emptied therefore rendered as a field that declares **no combinations at all**, with no local notice -- "rendered as something it was not", one level below where the aggregate notice was telling the truth. Each holder is now told what it lost, and a holder wholly inside the budget is left alone rather than sliced into an identical copy.
 
-Both were reachable on `main` too; this change rewrote the code and the wording around them, so they are fixed here rather than deferred. Three regression tests pin them.
+Both were reachable on `main` too; this change rewrote the code and the wording around them, so they are fixed here rather than deferred. Three regression tests pin them, each asserting against the exact previous string or count.
 
-### Everything a row no longer claims is removed rather than defaulted
-
-`status`, `failures`, `failureCount`, `fieldLevelFailures`, `unattributedFailureMessages`, `runSummary`, `runLoadState`, `runLoadMessage` and `failureTriageByKind` are off the view model interfaces. The tests assert on the absence of the **keys** rather than on their values, deliberately: a `status` of `'unknown'` left in place would satisfy a value assertion while leaving the whole three-state rendering one line away from being back on screen.
+### Smaller things
 
 Every combination row now starts collapsed. It used to open for a row a check had reported a failure on, and singling out a subset on any other basis would put a claim about the rows into a disclosure state.
 
 The record type scope note changed for the same reason. It used to read "not asserted by the check: Apex describe returns picklist values without record type filtering" -- a statement about what verifies the row. It now says what the row **is**: the record type narrows the field-level dependency above it.
-
-### Orphans the removal created
-
-`PicklistDependencyExplorerService` no longer does file I/O of any kind, so its `fs` import is gone -- the import is one edit away from letting synchronous I/O back into a file whose whole thesis is that it needs none.
-
-`VSCodeWorkspaceService.openFileInEditor` took an optional one-based line number, which existed for the two Apex actions and got its line from the panel's line finders. Both actions and both finders are gone, every caller passed one argument, and the reveal branch was unreachable; the parameter and the branch are removed. Its tests now pin that opening a file moves the reader's cursor nowhere.
-
-The four `Mock*Results*` fixture directories under the explorer's `tests/mocks/` held `results.json` and `report.md` samples for the deleted parsers, and are deleted with them. `.vscodeignore` already excluded them from the package, so this is hygiene rather than a shipping change.
 
 ## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 

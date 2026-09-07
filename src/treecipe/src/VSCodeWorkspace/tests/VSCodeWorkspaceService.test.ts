@@ -70,13 +70,10 @@ function removeTemporaryDirectoryQuietly(temporaryDirectoryPath: string) {
 describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     /*
-        Opens a file at the top, and moves the cursor nowhere.
-
-        It used to take an optional line number, for the Explorer's "open the generated .cls at the
-        spec method" and "open report.md at this object's entry" actions. Both are gone, so the
-        parameter had no caller and its reveal branch was unreachable. What is worth pinning now is
-        that opening a file does NOT move the reader's cursor -- a caller wanting line targeting has
-        to add it back deliberately, together with something that knows which line it wants.
+        The explorer panel links into a generated class and a run report at a specific method, so the
+        editor has to land on the line rather than at the top of the file. A line of 0 is what the
+        panel's line finders return for "this file does not declare it" -- opening at the top is then
+        the right answer, and moving the cursor to a line that merely happens to be first is not.
     */
     describe('openFileInEditor', () => {
 
@@ -91,22 +88,28 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
-        test('given a file path, shows that document', async () => {
+        test('given a one based line number, selects and reveals that line', async () => {
 
-            await VSCodeWorkspaceService.openFileInEditor('/workspace/classes/SDTSpecs.cls');
+            await VSCodeWorkspaceService.openFileInEditor('/workspace/classes/SDTSpecs.cls', 7);
 
-            expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
-            expect(vscode.window.showTextDocument).toHaveBeenCalled();
+            expect(vscode.Position).toHaveBeenCalledWith(6, 0);
+            expect(revealedTextEditor.revealRange).toHaveBeenCalled();
 
         });
 
-        test('opens at the top, selecting and revealing nothing', async () => {
+        test('given no line number, opens the file and moves nothing', async () => {
 
             await VSCodeWorkspaceService.openFileInEditor('/workspace/classes/SDTSpecs.cls');
 
-            expect(vscode.Position).not.toHaveBeenCalled();
             expect(revealedTextEditor.revealRange).not.toHaveBeenCalled();
-            expect(revealedTextEditor.selection).toBeUndefined();
+
+        });
+
+        test('given a line number of 0, opens at the top rather than at the first line', async () => {
+
+            await VSCodeWorkspaceService.openFileInEditor('/workspace/classes/SDTSpecs.cls', 0);
+
+            expect(revealedTextEditor.revealRange).not.toHaveBeenCalled();
 
         });
 

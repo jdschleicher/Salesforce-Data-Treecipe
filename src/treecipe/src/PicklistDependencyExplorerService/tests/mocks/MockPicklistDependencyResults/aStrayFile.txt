@@ -1,0 +1,2 @@
+Not a run folder -- a plain file sitting beside them. Present so the results scan is exercised
+against a directory entry that is not a directory at all, which it must skip rather than stat as one.

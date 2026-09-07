@@ -1,0 +1,11 @@
+{
+  "targetOrg": "devHub",
+  "ranAt": "2026-08-16T14-22-08",
+  "passed": true,
+  "failureCount": 0,
+  "methodsRun": 2,
+  "methodOutcomes": [
+    { "methodName": "Dependency_Example_c_picklistDependenciesMatchSourceMetadata", "passed": true },
+    { "methodName": "specRegistryIsNotEmpty", "passed": true }
+  ]
+}

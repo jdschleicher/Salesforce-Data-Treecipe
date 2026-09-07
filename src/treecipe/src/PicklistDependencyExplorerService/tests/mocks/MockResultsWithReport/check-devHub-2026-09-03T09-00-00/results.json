@@ -1,0 +1,14 @@
+{
+    "targetOrg": "devHub",
+    "ranAt": "2026-09-03T09:00:00.000Z",
+    "passed": false,
+    "failureCount": 1,
+    "methodsRun": 1,
+    "methodOutcomes": [
+        {
+            "methodName": "chainExamplePicklistDependenciesStillHold",
+            "passed": false,
+            "message": "MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]"
+        }
+    ]
+}
