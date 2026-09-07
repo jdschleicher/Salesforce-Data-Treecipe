@@ -572,6 +572,27 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         });
 
+        /*
+            Only <type> decides expansion, so a Text field merely NAMED like a geolocation resolves
+            through the ordinary text handler and stays one faker.lorem.text line.
+        */
+        test('given a Text field merely named Location__c, returns the single faker.lorem.text recipe value', () => {
+
+            const textFieldNamedLikeGeolocation: XMLFieldDetail = {
+                fieldType: 'Text',
+                apiName: 'Location__c',
+                fieldLabel: 'Location',
+                xmlMarkup: XMLMarkupMockService.getTextFieldNamedLikeGeolocationXMLMarkup()
+            };
+
+            const actualRecipeValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(textFieldNamedLikeGeolocation, {});
+
+            expect(actualRecipeValue).toContain('faker.lorem.text');
+            expect(actualRecipeValue).not.toContain('faker.location.latitude');
+            expect(actualRecipeValue).not.toContain('faker.location.longitude');
+
+        });
+
     });
 
 });
