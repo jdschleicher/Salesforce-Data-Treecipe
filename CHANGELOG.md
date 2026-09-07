@@ -24,15 +24,21 @@ The haystack grows with the number of **rendered** combinations, an axis `maxRen
 
 | Scenario | Objects | Combinations rendered | Before | After |
 |---|---|---|---|---|
-| Healthy 100 × 3 × 50 (inside every cap) | 100 | 15,000 | 3.58 MB | 4.18 MB (+0.60 MB) |
-| Healthy 400 × 3 × 400 (over every cap) | 250 | 20,000 | 7.72 MB | **8.54 MB (+0.82 MB)** |
-| Healthy 100 × 3 × 300 | 100 | 20,000 | 5.59 MB | 6.41 MB (+0.82 MB) |
+| Healthy 100 × 3 × 50 (inside every cap) | 100 | 15,000 | 3.58 MB | 4.21 MB (+0.63 MB) |
+| Healthy 400 × 3 × 400 (over every cap) | 250 | 20,000 | 7.72 MB | **8.58 MB (+0.86 MB)** |
+| Healthy 100 × 3 × 300 | 100 | 20,000 | 5.59 MB | 6.45 MB (+0.86 MB) |
 
-At the ceiling that is +10.6%, and it is bounded: the two 20,000-row shapes add the same 0.82 MB regardless of how many objects or fields carry them, because each rendered controlling value appears once in its node's haystack and once in its object's. The ceiling itself is unchanged.
+At the ceiling that is +11.1%, and it is bounded: the two 20,000-row shapes add the same 0.86 MB regardless of how many objects or fields carry them. Each rendered controlling value appears TWICE -- once in its node's haystack and once in its object's, which is what keeps the object-level match a single `indexOf` rather than a walk of the nodes on every keystroke -- so the search-text term is 2x what the node count suggests, and a future re-measure of the ceiling has to count both copies. The ceiling itself is unchanged.
+
+### Two things review caught
+
+**The haystack is joined on a newline, not a space.** Api names are `[A-Za-z0-9_]`, but a picklist value can carry spaces, and a space-joined haystack would let `america canada` match the tail of `North America` and the head of `Canada` -- an object with no row headed by that phrase, which is exactly the match with no visible reason this change exists to rule out. An `<input type="search">` can never contain a newline, so no query can match across the join; the panel already joins its record type haystack the same way for the same reason. A test pins that the phrase does not match while each value still does.
+
+**A skip-only object gets the same derivation as every other object.** It used to build its haystack inline, without the record type the skip names, so that record type became findable only once the ceiling had rebuilt the text. It now goes through `buildObjectSearchText` with no root nodes, and a test asserts the first render and the rebuilt one agree.
 
 ### Tests
 
-- `search text`: a node matches every controlling value it renders; a value only a record type scope renders is matched; dependent values are not folded in and a leaf value matches nothing; a value with spaces and mixed case is lowercased whole
+- `search text`: a node matches every controlling value it renders; a value only a record type scope renders is matched; dependent values are not folded in and a leaf value matches nothing; a value with spaces and mixed case is lowercased whole; two values that together spell a phrase do not match the phrase; a skip-only object matches the record type its skip names from the first build, and the ceiling leaves it unchanged
 - `applyModelLimits`: a value dropped by the per-field cap, the total budget or the scope cap is no longer findable; a model inside every cap keeps the build's text
 - `the panel layout, executed`: a controlling value typed into the real find box, through the real filter, shows the object whose rows carry it and hides the other, with the match count reading `1 of 2`; a leaf value reads `0 of 2`; the label and placeholder name controlling values
 

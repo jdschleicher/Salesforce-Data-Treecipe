@@ -2370,6 +2370,75 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
+        /*
+            Review of #125: api names are [A-Za-z0-9_], but a picklist value can carry spaces, so a
+            haystack joined on a space would let a phrase match the tail of one value and the head
+            of the next -- an object with no row headed by that phrase. The join is a newline, which
+            an <input type="search"> can never produce, so a query can only ever match one entry.
+        */
+        it('given two values that together spell a phrase, does NOT match the phrase across the join', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Region_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Region__c',
+                expectations: [
+                    { controllingValue: 'North America', dependentValues: ['Ohio'], forbiddenValues: [] },
+                    { controllingValue: 'Canada', dependentValues: ['Ontario'], forbiddenValues: [] }
+                ]
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                specDetails,
+                []
+            );
+
+            const node = actualViewModel.objects[0].rootNodes[0];
+
+            expect(node.searchText).toContain('north america');
+            expect(node.searchText).toContain('canada');
+            expect(node.searchText).not.toContain('america canada');
+            expect(actualViewModel.objects[0].searchText).not.toContain('america canada');
+            expect(node.searchText.split('\n')).toContain('north america');
+
+        });
+
+        /*
+            A skip-only object used to derive its haystack inline, without the record type the skip
+            names, so the record type became findable only once the ceiling had rebuilt the text.
+            One derivation for every object means the first render and the rebuilt one agree.
+        */
+        it('given an object whose only field was skipped under a record type, matches on that record type from the first build, and the ceiling leaves it unchanged', () => {
+
+            const skippedField = {
+                objectApiName: 'Skipped_Only__c',
+                fieldApiName: 'Broken__c',
+                recordTypeDeveloperName: 'Partner',
+                warning: 'no valueSettings markup',
+                reason: 'noValueSettings' as const
+            };
+
+            const builtViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                [],
+                [skippedField.warning],
+                [],
+                { ...PicklistDependencyExplorerService.buildMetadataPreviewContext(), skippedFields: [skippedField] }
+            );
+
+            const builtSearchText = builtViewModel.objects[0].searchText;
+
+            expect(builtSearchText).toContain('skipped_only__c');
+            expect(builtSearchText).toContain('broken__c');
+            expect(builtSearchText).toContain('partner');
+
+            const cappedViewModel = PicklistDependencyExplorerService.applyModelLimits(builtViewModel, buildLimits());
+
+            expect(cappedViewModel.objects[0].searchText).toBe(builtSearchText);
+
+        });
+
     });
 
     /*
