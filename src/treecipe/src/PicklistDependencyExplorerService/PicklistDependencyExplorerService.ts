@@ -1644,11 +1644,16 @@ export class PicklistDependencyExplorerService {
         downstream: a path the extension host cannot be asked to open is one it cannot be tricked
         into opening.
 
-        generatedClassFilePath used to come through here and no longer exists on the model at all.
-        A path in the payload whose only consumer has been removed is not merely unused -- it is an
-        unguarded string one future button away from being opened, so it was deleted rather than
-        left resolved-but-idle. Any manifest path that becomes openable again must be added back
-        HERE first.
+        Two manifest paths come through here: classesDirectoryPath and generatedClassFilePath.
+
+        The second is the one worth spelling out, because NOTHING CURRENTLY OPENS IT -- its only
+        reader is collectOpenableSpecTargets, which the Explorer no longer calls. It is guarded
+        anyway, and that is the point: what makes retaining a manifest-sourced path safe is the
+        containment it passes on the way IN, never the current absence of a caller. A future button
+        would remove that absence silently and inherit an already-contained path; a path admitted
+        unguarded "because nothing opens it" would hand that button an arbitrary string instead.
+
+        Any manifest path that becomes openable must be added HERE first.
     */
     static resolveOpenableManifestFilePath(manifestFilePath: string, workspaceRoot?: string): string {
 
