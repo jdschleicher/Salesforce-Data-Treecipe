@@ -1,5 +1,108 @@
 # Change Log
 
+## [3.17.0] - The Picklist Dependency Explorer is a picture of the structure; the run overlay is disconnected, not deleted
+
+Closes [#123](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/123).
+
+The Explorer did two jobs. It drew the dependency structure -- which controlling value unlocks what -- and it reported the last Apex check run over the top of it: pass/fail badges on every row, a "Last check" banner, failure triage prose, a status filter, and buttons that opened the generated `.cls` at a spec method or the run's `report.md` at an object's entry.
+
+Those two jobs answer different questions, and fusing them made the first one wait on the second. A picklist dependency is a fact about your metadata. It is fully described by `manifest.json`, which the generate command already writes. Whether your **org** still agrees with it is a different question, and `Run Picklist Dependency Check` already answers that one in its own output channel and its own report.
+
+So the panel now does the first job only. **The overlay code is retained in full and simply has no caller** -- this is a disconnection, not a deletion.
+
+### What the panel no longer does
+
+`openPicklistDependencyExplorer` does not resolve the picklist dependency results folder at all, and the panel renders no badge, no banner, no triage, no status filter, and neither of the two actions that opened Apex. A test asserts on the *configuration read* rather than on the absence of an overlay, because that read is the first step of the whole coupling and nothing downstream can reach a run without it.
+
+The `loadingResults` load phase is gone with it: an open now reports `readingManifest` then `buildingView`.
+
+### What is retained, and still tested
+
+Every method the overlay is built from is still on `PicklistDependencyExplorerService`, still exported, and still held to the behaviour it always had: `loadLatestResults` and the run-folder walk beneath it, `parseFailureLines` and `extractFailureMessageForControllingValue`, `applyFailuresToNodes`, `buildUnattributedFailureMessage`, the ten-kind triage map and its three accessors, `resolveRunReportFilePath`, `collectOpenableSpecTargets`, `collectOpenableRunReportTargets`, `buildOpenTargetKey`, and both Apex/report line finders. Their tests and their `Mock*Results*` fixtures come with them.
+
+The orchestration that used to live *inside* `buildExplorerViewModel` -- look each object's generated test method up in the run, parse its failure lines, attribute them down the graph, decide whether anything landed nowhere, then set the statuses -- is now **`applyRunToViewModel`**, a method of its own. That is what makes "disconnected rather than deleted" concrete: the capability is whole and callable in one step, and re-connecting it is a wiring change rather than an archaeology exercise.
+
+```ts
+// what an Explorer open does
+const viewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(...);
+
+// what nothing currently does, but still works -- note the order
+PicklistDependencyExplorerService.applyModelLimits(
+    PicklistDependencyExplorerService.applyRunToViewModel(
+        PicklistDependencyExplorerService.buildUncappedExplorerViewModelByManifest(...),
+        resultsLoad
+    )
+);
+```
+
+**The order is part of the contract, and review caught that it had been inverted.** `applyModelLimits` drops rows; a failure naming a row that is already gone matches nothing, lands in the unattributed set, and holds the *whole* object at `'unknown'` -- every surviving row with it. Overlaying and then capping is the order the overlay ran in when it lived inside `buildExplorerViewModel`, so `buildUncappedExplorerViewModel` and `buildUncappedExplorerViewModelByManifest` exist to make that composition available. `buildExplorerViewModel` is unchanged for every existing caller -- it is now the uncapped build with the ceiling applied on the way out. Two tests pin both compositions, including the degraded one, so the wrong order cannot be reintroduced silently.
+
+### The overlay fields are OPTIONAL, which is the load-bearing detail
+
+`status`, `failures`, `failureCount`, `fieldLevelFailures`, `unattributedFailureMessages`, `runSummary`, `runLoadState`, `runLoadMessage` and `failureTriageByKind` are back on the view model interfaces as **optional**. `buildExplorerViewModel` never sets them; `applyRunToViewModel` assigns them.
+
+That keeps three things true at once. A structural model carries no verdict, so the posted payload does not grow by one status and one empty array per rendered row. The panel cannot read a verdict that is not there. And **absent** and **`'unknown'`** stay different statements: absent means "this model is not about a run", `'unknown'` means "a run was overlaid and did not cover this row". Making them required with an `'unknown'` default would collapse the two and leave the three-state rendering one line away from the panel.
+
+`generatedClassFilePath` is retained for the same reason -- `collectOpenableSpecTargets` reads it -- and still passes through `resolveOpenableManifestFilePath` on the way in. The guard is what makes keeping it safe; the current absence of a caller is not, because a future button would silently remove that.
+
+### The panel names no Apex at all
+
+`asserted by SDTPLDAccountSpecs.specAccountState()` on a field, `SDTPLDAccountSpecs.cls — test method …()` on an object, and `— asserted by SDTPicklistDependencyTests.cls` in the provenance banner are all gone from the panel. Which class or spec method was generated is not a fact about a dependency, and the panel is a picture of dependencies.
+
+The names are NOT deleted -- they are on the view model and in `manifest.json`, and the retained overlay still reads them. They are simply not rendered.
+
+They also come out of the find box. `buildNodeSearchText` and `buildObjectSearchText` no longer fold in the generated class, spec method or test method names: a query that matches text the reader cannot see returns a row with no visible reason for matching, so what is searchable is now exactly what is on screen.
+
+The skipped-field wording moved to dependency language with it -- "asserted by nothing" is now "no generated coverage", the badge reads `not covered`, and the contents section is `Not covered`. Same rows, same reasons, no assertion vocabulary.
+
+The provenance banner stays, minus the class name: it distinguishes a manifest-sourced model from a metadata preview, which is a statement about where the ROWS came from.
+
+### Both Apex commands are untouched
+
+`Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The generated names are still recorded per row in `manifest.json` and still carried on the view model -- the panel just does not render them, as above.
+
+The freshness check is untouched: its button, its five states (`notChecked`, `pendingCheck`, `checkFailed`, stale, fresh) and its refusal paths all behave exactly as before. Freshness is a question about your *metadata*, not about a run. So is the render guard -- `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener and the `render` vs `runtime` distinction are as they were in 3.15.0.
+
+### The truncation rule had to be replaced, not just unwired
+
+`applyModelLimits` kept a combination, scope or object the check had reported a failure for ahead of a passing one. A structural model has no statuses to prefer by, so that rule had nothing left to read.
+
+What survives a cap is now **manifest order** -- the first that fit, on every axis, including the total budget, which is spent in document order. The manifest is emitted deterministically, so the same org truncates to the same rows on every open, and a reader who cannot find a combination can tell from the notice that it was *cut* rather than wondering whether it *moved*. Inventing any other order (longest, most combinations, alphabetical) would have sorted the panel by something the generated Apex does not.
+
+Eight tests pin it, including one that runs the ceiling twice over the same model and asserts the same rows come back. An ordering nothing asserts is one a later refactor turns into "whatever the iteration produced".
+
+One retention rule survived, and it is not about a run: an object carrying a **skipped field** is still kept past the cap. A skipped field is the only thing the panel shows that no generated spec covers, and dropping the object holding it would leave a dependency that was never specced indistinguishable from one that does not exist.
+
+### Two truncation notices that were not true
+
+Review of this change caught both, and both are about the ceiling describing itself accurately rather than about what it drops.
+
+The node cap is applied to **root chains** -- a chain is dropped whole, because half a chain drawn as a graph misstates what controls what -- so a surviving chain brings every field beneath it. The notice nonetheless read "no object shows more than N at once". At a cap of 2, three chains of five fields renders **10** fields. The dropped count was right and the sentence was false; it now describes the cap in chains and says a rendered chain shows every field beneath it.
+
+`applyTotalCombinationBudget` sliced a holder's combinations without incrementing that holder's own `truncatedCombinationCount`, and the panel renders those per-field and per-scope counts beneath their rows. A field the budget emptied therefore rendered as a field that declares **no combinations at all**, with no local notice -- "rendered as something it was not", one level below where the aggregate notice was telling the truth. Each holder is now told what it lost, and a holder wholly inside the budget is left alone rather than sliced into an identical copy.
+
+Both were reachable on `main` too; this change rewrote the code and the wording around them, so they are fixed here rather than deferred. Three regression tests pin them, each asserting against the exact previous string or count.
+
+### The top of the panel is the find box
+
+The reader opens this panel to look one field up. Everything else at the top level is a caveat *about* the rows -- where they came from, whether they still match your metadata, what the rendering ceiling dropped, what was skipped -- and every one of them used to sit between the reader and the only control that gets them there.
+
+The toolbar is now the **first** thing under the scanned-path line, ahead of the provenance banner and both notice blocks. It is already `position: sticky`, so first is also where it stays on screen once the reader is down among the object sections. With no objects in the model it is not drawn at all: there is nothing to filter, and `applyFilter` -- the only thing that fills its match count -- never runs.
+
+The skipped-item list moved behind a disclosure and starts **collapsed**. What a reader has to see is the *count* -- that is what tells them the panel is not showing everything -- and the summary carries it either way. The list itself is one line per skipped item and is unbounded in how many the metadata skipped, which made it the longest block above the find box. Collapsed is not dropped: nothing is removed from the model, the section is still registered in the contents as `Not covered`, and every warning is still rendered under its own object, which is where a reader looking at that object meets it.
+
+The generation stamp moved into the header. `generated 2026-09-03T12:00:00Z by Treecipe 3.17.0` now sits on its own small line directly under the panel title, indented, and the provenance banner no longer carries a copy -- it keeps its heading, its freshness message, its `Check again` button and the manifest path. Stated once, and where you meet it.
+
+It is drawn only when there *is* one: a metadata preview was read from your source XML rather than generated, so its `generatedAt` is empty and no stamp appears. And it is revealed **last**, together with the scanned path, for the reason that line is: a header line filled from the model is exactly what made a failed render read as a finished one, so it stays hidden unless the whole body drew.
+
+All of this is asserted by executing the real panel script against the fake DOM harness rather than by matching its source, because all of it is a property of the rendered page: *where* the find box lands among the blocks, whether the list is open when it first draws, what the stamp says. That took three honest fixes to the harness -- its `classList` now answers `contains` from the classes an element actually carries rather than from its own `add` history (a section collapsed via `createElement('div', 'hidden')` was reported visible); its fake elements start with the classes the **shell markup** declares, so a header line the panel never revealed is not reported visible either, with a test pinning the markup they mirror; and it records listeners, so a test can open the disclosure the way a reader does.
+
+### Smaller things
+
+Every combination row now starts collapsed. It used to open for a row a check had reported a failure on, and singling out a subset on any other basis would put a claim about the rows into a disclosure state.
+
+The record type scope note changed for the same reason. It used to read "not asserted by the check: Apex describe returns picklist values without record type filtering" -- a statement about what verifies the row. It now says what the row **is**: the record type narrows the field-level dependency above it.
+
 ## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 
 Closes [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).
