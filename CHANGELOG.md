@@ -1,5 +1,58 @@
 # Change Log
 
+## [3.18.0] - Geolocation compound fields expand into the Latitude and Longitude components an insert can write
+
+Closes [#111](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/111).
+
+A Geolocation field (`<type>Location</type>`) generated a link instead of a value:
+
+```yaml
+Store_Location__c: '### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445'
+```
+
+Like Address, Geolocation is a compound field the Collections API cannot accept. A record is inserted with its two component fields, `<FieldName>__Latitude__s` and `<FieldName>__Longitude__s`, so every Geolocation field in a recipe was hand-work: read the one pager, look up the naming convention, write two lines, delete the first.
+
+Now it expands, the same way an Address does:
+
+```yaml
+Store_Location__Latitude__s: ${{faker.location.latitude({ min: -90, max: 90 })}}
+Store_Location__Longitude__s: ${{faker.location.longitude({ min: -180, max: 180 })}}
+```
+
+and no line is emitted for `Store_Location__c` itself.
+
+### It is the second consumer of #4's path, not a second path
+
+`processFieldsDirectory` already collected compound fields during the walk and expanded them afterwards, returning several `FieldInfo` objects where every other field type returns one. Geolocation joins that collection rather than getting its own: `buildCompoundAddressComponentFieldInfos` is now `buildCompoundComponentFieldInfos`, and it picks the component recipes by compound kind and then applies the identical dedupe.
+
+That dedupe is why sharing it matters rather than being tidy. A component is dropped for two reasons -- the object's OOTB static mappings already name it, or the object has that component as its own field file -- and both produce the same duplicate YAML key. Those reasons do not depend on which compound type produced the component, so they stay in one place.
+
+`buildCompoundAddressComponentApiName` became `buildCompoundComponentApiName` for the same reason: Salesforce derives both compounds' component names by one rule, and the "Address" suffix swap is *right* for Geolocation rather than incidental to it -- the components of a standard compound address ARE its geolocation, so `BillingAddress` yields `BillingLatitude` and `BillingLongitude`, which are the real api names. `ICompoundAddressComponentRecipe` is now `ICompoundComponentRecipe`; the shape never was address-specific.
+
+### Detection is `<type>Location</type>` and nothing else
+
+There is no `customCompoundGeolocationFields` counterpart to the address config knob. That knob exists because a compound address field file can carry no `<type>` tag at all, in which case it parses as `AUTO_GENERATED` and no metadata signal is left to key on. A Geolocation field always declares its type, so there is no typeless case for config to rescue and a knob would only add a way to expand the wrong field.
+
+A `<type>Text</type>` field merely *named* `Location__c` is therefore untouched, and stays one ordinary text recipe line.
+
+### `<displayLocationInDecimal>` is deliberately not read
+
+The tag controls whether the **org displays** a coordinate as degrees/minutes/seconds; the API accepts decimal degrees either way. So it cannot change generated output -- and rather than let that follow silently from the tag going unread, a test generates from a `true` fixture and a `false` fixture and asserts the component lines are identical.
+
+### Bounds are in the expression, not in the faker default
+
+The faker-js values state `{ min: -90, max: 90 }` and `{ min: -180, max: 180 }` explicitly. A generated coordinate is random, so sampling one proves nothing about the range a recipe constrains; putting the bounds in the recipe text makes the valid range something a reader and a test can both check, instead of a property of whichever faker version happens to be installed. Snowfakery's `fake.latitude` / `fake.longitude` take no bounds arguments -- those providers are defined over the valid ranges, which is what makes naming them the way that backend states the same thing.
+
+### The gist link is gone from both backends
+
+`'location'` is removed from `getMapSalesforceFieldToFakerValue()` in `FakerJSRecipeFakerService` and `SnowfakeryRecipeFakerService`. Tests assert the key is absent and that no value in either map carries the link, so no recipe path can still emit it.
+
+`Event.Location` is untouched: it is a plain Text field in the OOTB static map, not a Geolocation compound field, and a test pins its composed street/city/state/zip value byte-identically.
+
+### Interface
+
+`IRecipeFakerService` gains `getGeolocationComponentToRecipeValueMap()`, implemented by both backends alongside the existing `getAddressComponentToRecipeValueMap()`.
+
 ## [3.17.0] - The Picklist Dependency Explorer is a picture of the structure; the run overlay is disconnected, not deleted
 
 Closes [#123](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/123).

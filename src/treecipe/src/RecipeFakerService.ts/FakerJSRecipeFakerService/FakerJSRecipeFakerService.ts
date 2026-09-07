@@ -321,7 +321,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             'lookup': '### TODO -- REFERENCE ID REQUIRED',
             'masterdetail': '### TODO -- REFERENCE ID REQUIRED',
             'formula': '### TODO - Formula fields are calculated, not generated - remove this line',
-            'location': '### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445',
         };
 
         return salesforceFieldToNPMFakerMap;
@@ -343,6 +342,22 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         };
 
         return addressComponentToFakerValue;
+
+    }
+
+    /*
+        Bounds are stated explicitly rather than left to the faker defaults so the recipe itself
+        carries the valid coordinate range a reader (or a test) can check, instead of it being a
+        property of whichever faker version happens to be installed.
+    */
+    getGeolocationComponentToRecipeValueMap(): Record<string, string> {
+
+        const geolocationComponentToFakerValue: Record<string, string> = {
+            'Latitude': `\${{faker.location.latitude({ min: -90, max: 90 })}}`,
+            'Longitude': `\${{faker.location.longitude({ min: -180, max: 180 })}}`
+        };
+
+        return geolocationComponentToFakerValue;
 
     }
 

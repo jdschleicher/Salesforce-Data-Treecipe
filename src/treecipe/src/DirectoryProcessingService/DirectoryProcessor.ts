@@ -85,10 +85,26 @@ export class DirectoryProcessor {
   }
 
   /*
+    <type>Location</type> is the whole signal, with no configured-list counterpart to the one
+    isCompoundAddressField carries: a Geolocation field always declares its type in source metadata,
+    so there is no typeless case for config to rescue.
+  */
+  isCompoundGeolocationField(fieldInfo: FieldInfo): boolean {
+
+    const compoundGeolocationFieldType = 'location';
+    return fieldInfo?.type?.toLowerCase() === compoundGeolocationFieldType;
+
+  }
+
+  /*
     Returns one FieldInfo per writable component and NONE for the compound field itself, which is why
     an empty array is a valid result: on an object whose OOTB mappings already name every component
     (Account's BillingStreet/BillingCity/...) the compound field contributes nothing rather than a
     second set of the same recipe lines.
+
+    Address and Geolocation differ only in which component recipes they expand to -- the two reasons
+    a component is dropped are the same for both, so the dedupe below stays in one place rather than
+    once per compound type.
 
     A component is dropped for either of two reasons, and both produce the same duplicate key in the
     object recipe if missed: the OOTB mappings already emit it, or the object HAS that component as
@@ -96,17 +112,19 @@ export class DirectoryProcessor {
     address components, so its bare "Address" compound field expands to Street/City/... and collides
     with any Street.field-meta.xml retrieved alongside it.
   */
-  buildCompoundAddressComponentFieldInfos(compoundFieldInfo: FieldInfo,
-                                            associatedObjectName: string,
-                                            salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
-                                            alreadyProcessedFieldInfos: FieldInfo[] = []
-                                          ): FieldInfo[] {
+  buildCompoundComponentFieldInfos(compoundFieldInfo: FieldInfo,
+                                    associatedObjectName: string,
+                                    salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
+                                    alreadyProcessedFieldInfos: FieldInfo[] = []
+                                  ): FieldInfo[] {
 
     const ootbFieldApiNamesForObject = salesforceOOTBFakerMappings?.[associatedObjectName] ?? {};
     const alreadyProcessedFieldApiNames = new Set(alreadyProcessedFieldInfos.map(fieldInfo => fieldInfo?.fieldName));
-    const compoundAddressComponentRecipes = this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
+    const compoundComponentRecipes = this.isCompoundGeolocationField(compoundFieldInfo)
+      ? this.recipeService.buildCompoundGeolocationComponentRecipes(compoundFieldInfo.fieldName)
+      : this.recipeService.buildCompoundAddressComponentRecipes(compoundFieldInfo.fieldName);
 
-    return compoundAddressComponentRecipes
+    return compoundComponentRecipes
       .filter((componentRecipe) => !Object.prototype.hasOwnProperty.call(ootbFieldApiNamesForObject, componentRecipe.componentApiName))
       .filter((componentRecipe) => !alreadyProcessedFieldApiNames.has(componentRecipe.componentApiName))
       .map((componentRecipe) => FieldInfo.create(
@@ -258,7 +276,7 @@ export class DirectoryProcessor {
     const vsCodeDirectoryTuples = await vscode.workspace.fs.readDirectory(directoryPathUri);
 
     let fieldInfoDetails: FieldInfo[] = [];
-    let compoundAddressFieldInfos: FieldInfo[] = [];
+    let compoundFieldInfos: FieldInfo[] = [];
     for (const [fileName, directoryItemTypeEnum] of vsCodeDirectoryTuples) {
 
       if ( XmlFileProcessor.isSalesforceFieldMetadataFile(fileName, directoryItemTypeEnum) && !this.isInMappingsOfOotbSalesforceFields(fileName, associatedObjectName, salesforceOOTBFakerMappings) ) {
@@ -273,9 +291,9 @@ export class DirectoryProcessor {
                                                               fileName
                                                             );
 
-        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName) ) {
+        if ( this.isCompoundAddressField(fieldInfo, associatedObjectName) || this.isCompoundGeolocationField(fieldInfo) ) {
 
-          compoundAddressFieldInfos.push(fieldInfo);
+          compoundFieldInfos.push(fieldInfo);
 
         } else {
 
@@ -293,14 +311,14 @@ export class DirectoryProcessor {
       component's own field file is seen before or after the compound field, and a duplicate recipe
       key is invalid either way.
     */
-    compoundAddressFieldInfos.forEach((compoundAddressFieldInfo) => {
+    compoundFieldInfos.forEach((compoundFieldInfo) => {
 
-      const compoundAddressComponentFieldInfos = this.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo,
-                                                                                                associatedObjectName,
-                                                                                                salesforceOOTBFakerMappings,
-                                                                                                fieldInfoDetails
-                                                                                              );
-      fieldInfoDetails.push(...compoundAddressComponentFieldInfos);
+      const compoundComponentFieldInfos = this.buildCompoundComponentFieldInfos(compoundFieldInfo,
+                                                                                associatedObjectName,
+                                                                                salesforceOOTBFakerMappings,
+                                                                                fieldInfoDetails
+                                                                              );
+      fieldInfoDetails.push(...compoundComponentFieldInfos);
 
     });
 

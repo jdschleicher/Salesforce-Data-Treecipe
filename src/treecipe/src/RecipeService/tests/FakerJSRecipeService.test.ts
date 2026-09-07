@@ -532,4 +532,46 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
     });
 
+    describe('buildCompoundGeolocationComponentRecipes', () => {
+
+        test('given a custom compound geolocation field, composes the component api names with the faker-js coordinate expressions', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithFakerJS.buildCompoundGeolocationComponentRecipes('Store_Location__c');
+
+            const componentApiNameToRecipeValue = Object.fromEntries(
+                compoundGeolocationComponentRecipes.map(componentRecipe => [componentRecipe.componentApiName, componentRecipe.recipeValue])
+            );
+
+            expect(componentApiNameToRecipeValue).toEqual({
+                'Store_Location__Latitude__s': '${{faker.location.latitude({ min: -90, max: 90 })}}',
+                'Store_Location__Longitude__s': '${{faker.location.longitude({ min: -180, max: 180 })}}'
+            });
+
+        });
+
+        /*
+            The compound field itself never becomes a recipe line, so the gist link that used to stand
+            in for this expansion has no path left to reach a recipe by.
+        */
+        test('no generated component recipe carries the one pager gist link', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithFakerJS.buildCompoundGeolocationComponentRecipes('Store_Location__c');
+
+            compoundGeolocationComponentRecipes.forEach((componentRecipe) => {
+                expect(componentRecipe.recipeValue).not.toContain('gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445');
+            });
+
+        });
+
+        test('a Location field type no longer resolves through the salesforce field map', () => {
+
+            const notHandledRecipeValue = recipeServiceWithFakerJS.getFakeValueIfExpectedSalesforceFieldType('location');
+
+            expect(notHandledRecipeValue).not.toContain('gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445');
+            expect(notHandledRecipeValue).toContain('FieldType Not Handled');
+
+        });
+
+    });
+
 });
