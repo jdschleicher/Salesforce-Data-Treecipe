@@ -848,6 +848,18 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        "1 combination" and "2 combinations", never "1 combination(s)".
+
+        The panel reports counts in almost every heading and notice it draws, and the parenthesised
+        plural made each of them read as generated output rather than as a sentence about the
+        reader's own org. The panel script carries the same helper: these strings are built on both
+        sides of the postMessage boundary, and one of the two cannot reach the other.
+    */
+    static pluralize(count: number, singularNoun: string): string {
+        return `${count} ${singularNoun}${count === 1 ? '' : 's'}`;
+    }
+
     static buildFieldSourceFilePath(objectsDirectoryPath: string, objectApiName: string, fieldApiName: string): string {
 
         const invalidApiName = [objectApiName, fieldApiName].find(apiName => !PicklistDependencyTestService.isValidSalesforceApiName(apiName));
@@ -1920,7 +1932,8 @@ export class PicklistDependencyExplorerService {
         if ( truncatedObjectCount > 0 ) {
             truncationNotices.push(
                 `Showing ${viewModel.objects.length} of ${declaredObjectCount} objects. `
-                    + `${truncatedObjectCount} object(s) with no reported failure and no skipped field are not rendered, `
+                    + `${this.pluralize(truncatedObjectCount, 'object')} with no reported failure and no skipped field `
+                    + `${truncatedObjectCount === 1 ? 'is' : 'are'} not rendered, `
                     + 'so they cannot be found with the filter above either. '
                     + 'Every object the check reported on, and every object carrying a skipped field, is shown. '
                     + 'Generate against a narrower objects directory to bring the rest onto the panel.'
@@ -1997,14 +2010,14 @@ export class PicklistDependencyExplorerService {
 
         if ( truncatedNodeCount > 0 ) {
             truncationNotices.push(
-                `${truncatedNodeCount} dependent picklist(s) are not rendered: no object shows more than `
+                `${this.pluralize(truncatedNodeCount, 'dependent picklist')} ${truncatedNodeCount === 1 ? 'is' : 'are'} not rendered: no object shows more than `
                     + `${limits.maxNodesPerObject} at once. Every chain the check reported a failure in is shown.`
             );
         }
 
         if ( truncatedCombinationCount > 0 ) {
             truncationNotices.push(
-                `${truncatedCombinationCount} combination(s) are not rendered, against a panel total of `
+                `${this.pluralize(truncatedCombinationCount, 'combination')} ${truncatedCombinationCount === 1 ? 'is' : 'are'} not rendered, against a panel total of `
                     + `${limits.maxRenderedCombinations} and a per-field limit of ${limits.maxCombinationsPerNode}. `
                     + 'Combinations the check reported a failure for are kept ahead of every passing one.'
             );
@@ -2012,7 +2025,7 @@ export class PicklistDependencyExplorerService {
 
         if ( truncatedRecordTypeScopeCount > 0 ) {
             truncationNotices.push(
-                `${truncatedRecordTypeScopeCount} record type scope(s) are not rendered: no field shows more than `
+                `${this.pluralize(truncatedRecordTypeScopeCount, 'record type scope')} ${truncatedRecordTypeScopeCount === 1 ? 'is' : 'are'} not rendered: no field shows more than `
                     + `${limits.maxRecordTypeScopesPerNode} at once. Every scope the check reported a failure for is shown.`
             );
         }
@@ -2025,7 +2038,8 @@ export class PicklistDependencyExplorerService {
         if ( totalBudgetResult.truncatedFailedCombinationCount > 0 ) {
             viewModel.truncatedFailedCombinationCount += totalBudgetResult.truncatedFailedCombinationCount;
             truncationNotices.push(
-                `${totalBudgetResult.truncatedFailedCombinationCount} combination(s) the check reported a FAILURE for are not `
+                `${this.pluralize(totalBudgetResult.truncatedFailedCombinationCount, 'combination')} the check reported a FAILURE for `
+                    + `${totalBudgetResult.truncatedFailedCombinationCount === 1 ? 'is' : 'are'} not `
                     + `rendered either: there are more failures than the panel's total of ${limits.maxRenderedCombinations} rows can hold. `
                     + 'The run report beside results.json lists every one of them -- treat it, not this panel, as the complete record of this run.'
             );
@@ -2430,248 +2444,290 @@ export class PicklistDependencyExplorerService {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Picklist Dependency Explorer</title>
 <style nonce="${nonce}">
+    /*
+        EVERY COLOUR ON THIS PANEL RESOLVES TO A --vscode-* TOKEN, AND NOTHING HERE IS A LITERAL.
+
+        The webview is painted into the user's editor, so a hard-coded colour is not a style choice
+        but a claim that their theme is wrong: it survives a theme switch, and under a high contrast
+        theme it removes the contrast the theme exists to provide. The semantic tokens below are the
+        only indirection -- each one names what a colour MEANS on this panel and resolves to a theme
+        token, so a rule reads as "the failure accent" rather than as a testing icon colour.
+    */
+    :root {
+        --sdt-passed: var(--vscode-testing-iconPassed);
+        --sdt-failed: var(--vscode-testing-iconFailed);
+        --sdt-unknown: var(--vscode-testing-iconQueued);
+        /*
+            Derived from the FOREGROUND rather than from the background, so the surfaces keep their
+            separation whichever way round the theme is: a light theme darkens its own text colour
+            to make a raised panel, a dark theme lightens it, and neither needs a second palette.
+        */
+        --sdt-surface: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+        --sdt-surface-raised: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+        --sdt-hairline: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+        --sdt-radius: 4px;
+        /*
+            The density scale. Every vertical measurement on the panel is a multiple of these two,
+            which is what lets the dense mode below be a handful of overrides rather than a second
+            stylesheet -- see body.dense.
+        */
+        --sdt-row-padding-y: 0.4rem;
+        --sdt-row-padding-x: 0.6rem;
+        --sdt-row-gap: 0.25rem;
+        --sdt-section-gap: 0.85rem;
+        --sdt-value-font-size: 0.88em;
+    }
+
+    /*
+        DENSE MODE COMPRESSES SPACE, NEVER INFORMATION.
+
+        No rule under this selector hides a row, a value, a badge or a status: an org with drift is
+        exactly the org whose reader wants more rows on screen at once, and a density control that
+        quietly dropped some of them would make "dense" a filter the reader did not apply. Only
+        padding, gaps and type size change.
+    */
+    body.dense {
+        --sdt-row-padding-y: 0.15rem;
+        --sdt-row-padding-x: 0.45rem;
+        --sdt-row-gap: 0.1rem;
+        --sdt-section-gap: 0.5rem;
+        --sdt-value-font-size: 0.82em;
+        line-height: 1.35;
+    }
+
     body {
         font-family: var(--vscode-font-family);
         font-size: var(--vscode-font-size);
         color: var(--vscode-foreground);
         background-color: var(--vscode-editor-background);
-        padding: 0 1rem 2rem 1rem;
+        padding: 0 1.25rem 3rem 1.25rem;
+        line-height: 1.5;
     }
-    h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
-    .runBanner {
-        border: 1px solid var(--vscode-panel-border);
-        border-left-width: 4px;
-        padding: 0.6rem 0.8rem;
-        margin: 0.75rem 0 1rem 0;
-    }
-    .runBanner.passed { border-left-color: var(--vscode-testing-iconPassed); }
-    .runBanner.failed { border-left-color: var(--vscode-testing-iconFailed); }
-    .runBanner.unknown { border-left-color: var(--vscode-testing-iconQueued); }
-    .muted { color: var(--vscode-descriptionForeground); }
-    .objectSection { margin-bottom: 1.5rem; }
-    .objectHeading {
+
+    h1 {
         font-size: 1.05rem;
         font-weight: 600;
-        margin-bottom: 0.25rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        cursor: pointer;
+        letter-spacing: 0.01em;
+        margin: 1rem 0 0.15rem 0;
     }
-    .objectHeading:hover { background-color: var(--vscode-list-hoverBackground); }
+
+    .muted { color: var(--vscode-descriptionForeground); }
+    .hidden { display: none; }
+
+    /*
+        The icon sprite is static markup in the shell and every icon is a <use> of it, so an icon
+        costs one element and no request. It is NOT a theme font: the CSP admits no font, no image
+        and no stylesheet of any origin, and granting the webview a resource root to load one would
+        undo the empty localResourceRoots the panel is opened with.
+    */
+    .iconSprite { display: none; }
+    /*
+        Stroked, not filled: every symbol in the sprite is line geometry, and filling it would render
+        the check as a blob and the circles as discs.
+    */
+    .icon {
+        width: 1em;
+        height: 1em;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vertical-align: -0.125em;
+    }
+    .icon.passed { color: var(--sdt-passed); }
+    /* THE OPEN AND CLOSED DISCLOSURE ARE ONE SYMBOL AT TWO ANGLES -- SEE createDisclosureElement */
     .disclosure {
-        font-family: var(--vscode-editor-font-family);
         color: var(--vscode-descriptionForeground);
-        width: 1ch;
+        transform: rotate(0deg);
+        transition: transform 120ms ease;
     }
-    /* THE LEFT RULE AND ELBOW ARE WHAT DRAW A CHAIN AS ONE CONNECTED GRAPH RATHER THAN REPEATED ROWS */
-    .nodeChildren {
-        margin-left: 0.9rem;
-        padding-left: 1rem;
-        border-left: 1px solid var(--vscode-panel-border);
+    .disclosure.expanded { transform: rotate(90deg); }
+    @media (prefers-reduced-motion: reduce) {
+        .disclosure { transition: none; }
     }
-    .node { margin: 0.5rem 0; }
-    .nodeHeading {
-        display: flex;
-        align-items: baseline;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-    .nodeChildren > .node > .nodeHeading::before {
-        content: "\\21b3";
-        color: var(--vscode-descriptionForeground);
-        margin-right: 0.25rem;
-    }
-    .fieldName { font-weight: 600; }
-    .combination {
-        border: 1px solid var(--vscode-panel-border);
+    .icon.failed { color: var(--sdt-failed); }
+    .icon.unknown, .icon.warning { color: var(--sdt-unknown); }
+
+    /* ---------- BANNERS ---------- */
+    .runBanner, .provenanceBanner, .warningList, .truncationNotice, .loadStatus, .emptyState, .renderFailure {
+        border: 1px solid var(--sdt-hairline);
         border-left-width: 3px;
-        padding: 0.4rem 0.6rem;
-        margin: 0.3rem 0 0.3rem 1rem;
-        cursor: pointer;
+        border-radius: var(--sdt-radius);
+        background-color: var(--sdt-surface);
+        padding: 0.55rem 0.75rem;
+        margin: 0 0 0.5rem 0;
     }
-    .combination:hover { background-color: var(--vscode-list-hoverBackground); }
-    .combination.passed { border-left-color: var(--vscode-testing-iconPassed); }
-    .combination.failed { border-left-color: var(--vscode-testing-iconFailed); }
-    .combination.unknown { border-left-color: var(--vscode-testing-iconQueued); }
-    .combination.focused { outline: 2px solid var(--vscode-focusBorder); }
-    .statusBadge {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        border: 1px solid var(--vscode-panel-border);
-        padding: 0 0.35rem;
-    }
-    .statusBadge.passed { color: var(--vscode-testing-iconPassed); }
-    .statusBadge.failed { color: var(--vscode-testing-iconFailed); }
-    .statusBadge.unknown { color: var(--vscode-descriptionForeground); }
-    .valueList { margin: 0.2rem 0; }
-    .valueLabel { color: var(--vscode-descriptionForeground); margin-right: 0.35rem; }
-    .value {
-        display: inline-block;
-        border: 1px solid var(--vscode-panel-border);
-        padding: 0 0.3rem;
-        margin: 0.1rem 0.2rem 0.1rem 0;
-    }
-    .value.forbidden { text-decoration: line-through; color: var(--vscode-descriptionForeground); }
-    /* NESTED INSIDE .recordTypeGroup, WHICH ALREADY CARRIES THE INDENT AND THE RULE */
-    .recordTypeScopes { margin: 0.2rem 0; }
-    .recordTypeScope {
-        border: 1px dashed var(--vscode-panel-border);
-        padding: 0.35rem 0.5rem;
-        margin: 0.3rem 0;
-    }
-    .recordTypeScopeHeading {
+    .runBanner.passed { border-left-color: var(--sdt-passed); }
+    .runBanner.failed { border-left-color: var(--sdt-failed); }
+    .runBanner.unknown,
+    .provenanceBanner.stale,
+    .provenanceBanner.preview,
+    .warningList,
+    .truncationNotice,
+    .loadStatus { border-left-color: var(--sdt-unknown); }
+    .provenanceBanner { border-left-color: var(--sdt-hairline); }
+    .renderFailure { border-left-color: var(--vscode-editorError-foreground, var(--sdt-failed)); }
+    .emptyState { border-style: dashed; border-left-width: 1px; }
+    .truncationNotice { font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+    .renderFailure .muted { font-family: var(--vscode-editor-font-family); margin-top: 0.4rem; }
+
+    .bannerHeading {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        cursor: pointer;
+        gap: 0.4rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
     }
-    .recordTypeName { font-weight: 600; }
-    .combination.unavailable { border-left-style: dashed; }
-    .scopeNote { font-size: 0.85rem; color: var(--vscode-descriptionForeground); margin: 0.2rem 0 0.3rem 0; }
-    .failureDetail {
-        margin-top: 0.35rem;
-        padding: 0.35rem 0.5rem;
-        background-color: var(--vscode-textCodeBlock-background);
-        white-space: pre-wrap;
-        font-family: var(--vscode-editor-font-family);
-        font-size: 0.85em;
-    }
-    /* THE TRIAGE SITS BENEATH THE APEX TEXT, NEVER IN PLACE OF IT -- SEE IPicklistDependencyFailureTriage */
-    .triage {
-        border-left: 3px solid var(--vscode-testing-iconFailed);
-        padding: 0.3rem 0.6rem;
-        margin: 0 0 0.35rem 0;
-    }
-    .triageLine { margin: 0.15rem 0; }
-    .triageLabel { font-weight: 600; margin-right: 0.35rem; }
-    .sourceDetail { margin-top: 0.4rem; }
-    .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
     .sourcePath {
         font-family: var(--vscode-editor-font-family);
-        font-size: 0.85em;
+        font-size: 0.78rem;
         color: var(--vscode-descriptionForeground);
         word-break: break-all;
     }
-    button {
-        color: var(--vscode-button-foreground);
-        background-color: var(--vscode-button-background);
-        border: none;
-        padding: 0.25rem 0.6rem;
-        margin-top: 0.3rem;
-        cursor: pointer;
-        font-family: inherit;
-        font-size: 0.85em;
+    .specOrigin {
+        font-family: var(--vscode-editor-font-family);
+        font-size: 0.78rem;
+        color: var(--vscode-descriptionForeground);
+        margin: 0.1rem 0 0.3rem 0;
     }
-    button:hover { background-color: var(--vscode-button-hoverBackground); }
+    #scannedPath { font-size: 0.82rem; margin-bottom: 0.85rem; }
+
+    /* ---------- STAT STRIP ---------- */
+    /*
+        The counts the panel used to state as a sentence. They are the first thing a reader checks
+        against their own expectation of the org, and a number is easier to check than a clause.
+        The strip reports what the MANIFEST declares; it is never reduced by the rendering ceiling,
+        which is what the truncation notices below it are for.
+    */
+    .statStrip {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin: 0 0 0.75rem 0;
+    }
+    .stat {
+        border: 1px solid var(--sdt-hairline);
+        border-radius: var(--sdt-radius);
+        background-color: var(--sdt-surface);
+        padding: 0.4rem 0.7rem;
+        min-width: 6.5rem;
+    }
+    .statValue { font-size: 1.15rem; font-weight: 600; line-height: 1.2; }
+    .statValue.failed { color: var(--sdt-failed); }
+    .statValue.passed { color: var(--sdt-passed); }
+    .statValue.unknown { color: var(--sdt-unknown); }
+    .statLabel {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--vscode-descriptionForeground);
+    }
+    body.dense .stat { padding: 0.25rem 0.55rem; min-width: 5.5rem; }
+    body.dense .statValue { font-size: 1rem; }
+    /*
+        The chrome compresses with the rows. Dense is asked for when there is more to read than fits,
+        and a banner stack that kept its comfortable padding would spend the space the rows just gave
+        back -- on a panel whose top is the part the reader has already read.
+    */
+    body.dense h1 { margin: 0.5rem 0 0.1rem 0; }
+    body.dense .runBanner,
+    body.dense .provenanceBanner,
+    body.dense .warningList,
+    body.dense .truncationNotice,
+    body.dense .loadStatus { padding: 0.35rem 0.6rem; margin-bottom: 0.35rem; }
+    body.dense .statStrip { margin-bottom: 0.5rem; }
+    body.dense .toolbar { padding: 0.4rem 0.6rem; margin-bottom: 0.5rem; }
+    body.dense .tableOfContents { padding: 0.35rem 0.5rem 0.45rem 0.5rem; margin-bottom: 0.5rem; }
+    body.dense .valueList { margin: 0.1rem 0; }
+    body.dense .value { margin: 0.05rem 0.15rem 0.05rem 0; }
+
+    /* ---------- TOOLBAR ---------- */
     .toolbar {
         display: flex;
         align-items: flex-end;
-        gap: 0.75rem;
+        gap: 0.6rem;
         flex-wrap: wrap;
-        padding: 0.5rem 0 0.75rem 0;
-        border-bottom: 1px solid var(--vscode-panel-border);
-        margin-bottom: 0.75rem;
+        padding: 0.6rem 0.75rem;
+        margin: 0 0 0.75rem 0;
+        border: 1px solid var(--sdt-hairline);
+        border-radius: var(--sdt-radius);
         position: sticky;
         top: 0;
         background-color: var(--vscode-editor-background);
-        z-index: 1;
+        z-index: 2;
     }
     .toolbarField { display: flex; flex-direction: column; gap: 0.15rem; }
-    .toolbarLabel { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-descriptionForeground); }
+    .toolbarLabel {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--vscode-descriptionForeground);
+    }
     .toolbar input, .toolbar select {
         color: var(--vscode-input-foreground);
         background-color: var(--vscode-input-background);
-        border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-        padding: 0.2rem 0.35rem;
+        border: 1px solid var(--vscode-input-border, var(--sdt-hairline));
+        border-radius: var(--sdt-radius);
+        padding: 0.3rem 0.5rem;
         font-family: inherit;
         font-size: inherit;
     }
     .toolbar input { min-width: 22rem; }
-    .matchCount { flex-basis: 100%; color: var(--vscode-descriptionForeground); font-size: 0.85em; }
-    .warningList { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; }
-    .truncationNotice {
-        border-left: 3px solid var(--vscode-testing-iconQueued);
-        padding: 0.3rem 0.75rem;
-        margin: 0.25rem 0;
-        color: var(--vscode-descriptionForeground);
-        font-size: 0.9em;
+    .toolbar input:focus, .toolbar select:focus, .toolbar button:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: -1px;
     }
-    .emptyState { padding: 1rem; border: 1px dashed var(--vscode-panel-border); }
-    .renderFailure {
-        padding: 0.75rem;
-        border-left: 3px solid var(--vscode-editorError-foreground, var(--vscode-testing-iconFailed));
-    }
-    .renderFailure .muted { font-family: var(--vscode-editor-font-family); margin-top: 0.4rem; }
+    .matchCount { flex-basis: 100%; color: var(--vscode-descriptionForeground); font-size: 0.8em; }
+
+    /* ---------- BUTTONS ---------- */
     /*
-        The phase the load is in, above the structure rather than inside it. It is the only thing on
-        screen before the model arrives, and it is removed -- not just emptied -- once the last phase
-        resolves, so a loaded panel carries no residue of how it got there.
+        One primary per group. The row actions were four filled buttons, which gave "Reveal in
+        Explorer" and "Copy reference" the same weight and made a failed row read as a form to be
+        filled in rather than a finding to be read.
     */
-    .loadStatus {
-        padding: 0.6rem 0.75rem;
-        margin-bottom: 0.6rem;
-        border-left: 3px solid var(--vscode-testing-iconQueued);
-        color: var(--vscode-descriptionForeground);
-    }
-    .specOrigin { font-family: var(--vscode-editor-font-family); font-size: 0.8rem; color: var(--vscode-descriptionForeground); margin: 0.1rem 0 0.3rem 0; }
-    .provenanceBanner { padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; border-left: 3px solid var(--vscode-panel-border); }
-    .provenanceBanner.stale { border-left-color: var(--vscode-testing-iconQueued); }
-    .freshnessCheckButton {
-        margin-top: 0.5rem;
-        padding: 0.25rem 0.7rem;
+    button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        color: var(--vscode-foreground);
+        background-color: transparent;
+        border: 1px solid var(--sdt-hairline);
+        border-radius: var(--sdt-radius);
+        padding: 0.25rem 0.6rem;
+        cursor: pointer;
         font-family: inherit;
-        font-size: inherit;
-        cursor: pointer;
-        color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
-        background-color: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
-        border: 1px solid var(--vscode-button-border, transparent);
+        font-size: 0.85em;
     }
-    .freshnessCheckButton:hover:enabled { background-color: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)); }
-    .freshnessCheckButton:disabled { cursor: default; opacity: 0.6; }
-    .provenanceBanner.preview { border-left-color: var(--vscode-testing-iconQueued); }
-    .skippedField { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; margin: 0.35rem 0; }
-    .skippedBadge { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vscode-testing-iconQueued); margin-left: 0.5rem; }
-    /*
-        The forbidden complement is the longest thing on a row and the least often read: a field
-        with a 40 value picklist forbids 36 of them under every controlling value. Collapsed, its
-        summary still states the count, so the row says how much it is holding back.
-    */
-    .valueListSummary { cursor: pointer; display: flex; align-items: baseline; gap: 0.35rem; }
-    .valueListSummary:hover { text-decoration: underline; }
-    .valueListValues { margin-top: 0.1rem; }
-    .valueCount { color: var(--vscode-descriptionForeground); font-size: 0.85em; }
-    .recordTypeGroup {
-        border-left: 2px solid var(--vscode-panel-border);
-        margin: 0.5rem 0 0.2rem 1rem;
-        padding-left: 0.6rem;
+    button:hover { background-color: var(--sdt-surface-raised); }
+    button.primary {
+        color: var(--vscode-button-foreground);
+        background-color: var(--vscode-button-background);
+        border-color: transparent;
     }
-    .recordTypeGroupHeading {
-        display: flex;
-        align-items: baseline;
-        gap: 0.4rem;
-        flex-wrap: wrap;
-        cursor: pointer;
-        padding: 0.15rem 0;
+    button.primary:hover { background-color: var(--vscode-button-hoverBackground); }
+    /* A TOGGLE READS AS PRESSED RATHER THAN AS PRIMARY -- IT CHANGES THE VIEW, IT DOES NOT ACT ON THE ORG */
+    button.toggled {
+        background-color: var(--sdt-surface-raised);
+        border-color: var(--vscode-focusBorder);
     }
-    .recordTypeGroupHeading:hover { background-color: var(--vscode-list-hoverBackground); }
-    .recordTypeGroupLabel {
-        font-weight: 600;
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
+    button:disabled { cursor: default; opacity: 0.6; }
+    button:disabled:hover { background-color: transparent; }
+    .freshnessCheckButton { margin-top: 0.5rem; }
+
+    /* ---------- TABLE OF CONTENTS ---------- */
     .tableOfContents {
-        border: 1px solid var(--vscode-panel-border);
-        padding: 0.4rem 0.6rem 0.5rem 0.6rem;
+        border: 1px solid var(--sdt-hairline);
+        border-radius: var(--sdt-radius);
+        background-color: var(--sdt-surface);
+        padding: 0.5rem 0.6rem 0.6rem 0.6rem;
         margin-bottom: 0.75rem;
     }
     .tableOfContentsHeading {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 0.4rem;
         cursor: pointer;
         font-weight: 600;
@@ -2688,17 +2744,271 @@ export class PicklistDependencyExplorerService {
     }
     .tocEntry {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 0.4rem;
         flex-wrap: wrap;
         cursor: pointer;
-        padding: 0.12rem 0.3rem 0.12rem 0.75rem;
+        border-radius: 3px;
+        padding: 0.18rem 0.4rem 0.18rem 0.6rem;
     }
     .tocEntry:hover { background-color: var(--vscode-list-hoverBackground); }
-    .hidden { display: none; }
+
+    /* ---------- OBJECT SECTIONS ---------- */
+    .objectSection {
+        border: 1px solid var(--sdt-hairline);
+        border-radius: var(--sdt-radius);
+        margin-bottom: var(--sdt-section-gap);
+    }
+    /*
+        Sticky UNDER the toolbar, which is itself sticky at the top. An object's rows can run for
+        several screens, and the heading is the only thing on the panel that says which object's
+        rows these are -- scrolled off, every row below it is unattributed.
+    */
+    .objectHeading {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        cursor: pointer;
+        font-size: 0.98rem;
+        font-weight: 600;
+        padding: 0.5rem 0.7rem;
+        margin: 0;
+        background-color: var(--sdt-surface);
+        border-radius: var(--sdt-radius) var(--sdt-radius) 0 0;
+        position: sticky;
+        top: 3.2rem;
+        z-index: 1;
+    }
+    .objectHeading:hover { background-color: var(--sdt-surface-raised); }
+    .objectSection .specOrigin { padding: 0.3rem 0.7rem 0 0.7rem; margin: 0; }
+    .objectBody { padding: 0.15rem 0.7rem 0.6rem 0.7rem; }
+    body.dense .objectHeading { padding: 0.3rem 0.6rem; font-size: 0.92rem; }
+    body.dense .objectBody { padding: 0.1rem 0.6rem 0.4rem 0.6rem; }
+
+    /* ---------- NODES: THE LEFT RULE AND ELBOW DRAW A CHAIN AS ONE CONNECTED GRAPH ---------- */
+    .nodeChildren {
+        margin-left: 0.75rem;
+        padding-left: 0.85rem;
+        border-left: 1px solid var(--sdt-hairline);
+    }
+    .node { margin: 0.55rem 0; }
+    .nodeHeading {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+    }
+    .nodeChildren > .node > .nodeHeading::before {
+        content: "\\21b3";
+        color: var(--vscode-descriptionForeground);
+        margin-right: 0.25rem;
+    }
+    .fieldName { font-weight: 600; letter-spacing: 0.005em; }
+    body.dense .node { margin: 0.3rem 0; }
+
+    /* ---------- COMBINATION ROWS ---------- */
+    .combination {
+        border: 1px solid var(--sdt-hairline);
+        border-left-width: 3px;
+        border-radius: var(--sdt-radius);
+        background-color: var(--sdt-surface);
+        padding: var(--sdt-row-padding-y) var(--sdt-row-padding-x);
+        margin: var(--sdt-row-gap) 0 var(--sdt-row-gap) 0.75rem;
+        cursor: pointer;
+    }
+    .combination:hover { background-color: var(--sdt-surface-raised); }
+    .combination.passed { border-left-color: var(--sdt-passed); }
+    .combination.failed {
+        border-left-color: var(--sdt-failed);
+        background-color: color-mix(in srgb, var(--sdt-failed) 7%, transparent);
+    }
+    .combination.unknown { border-left-color: var(--sdt-unknown); }
+    .combination.unavailable { border-left-style: dashed; }
+    .combination.focused { outline: 2px solid var(--vscode-focusBorder); }
+    .combinationHeading { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+
+    /* ---------- STATUS ---------- */
+    /*
+        A dot and a word, not a bordered box. The dot carries the status at a glance down a column
+        of rows; the word is what keeps it legible to a reader who cannot separate the three
+        colours, which is why the icon never replaces the label.
+    */
+    .statusBadge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.68rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border-radius: 10px;
+        padding: 0.05rem 0.5rem 0.05rem 0.4rem;
+        background-color: var(--sdt-surface-raised);
+    }
+    .statusBadge.passed { color: var(--sdt-passed); }
+    .statusBadge.failed { color: var(--sdt-failed); }
+    .statusBadge.unknown { color: var(--vscode-descriptionForeground); }
+    .skippedBadge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--sdt-unknown);
+    }
+
+    /* ---------- VALUES ---------- */
+    .valueList { margin: 0.2rem 0; }
+    .valueLabel {
+        color: var(--vscode-descriptionForeground);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-right: 0.35rem;
+    }
+    .value {
+        display: inline-block;
+        border-radius: 3px;
+        background-color: var(--sdt-surface-raised);
+        padding: 0.05rem 0.4rem;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        font-size: var(--sdt-value-font-size);
+    }
+    .value.forbidden {
+        text-decoration: line-through;
+        color: var(--vscode-descriptionForeground);
+        background-color: transparent;
+        border: 1px dashed var(--sdt-hairline);
+    }
+    /*
+        The forbidden complement is the longest thing on a row and the least often read: a field
+        with a 40 value picklist forbids 36 of them under every controlling value. Collapsed, its
+        summary still states the count, so the row says how much it is holding back.
+    */
+    .valueListSummary { cursor: pointer; display: flex; align-items: center; gap: 0.35rem; }
+    .valueListSummary:hover { text-decoration: underline; }
+    .valueListSummary .valueLabel { text-transform: none; letter-spacing: 0; font-size: 0.82rem; margin-right: 0; }
+    .valueListValues { margin-top: 0.1rem; }
+    .valueCount { color: var(--vscode-descriptionForeground); font-size: 0.85em; }
+
+    /* ---------- RECORD TYPE SCOPES ---------- */
+    .recordTypeGroup {
+        border-left: 2px solid var(--sdt-hairline);
+        margin: 0.5rem 0 0.2rem 0.75rem;
+        padding-left: 0.6rem;
+    }
+    .recordTypeGroupHeading {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        cursor: pointer;
+        padding: 0.15rem 0;
+    }
+    .recordTypeGroupHeading:hover { background-color: var(--vscode-list-hoverBackground); }
+    .recordTypeGroupLabel {
+        font-weight: 600;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--vscode-descriptionForeground);
+    }
+    /* NESTED INSIDE .recordTypeGroup, WHICH ALREADY CARRIES THE INDENT AND THE RULE */
+    .recordTypeScopes { margin: 0.2rem 0; }
+    .recordTypeScope {
+        border: 1px dashed var(--sdt-hairline);
+        border-radius: var(--sdt-radius);
+        padding: 0.35rem 0.5rem;
+        margin: 0.3rem 0;
+    }
+    .recordTypeScopeHeading {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        cursor: pointer;
+    }
+    .recordTypeName { font-weight: 600; }
+    .scopeNote { font-size: 0.85rem; color: var(--vscode-descriptionForeground); margin: 0.2rem 0 0.3rem 0; }
+
+    /* ---------- FAILURES ---------- */
+    .failureDetail {
+        margin-top: 0.35rem;
+        padding: 0.45rem 0.6rem;
+        background-color: var(--vscode-textCodeBlock-background);
+        border: 1px solid var(--sdt-hairline);
+        border-radius: var(--sdt-radius);
+        white-space: pre-wrap;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 0.85em;
+    }
+    /* THE TRIAGE SITS BENEATH THE APEX TEXT, NEVER IN PLACE OF IT -- SEE IPicklistDependencyFailureTriage */
+    .triage {
+        border-left: 2px solid var(--sdt-failed);
+        border-radius: 0 var(--sdt-radius) var(--sdt-radius) 0;
+        background-color: var(--sdt-surface);
+        padding: 0.4rem 0.6rem;
+        margin: 0.35rem 0;
+        font-size: 0.92em;
+    }
+    .triageLine { margin: 0.15rem 0; }
+    .triageLabel {
+        font-weight: 600;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-right: 0.35rem;
+        color: var(--vscode-descriptionForeground);
+    }
+    .skippedField {
+        border-left: 3px solid var(--sdt-unknown);
+        border-radius: 0 var(--sdt-radius) var(--sdt-radius) 0;
+        background-color: var(--sdt-surface);
+        padding: 0.35rem 0.6rem;
+        margin: 0.35rem 0;
+    }
+    .warningList { padding-left: 0.75rem; }
+
+    /* ---------- ACTIONS ---------- */
+    .sourceDetail { margin-top: 0.4rem; }
+    .actions { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.4rem; }
+
+    /*
+        The phase the load is in, above the structure rather than inside it. It is the only thing on
+        screen before the model arrives, and it is removed -- not just emptied -- once the last phase
+        resolves, so a loaded panel carries no residue of how it got there.
+    */
+    .loadStatus { color: var(--vscode-descriptionForeground); }
 </style>
 </head>
 <body>
+<!--
+    THE ICON SET, AS ONE STATIC SPRITE.
+
+    It is markup rather than a font because the panel's CSP admits no font, image or stylesheet of
+    any origin, and the panel is opened with an EMPTY localResourceRoots -- shipping a theme icon
+    font would mean granting the webview a resource root to load it from, which is the grant the
+    empty list exists to withhold. Every symbol below is drawn here rather than fetched, so an icon
+    costs one element and no request.
+
+    Static by construction: no model value reaches this markup, which is the same reason the shell
+    interpolates nothing but its nonce.
+-->
+<svg class="iconSprite" aria-hidden="true">
+    <symbol id="sdtIconCheck" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></symbol>
+    <symbol id="sdtIconError" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M6 6l4 4M10 6l-4 4"/></symbol>
+    <symbol id="sdtIconUnchecked" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75" stroke-dasharray="2.2 2"/></symbol>
+    <symbol id="sdtIconWarning" viewBox="0 0 16 16"><path d="M8 2.75l6.25 10.5H1.75z"/><path d="M8 6.5v3.1"/><path d="M8 11.35v.15"/></symbol>
+    <symbol id="sdtIconInfo" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M8 7.4v3.35"/><path d="M8 5.05v.15"/></symbol>
+    <symbol id="sdtIconChevron" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></symbol>
+    <symbol id="sdtIconFileCode" viewBox="0 0 16 16"><path d="M9 1.75H4.25a1 1 0 00-1 1v10.5a1 1 0 001 1h7.5a1 1 0 001-1V5.5z"/><path d="M9 1.75V5.5h3.75"/></symbol>
+    <symbol id="sdtIconGoToFile" viewBox="0 0 16 16"><path d="M9.5 2.75h3.75V6.5"/><path d="M13.25 2.75L7.75 8.25"/><path d="M11 9.25v3.5a.75.75 0 01-.75.75H3.25a.75.75 0 01-.75-.75V5.75A.75.75 0 013.25 5h3.5"/></symbol>
+    <symbol id="sdtIconCopy" viewBox="0 0 16 16"><rect x="5.75" y="5.75" width="7.5" height="7.5" rx="1"/><path d="M10.25 5.75v-2a1 1 0 00-1-1H3.75a1 1 0 00-1 1v5.5a1 1 0 001 1h2"/></symbol>
+    <symbol id="sdtIconFolder" viewBox="0 0 16 16"><path d="M1.75 12.75v-9.5h4l1.5 2h7v7.5a.75.75 0 01-.75.75H2.5a.75.75 0 01-.75-.75z"/></symbol>
+    <symbol id="sdtIconClock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M8 4.75V8l2.25 1.5"/></symbol>
+</svg>
 <h1>Picklist Dependency Explorer</h1>
 <div id="scannedPath" class="muted hidden">Scanned <span id="scannedPathValue" class="sourcePath"></span></div>
 <div id="loadStatus" class="loadStatus">Opening the Picklist Dependency Explorer…</div>
@@ -2733,6 +3043,25 @@ export class PicklistDependencyExplorerService {
 
     let filterText = '';
     let filterStatus = 'all';
+
+    /*
+        WHAT THE PANEL REMEMBERS ACROSS A HIDE AND A REVEAL.
+
+        The panel is deliberately not retained when hidden -- holding a full DOM per hidden tab is
+        what VS Code warns against, and the host can always re-post the model. The cost of that is
+        that a reveal reloads this document and rebuilds everything from the model, which is a
+        faithful reconstruction of the STRUCTURE and none at all of what the reader was doing with
+        it: their query, their status filter and every row they had opened were gone.
+
+        These four are the whole of that working state. They are held in the webview's own state
+        rather than posted to the host because they are facts about a reader looking at a panel, not
+        about the workspace -- nothing outside this document has any use for them, and a host that
+        stored them would have to decide what they mean for a second panel it opens later.
+    */
+    let isDenseLayout = false;
+    let findInputElement;
+    let statusSelectElement;
+    let densityButtonElement;
     /*
         A pasted combination reference addresses ONE row, and the row it addresses does not match the
         reference as ordinary search text -- the key carries a controlling value no field name
@@ -2785,6 +3114,39 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        setState replaces the stored object wholesale, so every field is written on every save --
+        persisting one field at a time would drop the others each time any of them changed.
+
+        Expansions are recorded as api names rather than as indexes: the model is rebuilt from the
+        manifest between the save and the restore, and an index would silently reattach to whichever
+        object had taken that position.
+    */
+    function persistPanelState() {
+
+        vscodeApi.setState({
+            filterText: filterText,
+            filterStatus: filterStatus,
+            isDenseLayout: isDenseLayout,
+            expandedObjectApiNames: objectSectionRecords
+                .filter(function (sectionRecord) { return sectionRecord.isExpanded; })
+                .map(function (sectionRecord) { return sectionRecord.objectViewModel.objectApiName; })
+        });
+
+    }
+
+    function readPersistedPanelState() {
+        return vscodeApi.getState() || {};
+    }
+
+    function applyDensityLayout() {
+        document.body.classList.toggle('dense', isDenseLayout);
+        if (densityButtonElement) {
+            densityButtonElement.classList.toggle('toggled', isDenseLayout);
+            densityButtonElement.setAttribute('aria-pressed', isDenseLayout ? 'true' : 'false');
+        }
+    }
+
     function createElement(tagName, className, textContent) {
         const element = document.createElement(tagName);
         if (className) { element.className = className; }
@@ -2792,8 +3154,96 @@ export class PicklistDependencyExplorerService {
         return element;
     }
 
+    /*
+        An icon is a <use> of the sprite above, built in the SVG namespace.
+
+        createElement would produce an HTMLUnknownElement named "svg" that renders nothing, so the
+        namespace is not optional here. Every icon is decorative: each one sits beside a label that
+        already carries its meaning, so they are hidden from assistive technology rather than given
+        names that would be read out twice.
+    */
+    function createIconElement(iconName, className) {
+
+        const iconElement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        iconElement.setAttribute('class', 'icon' + (className ? ' ' + className : ''));
+        iconElement.setAttribute('aria-hidden', 'true');
+
+        const useElement = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        useElement.setAttribute('href', '#sdtIcon' + iconName);
+        iconElement.appendChild(useElement);
+
+        return iconElement;
+
+    }
+
+    /*
+        A DISTINCT SHAPE PER STATUS, NOT THREE COLOURED DOTS.
+
+        The three statuses differ in what a reader must do about them, and a panel that separated
+        them by hue alone would collapse to one state for a reader who cannot distinguish the hues.
+        The label beside each icon says the same thing in words, so the colour is the third carrier
+        of the status rather than the only one.
+    */
+    const STATUS_ICON_NAMES = { passed: 'Check', failed: 'Error', unknown: 'Unchecked' };
+
+    /*
+        ONE chevron, rotated by a class, rather than two glyphs swapped at runtime.
+
+        The disclosure used to be a text glyph, so every toggle assigned textContent. Assigning
+        textContent to an element that CONTAINS something -- which an icon does -- empties it
+        permanently, so the first collapse would leave the row with no disclosure at all. A class
+        toggle cannot express that bug, and it keeps the open and closed states one symbol.
+    */
+    function createDisclosureElement(isExpanded) {
+        return createIconElement('Chevron', 'disclosure' + (isExpanded ? ' expanded' : ''));
+    }
+
+    function setDisclosureState(disclosureElement, isExpanded) {
+        disclosureElement.classList.toggle('expanded', isExpanded);
+    }
+
+    /*
+        "1 combination" and "2 combinations", never "1 combination(s)".
+
+        The panel reports counts in almost every heading it draws, and the parenthesised plural made
+        each of them read as generated output rather than as a sentence about the reader's org.
+    */
+    function pluralize(count, singularNoun) {
+        return count + ' ' + singularNoun + (count === 1 ? '' : 's');
+    }
+
+    /*
+        A banner's first line, which is the only line of it some readers will read. The icon repeats
+        what the wording says rather than replacing any of it: a banner whose meaning lived in a
+        glyph would say nothing at all to a screen reader, and the icons are marked decorative.
+    */
+    /*
+        ONE PRIMARY ACTION PER ROW.
+
+        The row actions were four filled buttons of equal weight, which made a failed combination
+        read as a form to be filled in rather than a finding to be read -- and gave "Copy reference"
+        the same prominence as the one action that opens the metadata the failure is about. The icon
+        is decorative: the label is what names the action.
+    */
+    function createActionButton(iconName, labelText, isPrimary) {
+        const buttonElement = createElement('button', isPrimary ? 'primary' : undefined);
+        buttonElement.appendChild(createIconElement(iconName));
+        buttonElement.appendChild(createElement('span', undefined, labelText));
+        return buttonElement;
+    }
+
+    function appendBannerHeading(parentElement, iconName, headingText) {
+        const headingElement = createElement('div', 'bannerHeading');
+        headingElement.appendChild(createIconElement(iconName));
+        headingElement.appendChild(createElement('span', undefined, headingText));
+        parentElement.appendChild(headingElement);
+    }
+
     function appendStatusBadge(parentElement, status) {
-        parentElement.appendChild(createElement('span', 'statusBadge ' + status, status === 'unknown' ? 'not checked' : status));
+        const badgeElement = createElement('span', 'statusBadge ' + status);
+        badgeElement.appendChild(createIconElement(STATUS_ICON_NAMES[status] || 'Unchecked'));
+        badgeElement.appendChild(createElement('span', undefined, status === 'unknown' ? 'not checked' : status));
+        parentElement.appendChild(badgeElement);
     }
 
     function appendValueList(parentElement, labelText, values, valueClassName) {
@@ -2828,7 +3278,7 @@ export class PicklistDependencyExplorerService {
         const valueListElement = createElement('div', 'valueList');
 
         const summaryElement = createElement('div', 'valueListSummary');
-        const disclosureElement = createElement('span', 'disclosure', startExpanded ? '▾' : '▸');
+        const disclosureElement = createDisclosureElement(startExpanded);
         summaryElement.appendChild(disclosureElement);
         summaryElement.appendChild(createElement('span', 'valueLabel', labelText));
         summaryElement.appendChild(createElement('span', 'valueCount', '(' + values.length + ')'));
@@ -2848,7 +3298,7 @@ export class PicklistDependencyExplorerService {
         summaryElement.addEventListener('click', function (clickEvent) {
             clickEvent.stopPropagation();
             valuesElement.classList.toggle('hidden');
-            disclosureElement.textContent = valuesElement.classList.contains('hidden') ? '▸' : '▾';
+            setDisclosureState(disclosureElement, !valuesElement.classList.contains('hidden'));
         });
 
         parentElement.appendChild(valueListElement);
@@ -2913,12 +3363,14 @@ export class PicklistDependencyExplorerService {
         });
     }
 
-    function appendTruncationNotice(parentElement, truncatedCount, itemLabel) {
+    function appendTruncationNotice(parentElement, truncatedCount, singularNoun, qualifier) {
 
         if (!truncatedCount) { return; }
 
         parentElement.appendChild(createElement('div', 'truncationNotice',
-            truncatedCount + ' ' + itemLabel + ' not shown at this panel\\'s rendering limit. '
+            pluralize(truncatedCount, singularNoun) + (qualifier || '')
+                + (truncatedCount === 1 ? ' is' : ' are')
+                + ' not shown at this panel\\'s rendering limit. '
                 + 'Every one the check reported a failure for is shown.'));
 
     }
@@ -2971,7 +3423,7 @@ export class PicklistDependencyExplorerService {
 
         const actionsElement = createElement('div', 'actions');
 
-        const revealButton = createElement('button', undefined, 'Reveal in Explorer');
+        const revealButton = createActionButton('Folder', 'Reveal in Explorer', true);
         revealButton.addEventListener('click', function (clickEvent) {
             clickEvent.stopPropagation();
             vscodeApi.postMessage({ command: 'revealFieldSource', sourceFilePath: node.sourceFilePath });
@@ -2985,7 +3437,7 @@ export class PicklistDependencyExplorerService {
         */
         if (specMethodName && objectViewModel.generatedClassFilePath) {
 
-            const specMethodButton = createElement('button', undefined, 'Open spec method');
+            const specMethodButton = createActionButton('FileCode', 'Open spec method');
             specMethodButton.addEventListener('click', function (clickEvent) {
                 clickEvent.stopPropagation();
                 vscodeApi.postMessage({
@@ -3002,7 +3454,7 @@ export class PicklistDependencyExplorerService {
 
         if (runReportFilePath && objectViewModel.testMethodName) {
 
-            const runReportButton = createElement('button', undefined, 'Open run report entry');
+            const runReportButton = createActionButton('GoToFile', 'Open run report entry');
             runReportButton.addEventListener('click', function (clickEvent) {
                 clickEvent.stopPropagation();
                 vscodeApi.postMessage({
@@ -3021,7 +3473,7 @@ export class PicklistDependencyExplorerService {
             same key the manifest recorded and failures are attributed by, so it is stable across
             re-renders in a way a scroll position is not.
         */
-        const copyReferenceButton = createElement('button', undefined, 'Copy reference');
+        const copyReferenceButton = createActionButton('Copy', 'Copy reference');
         copyReferenceButton.addEventListener('click', function (clickEvent) {
             clickEvent.stopPropagation();
             vscodeApi.postMessage({ command: 'copyCombinationReference', combinationKey: combination.combinationKey });
@@ -3057,7 +3509,7 @@ export class PicklistDependencyExplorerService {
 
         const scopeHeading = createElement('div', 'recordTypeScopeHeading');
         scopeHeading.appendChild(createElement('span', 'recordTypeName', 'record type: ' + recordTypeScope.recordTypeDeveloperName));
-        scopeHeading.appendChild(createElement('span', 'muted', recordTypeScope.combinations.length + ' combination(s)'));
+        scopeHeading.appendChild(createElement('span', 'muted', pluralize(recordTypeScope.combinations.length, 'combination')));
         appendStatusBadge(scopeHeading, recordTypeScope.status);
         scopeElement.appendChild(scopeHeading);
 
@@ -3107,7 +3559,7 @@ export class PicklistDependencyExplorerService {
                 ));
             });
 
-            appendTruncationNotice(scopeBodyElement, recordTypeScope.truncatedCombinationCount, 'combination(s) in this scope are');
+            appendTruncationNotice(scopeBodyElement, recordTypeScope.truncatedCombinationCount, 'combination', ' in this scope');
 
         };
 
@@ -3154,7 +3606,7 @@ export class PicklistDependencyExplorerService {
         }).length;
 
         const headingElement = createElement('div', 'recordTypeGroupHeading');
-        const disclosureElement = createElement('span', 'disclosure', '▸');
+        const disclosureElement = createDisclosureElement(false);
         headingElement.appendChild(disclosureElement);
         headingElement.appendChild(createElement('span', 'recordTypeGroupLabel',
             'Record Types (' + node.recordTypeScopes.length + ')'));
@@ -3175,7 +3627,7 @@ export class PicklistDependencyExplorerService {
             notice the reader can SEE, which is the whole of the invariant; the panel-level aggregate
             is not a substitute, because it does not name this field.
         */
-        appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are');
+        appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope', '');
 
         const groupBodyElement = createElement('div', 'recordTypeScopes hidden');
 
@@ -3203,7 +3655,7 @@ export class PicklistDependencyExplorerService {
             if (!groupBodyElement.classList.contains('hidden')) { return; }
 
             groupBodyElement.classList.remove('hidden');
-            disclosureElement.textContent = '▾';
+            setDisclosureState(disclosureElement, true);
 
         };
 
@@ -3212,7 +3664,7 @@ export class PicklistDependencyExplorerService {
             if (groupBodyElement.classList.contains('hidden')) { return; }
 
             groupBodyElement.classList.add('hidden');
-            disclosureElement.textContent = '▸';
+            setDisclosureState(disclosureElement, false);
 
         };
 
@@ -3298,7 +3750,7 @@ export class PicklistDependencyExplorerService {
             nodeElement.appendChild(buildCombinationElement(node, objectViewModel, combination, node.declaredValues, node.declaredValuesTruncated, node.specMethodName, sectionRecord));
         });
 
-        appendTruncationNotice(nodeElement, node.truncatedCombinationCount, 'combination(s) are');
+        appendTruncationNotice(nodeElement, node.truncatedCombinationCount, 'combination', '');
 
         /*
             The group's own reveal, held on the node record so a find-box query naming a record type
@@ -3393,7 +3845,7 @@ export class PicklistDependencyExplorerService {
 
         if (isPreview) {
 
-            bannerElement.appendChild(createElement('div', 'fieldName', 'Preview from metadata — not generated'));
+            appendBannerHeading(bannerElement, 'Info', 'Preview from metadata — not generated');
             bannerElement.appendChild(createElement('div', 'muted',
                 'These rows were read from your source metadata. No Apex specs have been generated for them, '
                     + 'so nothing asserts any combination below and no check can have run against them. '
@@ -3423,7 +3875,12 @@ export class PicklistDependencyExplorerService {
             provenanceHeading = 'Generated specs — could not be checked against your metadata';
         }
 
-        bannerElement.appendChild(createElement('div', 'fieldName', provenanceHeading));
+        /*
+            The icon follows the SAME split the wording does: only the two stale answers warn. A
+            walk that has not run, one in flight, and one that could not read the directory each get
+            the neutral mark, because none of them has established a disagreement with metadata.
+        */
+        appendBannerHeading(bannerElement, isStale ? 'Warning' : (isCheckFailed ? 'Info' : 'FileCode'), provenanceHeading);
 
         if (isStale || isCheckFailed) {
             bannerElement.appendChild(createElement('div', undefined, explorerModel.manifestFreshnessMessage));
@@ -3506,14 +3963,15 @@ export class PicklistDependencyExplorerService {
         if (explorerModel.runSummary) {
 
             const runSummary = explorerModel.runSummary;
-            bannerElement.appendChild(createElement('div', 'fieldName',
-                'Last check ' + (runSummary.passed ? 'passed' : 'failed') + ' against ' + runSummary.targetOrg));
+            appendBannerHeading(bannerElement, runSummary.passed ? 'Check' : 'Error',
+                'Last check ' + (runSummary.passed ? 'passed' : 'failed') + ' against ' + runSummary.targetOrg);
             bannerElement.appendChild(createElement('div', 'muted',
-                'Ran at ' + runSummary.ranAt + ' — ' + runSummary.methodsRun + ' method(s), ' + runSummary.failureCount + ' failure(s)'));
+                'Ran at ' + runSummary.ranAt + ' — ' + pluralize(runSummary.methodsRun, 'method')
+                    + ', ' + pluralize(runSummary.failureCount, 'failure')));
             bannerElement.appendChild(createElement('div', 'sourcePath', runSummary.resultsFilePath));
 
         } else {
-            bannerElement.appendChild(createElement('div', undefined, explorerModel.runLoadMessage));
+            appendBannerHeading(bannerElement, 'Clock', explorerModel.runLoadMessage);
         }
 
         registerPanelSection('Last check', bannerElement);
@@ -3545,10 +4003,13 @@ export class PicklistDependencyExplorerService {
 
         if (!explorerModel.skippedFieldWarnings.length) { return; }
 
+        const skippedFieldWarningCount = explorerModel.skippedFieldWarnings.length;
+
         const warningsElement = createElement('div', 'warningList');
-        warningsElement.appendChild(createElement('div', 'fieldName',
-            explorerModel.skippedFieldWarnings.length
-                + ' item(s) were skipped and are asserted by nothing — each is also listed under its object below'));
+        appendBannerHeading(warningsElement, 'Warning',
+            pluralize(skippedFieldWarningCount, 'item')
+                + (skippedFieldWarningCount === 1 ? ' was skipped and is' : ' were skipped and are')
+                + ' asserted by nothing — each is also listed under its object below');
         explorerModel.skippedFieldWarnings.forEach(function (skippedFieldWarning) {
             warningsElement.appendChild(createElement('div', 'muted', skippedFieldWarning));
         });
@@ -3600,7 +4061,7 @@ export class PicklistDependencyExplorerService {
             bodyElement.appendChild(buildNodeElement(rootNode, objectViewModel, sectionRecord));
         });
 
-        appendTruncationNotice(bodyElement, objectViewModel.truncatedNodeCount, 'dependent picklist(s) on this object are');
+        appendTruncationNotice(bodyElement, objectViewModel.truncatedNodeCount, 'dependent picklist', ' on this object');
 
     }
 
@@ -3608,15 +4069,24 @@ export class PicklistDependencyExplorerService {
 
         buildObjectBody(sectionRecord);
         sectionRecord.bodyElement.classList.remove('hidden');
-        sectionRecord.disclosureElement.textContent = '▾';
+        setDisclosureState(sectionRecord.disclosureElement, true);
+        /*
+            Tracked on the record rather than read back off the class list. Expansion is persisted,
+            and reading it from the DOM would make what the panel remembers depend on what the panel
+            happens to be showing -- a row hidden by the active filter is still an open row.
+        */
+        sectionRecord.isExpanded = true;
         applyNodeFilter(sectionRecord);
+        persistPanelState();
 
     }
 
     function collapseObject(sectionRecord) {
 
         sectionRecord.bodyElement.classList.add('hidden');
-        sectionRecord.disclosureElement.textContent = '▸';
+        setDisclosureState(sectionRecord.disclosureElement, false);
+        sectionRecord.isExpanded = false;
+        persistPanelState();
 
     }
 
@@ -3628,8 +4098,9 @@ export class PicklistDependencyExplorerService {
             objectViewModel: objectViewModel,
             sectionElement: sectionElement,
             bodyElement: createElement('div', 'objectBody hidden'),
-            disclosureElement: createElement('span', 'disclosure', '▸'),
+            disclosureElement: createDisclosureElement(false),
             built: false,
+            isExpanded: false,
             nodeRecords: [],
             scopeRevealers: [],
             /*
@@ -3647,7 +4118,7 @@ export class PicklistDependencyExplorerService {
         objectHeading.appendChild(sectionRecord.disclosureElement);
         objectHeading.appendChild(createElement('span', undefined, objectViewModel.objectApiName));
         objectHeading.appendChild(createElement('span', 'muted',
-            objectViewModel.dependentFieldCount + ' dependent picklist(s), ' + objectViewModel.combinationCount + ' combination(s)'
+            pluralize(objectViewModel.dependentFieldCount, 'dependent picklist') + ', ' + pluralize(objectViewModel.combinationCount, 'combination')
                 + (objectViewModel.recordTypeCombinationCount ? ' + ' + objectViewModel.recordTypeCombinationCount + ' record-type-scoped' : '')));
         appendStatusBadge(objectHeading, objectViewModel.status);
 
@@ -3842,8 +4313,8 @@ export class PicklistDependencyExplorerService {
             expandObject(visibleSectionRecords[0]);
         }
 
-        matchCountElement.textContent = visibleSectionRecords.length + ' of ' + objectSectionRecords.length
-            + ' object(s) shown' + (deepLinkRecord ? ' — showing the object that declares the pasted reference' : '');
+        matchCountElement.textContent = visibleSectionRecords.length + ' of ' + pluralize(objectSectionRecords.length, 'object')
+            + ' shown' + (deepLinkRecord ? ' — showing the object that declares the pasted reference' : '');
 
     }
 
@@ -3858,7 +4329,7 @@ export class PicklistDependencyExplorerService {
             this panel's ceiling exists to prevent. Past the limit it says so rather than freezing.
         */
         if (visibleSectionRecords.length > EXPAND_ALL_OBJECT_LIMIT) {
-            matchCountElement.textContent = visibleSectionRecords.length + ' object(s) shown — more than the '
+            matchCountElement.textContent = pluralize(visibleSectionRecords.length, 'object') + ' shown — more than the '
                 + EXPAND_ALL_OBJECT_LIMIT + ' this panel will expand at once. Filter to fewer objects first.';
             return;
         }
@@ -3874,12 +4345,13 @@ export class PicklistDependencyExplorerService {
         const findFieldElement = createElement('label', 'toolbarField');
         findFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Find object or field'));
 
-        const findInputElement = document.createElement('input');
+        findInputElement = document.createElement('input');
         findInputElement.type = 'search';
         findInputElement.placeholder = 'object, field, record type, or a pasted combination reference';
         findInputElement.addEventListener('input', function () {
             filterText = findInputElement.value.trim().toLowerCase();
             applyFilter();
+            persistPanelState();
         });
         findFieldElement.appendChild(findInputElement);
         toolbarElement.appendChild(findFieldElement);
@@ -3887,7 +4359,7 @@ export class PicklistDependencyExplorerService {
         const statusFieldElement = createElement('label', 'toolbarField');
         statusFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Status'));
 
-        const statusSelectElement = document.createElement('select');
+        statusSelectElement = document.createElement('select');
         [['all', 'any status'], ['failed', 'failed'], ['passed', 'passed'], ['unknown', 'not checked']].forEach(function (statusOption) {
             const statusOptionElement = document.createElement('option');
             statusOptionElement.value = statusOption[0];
@@ -3897,6 +4369,7 @@ export class PicklistDependencyExplorerService {
         statusSelectElement.addEventListener('change', function () {
             filterStatus = statusSelectElement.value;
             applyFilter();
+            persistPanelState();
         });
         statusFieldElement.appendChild(statusSelectElement);
         toolbarElement.appendChild(statusFieldElement);
@@ -3910,6 +4383,23 @@ export class PicklistDependencyExplorerService {
             objectSectionRecords.forEach(collapseObject);
         });
         toolbarElement.appendChild(collapseAllButton);
+
+        /*
+            DENSE COMPRESSES SPACE, NEVER INFORMATION -- see body.dense in the stylesheet.
+
+            An org with drift is exactly the org whose reader wants more rows on screen at once, and
+            a density control that dropped rows to achieve that would be a filter the reader did not
+            apply. Nothing under the dense selector hides a row, a value or a status.
+        */
+        densityButtonElement = createElement('button', undefined, 'Dense rows');
+        densityButtonElement.setAttribute('type', 'button');
+        densityButtonElement.addEventListener('click', function () {
+            isDenseLayout = !isDenseLayout;
+            applyDensityLayout();
+            persistPanelState();
+        });
+        toolbarElement.appendChild(densityButtonElement);
+        applyDensityLayout();
 
         matchCountElement = createElement('div', 'matchCount');
         toolbarElement.appendChild(matchCountElement);
@@ -3950,7 +4440,7 @@ export class PicklistDependencyExplorerService {
     function renderTableOfContents(tableOfContentsElement) {
 
         const headingElement = createElement('div', 'tableOfContentsHeading');
-        const disclosureElement = createElement('span', 'disclosure', '▾');
+        const disclosureElement = createDisclosureElement(true);
         headingElement.appendChild(disclosureElement);
         headingElement.appendChild(createElement('span', undefined, 'Contents'));
         tableOfContentsElement.appendChild(headingElement);
@@ -3960,7 +4450,7 @@ export class PicklistDependencyExplorerService {
 
         headingElement.addEventListener('click', function () {
             bodyElement.classList.toggle('hidden');
-            disclosureElement.textContent = bodyElement.classList.contains('hidden') ? '▸' : '▾';
+            setDisclosureState(disclosureElement, !bodyElement.classList.contains('hidden'));
         });
 
         if (panelSectionRecords.length) {
@@ -3993,8 +4483,8 @@ export class PicklistDependencyExplorerService {
             const entryElement = createElement('div', 'tocEntry');
             entryElement.appendChild(createElement('span', 'fieldName', objectViewModel.objectApiName));
             entryElement.appendChild(createElement('span', 'muted',
-                objectViewModel.dependentFieldCount + ' dependent picklist(s), '
-                    + objectViewModel.combinationCount + ' combination(s)'));
+                pluralize(objectViewModel.dependentFieldCount, 'dependent picklist') + ', '
+                    + pluralize(objectViewModel.combinationCount, 'combination')));
             appendStatusBadge(entryElement, objectViewModel.status);
 
             if (objectViewModel.skippedFields.length) {
@@ -4011,6 +4501,50 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        The counts the panel used to state as a sentence.
+
+        They report what the MANIFEST DECLARES and are never reduced by the rendering ceiling -- the
+        truncation notices above them are what describe the gap between these numbers and the rows on
+        screen. Collapsing the two would leave a truncated panel quietly reporting a smaller org,
+        which is the reading applyModelLimits keeps the counts separate to prevent.
+
+        "Failing" and "Not asserted" are counted from the objects rather than carried on the model,
+        because they are sums of numbers the model already holds and a second field would be a second
+        place for them to disagree.
+    */
+    function renderStatStrip() {
+
+        const failingObjectCount = explorerModel.objects.filter(function (objectViewModel) {
+            return objectViewModel.status === 'failed';
+        }).length;
+
+        const notAssertedCount = explorerModel.objects.reduce(function (runningTotal, objectViewModel) {
+            return runningTotal + objectViewModel.skippedFields.length;
+        }, 0);
+
+        const stats = [
+            { label: 'Objects', value: explorerModel.objects.length },
+            { label: 'Dependent picklists', value: explorerModel.dependentFieldCount },
+            { label: 'Combinations', value: explorerModel.combinationCount },
+            { label: 'Record-type scoped', value: explorerModel.recordTypeCombinationCount },
+            { label: 'Objects failing', value: failingObjectCount, tone: failingObjectCount ? 'failed' : '' },
+            { label: 'Not asserted', value: notAssertedCount, tone: notAssertedCount ? 'unknown' : '' }
+        ];
+
+        const stripElement = createElement('div', 'statStrip');
+
+        stats.forEach(function (stat) {
+            const statElement = createElement('div', 'stat');
+            statElement.appendChild(createElement('div', 'statValue' + (stat.tone ? ' ' + stat.tone : ''), String(stat.value)));
+            statElement.appendChild(createElement('div', 'statLabel', stat.label));
+            stripElement.appendChild(statElement);
+        });
+
+        explorerRoot.appendChild(stripElement);
+
+    }
+
     function renderObjects() {
 
         if (!explorerModel.objects.length) {
@@ -4018,12 +4552,7 @@ export class PicklistDependencyExplorerService {
             return;
         }
 
-        explorerRoot.appendChild(createElement('div', 'muted',
-            explorerModel.objects.length + ' object(s), ' + explorerModel.dependentFieldCount
-                + ' dependent picklist(s), ' + explorerModel.combinationCount + ' combination(s)'
-                + (explorerModel.recordTypeCombinationCount
-                    ? ' + ' + explorerModel.recordTypeCombinationCount + ' record-type-scoped'
-                    : '')));
+        renderStatStrip();
 
         renderToolbar();
 
@@ -4043,7 +4572,52 @@ export class PicklistDependencyExplorerService {
 
         renderTableOfContents(tableOfContentsElement);
 
+        restorePanelState();
+
         applyFilter();
+
+    }
+
+    /*
+        Puts the reader back where they were, on a render they did not ask for.
+
+        Restored BEFORE the applyFilter that ends the render rather than after it: the restored query
+        and status are what that pass is supposed to run, and applying them afterwards would draw the
+        whole panel once and then immediately redraw it filtered.
+
+        The expansion restore is bounded by the SAME limit "Expand all" is bounded by, and for the
+        same reason -- expanding is what builds an object's rows, so an unbounded restore is exactly
+        the render the panel's ceiling exists to prevent. Past it the objects come back collapsed,
+        which is a state the reader can see and undo, rather than a panel that hangs on reveal.
+    */
+    function restorePanelState() {
+
+        const persistedState = readPersistedPanelState();
+
+        if (persistedState.filterStatus && statusSelectElement) {
+            filterStatus = persistedState.filterStatus;
+            statusSelectElement.value = persistedState.filterStatus;
+        }
+
+        if (persistedState.filterText && findInputElement) {
+            filterText = persistedState.filterText;
+            findInputElement.value = persistedState.filterText;
+        }
+
+        const expandedObjectApiNames = persistedState.expandedObjectApiNames || [];
+
+        if (!expandedObjectApiNames.length) { return; }
+
+        const expandedObjectApiNameLookup = Object.create(null);
+        expandedObjectApiNames.slice(0, EXPAND_ALL_OBJECT_LIMIT).forEach(function (objectApiName) {
+            expandedObjectApiNameLookup[objectApiName] = true;
+        });
+
+        objectSectionRecords.forEach(function (sectionRecord) {
+            if (expandedObjectApiNameLookup[sectionRecord.objectViewModel.objectApiName]) {
+                expandObject(sectionRecord);
+            }
+        });
 
     }
 
@@ -4088,6 +4662,17 @@ export class PicklistDependencyExplorerService {
 
         scannedPathValueElement.textContent = explorerModel.scannedObjectsDirectoryPath;
         scannedPathElement.classList.remove('hidden');
+
+        /*
+            Written back at the end of every render, not only when the reader changes something.
+
+            The stored state is a list of api names, and the model it is restored against is rebuilt
+            from the manifest each time. An object that has since been renamed, dropped from the org
+            or pushed out by the rendering ceiling would otherwise sit in that list forever, growing
+            it with names nothing can ever match again. Saving what this render actually restored
+            prunes it to the objects that still exist.
+        */
+        persistPanelState();
 
     }
 
@@ -4308,6 +4893,13 @@ export class PicklistDependencyExplorerService {
     window.addEventListener('unhandledrejection', function (rejectionEvent) {
         postRenderFailure('runtime', rejectionEvent && rejectionEvent.reason);
     });
+
+    /*
+        Applied at load rather than at render: the density is a property of the DOCUMENT, and waiting
+        for the model would show the reader one relayout after the rows had already drawn.
+    */
+    isDenseLayout = !!readPersistedPanelState().isDenseLayout;
+    applyDensityLayout();
 
     vscodeApi.postMessage({ command: 'ready' });
 

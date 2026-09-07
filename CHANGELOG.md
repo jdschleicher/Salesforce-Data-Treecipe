@@ -1,5 +1,39 @@
 # Change Log
 
+## [3.17.0] - The Explorer gets a visual language, a density, and a memory
+
+The panel had every fact it needed on screen and no hierarchy over them. Banners, counts, rows and actions were drawn at one weight, the status of a row was a bordered word, and the four row actions were four identical filled buttons -- so a failed combination read as a form to fill in rather than a finding to act on. None of that was wrong; all of it made the reader do the sorting.
+
+Nothing about what the panel asserts changes here. No status is recomputed, no row is dropped, and every rendering ceiling behaves exactly as it did.
+
+### An icon set that costs the panel no new trust
+
+The status of a row is now carried by a **shape**, a **word** and a colour, in that order of reliability. Three coloured dots would have collapsed to one state for a reader who cannot separate the hues, so `passed`, `failed` and `not checked` each get their own mark and each keeps its label -- the icon repeats the word, and never replaces it.
+
+The icons are an inline `<svg>` sprite in the shell, drawn with `<use>` through `createElementNS`. They are deliberately **not** a theme icon font: the panel is opened with an empty `localResourceRoots` and its CSP is `default-src 'none'` with no `font-src` and no `img-src`, and a font would have needed both of those loosened. The sprite is static markup carrying no model value, which is the same property the shell has always had. A test asserts the policy still asks for nothing new, so an icon added later cannot quietly buy a resource grant.
+
+### Every colour still resolves to the reader's theme
+
+The stylesheet was rewritten around semantic tokens -- `--sdt-passed`, `--sdt-surface`, `--sdt-hairline` -- each of which resolves to a `--vscode-*` token. The surfaces are derived from the **foreground** colour rather than the background, so a light theme darkens its own text colour to raise a panel and a dark theme lightens it, and neither needs a second palette. A test now fails the build on a hex literal, an `rgb()` or a named colour anywhere in the stylesheet: a hard-coded colour is not a style choice but a claim that the reader's theme is wrong, and under a high contrast theme it removes the contrast that theme exists to provide.
+
+Object sections became cards with headings that stick under the toolbar. An object's rows can run for several screens, and the heading is the only thing on the panel that says which object's rows these are -- scrolled off, every row below it is unattributed.
+
+### Dense rows
+
+A new toolbar toggle. **Dense compresses space, never information**: no rule under the `body.dense` selector hides a row, a value or a status, and a test asserts that by reading every dense rule and rejecting `display: none` and `visibility: hidden`. An org with drift is exactly the org whose reader wants more rows on screen at once, and a density control that dropped rows to achieve that would be a filter the reader never applied -- with the rows it dropped indistinguishable from rows the org does not have.
+
+### The panel remembers what you were doing
+
+The Explorer is deliberately not retained when hidden -- holding a full DOM per hidden tab is what VS Code warns against, and the host can always re-post the model. The cost was that a reveal rebuilt the structure faithfully and the reader's place in it not at all: the query, the status filter and every row they had opened were gone.
+
+The query, the status filter, the density and the open objects now live in the webview's own state. They are held there rather than posted to the host because they are facts about a reader looking at a panel, not about the workspace. Expansions are recorded as **api names** rather than indexes, because the model is rebuilt from the manifest between the save and the restore and an index would silently reattach to whichever object had taken that position -- and the restore is bounded by the same limit `Expand all` is bounded by, since expanding is what *builds* an object's rows and an unbounded restore is exactly the render the panel's ceiling exists to prevent. State is written back at the end of every render, not only when the reader changes something, so an object since renamed or dropped from the org is pruned out of the stored list rather than sitting in it forever.
+
+### Counts that read as sentences
+
+`3 object(s), 4 dependent picklist(s)` appeared in fifteen places across the service and the panel. Both sides of the `postMessage` boundary now build these through a `pluralize` helper -- one of them cannot reach the other, so there are two -- and the counts, the truncation notices and the skipped-field banner all agree in number with the number they open with, verbs included.
+
+The counts line itself is now a strip of tiles. It reports what the **manifest declares** and is still never reduced by the rendering ceiling; the truncation notices above it remain what describe the gap between those numbers and the rows on screen.
+
 ## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 
 Closes [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).

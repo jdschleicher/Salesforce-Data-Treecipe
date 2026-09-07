@@ -1587,10 +1587,11 @@ describe('PicklistDependencyExplorerService', () => {
         been just as true of a guard that swallowed the error and left the page blank -- the exact
         bug it exists to prevent.
 
-        The script uses only three DOM globals (getElementById, createElement, addEventListener), so
-        standing one up costs less than a jsdom dependency this project does not otherwise have.
+        The script uses a handful of DOM globals (getElementById, createElement, createElementNS,
+        body, addEventListener), so standing one up costs less than a jsdom dependency this project
+        does not otherwise have.
     */
-    function runPanelScript() {
+    function runPanelScript(seededPanelState?: any) {
 
         const postedHostMessages: any[] = [];
         const windowListenersByType: Record<string, Function> = {};
@@ -1623,7 +1624,13 @@ describe('PicklistDependencyExplorerService', () => {
             },
             appendChild(childElement: any) { this.children.push(childElement); return childElement; },
             addEventListener() { /* NO PANEL TEST DRIVES A CLICK -- THE HANDLERS ARE ASSERTED IN THE SHELL */ },
-            setAttribute() { /* NOOP */ },
+            /*
+                Recorded rather than dropped. An SVG element carries its class as an ATTRIBUTE -- it
+                has no writable className -- so a fake that swallowed setAttribute would make every
+                icon on the panel indistinguishable from an empty element.
+            */
+            attributes: {} as Record<string, string>,
+            setAttribute(attributeName: string, attributeValue: string) { this.attributes[attributeName] = attributeValue; },
             scrollIntoView() { /* NOOP */ }
         });
 
@@ -1634,16 +1641,35 @@ describe('PicklistDependencyExplorerService', () => {
             scannedPathValue: buildFakeElement('span')
         };
 
+        /*
+            The icons are real SVG elements, so the panel builds them in the SVG namespace --
+            createElement would produce an HTMLUnknownElement that renders nothing. The fake does not
+            model namespaces; it only has to answer the call with something appendable.
+        */
         const fakeDocument = {
+            body: buildFakeElement('body'),
             getElementById: (elementId: string) => elementsById[elementId],
-            createElement: (tagName: string) => buildFakeElement(tagName)
+            createElement: (tagName: string) => buildFakeElement(tagName),
+            createElementNS: (_namespaceUri: string, tagName: string) => buildFakeElement(tagName)
         };
 
         const fakeWindow = {
             addEventListener: (eventType: string, listener: Function) => { windowListenersByType[eventType] = listener; }
         };
 
-        const acquireVsCodeApi = () => ({ postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); } });
+        /*
+            setState and getState are what the panel remembers its query, status filter, density and
+            open rows in across a hide and reveal. The fake stores them in a variable rather than
+            returning undefined, so a test can assert on what a render persisted -- and so the
+            restore path runs here at all.
+        */
+        let persistedPanelState: any = seededPanelState;
+
+        const acquireVsCodeApi = () => ({
+            postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); },
+            setState: (nextPanelState: any) => { persistedPanelState = nextPanelState; },
+            getState: () => persistedPanelState
+        });
 
         const shellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
         const panelScript = shellHtml.substring(
@@ -1657,10 +1683,17 @@ describe('PicklistDependencyExplorerService', () => {
         const collectText = (element: any): string =>
             String(element.ownTextContent || '') + ' ' + element.children.map(collectText).join(' ');
 
+        const collectElements = (element: any): any[] =>
+            [element].concat(element.children.reduce(
+                (runningElements: any[], childElement: any) => runningElements.concat(collectElements(childElement)), []
+            ));
+
         return {
             postedHostMessages,
             elementsById,
             collectText,
+            collectElements,
+            readPersistedPanelState: () => persistedPanelState,
             postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
             raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent),
             raiseUnhandledRejection: (rejectionEvent: any) => windowListenersByType['unhandledrejection'](rejectionEvent)
@@ -3025,7 +3058,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(renderedControllingValues).toEqual(['Mexico']);
             expect(actualViewModel.objects[0].rootNodes[0].truncatedCombinationCount).toBe(2);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('combination(s) are not rendered');
+            expect(actualViewModel.truncationNotices.join(' ')).toContain('2 combinations are not rendered');
 
         });
 
@@ -3108,7 +3141,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(actualViewModel.objects[0].rootNodes[0].recordTypeScopes).toHaveLength(2);
             expect(actualViewModel.objects[0].rootNodes[0].truncatedRecordTypeScopeCount).toBe(3);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('record type scope(s) are not rendered');
+            expect(actualViewModel.truncationNotices.join(' ')).toContain('3 record type scopes are not rendered');
 
         });
 
@@ -3206,7 +3239,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(actualViewModel.objects[0].rootNodes).toHaveLength(3);
             expect(actualViewModel.objects[0].truncatedNodeCount).toBe(5);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('dependent picklist(s) are not rendered');
+            expect(actualViewModel.truncationNotices.join(' ')).toContain('5 dependent picklists are not rendered');
 
         });
 
@@ -3809,7 +3842,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualWebviewHtml = buildPanelDocumentAndPayload(viewModel);
 
-            expect(actualWebviewHtml).toContain('combination(s) are not rendered');
+            expect(actualWebviewHtml).toContain('combinations are not rendered');
             expect(actualWebviewHtml).toContain('renderTruncationNotices');
 
         });
@@ -3847,9 +3880,9 @@ describe('PicklistDependencyExplorerService', () => {
                 expect(actualWebviewHtml).toContain("'must not unlock',");
                 expect(actualWebviewHtml).toContain("combination.status === 'failed'");
 
-                // COLLAPSED IS THE DEFAULT, AND THE ARROW HAS TO AGREE WITH THE BODY IT DESCRIBES
+                // COLLAPSED IS THE DEFAULT, AND THE CHEVRON HAS TO AGREE WITH THE BODY IT DESCRIBES
                 expect(actualWebviewHtml).toContain(
-                    "createElement('span', 'disclosure', startExpanded ? '▾' : '▸')"
+                    "const disclosureElement = createDisclosureElement(startExpanded);"
                 );
                 expect(actualWebviewHtml).toContain("'valueListValues' + (startExpanded ? '' : ' hidden')");
 
@@ -4119,7 +4152,7 @@ describe('PicklistDependencyExplorerService', () => {
                 const actualWebviewHtml = buildRenderedHtml();
 
                 expect(actualWebviewHtml).toContain(
-                    "appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope(s) are')"
+                    "appendTruncationNotice(groupElement, node.truncatedRecordTypeScopeCount, 'record type scope', '')"
                 );
                 expect(actualWebviewHtml).not.toContain(
                     'appendTruncationNotice(groupBodyElement, node.truncatedRecordTypeScopeCount'
@@ -4146,7 +4179,7 @@ describe('PicklistDependencyExplorerService', () => {
                 const actualWebviewHtml = buildRenderedHtml();
 
                 expect(actualWebviewHtml).toContain('function renderTableOfContents(tableOfContentsElement)');
-                expect(actualWebviewHtml).toContain("createElement('span', 'disclosure', '▾')");
+                expect(actualWebviewHtml).toContain("const disclosureElement = createDisclosureElement(true);");
                 expect(actualWebviewHtml).toContain("createElement('span', undefined, 'Contents')");
 
             });
@@ -4298,6 +4331,178 @@ describe('PicklistDependencyExplorerService', () => {
             ]);
 
             expect(grouped['Account'][0].reason).toBe('valueNotDeclaredInGlobalValueSet');
+
+        });
+
+    });
+
+    describe('pluralize', () => {
+
+        it('given one of something, says it once', () => {
+
+            expect(PicklistDependencyExplorerService.pluralize(1, 'combination')).toBe('1 combination');
+
+        });
+
+        it('given any other count, pluralizes the noun', () => {
+
+            expect(PicklistDependencyExplorerService.pluralize(0, 'combination')).toBe('0 combinations');
+            expect(PicklistDependencyExplorerService.pluralize(12, 'dependent picklist')).toBe('12 dependent picklists');
+
+        });
+
+    });
+
+    /*
+        The panel is painted into the reader's editor, so what it looks like is not this extension's
+        to decide unilaterally: a literal colour survives a theme switch, and under a high contrast
+        theme it removes the contrast the theme exists to provide.
+    */
+    describe('panel appearance', () => {
+
+        it('resolves every colour through a theme token and hard-codes none', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+            const styleBlock = actualShellHtml.substring(
+                actualShellHtml.indexOf('<style nonce="testNonce">'),
+                actualShellHtml.indexOf('</style>')
+            );
+
+            expect(styleBlock).toMatch(/--vscode-foreground/);
+            // A HEX LITERAL, AN rgb() OR A NAMED COLOUR IS A CLAIM THAT THE READER'S THEME IS WRONG
+            expect(styleBlock).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+            expect(styleBlock).not.toMatch(/\brgba?\(/);
+
+        });
+
+        /*
+            The icons are drawn in the document rather than fetched, which is what lets the panel keep
+            the resource grant it opens with: an icon FONT would need a localResourceRoots entry to
+            load from and a font-src the policy does not have.
+        */
+        it('draws its icons from an inline sprite and asks the policy for nothing new', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('<svg class="iconSprite"');
+            expect(actualShellHtml).toContain('id="sdtIconCheck"');
+            expect(actualShellHtml).toContain("createElementNS('http://www.w3.org/2000/svg', 'svg')");
+
+            const contentSecurityPolicy = PicklistDependencyExplorerService.buildContentSecurityPolicy('testNonce');
+            expect(contentSecurityPolicy).toContain(`default-src 'none'`);
+            expect(contentSecurityPolicy).not.toContain('font-src');
+            expect(contentSecurityPolicy).not.toContain('img-src');
+
+        });
+
+        /*
+            The status is carried by a SHAPE, a WORD and a colour, in that order of reliability. A
+            panel that separated the three statuses by hue alone would collapse to one state for a
+            reader who cannot distinguish the hues.
+        */
+        it('gives each status its own icon and keeps the word beside it', () => {
+
+            const panel = runPanelScript();
+            const viewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            const statusBadgeElements = panel.collectElements(panel.elementsById.explorerRoot)
+                                            .filter((element: any) => String(element.className).indexOf('statusBadge') === 0);
+
+            expect(statusBadgeElements.length).toBeGreaterThan(0);
+
+            statusBadgeElements.forEach((badgeElement: any) => {
+
+                const iconElement = badgeElement.children.find((childElement: any) => childElement.tagName === 'svg');
+
+                expect(iconElement).toBeDefined();
+                expect(iconElement.attributes.class).toContain('icon');
+
+                // THE WORD IS WHAT THE ICON REPEATS, AND IT IS NEVER THE ICON ALONE
+                expect(panel.collectText(badgeElement).trim()).not.toBe('');
+
+            });
+
+        });
+
+        /*
+            DENSE COMPRESSES SPACE, NEVER INFORMATION.
+
+            An org with drift is exactly the org whose reader wants more rows on screen at once, so a
+            density control that dropped rows to achieve that would be a filter the reader never
+            applied -- and the rows it dropped would be indistinguishable from rows the org does not
+            have. Every dense rule is a measurement.
+        */
+        it('compresses spacing in dense mode and hides nothing', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+            const denseRules = actualShellHtml.split('body.dense').slice(1)
+                                    .map(ruleText => ruleText.substring(0, ruleText.indexOf('}')));
+
+            expect(denseRules.length).toBeGreaterThan(0);
+
+            denseRules.forEach(denseRule => {
+                expect(denseRule).not.toContain('display: none');
+                expect(denseRule).not.toContain('visibility: hidden');
+            });
+
+        });
+
+    });
+
+    /*
+        The panel is deliberately not retained when hidden, so a reveal rebuilds it from the model.
+        That reconstructs the structure faithfully and the reader's place in it not at all -- which
+        is what this state is for.
+    */
+    describe('panel state across a reveal', () => {
+
+        it('persists the query, the status filter and the open rows', () => {
+
+            const panel = runPanelScript();
+            const viewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            const persistedPanelState = panel.readPersistedPanelState();
+
+            expect(persistedPanelState).toBeDefined();
+            expect(persistedPanelState).toHaveProperty('filterText');
+            expect(persistedPanelState).toHaveProperty('filterStatus');
+            expect(persistedPanelState).toHaveProperty('isDenseLayout');
+            expect(persistedPanelState).toHaveProperty('expandedObjectApiNames');
+
+        });
+
+        it('given state from a previous panel, reopens the objects that were open', () => {
+
+            const panel = runPanelScript({
+                filterText: '',
+                filterStatus: 'all',
+                isDenseLayout: true,
+                expandedObjectApiNames: ['Chain_Example__c']
+            });
+
+            const viewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            // THE ROWS OF AN OBJECT ARE NOT BUILT UNTIL IT IS EXPANDED, SO THEIR TEXT IS THE PROOF IT WAS
+            expect(panel.collectText(panel.elementsById.explorerRoot)).toContain('Country__c');
+
+        });
+
+        /*
+            Expanding is what BUILDS an object's rows, so an unbounded restore is exactly the render
+            the panel's ceiling exists to prevent -- a reveal that hung would be a worse answer than
+            a reveal that came back collapsed.
+        */
+        it('bounds the restore by the same limit expand-all is bounded by', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('expandedObjectApiNames.slice(0, EXPAND_ALL_OBJECT_LIMIT)');
 
         });
 
