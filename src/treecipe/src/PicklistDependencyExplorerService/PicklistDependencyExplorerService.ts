@@ -2612,7 +2612,7 @@ export class PicklistDependencyExplorerService {
     }
     .toolbar input { min-width: 22rem; }
     .matchCount { flex-basis: 100%; color: var(--vscode-descriptionForeground); font-size: 0.85em; }
-    .warningList { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; }
+    .warningList { border-left: 3px solid var(--vscode-testing-iconQueued); padding-left: 0.75rem; margin: 0.5rem 0 0.75rem 0; }
     .truncationNotice {
         border-left: 3px solid var(--vscode-testing-iconQueued);
         padding: 0.3rem 0.75rem;
@@ -3410,17 +3410,44 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        What was skipped, behind a disclosure and collapsed.
+
+        The COUNT is the part a reader has to see: it is what tells them the panel is not showing
+        everything, and it stays on screen collapsed. The warnings themselves are one line per
+        skipped item and are unbounded in the number of items the metadata skipped -- above the find
+        box that was the longest block a reader scrolled past to reach the thing they opened the
+        panel for. Collapsed is not hidden: nothing is dropped, the summary states how much is held,
+        and each warning is still listed under its own object, which is where a reader looking at
+        that object meets it.
+    */
     function renderSkippedFieldWarnings() {
 
         if (!explorerModel.skippedFieldWarnings.length) { return; }
 
         const warningsElement = createElement('div', 'warningList');
-        warningsElement.appendChild(createElement('div', 'fieldName',
+
+        const summaryElement = createElement('div', 'valueListSummary');
+        const disclosureElement = createElement('span', 'disclosure', '▸');
+        summaryElement.appendChild(disclosureElement);
+        summaryElement.appendChild(createElement('span', 'fieldName',
             explorerModel.skippedFieldWarnings.length
-                + ' item(s) were skipped and have no generated coverage — each is also listed under its object below'));
+                + ' item(s) were skipped and have no generated coverage'));
+        warningsElement.appendChild(summaryElement);
+
+        const warningDetailElement = createElement('div', 'hidden');
+        warningDetailElement.appendChild(createElement('div', 'muted',
+            'Each is also listed under its object below.'));
         explorerModel.skippedFieldWarnings.forEach(function (skippedFieldWarning) {
-            warningsElement.appendChild(createElement('div', 'muted', skippedFieldWarning));
+            warningDetailElement.appendChild(createElement('div', 'muted', skippedFieldWarning));
         });
+        warningsElement.appendChild(warningDetailElement);
+
+        summaryElement.addEventListener('click', function () {
+            warningDetailElement.classList.toggle('hidden');
+            disclosureElement.textContent = warningDetailElement.classList.contains('hidden') ? '▸' : '▾';
+        });
+
         registerPanelSection('Not covered', warningsElement);
         explorerRoot.appendChild(warningsElement);
 
@@ -3858,10 +3885,8 @@ export class PicklistDependencyExplorerService {
                     ? ' + ' + explorerModel.recordTypeCombinationCount + ' record-type-scoped'
                     : '')));
 
-        renderToolbar();
-
         /*
-            Placed under the toolbar now and filled once the object sections exist: the contents
+            Filled once the object sections exist: the contents
             entries hold the section records they scroll to, rather than looking an object up by name
             at click time.
         */
@@ -3912,6 +3937,20 @@ export class PicklistDependencyExplorerService {
             screen and nothing else, which reads exactly like a panel that loaded and found nothing.
             Held back, a render that dies leaves the failure notice as the only thing on screen.
         */
+        /*
+            The find box FIRST, ahead of everything that describes the panel.
+
+            Every other block at this level is a caveat ABOUT the rows -- where they came from,
+            whether they still match the metadata, what the ceiling dropped, what was skipped -- and
+            a reader who opened the panel to look one field up was scrolling past all of it to reach
+            the one control that gets them there. The toolbar is sticky, so first is also where it
+            stays on screen once they are down among the object sections.
+
+            Rendered only when the model has objects. With none there is nothing to filter, and
+            applyFilter -- the only thing that fills the match count -- never runs.
+        */
+        if (explorerModel.objects.length) { renderToolbar(); }
+
         renderProvenanceBanner();
         renderTruncationNotices();
         renderSkippedFieldWarnings();

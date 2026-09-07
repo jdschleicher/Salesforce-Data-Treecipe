@@ -916,37 +916,77 @@ describe('PicklistDependencyExplorerService', () => {
         const postedHostMessages: any[] = [];
         const windowListenersByType: Record<string, Function> = {};
 
-        const buildFakeElement = (tagName: string): any => ({
-            tagName: tagName,
-            className: '',
+        const buildFakeElement = (tagName: string): any => {
+
             /*
-                textContent is a real accessor, not a plain field: assigning '' is how the panel
-                CLEARS a container, and a fake that kept its children would let a half-drawn page
-                still read as complete -- which would have this harness pass on the very bug it
-                exists to catch.
+                The class names this element ACTUALLY carries, which is not the same as the ones
+                classList was asked to add.
+
+                createElement sets them through className, and a collapsed section is collapsed
+                exactly that way -- createElement('div', 'hidden'). A classList that answered
+                contains() from its own add() history would report that element as visible, and a
+                toggle driven from that answer would open a section the panel had never closed. The
+                add/remove history is kept alongside because the render-guard tests assert on it.
             */
-            ownTextContent: '',
-            get textContent() { return this.ownTextContent; },
-            set textContent(nextTextContent: string) {
-                this.ownTextContent = nextTextContent;
-                if (!nextTextContent) { this.children.length = 0; }
-            },
-            children: [] as any[],
-            classList: {
-                added: [] as string[],
-                removed: [] as string[],
-                add(className: string) { this.added.push(className); },
-                remove(className: string) { this.removed.push(className); },
-                toggle(className: string, shouldBePresent: boolean) {
-                    if (shouldBePresent) { this.add(className); } else { this.remove(className); }
+            const carriedClassNames = new Set<string>();
+
+            const applyClassName = (nextClassName: string) => {
+                carriedClassNames.clear();
+                String(nextClassName || '').split(' ')
+                    .filter(className => !!className)
+                    .forEach(className => carriedClassNames.add(className));
+            };
+
+            const listenersByEventType: Record<string, Function[]> = {};
+
+            return {
+                tagName: tagName,
+                get className() { return Array.from(carriedClassNames).join(' '); },
+                set className(nextClassName: string) { applyClassName(nextClassName); },
+                /*
+                    textContent is a real accessor, not a plain field: assigning '' is how the panel
+                    CLEARS a container, and a fake that kept its children would let a half-drawn page
+                    still read as complete -- which would have this harness pass on the very bug it
+                    exists to catch.
+                */
+                ownTextContent: '',
+                get textContent() { return this.ownTextContent; },
+                set textContent(nextTextContent: string) {
+                    this.ownTextContent = nextTextContent;
+                    if (!nextTextContent) { this.children.length = 0; }
                 },
-                contains(className: string) { return this.added.includes(className); }
-            },
-            appendChild(childElement: any) { this.children.push(childElement); return childElement; },
-            addEventListener() { /* NO PANEL TEST DRIVES A CLICK -- THE HANDLERS ARE ASSERTED IN THE SHELL */ },
-            setAttribute() { /* NOOP */ },
-            scrollIntoView() { /* NOOP */ }
-        });
+                children: [] as any[],
+                classList: {
+                    added: [] as string[],
+                    removed: [] as string[],
+                    add(className: string) { carriedClassNames.add(className); this.added.push(className); },
+                    remove(className: string) { carriedClassNames.delete(className); this.removed.push(className); },
+                    // ONE ARGUMENT FLIPS WHAT IS CARRIED, WHICH IS THE FORM EVERY DISCLOSURE IN THE PANEL USES
+                    toggle(className: string, shouldBePresent?: boolean) {
+                        const nextPresence = shouldBePresent === undefined
+                            ? !carriedClassNames.has(className)
+                            : shouldBePresent;
+                        if (nextPresence) { this.add(className); } else { this.remove(className); }
+                        return nextPresence;
+                    },
+                    contains(className: string) { return carriedClassNames.has(className); }
+                },
+                appendChild(childElement: any) { this.children.push(childElement); return childElement; },
+                addEventListener(eventType: string, listener: Function) {
+                    listenersByEventType[eventType] = listenersByEventType[eventType] || [];
+                    listenersByEventType[eventType].push(listener);
+                },
+                // WHAT LETS A TEST OPEN A DISCLOSURE THE WAY A READER DOES, RATHER THAN ASSERTING ON ITS SOURCE
+                raiseEvent(eventType: string) {
+                    (listenersByEventType[eventType] || []).forEach(listener => {
+                        listener({ stopPropagation() { /* NOOP */ } });
+                    });
+                },
+                setAttribute() { /* NOOP */ },
+                scrollIntoView() { /* NOOP */ }
+            };
+
+        };
 
         const elementsById: Record<string, any> = {
             explorerRoot: buildFakeElement('div'),
@@ -978,10 +1018,20 @@ describe('PicklistDependencyExplorerService', () => {
         const collectText = (element: any): string =>
             String(element.ownTextContent || '') + ' ' + element.children.map(collectText).join(' ');
 
+        const collectElementsByClassName = (element: any, className: string): any[] => {
+            const matches = element.classList.contains(className) ? [element] : [];
+            return element.children.reduce(
+                (foundElements: any[], childElement: any) =>
+                    foundElements.concat(collectElementsByClassName(childElement, className)),
+                matches
+            );
+        };
+
         return {
             postedHostMessages,
             elementsById,
             collectText,
+            collectElementsByClassName,
             postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
             raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent),
             raiseUnhandledRejection: (rejectionEvent: any) => windowListenersByType['unhandledrejection'](rejectionEvent)
@@ -1130,6 +1180,120 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(bareFailure.message).not.toContain('[object');
             expect(bareFailure.message).toContain('error');
+
+        });
+
+    });
+
+    /*
+        The panel's TOP, executed.
+
+        Two things about it are properties of the rendered page rather than of the source, and the
+        harness above is what makes them assertable: WHERE the find box lands among the blocks that
+        describe the panel, and whether the skipped list is collapsed when it first draws. Asserting
+        either one as a string would say a call is present while saying nothing about the order the
+        reader meets it in.
+    */
+    describe('the panel layout, executed', () => {
+
+        const mockSkippedFieldWarnings = [
+            'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Region__c"',
+            'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Territory__c"'
+        ];
+
+        function renderPanelWithSkippedWarnings() {
+
+            const panel = runPanelScript();
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildChainExampleSpecDetails(), mockSkippedFieldWarnings
+                ),
+                ''
+            ));
+
+            return panel;
+
+        }
+
+        function collectRootClassNames(panel: any): string[] {
+            return panel.elementsById.explorerRoot.children.map((childElement: any) => String(childElement.className));
+        }
+
+        /*
+            The reader opened this panel to look a field up. Everything else at the top level is a
+            caveat ABOUT the rows, and each one used to sit between them and the only control that
+            gets them there.
+        */
+        it('draws the find box before every block that describes the panel', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+            const rootClassNames = collectRootClassNames(panel);
+
+            expect(rootClassNames[0]).toBe('toolbar');
+
+            // MATCHED ON THE LEADING CLASS: THE BANNER CARRIES ITS PROVENANCE AS A SECOND ONE
+            expect(rootClassNames.findIndex(className => className.startsWith('provenanceBanner'))).toBeGreaterThan(0);
+            expect(rootClassNames.indexOf('warningList')).toBeGreaterThan(0);
+
+        });
+
+        /*
+            With nothing to filter the box is not drawn at all: applyFilter is what fills its match
+            count and it only runs once there are sections, so an empty panel would carry a control
+            reporting nothing.
+        */
+        it('given a model with no objects, draws no find box and still reports the draw', () => {
+
+            const panel = runPanelScript();
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, [], [])
+            ));
+
+            expect(collectRootClassNames(panel)).not.toContain('toolbar');
+            expect(panel.collectText(panel.elementsById.explorerRoot)).toContain('No dependent picklists were found');
+            expect(panel.postedHostMessages.some((hostMessage: any) => hostMessage.command === 'rendered')).toBe(true);
+
+        });
+
+        it('draws the skipped items collapsed, with the count still stating how many are held', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+            const warningListElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'warningList')[0];
+
+            const summaryElement = warningListElement.children[0];
+            const detailElement = warningListElement.children[1];
+
+            expect(panel.collectText(summaryElement)).toContain('2 item(s) were skipped and have no generated coverage');
+
+            // COLLAPSED IS NOT DROPPED: EVERY WARNING IS THERE, BEHIND THE DISCLOSURE
+            expect(detailElement.classList.contains('hidden')).toBe(true);
+            expect(panel.collectText(detailElement)).toContain('Chain_Example__c.Region__c');
+            expect(panel.collectText(detailElement)).toContain('Chain_Example__c.Territory__c');
+
+        });
+
+        it('opens the skipped items when the summary is clicked, and closes them again', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+            const warningListElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'warningList')[0];
+
+            const summaryElement = warningListElement.children[0];
+            const disclosureElement = summaryElement.children[0];
+            const detailElement = warningListElement.children[1];
+
+            expect(disclosureElement.textContent).toBe('▸');
+
+            summaryElement.raiseEvent('click');
+
+            expect(detailElement.classList.contains('hidden')).toBe(false);
+            expect(disclosureElement.textContent).toBe('▾');
+
+            summaryElement.raiseEvent('click');
+
+            expect(detailElement.classList.contains('hidden')).toBe(true);
+            expect(disclosureElement.textContent).toBe('▸');
 
         });
 

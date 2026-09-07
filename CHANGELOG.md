@@ -59,7 +59,7 @@ The provenance banner stays, minus the class name: it distinguishes a manifest-s
 
 ### Both Apex commands are untouched
 
-`Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The panel still **names** what was generated for each row -- `SDTPLDAccountSpecs.specStatus__c()` on a field, the test method on an object heading, the provenance banner naming `SDTPicklistDependencyTests.cls`. That naming is the manifest's promise that a row on screen corresponds to a spec method that exists.
+`Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The generated names are still recorded per row in `manifest.json` and still carried on the view model -- the panel just does not render them, as above.
 
 The freshness check is untouched: its button, its five states (`notChecked`, `pendingCheck`, `checkFailed`, stale, fresh) and its refusal paths all behave exactly as before. Freshness is a question about your *metadata*, not about a run. So is the render guard -- `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener and the `render` vs `runtime` distinction are as they were in 3.15.0.
 
@@ -82,6 +82,16 @@ The node cap is applied to **root chains** -- a chain is dropped whole, because 
 `applyTotalCombinationBudget` sliced a holder's combinations without incrementing that holder's own `truncatedCombinationCount`, and the panel renders those per-field and per-scope counts beneath their rows. A field the budget emptied therefore rendered as a field that declares **no combinations at all**, with no local notice -- "rendered as something it was not", one level below where the aggregate notice was telling the truth. Each holder is now told what it lost, and a holder wholly inside the budget is left alone rather than sliced into an identical copy.
 
 Both were reachable on `main` too; this change rewrote the code and the wording around them, so they are fixed here rather than deferred. Three regression tests pin them, each asserting against the exact previous string or count.
+
+### The top of the panel is the find box
+
+The reader opens this panel to look one field up. Everything else at the top level is a caveat *about* the rows -- where they came from, whether they still match your metadata, what the rendering ceiling dropped, what was skipped -- and every one of them used to sit between the reader and the only control that gets them there.
+
+The toolbar is now the **first** thing under the scanned-path line, ahead of the provenance banner and both notice blocks. It is already `position: sticky`, so first is also where it stays on screen once the reader is down among the object sections. With no objects in the model it is not drawn at all: there is nothing to filter, and `applyFilter` -- the only thing that fills its match count -- never runs.
+
+The skipped-item list moved behind a disclosure and starts **collapsed**. What a reader has to see is the *count* -- that is what tells them the panel is not showing everything -- and the summary carries it either way. The list itself is one line per skipped item and is unbounded in how many the metadata skipped, which made it the longest block above the find box. Collapsed is not dropped: nothing is removed from the model, the section is still registered in the contents as `Not covered`, and every warning is still rendered under its own object, which is where a reader looking at that object meets it.
+
+Both are asserted by executing the real panel script against the fake DOM harness rather than by matching its source, because both are properties of the rendered page: *where* the find box lands among the blocks, and whether the list is open when it first draws. That took two honest fixes to the harness -- its `classList` now answers `contains` from the classes an element actually carries rather than from its own `add` history (a section collapsed via `createElement('div', 'hidden')` was reported visible), and it records listeners so a test can open the disclosure the way a reader does.
 
 ### Smaller things
 
