@@ -1393,6 +1393,30 @@ export class PicklistDependencyExplorerService {
                                     recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
                                     explorerContext: IPicklistDependencyExplorerContext = this.buildMetadataPreviewContext()): IPicklistDependencyExplorerViewModel {
 
+        return this.applyModelLimits(
+            this.buildUncappedExplorerViewModel(
+                objectsDirectoryPath, specDetails, skippedFieldWarnings, recordTypeSpecDetails, explorerContext
+            )
+        );
+
+    }
+
+    /*
+        The same model with the rendering ceiling NOT yet applied.
+
+        It exists because an overlay has to run before the ceiling, never after. applyModelLimits
+        drops rows, and a failure naming a row that is already gone matches nothing, lands in the
+        unattributed set, and holds the WHOLE object at "unknown" -- so composing the two the
+        obvious way round silently degrades an org past a cap. Overlaying first and capping second
+        is the order the overlay ran in when it lived inside this build, and it is the order
+        applyRunToViewModel documents.
+    */
+    static buildUncappedExplorerViewModel(objectsDirectoryPath: string,
+                                    specDetails: IPicklistDependencySpecDetail[],
+                                    skippedFieldWarnings: string[],
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [],
+                                    explorerContext: IPicklistDependencyExplorerContext = this.buildMetadataPreviewContext()): IPicklistDependencyExplorerViewModel {
+
         /*
             The UNION of both kinds, mirroring the object set the manifest and the Apex writer use.
             An object that produced only record-type-scoped specs still has a generated class and a
@@ -1511,16 +1535,27 @@ export class PicklistDependencyExplorerService {
         };
 
         /*
-            The ceiling is applied HERE rather than at render time, and after every count above has
-            been taken. The counts then keep describing the org while the panel describes what it is
-            showing, and the two are reconciled by the notices the ceiling writes.
+            The ceiling is NOT applied here -- buildExplorerViewModel applies it on the way out, and
+            every count above has already been taken. The counts then keep describing the org while
+            the panel describes what it is showing, and the two are reconciled by the notices the
+            ceiling writes.
         */
-        return this.applyModelLimits(explorerViewModel);
+        return explorerViewModel;
 
     }
 
     /*
         Overlays a persisted check run onto a STRUCTURAL view model, in place, and hands it back.
+
+        IT MUST RUN ON AN UNCAPPED MODEL, BEFORE applyModelLimits. The ceiling drops rows, and a
+        failure naming a row that is already gone matches nothing, lands in the unattributed set,
+        and holds the WHOLE object at "unknown" -- every surviving row with it. Build through
+        buildUncappedExplorerViewModel (or ...ByManifest), overlay, then cap:
+
+            applyModelLimits(applyRunToViewModel(buildUncappedExplorerViewModelByManifest(...), resultsLoad))
+
+        That is the order the overlay ran in when it lived inside buildExplorerViewModel, and a
+        test pins the difference so this cannot be re-composed the wrong way round unnoticed.
 
         This is the orchestration that used to live inside buildExplorerViewModel: look each object's
         generated test method up in the run, parse its failure lines, attribute them down the graph,
@@ -1793,10 +1828,28 @@ export class PicklistDependencyExplorerService {
             throw new Error('A picklist dependency explorer view model cannot be built from a manifest load that carries no manifest.');
         }
 
+        return this.applyModelLimits(
+            this.buildUncappedExplorerViewModelByManifest(manifestLoad, objectsDirectoryPath, freshnessResult, workspaceRoot)
+        );
+
+    }
+
+    // THE MANIFEST-SOURCED MODEL BEFORE THE CEILING -- SEE buildUncappedExplorerViewModel FOR WHY THAT MATTERS
+    static buildUncappedExplorerViewModelByManifest(manifestLoad: IPicklistDependencyManifestLoad,
+                                                objectsDirectoryPath: string,
+                                                freshnessResult: IPicklistDependencyManifestFreshnessResult,
+                                                workspaceRoot?: string): IPicklistDependencyExplorerViewModel {
+
+        const manifest = manifestLoad.manifest;
+
+        if ( !manifest ) {
+            throw new Error('A picklist dependency explorer view model cannot be built from a manifest load that carries no manifest.');
+        }
+
         const manifestSpecDetails = PicklistDependencyManifestService.buildSpecDetailsByManifest(manifest);
         const explorerContext = this.buildContextByManifest(manifest, manifestLoad, freshnessResult, workspaceRoot);
 
-        return this.buildExplorerViewModel(
+        return this.buildUncappedExplorerViewModel(
             this.resolveRenderableObjectsDirectoryPath(manifest.objectsDirectoryPath, objectsDirectoryPath, workspaceRoot),
             manifestSpecDetails.specDetails,
             manifest.skippedFieldWarnings,

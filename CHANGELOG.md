@@ -26,9 +26,16 @@ The orchestration that used to live *inside* `buildExplorerViewModel` -- look ea
 // what an Explorer open does
 const viewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(...);
 
-// what nothing currently does, but still works
-PicklistDependencyExplorerService.applyRunToViewModel(viewModel, resultsLoad);
+// what nothing currently does, but still works -- note the order
+PicklistDependencyExplorerService.applyModelLimits(
+    PicklistDependencyExplorerService.applyRunToViewModel(
+        PicklistDependencyExplorerService.buildUncappedExplorerViewModelByManifest(...),
+        resultsLoad
+    )
+);
 ```
+
+**The order is part of the contract, and review caught that it had been inverted.** `applyModelLimits` drops rows; a failure naming a row that is already gone matches nothing, lands in the unattributed set, and holds the *whole* object at `'unknown'` -- every surviving row with it. Overlaying and then capping is the order the overlay ran in when it lived inside `buildExplorerViewModel`, so `buildUncappedExplorerViewModel` and `buildUncappedExplorerViewModelByManifest` exist to make that composition available. `buildExplorerViewModel` is unchanged for every existing caller -- it is now the uncapped build with the ceiling applied on the way out. Two tests pin both compositions, including the degraded one, so the wrong order cannot be reintroduced silently.
 
 ### The overlay fields are OPTIONAL, which is the load-bearing detail
 

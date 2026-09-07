@@ -3412,6 +3412,130 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+        /*
+            THE ORDER THE OVERLAY COMPOSES IN, WHICH IS THE ONE THING A RE-WIRE CAN GET WRONG.
+
+            The ceiling drops rows. A failure naming a row that is already gone matches nothing,
+            lands in the unattributed set, and holds the WHOLE object at "unknown" -- every
+            surviving row with it. Overlaying first and capping second is the order the overlay ran
+            in when it lived inside buildExplorerViewModel, and these pin the difference so it
+            cannot be re-composed the wrong way round unnoticed.
+        */
+        describe('the overlay must run before the ceiling', () => {
+
+            // TEN COMBINATIONS, A CAP OF TWO, AND A FAILURE NAMING ONE THE CAP DROPS
+            function buildTenCombinationSpecs(): IPicklistDependencySpecDetail[] {
+                return [{
+                    objectApiName: 'Chain_Example__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: Array.from({ length: 10 }, (unusedValue, expectationIndex) => ({
+                        controllingValue: `V${expectationIndex}`,
+                        dependentValues: ['x'],
+                        forbiddenValues: []
+                    }))
+                }];
+            }
+
+            function buildFailureOnDroppedRow(): IPicklistDependencyResultsLoad {
+                return {
+                    state: 'loaded',
+                    message: '',
+                    resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                    results: {
+                        targetOrg: 'test-org', ranAt: '2026-09-03T13:00:00Z',
+                        passed: false, failureCount: 1, methodsRun: 1,
+                        methodOutcomes: [{
+                            methodName: PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c'),
+                            passed: false,
+                            message: 'MISSING_VALUES — Chain_Example__c.State__c @ V9: lost a value'
+                        }]
+                    }
+                };
+            }
+
+            const cappedLimits = () => buildLimits({ maxCombinationsPerNode: 2 });
+
+            it('given the documented order, attributes normally even when the failing row was capped away', () => {
+
+                const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                    PicklistDependencyExplorerService.applyRunToViewModel(
+                        PicklistDependencyExplorerService.buildUncappedExplorerViewModel(
+                            mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                        ),
+                        buildFailureOnDroppedRow()
+                    ),
+                    cappedLimits()
+                );
+
+                const objectViewModel = actualViewModel.objects[0];
+
+                expect(objectViewModel.status).toBe('failed');
+
+                // THE FAILURE FOUND ITS ROW BEFORE THE CEILING REMOVED IT, SO NOTHING WAS LEFT UNPLACED
+                expect(objectViewModel.unattributedFailureMessages).toBeEmpty();
+
+                // AND THE SURVIVING ROWS CARRY THE VERDICT THE RUN ACTUALLY SUPPORTS
+                expect(objectViewModel.rootNodes[0].combinations[0].status).toBe('passed');
+
+            });
+
+            /*
+                The same inputs composed the obvious way round. This is not a supported order -- it
+                is asserted so the degradation is visible and pinned rather than discovered later by
+                someone re-wiring the overlay and wondering why a large org went grey.
+            */
+            it('given the ceiling first, the failure lands nowhere and holds the whole object back', () => {
+
+                const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                    PicklistDependencyExplorerService.applyModelLimits(
+                        PicklistDependencyExplorerService.buildExplorerViewModel(
+                            mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                        ),
+                        cappedLimits()
+                    ),
+                    buildFailureOnDroppedRow()
+                );
+
+                const objectViewModel = actualViewModel.objects[0];
+
+                expect(objectViewModel.unattributedFailureMessages).not.toBeEmpty();
+                expect(objectViewModel.rootNodes[0].combinations[0].status).toBe('unknown');
+
+            });
+
+            // THE MANIFEST-LESS GUARD LIVES ON THE UNCAPPED BUILD NOW, SO IT IS ASSERTED THERE TOO
+            it('given a manifest load carrying no manifest, refuses to build rather than rendering an empty panel', () => {
+
+                expect(() => PicklistDependencyExplorerService.buildUncappedExplorerViewModelByManifest(
+                    { state: 'noManifestFound', message: 'nothing here' },
+                    mockObjectsDirectoryPath,
+                    { freshness: 'fresh', message: '' }
+                )).toThrow('carries no manifest');
+
+            });
+
+            // buildExplorerViewModel STILL CAPS ON THE WAY OUT -- THE UNCAPPED BUILD IS THE OPT IN
+            it('given the plain build, the ceiling is already applied', () => {
+
+                const cappedViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                );
+                const uncappedViewModel = PicklistDependencyExplorerService.buildUncappedExplorerViewModel(
+                    mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                );
+
+                expect(uncappedViewModel.objects[0].rootNodes[0].combinations).toHaveLength(10);
+                expect(cappedViewModel.objects[0].rootNodes[0].combinations).toHaveLength(10);
+
+                // BOTH ARE INSIDE THE SHIPPED CAP; WHAT DIFFERS IS THAT ONE HAS BEEN THROUGH IT
+                expect(PicklistDependencyExplorerService.applyModelLimits(uncappedViewModel, cappedLimits())
+                    .objects[0].rootNodes[0].combinations).toHaveLength(2);
+
+            });
+
+        });
+
     describe('selectWithinCap', () => {
 
         it('given fewer items than the cap, returns them untouched', () => {
