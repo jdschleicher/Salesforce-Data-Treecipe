@@ -22,25 +22,38 @@ A match inside a record type scope now opens the group and the scope holding it,
 
 This is issue #125's deferred option 2, taken on a different footing. #125 declined it because indexing dependent values "materialises the product in the payload" -- the expansion the manifest was restructured in 3.16.0 to stop. It is now derived IN THE PANEL from `allowedValues` the model already carries, so the posted message is byte for byte what it was; a test pins that no `searchText` in the payload names a dependent value.
 
-The expansion is real, though, and moving it is not the same as bounding it. What bounds it is the source: the panel's pre-filter is drawn from `declaredValues` -- already deduplicated per field, already capped by `maxDeclaredValuesPerNode` -- rather than from `allowedValues`, which repeats the same picklist once per combination. `declaredValues` is a superset of every combination's `allowedValues`, so a query it does not contain cannot match any row, which is what makes skipping an object on it sound. A query it does contain still goes to the exact per-row rule. It is built lazily, on the first query the posted haystack does not already answer, so looking an object up by name costs nothing.
+The index is drawn from `allowedValues` rather than from `declaredValues`, and that is the difference between an exact answer and an unsound one. A first draft used `declaredValues` on the reasoning that it is a superset of every combination's `allowedValues` -- true of the model the builder produces, and **false after `applyModelLimits`**, which slices `declaredValues` at `maxDeclaredValuesPerNode` and never slices `allowedValues`. A value a rendered row visibly unlocked was therefore absent from the index, and the object was hidden with no notice at all. Matching on the unlockable set answers outright instead: a query it lacks matches no row, a query it has matches one, and there is no fallthrough scan of the model left on the keystroke path.
 
 A row matches on its controlling value or on what it UNLOCKS, never on its forbidden complement. Every row that does not unlock a value forbids it, so matching the complement would show every row of the field and bury the answer among the rows that are not it.
 
-### The ceiling did not move, and that is a measurement
+### What it costs, measured in the state the code runs in
 
-Measured by serializing synthetic models through the real builder at the combination ceiling -- 200 objects x 5 fields x 20 combinations, which is exactly `maxRenderedCombinations` -- with each field declaring a picklist of the stated size and each combination unlocking a quarter of it:
+The first version of this entry carried a measurement table that described nothing. `applyNodeFilter` returns at `if (!sectionRecord.built)` before both the row filter and the summary, so a per-keystroke figure taken on a collapsed panel never executed either path this release adds. Re-measured through the real panel script with 25 objects expanded (`EXPAND_ALL_OBJECT_LIMIT`) at the combination ceiling -- 200 objects x 5 fields x 20 combinations = `maxRenderedCombinations`, each field declaring a picklist of the given size and each combination unlocking a quarter of it:
 
-| dependent picklist per field | payload | index | build | per keystroke |
-|---|---|---|---|---|
-| 40 | 12.25 MB | 1.04 MB | 8.4 ms | 0.41 ms |
-| 100 | 22.37 MB | 2.61 MB | 18.2 ms | 1.04 ms |
-| 200 (`maxDeclaredValuesPerNode`) | 39.79 MB | 5.32 MB | 35.3 ms | 2.08 ms |
+| | picklist 40 | picklist 200 |
+|---|---|---|
+| payload | 12.25 MB | 39.79 MB |
+| index (object + node + scope) | 2.07 MB | 10.64 MB |
+| first keystroke (builds the index) | 54 ms | 289 ms |
+| keystroke, panel collapsed | 0.8 ms | 2.8 ms |
+| keystroke, 25 expanded, exact value | 2.3 ms | 5 ms |
+| keystroke, 25 expanded, matching prefix | 11.2 ms | 39 ms / 14,586 elements |
 
-Two earlier drafts indexed `allowedValues` per combination instead -- one as entry objects, one as a joined string -- and measured 84 MB / 398 ms and 91 MB / 886 ms at the same ceiling. Both were chosen by reasoning about the shape and both were wrong by an order of magnitude, which is how the 3.7.0 ceiling was wrong twice before it was measured. A test pins the ratio and the cap it was taken at, so raising `maxDeclaredValuesPerNode` without re-measuring fails there rather than in a panel.
+The last row is the pathological case: a query matching every controlling value in every expanded object, which a reader passes through on the way to typing a specific one. Two things made it survivable.
+
+The summary is the product of matched combinations and their `allowedValues`, rebuilt per keystroke, and `allowedValues` is the one axis `applyModelLimits` never caps -- `EXPAND_ALL_OBJECT_LIMIT` does not help, because built objects accumulate and are never un-built. Uncapped it drew **129,500 elements in 852 ms** at that prefix, and 504,500 in 4.7 s at a picklist that unlocks in full. It now has its own two limits and says what it dropped, in the panel's existing truncation vocabulary.
+
+And the model-side matcher is gone. It lowercased `allowedValues` on the fly so an unbuilt scope could answer for itself, which put ~980,000 fresh `toLowerCase()` calls per keystroke on a panel with **nothing expanded** -- 23 ms, against the 27 ms #125 rejected for exactly this mistake. Unbuilt content is answered by the index instead, and the collapsed-panel keystroke is 2.8 ms.
+
+The rendering ceiling did not move. The index is bounded by `maxRenderedCombinations`, not by `maxDeclaredValuesPerNode` -- and note that `maxNodesPerObject` caps root *chains* rather than nodes, so an earlier "nodes x declared values" bound stated here was optimistic for a deep chain.
+
+### Rows became a hideable axis, and three paths did not follow
+
+A deep link pasted while a value query was active left the previous query's row visibility in place, so the panel marked a row focused, scrolled to it, and left it hidden; one level in, a scope body built by the deep link's own reveal was filtered against the pasted reference, which no value can contain, hiding every row in it. `showEveryNode` now restores every axis the filter can hide, and takes the summary down with it. The combination count now includes rows an opened record type scope put on screen -- an object whose combinations are all record-type-scoped previously reported no row count at all. And a parent field held on screen only because a downstream node matched says so, rather than rendering as a field that declares no combinations.
 
 ### A miss says whether it is a miss
 
-Where the ceiling dropped rows, or a field declared more values than `maxDeclaredValuesPerNode` allows, a value the reader types may be absent from what the panel holds rather than from their org -- and `0 of 12 objects shown` reads as the second. The count now says so, and only when it is true: an untruncated model that matches nothing claims nothing about dropped rows.
+Where the ceiling dropped rows, a value the reader types may be absent from what the panel holds rather than from their org -- and `0 of 12 objects shown` reads as the second. The count now says so whenever a query runs against a truncated model, not only when nothing matched: gating it on zero visible objects made the miss silent in the case that matters most, where some other object matches and the reader is looking at results with no reason to suspect a row was dropped. It is keyed on rows the ceiling removed rather than on a capped declared list, because the index is drawn from `allowedValues` -- a trimmed universe no longer costs the find box anything, and attaching the caveat to it would be its own kind of untrue. An untruncated model that matches nothing claims nothing about dropped rows.
 
 ## [3.18.0] - The Explorer's find box matches controlling values, and only the ones with a row on screen
 

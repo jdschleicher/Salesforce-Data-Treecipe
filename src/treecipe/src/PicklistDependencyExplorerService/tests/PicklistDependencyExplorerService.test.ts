@@ -1960,31 +1960,32 @@ describe('PicklistDependencyExplorerService', () => {
             the panel must get right is the phase.
         */
         /*
-            What the lookup costs, and why the rendering ceiling did not have to move for it.
+            What the lookup costs, measured in the state the code actually runs in.
 
-            #125 deferred dependent-value search because indexing it "materialises the product in
-            the payload". The index here is built in the PANEL from allowedValues already posted, so
-            the payload is untouched -- but the expansion is real, it has only moved, and moving it
-            is not the same as bounding it. What bounds it is the SOURCE: the pre-filter is drawn
-            from declaredValues, which is already deduplicated per field and already capped by
-            maxDeclaredValuesPerNode, rather than from allowedValues, which repeats the same picklist
-            once per combination.
+            The first version of this block measured the wrong thing. applyNodeFilter returns at
+            "if (!sectionRecord.built)" before both the row filter and the summary, so a
+            measurement taken on a COLLAPSED panel never executed either of the two paths this
+            feature adds -- the numbers were real and described nothing. Re-measured through the
+            real panel script with 25 objects expanded (EXPAND_ALL_OBJECT_LIMIT) at the combination
+            ceiling of 200 objects x 5 fields x 20 combinations = maxRenderedCombinations, each
+            field declaring a picklist of the given size and each combination unlocking a quarter:
 
-            Measured by serializing synthetic models through the real builder, at the combination
-            ceiling (200 objects x 5 fields x 20 combinations = maxRenderedCombinations), with each
-            field declaring a picklist of the given size and each combination unlocking a quarter of
-            it:
+                picklist/field                    40        200 (the declared-value cap)
+                payload                           12.25 MB  39.79 MB
+                index (object + node + scope)     2.07 MB   10.64 MB
+                first keystroke (builds index)    54 ms     289 ms
+                keystroke, panel collapsed        0.8 ms    2.8 ms
+                keystroke, 25 expanded, exact     2.3 ms    5 ms
+                keystroke, 25 expanded, prefix    11.2 ms   39 ms / 14,586 elements
 
-                picklist/field   payload    index     build     per keystroke
-                40               12.25 MB   1.04 MB   8.4 ms    0.41 ms
-                100              22.37 MB   2.61 MB   18.2 ms   1.04 ms
-                200 (the cap)    39.79 MB   5.32 MB   35.3 ms   2.08 ms
+            The prefix column is the pathological case -- a query matching every controlling value
+            in every expanded object, which a reader passes through on the way to typing a specific
+            one. Before the summary was capped it was 852 ms / 129,500 elements, and 4.7 s at a
+            picklist that unlocks in full; before the model-side matcher was removed, the collapsed
+            column was 23 ms rather than 2.8.
 
-            Two earlier drafts indexed allowedValues per combination instead -- one as entries, one
-            as a joined string -- and measured 84 MB / 398 ms and 91 MB / 886 ms at the same ceiling.
-            Both were chosen by reasoning about the shape and both were wrong by an order of
-            magnitude, which is the same way the 3.7.0 ceiling was wrong twice before it was
-            measured. Re-measure rather than re-reason if any of these caps change.
+            Three ceilings hold those numbers, and none of them is maxNodesPerObject -- that caps
+            root CHAINS, not nodes, so an object can render more nodes than it allows.
         */
         describe('what the lookup costs', () => {
 
@@ -1993,20 +1994,71 @@ describe('PicklistDependencyExplorerService', () => {
                 declaredValues, so it grows with the org's PICKLISTS rather than with its
                 combinations. If this stops holding, the numbers above stop meaning anything.
             */
-            it('draws the pre-filter from declaredValues, deduplicated, rather than from allowedValues', () => {
+            it('draws the index from allowedValues, which no cap slices, rather than from declaredValues', () => {
 
                 const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
 
                 const indexFunctionSource = actualWebviewHtml
-                    .split('function buildObjectDependentValueIndex(sectionRecord) {')[1]
+                    .split('function buildObjectValueIndex(sectionRecord) {')[1]
                     .split('\n    }')[0];
 
-                expect(indexFunctionSource).toContain('node.declaredValues');
-                expect(indexFunctionSource).toContain('recordTypeScope.declaredValues');
-                expect(indexFunctionSource).not.toContain('allowedValues');
+                expect(indexFunctionSource).toContain('combination.allowedValues');
+                expect(indexFunctionSource).not.toContain('node.declaredValues');
 
                 // BUILT ONCE AND HELD: A READER TYPING DOES NOT REBUILD IT PER KEYSTROKE
-                expect(indexFunctionSource).toContain('if (sectionRecord.dependentValueIndex !== undefined)');
+                expect(indexFunctionSource).toContain('if (sectionRecord.valueIndex !== undefined)');
+
+            });
+
+            /*
+                The reason the index is drawn from allowedValues rather than declaredValues, as a
+                behaviour rather than as a shape.
+
+                An earlier draft used declaredValues on the grounds that it is a superset of every
+                combination's allowedValues -- true of the model the builder produces, and FALSE
+                after applyModelLimits, which slices declaredValues at maxDeclaredValuesPerNode and
+                never slices allowedValues. A value a rendered row visibly unlocks was therefore
+                absent from the index, and the object was hidden with no notice.
+            */
+            it('finds a value a rendered row unlocks even where the field\'s declared list was capped', () => {
+
+                const panel = runPanelScript();
+
+                let dependentValues: string[] = [];
+                for (let valueIndex = 0; valueIndex < 210; valueIndex++) {
+                    dependentValues.push(`City${String(valueIndex).padStart(3, '0')}`);
+                }
+
+                const wideSpecDetails: IPicklistDependencySpecDetail[] = [{
+                    objectApiName: 'Wide_Values__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [
+                        { controllingValue: 'Alpha', dependentValues: [dependentValues[0]], forbiddenValues: [] },
+                        { controllingValue: 'Zeta', dependentValues: [dependentValues[209]], forbiddenValues: dependentValues.slice(0, 209) }
+                    ]
+                }];
+
+                const cappedViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath, wideSpecDetails, []
+                    ),
+                    buildLimits()
+                );
+
+                // THE UNIVERSE WAS CAPPED; WHAT THE ROWS UNLOCK WAS NOT
+                expect(cappedViewModel.objects[0].rootNodes[0].declaredValuesTruncated).toBeTrue();
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(cappedViewModel, ''));
+
+                const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+                const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
+                const matchCountElement = panel.collectElementsByClassName(toolbarElement, 'matchCount')[0];
+
+                findInputElement.value = 'City209';
+                findInputElement.raiseEvent('input');
+
+                expect(panel.collectText(matchCountElement)).toContain('1 of 1 object(s) shown');
 
             });
 
@@ -2023,7 +2075,7 @@ describe('PicklistDependencyExplorerService', () => {
                     .split('\n    }')[0];
 
                 const postedHaystackIndex = objectMatchSource.indexOf('objectViewModel.searchText.indexOf(filterText)');
-                const buildIndexIndex = objectMatchSource.indexOf('buildObjectDependentValueIndex(sectionRecord)');
+                const buildIndexIndex = objectMatchSource.indexOf('buildObjectValueIndex(sectionRecord)');
 
                 expect(postedHaystackIndex).toBeGreaterThan(-1);
                 expect(buildIndexIndex).toBeGreaterThan(postedHaystackIndex);
@@ -2031,75 +2083,85 @@ describe('PicklistDependencyExplorerService', () => {
             });
 
             /*
-                The cap the measured numbers actually rest on.
+                The three caps the measured numbers rest on, pinned so a change to any of them
+                fails here rather than in a reader's panel.
 
-                maxNodesPerObject is NOT that cap: it is applied to root CHAINS, and a surviving
-                chain brings every field beneath it, so an object can render far more nodes than it
-                allows. What does bound a node's contribution is maxDeclaredValuesPerNode -- each
-                node and each record type scope contributes at most that many values, once, however
-                many combinations it declares. That is the whole difference between this index and
-                the allowedValues-per-combination drafts that measured 84 MB and 91 MB.
-
-                Pinned as a ratio against the measurement above so that raising the declared value
-                cap without re-measuring fails here rather than in a user's panel.
+                maxDeclaredValuesPerNode does NOT appear, and that is the point of the rewrite: the
+                index is drawn from allowedValues, which applyModelLimits never slices, so the
+                declared-value cap no longer bounds anything the find box does. What bounds the
+                index is maxRenderedCombinations; what bounds the summary is its own two limits,
+                because allowedValues is uncapped and the summary is the product of the two.
             */
-            it('rests on the declared value cap, and holds the measured headroom against the payload', () => {
+            it('rests on the caps the re-measurement was taken at', () => {
 
                 const limits = DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS;
 
-                // THE MEASUREMENT ABOVE WAS TAKEN AT EXACTLY THIS CAP -- A HIGHER ONE IS UNMEASURED
-                expect(limits.maxDeclaredValuesPerNode).toBe(200);
                 expect(limits.maxRenderedCombinations).toBe(20000);
 
-                const measuredIndexMegabytes = 5.32;
-                const measuredPayloadMegabytes = 39.79;
+                const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
 
-                expect(measuredPayloadMegabytes / measuredIndexMegabytes).toBeGreaterThan(7);
+                expect(actualWebviewHtml).toContain('const SUMMARY_MAX_CONTROLLING_VALUES = 10;');
+                expect(actualWebviewHtml).toContain('const SUMMARY_MAX_VALUES = 500;');
+
+                // 39.79 MB PAYLOAD AGAINST A 10.64 MB INDEX AT THE CAP -- SEE THE TABLE ABOVE
+                expect(39.79 / 10.64).toBeGreaterThan(3);
 
             });
 
             /*
-                A field whose declared values the ceiling capped is a field whose pre-filter is
-                incomplete, and the panel says so rather than reporting a miss as an absence. The
-                same sentence covers rows the combination budget dropped.
+                The caveat is about ROWS the ceiling dropped, which is what a query genuinely cannot
+                reach. It is no longer keyed on declaredValuesTruncated: the index is drawn from
+                allowedValues, which applyModelLimits never slices, so a capped universe costs the
+                find box nothing and attaching the caveat to it would be its own kind of untrue.
+
+                It also fires whether or not anything else matched. Gating it on zero visible
+                objects made the miss silent in the case that matters most -- a reader looking at
+                results from some other object has no reason to suspect a row was dropped.
             */
-            it('given a truncated model and no match, says it is not searching everything', () => {
+            it('given rows dropped by the ceiling, says so even while other objects match', () => {
 
                 const panel = runPanelScript();
 
-                let dependentValues: string[] = [];
-                for (let valueIndex = 0; valueIndex < 40; valueIndex++) {
-                    dependentValues.push(`Dependent_Value_${valueIndex}`);
+                let manySpecDetails: IPicklistDependencySpecDetail[] = [];
+                for (let objectIndex = 0; objectIndex < 4; objectIndex++) {
+                    manySpecDetails.push({
+                        objectApiName: `Budget_Example_${objectIndex}__c`,
+                        fieldApiName: 'Dependent__c',
+                        controllingFieldApiName: 'Controlling__c',
+                        expectations: [
+                            { controllingValue: `Alpha_${objectIndex}`, dependentValues: ['Columbus'], forbiddenValues: [] },
+                            { controllingValue: `Beta_${objectIndex}`, dependentValues: ['Austin'], forbiddenValues: [] }
+                        ]
+                    });
                 }
 
-                const wideSpecDetails: IPicklistDependencySpecDetail[] = [{
-                    objectApiName: 'Wide_Values__c',
-                    fieldApiName: 'Dependent__c',
-                    controllingFieldApiName: 'Country__c',
-                    expectations: [{ controllingValue: 'USA', dependentValues, forbiddenValues: [] }]
-                }];
-
-                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
-                    PicklistDependencyExplorerService.applyModelLimits(
-                        PicklistDependencyExplorerService.buildExplorerViewModel(
-                            mockObjectsDirectoryPath, wideSpecDetails, []
-                        ),
-                        buildLimits({ maxDeclaredValuesPerNode: 10 })
+                const cappedViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath, manySpecDetails, []
                     ),
-                    ''
-                ));
+                    buildLimits({ maxRenderedCombinations: 3 })
+                );
+
+                expect(cappedViewModel.truncationNotices.length).toBeGreaterThan(0);
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(cappedViewModel, ''));
 
                 const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
                 const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
                 const matchCountElement = panel.collectElementsByClassName(toolbarElement, 'matchCount')[0];
 
-                findInputElement.value = 'Dependent_Value_39';
+                findInputElement.value = 'Columbus';
                 findInputElement.raiseEvent('input');
 
                 const matchCountText = panel.collectText(matchCountElement);
 
-                expect(matchCountText).toContain('0 of 1 object(s) shown');
-                expect(matchCountText).toContain('not showing every combination or declared value');
+                /*
+                    A budget of 3 leaves object 0 both rows and object 1 only its Alpha row, so two
+                    objects still unlock Columbus -- and the two whose rows the budget dropped
+                    entirely are exactly what the caveat is about.
+                */
+                expect(matchCountText).toContain('2 of 4 object(s) shown');
+                expect(matchCountText).toContain('not rendering every combination in your metadata');
 
             });
 
@@ -2124,7 +2186,7 @@ describe('PicklistDependencyExplorerService', () => {
                 const matchCountText = panel.collectText(matchCountElement);
 
                 expect(matchCountText).toContain('0 of 1 object(s) shown');
-                expect(matchCountText).not.toContain('not showing every combination');
+                expect(matchCountText).not.toContain('not rendering every combination');
 
             });
 
@@ -2251,8 +2313,271 @@ describe('PicklistDependencyExplorerService', () => {
                 const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
 
                 expect(actualWebviewHtml).toContain('combinationElementsByKey: Object.create(null)');
-                expect(actualWebviewHtml).toContain('const distinctDeclaredValues = Object.create(null)');
+                expect(actualWebviewHtml).toContain('const distinctObjectValues = Object.create(null)');
+                expect(actualWebviewHtml).toContain('const distinctNodeValues = Object.create(null)');
+                expect(actualWebviewHtml).toContain('const distinctScopeValues = Object.create(null)');
                 expect(actualWebviewHtml).toContain('const entriesByControllingValue = Object.create(null)');
+
+            });
+
+        });
+
+        /*
+            Rows became a hideable axis in #127, and three paths did not follow it. Each of these
+            reproduces a defect a review found by executing the panel, and none of them was covered
+            by the block above -- every one lives in a path the original tests never drove.
+        */
+        describe('paths that rows became a new axis for', () => {
+
+            function renderChainPanelWithScopes() {
+
+                const panel = runPanelScript();
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath,
+                        buildChainExampleSpecDetails(),
+                        [],
+                        buildChainExampleRecordTypeSpecDetails()
+                    ),
+                    ''
+                ));
+
+                const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+
+                return {
+                    panel,
+                    findInputElement: panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1],
+                    matchCountElement: panel.collectElementsByClassName(toolbarElement, 'matchCount')[0]
+                };
+
+            }
+
+            function typeInto(rendered: any, queryText: string) {
+                rendered.findInputElement.value = queryText;
+                rendered.findInputElement.raiseEvent('input');
+            }
+
+            /*
+                A deep link pasted while a value query was active left the previous query's row
+                visibility in place, so focusCombination marked a row focused, scrolled to it, and
+                left it hidden.
+            */
+            it('given a deep link after a value query, shows the row it focuses', () => {
+
+                const rendered = renderChainPanelWithScopes();
+
+                typeInto(rendered, 'Columbus');
+                typeInto(rendered, 'Chain_Example__c.City__c @ Texas');
+
+                const focusedElements = rendered.panel
+                    .collectElementsByClassName(rendered.panel.elementsById.explorerRoot, 'focused');
+
+                expect(focusedElements).toHaveLength(1);
+                expect(focusedElements[0].classList.contains('hidden')).toBe(false);
+
+            });
+
+            /*
+                One level in: a scope body BUILT by the deep link's own reveal was filtered against
+                the pasted reference, which no controlling or dependent value can contain -- hiding
+                every row in the scope, the linked one included.
+            */
+            it('given a deep link into a record type scope, shows the scoped row it focuses', () => {
+
+                const rendered = renderChainPanelWithScopes();
+
+                typeInto(rendered, 'Columbus');
+                typeInto(rendered, 'Chain_Example__c.City__c [North_America] @ Ontario');
+
+                const focusedElements = rendered.panel
+                    .collectElementsByClassName(rendered.panel.elementsById.explorerRoot, 'focused');
+
+                expect(focusedElements).toHaveLength(1);
+                expect(focusedElements[0].classList.contains('hidden')).toBe(false);
+
+            });
+
+            it('takes the summary down when a deep link replaces the query that drew it', () => {
+
+                const rendered = renderChainPanelWithScopes();
+
+                typeInto(rendered, 'Canada');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(summaryElement.classList.contains('hidden')).toBe(false);
+
+                typeInto(rendered, 'Chain_Example__c.City__c @ Texas');
+
+                expect(summaryElement.classList.contains('hidden')).toBe(true);
+
+            });
+
+            /*
+                The count named an axis it was not true of: rows the reader had opened inside a
+                record type scope were on screen and excluded from both halves of the ratio.
+            */
+            it('counts the rows an opened record type scope put on screen', () => {
+
+                const rendered = renderChainPanelWithScopes();
+
+                typeInto(rendered, 'Chain_Example__c');
+
+                const groupHeadings = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'recordTypeGroupHeading');
+                groupHeadings.forEach((groupHeading: any) => groupHeading.raiseEvent('click'));
+
+                const scopeHeadings = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'recordTypeScopeHeading');
+                scopeHeadings.forEach((scopeHeading: any) => scopeHeading.raiseEvent('click'));
+
+                typeInto(rendered, 'Chain_Example__c');
+
+                const visibleRowCount = rendered.panel
+                    .collectElementsByClassName(rendered.panel.elementsById.explorerRoot, 'combination')
+                    .filter((combinationElement: any) => !combinationElement.classList.contains('hidden'))
+                    .length;
+
+                const matchCountText = rendered.panel.collectText(rendered.matchCountElement);
+
+                expect(visibleRowCount).toBeGreaterThan(5);
+                expect(matchCountText).toContain(visibleRowCount + ' of ' + visibleRowCount + ' combination(s)');
+
+            });
+
+            /*
+                A parent held on screen only because a downstream node matched has none of its own
+                rows showing, and a field with no rows under it reads as a field that declares none.
+            */
+            it('says why a parent field is on screen with none of its own rows matching', () => {
+
+                const rendered = renderChainPanelWithScopes();
+
+                // COLUMBUS IS UNLOCKED BY City__c, WHOSE PARENT State__c UNLOCKS NOTHING NAMED COLUMBUS
+                typeInto(rendered, 'Columbus');
+
+                const noticeElements = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'noMatchingRows');
+
+                expect(noticeElements.length).toBeGreaterThan(0);
+                expect(noticeElements.some((noticeElement: any) =>
+                    !noticeElement.classList.contains('hidden'))).toBe(true);
+                expect(rendered.panel.collectText(noticeElements[0]))
+                    .toContain('No combination of this field matches the current filter');
+
+            });
+
+            it('takes that line back down once the query matches the field’s own rows again', () => {
+
+                const rendered = renderChainPanelWithScopes();
+
+                typeInto(rendered, 'Columbus');
+                typeInto(rendered, 'Chain_Example__c');
+
+                /*
+                    Asserted on the element rather than on the panel's text: the line is HIDDEN
+                    rather than removed, and collectText walks hidden elements too.
+                */
+                const noticeElements = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'noMatchingRows');
+
+                noticeElements.forEach((noticeElement: any) => {
+                    expect(noticeElement.classList.contains('hidden')).toBe(true);
+                });
+
+            });
+
+        });
+
+        /*
+            The summary is the product of matched combinations and their allowedValues, rebuilt on
+            every keystroke, and neither factor is bounded by anything already in place --
+            allowedValues is the one axis applyModelLimits never slices. Measured at the combination
+            ceiling, an intermediate keystroke drew 129,500 elements in 852ms.
+        */
+        describe('the summary ceiling', () => {
+
+            function renderWideSummaryPanel() {
+
+                let expectations = [];
+
+                for (let combinationIndex = 0; combinationIndex < 30; combinationIndex++) {
+
+                    let dependentValues: string[] = [];
+                    for (let valueIndex = 0; valueIndex < 80; valueIndex++) {
+                        dependentValues.push(`Shared_Value_${valueIndex}`);
+                    }
+
+                    expectations.push({
+                        controllingValue: `Controlling_Value_${combinationIndex}`,
+                        dependentValues,
+                        forbiddenValues: []
+                    });
+
+                }
+
+                const panel = runPanelScript();
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath,
+                        [{
+                            objectApiName: 'Wide_Summary__c',
+                            fieldApiName: 'Dependent__c',
+                            controllingFieldApiName: 'Controlling__c',
+                            expectations
+                        }],
+                        []
+                    ),
+                    ''
+                ));
+
+                const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+                const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
+
+                // THE INTERMEDIATE KEYSTROKE: EVERY CONTROLLING VALUE MATCHES THIS PREFIX
+                findInputElement.value = 'Controlling_Value_';
+                findInputElement.raiseEvent('input');
+
+                return panel;
+
+            }
+
+            it('caps the controlling values it composes, and counts the ones it dropped', () => {
+
+                const panel = renderWideSummaryPanel();
+
+                const summaryElement = panel.collectElementsByClassName(
+                    panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                const groupElements = panel.collectElementsByClassName(summaryElement, 'valueSummaryGroup');
+
+                expect(groupElements).toHaveLength(10);
+                expect(panel.collectText(summaryElement)).toContain('further controlling value(s) match and are');
+
+            });
+
+            it('caps the values it renders, and counts the ones it dropped', () => {
+
+                const panel = renderWideSummaryPanel();
+
+                const summaryElement = panel.collectElementsByClassName(
+                    panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                /*
+                    Counted inside the ROWS only. Each group's heading also renders its controlling
+                    value in a "value" span, and those are not what the budget governs -- the group
+                    cap bounds them.
+                */
+                const rowValueElements = panel.collectElementsByClassName(summaryElement, 'valueSummaryRow')
+                    .reduce((valueElements: any[], rowElement: any) =>
+                        valueElements.concat(panel.collectElementsByClassName(rowElement, 'value')), []);
+
+                // 10 SURVIVING GROUPS x 80 VALUES WOULD BE 800; THE BUDGET IS WHAT IS DRAWN
+                expect(rowValueElements).toHaveLength(500);
+                expect(panel.collectText(summaryElement)).toContain('unlocked value(s) in this summary are');
 
             });
 
