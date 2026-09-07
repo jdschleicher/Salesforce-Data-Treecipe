@@ -3863,7 +3863,17 @@ export class PicklistDependencyExplorerService {
 
         if (sectionRecord.dependentValueIndex !== undefined) { return sectionRecord.dependentValueIndex; }
 
-        const distinctDeclaredValues = {};
+        /*
+            Object.create(null), for the reason combinationElementsByKey already is: the keys are
+            PICKLIST VALUES, so "__proto__" is a value a Salesforce admin can type and a hand-edited
+            manifest can plant. On a bare literal, distinctDeclaredValues['__proto__'] = true hits
+            Object.prototype's __proto__ setter, which ignores a non-object and creates no own
+            property -- so Object.keys never sees it, the value is silently absent from the index,
+            and objectMatchesFilter hides the WHOLE object behind an unqualified "0 of N". That
+            reads as "your org does not have this value", which is exactly the false claim
+            buildMatchCountText exists to prevent.
+        */
+        const distinctDeclaredValues = Object.create(null);
 
         const indexNode = function (node) {
 
@@ -3986,7 +3996,15 @@ export class PicklistDependencyExplorerService {
             return;
         }
 
-        const entriesByControllingValue = {};
+        /*
+            Prototype-less for the same reason, and here the failure is louder: the guard below is
+            "if (!entriesByControllingValue[controllingValue])", which is TRUTHY for an inherited
+            member, so a controlling value of "constructor" or "toString" skips initialisation and
+            the next line calls .push on something that is not an array. That throws out of the find
+            box's input handler and leaves a stale match count over rows the filter never finished
+            applying.
+        */
+        const entriesByControllingValue = Object.create(null);
         const orderedControllingValues = [];
 
         const collectCombination = function (node, combination, recordTypeDeveloperName) {

@@ -2130,6 +2130,134 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
+        /*
+            Picklist values are metadata, so "__proto__" and "constructor" are values a Salesforce
+            admin can type and a hand-edited manifest.json can plant. Every lookup in this panel
+            keyed by one of them is prototype-less; these pin that for all three, because the two
+            added by #127 were bare literals until a review reproduced both failures below.
+
+            Neither was prototype POLLUTION -- nothing writable escaped to Object.prototype. Both
+            made the panel state something untrue, which is the property this codebase treats as
+            load-bearing.
+        */
+        describe('values that collide with Object.prototype', () => {
+
+            function renderWithValues(controllingValue: string, dependentValues: string[]) {
+
+                const panel = runPanelScript();
+
+                const specDetails: IPicklistDependencySpecDetail[] = [{
+                    objectApiName: 'Proto_Example__c',
+                    fieldApiName: 'Dependent__c',
+                    controllingFieldApiName: 'Controlling__c',
+                    expectations: [
+                        { controllingValue, dependentValues, forbiddenValues: [] },
+                        { controllingValue: 'Ordinary', dependentValues: ['Austin'], forbiddenValues: [] }
+                    ]
+                }];
+
+                panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                    PicklistDependencyExplorerService.buildExplorerViewModel(
+                        mockObjectsDirectoryPath, specDetails, []
+                    ),
+                    ''
+                ));
+
+                const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+
+                return {
+                    panel,
+                    findInputElement: panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1],
+                    matchCountElement: panel.collectElementsByClassName(toolbarElement, 'matchCount')[0]
+                };
+
+            }
+
+            /*
+                The reported failure: on a bare literal, index['__proto__'] = true hits the
+                Object.prototype setter, which ignores a non-object value and creates no own
+                property. Object.keys never saw it, the pre-filter missed, and the whole object
+                was hidden behind a "0 of N" that reads as "your org does not have this value".
+            */
+            it('given a dependent value named __proto__, still finds the row that unlocks it', () => {
+
+                const rendered = renderWithValues('Ordinary', ['__proto__', 'Columbus']);
+
+                rendered.findInputElement.value = '__proto__';
+                rendered.findInputElement.raiseEvent('input');
+
+                expect(rendered.panel.collectText(rendered.matchCountElement)).toContain('1 of 1 object(s) shown');
+
+            });
+
+            it('given a dependent value named constructor, still finds the row that unlocks it', () => {
+
+                const rendered = renderWithValues('Ordinary', ['constructor']);
+
+                rendered.findInputElement.value = 'constructor';
+                rendered.findInputElement.raiseEvent('input');
+
+                expect(rendered.panel.collectText(rendered.matchCountElement)).toContain('1 of 1 object(s) shown');
+
+            });
+
+            /*
+                The second reported failure. "if (!entriesByControllingValue[controllingValue])" is
+                TRUTHY for an inherited member, so initialisation was skipped and .push was called
+                on a function -- a TypeError out of the input handler, leaving a stale count over
+                rows the filter never finished applying.
+            */
+            it('given a controlling value named constructor, summarises it instead of throwing', () => {
+
+                const rendered = renderWithValues('constructor', ['Columbus']);
+
+                rendered.findInputElement.value = 'constructor';
+                rendered.findInputElement.raiseEvent('input');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(rendered.panel.collectText(summaryElement)).toContain('Columbus');
+                expect(rendered.panel.collectText(rendered.matchCountElement)).toContain('1 of 1 object(s) shown');
+
+                // A THROW OUT OF THE INPUT HANDLER WOULD HAVE REPORTED ITSELF -- NOTHING DID
+                expect(rendered.panel.postedHostMessages.some((hostMessage: any) =>
+                    hostMessage.command === 'renderFailed')).toBe(false);
+
+            });
+
+            it('given a controlling value named __proto__, summarises it instead of dropping it', () => {
+
+                const rendered = renderWithValues('__proto__', ['Columbus']);
+
+                rendered.findInputElement.value = '__proto__';
+                rendered.findInputElement.raiseEvent('input');
+
+                const summaryElement = rendered.panel.collectElementsByClassName(
+                    rendered.panel.elementsById.explorerRoot, 'valueSummary')[0];
+
+                expect(rendered.panel.collectText(summaryElement)).toContain('Columbus');
+                expect(rendered.panel.postedHostMessages.some((hostMessage: any) =>
+                    hostMessage.command === 'renderFailed')).toBe(false);
+
+            });
+
+            /*
+                Stated against the SOURCE as well, so a new metadata-keyed lookup added later is a
+                deliberate decision rather than an omission nobody notices until a value collides.
+            */
+            it('keys every metadata-derived lookup in the panel on a prototype-less object', () => {
+
+                const actualWebviewHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+                expect(actualWebviewHtml).toContain('combinationElementsByKey: Object.create(null)');
+                expect(actualWebviewHtml).toContain('const distinctDeclaredValues = Object.create(null)');
+                expect(actualWebviewHtml).toContain('const entriesByControllingValue = Object.create(null)');
+
+            });
+
+        });
+
         describe('a throw while filtering', () => {
 
             it('reports a keystroke failure as runtime, leaving the drawn rows valid', () => {
