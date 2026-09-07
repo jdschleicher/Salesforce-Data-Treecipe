@@ -17,6 +17,8 @@ import {
     IPicklistDependencyExplorerLoadPhaseMessage,
     IPicklistDependencyExplorerFreshnessMessage,
     IPicklistDependencyExplorerLoadFailedMessage,
+    IPicklistDependencyExplorerFocusFilterMessage,
+    IPicklistDependencyRunSummary,
     PicklistDependencyExplorerHostMessage,
     PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES
 } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
@@ -1364,9 +1366,51 @@ export class ExtensionCommandService {
         allows only the nonced inline style and script this extension emits, so the panel cannot
         reach the network even if a picklist value tried to make it.
     */
-    async openPicklistDependencyExplorer() {
+    /*
+        The Explorer, opened ON the field whose metadata file the reader is looking at.
+
+        The field api name is the query rather than the file path: the panel filters on what its
+        rows are NAMED, and the same field api name is what appears on every row the field takes part
+        in -- as the dependent field of its own chain, and as the controlling field of the rows
+        beneath it. A path would match nothing.
+    */
+    async showFieldInPicklistDependencyExplorer(fieldMetadataUri?: vscode.Uri) {
+
+        const fieldMetadataFilePath = fieldMetadataUri?.fsPath
+                                        ?? vscode.window.activeTextEditor?.document.uri.fsPath
+                                        ?? '';
+
+        await this.openPicklistDependencyExplorer(
+            ExtensionCommandService.getFieldApiNameByMetadataFilePath(fieldMetadataFilePath)
+        );
+
+    }
+
+    /*
+        "Billing_State__c.field-meta.xml" -> "Billing_State__c".
+
+        Anything that is not a field metadata file yields an EMPTY query rather than a guess: the
+        command is reachable from the palette, where there is no file to have been clicked, and
+        opening the panel filtered by a stray file name would look exactly like a field with no
+        dependencies.
+    */
+    static getFieldApiNameByMetadataFilePath(fieldMetadataFilePath: string): string {
+
+        const fieldMetadataFileName = path.basename(fieldMetadataFilePath || '');
+
+        if ( !fieldMetadataFileName.endsWith('.field-meta.xml') ) {
+            return '';
+        }
+
+        return fieldMetadataFileName.slice(0, -'.field-meta.xml'.length);
+
+    }
+
+    async openPicklistDependencyExplorer(focusFilterText: string = '') {
 
         try {
+
+            ExtensionCommandService.picklistDependencyExplorerFocusFilterText = focusFilterText;
 
             const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
             if ( !workspaceRoot ) {
@@ -1621,6 +1665,25 @@ export class ExtensionCommandService {
     */
     private static picklistDependencyExplorerIsPanelReady: boolean = false;
 
+    /*
+        The query one open was asked to land on, held only until that open renders.
+
+        It is not stored with the messages the host replays on a reveal, and clearing it here is what
+        keeps it a property of the open rather than of the panel -- see
+        IPicklistDependencyExplorerFocusFilterMessage.
+    */
+    private static picklistDependencyExplorerFocusFilterText: string = '';
+
+    /*
+        The last check result, in the status bar.
+
+        Created when a model that carries a run is rendered, and never at activation: knowing the
+        result means reading the results folder, and doing that on startup would put synchronous I/O
+        in front of every window that opens this workspace, for a number most of them never look at.
+        The Explorer has already paid for that read by the time this is written.
+    */
+    private static picklistDependencyCheckStatusItem: vscode.StatusBarItem | undefined;
+
     // A FAILURE IS REPLAYED AS A FAILURE, NOT AS THE PHASE IT DIED IN -- SEE failPicklistDependencyExplorerLoad
     private static picklistDependencyExplorerLoadFailedMessage: IPicklistDependencyExplorerLoadFailedMessage | undefined;
 
@@ -1864,6 +1927,73 @@ export class ExtensionCommandService {
         ExtensionCommandService.picklistDependencyExplorerFreshnessMessage = undefined;
 
         ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, renderMessage);
+
+        ExtensionCommandService.updatePicklistDependencyCheckStatusItem(explorerViewModel);
+
+        /*
+            Posted AFTER the render and consumed in the same breath. The panel applies it over the
+            query it has just restored, and the host keeps no copy, so the reveal that reloads this
+            document restores what the reader was doing rather than re-imposing where they came in.
+        */
+        const focusFilterText = ExtensionCommandService.picklistDependencyExplorerFocusFilterText;
+        ExtensionCommandService.picklistDependencyExplorerFocusFilterText = '';
+
+        if ( focusFilterText ) {
+
+            const focusFilterMessage: IPicklistDependencyExplorerFocusFilterMessage = {
+                command: 'focusFilter',
+                filterText: focusFilterText
+            };
+            ExtensionCommandService.postToPicklistDependencyExplorerPanel(explorerPanel, focusFilterMessage);
+
+        }
+
+    }
+
+    /*
+        The last check result, reduced to one line of status bar.
+
+        A model with no run summary leaves the item alone rather than clearing it: "no run was loaded
+        into this panel" is not the same statement as "this workspace has no check result", and the
+        item is read as the second.
+    */
+    private static updatePicklistDependencyCheckStatusItem(explorerViewModel: IPicklistDependencyExplorerViewModel) {
+
+        const runSummary = explorerViewModel.runSummary;
+
+        if ( !runSummary ) {
+            return;
+        }
+
+        if ( !ExtensionCommandService.picklistDependencyCheckStatusItem ) {
+
+            const checkStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+            checkStatusItem.command = 'treecipe.openPicklistDependencyExplorer';
+            ExtensionCommandService.picklistDependencyCheckStatusItem = checkStatusItem;
+            VSCodeWorkspaceService.registerDisposable(checkStatusItem);
+
+        }
+
+        const checkStatusItem = ExtensionCommandService.picklistDependencyCheckStatusItem;
+
+        checkStatusItem.text = ExtensionCommandService.buildPicklistDependencyCheckStatusText(runSummary);
+        checkStatusItem.tooltip = `Picklist dependency check ran at ${runSummary.ranAt} against ${runSummary.targetOrg}. `
+                                    + 'Click to open the Picklist Dependency Explorer.';
+        checkStatusItem.show();
+
+    }
+
+    /*
+        The count is of FAILURES rather than of failing objects, because it is the number the run
+        itself reports and the one the report beside results.json is indexed by.
+    */
+    static buildPicklistDependencyCheckStatusText(runSummary: IPicklistDependencyRunSummary): string {
+
+        if ( runSummary.passed ) {
+            return '$(check) Picklist dependencies passed';
+        }
+
+        return `$(error) ${PicklistDependencyExplorerService.pluralize(runSummary.failureCount, 'picklist dependency failure')}`;
 
     }
 

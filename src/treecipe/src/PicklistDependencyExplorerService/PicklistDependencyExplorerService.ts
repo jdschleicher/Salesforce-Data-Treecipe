@@ -320,10 +320,25 @@ export interface IPicklistDependencyExplorerLoadFailedMessage {
     message: string;
 }
 
+/*
+    A query to put in the find box, from a reader who opened the panel ON something -- the field
+    whose metadata file they right-clicked.
+
+    Deliberately NOT stored by the host and so never replayed on a reveal. The panel remembers the
+    query the reader last had, and a focus that replayed would keep re-imposing the field they
+    entered through onto a panel they have since filtered somewhere else. It applies to the open it
+    was sent for, once.
+*/
+export interface IPicklistDependencyExplorerFocusFilterMessage {
+    command: 'focusFilter';
+    filterText: string;
+}
+
 export type PicklistDependencyExplorerHostMessage = IPicklistDependencyExplorerRenderMessage
                                                         | IPicklistDependencyExplorerLoadPhaseMessage
                                                         | IPicklistDependencyExplorerFreshnessMessage
-                                                        | IPicklistDependencyExplorerLoadFailedMessage;
+                                                        | IPicklistDependencyExplorerLoadFailedMessage
+                                                        | IPicklistDependencyExplorerFocusFilterMessage;
 
 /*
     The phases an open reports, in the order they run. Named here so the panel banner, the status bar
@@ -4802,6 +4817,23 @@ export class PicklistDependencyExplorerService {
 
     }
 
+    /*
+        Nothing is focused before a model is rendered: the find box does not exist until the toolbar
+        does, and a focus with no rows to filter has nothing to say. A panel that failed to draw is
+        the same case -- there is no toolbar, and the failure notice is what should stay on screen.
+    */
+    function applyFocusFilter(focusFilterText) {
+
+        if (!explorerModel || !findInputElement) { return; }
+
+        filterText = String(focusFilterText || '').trim().toLowerCase();
+        findInputElement.value = focusFilterText || '';
+
+        applyFilter();
+        persistPanelState();
+
+    }
+
     function setLoadStatus(statusMessage) {
 
         if (!statusMessage) {
@@ -4837,6 +4869,16 @@ export class PicklistDependencyExplorerService {
 
             return;
 
+        }
+
+        /*
+            Applied AFTER the render it follows, which is what lets it outrank the query the panel
+            just restored: the reader asked for this field by opening the panel on it, and the
+            restored query is what they were last doing somewhere else.
+        */
+        if (hostMessage.command === 'focusFilter') {
+            applyFocusFilter(hostMessage.filterText);
+            return;
         }
 
         if (hostMessage.command === 'applyFreshness') {

@@ -65,8 +65,42 @@
         "command": "treecipe.updatePicklistDependencyMetadata",
         "title": "Update Picklist Dependency Metadata from Specs",
         "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.showFieldInPicklistDependencyExplorer",
+        "title": "Show in Picklist Dependency Explorer",
+        "category": "Salesforce Treecipe"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "treecipe.showFieldInPicklistDependencyExplorer",
+          "when": "resourceFilename =~ /\\.field-meta\\.xml$/"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "treecipe.showFieldInPicklistDependencyExplorer",
+          "when": "resourceFilename =~ /\\.field-meta\\.xml$/",
+          "group": "navigation@100"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "treecipe.showFieldInPicklistDependencyExplorer",
+          "when": "resourceFilename =~ /\\.field-meta\\.xml$/",
+          "group": "navigation@100"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "treecipe.showFieldInPicklistDependencyExplorer",
+          "when": "resourceFilename =~ /\\.field-meta\\.xml$/",
+          "group": "navigation@100"
+        }
+      ]
+    },
     "configuration": [
       {
         "title": "TREECIPE_EXTENSION_CONFIGURATION",

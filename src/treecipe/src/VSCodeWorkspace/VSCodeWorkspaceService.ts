@@ -822,6 +822,15 @@ export class VSCodeWorkspaceService {
         this.extensionSubscriptions = subscriptions;
     }
 
+    /*
+        Hands something created lazily to VS Code to dispose, on the same terms as the output channels
+        above: nothing registers subscriptions in a jest run, so an untracked disposable in a test
+        process has nothing to leak into.
+    */
+    static registerDisposable(disposable: vscode.Disposable) {
+        this.extensionSubscriptions?.push(disposable);
+    }
+
     static getPicklistDependencyCheckOutputChannel(): vscode.OutputChannel {
 
         if ( !this.picklistDependencyCheckOutputChannel ) {

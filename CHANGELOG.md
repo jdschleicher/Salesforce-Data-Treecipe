@@ -34,6 +34,14 @@ The query, the status filter, the density and the open objects now live in the w
 
 The counts line itself is now a strip of tiles. It reports what the **manifest declares** and is still never reduced by the rendering ceiling; the truncation notices above it remain what describe the gap between those numbers and the rows on screen.
 
+### Ways in that are not the command palette
+
+`Show in Picklist Dependency Explorer` opens the panel on the field whose `.field-meta.xml` you right-clicked, from the file explorer, the editor tab context menu or the editor body. The query it carries is the **field api name** rather than the file path, because the panel filters on what its rows are named -- and that same api name appears on every row the field takes part in, as the dependent field of its own chain and as the controlling field of the rows beneath it.
+
+The query is a property of that *open* and not of the panel. The host posts it after the render and keeps no copy, so it is not among the messages replayed when a hidden panel is revealed: coming back to the Explorer restores the query you last had, rather than re-imposing the field you entered through onto a panel you have since filtered somewhere else. Anything that is not a field metadata file yields no query at all rather than a guess, since the command is also reachable from the palette where nothing was clicked -- and a panel filtered by a stray file name looks exactly like a field with no dependencies.
+
+The last check result now sits in the status bar, and clicking it opens the Explorer. It is created when a model carrying a run is rendered and **never at activation**: knowing the result means reading the results folder, and doing that on startup would put synchronous I/O in front of every window that opens the workspace for a number most of them never look at. A model with no run leaves the item alone rather than clearing it -- "no run was loaded into this panel" is not the same statement as "this workspace has no check result", and the status bar is read as the second.
+
 ## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 
 Closes [#47](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/47).

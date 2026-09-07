@@ -69,6 +69,18 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	/*
+		Reached from a right click on a field metadata file rather than from the palette, so it takes
+		the uri VS Code hands a menu command. The palette entry is gated on the same file type, and
+		falls back to the active editor when it is invoked without one.
+	*/
+	const showFieldInPicklistDependencyExplorer = vscode.commands.registerCommand("treecipe.showFieldInPicklistDependencyExplorer", (fieldMetadataUri?: vscode.Uri) => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.showFieldInPicklistDependencyExplorer(fieldMetadataUri);
+
+	});
+
 	const updatePicklistDependencyMetadata = vscode.commands.registerCommand("treecipe.updatePicklistDependencyMetadata", () => {
 
 		const extensionCommandService = new ExtensionCommandService();
@@ -85,6 +97,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		generatePicklistDependencyTests,
 		runPicklistDependencyCheck,
 		openPicklistDependencyExplorer,
+		showFieldInPicklistDependencyExplorer,
 		updatePicklistDependencyMetadata
 	);
 	

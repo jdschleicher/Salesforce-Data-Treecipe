@@ -4508,4 +4508,57 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+    /*
+        A reader who right-clicked a field metadata file has already said what they came for, and the
+        panel is opened on it. The query is a property of that OPEN and not of the panel -- see
+        IPicklistDependencyExplorerFocusFilterMessage.
+    */
+    describe('the focus filter', () => {
+
+        it('given a focus after a render, puts the query in the find box and filters by it', () => {
+
+            const panel = runPanelScript();
+            const viewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+            panel.postToPanel({ command: 'focusFilter', filterText: 'State__c' });
+
+            expect(panel.readPersistedPanelState().filterText).toBe('state__c');
+
+        });
+
+        /*
+            It outranks the query the panel just restored, which is the whole point of the ordering:
+            the restored query is what the reader was last doing somewhere else.
+        */
+        it('outranks the query restored from a previous panel', () => {
+
+            const panel = runPanelScript({
+                filterText: 'something else',
+                filterStatus: 'all',
+                isDenseLayout: false,
+                expandedObjectApiNames: []
+            });
+
+            const viewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+            panel.postToPanel({ command: 'focusFilter', filterText: 'City__c' });
+
+            expect(panel.readPersistedPanelState().filterText).toBe('city__c');
+
+        });
+
+        // NOTHING TO FILTER AND NO FIND BOX TO PUT IT IN -- A FOCUS BEFORE A MODEL IS A NO-OP, NOT A THROW
+        it('given a focus before any model has been rendered, does nothing', () => {
+
+            const panel = runPanelScript();
+
+            expect(() => panel.postToPanel({ command: 'focusFilter', filterText: 'State__c' })).not.toThrow();
+            expect(panel.postedHostMessages).toEqual([{ command: 'ready' }]);
+
+        });
+
+    });
+
 });

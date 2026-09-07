@@ -3548,4 +3548,72 @@ describe('ExtensionCommandService', () => {
 
     });
 
+    /*
+        The Explorer, reached from the file a reader is already looking at rather than from the
+        palette. The command carries a query into the panel; these are what that query is.
+    */
+    describe('getFieldApiNameByMetadataFilePath', () => {
+
+        it('given a field metadata file, returns the field api name the panel filters on', () => {
+
+            const actualFieldApiName = ExtensionCommandService.getFieldApiNameByMetadataFilePath(
+                '/workspace/force-app/main/default/objects/Account/fields/Billing_State__c.field-meta.xml'
+            );
+
+            expect(actualFieldApiName).toBe('Billing_State__c');
+
+        });
+
+        /*
+            An EMPTY query rather than a guess. The command is reachable from the palette, where
+            there is no file to have been clicked, and a panel filtered by a stray file name looks
+            exactly like a field with no dependencies.
+        */
+        it('given anything that is not a field metadata file, returns no query at all', () => {
+
+            expect(ExtensionCommandService.getFieldApiNameByMetadataFilePath(
+                '/workspace/force-app/main/default/objects/Account/Account.object-meta.xml'
+            )).toBe('');
+
+            expect(ExtensionCommandService.getFieldApiNameByMetadataFilePath('/workspace/notes.md')).toBe('');
+            expect(ExtensionCommandService.getFieldApiNameByMetadataFilePath('')).toBe('');
+
+        });
+
+    });
+
+    describe('buildPicklistDependencyCheckStatusText', () => {
+
+        const buildRunSummary = (overrides: any = {}) => ({
+            targetOrg: 'devHub',
+            ranAt: '2026-08-20T09:01:33.000Z',
+            passed: true,
+            failureCount: 0,
+            methodsRun: 3,
+            resultsFilePath: '/workspace/treecipe/runs/results.json',
+            reportFilePath: '/workspace/treecipe/runs/report.md',
+            ...overrides
+        });
+
+        it('given a passing run, says so without a count', () => {
+
+            expect(ExtensionCommandService.buildPicklistDependencyCheckStatusText(buildRunSummary()))
+                .toBe('$(check) Picklist dependencies passed');
+
+        });
+
+        it('given a failing run, counts the failures the run itself reported', () => {
+
+            expect(ExtensionCommandService.buildPicklistDependencyCheckStatusText(
+                buildRunSummary({ passed: false, failureCount: 1 })
+            )).toBe('$(error) 1 picklist dependency failure');
+
+            expect(ExtensionCommandService.buildPicklistDependencyCheckStatusText(
+                buildRunSummary({ passed: false, failureCount: 4 })
+            )).toBe('$(error) 4 picklist dependency failures');
+
+        });
+
+    });
+
 });
