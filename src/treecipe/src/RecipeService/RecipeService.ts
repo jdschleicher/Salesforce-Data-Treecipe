@@ -4,7 +4,7 @@ import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerServic
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
-import { ICompoundAddressComponentRecipe } from "./ICompoundAddressComponentRecipe";
+import { ICompoundComponentRecipe } from "./ICompoundComponentRecipe";
 
 export class RecipeService {
 
@@ -45,13 +45,32 @@ export class RecipeService {
     static readonly compoundAddressComponentKeys: string[] = ['Street', 'City', 'State', 'PostalCode', 'Country'];
 
     /*
-        Salesforce names compound address components two different ways and the compound field's own
-        api name is the only signal for which: a custom field's components carry the "__s" system
-        suffix off the base name, a standard field's are the compound name with "Address" swapped for
-        the component. Lead's compound field is literally named "Address", so an empty prefix -- and
-        the bare "Street"/"City" components it produces -- is a correct result here, not a fallback.
+        The Collections API cannot accept a compound Geolocation field either, so it expands the same
+        way an Address does -- into the two component fields an insert actually writes. Salesforce
+        derives their api names by the identical rule, which is why buildCompoundComponentApiName is
+        shared rather than duplicated per compound type.
+
+        <displayLocationInDecimal> is deliberately not read: it controls whether the ORG DISPLAYS
+        degrees/minutes/seconds, while the API accepts decimal degrees either way, so the generated
+        recipe is the same for both settings.
     */
-    static buildCompoundAddressComponentApiName(compoundFieldApiName: string, componentKey: string): string {
+    static readonly compoundGeolocationComponentKeys: string[] = ['Latitude', 'Longitude'];
+
+    /*
+        Salesforce names compound components two different ways and the compound field's own api name
+        is the only signal for which: a custom field's components carry the "__s" system suffix off
+        the base name, a standard field's are the compound name with "Address" swapped for the
+        component. Lead's compound field is literally named "Address", so an empty prefix -- and the
+        bare "Street"/"City" components it produces -- is a correct result here, not a fallback.
+
+        The "Address" swap holds for Geolocation too rather than being incidental to it -- the
+        components of a standard compound address ARE its geolocation, so BillingAddress would yield
+        BillingLatitude and BillingLongitude, which are the real api names. Nothing reaches that
+        branch by the geolocation route today: only a <type>Location</type> field is expanded this
+        way, and in source metadata that is always a custom field. It is asserted because it is the
+        rule, not because a caller exercises it.
+    */
+    static buildCompoundComponentApiName(compoundFieldApiName: string, componentKey: string): string {
 
         const customFieldSuffix = '__c';
         if ( compoundFieldApiName.endsWith(customFieldSuffix) ) {
@@ -70,16 +89,37 @@ export class RecipeService {
 
     }
 
-    buildCompoundAddressComponentRecipes(compoundFieldApiName: string): ICompoundAddressComponentRecipe[] {
+    buildCompoundAddressComponentRecipes(compoundFieldApiName: string): ICompoundComponentRecipe[] {
 
         const addressComponentToRecipeValue = this.fakerService.getAddressComponentToRecipeValueMap();
+        return RecipeService.buildComponentRecipesByKeys(compoundFieldApiName,
+                                                            RecipeService.compoundAddressComponentKeys,
+                                                            addressComponentToRecipeValue
+                                                          );
 
-        return RecipeService.compoundAddressComponentKeys.map((componentKey) => {
+    }
+
+    buildCompoundGeolocationComponentRecipes(compoundFieldApiName: string): ICompoundComponentRecipe[] {
+
+        const geolocationComponentToRecipeValue = this.fakerService.getGeolocationComponentToRecipeValueMap();
+        return RecipeService.buildComponentRecipesByKeys(compoundFieldApiName,
+                                                            RecipeService.compoundGeolocationComponentKeys,
+                                                            geolocationComponentToRecipeValue
+                                                          );
+
+    }
+
+    private static buildComponentRecipesByKeys(compoundFieldApiName: string,
+                                                    componentKeys: string[],
+                                                    componentKeyToRecipeValue: Record<string, string>
+                                                ): ICompoundComponentRecipe[] {
+
+        return componentKeys.map((componentKey) => {
 
             return {
                 componentKey: componentKey,
-                componentApiName: RecipeService.buildCompoundAddressComponentApiName(compoundFieldApiName, componentKey),
-                recipeValue: addressComponentToRecipeValue[componentKey]
+                componentApiName: RecipeService.buildCompoundComponentApiName(compoundFieldApiName, componentKey),
+                recipeValue: componentKeyToRecipeValue[componentKey]
             };
 
         });

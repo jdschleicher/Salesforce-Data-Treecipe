@@ -10,6 +10,7 @@ import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
 
+import * as yaml from 'js-yaml';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
@@ -528,6 +529,171 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
                 expect(actualRecipeValue).toBe(recipeValue);
             }
             
+        });
+
+    });
+
+    /*
+        A recipe value is not just a string, it is a YAML SCALAR, and the two are not the same thing.
+        A plain scalar may not contain ": " -- js-yaml rejects the whole document -- which is why every
+        faker-js expression in this service carrying a colon-space is emitted as a "|" block scalar.
+        Getting that wrong does not break one line; RecipeService.appendFieldRecipeToObjectRecipe writes
+        the value into an object recipe and FakerJSRecipeProcessor calls yaml.load() over the WHOLE file,
+        so one bad value takes every other field on every other object down with it.
+
+        These assert the property over every map the service exposes rather than over the geolocation
+        pair that prompted them, so a future entry cannot reintroduce it.
+    */
+    describe('recipe values are valid YAML scalars as emitted', () => {
+
+        const loadEmittedFieldValue = (fieldApiName: string, fieldRecipeValue: string): unknown => {
+
+            const objectRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(
+                `- object: Store__c\n  nickname: Store__c_NickName\n  count: 1\n  fields:`,
+                fieldRecipeValue,
+                fieldApiName
+            );
+
+            const parsedObjectRecipes = yaml.load(objectRecipe) as any[];
+            return parsedObjectRecipes[0].fields[fieldApiName];
+
+        };
+
+        test('every geolocation component value parses when emitted into an object recipe', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeService.getGeolocationComponentToRecipeValueMap();
+
+            Object.entries(geolocationComponentToRecipeValue).forEach(([componentKey, recipeValue]) => {
+                expect(() => loadEmittedFieldValue(`Store_Location__${componentKey}__s`, recipeValue)).not.toThrow();
+            });
+
+        });
+
+        test('a parsed geolocation component value still carries its faker expression and its bounds', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeService.getGeolocationComponentToRecipeValueMap();
+
+            const parsedLatitude = String(loadEmittedFieldValue('Store_Location__Latitude__s', geolocationComponentToRecipeValue['Latitude'])).trim();
+            const parsedLongitude = String(loadEmittedFieldValue('Store_Location__Longitude__s', geolocationComponentToRecipeValue['Longitude'])).trim();
+
+            expect(parsedLatitude).toBe('${{faker.location.latitude({ min: -90, max: 90 })}}');
+            expect(parsedLongitude).toBe('${{faker.location.longitude({ min: -180, max: 180 })}}');
+
+        });
+
+        test('every address component value parses when emitted into an object recipe', () => {
+
+            const addressComponentToRecipeValue = fakerJSRecipeService.getAddressComponentToRecipeValueMap();
+
+            Object.entries(addressComponentToRecipeValue).forEach(([componentKey, recipeValue]) => {
+                expect(() => loadEmittedFieldValue(`Site_Address__${componentKey}__s`, recipeValue)).not.toThrow();
+            });
+
+        });
+
+        /*
+            The whole field type map, so an entry added later with an unescaped colon-space is caught
+            by this suite rather than by a user whose recipe file stops loading.
+        */
+        test('every salesforce field type recipe value parses when emitted into an object recipe', () => {
+
+            const fieldTypeToRecipeValue = fakerJSRecipeService.getMapSalesforceFieldToFakerValue();
+
+            Object.entries(fieldTypeToRecipeValue).forEach(([fieldType, recipeValue]) => {
+                expect(() => loadEmittedFieldValue(`Fake_${fieldType}__c`, recipeValue)).not.toThrow();
+            });
+
+        });
+
+        /*
+            An object recipe carrying BOTH geolocation components and ordinary fields, parsed in one
+            document -- the failure this guards against was never confined to the offending line.
+        */
+        test('an object recipe carrying geolocation components alongside other fields parses whole', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeService.getGeolocationComponentToRecipeValueMap();
+            const fieldTypeToRecipeValue = fakerJSRecipeService.getMapSalesforceFieldToFakerValue();
+
+            let objectRecipe = `- object: Store__c\n  nickname: Store__c_NickName\n  count: 1\n  fields:`;
+            objectRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(objectRecipe, fieldTypeToRecipeValue['text'], 'Name__c');
+            objectRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(objectRecipe, geolocationComponentToRecipeValue['Latitude'], 'Store_Location__Latitude__s');
+            objectRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(objectRecipe, geolocationComponentToRecipeValue['Longitude'], 'Store_Location__Longitude__s');
+            objectRecipe = recipeServiceWithFakerJS.appendFieldRecipeToObjectRecipe(objectRecipe, fieldTypeToRecipeValue['checkbox'], 'IsActive__c');
+
+            const parsedObjectRecipes = yaml.load(objectRecipe) as any[];
+
+            expect(Object.keys(parsedObjectRecipes[0].fields)).toEqual([
+                'Name__c',
+                'Store_Location__Latitude__s',
+                'Store_Location__Longitude__s',
+                'IsActive__c'
+            ]);
+
+        });
+
+    });
+
+    describe('buildCompoundGeolocationComponentRecipes', () => {
+
+        test('given a custom compound geolocation field, composes the component api names with the faker-js coordinate expressions', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithFakerJS.buildCompoundGeolocationComponentRecipes('Store_Location__c');
+
+            const componentApiNameToRecipeValue = Object.fromEntries(
+                compoundGeolocationComponentRecipes.map(componentRecipe => [componentRecipe.componentApiName, componentRecipe.recipeValue])
+            );
+
+            expect(componentApiNameToRecipeValue).toEqual({
+                'Store_Location__Latitude__s': `|
+                \${{faker.location.latitude({ min: -90, max: 90 })}}`,
+                'Store_Location__Longitude__s': `|
+                \${{faker.location.longitude({ min: -180, max: 180 })}}`
+            });
+
+        });
+
+        /*
+            The compound field itself never becomes a recipe line, so the gist link that used to stand
+            in for this expansion has no path left to reach a recipe by.
+        */
+        test('no generated component recipe carries the one pager gist link', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithFakerJS.buildCompoundGeolocationComponentRecipes('Store_Location__c');
+
+            compoundGeolocationComponentRecipes.forEach((componentRecipe) => {
+                expect(componentRecipe.recipeValue).not.toContain('gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445');
+            });
+
+        });
+
+        test('a Location field type no longer resolves through the salesforce field map', () => {
+
+            const notHandledRecipeValue = recipeServiceWithFakerJS.getFakeValueIfExpectedSalesforceFieldType('location');
+
+            expect(notHandledRecipeValue).not.toContain('gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445');
+            expect(notHandledRecipeValue).toContain('FieldType Not Handled');
+
+        });
+
+        /*
+            Only <type> decides expansion, so a Text field merely NAMED like a geolocation resolves
+            through the ordinary text handler and stays one faker.lorem.text line.
+        */
+        test('given a Text field merely named Location__c, returns the single faker.lorem.text recipe value', () => {
+
+            const textFieldNamedLikeGeolocation: XMLFieldDetail = {
+                fieldType: 'Text',
+                apiName: 'Location__c',
+                fieldLabel: 'Location',
+                xmlMarkup: XMLMarkupMockService.getTextFieldNamedLikeGeolocationXMLMarkup()
+            };
+
+            const actualRecipeValue = recipeServiceWithFakerJS.getRecipeFakeValueByXMLFieldDetail(textFieldNamedLikeGeolocation, {});
+
+            expect(actualRecipeValue).toContain('faker.lorem.text');
+            expect(actualRecipeValue).not.toContain('faker.location.latitude');
+            expect(actualRecipeValue).not.toContain('faker.location.longitude');
+
         });
 
     });
