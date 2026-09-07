@@ -159,6 +159,10 @@ export interface IPicklistDependencyNodeViewModel {
         than rebuilt per keystroke in the webview. Held in the model so the matching rule is a tested
         service concern and the panel is left with an "indexOf" -- the filter logic does not become a
         second implementation living only inside a script string.
+
+        It names the controlling value of every combination the node RENDERS, so applyModelLimits
+        rebuilds it after the ceiling has dropped rows: a haystack built before the caps would match
+        a value no surviving row shows. See buildNodeSearchText.
     */
     searchText: string;
     // COMBINATIONS AND SCOPES DROPPED BY THE RENDERING CEILING -- SEE applyModelLimits
@@ -385,6 +389,9 @@ export interface IPicklistDependencyExplorerModelLimits {
     20,000 combinations is an embedded model of about 7MB, against the 17MB an unbounded large org
     produced before any ceiling existed. See CHANGELOG 3.6.0 for the measurement table.
 */
+// SEE buildNodeSearchText FOR WHY A NEWLINE AND NOT A SPACE
+export const SEARCH_TEXT_SEPARATOR = '\n';
+
 export const DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS: IPicklistDependencyExplorerModelLimits = {
     maxObjects: 250,
     maxNodesPerObject: 25,
@@ -1117,17 +1124,46 @@ export class PicklistDependencyExplorerService {
         The generated class and spec method names are deliberately NOT in here. The panel does not
         render them, and a query that matches text the reader cannot see returns a row with no
         visible reason for matching. What is searchable is what is on screen.
+
+        Controlling values ARE in here, and only the ones this node's rows carry: every combination
+        the node renders, at field level and under each record type scope, is a row headed by its
+        controlling value, so "where does Canada appear as a controller" is answered by the rows the
+        reader can see. That makes the haystack grow with the number of rendered combinations, an
+        axis maxRenderedCombinations already bounds, and it is why applyModelLimits rebuilds this
+        text once the ceiling has dropped rows rather than leaving the uncapped build's version.
+
+        Dependent values are deliberately absent. A combination carries what its controlling value
+        unlocks, and folding those lists in would put the product of the two picklists into the
+        payload -- the exact expansion the manifest was restructured to stop materialising. A
+        dependent value is still reachable where it is a CONTROLLING value one level down the chain,
+        because that node's rows show it as one.
+
+        Joined on a NEWLINE, not a space, so one indexOf is exactly equivalent to testing each
+        entry on its own. Api names are [A-Za-z0-9_], but a picklist value can carry spaces, so a
+        space separator would let "america canada" match the tail of "North America" and the head
+        of "Canada" -- an object with no row headed by that phrase, which is the match with no
+        visible reason this haystack must never produce. The find box is an <input type="search">
+        whose value can never contain a newline, so no query can match across the join. The panel
+        joins its record type haystack the same way, for the same reason.
     */
     static buildNodeSearchText(node: IPicklistDependencyNodeViewModel): string {
+
+        const renderedControllingValues = new Set<string>();
+
+        node.combinations.forEach(combination => renderedControllingValues.add(combination.controllingValue));
+        node.recordTypeScopes.forEach(recordTypeScope => {
+            recordTypeScope.combinations.forEach(combination => renderedControllingValues.add(combination.controllingValue));
+        });
 
         const searchableValues = [
             node.objectApiName,
             node.fieldApiName,
             node.controllingFieldApiName,
-            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName)
+            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName),
+            ...renderedControllingValues
         ];
 
-        return searchableValues.filter(searchableValue => !!searchableValue).join(' ').toLowerCase();
+        return searchableValues.filter(searchableValue => !!searchableValue).join(SEARCH_TEXT_SEPARATOR).toLowerCase();
 
     }
 
@@ -1138,6 +1174,18 @@ export class PicklistDependencyExplorerService {
         holding it rather than requiring the reader to know which object that was -- which is the
         whole point of the box. Skipped fields are in it too: a field that was skipped is the one
         thing on the panel nothing asserts, and it must not become unfindable as well.
+
+        Because it repeats every node's haystack, each rendered controlling value is serialized
+        TWICE in the payload -- once here and once on its node -- so the search-text term is 2x
+        what the node count suggests: about 0.9 MB rather than 0.45 MB at the combination ceiling.
+        That is the price of keeping the object-level match a single indexOf rather than a walk of
+        the nodes on every keystroke, or a second matching rule inside the panel script. Whenever
+        the ceiling is re-measured, count both copies.
+
+        This is the ONLY derivation of an object's haystack: the skip-only objects in
+        buildExplorerViewModel come through here too, with no root nodes, so the record type a
+        skipped field names is findable from the first render rather than only once the ceiling
+        has rebuilt it.
     */
     static buildObjectSearchText(objectViewModel: IPicklistDependencyObjectViewModel): string {
 
@@ -1148,7 +1196,7 @@ export class PicklistDependencyExplorerService {
             ...objectViewModel.skippedFields.map(skippedField => skippedField.recordTypeDeveloperName)
         ];
 
-        return searchableValues.filter(searchableValue => !!searchableValue).join(' ').toLowerCase();
+        return searchableValues.filter(searchableValue => !!searchableValue).join(SEARCH_TEXT_SEPARATOR).toLowerCase();
 
     }
 
@@ -1489,22 +1537,28 @@ export class PicklistDependencyExplorerService {
             .filter(objectApiName => !distinctObjectApiNames.includes(objectApiName))
             .sort();
 
-        const skipOnlyObjects: IPicklistDependencyObjectViewModel[] = objectApiNamesWithSkipsOnly.map(objectApiName => ({
-            objectApiName: objectApiName,
-            rootNodes: [],
-            dependentFieldCount: 0,
-            combinationCount: 0,
-            recordTypeCombinationCount: 0,
-            testMethodName: '',
-            generatedClassName: '',
-            generatedClassFilePath: '',
-            skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName],
-            truncatedNodeCount: 0,
-            searchText: [objectApiName, ...skippedFieldViewModelsByObjectApiName[objectApiName].map(skippedField => skippedField.fieldApiName)]
-                            .filter(searchableValue => !!searchableValue)
-                            .join(' ')
-                            .toLowerCase()
-        }));
+        const skipOnlyObjects: IPicklistDependencyObjectViewModel[] = objectApiNamesWithSkipsOnly.map(objectApiName => {
+
+            const skipOnlyObject: IPicklistDependencyObjectViewModel = {
+                objectApiName: objectApiName,
+                rootNodes: [],
+                dependentFieldCount: 0,
+                combinationCount: 0,
+                recordTypeCombinationCount: 0,
+                testMethodName: '',
+                generatedClassName: '',
+                generatedClassFilePath: '',
+                skippedFields: skippedFieldViewModelsByObjectApiName[objectApiName],
+                truncatedNodeCount: 0,
+                searchText: ''
+            };
+
+            // THE SAME DERIVATION EVERY OTHER OBJECT GETS, SO THE CEILING'S REBUILD CANNOT CHANGE IT
+            skipOnlyObject.searchText = this.buildObjectSearchText(skipOnlyObject);
+
+            return skipOnlyObject;
+
+        });
 
         const allObjects = objects.concat(skipOnlyObjects);
 
@@ -2079,6 +2133,8 @@ export class PicklistDependencyExplorerService {
 
         truncatedCombinationCount += this.applyTotalCombinationBudget(viewModel, limits.maxRenderedCombinations);
 
+        this.rebuildSearchText(viewModel);
+
         /*
             Counted in FIELDS and capped in CHAINS, and the notice has to say both.
 
@@ -2115,6 +2171,37 @@ export class PicklistDependencyExplorerService {
         viewModel.truncationNotices = viewModel.truncationNotices.concat(truncationNotices);
 
         return viewModel;
+
+    }
+
+    /*
+        The find box haystacks, rebuilt from what SURVIVED the ceiling.
+
+        Search text names the controlling value of every combination a node renders, and the build
+        computes it on the uncapped model. Every cap in applyModelLimits drops combinations -- per
+        field, per scope, and the total budget -- so a haystack left over from the build would still
+        match a value the panel no longer shows a row for, and the reader would be handed an object
+        with no visible reason for matching. Rebuilding after the last drop is what keeps "what is
+        searchable is what is on screen" true under the ceiling as well as over it.
+
+        It runs unconditionally, on a model inside every cap as much as on one the ceiling cut. A
+        "was anything dropped" gate would save one pass over at most maxRenderedCombinations rows
+        and open a second code path whose failure mode is exactly the stale haystack this exists to
+        prevent; a test pins that the pass leaves an uncut model's text as the build made it. An
+        object with no nodes goes through the same derivation the build gave it, so the pass is
+        idempotent there too.
+    */
+    static rebuildSearchText(viewModel: IPicklistDependencyExplorerViewModel): void {
+
+        viewModel.objects.forEach(objectViewModel => {
+
+            this.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+                node.searchText = this.buildNodeSearchText(node);
+            });
+
+            objectViewModel.searchText = this.buildObjectSearchText(objectViewModel);
+
+        });
 
     }
 
@@ -3760,11 +3847,11 @@ export class PicklistDependencyExplorerService {
         const toolbarElement = createElement('div', 'toolbar');
 
         const findFieldElement = createElement('label', 'toolbarField');
-        findFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Find object or field'));
+        findFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Find object, field or controlling value'));
 
         const findInputElement = document.createElement('input');
         findInputElement.type = 'search';
-        findInputElement.placeholder = 'object, field, record type, or a pasted combination reference';
+        findInputElement.placeholder = 'object, field, record type, controlling value, or a pasted combination reference';
         findInputElement.addEventListener('input', function () {
             filterText = findInputElement.value.trim().toLowerCase();
             applyFilter();
