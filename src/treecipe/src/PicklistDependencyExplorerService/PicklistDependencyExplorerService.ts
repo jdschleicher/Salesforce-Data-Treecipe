@@ -2714,11 +2714,21 @@ export class PicklistDependencyExplorerService {
         padding: 0.12rem 0.3rem 0.12rem 0.75rem;
     }
     .tocEntry:hover { background-color: var(--vscode-list-hoverBackground); }
+    /*
+        The generation stamp, under the title. Indented rather than flush so it reads as hanging off
+        the title rather than as the first line of the panel's content.
+    */
+    .generatedStamp {
+        margin-left: 2rem;
+        color: var(--vscode-descriptionForeground);
+        font-size: 0.75rem;
+    }
     .hidden { display: none; }
 </style>
 </head>
 <body>
 <h1>Picklist Dependency Explorer</h1>
+<div id="generatedStamp" class="generatedStamp hidden"></div>
 <div id="scannedPath" class="muted hidden">Scanned <span id="scannedPathValue" class="sourcePath"></span></div>
 <div id="loadStatus" class="loadStatus">Opening the Picklist Dependency Explorer…</div>
 <div id="explorerRoot"></div>
@@ -2730,6 +2740,7 @@ export class PicklistDependencyExplorerService {
     const loadStatusElement = document.getElementById('loadStatus');
     const scannedPathElement = document.getElementById('scannedPath');
     const scannedPathValueElement = document.getElementById('scannedPathValue');
+    const generatedStampElement = document.getElementById('generatedStamp');
 
     /*
         Assigned when the host posts the model. Everything below reads it, and nothing below runs
@@ -3327,8 +3338,7 @@ export class PicklistDependencyExplorerService {
 
         bannerElement.appendChild(buildFreshnessCheckButton(isPendingFreshness, isNotChecked));
 
-        bannerElement.appendChild(createElement('div', 'muted',
-            'Generated at ' + explorerModel.generatedAt + ' by Treecipe ' + explorerModel.generatorVersion));
+        // THE GENERATION STAMP IS IN THE HEADER NOW -- SEE revealHeaderLines
         bannerElement.appendChild(createElement('div', 'sourcePath', explorerModel.manifestFilePath));
 
         return isStale ? 'Generated specs — stale' : 'Generated specs';
@@ -3956,8 +3966,31 @@ export class PicklistDependencyExplorerService {
         renderSkippedFieldWarnings();
         renderObjects();
 
+        revealHeaderLines();
+
+    }
+
+    /*
+        The two header lines the model fills, revealed together and LAST.
+
+        The scanned path used to be written first, which is what made a failed render read as a
+        finished one -- a heading and a path over an empty page is what a panel that found nothing
+        looks like. The generation stamp is the same kind of marker and is held back for the same
+        reason: written early it would restore exactly that false signal one line up.
+
+        The stamp is drawn only when there is one. A metadata preview was never generated, so its
+        generatedAt is empty, and "generated at  by Treecipe" states nothing.
+    */
+    function revealHeaderLines() {
+
         scannedPathValueElement.textContent = explorerModel.scannedObjectsDirectoryPath;
         scannedPathElement.classList.remove('hidden');
+
+        if (!explorerModel.generatedAt) { return; }
+
+        generatedStampElement.textContent =
+            'generated ' + explorerModel.generatedAt + ' by Treecipe ' + explorerModel.generatorVersion;
+        generatedStampElement.classList.remove('hidden');
 
     }
 
@@ -3984,6 +4017,7 @@ export class PicklistDependencyExplorerService {
         matchCountElement = undefined;
 
         scannedPathElement.classList.add('hidden');
+        generatedStampElement.classList.add('hidden');
 
         const failureElement = createElement('div', 'renderFailure');
         failureElement.appendChild(createElement('div', 'fieldName',

@@ -988,11 +988,25 @@ describe('PicklistDependencyExplorerService', () => {
 
         };
 
+        /*
+            Each one starts with the classes the SHELL MARKUP declares for it, not blank. The two
+            header lines are declared hidden there and revealed by the render, so a fake that started
+            them classless would report an unrendered header line as visible -- and a test asserting
+            it stays hidden would pass against a panel that had never hidden it. A test below pins
+            the markup these mirror.
+        */
+        const buildFakeElementWithClassName = (tagName: string, className: string): any => {
+            const fakeElement = buildFakeElement(tagName);
+            fakeElement.className = className;
+            return fakeElement;
+        };
+
         const elementsById: Record<string, any> = {
             explorerRoot: buildFakeElement('div'),
-            loadStatus: buildFakeElement('div'),
-            scannedPath: buildFakeElement('div'),
-            scannedPathValue: buildFakeElement('span')
+            loadStatus: buildFakeElementWithClassName('div', 'loadStatus'),
+            scannedPath: buildFakeElementWithClassName('div', 'muted hidden'),
+            scannedPathValue: buildFakeElementWithClassName('span', 'sourcePath'),
+            generatedStamp: buildFakeElementWithClassName('div', 'generatedStamp hidden')
         };
 
         const fakeDocument = {
@@ -1221,6 +1235,40 @@ describe('PicklistDependencyExplorerService', () => {
         }
 
         /*
+            Manifest-sourced rather than the preview every other test here uses: a preview was never
+            generated, so it carries no generation stamp to place.
+        */
+        function renderManifestSourcedPanel() {
+
+            const panel = runPanelScript();
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                {
+                    specDetails: buildChainExampleSpecDetails(),
+                    recordTypeSpecDetails: [],
+                    skippedFieldWarnings: [],
+                    skippedFields: []
+                },
+                mockObjectsDirectoryPath,
+                path.join('/workspace', 'force-app', 'main', 'default', 'classes'),
+                '3.17.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                    { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
+                    mockObjectsDirectoryPath,
+                    { freshness: 'fresh', message: '' }
+                )
+            ));
+
+            return panel;
+
+        }
+
+        /*
             The reader opened this panel to look a field up. Everything else at the top level is a
             caveat ABOUT the rows, and each one used to sit between them and the only control that
             gets them there.
@@ -1294,6 +1342,70 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(detailElement.classList.contains('hidden')).toBe(true);
             expect(disclosureElement.textContent).toBe('▸');
+
+        });
+
+        // WHAT THE FAKE DOCUMENT'S STARTING CLASSES MIRROR -- THE TWO HEADER LINES ARE HIDDEN UNTIL A RENDER REVEALS THEM
+        it('declares both model-filled header lines hidden in the shell markup', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('<div id="generatedStamp" class="generatedStamp hidden"></div>');
+            expect(actualShellHtml).toContain('<div id="scannedPath" class="muted hidden">');
+
+        });
+
+        it('stamps when and by what version the specs were generated under the title', () => {
+
+            const panel = renderManifestSourcedPanel();
+
+            expect(panel.elementsById.generatedStamp.textContent)
+                .toBe('generated 2026-09-03T12:00:00Z by Treecipe 3.17.0');
+            expect(panel.elementsById.generatedStamp.classList.removed).toContain('hidden');
+
+        });
+
+        // ONE STATEMENT OF IT, NOT TWO -- THE BANNER KEEPS ITS HEADING, ITS CHECK BUTTON AND ITS PATH
+        it('states the generation stamp once, in the header rather than in the banner as well', () => {
+
+            const panel = renderManifestSourcedPanel();
+            const bannerElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'provenanceBanner')[0];
+
+            expect(panel.collectText(bannerElement)).not.toContain('2026-09-03T12:00:00Z');
+            expect(panel.collectText(bannerElement)).toContain('Generated specs');
+            expect(panel.collectText(bannerElement)).toContain('/workspace/treecipe/PicklistDependencySpecs/manifest.json');
+
+        });
+
+        /*
+            A preview was read from metadata rather than generated, so there is no moment to stamp.
+            "generated  by Treecipe " states nothing, and an empty line under the title states less.
+        */
+        it('given a metadata preview, draws no generation stamp at all', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+
+            expect(panel.elementsById.generatedStamp.classList.contains('hidden')).toBe(true);
+            expect(panel.elementsById.generatedStamp.textContent).toBe('');
+
+        });
+
+        /*
+            Held back with the scanned path, and for the same reason: a header line the model filled
+            is exactly what made a failed render read as a finished one.
+        */
+        it('given a model it cannot draw, leaves the generation stamp hidden', () => {
+
+            const panel = runPanelScript();
+            const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+            );
+            delete viewModel.truncationNotices;
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            expect(panel.elementsById.generatedStamp.classList.contains('hidden')).toBe(true);
+            expect(panel.elementsById.generatedStamp.classList.removed).not.toContain('hidden');
 
         });
 
