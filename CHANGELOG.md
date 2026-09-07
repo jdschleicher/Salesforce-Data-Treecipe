@@ -15,8 +15,10 @@ Like Address, Geolocation is a compound field the Collections API cannot accept.
 Now it expands, the same way an Address does:
 
 ```yaml
-Store_Location__Latitude__s: ${{faker.location.latitude({ min: -90, max: 90 })}}
-Store_Location__Longitude__s: ${{faker.location.longitude({ min: -180, max: 180 })}}
+Store_Location__Latitude__s: |
+                ${{faker.location.latitude({ min: -90, max: 90 })}}
+Store_Location__Longitude__s: |
+                ${{faker.location.longitude({ min: -180, max: 180 })}}
 ```
 
 and no line is emitted for `Store_Location__c` itself.
@@ -27,7 +29,7 @@ and no line is emitted for `Store_Location__c` itself.
 
 That dedupe is why sharing it matters rather than being tidy. A component is dropped for two reasons -- the object's OOTB static mappings already name it, or the object has that component as its own field file -- and both produce the same duplicate YAML key. Those reasons do not depend on which compound type produced the component, so they stay in one place.
 
-`buildCompoundAddressComponentApiName` became `buildCompoundComponentApiName` for the same reason: Salesforce derives both compounds' component names by one rule, and the "Address" suffix swap is *right* for Geolocation rather than incidental to it -- the components of a standard compound address ARE its geolocation, so `BillingAddress` yields `BillingLatitude` and `BillingLongitude`, which are the real api names. `ICompoundAddressComponentRecipe` is now `ICompoundComponentRecipe`; the shape never was address-specific.
+`buildCompoundAddressComponentApiName` became `buildCompoundComponentApiName` for the same reason: Salesforce derives both compounds' component names by one rule, and the "Address" suffix swap holds for Geolocation rather than being incidental to it -- the components of a standard compound address ARE its geolocation, so `BillingAddress` *would* yield `BillingLatitude` and `BillingLongitude`, which are the real api names. To be clear about what this release does and does not do: nothing reaches that branch by the geolocation route, because only a `<type>Location</type>` field is expanded this way and in source metadata that is always a custom field. An `Address`-typed field still expands to the five address components and nothing else; emitting Lat/Long for standard address compounds would be its own change. `ICompoundAddressComponentRecipe` is now `ICompoundComponentRecipe`; the shape never was address-specific.
 
 ### Detection is `<type>Location</type>` and nothing else
 
@@ -39,9 +41,11 @@ A `<type>Text</type>` field merely *named* `Location__c` is therefore untouched,
 
 The tag controls whether the **org displays** a coordinate as degrees/minutes/seconds; the API accepts decimal degrees either way. So it cannot change generated output -- and rather than let that follow silently from the tag going unread, a test generates from a `true` fixture and a `false` fixture and asserts the component lines are identical.
 
-### Bounds are in the expression, not in the faker default
+### Bounds are in the expression, not in the faker default -- which costs a block scalar
 
-The faker-js values state `{ min: -90, max: 90 }` and `{ min: -180, max: 180 }` explicitly. A generated coordinate is random, so sampling one proves nothing about the range a recipe constrains; putting the bounds in the recipe text makes the valid range something a reader and a test can both check, instead of a property of whichever faker version happens to be installed. Snowfakery's `fake.latitude` / `fake.longitude` take no bounds arguments -- those providers are defined over the valid ranges, which is what makes naming them the way that backend states the same thing.
+The faker-js values state `{ min: -90, max: 90 }` and `{ min: -180, max: 180 }` explicitly, as `|` block scalars.
+
+**The block form is not cosmetic.** A recipe value is a YAML *scalar*, and a plain one may not contain `": "`. Stating bounds puts a colon-space in the value, and `FakerJSRecipeProcessor` calls `yaml.load()` over the *whole* recipe file -- so a plain-scalar coordinate expression would not break its own line, it would make every field on every object in that file unreadable. Every faker-js expression in the service that carries a colon-space is emitted this way for exactly that reason (`number`, `percent`, `date`, `datetime`, `time`, and the precision/scale builders); these two now join them. Tests assert the property over *every* map the service exposes, not just the geolocation pair, so a future entry cannot reintroduce it. A generated coordinate is random, so sampling one proves nothing about the range a recipe constrains; putting the bounds in the recipe text makes the valid range something a reader and a test can both check, instead of a property of whichever faker version happens to be installed. Snowfakery's `fake.latitude` / `fake.longitude` take no bounds arguments -- those providers are defined over the valid ranges, which is what makes naming them the way that backend states the same thing.
 
 ### The gist link is gone from both backends
 

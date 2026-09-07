@@ -5,6 +5,9 @@ import * as vscode from 'vscode';
 import { MockDirectoryService } from "./mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
+import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
+import { RecipeService } from "../../RecipeService/RecipeService";
+import * as yaml from 'js-yaml';
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
 import { RecordTypeService } from "../../RecordTypeService/RecordTypeService";
@@ -1017,3 +1020,92 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 });
 
 
+/*
+  Every other walk test in this file runs the SNOWFAKERY implementation, which is how a faker-js
+  emission bug reached review unnoticed: the geolocation values were asserted as map strings and as
+  FieldInfo shapes, and neither of those is the artifact. This suite walks the same directory under
+  the FAKER-JS implementation and parses what the walk would put in a recipe file.
+*/
+describe('DirectoryProcessor FakerJS FakerService Implementation compound geolocation expansion', () => {
+
+  let fakerJSDirectoryProcessor: DirectoryProcessor;
+  let fakerJSRecipeService: RecipeService;
+
+  beforeEach(() => {
+
+    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+      .mockImplementation(() => new FakerJSRecipeFakerService());
+    jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+    fakerJSDirectoryProcessor = new DirectoryProcessor();
+    fakerJSRecipeService = new RecipeService(new FakerJSRecipeFakerService());
+
+  });
+
+  const walkStoreLocationFieldsDirectory = async (): Promise<FieldInfo[]> => {
+
+    jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(
+      () => Promise.resolve([['Store_Location__c.field-meta.xml', vscode.FileType.File]]) as any
+    );
+    jest.spyOn(vscode.Uri, 'joinPath').mockReturnValue(MockVSCodeWorkspaceService.getFakeVSCodeUri());
+    jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(
+      () => Promise.resolve(Buffer.from(XMLMarkupMockService.getCompoundGeolocationFieldTypeXMLMarkup())) as any
+    );
+
+    return await fakerJSDirectoryProcessor.processFieldsDirectory(
+      vscode.Uri.file('/fake/Store__c/fields'),
+      'Store__c',
+      {},
+      {}
+    );
+
+  };
+
+  test('the walk yields the two component fields and no line for the compound field', async () => {
+
+    const fieldInfoDetails = await walkStoreLocationFieldsDirectory();
+
+    expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).toEqual([
+      'Store_Location__Latitude__s',
+      'Store_Location__Longitude__s'
+    ]);
+
+  });
+
+  test('each component carries the faker-js coordinate expression with its bounds', async () => {
+
+    const fieldInfoDetails = await walkStoreLocationFieldsDirectory();
+
+    expect(fieldInfoDetails[0].recipeValue).toContain('faker.location.latitude');
+    expect(fieldInfoDetails[0].recipeValue).toContain('min: -90');
+    expect(fieldInfoDetails[1].recipeValue).toContain('faker.location.longitude');
+    expect(fieldInfoDetails[1].recipeValue).toContain('min: -180');
+
+  });
+
+  /*
+    The artifact, not the shape. FakerJSRecipeProcessor calls yaml.load() over the whole recipe file,
+    so a component value that is not a valid YAML scalar does not break its own line -- it makes every
+    field on every object in the file unreadable.
+  */
+  test('the object recipe the walk produces is parseable YAML', async () => {
+
+    const fieldInfoDetails = await walkStoreLocationFieldsDirectory();
+
+    let objectRecipe = `- object: Store__c\n  nickname: Store__c_NickName\n  count: 1\n  fields:`;
+    fieldInfoDetails.forEach((fieldInfo) => {
+      objectRecipe = fakerJSRecipeService.appendFieldRecipeToObjectRecipe(objectRecipe, fieldInfo.recipeValue, fieldInfo.fieldName);
+    });
+
+    const parsedObjectRecipes = yaml.load(objectRecipe) as any[];
+
+    expect(Object.keys(parsedObjectRecipes[0].fields)).toEqual([
+      'Store_Location__Latitude__s',
+      'Store_Location__Longitude__s'
+    ]);
+    expect(String(parsedObjectRecipes[0].fields['Store_Location__Latitude__s']).trim())
+      .toBe('${{faker.location.latitude({ min: -90, max: 90 })}}');
+
+  });
+
+});

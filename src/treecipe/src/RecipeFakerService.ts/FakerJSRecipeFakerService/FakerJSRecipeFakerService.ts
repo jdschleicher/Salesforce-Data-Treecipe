@@ -349,12 +349,21 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         Bounds are stated explicitly rather than left to the faker defaults so the recipe itself
         carries the valid coordinate range a reader (or a test) can check, instead of it being a
         property of whichever faker version happens to be installed.
+
+        Stating them costs a "|" block scalar, and that is not cosmetic. A recipe value is a YAML
+        SCALAR, and a plain one may not contain ": " -- js-yaml rejects the document, and
+        FakerJSRecipeProcessor calls yaml.load() over the WHOLE recipe file, so one bad value takes
+        every other field on every other object down with it rather than just its own line. Every
+        expression in this service carrying a colon-space is emitted this way for that reason:
+        'number', 'percent', 'date', 'datetime', 'time', and the precision/scale builders.
     */
     getGeolocationComponentToRecipeValueMap(): Record<string, string> {
 
         const geolocationComponentToFakerValue: Record<string, string> = {
-            'Latitude': `\${{faker.location.latitude({ min: -90, max: 90 })}}`,
-            'Longitude': `\${{faker.location.longitude({ min: -180, max: 180 })}}`
+            'Latitude': `|
+                \${{faker.location.latitude({ min: -90, max: 90 })}}`,
+            'Longitude': `|
+                \${{faker.location.longitude({ min: -180, max: 180 })}}`
         };
 
         return geolocationComponentToFakerValue;

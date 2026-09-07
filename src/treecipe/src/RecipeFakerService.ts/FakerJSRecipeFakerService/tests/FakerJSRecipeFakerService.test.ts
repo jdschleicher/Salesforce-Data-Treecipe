@@ -444,8 +444,10 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
             const geolocationComponentToRecipeValue = fakerJSRecipeFakerService.getGeolocationComponentToRecipeValueMap();
 
-            expect(geolocationComponentToRecipeValue['Latitude']).toBe('${{faker.location.latitude({ min: -90, max: 90 })}}');
-            expect(geolocationComponentToRecipeValue['Longitude']).toBe('${{faker.location.longitude({ min: -180, max: 180 })}}');
+            expect(geolocationComponentToRecipeValue['Latitude']).toBe(`|
+                \${{faker.location.latitude({ min: -90, max: 90 })}}`);
+            expect(geolocationComponentToRecipeValue['Longitude']).toBe(`|
+                \${{faker.location.longitude({ min: -180, max: 180 })}}`);
 
         });
 
@@ -453,6 +455,20 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             Asserts the EXPRESSION's bounds rather than a sampled value: a generated coordinate is
             random, so sampling one proves nothing about the range the recipe actually constrains.
         */
+        /*
+            Stating bounds puts ": " in the value, which a PLAIN yaml scalar may not contain, so both
+            values must be block scalars. RecipeService's suite proves the emitted recipe parses; this
+            pins the form here so the map cannot quietly drop the "|" and stay green on substrings.
+        */
+        test('states both bounded expressions as block scalars', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeFakerService.getGeolocationComponentToRecipeValueMap();
+
+            expect(geolocationComponentToRecipeValue['Latitude'].startsWith('|')).toBe(true);
+            expect(geolocationComponentToRecipeValue['Longitude'].startsWith('|')).toBe(true);
+
+        });
+
         test('constrains latitude to -90..90 and longitude to -180..180 in the expression itself', () => {
 
             const geolocationComponentToRecipeValue = fakerJSRecipeFakerService.getGeolocationComponentToRecipeValueMap();
