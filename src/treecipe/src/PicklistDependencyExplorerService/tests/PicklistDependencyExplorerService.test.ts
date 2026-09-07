@@ -3093,6 +3093,325 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+    /*
+        The retained overlay's BEHAVIOUR, not just its surface.
+
+        Restoring the code without these would leave it compiling and unproven -- and an overlay
+        nobody calls is exactly the code that rots silently. Each of these builds the structure and
+        then applies a run to it, which is the two-step shape the Explorer's own build used to hide.
+    */
+    describe('retained overlay behaviour', () => {
+
+        // THE SUITE-SCOPED HELPERS THESE TESTS CAME WITH, POINTED AT THE TWO-STEP BUILD
+        const manifestFilePath = '/workspace/treecipe/PicklistDependencySpecs/manifest.json';
+
+        function buildCollectionResult(overrides: Partial<IPicklistDependencyCollectionResult> = {}): IPicklistDependencyCollectionResult {
+
+            return {
+                specDetails: buildChainExampleSpecDetails(),
+                recordTypeSpecDetails: [],
+                skippedFieldWarnings: [],
+                skippedFields: [],
+                ...overrides
+            };
+
+        }
+
+        function buildViewModelWithLatestMockRun(specDetails: IPicklistDependencySpecDetail[]): IPicklistDependencyExplorerViewModel {
+
+            return buildViewModelWithRun(
+                specDetails,
+                PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath)
+            );
+
+        }
+
+        function buildManifestLoad(collectionResult: IPicklistDependencyCollectionResult = buildCollectionResult()) {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                collectionResult,
+                mockObjectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '3.5.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            return { state: 'loaded' as const, message: '', manifest, manifestFilePath };
+
+        }
+
+        const freshResult = { freshness: 'fresh' as const, message: '' };
+
+        it('given no results at all, renders the structure with every combination marked not checked', () => {
+
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), buildNoResultsLoad());
+
+            expect(actualViewModel.runLoadState).toBe('noResultsFound');
+            expect(actualViewModel.runSummary).toBeUndefined();
+            expect(actualViewModel.objects).toHaveLength(1);
+            expect(actualViewModel.objects[0].status).toBe('unknown');
+            expect(actualViewModel.objects[0].rootNodes[0].status).toBe('unknown');
+            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('unknown');
+
+        });
+
+        it('given the most recent run, overlays each failing combination with its kind and message', () => {
+
+            const actualViewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            expect(actualViewModel.runLoadState).toBe('loaded');
+            expect(actualViewModel.runSummary.targetOrg).toBe('devHub');
+            expect(actualViewModel.runSummary.passed).toBe(false);
+
+            const chainObjectViewModel = actualViewModel.objects[0];
+            expect(chainObjectViewModel.status).toBe('failed');
+            expect(chainObjectViewModel.failureCount).toBe(2);
+
+            const stateNode = chainObjectViewModel.rootNodes[0];
+            const failedUsaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+            expect(failedUsaCombination.status).toBe('failed');
+            expect(failedUsaCombination.failures).toHaveLength(1);
+            expect(failedUsaCombination.failures[0].kind).toBe('MISSING_VALUES');
+            expect(failedUsaCombination.failures[0].message).toContain('Texas');
+
+            const passedCanadaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'Canada');
+            expect(passedCanadaCombination.status).toBe('passed');
+            expect(passedCanadaCombination.failures).toEqual([]);
+
+        });
+
+        it('given a failing combination on a chained field, overlays it on the nested node', () => {
+
+            const actualViewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            const cityNode = actualViewModel.objects[0].rootNodes[0].downstreamNodes[0];
+
+            expect(cityNode.fieldApiName).toBe('City__c');
+            expect(cityNode.status).toBe('failed');
+
+            const failedOhioCombination = cityNode.combinations.find(combination => combination.controllingValue === 'Ohio');
+            expect(failedOhioCombination.status).toBe('failed');
+            expect(failedOhioCombination.failures[0].kind).toBe('FORBIDDEN_VALUES_PRESENT');
+            expect(PicklistDependencyExplorerService.buildForbiddenValues(
+                cityNode.declaredValues, failedOhioCombination
+            )).toContain('Toronto');
+
+        });
+
+        it('given an object the run covered and passed, marks every combination passed', () => {
+
+            const dependencyExampleSpecDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Dependency_Example__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin'] }]
+                }
+            ];
+
+            const actualViewModel = buildViewModelWithLatestMockRun(dependencyExampleSpecDetails);
+
+            expect(actualViewModel.objects[0].status).toBe('passed');
+            expect(actualViewModel.objects[0].rootNodes[0].status).toBe('passed');
+            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('passed');
+
+        });
+
+        it('given an object absent from the loaded run, leaves it not checked rather than claiming it passed', () => {
+
+            const unrelatedSpecDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Never_Checked__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = buildViewModelWithLatestMockRun(unrelatedSpecDetails);
+
+            expect(actualViewModel.objects[0].status).toBe('unknown');
+            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('unknown');
+
+        });
+
+        it('given a field level failure with no controlling value, attaches it to the field rather than to a combination', () => {
+
+            const fieldLevelFailureResultsLoad: IPicklistDependencyResultsLoad = {
+                state: 'loaded',
+                message: '',
+                resultsFilePath: '/workspace/results.json',
+                results: {
+                    targetOrg: 'devHub',
+                    ranAt: '2026-08-20T09-01-33',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [
+                        {
+                            methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
+                            passed: false,
+                            message: '  - CONTROLLING_FIELD_MISMATCH — Chain_Example__c.State__c: the org reports Region__c as the controlling field'
+                        }
+                    ]
+                }
+            };
+
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), fieldLevelFailureResultsLoad);
+
+            const stateNode = actualViewModel.objects[0].rootNodes[0];
+            expect(stateNode.status).toBe('failed');
+            expect(stateNode.fieldLevelFailures).toHaveLength(1);
+            expect(stateNode.fieldLevelFailures[0].kind).toBe('CONTROLLING_FIELD_MISMATCH');
+            expect(stateNode.fieldLevelFailures[0].message).toContain('Region__c');
+            expect(stateNode.combinations.every(combination => combination.status === 'passed')).toBe(true);
+
+        });
+
+        /*
+            The run validates SDTPLDSpecs.all(), which holds the field-level specs only. Marking a
+            scoped combination "passed" off the back of that would report a scope nothing checked as
+            verified -- the exact failure mode the describe source refuses a scoped spec to avoid.
+        */
+        test('given a passing field level run, leaves scoped combinations unknown rather than claiming they passed', () => {
+
+            const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
+
+            const viewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), resultsLoad, buildChainExampleRecordTypeSpecDetails());
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+            const scopedStatuses = stateNode.recordTypeScopes[0].combinations.map(combination => combination.status);
+
+            expect(scopedStatuses.every(status => status === 'unknown')).toBeTrue();
+            expect(stateNode.recordTypeScopes[0].status).toBe('unknown');
+
+        });
+
+        /*
+            The test method the run outcome is looked up by comes from the manifest rather than being
+            re-derived. Re-deriving it is the second derivation this whole artifact exists to remove,
+            and the two inputs differ the moment an entry is dropped at the parse boundary.
+        */
+        it('looks up the run outcome by the test method name the manifest recorded', () => {
+
+            const manifestLoad = buildManifestLoad();
+            manifestLoad.manifest.objects[0].testMethodName = 'aDeliberatelyDifferentTestMethodName';
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: true,
+                    failureCount: 0,
+                    methodsRun: 1,
+                    methodOutcomes: [{ methodName: 'aDeliberatelyDifferentTestMethodName', passed: true }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                    PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                        manifestLoad, mockObjectsDirectoryPath, freshResult
+                    ),
+                    resultsLoad
+                );
+
+            expect(actualViewModel.objects[0].testMethodName).toBe('aDeliberatelyDifferentTestMethodName');
+
+            // THE RUN WAS ACTUALLY MATCHED, RATHER THAN THE OBJECT FALLING BACK TO "NOT CHECKED"
+            expect(actualViewModel.objects[0].status).toBe('passed');
+
+        });
+
+        /*
+            The three-state guarantee, held through the manifest path. A failure that names a
+            combination the manifest does not declare must not be forced onto a row that looks
+            similar -- the object goes to "unknown" and the text is surfaced unattributed.
+        */
+        it('given a failure naming a combination the manifest never declared, holds the object at unknown', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: testMethodName,
+                        passed: false,
+                        message: 'MISSING_VALUES — Chain_Example__c.Nonexistent__c @ Mars: nothing here'
+                    }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                    buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                ),
+                resultsLoad
+            );
+
+            const objectViewModel = actualViewModel.objects[0];
+
+            expect(objectViewModel.unattributedFailureMessages).not.toBeEmpty();
+
+            PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+                node.combinations.forEach(combination => expect(combination.status).toBe('unknown'));
+            });
+
+        });
+
+        it('given a failure naming a combination the manifest DOES declare, attributes it to that row', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: testMethodName,
+                        passed: false,
+                        message: 'MISSING_VALUES — Chain_Example__c.State__c @ USA: Ohio is no longer available'
+                    }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                    buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                ),
+                resultsLoad
+            );
+
+            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .find(node => node.fieldApiName === 'State__c');
+
+            const usaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+
+            expect(usaCombination.status).toBe('failed');
+            expect(usaCombination.combinationKey).toBe('Chain_Example__c.State__c @ USA');
+            expect(actualViewModel.objects[0].unattributedFailureMessages).toBeEmpty();
+
+        });
+
+    });
+
     describe('selectWithinCap', () => {
 
         it('given fewer items than the cap, returns them untouched', () => {
