@@ -34,8 +34,7 @@ export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
             'checkbox': '${{ (random_choice("true", "false")).lower() }}',
             'lookup': '### TODO -- REFERENCE ID REQUIRED',
             'masterdetail': '### TODO -- REFERENCE ID REQUIRED',
-            'formula': '### TODO - REMOVE ME - Formula fields are calculated, not generated',
-            'location': '### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445'
+            'formula': '### TODO - REMOVE ME - Formula fields are calculated, not generated'
         };
     
         return salesforceFieldToSnowfakeryMap;
@@ -329,6 +328,22 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         };
 
         return addressComponentToSnowfakeryValue;
+
+    }
+
+    /*
+        fake.latitude and fake.longitude take no bounds arguments -- the providers are defined over
+        the valid coordinate ranges, which is what makes them the right choice here rather than a
+        bounded numeric provider.
+    */
+    getGeolocationComponentToRecipeValueMap(): Record<string, string> {
+
+        const geolocationComponentToSnowfakeryValue: Record<string, string> = {
+            'Latitude': '${{fake.latitude}}',
+            'Longitude': '${{fake.longitude}}'
+        };
+
+        return geolocationComponentToSnowfakeryValue;
 
     }
 

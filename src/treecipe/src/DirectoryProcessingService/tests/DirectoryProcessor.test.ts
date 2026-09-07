@@ -5,6 +5,9 @@ import * as vscode from 'vscode';
 import { MockDirectoryService } from "./mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
 import { ObjectInfoWrapper } from "../../ObjectInfoWrapper/ObjectInfoWrapper";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
+import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
+import { RecipeService } from "../../RecipeService/RecipeService";
+import * as yaml from 'js-yaml';
 import { XMLMarkupMockService } from "../../XMLProcessingService/tests/mocks/XMLMarkupMockService";
 import { MockVSCodeWorkspaceService } from "../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService";
 import { RecordTypeService } from "../../RecordTypeService/RecordTypeService";
@@ -445,6 +448,156 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
   });
 
+  describe('processFieldsDirectory compound geolocation expansion', () => {
+
+    const mockSingleFieldFileDirectory = (fieldFileName: string, xmlMarkup: string) => {
+
+      jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(
+        () => Promise.resolve([[fieldFileName, vscode.FileType.File]]) as any
+      );
+      jest.spyOn(vscode.Uri, 'joinPath').mockReturnValue(MockVSCodeWorkspaceService.getFakeVSCodeUri());
+      jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(
+        () => Promise.resolve(Buffer.from(xmlMarkup)) as any
+      );
+
+    };
+
+    const processStoreLocationFieldsDirectory = async (xmlMarkup: string, fieldFileName = 'Store_Location__c.field-meta.xml') => {
+
+      mockSingleFieldFileDirectory(fieldFileName, xmlMarkup);
+      jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+      return await directoryProcessor.processFieldsDirectory(
+        vscode.Uri.file('/fake/Store__c/fields'),
+        'Store__c',
+        {},
+        {}
+      );
+
+    };
+
+    test('given a Location field file, the walk yields the two component fields and no line for the compound field', async () => {
+
+      const fieldInfoDetails = await processStoreLocationFieldsDirectory(XMLMarkupMockService.getCompoundGeolocationFieldTypeXMLMarkup());
+
+      expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).toEqual([
+        'Store_Location__Latitude__s',
+        'Store_Location__Longitude__s'
+      ]);
+      expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).not.toContain('Store_Location__c');
+
+    });
+
+    test('given a Location field file, each component carries the snowfakery recipe value for its component', async () => {
+
+      const fieldInfoDetails = await processStoreLocationFieldsDirectory(XMLMarkupMockService.getCompoundGeolocationFieldTypeXMLMarkup());
+
+      const componentApiNameToRecipeValue = Object.fromEntries(
+        fieldInfoDetails.map(fieldInfo => [fieldInfo.fieldName, fieldInfo.recipeValue])
+      );
+
+      expect(componentApiNameToRecipeValue).toEqual({
+        'Store_Location__Latitude__s': '${{fake.latitude}}',
+        'Store_Location__Longitude__s': '${{fake.longitude}}'
+      });
+
+    });
+
+    /*
+      <displayLocationInDecimal> controls how the ORG DISPLAYS a coordinate -- degrees/minutes/seconds
+      when false -- while the API accepts decimal degrees either way. The generated recipe therefore
+      must not vary with it, which is asserted here rather than left to follow from the tag going
+      unread.
+    */
+    test('given displayLocationInDecimal false, the generated components are identical to the decimal case', async () => {
+
+      const decimalFieldInfoDetails = await processStoreLocationFieldsDirectory(XMLMarkupMockService.getCompoundGeolocationFieldTypeXMLMarkup());
+      const degreesFieldInfoDetails = await processStoreLocationFieldsDirectory(XMLMarkupMockService.getCompoundGeolocationDisplayedInDegreesFieldTypeXMLMarkup());
+
+      const asComponentLines = (fieldInfoDetails: FieldInfo[]) => fieldInfoDetails.map(
+        fieldInfo => `${fieldInfo.fieldName}: ${fieldInfo.recipeValue}`
+      );
+
+      expect(asComponentLines(degreesFieldInfoDetails)).toEqual(asComponentLines(decimalFieldInfoDetails));
+
+    });
+
+    /*
+      Nothing but <type> decides expansion. A Text field named "Location__c" is an ordinary text field
+      and has to stay one recipe line.
+    */
+    test('given a Text field merely named Location__c, the walk yields the single unexpanded text line', async () => {
+
+      const fieldInfoDetails = await processStoreLocationFieldsDirectory(
+        XMLMarkupMockService.getTextFieldNamedLikeGeolocationXMLMarkup(),
+        'Location__c.field-meta.xml'
+      );
+
+      expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).toEqual(['Location__c']);
+      expect(fieldInfoDetails[0].recipeValue).toBe('${{fake.text(max_nb_chars=255)}}');
+
+    });
+
+    /*
+      The gist link stood in for an expansion that now happens, so no walk may still emit it.
+    */
+    test('given a Location field file, no generated recipe value carries the one pager gist link', async () => {
+
+      const fieldInfoDetails = await processStoreLocationFieldsDirectory(XMLMarkupMockService.getCompoundGeolocationFieldTypeXMLMarkup());
+
+      fieldInfoDetails.forEach((fieldInfo) => {
+        expect(fieldInfo.recipeValue).not.toContain('gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445');
+      });
+
+    });
+
+  });
+
+  describe('isCompoundGeolocationField', () => {
+
+    test('given a field whose xml type is Location, returns true', () => {
+
+      const compoundGeolocationFieldInfo: any = { fieldName: 'Store_Location__c', type: 'Location' };
+
+      expect(directoryProcessor.isCompoundGeolocationField(compoundGeolocationFieldInfo)).toBe(true);
+
+    });
+
+    test('given a Text field merely named like a geolocation, returns false', () => {
+
+      const textFieldInfo: any = { fieldName: 'Location__c', type: 'Text' };
+
+      expect(directoryProcessor.isCompoundGeolocationField(textFieldInfo)).toBe(false);
+
+    });
+
+    test('given a compound Address field, returns false', () => {
+
+      const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', type: 'Address' };
+
+      expect(directoryProcessor.isCompoundGeolocationField(compoundAddressFieldInfo)).toBe(false);
+
+    });
+
+    test('given a field with no type at all, does not throw', () => {
+
+      const typelessFieldInfo: any = {};
+
+      expect(() => directoryProcessor.isCompoundGeolocationField(typelessFieldInfo)).not.toThrow();
+      expect(directoryProcessor.isCompoundGeolocationField(typelessFieldInfo)).toBe(false);
+
+    });
+
+    test('given no field info at all, does not throw', () => {
+
+      expect(() => directoryProcessor.isCompoundGeolocationField(undefined as any)).not.toThrow();
+      expect(directoryProcessor.isCompoundGeolocationField(undefined as any)).toBe(false);
+      expect(directoryProcessor.isCompoundGeolocationField(null as any)).toBe(false);
+
+    });
+
+  });
+
   describe('isCompoundAddressField', () => {
 
     test('given a field whose xml type is Address, returns true', () => {
@@ -531,13 +684,13 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
   });
 
-  describe('buildCompoundAddressComponentFieldInfos', () => {
+  describe('buildCompoundComponentFieldInfos', () => {
 
     test('given a custom compound address field, returns one FieldInfo per component and none for the compound field itself', () => {
 
       const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', fieldLabel: 'Site Address', type: 'Address' };
 
-      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', {});
+      const componentFieldInfos = directoryProcessor.buildCompoundComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', {});
 
       expect(componentFieldInfos.map(componentFieldInfo => componentFieldInfo.fieldName)).toEqual([
         'Site_Address__Street__s',
@@ -555,7 +708,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
       const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', fieldLabel: 'Site Address', type: 'Address' };
 
-      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', {});
+      const componentFieldInfos = directoryProcessor.buildCompoundComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', {});
 
       componentFieldInfos.forEach((componentFieldInfo) => {
         expect(componentFieldInfo.objectName).toBe('Store__c');
@@ -581,7 +734,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         }
       };
 
-      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Account', salesforceOOTBFakerMappings);
+      const componentFieldInfos = directoryProcessor.buildCompoundComponentFieldInfos(compoundAddressFieldInfo, 'Account', salesforceOOTBFakerMappings);
 
       expect(componentFieldInfos).toEqual([]);
 
@@ -597,7 +750,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         }
       };
 
-      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Account', salesforceOOTBFakerMappings);
+      const componentFieldInfos = directoryProcessor.buildCompoundComponentFieldInfos(compoundAddressFieldInfo, 'Account', salesforceOOTBFakerMappings);
 
       expect(componentFieldInfos.map(componentFieldInfo => componentFieldInfo.fieldName)).toEqual([
         'BillingState',
@@ -620,7 +773,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
         { fieldName: 'PostalCode' }
       ];
 
-      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(
+      const componentFieldInfos = directoryProcessor.buildCompoundComponentFieldInfos(
         compoundAddressFieldInfo,
         'Asset',
         { 'Asset': { 'Name': 'already mapped' } },
@@ -639,7 +792,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
       const compoundAddressFieldInfo: any = { fieldName: 'Address', fieldLabel: 'Address', type: 'Address' };
 
-      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(
+      const componentFieldInfos = directoryProcessor.buildCompoundComponentFieldInfos(
         compoundAddressFieldInfo,
         'Asset',
         {},
@@ -654,7 +807,7 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
       const compoundAddressFieldInfo: any = { fieldName: 'Site_Address__c', fieldLabel: 'Site Address', type: 'Address' };
 
-      const componentFieldInfos = directoryProcessor.buildCompoundAddressComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', { 'Account': { 'BillingStreet': 'x' } });
+      const componentFieldInfos = directoryProcessor.buildCompoundComponentFieldInfos(compoundAddressFieldInfo, 'Store__c', { 'Account': { 'BillingStreet': 'x' } });
 
       expect(componentFieldInfos.length).toBe(5);
 
@@ -867,3 +1020,92 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 });
 
 
+/*
+  Every other walk test in this file runs the SNOWFAKERY implementation, which is how a faker-js
+  emission bug reached review unnoticed: the geolocation values were asserted as map strings and as
+  FieldInfo shapes, and neither of those is the artifact. This suite walks the same directory under
+  the FAKER-JS implementation and parses what the walk would put in a recipe file.
+*/
+describe('DirectoryProcessor FakerJS FakerService Implementation compound geolocation expansion', () => {
+
+  let fakerJSDirectoryProcessor: DirectoryProcessor;
+  let fakerJSRecipeService: RecipeService;
+
+  beforeEach(() => {
+
+    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
+      .mockImplementation(() => new FakerJSRecipeFakerService());
+    jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+
+    fakerJSDirectoryProcessor = new DirectoryProcessor();
+    fakerJSRecipeService = new RecipeService(new FakerJSRecipeFakerService());
+
+  });
+
+  const walkStoreLocationFieldsDirectory = async (): Promise<FieldInfo[]> => {
+
+    jest.spyOn(vscode.workspace.fs, 'readDirectory').mockImplementation(
+      () => Promise.resolve([['Store_Location__c.field-meta.xml', vscode.FileType.File]]) as any
+    );
+    jest.spyOn(vscode.Uri, 'joinPath').mockReturnValue(MockVSCodeWorkspaceService.getFakeVSCodeUri());
+    jest.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(
+      () => Promise.resolve(Buffer.from(XMLMarkupMockService.getCompoundGeolocationFieldTypeXMLMarkup())) as any
+    );
+
+    return await fakerJSDirectoryProcessor.processFieldsDirectory(
+      vscode.Uri.file('/fake/Store__c/fields'),
+      'Store__c',
+      {},
+      {}
+    );
+
+  };
+
+  test('the walk yields the two component fields and no line for the compound field', async () => {
+
+    const fieldInfoDetails = await walkStoreLocationFieldsDirectory();
+
+    expect(fieldInfoDetails.map(fieldInfo => fieldInfo.fieldName)).toEqual([
+      'Store_Location__Latitude__s',
+      'Store_Location__Longitude__s'
+    ]);
+
+  });
+
+  test('each component carries the faker-js coordinate expression with its bounds', async () => {
+
+    const fieldInfoDetails = await walkStoreLocationFieldsDirectory();
+
+    expect(fieldInfoDetails[0].recipeValue).toContain('faker.location.latitude');
+    expect(fieldInfoDetails[0].recipeValue).toContain('min: -90');
+    expect(fieldInfoDetails[1].recipeValue).toContain('faker.location.longitude');
+    expect(fieldInfoDetails[1].recipeValue).toContain('min: -180');
+
+  });
+
+  /*
+    The artifact, not the shape. FakerJSRecipeProcessor calls yaml.load() over the whole recipe file,
+    so a component value that is not a valid YAML scalar does not break its own line -- it makes every
+    field on every object in the file unreadable.
+  */
+  test('the object recipe the walk produces is parseable YAML', async () => {
+
+    const fieldInfoDetails = await walkStoreLocationFieldsDirectory();
+
+    let objectRecipe = `- object: Store__c\n  nickname: Store__c_NickName\n  count: 1\n  fields:`;
+    fieldInfoDetails.forEach((fieldInfo) => {
+      objectRecipe = fakerJSRecipeService.appendFieldRecipeToObjectRecipe(objectRecipe, fieldInfo.recipeValue, fieldInfo.fieldName);
+    });
+
+    const parsedObjectRecipes = yaml.load(objectRecipe) as any[];
+
+    expect(Object.keys(parsedObjectRecipes[0].fields)).toEqual([
+      'Store_Location__Latitude__s',
+      'Store_Location__Longitude__s'
+    ]);
+    expect(String(parsedObjectRecipes[0].fields['Store_Location__Latitude__s']).trim())
+      .toBe('${{faker.location.latitude({ min: -90, max: 90 })}}');
+
+  });
+
+});

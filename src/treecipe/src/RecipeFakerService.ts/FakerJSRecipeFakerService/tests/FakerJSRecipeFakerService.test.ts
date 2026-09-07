@@ -1,3 +1,4 @@
+import { faker } from "@faker-js/faker";
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { FakerJSRecipeFakerService } from "../FakerJSRecipeFakerService";
 
@@ -99,8 +100,14 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToNPMFakerMappings['formula']).toBe('### TODO - Formula fields are calculated, not generated - remove this line');
         });
 
-        test('Location field returns correct npm faker expression', () => {
-            expect(fieldTypeToNPMFakerMappings['location']).toBe(seeOnePagerPlaceholder);
+        /*
+            A Location field no longer reaches this map at all -- it is expanded into its Latitude
+            and Longitude component fields before a recipe value is looked up, so the gist-link
+            placeholder that stood in for that expansion has nothing left to describe.
+        */
+        test('Location field is absent from the map, so no recipe line can carry the one pager placeholder', () => {
+            expect(fieldTypeToNPMFakerMappings).not.toHaveProperty('location');
+            expect(Object.values(fieldTypeToNPMFakerMappings)).not.toContain(seeOnePagerPlaceholder);
         });
 
         test('All Salesforce field types have a corresponding mapping', () => {
@@ -108,7 +115,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
                 'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
-                'lookup', 'masterdetail', 'formula', 'location'
+                'lookup', 'masterdetail', 'formula'
             ];
 
             expectedFields.forEach(field => {
@@ -418,6 +425,96 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
             expect(addressComponentToRecipeValue).not.toHaveProperty('StateCode');
             expect(addressComponentToRecipeValue).not.toHaveProperty('CountryCode');
+
+        });
+
+    });
+
+    describe('getGeolocationComponentToRecipeValueMap', () => {
+
+        test('returns an expression for every compound geolocation component, and only those', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeFakerService.getGeolocationComponentToRecipeValueMap();
+
+            expect(Object.keys(geolocationComponentToRecipeValue)).toEqual(['Latitude', 'Longitude']);
+
+        });
+
+        test('returns the expected faker-js location expressions', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeFakerService.getGeolocationComponentToRecipeValueMap();
+
+            expect(geolocationComponentToRecipeValue['Latitude']).toBe(`|
+                \${{faker.location.latitude({ min: -90, max: 90 })}}`);
+            expect(geolocationComponentToRecipeValue['Longitude']).toBe(`|
+                \${{faker.location.longitude({ min: -180, max: 180 })}}`);
+
+        });
+
+        /*
+            Asserts the EXPRESSION's bounds rather than a sampled value: a generated coordinate is
+            random, so sampling one proves nothing about the range the recipe actually constrains.
+        */
+        /*
+            Stating bounds puts ": " in the value, which a PLAIN yaml scalar may not contain, so both
+            values must be block scalars. RecipeService's suite proves the emitted recipe parses; this
+            pins the form here so the map cannot quietly drop the "|" and stay green on substrings.
+        */
+        test('states both bounded expressions as block scalars', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeFakerService.getGeolocationComponentToRecipeValueMap();
+
+            expect(geolocationComponentToRecipeValue['Latitude'].startsWith('|')).toBe(true);
+            expect(geolocationComponentToRecipeValue['Longitude'].startsWith('|')).toBe(true);
+
+        });
+
+        test('constrains latitude to -90..90 and longitude to -180..180 in the expression itself', () => {
+
+            const geolocationComponentToRecipeValue = fakerJSRecipeFakerService.getGeolocationComponentToRecipeValueMap();
+
+            expect(geolocationComponentToRecipeValue['Latitude']).toContain('min: -90');
+            expect(geolocationComponentToRecipeValue['Latitude']).toContain('max: 90');
+            expect(geolocationComponentToRecipeValue['Longitude']).toContain('min: -180');
+            expect(geolocationComponentToRecipeValue['Longitude']).toContain('max: 180');
+
+        });
+
+        /*
+            The bounds above are only meaningful if faker still accepts them as options, so the real
+            provider is exercised here rather than trusted from the expression text.
+        */
+        test('the bounded faker calls the expressions name produce coordinates inside those ranges', () => {
+
+            Array.from({ length: 100 }).forEach(() => {
+
+                const generatedLatitude = faker.location.latitude({ min: -90, max: 90 });
+                expect(generatedLatitude).toBeGreaterThanOrEqual(-90);
+                expect(generatedLatitude).toBeLessThanOrEqual(90);
+
+                const generatedLongitude = faker.location.longitude({ min: -180, max: 180 });
+                expect(generatedLongitude).toBeGreaterThanOrEqual(-180);
+                expect(generatedLongitude).toBeLessThanOrEqual(180);
+
+            });
+
+        });
+
+    });
+
+    /*
+        Event.Location is a plain Text field in the OOTB static map, NOT a Geolocation compound field,
+        so the geolocation work must leave its composed street/city/state/zip value exactly as it was.
+    */
+    describe('Event.Location OOTB mapping', () => {
+
+        test('keeps its composed address value byte-identical', () => {
+
+            const ootbObjectToFieldMappings = fakerJSRecipeFakerService.getOOTBObjectApiNameToFieldApiNameMap();
+
+            expect(ootbObjectToFieldMappings['Event']['Location']).toBe(
+                '${{faker.location.streetAddress()}}, {{faker.location.city()}}, {{faker.location.state()}} {{faker.location.zipCode()}}'
+            );
 
         });
 

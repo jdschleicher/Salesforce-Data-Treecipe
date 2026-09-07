@@ -491,26 +491,26 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
     });
 
-    describe('buildCompoundAddressComponentApiName', () => {
+    describe('buildCompoundComponentApiName', () => {
 
         test('given a custom compound address field, returns the "__s" suffixed component name off the base name', () => {
 
-            expect(RecipeService.buildCompoundAddressComponentApiName('Site_Address__c', 'Street')).toBe('Site_Address__Street__s');
-            expect(RecipeService.buildCompoundAddressComponentApiName('Site_Address__c', 'PostalCode')).toBe('Site_Address__PostalCode__s');
+            expect(RecipeService.buildCompoundComponentApiName('Site_Address__c', 'Street')).toBe('Site_Address__Street__s');
+            expect(RecipeService.buildCompoundComponentApiName('Site_Address__c', 'PostalCode')).toBe('Site_Address__PostalCode__s');
 
         });
 
         test('given a namespaced custom compound address field, keeps the namespace prefix on the component', () => {
 
-            expect(RecipeService.buildCompoundAddressComponentApiName('ns__Site_Address__c', 'City')).toBe('ns__Site_Address__City__s');
+            expect(RecipeService.buildCompoundComponentApiName('ns__Site_Address__c', 'City')).toBe('ns__Site_Address__City__s');
 
         });
 
         test('given a standard compound address field, swaps the "Address" suffix for the component', () => {
 
-            expect(RecipeService.buildCompoundAddressComponentApiName('BillingAddress', 'Street')).toBe('BillingStreet');
-            expect(RecipeService.buildCompoundAddressComponentApiName('ShippingAddress', 'PostalCode')).toBe('ShippingPostalCode');
-            expect(RecipeService.buildCompoundAddressComponentApiName('MailingAddress', 'Country')).toBe('MailingCountry');
+            expect(RecipeService.buildCompoundComponentApiName('BillingAddress', 'Street')).toBe('BillingStreet');
+            expect(RecipeService.buildCompoundComponentApiName('ShippingAddress', 'PostalCode')).toBe('ShippingPostalCode');
+            expect(RecipeService.buildCompoundComponentApiName('MailingAddress', 'Country')).toBe('MailingCountry');
 
         });
 
@@ -520,8 +520,8 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
         */
         test('given the bare "Address" compound field, returns the unprefixed component names', () => {
 
-            expect(RecipeService.buildCompoundAddressComponentApiName('Address', 'Street')).toBe('Street');
-            expect(RecipeService.buildCompoundAddressComponentApiName('Address', 'State')).toBe('State');
+            expect(RecipeService.buildCompoundComponentApiName('Address', 'Street')).toBe('Street');
+            expect(RecipeService.buildCompoundComponentApiName('Address', 'State')).toBe('State');
 
         });
 
@@ -567,6 +567,75 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
             compoundAddressComponentRecipes.forEach((componentRecipe) => {
                 expect(componentRecipe.recipeValue).toBeDefined();
                 expect(componentRecipe.recipeValue).not.toBe('');
+            });
+
+        });
+
+    });
+
+    describe('buildCompoundGeolocationComponentRecipes', () => {
+
+        test('given a custom compound geolocation field, returns one recipe per component with snowfakery values', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithSnow.buildCompoundGeolocationComponentRecipes('Store_Location__c');
+
+            expect(compoundGeolocationComponentRecipes.map(componentRecipe => componentRecipe.componentApiName)).toEqual([
+                'Store_Location__Latitude__s',
+                'Store_Location__Longitude__s'
+            ]);
+
+            expect(compoundGeolocationComponentRecipes[0].recipeValue).toBe('${{fake.latitude}}');
+            expect(compoundGeolocationComponentRecipes[1].recipeValue).toBe('${{fake.longitude}}');
+
+        });
+
+        /*
+            The components of a standard compound address ARE its geolocation, so the same "Address"
+            suffix swap that builds BillingStreet builds the real BillingLatitude/BillingLongitude.
+        */
+        test('given a standard compound address field, returns the real standard geolocation component names', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithSnow.buildCompoundGeolocationComponentRecipes('BillingAddress');
+
+            expect(compoundGeolocationComponentRecipes.map(componentRecipe => componentRecipe.componentApiName)).toEqual([
+                'BillingLatitude',
+                'BillingLongitude'
+            ]);
+
+        });
+
+        test('given the bare "Address" compound field, returns the unprefixed component names', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithSnow.buildCompoundGeolocationComponentRecipes('Address');
+
+            expect(compoundGeolocationComponentRecipes.map(componentRecipe => componentRecipe.componentApiName)).toEqual([
+                'Latitude',
+                'Longitude'
+            ]);
+
+        });
+
+        test('every component carries a defined recipe value', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithSnow.buildCompoundGeolocationComponentRecipes('Store_Location__c');
+
+            compoundGeolocationComponentRecipes.forEach((componentRecipe) => {
+                expect(componentRecipe.recipeValue).toBeDefined();
+                expect(componentRecipe.recipeValue).not.toBe('');
+            });
+
+        });
+
+        /*
+            The compound field itself is never a recipe line, so nothing may still emit the gist link
+            that used to stand in for this expansion.
+        */
+        test('no generated component recipe carries the one pager gist link', () => {
+
+            const compoundGeolocationComponentRecipes = recipeServiceWithSnow.buildCompoundGeolocationComponentRecipes('Store_Location__c');
+
+            compoundGeolocationComponentRecipes.forEach((componentRecipe) => {
+                expect(componentRecipe.recipeValue).not.toContain('gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445');
             });
 
         });
