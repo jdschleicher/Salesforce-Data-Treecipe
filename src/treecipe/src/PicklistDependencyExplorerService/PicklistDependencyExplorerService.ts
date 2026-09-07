@@ -159,6 +159,10 @@ export interface IPicklistDependencyNodeViewModel {
         than rebuilt per keystroke in the webview. Held in the model so the matching rule is a tested
         service concern and the panel is left with an "indexOf" -- the filter logic does not become a
         second implementation living only inside a script string.
+
+        It names the controlling value of every combination the node RENDERS, so applyModelLimits
+        rebuilds it after the ceiling has dropped rows: a haystack built before the caps would match
+        a value no surviving row shows. See buildNodeSearchText.
     */
     searchText: string;
     // COMBINATIONS AND SCOPES DROPPED BY THE RENDERING CEILING -- SEE applyModelLimits
@@ -1117,14 +1121,35 @@ export class PicklistDependencyExplorerService {
         The generated class and spec method names are deliberately NOT in here. The panel does not
         render them, and a query that matches text the reader cannot see returns a row with no
         visible reason for matching. What is searchable is what is on screen.
+
+        Controlling values ARE in here, and only the ones this node's rows carry: every combination
+        the node renders, at field level and under each record type scope, is a row headed by its
+        controlling value, so "where does Canada appear as a controller" is answered by the rows the
+        reader can see. That makes the haystack grow with the number of rendered combinations, an
+        axis maxRenderedCombinations already bounds, and it is why applyModelLimits rebuilds this
+        text once the ceiling has dropped rows rather than leaving the uncapped build's version.
+
+        Dependent values are deliberately absent. A combination carries what its controlling value
+        unlocks, and folding those lists in would put the product of the two picklists into the
+        payload -- the exact expansion the manifest was restructured to stop materialising. A
+        dependent value is still reachable where it is a CONTROLLING value one level down the chain,
+        because that node's rows show it as one.
     */
     static buildNodeSearchText(node: IPicklistDependencyNodeViewModel): string {
+
+        const renderedControllingValues = new Set<string>();
+
+        node.combinations.forEach(combination => renderedControllingValues.add(combination.controllingValue));
+        node.recordTypeScopes.forEach(recordTypeScope => {
+            recordTypeScope.combinations.forEach(combination => renderedControllingValues.add(combination.controllingValue));
+        });
 
         const searchableValues = [
             node.objectApiName,
             node.fieldApiName,
             node.controllingFieldApiName,
-            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName)
+            ...node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName),
+            ...renderedControllingValues
         ];
 
         return searchableValues.filter(searchableValue => !!searchableValue).join(' ').toLowerCase();
@@ -2079,6 +2104,8 @@ export class PicklistDependencyExplorerService {
 
         truncatedCombinationCount += this.applyTotalCombinationBudget(viewModel, limits.maxRenderedCombinations);
 
+        this.rebuildSearchText(viewModel);
+
         /*
             Counted in FIELDS and capped in CHAINS, and the notice has to say both.
 
@@ -2135,6 +2162,34 @@ export class PicklistDependencyExplorerService {
         truncates to the same rows every time, so a reader who cannot find a combination can tell
         from the notice that it was cut rather than wondering whether it moved.
     */
+    /*
+        The find box haystacks, rebuilt from what SURVIVED the ceiling.
+
+        Search text names the controlling value of every combination a node renders, and the build
+        computes it on the uncapped model. Every cap above drops combinations -- per field, per
+        scope, and the total budget -- so a haystack left over from the build would still match a
+        value the panel no longer shows a row for, and the reader would be handed an object with no
+        visible reason for matching. Rebuilding after the last drop is what keeps "what is
+        searchable is what is on screen" true under the ceiling as well as over it.
+
+        An object with no nodes is rebuilt too, so its haystack is one derivation rather than two:
+        the skip-only path in buildExplorerViewModel and buildObjectSearchText agree on every name
+        the object carries, and this is what asserts it.
+    */
+    static rebuildSearchText(viewModel: IPicklistDependencyExplorerViewModel): void {
+
+        viewModel.objects.forEach(objectViewModel => {
+
+            this.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+                node.searchText = this.buildNodeSearchText(node);
+            });
+
+            objectViewModel.searchText = this.buildObjectSearchText(objectViewModel);
+
+        });
+
+    }
+
     static applyTotalCombinationBudget(viewModel: IPicklistDependencyExplorerViewModel,
                                         maxRenderedCombinations: number): number {
 
@@ -3760,11 +3815,11 @@ export class PicklistDependencyExplorerService {
         const toolbarElement = createElement('div', 'toolbar');
 
         const findFieldElement = createElement('label', 'toolbarField');
-        findFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Find object or field'));
+        findFieldElement.appendChild(createElement('span', 'toolbarLabel', 'Find object, field or controlling value'));
 
         const findInputElement = document.createElement('input');
         findInputElement.type = 'search';
-        findInputElement.placeholder = 'object, field, record type, or a pasted combination reference';
+        findInputElement.placeholder = 'object, field, record type, controlling value, or a pasted combination reference';
         findInputElement.addEventListener('input', function () {
             filterText = findInputElement.value.trim().toLowerCase();
             applyFilter();

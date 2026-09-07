@@ -365,7 +365,7 @@ The panel **names no Apex**. Which class or spec method was generated is not a f
 
 A toolbar sits above the structure:
 
-* **Find object or field** matches on object, field, controlling field and record type — everything the panel actually shows you, and nothing it does not. Searching for a field name reaches the object holding it, so you do not have to know which object that was — and when exactly one object matches, it opens by itself
+* **Find object, field or controlling value** matches on object, field, controlling field, record type, and the **controlling value** heading every combination row — everything the panel actually shows you, and nothing it does not. Searching for a field name reaches the object holding it, so you do not have to know which object that was; searching for `Canada` reaches every object with a row that says what `Canada` unlocks — and when exactly one object matches, it opens by itself. The values a combination *unlocks* are not matched: a value is findable where it is a controller, which in a chain means one level down. A value only a dropped row carried is not matched either — the haystack is rebuilt from what survived the ceiling, so a match always has a row on screen to show for it
 * **Contents** lists every section and object the panel is showing, and scrolls to any of them
 * **Expand all / Collapse all**, bounded at 25 visible objects — past that the panel asks for a narrower filter rather than freezing
 

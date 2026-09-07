@@ -1305,6 +1305,67 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
+        /*
+            #125, end to end: the value is typed into the real find box, the real filter runs, and the
+            object whose rows carry that controlling value is the one left showing. A second object
+            with different controlling values is what makes "1 of 2" a statement about matching
+            rather than about the panel having one object.
+        */
+        it('given a controlling value typed into the find box, shows the object whose rows carry it and hides the rest', () => {
+
+            const panel = runPanelScript();
+
+            const otherObjectSpecDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Other_Object__c',
+                fieldApiName: 'Province__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'Mexico', dependentValues: ['Jalisco'], forbiddenValues: [] }]
+            }];
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, [...buildChainExampleSpecDetails(), ...otherObjectSpecDetails], []
+                ),
+                ''
+            ));
+
+            const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+            const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
+            const matchCountElement = panel.collectElementsByClassName(toolbarElement, 'matchCount')[0];
+
+            expect(findInputElement.tagName).toBe('input');
+
+            findInputElement.value = 'Canada';
+            findInputElement.raiseEvent('input');
+
+            const sectionElements = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'objectSection');
+            const hiddenSectionCount = sectionElements.filter((sectionElement: any) => sectionElement.classList.contains('hidden')).length;
+
+            expect(sectionElements).toHaveLength(2);
+            expect(hiddenSectionCount).toBe(1);
+            expect(panel.collectText(matchCountElement)).toContain('1 of 2 object(s) shown');
+            expect(panel.collectText(sectionElements.find((sectionElement: any) => !sectionElement.classList.contains('hidden')))).toContain('Chain_Example__c');
+
+            // A VALUE NO ROW IS HEADED BY MATCHES NOTHING, AND THE COUNT SAYS SO RATHER THAN SHOWING EVERYTHING
+            findInputElement.value = 'Columbus';
+            findInputElement.raiseEvent('input');
+
+            expect(panel.collectText(matchCountElement)).toContain('0 of 2 object(s) shown');
+
+        });
+
+        it('names controlling values in the find box label and placeholder', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+
+            const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+            const findFieldElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0];
+
+            expect(panel.collectText(findFieldElement)).toContain('Find object, field or controlling value');
+            expect(findFieldElement.children[1].placeholder).toContain('controlling value');
+
+        });
+
         it('draws the skipped items collapsed, with the count still stating how many are held', () => {
 
             const panel = renderPanelWithSkippedWarnings();
@@ -2211,6 +2272,101 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(actualViewModel.objects[0].searchText).toContain('skipped_only__c');
             expect(actualViewModel.objects[0].searchText).toContain('broken__c');
+
+        });
+
+        /*
+            #125: every combination is a row headed by its controlling value, so the value is on
+            screen and a reader asking "where does Canada appear as a controller" is answered by the
+            rows they can see.
+        */
+        it('given a node, matches on the controlling value of every combination it renders', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                []
+            );
+
+            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
+            const cityNode = stateNode.downstreamNodes.find(node => node.fieldApiName === 'City__c');
+
+            expect(stateNode.searchText).toContain('usa');
+            expect(stateNode.searchText).toContain('canada');
+            expect(cityNode.searchText).toContain('ohio');
+            expect(cityNode.searchText).toContain('texas');
+            expect(cityNode.searchText).toContain('ontario');
+
+        });
+
+        it('given a node, matches on a controlling value that only a record type scope renders', () => {
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [{
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'North_America',
+                expectations: [
+                    { controllingValue: 'Mexico', dependentValues: ['Jalisco'], forbiddenValues: [] }
+                ]
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                recordTypeSpecDetails
+            );
+
+            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
+
+            expect(stateNode.searchText).toContain('mexico');
+
+        });
+
+        /*
+            The values a combination UNLOCKS are the product of the two picklists, which is the
+            expansion the manifest was restructured to stop materialising. Ohio is a dependent value
+            of State__c and is not in State's haystack; it is a controlling value of City__c, one
+            level down, and reaches the object through that node's rows.
+        */
+        it('given a node, does NOT fold its dependent values in, and still reaches the object through the node they control', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                []
+            );
+
+            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
+            const cityNode = stateNode.downstreamNodes.find(node => node.fieldApiName === 'City__c');
+
+            expect(stateNode.searchText).not.toContain('ohio');
+            // COLUMBUS IS A LEAF: NOTHING RENDERS IT AS A CONTROLLING VALUE, SO NOTHING MATCHES IT
+            expect(cityNode.searchText).not.toContain('columbus');
+            expect(actualViewModel.objects[0].searchText).not.toContain('columbus');
+            expect(actualViewModel.objects[0].searchText).toContain('ohio');
+
+        });
+
+        it('given a controlling value with spaces and mixed case, lowercases it whole so a typed phrase matches', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Region_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Region__c',
+                expectations: [
+                    { controllingValue: 'North America', dependentValues: ['Ohio'], forbiddenValues: [] }
+                ]
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                specDetails,
+                []
+            );
+
+            expect(actualViewModel.objects[0].rootNodes[0].searchText).toContain('north america');
 
         });
 
@@ -4187,6 +4343,89 @@ describe('PicklistDependencyExplorerService', () => {
         });
 
         /*
+            #125: search text names the controlling values a node RENDERS, and the build computes it
+            before the ceiling. A haystack left over from the build would match "Mexico" and show the
+            reader an object with no row carrying it -- a match with no visible reason, which is the
+            claim the find box must never make. Both drops are covered: the per-field cap and the
+            total budget, which runs last.
+        */
+        it('given a combination the per-field cap dropped, its controlling value is no longer findable', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(1),
+                buildLimits({ maxCombinationsPerNode: 2 })
+            );
+
+            const node = actualViewModel.objects[0].rootNodes[0];
+
+            expect(node.combinations.map(combination => combination.controllingValue)).toEqual(['USA', 'Canada']);
+            expect(node.searchText).toContain('canada');
+            expect(node.searchText).not.toContain('mexico');
+            expect(actualViewModel.objects[0].searchText).not.toContain('mexico');
+
+        });
+
+        it('given a combination the total budget dropped, its controlling value is no longer findable', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(2),
+                buildLimits({ maxRenderedCombinations: 4 })
+            );
+
+            // THE BUDGET IS SPENT IN DOCUMENT ORDER: THE FIRST OBJECT KEEPS ALL THREE, THE SECOND KEEPS ONE
+            expect(actualViewModel.objects[0].searchText).toContain('mexico');
+            expect(actualViewModel.objects[1].searchText).toContain('usa');
+            expect(actualViewModel.objects[1].searchText).not.toContain('canada');
+            expect(actualViewModel.objects[1].searchText).not.toContain('mexico');
+
+        });
+
+        it('given a record type scope the cap dropped, a controlling value only that scope rendered is no longer findable', () => {
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Object_0__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: 'A_First',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+                },
+                {
+                    objectApiName: 'Object_0__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: 'B_Second',
+                    expectations: [{ controllingValue: 'Brazil', dependentValues: ['Bahia'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildManyObjectSpecDetails(1), [], recordTypeSpecDetails
+                ),
+                buildLimits({ maxRecordTypeScopesPerNode: 1 })
+            );
+
+            const node = actualViewModel.objects[0].rootNodes[0];
+
+            expect(node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName)).toEqual(['A_First']);
+            expect(node.searchText).not.toContain('brazil');
+            expect(node.searchText).not.toContain('b_second');
+
+        });
+
+        it('given a model inside every cap, leaves the search text exactly as the build made it', () => {
+
+            const uncappedViewModel = buildUncappedViewModel(2);
+            const expectedSearchTexts = uncappedViewModel.objects.map(objectViewModel => objectViewModel.searchText);
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(uncappedViewModel, buildLimits());
+
+            expect(actualViewModel.objects.map(objectViewModel => objectViewModel.searchText)).toEqual(expectedSearchTexts);
+
+        });
+
+        /*
             The one drop that costs the reader something the panel cannot give back. It is counted
             and named separately, and the notice points at the run report as the complete record --
             an unbounded payload is worse for them than a bounded one that says what is missing.
@@ -4349,7 +4588,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
-            expect(actualWebviewHtml).toContain('Find object or field');
+            expect(actualWebviewHtml).toContain('Find object, field or controlling value');
             expect(actualWebviewHtml).toContain('Expand all');
             expect(actualWebviewHtml).toContain('Collapse all');
             expect(actualWebviewHtml).toContain('not checked');

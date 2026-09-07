@@ -1,5 +1,41 @@
 # Change Log
 
+## [3.18.0] - The Explorer's find box matches controlling values, and only the ones with a row on screen
+
+Closes [#125](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/125).
+
+The find box matched api names only: object, field, controlling field, record type. A reader asking "where does `Canada` appear as a controller?" had one route to the answer -- paste a combination reference -- and that requires already knowing which combination `Canada` lives in. This is the issue's option 1: **controlling values** join the haystack; dependent values do not.
+
+### What is matched
+
+Every combination row is headed by its controlling value, at field level and under each record type scope, so `buildNodeSearchText` now folds in the controlling value of every combination the node renders. Typing `Canada` shows every object with a row that says what `Canada` unlocks, and a single match still opens itself. The toolbar label reads **Find object, field or controlling value** and the placeholder names it too.
+
+The values a combination *unlocks* are deliberately not matched. A combination carries what its controlling value allows, and folding those lists in puts the product of the two picklists into the payload -- the exact expansion the manifest was restructured in 3.16.0 to stop materialising. Option 2 in the issue is its own decision, to be taken with its own measurements. A dependent value is still reachable where it is a **controlling** value one level down the chain (`Ohio` is a State__c value and a City__c controller), because that node's rows show it as one; a leaf value such as `Columbus` matches nothing, and the count says `0 of N` rather than showing everything.
+
+### The haystack is rebuilt from what survived the ceiling
+
+Search text is computed by the build, on the uncapped model. `applyModelLimits` drops combinations on three axes -- per field, per scope, and the total budget -- and a haystack left over from the build would still match a value no surviving row shows, handing the reader an object with no visible reason for matching. That is the mirror image of the false claim the issue warned about, and it is the one the find box must never make: a match always has a row on screen to show for it.
+
+So `applyModelLimits` ends with `rebuildSearchText`, after the total budget has run, and re-derives every node's and every object's haystack from the rows that remain. Tests pin the per-field cap, the total budget and the scope cap each removing a value from the haystack, and a model inside every cap keeping the build's text unchanged. A value the ceiling dropped is absent from the find box exactly as its row is absent from the panel, and it is counted in the same truncation notice.
+
+### Measured, as the issue asked
+
+The haystack grows with the number of **rendered** combinations, an axis `maxRenderedCombinations` already bounds. Re-measured on the 3.7.0 synthetic shapes through the real builder, against the current payload (which is smaller than the 3.7.0 table because the run overlay left it in 3.17.0):
+
+| Scenario | Objects | Combinations rendered | Before | After |
+|---|---|---|---|---|
+| Healthy 100 × 3 × 50 (inside every cap) | 100 | 15,000 | 3.58 MB | 4.18 MB (+0.60 MB) |
+| Healthy 400 × 3 × 400 (over every cap) | 250 | 20,000 | 7.72 MB | **8.54 MB (+0.82 MB)** |
+| Healthy 100 × 3 × 300 | 100 | 20,000 | 5.59 MB | 6.41 MB (+0.82 MB) |
+
+At the ceiling that is +10.6%, and it is bounded: the two 20,000-row shapes add the same 0.82 MB regardless of how many objects or fields carry them, because each rendered controlling value appears once in its node's haystack and once in its object's. The ceiling itself is unchanged.
+
+### Tests
+
+- `search text`: a node matches every controlling value it renders; a value only a record type scope renders is matched; dependent values are not folded in and a leaf value matches nothing; a value with spaces and mixed case is lowercased whole
+- `applyModelLimits`: a value dropped by the per-field cap, the total budget or the scope cap is no longer findable; a model inside every cap keeps the build's text
+- `the panel layout, executed`: a controlling value typed into the real find box, through the real filter, shows the object whose rows carry it and hides the other, with the match count reading `1 of 2`; a leaf value reads `0 of 2`; the label and placeholder name controlling values
+
 ## [3.17.0] - The Picklist Dependency Explorer is a picture of the structure; the run overlay is disconnected, not deleted
 
 Closes [#123](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/123).
