@@ -69,7 +69,7 @@ npx vsce package
 - **Mock fixtures** - Place sample Salesforce XML metadata in `tests/mocks/` inside the relevant service folder
 - Use Jest `describe`/`it` or `describe`/`test` blocks; use `jest-extended` matchers where appropriate
 - `restoreMocks: true` is set globally — do not manually restore mocks between tests
-- **Never replace a Node core module function by assignment** (`fs.promises.readdir = jest.fn()`); always use `jest.spyOn`. `restoreMocks` restores only what `jest.spyOn` registered, and a core module is shared by every suite in a worker rather than rebuilt with the module registry, so an assignment leaks into whichever suite jest schedules next. `jestSetup/CoreModuleIsolation.ts` puts such a replacement back after every test — it is a net, not a licence
+- **Never replace a Node core module function by assignment** (`fs.promises.readdir = jest.fn()`); always use `jest.spyOn`. `restoreMocks` restores only what `jest.spyOn` registered, and a core module is shared by every suite in a worker rather than rebuilt with the module registry, so an assignment leaks into whichever suite jest schedules next. `jestSetup/CoreModuleIsolation.ts` puts such a replacement back after every test — it is a net, not a licence. Its `afterEach` runs BEFORE a test file's own root-level `afterEach` (root-block hooks run in declaration order, and setup files are evaluated first), so a file-scope `afterEach` cannot assert on an `fs` spy
 
 ### Code Style Mandates
 

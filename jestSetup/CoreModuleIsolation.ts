@@ -1,9 +1,15 @@
 import * as fs from 'fs';
 
+export interface GuardedCoreModule {
+    moduleName: string;
+    coreModule: Record<string, unknown>;
+}
+
 export interface CoreModuleFunctionSnapshot {
     moduleName: string;
     coreModule: Record<string, unknown>;
     functionsByName: Record<string, unknown>;
+    accessorFunctionsByName: Record<string, unknown>;
 }
 
 /*
@@ -20,56 +26,115 @@ export interface CoreModuleFunctionSnapshot {
     one that left the function behind -- which is why the failure looked like a memory problem in
     code that had none.
 
-    This restores core module functions to what they were when the suite started, so a replacement
+    This restores core module functions to what they were when the WORKER started, so a replacement
     costs the test that wrote it rather than an unrelated suite scheduled after it.
 */
 export class CoreModuleIsolation {
 
-    static getGuardedCoreModules(): CoreModuleFunctionSnapshot['coreModule'][] {
+    /*
+        The snapshot is stashed on the fs module object itself, under a symbol, because that object
+        is the one thing here that is genuinely per-worker: the setup file is re-evaluated for every
+        test file, so a module-scoped variable would be per-FILE, and testEnvironment 'node' gives
+        each file its own globalThis, so a global would be too.
+
+        Per-file capture demonstrably CONTAINS the defect this guard was written for: that leak is
+        installed inside a test body, so the file's own afterEach restores it before the file ends.
+        Capturing once per worker is the conservative baseline rather than a fix for a reproduced
+        hole -- review raised the case of a leak installed in afterAll, which no afterEach can undo,
+        and attempts to demonstrate per-file capture ADOPTING such a leak gave results that did not
+        reproduce across runs. The probe was unreliable, so it settled nothing either way.
+
+        It is done this way regardless, because "whatever is on the object when this file started"
+        is not a defensible definition of pristine, and the earliest observed state is. It costs one
+        symbol and one branch.
+    */
+    private static readonly WORKER_SNAPSHOT_KEY = Symbol.for('treecipe.coreModuleFunctionSnapshots');
+
+    static getGuardedCoreModules(): GuardedCoreModule[] {
 
         /*
-            fs and fs.promises are separate objects and a spy on one is invisible to the other, so
-            both are captured. Only these two are guarded: they are the core module surface this
-            project's tests replace, and they are the surface a recursive walk reads.
+            fs and fs.promises are separate objects and a replacement on one is invisible to the
+            other, so both are guarded. Only these two: they are the core module surface this
+            project's tests replace, and the surface a recursive walk reads.
         */
         return [
-            fs as unknown as Record<string, unknown>,
-            fs.promises as unknown as Record<string, unknown>
+            { moduleName: 'fs', coreModule: fs as unknown as Record<string, unknown> },
+            { moduleName: 'fs.promises', coreModule: fs.promises as unknown as Record<string, unknown> }
         ];
 
     }
 
-    static captureFunctions(coreModules: Record<string, unknown>[]): CoreModuleFunctionSnapshot[] {
+    static captureFunctions(guardedCoreModules: GuardedCoreModule[]): CoreModuleFunctionSnapshot[] {
 
-        return coreModules.map((coreModule, coreModuleIndex) => {
+        return guardedCoreModules.map(guardedCoreModule => {
 
             const functionsByName: Record<string, unknown> = {};
+            const accessorFunctionsByName: Record<string, unknown> = {};
+            const coreModule = guardedCoreModule.coreModule;
 
-            for (const propertyName of Object.keys(coreModule)) {
+            /*
+                getOwnPropertyNames rather than Object.keys: a non-enumerable function property is
+                just as assignable as an enumerable one, and which of fs's properties are enumerable
+                is a Node implementation detail rather than a promise to this file.
+            */
+            for (const propertyName of Object.getOwnPropertyNames(coreModule)) {
 
-                /*
-                    Read through a descriptor rather than by property access: a getter that throws or
-                    that builds a new value per read would otherwise be invoked here, and a getter is
-                    not something an assignment could have replaced anyway.
-                */
                 const propertyDescriptor = Object.getOwnPropertyDescriptor(coreModule, propertyName);
 
-                const isPlainFunctionProperty = propertyDescriptor !== undefined
-                                                    && propertyDescriptor.get === undefined
+                if (propertyDescriptor === undefined) {
+                    continue;
+                }
+
+                const isRestorableDataProperty = propertyDescriptor.get === undefined
+                                                    && propertyDescriptor.set === undefined
                                                     && propertyDescriptor.writable === true
                                                     && propertyDescriptor.configurable === true
                                                     && typeof propertyDescriptor.value === 'function';
 
-                if (isPlainFunctionProperty) {
+                if (isRestorableDataProperty) {
                     functionsByName[propertyName] = propertyDescriptor.value;
+                    continue;
+                }
+
+                /*
+                    An accessor pair with a SETTER is assignable -- on Node 20 fs.opendir,
+                    fs.opendirSync, fs.Dir, fs.ReadStream and fs.WriteStream are exactly that, and
+                    they are directory and stream APIs, the same class of call the failure rode in
+                    on. An assignment to one of these sticks, so skipping every accessor property
+                    (as an earlier version of this file did, on the reasoning that "a getter is not
+                    something an assignment could have replaced") left a hole precisely where it
+                    mattered most.
+
+                    A getter with no setter stays skipped: nothing can assign through it, and
+                    invoking it to find that out would run whatever it does.
+                */
+                const isRestorableAccessorProperty = propertyDescriptor.get !== undefined
+                                                        && propertyDescriptor.set !== undefined
+                                                        && propertyDescriptor.configurable === true;
+
+                if (isRestorableAccessorProperty) {
+
+                    try {
+
+                        const currentValue = (coreModule as Record<string, unknown>)[propertyName];
+
+                        if (typeof currentValue === 'function') {
+                            accessorFunctionsByName[propertyName] = currentValue;
+                        }
+
+                    } catch {
+                        // A getter that throws is one this guard cannot describe, so it is left alone.
+                    }
+
                 }
 
             }
 
             return {
-                moduleName: coreModuleIndex === 0 ? 'fs' : 'fs.promises',
+                moduleName: guardedCoreModule.moduleName,
                 coreModule: coreModule,
-                functionsByName: functionsByName
+                functionsByName: functionsByName,
+                accessorFunctionsByName: accessorFunctionsByName
             };
 
         });
@@ -77,8 +142,38 @@ export class CoreModuleIsolation {
     }
 
     /*
-        Returns what it had to put back, named as "fs.promises.readdir" rather than as "readdir", so a
-        caller reporting a leak names something the reader can grep for.
+        Captures once per worker and hands back the same snapshot on every later call, so the
+        baseline cannot drift toward whatever a previous file left behind.
+    */
+    static captureFunctionsOncePerWorker(): CoreModuleFunctionSnapshot[] {
+
+        const snapshotHost = fs as unknown as Record<symbol, CoreModuleFunctionSnapshot[] | undefined>;
+        const alreadyCaptured = snapshotHost[CoreModuleIsolation.WORKER_SNAPSHOT_KEY];
+
+        if (alreadyCaptured !== undefined) {
+            return alreadyCaptured;
+        }
+
+        const coreModuleFunctionSnapshots = CoreModuleIsolation.captureFunctions(
+            CoreModuleIsolation.getGuardedCoreModules()
+        );
+
+        Object.defineProperty(fs, CoreModuleIsolation.WORKER_SNAPSHOT_KEY, {
+            value: coreModuleFunctionSnapshots,
+            enumerable: false,
+            writable: false,
+            configurable: true
+        });
+
+        return coreModuleFunctionSnapshots;
+
+    }
+
+    /*
+        Returns what it had to put back, named as "fs.promises.readdir" rather than as "readdir", so
+        a caller reporting a leak names something the reader can grep for. Compares before writing:
+        reassigning every guarded property after each of the suite's tests would churn the hidden
+        class of an object every suite uses, for no change.
     */
     static restoreFunctions(coreModuleFunctionSnapshots: CoreModuleFunctionSnapshot[]): string[] {
 
@@ -86,11 +181,18 @@ export class CoreModuleIsolation {
 
         for (const coreModuleFunctionSnapshot of coreModuleFunctionSnapshots) {
 
-            for (const [functionName, capturedFunction] of Object.entries(coreModuleFunctionSnapshot.functionsByName)) {
+            const coreModule = coreModuleFunctionSnapshot.coreModule;
 
-                if (coreModuleFunctionSnapshot.coreModule[functionName] !== capturedFunction) {
+            const capturedEntries = [
+                ...Object.entries(coreModuleFunctionSnapshot.functionsByName),
+                ...Object.entries(coreModuleFunctionSnapshot.accessorFunctionsByName)
+            ];
 
-                    coreModuleFunctionSnapshot.coreModule[functionName] = capturedFunction;
+            for (const [functionName, capturedFunction] of capturedEntries) {
+
+                if (coreModule[functionName] !== capturedFunction) {
+
+                    coreModule[functionName] = capturedFunction;
                     restoredFunctionNames.push(`${coreModuleFunctionSnapshot.moduleName}.${functionName}`);
 
                 }
