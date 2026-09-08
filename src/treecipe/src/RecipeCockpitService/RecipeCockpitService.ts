@@ -26,6 +26,12 @@ export const RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT = 'Connecting to the Treecip
     command needs and the compiler holds it to them. Nothing arriving here is trusted -- this slice
     routes on the command name alone and carries no path, no identifier and no user data, which is
     what makes the router safe to be a stub.
+
+    The first command that carries a payload ends that. A posted value is then MATCHED against an
+    allow-list built from the model the host itself rendered -- never validated as a path, and never
+    resolved by the host on the panel's say-so. All-optional is why the compiler cannot enforce that
+    on its own: a later handler writing panelMessage.recipeFilePath! type checks against a value
+    that may be absent or chosen by whatever sent the message.
 */
 export interface IRecipeCockpitPanelMessage {
     command?: string;
@@ -189,13 +195,18 @@ export class RecipeCockpitService {
     }
 
     /*
-        The cockpit's document, as a string built from a nonce and nothing else.
+        The cockpit's document, as a string carrying NO value this extension does not author.
 
-        Keeping the signature to the nonce is the property the later slices depend on: recipes and
-        org describes are metadata this extension does not control, so none of it is interpolated
-        into html. It arrives over postMessage and is written through textContent, which is why
-        this builder needs no escaping rather than having escaping that could be forgotten. Widening
-        it to take a model would quietly re-open the markup context that guarantee rests on.
+        That is the invariant rather than "only the nonce": the template does interpolate the panel
+        title and the pending line, which are compile-time constants in this file. What none of the
+        three is, is metadata -- recipes and org describes come from a source this extension does
+        not control, so none of it is interpolated into html. It arrives over postMessage and is
+        written through textContent, which is why this builder needs no escaping rather than having
+        escaping that could be forgotten.
+
+        Keeping the SIGNATURE to the nonce is what holds that line in place, because a value from
+        outside this file can only reach the template through a parameter. Widening it to take a
+        model would quietly re-open the markup context the guarantee rests on.
     */
     static buildWebviewShellHtml(nonce: string): string {
 

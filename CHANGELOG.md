@@ -25,7 +25,11 @@ The panel is held on the service, so re-running the command reveals the tab this
 
 The panel's own script is exercised by running it -- the real string the builder emits, against a fake DOM -- rather than asserted on as text. "The markup contains a message listener" would be equally true of one that ignored everything it received.
 
-The README documents the cockpit when it renders a recipe; documenting a panel that traverses nothing would describe a command by what it is going to do.
+### What is deliberately not here yet
+
+The explorer carries four mechanisms this panel does not: a host-held model replayed on `ready`, a measured ceiling on what is rendered, rows built on first expand, and a render guard with a `rendered` ack. None has anything to act on in a panel with no model -- a guard around a render that does not exist is untestable except trivially -- so they land with the slice that gives them something to bound. The interface constraints above are the ones that had to be set now, because they are the ones a later slice cannot add without unwinding what is already built on them.
+
+The README documents the cockpit when it renders a recipe; documenting a panel that traverses nothing would describe a command by what it is going to do. CLAUDE.md, which is the architecture reference rather than the user's, records it now.
 ## [3.20.0] - The Explorer answers "what does this controlling value unlock", instead of leaving the reader to find the row that says so
 
 Closes [#127](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/127).

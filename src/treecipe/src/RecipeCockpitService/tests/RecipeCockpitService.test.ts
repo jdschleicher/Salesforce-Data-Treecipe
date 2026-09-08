@@ -104,6 +104,23 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        /*
+            Pins the markup the fake DOM in runPanelScript below stands in for.
+
+            That harness hard codes the id it answers getElementById with and the classes its
+            element starts out carrying. Without this, renaming the id here leaves every test in
+            this file green while the real panel throws on the ack and never updates its status
+            line -- and dropping "pending" leaves a panel that opens looking connected before any
+            handshake, with the test that asserts the class is removed still passing.
+        */
+        it('declares the handshake element the panel script addresses, with the classes it opens carrying', () => {
+
+            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('<div id="handshakeStatus" class="handshakeStatus pending">');
+
+        });
+
     });
 
     describe('routePanelMessage', () => {
@@ -149,6 +166,9 @@ describe('RecipeCockpitService', () => {
             "pending" is what the opening state is expressed as, so a fake that started classless
             would report an un-acknowledged panel as connected -- and the test asserting the class
             is removed would pass against a script that never set it.
+
+            The id and the classes below are the shell's, and the test above pins them: a fake
+            mirroring markup nothing asserts is a fake that keeps passing after the markup moves.
         */
         const carriedClassNames = new Set<string>(['handshakeStatus', 'pending']);
 

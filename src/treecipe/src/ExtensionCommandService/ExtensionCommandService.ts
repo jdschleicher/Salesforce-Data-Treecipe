@@ -1354,19 +1354,6 @@ export class ExtensionCommandService {
     }
 
     /*
-        Renders the generated picklist dependency STRUCTURE in a webview panel, and nothing else.
-
-        No check results are read here. The panel answers "which controlling value unlocks what",
-        which the spec manifest alone describes -- whether the org still agrees with it is what "Run
-        Picklist Dependency Check" is for, and that command reports its own outcome in its own
-        output channel and report.
-
-        A webview rather than a served page: the panel needs no port, no runtime dependency and no
-        second process, and it inherits the user's theme for free. The content security policy below
-        allows only the nonced inline style and script this extension emits, so the panel cannot
-        reach the network even if a picklist value tried to make it.
-    */
-    /*
         Opens the Recipe Cockpit.
 
         There is no work to guard around yet -- the panel's shell is static and everything it will
@@ -1389,6 +1376,19 @@ export class ExtensionCommandService {
 
     }
 
+    /*
+        Renders the generated picklist dependency STRUCTURE in a webview panel, and nothing else.
+
+        No check results are read here. The panel answers "which controlling value unlocks what",
+        which the spec manifest alone describes -- whether the org still agrees with it is what "Run
+        Picklist Dependency Check" is for, and that command reports its own outcome in its own
+        output channel and report.
+
+        A webview rather than a served page: the panel needs no port, no runtime dependency and no
+        second process, and it inherits the user's theme for free. The content security policy below
+        allows only the nonced inline style and script this extension emits, so the panel cannot
+        reach the network even if a picklist value tried to make it.
+    */
     async openPicklistDependencyExplorer() {
 
         try {
