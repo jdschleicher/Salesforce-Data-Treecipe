@@ -1,0 +1,1183 @@
+<title>Recipe Cockpit Wireframes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #eaeef2;
+  --surface: #ffffff;
+  --plate: #f7f9fb;
+  --ink: #141a20;
+  --muted: #5b6773;
+  --faint: #8a95a1;
+  --rule: #d3dbe3;
+  --rule-soft: #e4eaef;
+  --accent: #1f5573;
+  --accent-soft: #dce8f0;
+
+  --new: #0f6d48;
+  --removed: #a51f16;
+  --typed: #855100;
+  --picklist: #5b3a94;
+  --new-bg: #e0f0e8;
+  --removed-bg: #f7e2e0;
+  --typed-bg: #f7ecd8;
+  --picklist-bg: #ece3f7;
+
+  --vs-bg: #ffffff;
+  --vs-chrome: #f1f4f7;
+  --vs-fg: #1c2329;
+  --vs-desc: #64707c;
+  --vs-border: #d8e0e7;
+  --vs-input: #ffffff;
+  --vs-hover: #eef3f7;
+
+  --deferred: #6f7b87;
+
+  --step: clamp(1rem, 0.6rem + 1.4vw, 1.5rem);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0e1216;
+    --surface: #161c21;
+    --plate: #f2f5f8;
+    --ink: #e3e9ee;
+    --muted: #94a1ad;
+    --faint: #74818d;
+    --rule: #2a333b;
+    --rule-soft: #222a31;
+    --accent: #78b3d3;
+    --accent-soft: #1b2d3a;
+
+    --new: #63c79b;
+    --removed: #f08b80;
+    --typed: #ddb15c;
+    --picklist: #b596e8;
+    --new-bg: #16302a;
+    --removed-bg: #38201f;
+    --typed-bg: #33291a;
+    --picklist-bg: #27203c;
+
+    --vs-bg: #1a2027;
+    --vs-chrome: #131a20;
+    --vs-fg: #dbe2e8;
+    --vs-desc: #8c99a5;
+    --vs-border: #2c363f;
+    --vs-input: #10161b;
+    --vs-hover: #212a32;
+
+    --deferred: #7d8894;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0e1216;
+  --surface: #161c21;
+  --plate: #f2f5f8;
+  --ink: #e3e9ee;
+  --muted: #94a1ad;
+  --faint: #74818d;
+  --rule: #2a333b;
+  --rule-soft: #222a31;
+  --accent: #78b3d3;
+  --accent-soft: #1b2d3a;
+
+  --new: #63c79b;
+  --removed: #f08b80;
+  --typed: #ddb15c;
+  --picklist: #b596e8;
+  --new-bg: #16302a;
+  --removed-bg: #38201f;
+  --typed-bg: #33291a;
+  --picklist-bg: #27203c;
+
+  --vs-bg: #1a2027;
+  --vs-chrome: #131a20;
+  --vs-fg: #dbe2e8;
+  --vs-desc: #8c99a5;
+  --vs-border: #2c363f;
+  --vs-input: #10161b;
+  --vs-hover: #212a32;
+
+  --deferred: #7d8894;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 3rem;
+  max-width: 82rem;
+  margin: 0 auto;
+  padding: var(--step);
+}
+@media (max-width: 60rem) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  .rail { position: static !important; }
+}
+
+/* ---------- rail ---------- */
+.rail {
+  position: sticky;
+  top: var(--step);
+  align-self: start;
+  font-size: 0.8rem;
+}
+.railLabel {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.66rem;
+  color: var(--faint);
+  margin-bottom: 0.6rem;
+}
+.railList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.railList a {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr);
+  gap: 0.5rem;
+  padding: 0.42rem 0.4rem;
+  color: var(--muted);
+  text-decoration: none;
+  border-top: 1px solid var(--rule-soft);
+}
+.railList li:last-child a { border-bottom: 1px solid var(--rule-soft); }
+.railList a:hover { color: var(--accent); background: var(--accent-soft); }
+.railList a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.railNum {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  color: var(--faint);
+  letter-spacing: 0.02em;
+}
+.railList a:hover .railNum { color: var(--accent); }
+
+/* ---------- header ---------- */
+header.masthead { margin-bottom: 3rem; }
+.eyebrow {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.7rem;
+}
+h1 {
+  font-family: "Archivo", system-ui, sans-serif;
+  font-variation-settings: "wdth" 118, "wght" 620;
+  font-size: clamp(2.1rem, 1.2rem + 3.4vw, 3.4rem);
+  line-height: 1.03;
+  letter-spacing: -0.018em;
+  margin: 0 0 0.9rem;
+  text-wrap: balance;
+}
+.standfirst {
+  max-width: 40rem;
+  font-size: 1.06rem;
+  color: var(--muted);
+}
+.standfirst strong { color: var(--ink); font-weight: 600; }
+.metaStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2rem;
+  margin-top: 1.6rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.metaStrip b { color: var(--faint); font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; margin-right: 0.4rem; }
+
+/* ---------- slice ---------- */
+.slice { margin-bottom: 4.5rem; scroll-margin-top: 1rem; }
+.sliceHead { border-top: 2px solid var(--ink); padding-top: 0.9rem; margin-bottom: 1.4rem; }
+.sliceKicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.85rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 0.45rem;
+}
+.sliceKicker .n { color: var(--accent); font-weight: 600; }
+.sliceKicker a { color: var(--muted); }
+h2 {
+  font-family: "Archivo", system-ui, sans-serif;
+  font-variation-settings: "wdth" 112, "wght" 600;
+  font-size: clamp(1.4rem, 1rem + 1.3vw, 1.9rem);
+  line-height: 1.12;
+  letter-spacing: -0.012em;
+  margin: 0 0 0.5rem;
+  text-wrap: balance;
+}
+.proves { max-width: 44rem; color: var(--muted); margin: 0; }
+.proves b { color: var(--ink); font-weight: 600; }
+
+.deferredHead { border-top-color: var(--deferred); }
+.deferredHead h2 { color: var(--deferred); }
+
+/* ---------- mock panel ---------- */
+.mockLabel {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 1.8rem 0 0.5rem;
+}
+.panel {
+  background: var(--vs-bg);
+  border: 1px solid var(--vs-border);
+  color: var(--vs-fg);
+  font-size: 0.82rem;
+  overflow: hidden;
+}
+.panel.deferred { border-style: dashed; border-color: var(--deferred); }
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--vs-chrome);
+  border-bottom: 1px solid var(--vs-border);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.74rem;
+  color: var(--vs-desc);
+}
+.tab {
+  background: var(--vs-bg);
+  border: 1px solid var(--vs-border);
+  border-bottom-color: transparent;
+  padding: 0.2rem 0.7rem;
+  color: var(--vs-fg);
+  font-size: 0.74rem;
+}
+.titleBar .spacer { flex: 1; }
+.titleBar .act { font-family: "IBM Plex Mono", monospace; letter-spacing: 0.25em; }
+.panelBody { padding: 0.9rem 1rem 1.1rem; }
+
+.panelTitle {
+  font-family: "Archivo", sans-serif;
+  font-variation-settings: "wdth" 108, "wght" 600;
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+.stamp {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  color: var(--vs-desc);
+  margin-top: 0.1rem;
+}
+.rule { border: 0; border-top: 1px solid var(--vs-border); margin: 0.75rem 0; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.findBox {
+  flex: 1 1 16rem;
+  min-width: 10rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--vs-input);
+  border: 1px solid var(--vs-border);
+  padding: 0.3rem 0.55rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+}
+.findBox .ic { color: var(--vs-desc); }
+.findBox .caret { color: var(--vs-desc); }
+.findBox .ph { color: var(--vs-desc); }
+.pickerCtl {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--vs-input);
+  border: 1px solid var(--vs-border);
+  padding: 0.3rem 0.55rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+}
+.pickerCtl .caret { color: var(--vs-desc); }
+.matchCount {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--vs-desc);
+  margin-top: 0.35rem;
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-left: 3px solid var(--vs-border);
+  background: var(--vs-hover);
+  padding: 0.45rem 0.6rem;
+  margin: 0.8rem 0;
+  font-size: 0.76rem;
+  color: var(--vs-desc);
+}
+.banner code { font-family: "IBM Plex Mono", monospace; color: var(--vs-fg); font-size: 0.73rem; }
+.banner.warn { border-left-color: var(--typed); }
+.banner .grow { flex: 1; }
+.progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.bar { width: 7rem; height: 0.42rem; background: var(--vs-border); }
+.bar i { display: block; height: 100%; background: var(--accent); }
+
+.objRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 0.25rem;
+  margin-top: 0.55rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--vs-border);
+}
+.objRow .disc { font-family: "IBM Plex Mono", monospace; color: var(--vs-desc); font-weight: 400; }
+.objRow .grow { flex: 1; }
+.objRow .cnt { font-weight: 400; font-size: 0.72rem; color: var(--vs-desc); font-family: "IBM Plex Mono", monospace; }
+.objRow.quiet { font-weight: 400; color: var(--vs-desc); }
+
+.fields { margin-left: 0.85rem; padding-left: 0.9rem; border-left: 1px solid var(--vs-border); }
+.field { padding: 0.4rem 0 0.4rem 0; }
+.fieldTop { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+.fieldTop::before { content: "\21b3"; color: var(--vs-desc); font-family: "IBM Plex Mono", monospace; }
+.apiName { font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 0.78rem; }
+.ftype { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--vs-desc); }
+.ctrl { font-size: 0.72rem; color: var(--vs-desc); }
+.expr {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.73rem;
+  color: var(--accent);
+  margin-left: 1.35rem;
+  margin-top: 0.15rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.note { font-size: 0.73rem; color: var(--vs-desc); margin-left: 1.35rem; margin-top: 0.15rem; }
+.delta { font-family: "IBM Plex Mono", monospace; font-size: 0.73rem; margin-left: 1.35rem; margin-top: 0.15rem; }
+.delta .add { color: var(--new); }
+.delta .rem { color: var(--removed); text-decoration: line-through; }
+.delta .arrow { color: var(--vs-desc); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.badge::before { content: "\25cf"; font-size: 0.62rem; }
+.b-new { color: var(--new); background: var(--new-bg); }
+.b-removed { color: var(--removed); background: var(--removed-bg); }
+.b-type { color: var(--typed); background: var(--typed-bg); }
+.b-picklist { color: var(--picklist); background: var(--picklist-bg); }
+.b-plain { color: var(--vs-desc); background: transparent; border-color: var(--vs-border); }
+.b-plain::before { content: none; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.8rem 0 0.2rem; }
+.chip {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--vs-border);
+  color: var(--vs-desc);
+}
+.chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.chip.newC { color: var(--new); border-color: var(--new); }
+.chip.remC { color: var(--removed); border-color: var(--removed); }
+.chip.typC { color: var(--typed); border-color: var(--typed); }
+.chip.picC { color: var(--picklist); border-color: var(--picklist); }
+
+.emptyState {
+  border: 1px dashed var(--vs-border);
+  padding: 2rem 1.5rem;
+  margin: 1.5rem auto;
+  max-width: 30rem;
+  text-align: center;
+  color: var(--vs-desc);
+  font-size: 0.8rem;
+}
+.emptyState .big { color: var(--vs-fg); font-size: 0.9rem; margin-bottom: 0.5rem; }
+.btn {
+  display: inline-block;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.28rem 0.85rem;
+  font-size: 0.76rem;
+  margin: 0.7rem 0 0.5rem;
+}
+.btn.ghost { border-color: var(--vs-border); color: var(--vs-desc); background: transparent; }
+.scanned { font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; color: var(--vs-desc); }
+
+.statusBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  border-top: 1px solid var(--vs-border);
+  background: var(--vs-chrome);
+  padding: 0.4rem 1rem;
+  font-size: 0.74rem;
+  color: var(--vs-desc);
+}
+.statusBar .grow { flex: 1; }
+.statusBar .ok { color: var(--new); font-family: "IBM Plex Mono", monospace; }
+
+/* quickpick overlay */
+.quickPick {
+  max-width: 34rem;
+  margin: 0 auto;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-input);
+  box-shadow: 0 8px 26px rgba(0,0,0,0.22);
+}
+.qpInput { padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--vs-border); font-size: 0.78rem; color: var(--vs-desc); }
+.qpRow {
+  display: grid;
+  grid-template-columns: 1rem 8rem minmax(0,1fr) auto;
+  gap: 0.6rem;
+  padding: 0.35rem 0.7rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+}
+.qpRow.sel { background: var(--vs-hover); }
+.qpRow .who { color: var(--vs-desc); }
+.qpRow .kind { color: var(--vs-desc); font-size: 0.7rem; }
+.qpFoot { padding: 0.35rem 0.7rem; border-top: 1px solid var(--vs-border); font-size: 0.7rem; color: var(--vs-desc); }
+
+/* diff-engine schematic */
+.schematic { padding: 1.1rem 1rem; }
+.pipes { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.75rem; justify-content: center; }
+.pipeBox {
+  flex: 1 1 12rem;
+  border: 1px solid var(--vs-border);
+  padding: 0.6rem 0.7rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  color: var(--vs-desc);
+}
+.pipeBox b { display: block; color: var(--vs-fg); font-weight: 600; margin-bottom: 0.2rem; }
+.pipeBox.core { border-width: 2px; border-color: var(--accent); color: var(--vs-fg); }
+.pipeBox.core b { color: var(--accent); }
+.tableScroll { overflow-x: auto; margin-top: 1rem; }
+table.diffTable { border-collapse: collapse; width: 100%; min-width: 34rem; font-size: 0.75rem; }
+table.diffTable th {
+  text-align: left;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 500;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vs-desc);
+  border-bottom: 1px solid var(--vs-border);
+  padding: 0.3rem 0.6rem 0.3rem 0;
+}
+table.diffTable td { padding: 0.3rem 0.6rem 0.3rem 0; border-bottom: 1px solid var(--vs-border); vertical-align: baseline; }
+table.diffTable td.mono { font-family: "IBM Plex Mono", monospace; }
+table.diffTable td.det { color: var(--vs-desc); font-family: "IBM Plex Mono", monospace; font-size: 0.71rem; }
+.sortNote { font-family: "IBM Plex Mono", monospace; font-size: 0.7rem; color: var(--vs-desc); margin-top: 0.5rem; }
+
+/* apply dialog */
+.applyRow {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0,1fr) 9rem 9rem;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+  border-bottom: 1px solid var(--vs-border);
+  align-items: baseline;
+}
+.applyRow .off { color: var(--vs-desc); }
+.patch {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  background: var(--vs-input);
+  border: 1px solid var(--vs-border);
+  padding: 0.6rem 0.7rem;
+  margin-top: 0.7rem;
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.55;
+}
+.patch .plus { color: var(--new); }
+.patch .minus { color: var(--removed); }
+.patch .keep { color: var(--vs-desc); }
+.dialogActions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.9rem; }
+
+/* ---------- notes + journey ---------- */
+.twoCol { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 2rem; margin-top: 2rem; align-items: start; }
+@media (max-width: 62rem) { .twoCol { grid-template-columns: minmax(0,1fr); gap: 1.5rem; } }
+
+.notesH, .journeyH {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 0.7rem;
+}
+ul.notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.8rem; }
+ul.notes li { padding-left: 1.05rem; position: relative; font-size: 0.88rem; color: var(--muted); }
+ul.notes li::before {
+  content: "\2014";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+ul.notes strong { color: var(--ink); font-weight: 600; }
+ul.notes code, p code, .friction code {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82em;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 0.05rem 0.28rem;
+}
+
+.diagramPlate {
+  background: var(--plate);
+  border: 1px solid var(--rule);
+  padding: 0.5rem;
+  overflow-x: auto;
+}
+.diagramPlate pre.mermaid { margin: 0; text-align: center; background: transparent; }
+
+.friction {
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-left: 2px solid var(--accent);
+  padding-left: 0.8rem;
+  margin-top: 1rem;
+}
+.friction b { color: var(--ink); }
+
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.finale { border-top: 2px solid var(--ink); padding-top: 1.4rem; margin-top: 1rem; }
+.qList { counter-reset: q; list-style: none; padding: 0; margin: 1rem 0 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.qList li { counter-increment: q; padding-left: 2.2rem; position: relative; color: var(--muted); font-size: 0.9rem; }
+.qList li::before {
+  content: "Q" counter(q);
+  position: absolute; left: 0; top: 0.05rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0 0.25rem;
+}
+.qList strong { color: var(--ink); font-weight: 600; }
+footer.foot {
+  margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+  font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--faint);
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+<nav class="rail" aria-label="Slices">
+  <div class="railLabel">Epic 59 · slices</div>
+  <ul class="railList">
+    <li><a href="#s53"><span class="railNum">1 · #53</span><span>Walking skeleton</span></a></li>
+    <li><a href="#s54"><span class="railNum">2 · #54</span><span>Traverse view</span></a></li>
+    <li><a href="#s55"><span class="railNum">3 · #55</span><span>Org connection</span></a></li>
+    <li><a href="#s56"><span class="railNum">4 · #56</span><span>Diff engine</span></a></li>
+    <li><a href="#s57"><span class="railNum">5 · #57</span><span>Diff UI</span></a></li>
+    <li><a href="#s58"><span class="railNum">v2 · #58</span><span>Write-back</span></a></li>
+    <li><a href="#endtoend"><span class="railNum">▶ all</span><span>End to end</span></a></li>
+    <li><a href="#questions"><span class="railNum">?</span><span>Open questions</span></a></li>
+  </ul>
+</nav>
+
+<main>
+
+<header class="masthead">
+  <div class="eyebrow">Salesforce Data Treecipe · UX exploration</div>
+  <h1>Recipe Cockpit Wireframes</h1>
+  <p class="standfirst">Six screens and six user journeys for epic <a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59">#59</a> — the VS Code webview that sits between a generated recipe on disk and the live org metadata it was drawn from. <strong>Nothing here is implemented.</strong> This is the UX contract the v1 slices get built against.</p>
+  <div class="metaStrip">
+    <span><b>Branch</b>claude/epic-59-wireframes-journeys-conqz4</span>
+    <span><b>Slices</b>#53 → #57 (v1) · #58 (v2)</span>
+    <span><b>Status</b>design only</span>
+  </div>
+</header>
+
+<!-- ================= 53 ================= -->
+<section class="slice" id="s53">
+  <div class="sliceHead">
+    <div class="sliceKicker"><span class="n">Slice 1</span><a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/53">issue #53</a><span>walking skeleton</span></div>
+    <h2>Command, panel, handshake</h2>
+    <p class="proves">What this screen exists to prove: <b>the webview ⇄ extension-host channel is real.</b> Nothing else. No recipe, no org, no diff.</p>
+  </div>
+
+  <div class="mockLabel">Screen 1.1 — first open</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">Recipe Cockpit</span><span class="spacer"></span><span class="act">⟳ ⋯ ✕</span></div>
+    <div class="panelBody">
+      <div class="panelTitle">Recipe Cockpit</div>
+      <div class="stamp">panel connected · handshake completed 12:04:31</div>
+      <hr class="rule">
+      <div class="emptyState">
+        <div class="big">No recipe loaded yet.</div>
+        This panel is the walking skeleton for the Recipe Cockpit.<br>Traversal lands in #54.
+      </div>
+    </div>
+    <div class="statusBar"><span>host ⇄ webview</span><span class="grow"></span><span class="ok">ready ▸ ack ✓</span></div>
+  </div>
+
+  <div class="twoCol">
+    <div>
+      <div class="notesH">Notes for the implementer</div>
+      <ul class="notes">
+        <li>The handshake result is rendered as a <strong>visible line</strong>, not only a console log — that line is what makes the acceptance criterion observable without opening devtools.</li>
+        <li>Re-running the command <strong>reveals</strong> the panel. The handshake timestamp keeps its original value, which is how a reader tells a reveal from a re-open.</li>
+        <li><code>buildWebviewShellHtml(nonce)</code> takes a nonce and nothing else, exactly as the Picklist Dependency Explorer's does. The placeholder copy is written by the panel script, never interpolated into the shell.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="journeyH">Journey · #53</div>
+      <div class="diagramPlate">
+<pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+journey
+    title Extension developer proves the webview wiring
+    section Discover the command
+      Open the command palette: 4: Developer
+      Type "Recipe Cockpit": 3: Developer
+      Command appears under Salesforce Treecipe: 5: Developer
+    section Open the panel
+      Run Open Recipe Cockpit: 5: Developer
+      Panel opens beside the editor: 5: Developer
+      Read the placeholder body: 3: Developer
+    section Trust the channel
+      See ready to ack confirmed on screen: 5: Developer
+      Re-run the command: 4: Developer
+      Panel is revealed not duplicated: 5: Developer
+      Open devtools to check CSP: 2: Developer
+      Console is clean: 5: Developer
+</pre>
+      </div>
+      <p class="friction"><b>Where the friction is:</b> typing to find the command (3), and having to open devtools to confirm CSP (2). The first is why the command carries the <code>Salesforce Treecipe</code> category; the second is why the handshake is rendered on screen.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 54 ================= -->
+<section class="slice" id="s54">
+  <div class="sliceHead">
+    <div class="sliceKicker"><span class="n">Slice 2</span><a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/54">issue #54</a><span>traverse view</span></div>
+    <h2>Objects, fields, faker expressions</h2>
+    <p class="proves">What this screen exists to prove: <b>a user can find one field among thousands, and get from it to the source line.</b></p>
+  </div>
+
+  <div class="mockLabel">Screen 2.1 — filtered traversal</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">Recipe Cockpit</span><span class="spacer"></span><span class="act">⟳ ⋯ ✕</span></div>
+    <div class="panelBody">
+      <div class="panelTitle">Recipe Cockpit</div>
+      <div class="stamp">generated 2026-09-04 11:22:07 · run treecipe-2026-09-04T11-22-07Z</div>
+      <hr class="rule">
+
+      <div class="toolbar">
+        <div class="findBox"><span class="ic">🔍</span><span>industry</span><span class="caret">▌</span></div>
+        <div class="pickerCtl"><span>Run: latest</span><span class="caret">▾</span></div>
+      </div>
+      <div class="matchCount">3 of 412 fields · 2 of 27 objects</div>
+
+      <div class="banner"><span>ⓘ</span><span>Rows come from <code>treecipeObjectsWrapper-2026-09-04T11-22-07Z.json</code></span></div>
+
+      <div class="objRow"><span class="disc">▾</span><span>Account</span><span class="grow"></span><span class="cnt">14 fields</span></div>
+      <div class="fields">
+        <div class="field">
+          <div class="fieldTop"><span class="apiName">Industry</span><span class="ftype">Picklist</span></div>
+          <div class="expr">${{ random_choice('Agriculture','Banking','Retail') }}</div>
+        </div>
+        <div class="field">
+          <div class="fieldTop"><span class="apiName">Industry_Group__c</span><span class="ftype">Picklist</span><span class="ctrl">← controlled by Industry</span></div>
+          <div class="expr">${{ random_choice('Ag Co-op','Retail Bank') }}</div>
+        </div>
+      </div>
+
+      <div class="objRow"><span class="disc">▾</span><span>Lead</span><span class="grow"></span><span class="cnt">8 fields</span></div>
+      <div class="fields">
+        <div class="field">
+          <div class="fieldTop"><span class="apiName">Industry</span><span class="ftype">Picklist</span></div>
+          <div class="expr">${{ random_choice('Agriculture','Banking','Retail') }}</div>
+        </div>
+      </div>
+
+      <div class="objRow quiet"><span class="disc">▸</span><span>Contact</span><span class="grow"></span><span class="cnt">no matching fields</span></div>
+      <div class="objRow quiet"><span class="disc">▸</span><span>Opportunity</span><span class="grow"></span><span class="cnt">no matching fields</span></div>
+    </div>
+  </div>
+
+  <div class="mockLabel">Screen 2.2 — no generated run exists yet</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">Recipe Cockpit</span><span class="spacer"></span><span class="act">⟳ ⋯ ✕</span></div>
+    <div class="panelBody">
+      <div class="panelTitle">Recipe Cockpit</div>
+      <hr class="rule">
+      <div class="emptyState">
+        <div class="big">No generated recipe found.</div>
+        The Cockpit reads the wrapper JSON that <b>Generate Treecipe</b> writes on every run.
+        <div><span class="btn">Run Generate Treecipe</span></div>
+        <div class="scanned">scanned: &lt;workspace&gt;/treecipe/GeneratedRecipes</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="twoCol">
+    <div>
+      <div class="notesH">Notes for the implementer</div>
+      <ul class="notes">
+        <li>The row is <code>fieldName · type · recipeValue</code> straight off <code>FieldInfo</code>. The faker expression is the reason a user opens this panel at all, so it gets its own line rather than a truncated trailing column.</li>
+        <li><code>controllingField</code> is already on <code>FieldInfo</code> and is the one relationship a recipe reader cannot infer from a field name — so it renders inline.</li>
+        <li>A non-matching object <strong>stays on screen, collapsed, labelled</strong>. Hiding it entirely makes a filter look like a truncation. The Explorer's rule holds: filtering hides rows, recomputes nothing, and never re-labels what it drops.</li>
+        <li>The scanned path is <strong>revealed last</strong>, after the body it describes has drawn. Written first, it is the marker that makes a failed render read as a finished one.</li>
+        <li>The generation stamp lives in the header, stated once — the provenance banner carries no copy of it.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="journeyH">Journey · #54</div>
+      <div class="diagramPlate">
+<pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+journey
+    title Data engineer traverses a generated recipe
+    section Arrive with nothing generated
+      Open Recipe Cockpit: 4: Data engineer
+      Panel shows an empty state: 2: Data engineer
+      Read which folder was scanned: 4: Data engineer
+      Click Run Generate Treecipe: 4: Data engineer
+      Wait for the run to finish: 2: Data engineer
+    section Browse the recipe
+      Panel lists 27 objects: 5: Data engineer
+      Expand Account: 5: Data engineer
+      Read types and faker expressions: 5: Data engineer
+      Scroll looking for one picklist: 2: Data engineer
+    section Find one field
+      Type industry in the find box: 5: Data engineer
+      Match count narrows to 3 fields: 5: Data engineer
+      See which field controls which: 5: Data engineer
+      Click the field row: 5: Data engineer
+      Recipe yml opens at that line: 5: Data engineer
+</pre>
+      </div>
+      <p class="friction"><b>Where the friction is:</b> the cold start (2, 2) and scrolling before the user thinks to filter (2). The empty state's action button and the find-box-first layout are the direct answers.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 55 ================= -->
+<section class="slice" id="s55">
+  <div class="sliceHead">
+    <div class="sliceKicker"><span class="n">Slice 3</span><a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/55">issue #55</a><span>org connection</span></div>
+    <h2>Pick an org, describe its objects</h2>
+    <p class="proves">What this screen exists to prove: <b>the user names an org without typing an alias from memory,</b> and knows what the panel is doing while it waits on the API.</p>
+  </div>
+
+  <div class="mockLabel">Screen 3.1 — authorized-org picker (host-side QuickPick)</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">Recipe Cockpit</span><span class="spacer"></span><span class="act">⟳ ⋯ ✕</span></div>
+    <div class="panelBody">
+      <div class="quickPick">
+        <div class="qpInput">Select an authorized org</div>
+        <div class="qpRow sel"><span>▸</span><span>acme-uat</span><span class="who">uat@acme.com</span><span class="kind">Sandbox</span></div>
+        <div class="qpRow"><span></span><span>acme-dev</span><span class="who">dev@acme.com</span><span class="kind">Scratch · 12d left</span></div>
+        <div class="qpRow"><span></span><span>acme-prod</span><span class="who">ops@acme.com</span><span class="kind">Production</span></div>
+        <div class="qpFoot">3 authorized orgs from the Salesforce CLI</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockLabel">Screen 3.2 — describe in flight</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">Recipe Cockpit</span><span class="spacer"></span><span class="act">⟳ ⋯ ✕</span></div>
+    <div class="panelBody">
+      <div class="panelTitle">Recipe Cockpit</div>
+      <div class="stamp">generated 2026-09-04 11:22:07</div>
+      <hr class="rule">
+      <div class="toolbar">
+        <div class="findBox"><span class="ic">🔍</span><span class="ph">filter objects and fields</span></div>
+        <div class="pickerCtl"><span>acme-uat</span><span class="caret">▾</span></div>
+      </div>
+      <div class="banner"><span>ⓘ</span><span class="grow">acme-uat · describing 27 objects</span><span class="progress"><span class="bar"><i style="width:70%"></i></span>19/27</span></div>
+
+      <div class="objRow"><span class="disc">▾</span><span>Account</span><span class="grow"></span><span class="cnt">✓ described · 61 fields</span></div>
+      <div class="objRow"><span class="disc">▾</span><span>Contact</span><span class="grow"></span><span class="cnt">✓ described · 44 fields</span></div>
+      <div class="objRow"><span class="disc">▾</span><span>Opportunity</span><span class="grow"></span><span class="cnt">⋯ describing…</span></div>
+      <div class="objRow quiet"><span class="disc">▸</span><span>Custom_Thing__c</span><span class="grow"></span><span class="cnt">· queued</span></div>
+    </div>
+  </div>
+
+  <div class="mockLabel">Screen 3.3 — partial failure, not a thrown error</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">Recipe Cockpit</span><span class="spacer"></span><span class="act">⟳ ⋯ ✕</span></div>
+    <div class="panelBody">
+      <div class="banner warn">
+        <span>⚠</span>
+        <span class="grow">
+          <b>acme-uat · Custom_Thing__c: INVALID_TYPE</b> — the object is not visible to ops@acme.com. 26 of 27 objects described.
+          <div><span class="btn">Retry</span> <span class="btn ghost">Choose another org</span></div>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="twoCol">
+    <div>
+      <div class="notesH">Notes for the implementer</div>
+      <ul class="notes">
+        <li><strong>No authorized orgs is its own state,</strong> not an error toast: "No authorized orgs found. Run <code>sf org login web</code> and reopen."</li>
+        <li>A describe failure on one object <strong>must not discard the other 26.</strong> The banner names the object, the reason and the count — a single-line "describe failed" sends the user hunting.</li>
+        <li>The cache says <code>cached</code> out loud rather than silently returning instantly, so a user who wants fresh metadata knows to hit ⟳.</li>
+        <li>The picker lives on the <strong>host</strong> (<code>vscode.window.showQuickPick</code> over <code>AuthInfo.listAllAuthorizations()</code>). The webview never sees credentials.</li>
+        <li>Worth extracting a shared connection helper so this and <code>CollectionsApiService.getConnectionFromAlias</code> don't duplicate <code>Org.create</code>/<code>getConnection</code>.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="journeyH">Journey · #55</div>
+      <div class="diagramPlate">
+<pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+journey
+    title Release manager points the cockpit at a live org
+    section Choose an org
+      Click Connect to org: 5: Release manager
+      Wait for authorizations to list: 3: Release manager
+      Recognize aliases without typing: 5: Release manager
+      Pick acme-uat: 5: Release manager
+    section Fetch metadata
+      Panel reports describing 27 objects: 4: Release manager
+      Watch the count climb: 3: Release manager
+      One object fails on visibility: 1: Release manager
+      Read which object and why: 4: Release manager
+      Continue with the other 26: 4: Release manager
+    section Come back later
+      Re-request describe in session: 5: Release manager
+      Results return from cache: 5: Release manager
+      Force a refresh when the org changed: 4: Release manager
+</pre>
+      </div>
+      <p class="friction"><b>Where the friction is:</b> the single-object permission failure (1). That score is the whole argument for a partial-success banner instead of a thrown error.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 56 ================= -->
+<section class="slice" id="s56">
+  <div class="sliceHead">
+    <div class="sliceKicker"><span class="n">Slice 4</span><a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/56">issue #56</a><span>diff engine · pure</span></div>
+    <h2>The slice with no screen</h2>
+    <p class="proves">This slice ships a pure, <code>vscode</code>-free, <code>@salesforce/core</code>-free function. What it does have is <b>an output contract slice 5 renders directly</b> — so its wireframe is that contract, drawn as data.</p>
+  </div>
+
+  <div class="mockLabel">Contract 4.1 — inputs, classifier, ordered output</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">computeMetadataDiff()</span><span class="spacer"></span><span class="act">pure</span></div>
+    <div class="schematic">
+      <div class="pipes">
+        <div class="pipeBox"><b>recipe field set</b>from ObjectInfoWrapper<br>(slice 2)</div>
+        <div class="pipeBox core"><b>computeMetadataDiff()</b>deterministic<br>no vscode · no @salesforce</div>
+        <div class="pipeBox"><b>org describe</b>normalized<br>(slice 3)</div>
+      </div>
+      <div class="tableScroll">
+        <table class="diffTable">
+          <thead><tr><th>object</th><th>field</th><th>status</th><th>detail</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">Account</td><td class="mono">Industry</td><td><span class="badge b-plain">unchanged</span></td><td class="det">—</td></tr>
+            <tr><td class="mono">Account</td><td class="mono">Segment__c</td><td><span class="badge b-new">new-in-org</span></td><td class="det">org only</td></tr>
+            <tr><td class="mono">Account</td><td class="mono">Legacy_Code__c</td><td><span class="badge b-removed">removed-from-org</span></td><td class="det">recipe only</td></tr>
+            <tr><td class="mono">Account</td><td class="mono">AnnualRevenue</td><td><span class="badge b-type">type-changed</span></td><td class="det">Currency(16,2) → Currency(18,2)</td></tr>
+            <tr><td class="mono">Account</td><td class="mono">Industry_Group__c</td><td><span class="badge b-picklist">picklist-changed</span></td><td class="det">+2 / −1</td></tr>
+            <tr><td class="mono">Rollup__c</td><td class="mono">(whole object)</td><td><span class="badge b-new">new-in-org</span></td><td class="det">org only</td></tr>
+            <tr><td class="mono">Retired__c</td><td class="mono">(whole object)</td><td><span class="badge b-removed">removed-from-org</span></td><td class="det">recipe only</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sortNote">sorted by object api name, then field api name — stably, and asserted</div>
+    </div>
+  </div>
+
+  <div class="twoCol">
+    <div>
+      <div class="notesH">Notes for the implementer</div>
+      <ul class="notes">
+        <li><strong>Ordering is a property, not an accident.</strong> An unasserted order is one a refactor turns into "whatever the iteration produced" — and then a reader cannot tell a moved row from a changed one.</li>
+        <li>Objects present on <strong>only one side</strong> are first-class rows, not a thrown error and not silence.</li>
+        <li><code>picklist-changed</code> carries <strong>which</strong> values were added and removed, not a boolean. A diff that only says "changed" sends the user to Setup to find out what.</li>
+        <li>The shared field-model type is defined <strong>once</strong> and consumed by both sides. Two near-identical types is how the two sides drift.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="journeyH">Journey · #56</div>
+      <p class="friction" style="margin-top:0;margin-bottom:1rem;border-left-color:var(--faint)">This is the one journey with no end user in it. The slice ships no surface a Salesforce practitioner can touch, so modelling a practitioner here would be fiction. <b>The person who lives with this slice is the contributor.</b></p>
+      <div class="diagramPlate">
+<pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+journey
+    title Contributor builds and trusts the classifier
+    section Define the contract
+      Read the recipe field model: 4: Contributor
+      Read the describe field model: 4: Contributor
+      Find the two shapes nearly identical: 2: Contributor
+      Extract one shared field type: 5: Contributor
+    section Write fixtures first
+      Write a fixture per category: 4: Contributor
+      Add objects on one side only: 3: Contributor
+      Add picklist add and remove cases: 4: Contributor
+    section Verify
+      Run jest on RecipeCockpitService: 5: Contributor
+      Watch branch coverage on the classifier: 4: Contributor
+      Assert output ordering is stable: 5: Contributor
+      Confirm no vscode import leaked in: 5: Contributor
+</pre>
+      </div>
+      <p class="friction"><b>Where the friction is:</b> discovering the two field shapes are near-duplicates (2), and the one-sided-object cases (3). Both are where a reviewer should look hardest.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 57 ================= -->
+<section class="slice" id="s57">
+  <div class="sliceHead">
+    <div class="sliceKicker"><span class="n">Slice 5</span><a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/57">issue #57</a><span>diff UI · completes v1</span></div>
+    <h2>Has my org drifted from my recipe?</h2>
+    <p class="proves">What this screen exists to prove: <b>the question is answered in one glance,</b> and the user can narrow to only what changed.</p>
+  </div>
+
+  <div class="mockLabel">Screen 5.1 — diff overlaid on the traverse rows</div>
+  <div class="panel">
+    <div class="titleBar"><span class="tab">Recipe Cockpit</span><span class="spacer"></span><span class="act">⟳ ⋯ ✕</span></div>
+    <div class="panelBody">
+      <div class="panelTitle">Recipe Cockpit</div>
+      <div class="stamp">generated 2026-09-04 11:22:07 · diffed against acme-uat 12:41:09</div>
+      <hr class="rule">
+
+      <div class="toolbar">
+        <div class="findBox"><span class="ic">🔍</span><span class="ph">filter objects and fields</span></div>
+        <div class="pickerCtl"><span>acme-uat</span><span class="caret">▾</span></div>
+      </div>
+
+      <div class="chips">
+        <span class="chip on">all 412</span>
+        <span class="chip newC">● new 6</span>
+        <span class="chip remC">● removed 2</span>
+        <span class="chip typC">● type 1</span>
+        <span class="chip picC">● picklist 4</span>
+        <span class="chip">changed only 13</span>
+      </div>
+
+      <div class="banner"><span>ⓘ</span><span>27 objects · 412 fields · 13 changed · 399 unchanged</span></div>
+
+      <div class="objRow"><span class="disc">▾</span><span>Account</span><span class="grow"></span>
+        <span class="badge b-new">2</span><span class="badge b-removed">1</span><span class="badge b-type">1</span></div>
+      <div class="fields">
+        <div class="field">
+          <div class="fieldTop"><span class="apiName">Segment__c</span><span class="ftype">Picklist</span><span class="badge b-new">new-in-org</span></div>
+          <div class="note">Not in the recipe. Regenerate to pick it up.</div>
+        </div>
+        <div class="field">
+          <div class="fieldTop"><span class="apiName">Legacy_Code__c</span><span class="ftype">Text(40)</span><span class="badge b-removed">removed-from-org</span></div>
+          <div class="expr">${{ fake: word }}</div>
+          <div class="note">In the recipe, absent from acme-uat.</div>
+        </div>
+        <div class="field">
+          <div class="fieldTop"><span class="apiName">AnnualRevenue</span><span class="ftype">Currency(18,2)</span><span class="badge b-type">type-changed</span></div>
+          <div class="delta">recipe <span class="rem">Currency(16,2)</span> <span class="arrow">→</span> org <span class="add">Currency(18,2)</span></div>
+        </div>
+        <div class="field">
+          <div class="fieldTop"><span class="apiName">Industry_Group__c</span><span class="ftype">Picklist</span><span class="badge b-picklist">picklist-changed</span></div>
+          <div class="delta"><span class="add">+ Ag Co-op</span> &nbsp; <span class="add">+ Credit Union</span> &nbsp; <span class="rem">− Savings &amp; Loan</span></div>
+        </div>
+      </div>
+
+      <div class="objRow quiet"><span class="disc">▸</span><span>Opportunity</span><span class="grow"></span><span class="cnt">no changes</span></div>
+    </div>
+    <div class="statusBar"><span>Recipe is behind the org in 13 places.</span><span class="grow"></span><span class="btn" style="margin:0">Regenerate recipe</span></div>
+  </div>
+
+  <div class="twoCol">
+    <div>
+      <div class="notesH">Notes for the implementer</div>
+      <ul class="notes">
+        <li><strong>Badges overlay the slice-2 rows; this is not a second view.</strong> Diff status is <em>optional</em> on the node model — a traverse-only open sets none, and absent stays distinct from <code>unchanged</code>.</li>
+        <li><strong>Status is encoded twice:</strong> colour and the word. Colour alone fails a colour-blind reader and fails a screenshot pasted into a ticket.</li>
+        <li><code>removed-from-org</code> shows the recipe's faker expression; <code>new-in-org</code> shows none, because there isn't one. That asymmetry <em>is</em> the information.</li>
+        <li>The button is <strong>"Regenerate recipe", deliberately not "Apply"</strong> — nothing is written back in v1, and a button that implies a patch it does not perform is a lie. #58 is where it becomes true.</li>
+        <li>Errors surface in-panel, not as a toast that disappears while the user is reading the table.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="journeyH">Journey · #57</div>
+      <div class="diagramPlate">
+<pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+journey
+    title Admin checks whether the recipe still matches the org
+    section Ask the question
+      Open the cockpit on an existing recipe: 5: Admin
+      Pick acme-uat and run the diff: 5: Admin
+      Watch describe progress: 3: Admin
+    section Read the answer
+      See 13 changed of 412: 5: Admin
+      Filter to changed only: 5: Admin
+      Read new-in-org fields: 5: Admin
+      Read picklist values added and removed: 5: Admin
+      See a type widen to 18 comma 2: 4: Admin
+    section Act
+      Realize the recipe is stale: 2: Admin
+      Click Regenerate recipe: 4: Admin
+      Wait for Generate Treecipe: 2: Admin
+      Re-run the diff and see zero changes: 5: Admin
+    section Hit the v1 wall
+      Want to keep a hand-tuned expression: 1: Admin
+      Regeneration overwrites it: 1: Admin
+</pre>
+      </div>
+      <p class="friction"><b>Where the friction is:</b> the last section. Regeneration is a blunt instrument — it is the v1 answer, and its score of 1 is precisely the case <a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/58">#58</a> exists to fix. This journey is the strongest available argument for prioritising the v2 slice.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 58 ================= -->
+<section class="slice" id="s58">
+  <div class="sliceHead deferredHead">
+    <div class="sliceKicker"><span class="n" style="color:var(--deferred)">v2 · deferred</span><a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/58">issue #58</a><span>write-back</span></div>
+    <h2>Apply a diff without losing hand-tuned values</h2>
+    <p class="proves">Drawn dashed throughout: <b>this is not v1 scope.</b> It is here because the slice-5 journey ends on a score of 1, and a wireframe is the cheapest way to argue what the fix has to look like.</p>
+  </div>
+
+  <div class="mockLabel">Screen v2.1 — selective apply with a per-file preview</div>
+  <div class="panel deferred">
+    <div class="titleBar"><span class="tab">Apply diff to recipe</span><span class="spacer"></span><span class="act">v2</span></div>
+    <div class="panelBody">
+      <div class="matchCount">13 changes · 8 selected</div>
+      <div class="applyRow"><span>✓</span><span>Account.Segment__c</span><span class="off">new-in-org</span><span class="off">add field</span></div>
+      <div class="applyRow"><span>✓</span><span>Account.Industry_Group__c</span><span class="off">picklist</span><span class="off">reconcile values</span></div>
+      <div class="applyRow"><span class="off">☐</span><span class="off">Account.Legacy_Code__c</span><span class="off">removed</span><span class="off">remove field</span></div>
+      <div class="applyRow"><span>✓</span><span>Account.AnnualRevenue</span><span class="off">type-changed</span><span class="off">Currency(18,2)</span></div>
+
+      <div class="mockLabel" style="margin-bottom:0.3rem">preview · Account.yml</div>
+<div class="patch"><span class="minus">-   AnnualRevenue: ${{ fake_number(max=9999999999999999, dec=2) }}</span>
+<span class="plus">+   AnnualRevenue: ${{ fake_number(max=999999999999999999, dec=2) }}</span>
+<span class="plus">+   Segment__c: ${{ random_choice('Enterprise','Mid-Market') }}</span>
+<span class="keep">    Industry: ${{ random_choice(...) }}          ← untouched</span></div>
+
+      <div class="banner warn"><span>⚠</span><span>Recipes are emitted as template strings, not <code>yaml.dump</code>. Serialization fidelity is the open design question — see #58.</span></div>
+
+      <div class="dialogActions"><span class="btn ghost">Cancel</span><span class="btn">Apply 8 changes</span></div>
+    </div>
+  </div>
+
+  <div class="twoCol">
+    <div>
+      <div class="notesH">The constraint that defers this slice</div>
+      <ul class="notes">
+        <li><code>RecipeService</code> assembles YAML as hand-built template strings; js-yaml is used only for <em>reading</em>.</li>
+        <li>A <code>yaml.dump</code> round-trip would reformat and drop comments across the whole file, so the preview above implies <strong>targeted line-level patching</strong>.</li>
+        <li>The preview is not decoration — it is <strong>the mechanism by which a user can trust a patch that a round-trip cannot guarantee.</strong></li>
+      </ul>
+    </div>
+    <div>
+      <div class="journeyH">Journey · #58</div>
+      <div class="diagramPlate">
+<pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+journey
+    title Admin applies a diff without losing hand-tuned values
+    section Select
+      Run the diff and see 13 changes: 5: Admin
+      Open Apply diff to recipe: 5: Admin
+      Uncheck the removal to keep a field: 5: Admin
+      Keep 8 of 13 changes: 5: Admin
+    section Trust the patch
+      Read the per-file preview: 5: Admin
+      Confirm hand-tuned expressions untouched: 5: Admin
+      Worry about comment and format loss: 2: Admin
+      See only the named lines change: 5: Admin
+    section Apply
+      Click Apply 8 changes: 4: Admin
+      Recipe yml updates on disk: 5: Admin
+      Check git diff: 5: Admin
+      Diff is 3 lines not a reformat: 5: Admin
+</pre>
+      </div>
+      <p class="friction"><b>Where the friction is:</b> the format-loss worry (2) — exactly the risk the issue names, and the reason the preview pane is load-bearing rather than a nicety.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= end to end ================= -->
+<section class="slice" id="endtoend">
+  <div class="sliceHead">
+    <div class="sliceKicker"><span class="n">All slices</span><a href="https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59">epic #59</a><span>end to end</span></div>
+    <h2>One practitioner, first recipe to a verified match</h2>
+    <p class="proves">The shape of this diagram is the epic's argument: <b>the only score below 3 once the Cockpit exists is the v1 reconcile step.</b></p>
+  </div>
+  <div class="diagramPlate">
+<pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+journey
+    title Epic 59 end to end
+    section Generate
+      Run Generate Treecipe: 4: Practitioner
+      Recipe yml written to disk: 5: Practitioner
+      Open the yml and squint at 412 fields: 2: Practitioner
+    section Traverse
+      Open Recipe Cockpit: 5: Practitioner
+      Browse objects and fields: 5: Practitioner
+      Filter to one field and jump to source: 5: Practitioner
+    section Compare
+      Connect to acme-uat: 4: Practitioner
+      Run the metadata diff: 5: Practitioner
+      See 13 fields drifted: 5: Practitioner
+    section Reconcile
+      Regenerate in v1 and lose tuning: 1: Practitioner
+      Apply selected changes in v2: 5: Practitioner
+      Re-run the diff and see zero: 5: Practitioner
+</pre>
+  </div>
+</section>
+
+<!-- ================= questions ================= -->
+<section class="finale" id="questions">
+  <h2>Open UX questions for the epic owner</h2>
+  <ol class="qList">
+    <li><strong>Run selection (#54).</strong> The issue offers "most recent, <em>or</em> a QuickPick to choose". The wireframe puts a select in the toolbar instead, so the choice is visible without a second command. Confirm.</li>
+    <li><strong>Where does "Connect to org" live?</strong> The wireframe puts it in the toolbar; the issue describes a QuickPick. The QuickPick is still the picker — the toolbar control is what launches it and then shows the result.</li>
+    <li><strong>Does the diff run automatically on org selection, or on an explicit "Run diff"?</strong> The wireframe assumes automatic-on-select, since selecting an org has no other purpose in v1.</li>
+    <li><strong>Field-count ceiling.</strong> The Picklist Dependency Explorer needed <code>applyModelLimits</code> at scale. 412 fields is fine; a 12,000-field org over <code>postMessage</code> is not obviously fine. Worth a measurement before #57 rather than after.</li>
+  </ol>
+  <footer class="foot">Design exploration only · no implementation on this branch · docs/EPIC-59-RECIPE-COCKPIT-UX.md is the markdown companion</footer>
+</section>
+
+</main>
+</div>
