@@ -39,6 +39,22 @@ jobs:
     - name: Compile TypeScript
       run: npm run compile
 
+    # #67 asked for a guard so what enters the .vsix cannot silently regress, and nothing was
+    # added; #121 is what that cost -- ts-node sat in "dependencies" and shipped 1.6 MB of itself
+    # plus its typescript peer to every Marketplace user. vsce is pinned here for the same reason
+    # the publish job pins it. "vsce ls" reads the compiled output, so this runs after compile.
+    - name: Install vsce
+      run: npm install -g --ignore-scripts @vscode/vsce@3.9.2
+
+    # Written to the runner temp directory rather than the workspace: a listing file left in the
+    # working directory is itself an unexpected top-level path, and vsce packages the working
+    # directory rather than the git index.
+    - name: List packaged contents
+      run: vsce ls > "$RUNNER_TEMP/vsce-ls.txt"
+
+    - name: Check packaged contents
+      run: node .github/workflowScripts/checkPackagedPaths.js "$RUNNER_TEMP/vsce-ls.txt"
+
     - name: Lint
       run: npm run lint
 

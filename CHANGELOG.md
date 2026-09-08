@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.20.1] - The CI heap failures were a test mock escaping its own suite
+## [3.20.2] - The CI heap failures were a test mock escaping its own suite
 
 ### One assignment, in one test, could exhaust a 4 GB heap in a different suite
 
@@ -41,21 +41,21 @@ The regression test is executed, not asserted as text: one test replaces `fs.pro
 
 No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
 
-### A green run on 3.20.0 is scheduling luck, not a fix
+### A green run on 3.20.1 is scheduling luck, not a fix
 
-**`main` passes cold-cache runs today, and the defect is untouched.** Re-measured against 3.20.0: cold runs pass, where 3.15.0 failed two in three. The assignment is still on line 1603, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf. What moved is the per-file timing that decides which suites share a worker -- 3.16.0 through 3.20.0 added ~140 tests and took a cold run from ~30 s to ~60 s.
+**`main` passes cold-cache runs today, and the defect is untouched.** Re-measured against 3.20.1: cold runs pass, where 3.15.0 failed two in three. The assignment is still on line 1603, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf. What moved is the per-file timing that decides which suites share a worker -- 3.16.0 through 3.20.1 added ~190 tests and took a cold run from ~30 s to ~70 s.
 
-Put the two suites on one worker and 3.20.0 answers for itself:
+Put the two suites on one worker and 3.20.1 answers for itself:
 
 ```
 jest --maxWorkers=1 --runTestsByPath \
   VSCodeWorkspaceService.test.ts RelationshipService.test.ts
 
-3.20.0         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+3.20.1         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
 this release   Test Suites: 2 passed, 2 total / Tests: 96 passed, 96 total
 ```
 
-So this is not a fix chasing a failure that has gone away. It is a fix for one that stopped being scheduled, and that the next test file added anywhere in the project can schedule again. Four releases have shipped since the failure was last seen in CI, and none of them touched the line that causes it.
+So this is not a fix chasing a failure that has gone away. It is a fix for one that stopped being scheduled, and that the next test file added anywhere in the project can schedule again. Five releases have shipped since the failure was last seen in CI, and none of them touched the line that causes it. A cold-cache run of the pair exhausts the heap on 3.20.1 twice in two; a WARM one passes, which is the same masking that kept this off developer machines for months.
 
 ### Three defects in the guard itself, found by review
 
@@ -67,9 +67,60 @@ The guard shipped with three wrong claims in its own comments, each disproved by
 
 Also from review: properties are enumerated with `getOwnPropertyNames` rather than `Object.keys`, since a non-enumerable function property is just as assignable; and the module name travels with the module instead of being derived from its position in an array.
 
-26 suites, 1477 tests (1462 + 15), coverage 91.12/86.06/92.55/91.08 against 3.20.0's 91.06/85.98/92.52/91.01 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.20.0 passes here.
+27 suites, 1528 tests (1513 + 15), coverage 91.27/86.18/92.74/91.23 against 3.20.1's 91.21/86.10/92.71/91.17 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.20.1 passes here.
 
-Both sides were measured with identical flags on Node 20, and the baseline was read seven times before it was quoted. An eighth, earlier reading in a freshly created worktree gave 91.08/86.02/92.52/91.03 with `ErrorHandlingService.ts` a point higher, and comparing against THAT reported a per-file regression this change cannot cause -- it touches no `src/` code, and the file's uncovered lines and functions are identical on both sides. It is the same anomalous-first-coverage-run artifact recorded in 3.16.1, and it is noted here rather than quietly discarded, because it is the second time it has produced a wrong number in this repository.
+3.20.1 added a CI step asserting what enters the `.vsix`. `vsce ls` was run against this branch and the new `checkPackagedPaths.js` run over its output: 2,720 packaged paths, **zero of them under `jestSetup/`**, check passed. The guard's directory is excluded twice over -- by the pre-existing `**/*.ts` rule and by the `jestSetup/**` line added here.
+
+Both sides were measured with identical flags on Node 20. Two earlier baseline readings in this work were wrong, and both are recorded rather than discarded, because each would have put a false number in this file. One was the anomalous-first-coverage-run artifact 3.16.1 already documented: a fresh worktree reported `ErrorHandlingService.ts` a point higher, which showed up as a per-file regression this change cannot cause -- it touches no `src/` code, and that file's uncovered lines and functions are identical on both sides. Seven consecutive re-reads settled it. The other was a baseline measured in a worktree that had never been compiled, so 3.20.1's new packaged-paths test failed on a missing `out/` and the run it produced was not a baseline at all.
+
+## [3.20.1] - `ts-node` stops shipping to every extension user, and CI now asserts what enters the package
+
+Closes [#121](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/121), and adds the regression guard [#67](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/67) asked for and never got.
+
+`ts-node` was declared in `dependencies`. Nothing in `src/` imports it -- it exists for the `e2e-test` npm script and the `npx ts-node` note in `src/nodeDevelopmentSuppport/fakerjsRecipeParsing.ts`. But the extension is unbundled, so `vsce publish` resolves the production dependency tree and ships it, and every Marketplace install carried it.
+
+It is now a `devDependency`.
+
+### The cost was 4.15 MB, not the 1.6 MB `ts-node` weighs
+
+`ts-node` declares `typescript` as a peer dependency, so the whole compiler was resolved into the production tree behind it. Measured on this tree, packaging the same source before and after:
+
+| | Files (`vsce package`) | Paths (`vsce ls`) | `.vsix` |
+|---|---|---|---|
+| Before | 2,916 | 2,914 | 11.66 MB |
+| After | 2,722 | 2,720 | 7.51 MB |
+
+Both counts are given because they differ by two and the difference is not a discrepancy: `vsce package` also writes `extension.vsixmanifest` and `[Content_Types].xml`, which `vsce ls` does not list. The removal is **194 paths** on either measure.
+
+194 paths and 20.4 MB uncompressed leave the package: `ts-node` (84 files), `typescript` (30), and the transitives unique to them -- `acorn`, `acorn-walk`, `@cspotcode/source-map-support`, `@jridgewell/*`, `arg`, `create-require`, `make-error`, `v8-compile-cache-lib`, `yn`, `@tsconfig/*`, `@types/node`, `undici-types`. Nothing is added.
+
+Every bare `require()` in the shipped `out/**` still resolves from inside the packaged `.vsix`, and all nine commands are still declared in the packaged manifest and registered in `out/extension.js`.
+
+### The guard is computed, so it is not a file people regenerate without reading
+
+`vsce ls` runs in CI after compile, and `.github/workflowScripts/checkPackagedPaths.js` makes three assertions over the result:
+
+1. **Every packaged path's first segment is one of eight checked-in names** -- `CHANGELOG.md`, `LICENSE`, `README.md`, `apexPicklistDependencyFramework`, `images`, `node_modules`, `out`, `package.json`. This is the `#67` class of leak: `.sfdx/` carrying an `apex.db` and the whole StandardApexLibrary, `.sf/orgs/<ORG_ID>/` naming the packaging developer's org, plus `docs/`, `coverage/`, `treecipe/` and `src/`. `.vscodeignore` excludes all of them today; nothing noticed when it stopped.
+2. **Every key in `dependencies` is `require`d from some packaged `out/**` file.** This is the assertion that fails on `ts-node`, and it is the reason the guard is not a snapshot: a genuine runtime dependency is imported by construction, so adding one needs no edit here, while a build-only tool placed in `dependencies` is never imported and is caught the first time CI runs.
+3. **Every bare `require()` in packaged output is a Node builtin, `vscode`, or declared in `dependencies`.** The other direction -- shipped code reaching for something only `devDependencies` install resolves on a contributor's machine and throws on a user's.
+
+A checked-in list of all 2,720 paths would catch more, and would have to be regenerated by hand on every transitive bump. Only the eight top-level names are checked in; the dependency half is derived from the compiled output on every run.
+
+**It is scanned off the packaged list, not off disk.** `.vscodeignore` removes `out/**/tests/**`, so the `require("jest-extended")` calls under it never ship. Walking `out/` on disk would report a runtime `devDependency` leak that does not exist -- which is exactly the false positive that made this worth checking before believing.
+
+The listing is written to the runner temp directory rather than the workspace, because `vsce` packages the working directory rather than the git index, and a `vsce-ls.txt` left behind would be an unexpected top-level path in the next run.
+
+### The reader is contained, and every read that can fail says so
+
+`resolveContainedWorkspacePath` rejects an absolute path outright and resolves through `realpathSync` before requiring the result to sit under the workspace root, so the **symlink** half is covered and not only the lexical half -- `readFileSync` follows a symlink that `vsce ls` lists as a plain file. A path that escapes is reported as unread rather than opened. This is the same containment the extension applies to any manifest path it opens; `vsce ls` never emits a `..`, and the property is worth holding independently of the current absence of a producer that would exercise it.
+
+A listed file that is missing still resolves lexically, so it is reported as **missing** rather than as an escape -- two different facts that should not collapse into one message. The listing read, the manifest parse and every source read return a diagnostic instead of a stack trace, and unread-path reports are emitted **ahead of** the assertions: a file that was not read contributed no requires, so assertion 2 would otherwise blame the dependency rather than the unread file.
+
+Comments are stripped before the require scan, because a dependency named only in a comment would keep assertion 2 green for something nothing loads -- which is how #121 stayed hidden. Block comments and whole-line `//` comments go; a **trailing** `//` deliberately does not, since a `//` inside a string (`"https://..."`) would truncate the rest of a real line and turn a false positive into a false negative, the worse direction. A require written inside a string literal is therefore still counted, and a test pins that rather than leaving it to be rediscovered.
+
+### What this deliberately does not do
+
+Bundling with esbuild or webpack would cut the package far more than 4.15 MB and is the standard VS Code recommendation, but it is a build-system change with its own risk and belongs in its own issue. `vsce publish --no-dependencies` would ship a broken extension while the code is unbundled. `@faker-js/faker` (9.7 MB) and `@salesforce/core` (2.2 MB) stay -- both are genuinely required at runtime, as assertion 2 now proves rather than assumes.
 
 ## [3.20.0] - The Explorer answers "what does this controlling value unlock", instead of leaving the reader to find the row that says so
 
