@@ -1,5 +1,61 @@
 # Change Log
 
+## [3.20.0] - The Explorer answers "what does this controlling value unlock", instead of leaving the reader to find the row that says so
+
+Closes [#127](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/127).
+
+3.18.0 put controlling values in the find box, and stopped one level short of the answer. Typing `Canada` narrowed the panel to the objects and the fields whose rows carry it -- and then left the reader scanning up to `maxCombinationsPerNode` rows for the one headed `= Canada`. Worse, the tree is indexed by the DEPENDENT field: a node is a dependent picklist labelled `controlled by X`, so one controlling field governing three dependent fields is three sibling nodes, and "what does Canada unlock" was spread across all three with nothing composing it.
+
+### Rows are filtered, not just nodes
+
+A query that names a VALUE now hides the rows that do not carry it, and the match count reads `N of M combination(s) in the expanded object(s)` beside the object count. A query that names a CONTAINER -- an object or a field -- still shows every row that node has: the reader asked for the node, not for one value inside it, and narrowing it would answer a question they did not ask. That distinction needed a haystack the panel did not have. Since 3.18.0 `searchText` folds controlling values in with the api names, so it can no longer say whether the reader named the node; the panel now builds `nodeNameSearchText` from the names alone, lowercased once at build time like everything else in that path.
+
+Filtering still only ever HIDES. Nothing is recomputed, nothing is dropped, and clearing the box puts every row back.
+
+### One block that composes the answer
+
+When the query matches a controlling value, each expanded object draws a summary above its tree: the value, then every dependent field it affects with what each one makes available. A value a record type does not assign reads *not available under this record type* rather than as an empty list -- the same distinction the row itself draws. It reports only what a value UNLOCKS: the complement is the one claim that needs a COMPLETE declared list to be true, and the rows already carry it with the caveat that goes with it.
+
+A match inside a record type scope now opens the group and the scope holding it, on the same terms a record type NAME already did. Without that, a value query filtered the panel down to the field holding the answer and left the answer behind two collapsed disclosures.
+
+### Dependent values are searchable, and the payload did not grow
+
+This is issue #125's deferred option 2, taken on a different footing. #125 declined it because indexing dependent values "materialises the product in the payload" -- the expansion the manifest was restructured in 3.16.0 to stop. It is now derived IN THE PANEL from `allowedValues` the model already carries, so the posted message is byte for byte what it was; a test pins that no `searchText` in the payload names a dependent value.
+
+The index is drawn from `allowedValues` rather than from `declaredValues`, and that is the difference between an exact answer and an unsound one. A first draft used `declaredValues` on the reasoning that it is a superset of every combination's `allowedValues` -- true of the model the builder produces, and **false after `applyModelLimits`**, which slices `declaredValues` at `maxDeclaredValuesPerNode` and never slices `allowedValues`. A value a rendered row visibly unlocked was therefore absent from the index, and the object was hidden with no notice at all. Matching on the unlockable set answers outright instead: a query it lacks matches no row, a query it has matches one, and there is no fallthrough scan of the model left on the keystroke path.
+
+A row matches on its controlling value or on what it UNLOCKS, never on its forbidden complement. Every row that does not unlock a value forbids it, so matching the complement would show every row of the field and bury the answer among the rows that are not it.
+
+### What it costs, measured in the state the code runs in
+
+The first version of this entry carried a measurement table that described nothing. `applyNodeFilter` returns at `if (!sectionRecord.built)` before both the row filter and the summary, so a per-keystroke figure taken on a collapsed panel never executed either path this release adds. Re-measured through the real panel script with 25 objects expanded (`EXPAND_ALL_OBJECT_LIMIT`) at the combination ceiling -- 200 objects x 5 fields x 20 combinations = `maxRenderedCombinations`, each field declaring a picklist of the given size and each combination unlocking a quarter of it:
+
+| | picklist 40 | picklist 200 |
+|---|---|---|
+| payload | 12.25 MB | 39.79 MB |
+| index (object + node + scope) | 2.07 MB | 10.64 MB |
+| first keystroke (builds the index) | 54 ms | 289 ms |
+| keystroke, panel collapsed | 0.8 ms | 2.8 ms |
+| keystroke, 25 expanded, exact value | 2.3 ms | 5 ms |
+| keystroke, 25 expanded, matching prefix | 11.2 ms | 39 ms / 14,586 elements |
+
+The last row is the pathological case: a query matching every controlling value in every expanded object, which a reader passes through on the way to typing a specific one. Two things made it survivable.
+
+The summary is the product of matched combinations and their `allowedValues`, rebuilt per keystroke, and `allowedValues` is the one axis `applyModelLimits` never caps -- `EXPAND_ALL_OBJECT_LIMIT` does not help, because built objects accumulate and are never un-built. Uncapped it drew **129,500 elements in 852 ms** at that prefix, and 504,500 in 4.7 s at a picklist that unlocks in full. It now has its own two limits and says what it dropped, in the panel's existing truncation vocabulary.
+
+And the model-side matcher is gone. It lowercased `allowedValues` on the fly so an unbuilt scope could answer for itself, which put ~980,000 fresh `toLowerCase()` calls per keystroke on a panel with **nothing expanded** -- 23 ms, against the 27 ms #125 rejected for exactly this mistake. Unbuilt content is answered by the index instead, and the collapsed-panel keystroke is 2.8 ms.
+
+The rendering ceiling did not move. The index is bounded by `maxRenderedCombinations`, not by `maxDeclaredValuesPerNode` -- and note that `maxNodesPerObject` caps root *chains* rather than nodes, so an earlier "nodes x declared values" bound stated here was optimistic for a deep chain.
+
+### Rows became a hideable axis, and three paths did not follow
+
+A deep link pasted while a value query was active left the previous query's row visibility in place, so the panel marked a row focused, scrolled to it, and left it hidden; one level in, a scope body built by the deep link's own reveal was filtered against the pasted reference, which no value can contain, hiding every row in it. `showEveryNode` now restores every axis the filter can hide, and takes the summary down with it. The combination count now includes rows an opened record type scope put on screen -- an object whose combinations are all record-type-scoped previously reported no row count at all. And a parent field held on screen only because a downstream node matched says so, rather than rendering as a field that declares no combinations.
+
+### A miss says whether it is a miss
+
+Where the ceiling dropped rows, a value the reader types may be absent from what the panel holds rather than from their org -- and `0 of 12 objects shown` reads as the second. The count now says so whenever a query runs against a truncated model, not only when nothing matched: gating it on zero visible objects made the miss silent in the case that matters most, where some other object matches and the reader is looking at results with no reason to suspect a row was dropped. It is keyed on rows the ceiling removed rather than on a capped declared list, because the index is drawn from `allowedValues` -- a trimmed universe no longer costs the find box anything, and attaching the caveat to it would be its own kind of untrue. An untruncated model that matches nothing claims nothing about dropped rows.
+
+
 ## [3.19.0] - Geolocation compound fields expand into the Latitude and Longitude components an insert can write
 
 Closes [#111](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/111).
