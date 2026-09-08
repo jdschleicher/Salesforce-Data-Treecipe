@@ -483,7 +483,9 @@ multi-line assertion messages. The manual checklist in
 
 The panel's central promise is that what it renders is what the generated tests assert. That is only
 true when it renders the manifest, so the manifest is read first and the metadata scan is reachable
-only as an explicit opt-in that banners every row as asserted by nothing.
+only as an explicit opt-in. The panel itself renders no provenance banner: which source a model came
+from is a statement about the panel rather than a way to reach a row, and the empty state is where the
+difference is still stated.
 
 ```mermaid
 flowchart TD
@@ -495,11 +497,7 @@ flowchart TD
 
     LOAD --> STATE{"manifest state"}
 
-    STATE -- loaded --> FRESH["resolveManifestFreshness<br/>stat walk, no XML parse"]
-    FRESH --> VERDICT{"fingerprint and<br/>objects dir match?"}
-    VERDICT -- yes --> MODEL["buildExplorerViewModelByManifest<br/>modelSource = manifest"]
-    VERDICT -- no --> STALE["same model,<br/>staleness banner"]
-    STALE --> MODEL
+    STATE -- loaded --> MODEL["buildExplorerViewModelByManifest<br/>modelSource = manifest"]
 
     STATE -- noManifestFound --> OFFER["message naming<br/>Generate Picklist Dependency Tests"]
     STATE -- unreadableManifest --> OFFER
@@ -509,20 +507,23 @@ flowchart TD
     CHOICE -- accepted --> SCAN["collectSpecDetailsByObjectsDirectory<br/>the only path that walks source XML"]
     SCAN --> PREVIEW["buildExplorerViewModel with<br/>buildMetadataPreviewContext<br/>modelSource = metadataPreview"]
 
-    MODEL --> RESULTS["loadLatestResults<br/>overlay pass/fail"]
-    PREVIEW --> RESULTS
-    RESULTS --> PANEL["render webview"]
+    MODEL --> PANEL["render webview"]
+    PREVIEW --> PANEL
 ```
+
+No open resolves a run and none walks the objects directory. The structure is fully derivable from
+the manifest, and whether the org still agrees is what `Run Picklist Dependency Check` answers in its
+own output channel. `applyRunToViewModel` is retained and tested; nothing on this path calls it.
 
 The two model sources differ in exactly what they are allowed to claim:
 
 | | `manifest` | `metadataPreview` |
 |---|---|---|
 | Source | `treecipe/PicklistDependencySpecs/manifest.json` | a fresh walk of `salesforceObjectsPath` |
-| Node names a spec method | yes — the one that asserts it | no, and the banner says nothing asserts it |
-| Failure attribution | resolved against manifest combination keys | no run can correspond to these rows |
+| Model carries a spec method | yes — the one that asserts it | no |
 | Skipped fields | rendered as rows, marked *not asserted* | rendered as rows, marked *not asserted* |
-| Spec method / run report links | offered — the model names the code | not offered — nothing asserts these rows |
+| Named on screen | neither — the panel renders no provenance banner and names no generated Apex | neither |
+| Distinguished to the reader by | the empty state, when there is nothing to render | the empty state, which names the generate command |
 | Reached by | opening the panel after generating | the explicit opt-in only |
 
 ### 8.1 What reaches the DOM, and what the ceiling drops

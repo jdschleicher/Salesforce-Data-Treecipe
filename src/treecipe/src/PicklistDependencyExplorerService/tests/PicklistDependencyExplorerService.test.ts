@@ -1094,25 +1094,6 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('given a model it cannot draw, keeps the scanned-path line hidden', () => {
-
-            const panel = runPanelScript();
-            const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
-            );
-            delete viewModel.truncationNotices;
-
-            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
-
-            /*
-                Written first, this line was the marker that made a failed render read as a finished
-                one -- a heading and a path is what a panel that found nothing looks like.
-            */
-            expect(panel.elementsById.scannedPath.classList.contains('hidden')).toBe(true);
-            expect(panel.elementsById.scannedPath.classList.removed).not.toContain('hidden');
-
-        });
-
         it('given a model it cannot draw, tells the host with the error and the render phase', () => {
 
             const panel = runPanelScript();
@@ -1135,7 +1116,7 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('given a model it can draw, renders it, reveals the scanned path and acknowledges', () => {
+        it('given a model it can draw, renders it and acknowledges', () => {
 
             const panel = runPanelScript();
             const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
@@ -1145,7 +1126,6 @@ describe('PicklistDependencyExplorerService', () => {
             panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
 
             expect(panel.collectText(panel.elementsById.explorerRoot)).toContain('Chain_Example__c');
-            expect(panel.elementsById.scannedPath.classList.removed).toContain('hidden');
             expect(panel.postedHostMessages.some(hostMessage => hostMessage.command === 'rendered')).toBe(true);
             expect(panel.postedHostMessages.some(hostMessage => hostMessage.command === 'renderFailed')).toBe(false);
 
@@ -1154,7 +1134,7 @@ describe('PicklistDependencyExplorerService', () => {
         /*
             A throw AFTER a successful draw is a different thing from a failed draw: the rows are
             still on screen and readable. Tagging it as such is what stops the host treating a
-            transient handler error as a dead panel and refusing a freshness check for a model the
+            transient handler error as a dead panel and refusing an action addressing a row the
             reader is looking at.
         */
         it('reports a throw outside the render as a runtime failure, not a render failure', () => {
@@ -1259,8 +1239,7 @@ describe('PicklistDependencyExplorerService', () => {
             panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
                 PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                     { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
-                    mockObjectsDirectoryPath,
-                    { freshness: 'fresh', message: '' }
+                    mockObjectsDirectoryPath
                 )
             ));
 
@@ -1269,20 +1248,84 @@ describe('PicklistDependencyExplorerService', () => {
         }
 
         /*
-            The reader opened this panel to look a field up. Everything else at the top level is a
-            caveat ABOUT the rows, and each one used to sit between them and the only control that
-            gets them there.
+            The reader opened this panel to look a field up, and every block that used to sit between
+            them and the find box is gone: the provenance banner, the contents, and both header lines
+            were statements ABOUT the rows rather than a way to reach one.
         */
-        it('draws the find box before every block that describes the panel', () => {
+        it('draws the find box first, with none of the blocks that used to precede it', () => {
 
             const panel = renderPanelWithSkippedWarnings();
             const rootClassNames = collectRootClassNames(panel);
 
             expect(rootClassNames[0]).toBe('toolbar');
 
-            // MATCHED ON THE LEADING CLASS: THE BANNER CARRIES ITS PROVENANCE AS A SECOND ONE
-            expect(rootClassNames.findIndex(className => className.startsWith('provenanceBanner'))).toBeGreaterThan(0);
+            // MATCHED ON THE LEADING CLASS: THE BANNER USED TO CARRY ITS PROVENANCE AS A SECOND ONE
+            expect(rootClassNames.some(className => className.startsWith('provenanceBanner'))).toBe(false);
+            expect(rootClassNames).not.toContain('tableOfContents');
+
+            // WHAT SURVIVES ABOVE THE ROWS IS WHAT THE CEILING AND THE METADATA DROPPED, NOT WHERE THE ROWS CAME FROM
             expect(rootClassNames.indexOf('warningList')).toBeGreaterThan(0);
+
+        });
+
+        /*
+            The two header lines the model used to fill are gone from the shell entirely, rather than
+            left in it unwritten: a heading and a path over an empty page is what a panel that found
+            nothing looks like, and holding them back was the guard against that reading. With no
+            such line there is nothing to hold back.
+        */
+        it('declares no model-filled header lines in the shell at all', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('<h1>Picklist Dependency Explorer</h1>');
+            expect(actualShellHtml).not.toContain('id="scannedPath"');
+            expect(actualShellHtml).not.toContain('id="scannedPathValue"');
+            expect(actualShellHtml).not.toContain('id="generatedStamp"');
+            expect(actualShellHtml).not.toContain('generatedStamp');
+            expect(actualShellHtml).not.toContain('revealHeaderLines');
+
+        });
+
+        /*
+            The freshness check went with the banner that was its only entry point, so the panel
+            neither renders a check button nor posts the command behind it.
+        */
+        it('renders no provenance banner and no freshness check, in either model source', () => {
+
+            const manifestPanel = renderPanelWithSkippedWarnings();
+
+            expect(collectRootClassNames(manifestPanel)).not.toContain('provenanceBanner');
+            expect(manifestPanel.collectText(manifestPanel.elementsById.explorerRoot)).not.toContain('Generated specs');
+            expect(manifestPanel.postedHostMessages.some((hostMessage: any) => hostMessage.command === 'checkFreshness')).toBe(false);
+
+            const previewPanel = runPanelScript();
+            previewPanel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+                )
+            ));
+
+            expect(previewPanel.collectText(previewPanel.elementsById.explorerRoot)).not.toContain('Preview from metadata');
+            expect(previewPanel.collectText(previewPanel.elementsById.explorerRoot)).not.toContain('Check against current metadata');
+
+        });
+
+        /*
+            The contents block listed both the panel's sections and every object, and clicking an
+            entry scrolled to it. The find box is what reaches an object now, so nothing registers a
+            section and no second account of what is on screen is drawn.
+        */
+        it('renders no contents block, and still renders the sections it used to list', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+            const rootClassNames = collectRootClassNames(panel);
+
+            expect(rootClassNames).not.toContain('tableOfContents');
+            expect(panel.collectText(panel.elementsById.explorerRoot)).not.toContain('Contents');
+
+            // THE SECTIONS THEMSELVES ARE UNTOUCHED -- ONLY THE LISTING OF THEM IS GONE
+            expect(rootClassNames).toContain('warningList');
 
         });
 
@@ -1413,70 +1456,6 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(detailElement.classList.contains('hidden')).toBe(true);
             expect(disclosureElement.textContent).toBe('▸');
-
-        });
-
-        // WHAT THE FAKE DOCUMENT'S STARTING CLASSES MIRROR -- THE TWO HEADER LINES ARE HIDDEN UNTIL A RENDER REVEALS THEM
-        it('declares both model-filled header lines hidden in the shell markup', () => {
-
-            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
-
-            expect(actualShellHtml).toContain('<div id="generatedStamp" class="generatedStamp hidden"></div>');
-            expect(actualShellHtml).toContain('<div id="scannedPath" class="muted hidden">');
-
-        });
-
-        it('stamps when and by what version the specs were generated under the title', () => {
-
-            const panel = renderManifestSourcedPanel();
-
-            expect(panel.elementsById.generatedStamp.textContent)
-                .toBe('generated 2026-09-03T12:00:00Z by Treecipe 3.17.0');
-            expect(panel.elementsById.generatedStamp.classList.removed).toContain('hidden');
-
-        });
-
-        // ONE STATEMENT OF IT, NOT TWO -- THE BANNER KEEPS ITS HEADING, ITS CHECK BUTTON AND ITS PATH
-        it('states the generation stamp once, in the header rather than in the banner as well', () => {
-
-            const panel = renderManifestSourcedPanel();
-            const bannerElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'provenanceBanner')[0];
-
-            expect(panel.collectText(bannerElement)).not.toContain('2026-09-03T12:00:00Z');
-            expect(panel.collectText(bannerElement)).toContain('Generated specs');
-            expect(panel.collectText(bannerElement)).toContain('/workspace/treecipe/PicklistDependencySpecs/manifest.json');
-
-        });
-
-        /*
-            A preview was read from metadata rather than generated, so there is no moment to stamp.
-            "generated  by Treecipe " states nothing, and an empty line under the title states less.
-        */
-        it('given a metadata preview, draws no generation stamp at all', () => {
-
-            const panel = renderPanelWithSkippedWarnings();
-
-            expect(panel.elementsById.generatedStamp.classList.contains('hidden')).toBe(true);
-            expect(panel.elementsById.generatedStamp.textContent).toBe('');
-
-        });
-
-        /*
-            Held back with the scanned path, and for the same reason: a header line the model filled
-            is exactly what made a failed render read as a finished one.
-        */
-        it('given a model it cannot draw, leaves the generation stamp hidden', () => {
-
-            const panel = runPanelScript();
-            const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
-            );
-            delete viewModel.truncationNotices;
-
-            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
-
-            expect(panel.elementsById.generatedStamp.classList.contains('hidden')).toBe(true);
-            expect(panel.elementsById.generatedStamp.classList.removed).not.toContain('hidden');
 
         });
 
@@ -2660,94 +2639,7 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        /*
-            The scanned-path line is the marker that made a failed render look finished: written
-            first, it survived a throw in everything below it. Held back until the render completes,
-            its presence means the panel drew.
-        */
-        it('reveals the scanned path only after the body it describes has drawn', () => {
 
-            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
-
-            const scannedPathRevealIndex = actualShellHtml.indexOf(`scannedPathElement.classList.remove('hidden')`);
-            const renderObjectsIndex = actualShellHtml.indexOf('        renderObjects();');
-
-            expect(renderObjectsIndex).toBeGreaterThan(-1);
-            expect(scannedPathRevealIndex).toBeGreaterThan(renderObjectsIndex);
-
-            // AND A FAILED RENDER TAKES IT BACK OFF, RATHER THAN LEAVING IT OVER AN ERROR
-            expect(actualShellHtml).toContain(`scannedPathElement.classList.add('hidden')`);
-
-        });
-
-    });
-
-    describe('the freshness check as an explicit action', () => {
-
-        /*
-            Asserted against the SHELL rather than against a rendered panel: there is no DOM in this
-            suite, and every heading below is a literal in the panel script, so a payload-based
-            assertion would pass whatever freshness the model carried. What is worth pinning here is
-            that the branch exists and reads as a statement rather than as an activity.
-        */
-        it('given a model nobody has checked, states that rather than reporting progress', () => {
-
-            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
-
-            expect(actualShellHtml).toContain(`provenanceHeading = 'Generated specs — not checked against your current metadata'`);
-
-            // NOT WORDED AS WORK IN PROGRESS -- NOTHING IS RUNNING, AND NOTHING WILL UNTIL THE READER ASKS
-            expect(actualShellHtml).not.toContain(`provenanceHeading = 'Generated specs — checking against your current metadata…'`);
-
-        });
-
-        it('given a check in flight, disables the button and says it is checking', () => {
-
-            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
-
-            expect(actualShellHtml).toContain('checkButtonElement.disabled = true');
-            expect(actualShellHtml).toContain(`checkButtonElement.textContent = 'Checking…'`);
-
-        });
-
-        it('offers a re-check once an answer exists', () => {
-
-            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
-
-            expect(actualShellHtml).toContain(`'Check against current metadata' : 'Check again'`);
-            expect(actualShellHtml).toContain(`postMessage({ command: 'checkFreshness' })`);
-
-        });
-
-        /*
-            notChecked and checkFailed are NOT stale. Each is a different thing from "your metadata
-            changed", and styling either as stale sends a reader to regenerate over a difference
-            nothing has established.
-        */
-        it('treats notChecked and checkFailed as not-stale in the banner and its contents entry', () => {
-
-            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
-
-            expect(actualShellHtml).toContain(`const isNotChecked = explorerModel.manifestFreshness === 'notChecked'`);
-            expect(actualShellHtml).toContain(`const isCheckFailed = explorerModel.manifestFreshness === 'checkFailed'`);
-            expect(actualShellHtml).toContain('!isPendingFreshness && !isNotChecked && !isCheckFailed');
-
-        });
-
-        it('given a check that could not read the metadata, says so without claiming either answer', () => {
-
-            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
-
-            expect(actualShellHtml).toContain(`provenanceHeading = 'Generated specs — could not be checked against your metadata'`);
-
-            /*
-                The failure message is rendered for checkFailed as it is for stale, because it is the
-                only thing that says WHY the check could not answer. What it must not do is arrive
-                under the stale heading or the stale styling.
-            */
-            expect(actualShellHtml).toContain('if (isStale || isCheckFailed)');
-
-        });
 
     });
 
@@ -2982,7 +2874,7 @@ describe('PicklistDependencyExplorerService', () => {
             });
 
             const manifestSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, freshResult
+                buildManifestLoad(collectionResult), mockObjectsDirectoryPath
             );
 
             const specSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
@@ -3016,7 +2908,7 @@ describe('PicklistDependencyExplorerService', () => {
             });
 
             const manifestSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, freshResult
+                buildManifestLoad(collectionResult), mockObjectsDirectoryPath
             );
 
             const cityNode = manifestSourcedViewModel.objects[0].rootNodes[0].downstreamNodes[0];
@@ -3037,20 +2929,18 @@ describe('PicklistDependencyExplorerService', () => {
         it('marks the model as manifest sourced, so the panel can promise what it renders is asserted', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath
             );
 
             expect(actualViewModel.modelSource).toBe('manifest');
             expect(actualViewModel.manifestFilePath).toBe(manifestFilePath);
-            expect(actualViewModel.generatedAt).toBe('2026-09-03T12:00:00Z');
-            expect(actualViewModel.generatorVersion).toBe('3.5.0');
 
         });
 
         it('renders exactly the objects and fields the manifest declares', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath
             );
 
             expect(actualViewModel.objects).toHaveLength(1);
@@ -3062,7 +2952,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('names the generated class and spec method on every node', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath
             );
 
             const objectViewModel = actualViewModel.objects[0];
@@ -3084,7 +2974,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('gives every combination the stable key the manifest recorded for it', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath
             );
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
@@ -3104,7 +2994,7 @@ describe('PicklistDependencyExplorerService', () => {
             }));
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                manifestLoad, mockObjectsDirectoryPath, freshResult
+                manifestLoad, mockObjectsDirectoryPath
             );
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
@@ -3128,8 +3018,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 buildManifestLoad(buildCollectionResult({ skippedFields: [skippedField], skippedFieldWarnings: [skippedField.warning] })),
-                mockObjectsDirectoryPath,
-                                freshResult
+                mockObjectsDirectoryPath
             );
 
             const objectViewModel = actualViewModel.objects[0];
@@ -3157,8 +3046,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 buildManifestLoad(buildCollectionResult({ skippedFields: [skippedField], skippedFieldWarnings: [skippedField.warning] })),
-                mockObjectsDirectoryPath,
-                                freshResult
+                mockObjectsDirectoryPath
             );
 
             const skipOnlyObject = actualViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Only_Skips__c');
@@ -3166,19 +3054,6 @@ describe('PicklistDependencyExplorerService', () => {
             expect(skipOnlyObject).toBeDefined();
             expect(skipOnlyObject.rootNodes).toBeEmpty();
             expect(skipOnlyObject.skippedFields).toHaveLength(1);
-
-        });
-
-        it('carries the staleness verdict and its message onto the model', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(),
-                mockObjectsDirectoryPath,
-                                { freshness: 'staleMetadata', message: 'metadata changed since generation' }
-            );
-
-            expect(actualViewModel.manifestFreshness).toBe('staleMetadata');
-            expect(actualViewModel.manifestFreshnessMessage).toBe('metadata changed since generation');
 
         });
 
@@ -3194,7 +3069,7 @@ describe('PicklistDependencyExplorerService', () => {
             manifestLoad.manifest.objectsDirectoryPath = '/etc/somewhere-else/objects';
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                manifestLoad, mockObjectsDirectoryPath, freshResult, '/workspace'
+                manifestLoad, mockObjectsDirectoryPath, '/workspace'
             );
 
             expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
@@ -3208,7 +3083,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('given a manifest naming an objects directory inside the workspace, renders paths under it', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, freshResult, '/workspace'
+                buildManifestLoad(), mockObjectsDirectoryPath, '/workspace'
             );
 
             expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
@@ -3224,8 +3099,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(() => PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 { state: 'unreadableManifest', message: 'broken' },
-                mockObjectsDirectoryPath,
-                                freshResult
+                mockObjectsDirectoryPath
             )).toThrow('carries no manifest');
 
         });
@@ -3288,8 +3162,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
-                mockObjectsDirectoryPath,
-                                { freshness: 'fresh', message: '' }
+                mockObjectsDirectoryPath
             );
 
             // THE WARNING IS METADATA, AND NO METADATA REACHES THE DOCUMENT -- IT IS POSTED AND WRITTEN THROUGH textContent
@@ -3299,7 +3172,12 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('renders the preview banner saying where the rows came from', () => {
+        /*
+            The preview form of the provenance banner went with the banner itself. A preview is
+            still marked as one WHERE IT MATTERS -- the empty state names the generate command --
+            but the panel makes no standing statement about where its rows came from.
+        */
+        it('renders no preview banner, and still names no generated Apex', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
                 mockObjectsDirectoryPath,
@@ -3311,8 +3189,8 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
 
-            expect(actualWebviewHtml).toContain('Preview from metadata');
-            expect(actualWebviewHtml).toContain('read from your source metadata rather than from a generated spec manifest');
+            expect(actualWebviewHtml).not.toContain('Preview from metadata — not generated');
+            expect(actualWebviewHtml).not.toContain('read from your source metadata rather than from a generated spec manifest');
 
             /*
                 The panel names no generated Apex anywhere, preview or not.
@@ -4499,8 +4377,7 @@ describe('PicklistDependencyExplorerService', () => {
             return PicklistDependencyExplorerService.applyRunToViewModel(
                 PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                     { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
-                    mockObjectsDirectoryPath,
-                    { freshness: 'fresh', message: '' }
+                    mockObjectsDirectoryPath
                 ),
                 resultsLoad
             );
@@ -4593,7 +4470,6 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
                 mockObjectsDirectoryPath,
-                { freshness: 'fresh', message: '' },
                 '/workspace'
             );
 
@@ -4616,7 +4492,6 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
                 mockObjectsDirectoryPath,
-                { freshness: 'fresh', message: '' },
                 '/workspace'
             );
 
@@ -4638,7 +4513,6 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
                 mockObjectsDirectoryPath,
-                { freshness: 'fresh', message: '' },
                 '/workspace'
             );
 
@@ -4975,7 +4849,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
                     PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                        manifestLoad, mockObjectsDirectoryPath, freshResult
+                        manifestLoad, mockObjectsDirectoryPath
                     ),
                     resultsLoad
                 );
@@ -5016,7 +4890,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
                 PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                    buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                    buildManifestLoad(), mockObjectsDirectoryPath
                 ),
                 resultsLoad
             );
@@ -5055,7 +4929,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
                 PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                    buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                    buildManifestLoad(), mockObjectsDirectoryPath
                 ),
                 resultsLoad
             );
@@ -5170,8 +5044,7 @@ describe('PicklistDependencyExplorerService', () => {
 
                 expect(() => PicklistDependencyExplorerService.buildUncappedExplorerViewModelByManifest(
                     { state: 'noManifestFound', message: 'nothing here' },
-                    mockObjectsDirectoryPath,
-                    { freshness: 'fresh', message: '' }
+                    mockObjectsDirectoryPath
                 )).toThrow('carries no manifest');
 
             });
@@ -5797,46 +5670,34 @@ describe('PicklistDependencyExplorerService', () => {
 
         }
 
-        it('renders the find box, the status filter and the expand controls', () => {
+        it('renders the find box and the expand controls', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
             expect(actualWebviewHtml).toContain('Find object, field or controlling value');
             expect(actualWebviewHtml).toContain('Expand all');
             expect(actualWebviewHtml).toContain('Collapse all');
-            expect(actualWebviewHtml).toContain('not checked');
 
         });
 
         /*
-            The jump select is gone. Its NODE level override moved to the contents -- naming an object
-            still shows every one of its nodes, including the ones the query was hiding. Its object
-            level override did not survive and is asserted absent below, because the contents lists
-            only what the panel is showing.
+            The jump select went first, and the contents that inherited its node level override has
+            now gone too. The find box is the whole navigation surface: naming an object narrows to
+            it, and there is no second listing to click through.
         */
-        it('retires the jump select in favour of the contents, keeping only its node level override', () => {
+        it('retires the jump select and the contents that replaced it', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
             expect(actualWebviewHtml).not.toContain('select an object');
             expect(actualWebviewHtml).not.toContain('jumpSelectElement');
 
-            expect(actualWebviewHtml).toContain('function jumpToObject(sectionRecord)');
-            expect(actualWebviewHtml).toContain('showEveryNode(sectionRecord);');
-            expect(actualWebviewHtml).toContain('renderTableOfContents(tableOfContentsElement);');
+            expect(actualWebviewHtml).not.toContain('function jumpToObject(sectionRecord)');
+            expect(actualWebviewHtml).not.toContain('renderTableOfContents');
+            expect(actualWebviewHtml).not.toContain('registerPanelSection');
 
-            /*
-                What survives of the select's override is the NODE level half: naming an object shows
-                every one of its nodes, including the ones the query was hiding. The object level half
-                does not survive and must not be claimed -- the contents lists what the panel shows,
-                so a filtered-out object has no entry to click, and a stray un-hide here would be dead
-                code asserting a capability the panel does not have.
-            */
-            const jumpToObjectSource = actualWebviewHtml
-                .split('function jumpToObject(sectionRecord) {')[1]
-                .split('\n    }')[0];
-
-            expect(jumpToObjectSource).not.toContain("classList.remove('hidden')");
+            // THE NODE LEVEL OVERRIDE ITSELF SURVIVES -- IT IS WHAT A ONE-OBJECT MATCH STILL USES
+            expect(actualWebviewHtml).toContain('function showEveryNode(sectionRecord)');
 
         });
 
@@ -6267,145 +6128,6 @@ describe('PicklistDependencyExplorerService', () => {
             });
 
         });
-
-        describe('the table of contents', () => {
-
-            it('renders a collapsible contents, open on arrival', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                expect(actualWebviewHtml).toContain('function renderTableOfContents(tableOfContentsElement)');
-                expect(actualWebviewHtml).toContain("createElement('span', 'disclosure', '▾')");
-                expect(actualWebviewHtml).toContain("createElement('span', undefined, 'Contents')");
-
-            });
-
-            /*
-                A section the panel did not render must not appear in its contents. Registration
-                happens inside the renderer that builds a section, past that renderer's own guard,
-                so the two cannot come apart.
-            */
-            it('registers each section from the renderer that built it, behind that renderer\'s guard', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                expect(actualWebviewHtml).toContain('function registerPanelSection(labelText, sectionElement)');
-
-                // THE "Last check" SECTION WENT WITH THE RUN BANNER -- NO SECTION IS REGISTERED FOR ONE NOW
-                expect(actualWebviewHtml).not.toContain("registerPanelSection('Last check'");
-
-                /*
-                    The provenance banner registers itself once, in the renderer, from the label its
-                    fill returns. Both of its wordings still come from the same place they always did
-                    -- fillProvenanceBanner decides which, and the renderer registers whichever it got.
-                */
-                expect(actualWebviewHtml).toContain("provenanceBannerSectionRecord = registerPanelSection(sectionLabel, bannerElement);");
-                expect(actualWebviewHtml).toContain("return 'Preview from metadata';");
-                expect(actualWebviewHtml).toContain("return isStale ? 'Generated specs — stale' : 'Generated specs';");
-
-                expect(actualWebviewHtml).toContain(
-                    'if (!explorerModel.truncationNotices.length) { return; }'
-                );
-                expect(actualWebviewHtml).toContain("registerPanelSection('Rendering limits', noticesElement);");
-
-                expect(actualWebviewHtml).toContain(
-                    'if (!explorerModel.skippedFieldWarnings.length) { return; }'
-                );
-                expect(actualWebviewHtml).toContain("registerPanelSection('Not covered', warningsElement);");
-
-            });
-
-            /*
-                The late freshness answer rewrites the provenance banner, and the contents entry holds
-                that banner BY REFERENCE. Replacing the element would leave the entry scrolling to a
-                node no longer in the document and still labelled with the wording from before the
-                answer arrived -- so the banner is refilled where it stands and the entry renamed.
-            */
-            it('refills the provenance banner in place when the freshness answer lands, and renames its contents entry', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                expect(actualWebviewHtml).toContain('const sectionLabel = fillProvenanceBanner(provenanceBannerElement);');
-                expect(actualWebviewHtml).toContain('updatePanelSectionLabel(provenanceBannerSectionRecord, sectionLabel);');
-
-                // THE ENTRY KEEPS A HANDLE ON ITS OWN LABEL SPAN, WHICH IS WHAT MAKES A LATE RENAME REACHABLE
-                expect(actualWebviewHtml).toContain('panelSectionRecord.labelElement = entryLabelElement;');
-
-                // AND THE BANNER IS NEVER DETACHED AND RE-APPENDED, WHICH IS WHAT BROKE THE ENTRY
-                expect(actualWebviewHtml).not.toContain('previousBannerElement.remove();');
-
-            });
-
-            /*
-                Every object entry addresses a section record the panel already built. It names
-                nothing the panel is not showing, and it opens no path of its own -- so it adds no
-                allow-list entry to the extension host side.
-            */
-            it('lists objects from the built section records rather than from anything it resolves itself', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                expect(actualWebviewHtml).toContain("createElement('div', 'tableOfContentsGroupLabel',\n            'Objects (' + objectSectionRecords.length + ')')");
-                expect(actualWebviewHtml).toContain('objectSectionRecords.forEach(function (sectionRecord) {');
-                expect(actualWebviewHtml).toContain("entryElement.addEventListener('click', function () { jumpToObject(sectionRecord); });");
-                expect(actualWebviewHtml).not.toContain("command: 'openTableOfContentsEntry'");
-
-            });
-
-            /*
-                A contents listing an object the filter has hidden is a second account of what is on
-                screen, and the two would disagree the moment anyone typed.
-            */
-            it('hides and shows its object entries with the filter', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                expect(actualWebviewHtml).toContain('if (sectionRecord.tableOfContentsEntryElement) {');
-                expect(actualWebviewHtml).toContain(
-                    "sectionRecord.tableOfContentsEntryElement.classList.toggle('hidden', !isVisible);"
-                );
-
-            });
-
-            /*
-                Built after the sections exist so an entry holds the record it scrolls to, rather
-                than looking an object up by name at click time.
-            */
-            it('fills the contents once every object section record has been built', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                const tableOfContentsPlaceholderIndex = actualWebviewHtml.indexOf(
-                    "const tableOfContentsElement = createElement('div', 'tableOfContents');"
-                );
-                const sectionBuildIndex = actualWebviewHtml.indexOf('const sectionRecord = buildObjectSectionRecord(objectViewModel);');
-                const tableOfContentsFillIndex = actualWebviewHtml.indexOf('renderTableOfContents(tableOfContentsElement);');
-
-                expect(tableOfContentsPlaceholderIndex).toBeGreaterThan(-1);
-                expect(sectionBuildIndex).toBeGreaterThan(tableOfContentsPlaceholderIndex);
-                expect(tableOfContentsFillIndex).toBeGreaterThan(sectionBuildIndex);
-
-            });
-
-            /*
-                Object api names and record type names are metadata the extension does not control.
-                Every label the contents and the new groups add is set as textContent through
-                createElement, so none of it can reach the panel as markup.
-            */
-            it('sets every added label as text rather than markup', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                expect(actualWebviewHtml).toContain("createElement('span', 'fieldName', objectViewModel.objectApiName)");
-                expect(actualWebviewHtml).not.toContain('innerHTML');
-                expect(actualWebviewHtml).toContain(
-                    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-testNonce'; script-src 'nonce-testNonce'; form-action 'none'; base-uri 'none';">`
-                );
-
-            });
-
-        });
-
     });
 
 
