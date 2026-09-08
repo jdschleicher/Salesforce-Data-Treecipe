@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.20.2] - The CI heap failures were a test mock escaping its own suite
+## [3.21.1] - The CI heap failures were a test mock escaping its own suite
 
 ### One assignment, in one test, could exhaust a 4 GB heap in a different suite
 
@@ -41,21 +41,32 @@ The regression test is executed, not asserted as text: one test replaces `fs.pro
 
 No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
 
-### A green run on 3.20.1 is scheduling luck, not a fix
+### On 3.21.0 it is not even latent any more -- it fires
 
-**`main` passes cold-cache runs today, and the defect is untouched.** Re-measured against 3.20.1: cold runs pass, where 3.15.0 failed two in three. The assignment is still on line 1603, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf. What moved is the per-file timing that decides which suites share a worker -- 3.16.0 through 3.20.1 added ~190 tests and took a cold run from ~30 s to ~70 s.
+Earlier rounds of this branch had to argue that a green `main` was scheduling luck. That argument is no longer needed. Re-measured against 3.21.0, `npm run jest-test-summary` on unmodified `main` produced this:
 
-Put the two suites on one worker and 3.20.1 answers for itself:
+```
+FAIL src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts
+  A jest worker process (pid=20249) was terminated by another process: signal=SIGTERM
+Test Suites: 1 failed, 25 passed, 26 total
+Time:        134.925 s
+```
+
+The original CI signature, in the real command, on the current default branch -- 135 s against a normal ~63 s, which is the heap thrashing before the worker is killed. One failure in four full-suite runs.
+
+3.21.0 is what moved it back: #136 deleted the provenance banner, the freshness check, the contents block and both header lines, and with them a large block of Explorer tests. That changed the per-file timings that decide which suites share a worker, which is the only variable this failure has ever turned on. Nothing about the defect changed -- the assignment is still on line 1603, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf.
+
+Forced onto one worker rather than waiting for the scheduler, it is deterministic:
 
 ```
 jest --maxWorkers=1 --runTestsByPath \
   VSCodeWorkspaceService.test.ts RelationshipService.test.ts
 
-3.20.1         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+3.21.0         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory (2 of 2)
 this release   Test Suites: 2 passed, 2 total / Tests: 96 passed, 96 total
 ```
 
-So this is not a fix chasing a failure that has gone away. It is a fix for one that stopped being scheduled, and that the next test file added anywhere in the project can schedule again. Five releases have shipped since the failure was last seen in CI, and none of them touched the line that causes it. A cold-cache run of the pair exhausts the heap on 3.20.1 twice in two; a WARM one passes, which is the same masking that kept this off developer machines for months.
+Six releases have shipped since this was first seen in CI, and none of them touched the line that causes it. Every one of them changed the scheduling, which is why it has appeared to come and go.
 
 ### Three defects in the guard itself, found by review
 
@@ -67,11 +78,39 @@ The guard shipped with three wrong claims in its own comments, each disproved by
 
 Also from review: properties are enumerated with `getOwnPropertyNames` rather than `Object.keys`, since a non-enumerable function property is just as assignable; and the module name travels with the module instead of being derived from its position in an array.
 
-27 suites, 1528 tests (1513 + 15), coverage 91.27/86.18/92.74/91.23 against 3.20.1's 91.21/86.10/92.71/91.17 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.20.1 passes here.
+27 suites, 1488 tests (1473 + 15), coverage 91.20/86.19/92.71/91.16 against 3.21.0's 91.13/86.10/92.68/91.09 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.21.0 passes here.
+
+The 3.21.0 baseline was read from a CLEAN run. The run that failed reported 88.09/81.75/90.41/88.00, which is not a coverage figure at all -- a whole suite did not execute. A failing run's coverage is not a baseline, and quoting it would have manufactured a large fake improvement for this change.
 
 3.20.1 added a CI step asserting what enters the `.vsix`. `vsce ls` was run against this branch and the new `checkPackagedPaths.js` run over its output: 2,720 packaged paths, **zero of them under `jestSetup/`**, check passed. The guard's directory is excluded twice over -- by the pre-existing `**/*.ts` rule and by the `jestSetup/**` line added here.
 
 Both sides were measured with identical flags on Node 20. Two earlier baseline readings in this work were wrong, and both are recorded rather than discarded, because each would have put a false number in this file. One was the anomalous-first-coverage-run artifact 3.16.1 already documented: a fresh worktree reported `ErrorHandlingService.ts` a point higher, which showed up as a per-file regression this change cannot cause -- it touches no `src/` code, and that file's uncovered lines and functions are identical on both sides. Seven consecutive re-reads settled it. The other was a baseline measured in a worktree that had never been compiled, so 3.20.1's new packaged-paths test failed on a missing `out/` and the run it produced was not a baseline at all.
+
+## [3.21.0] - The Picklist Dependency Explorer opens on the find box: the provenance banner, the freshness check, the contents block and both header lines are gone
+
+Closes [#134](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/134).
+
+Four blocks sat between the panel title and the rows: a provenance banner, a table of contents, the scanned-objects path and a generation stamp. Every one of them was a statement *about* the rows rather than a way to reach one, and a reader who opened the panel to look a field up scrolled past all four to get to the find box. The find box is now the first thing the panel draws, and the only thing above the rows is what the ceiling dropped and what the metadata skipped -- the two caveats that say the panel is not showing everything.
+
+### The freshness check went with the banner that was its only entry point
+
+`Check against current metadata` lived in the provenance banner, and nothing else could start it. Removing the banner would have left the whole path unreachable rather than merely unused, so it is removed outright: the panel's `checkFreshness` message, the host's handler, the in-flight guard, the stored check context, the `applyFreshness` post and the replay that carried a resolved answer across a reveal.
+
+`PicklistDependencyManifestService.resolveManifestFreshness` and the freshness types go with it. **`buildSourceFingerprint` and `collectSourceFingerprintEntries` stay** -- they are what `Generate Picklist Dependency Tests` writes `sourceFingerprint` into `manifest.json` with, and that half was never the check. The manifest schema and its version are unchanged, so an existing manifest still loads and an existing `sourceFingerprint` is still recorded; nothing compares it any more.
+
+Four view model fields go with the rendering: `manifestFreshness`, `manifestFreshnessMessage`, `generatedAt` and `generatorVersion`. `modelSource`, `manifestLoadState`, `manifestLoadMessage`, `manifestFilePath` and `scannedObjectsDirectoryPath` all stay -- the empty state still names them, and it is the one place a metadata preview is still marked as one.
+
+### Dropping the contents means the find box is the whole navigation surface
+
+The contents listed the panel's sections and every object, and clicking an entry scrolled to it. It is gone, along with `registerPanelSection`, `updatePanelSectionLabel`, the section records and `jumpToObject`. The sections it listed still render; only the listing of them does not. On a large org the find box is now the only way to jump to an object, which is the trade this makes.
+
+### A header line that a render reveals cannot make a failed render look finished if there is no header line
+
+`revealHeaderLines` existed because the scanned path, written first, survived a throw in everything below it -- a heading and a path over an empty page reads exactly like a panel that loaded and found nothing. Both lines are out of the shell markup entirely rather than left in it unwritten, so there is nothing to hold back and nothing to hide again on failure. `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener and the unhandled-rejection report are all untouched: a panel that cannot draw still replaces its body with a failure notice and still tells the host.
+
+### What is unchanged
+
+Both Apex commands, the run overlay (`applyRunToViewModel` and everything under it, still exported and still tested), the rendering ceiling, the value-query summary, deep links, the record type disclosures, and both panel action allow-lists.
 
 ## [3.20.1] - `ts-node` stops shipping to every extension user, and CI now asserts what enters the package
 
