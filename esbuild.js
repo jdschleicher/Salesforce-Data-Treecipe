@@ -46,6 +46,19 @@ class ExtensionBundler {
             target: NODE_TARGET,
             external: [...EXTERNAL_MODULES],
             minify: isProductionBuild,
+
+            // Minifying without this renames every class and function, and THIS extension reads its
+            // own stack traces: ErrorHandlingService puts error.stack straight into the GitHub issue
+            // template it builds for the user (ErrorHandlingService.ts:25,91). Without keepNames a
+            // reported stack names nothing a maintainer can act on -- "RecipeService" does not appear
+            // in the minified bundle at all. It costs 8.8 KB (+0.9%).
+            //
+            // A source map would additionally restore file and LINE, but Node does not apply one to
+            // error.stack unless it was started with --enable-source-maps, which the extension host
+            // is not; and shipping it measured 0.58 MB zipped, ~11% of the package this change
+            // exists to shrink. So frames still read "extension.js:1:<column>" -- deliberately.
+            keepNames: isProductionBuild,
+
             sourcemap: !isProductionBuild,
             logLevel: 'info'
         };

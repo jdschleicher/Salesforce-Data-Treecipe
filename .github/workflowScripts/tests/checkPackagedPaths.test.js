@@ -373,9 +373,15 @@ describe('PackagedContentsChecker.checkPackagedContents', () => {
 
     // #137 bundled the extension, and these two assertions are what make the resulting dependency
     // split hold. They are unchanged by that work: what a bundled build changes is which packages
-    // legitimately appear in "dependencies", and the guard already asserts exactly that. The
-    // bundle's only non-builtin bare requires are its two externals, so a package that got inlined
-    // is caught by assertion 2 and one left external by mistake is caught by assertion 3.
+    // legitimately appear in "dependencies", and the guard already asserts exactly that.
+    //
+    // Be precise about WHICH half each assertion covers, because they are not symmetric. A package
+    // esbuild inlined but LEFT IN "dependencies" fails assertion 2, and one left external but not
+    // shipped fails assertion 3. What neither can see is a package inlined AND moved to
+    // "devDependencies" that actually needed to stay external: assertion 2 iterates "dependencies"
+    // only, and an inlined package emits no require for assertion 3 to find. Nothing on this side
+    // knows a package must be external -- that decision lives in esbuild.js, which is where
+    // esbuild.test.js pins it against this manifest.
     it('passes for the bundled shape, where only the externals stay declared', () => {
 
         const violations = PackagedContentsChecker.checkPackagedContents({

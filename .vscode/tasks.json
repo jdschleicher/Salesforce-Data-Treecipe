@@ -19,9 +19,29 @@
 		{
 			"type": "npm",
 			"script": "watch",
-			// No matcher: "$esbuild-watch" is not a built-in, and esbuild's own output is not in a
-			// format any built-in parses. Type errors reach the Problems panel from the tsc half.
-			"problemMatcher": [],
+			// launch.json runs the default build task as preLaunchTask, and VS Code only knows a
+			// BACKGROUND task's first run finished if a matcher tells it. With none it either
+			// refuses to track the task or launches the host without waiting -- and esbuild.js
+			// clears out/ before starting the watcher, so F5 could reach a missing bundle.
+			// There is no built-in esbuild matcher, so this keys on esbuild's own watch output:
+			//   [watch] build started / [watch] build finished, watching for changes...
+			// Errors themselves still surface from the tsc half, which owns typechecking.
+			"problemMatcher": [
+				{
+					"pattern": [
+						{
+							"regexp": "^\\s*(✘|▲)\\s+\\[(ERROR|WARNING)\\]\\s+(.*)$",
+							"severity": 2,
+							"message": 3
+						}
+					],
+					"background": {
+						"activeOnStart": true,
+						"beginsPattern": "^\\[watch\\] build started",
+						"endsPattern": "^\\[watch\\] build finished"
+					}
+				}
+			],
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never"

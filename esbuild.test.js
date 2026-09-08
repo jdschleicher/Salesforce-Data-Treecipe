@@ -57,6 +57,16 @@ describe('ExtensionBundler.buildOptions', () => {
 
     });
 
+    // This extension reads its OWN stack traces -- ErrorHandlingService puts error.stack into the
+    // GitHub issue template it builds for a user. Minifying without keepNames renames every class,
+    // so a reported stack names nothing anyone can act on. Nothing asserted the minify options
+    // before, which is exactly how that shipped unnoticed in review.
+    it('keeps class and function names through minification, so reported stacks stay readable', () => {
+
+        expect(ExtensionBundler.buildOptions(true).keepNames).toBeTrue();
+
+    });
+
 });
 
 describe('ExtensionBundler.parseArguments', () => {
@@ -145,6 +155,41 @@ describe('ExtensionBundler.run', () => {
 
         expect(exitCode).toBe(1);
         expect(consoleOutput.error).toHaveBeenCalledWith(expect.stringContaining('Unresolved import'));
+
+    });
+
+});
+
+describe('the external list and the runtime dependency manifest are one decision', () => {
+
+    // The guard in .github/workflowScripts/ asserts this split from the PACKAGE side, and it is
+    // blind in one direction: a package inlined AND moved to devDependencies that actually needed
+    // to stay external (runtime file-path resolution, the @salesforce/core/pino case) is invisible
+    // to both of its dependency assertions -- it is absent from "dependencies" so assertion 2 never
+    // iterates it, and it emits no require for assertion 3 to find. It builds green and breaks for
+    // a user at command time.
+    //
+    // This pins the same split from the side the inlining decision is actually made on, so an
+    // external can never be half-declared: named here but not shipped, or shipped but inlined.
+    // It does NOT make the repo able to guess that some new package needs externalising -- that
+    // stays a judgement call -- but it removes every way to record that judgement incompletely.
+    it('externalises exactly the runtime dependencies, plus the host-provided vscode', () => {
+
+        const runtimeDependencyNames = Object.keys(require('./package.json').dependencies);
+
+        expect(EXTERNAL_MODULES).toIncludeSameMembers(['vscode', ...runtimeDependencyNames]);
+
+    });
+
+    it('ships every module it externalises, so none can resolve to nothing at runtime', () => {
+
+        const { dependencies, devDependencies } = require('./package.json');
+        const hostProvided = ['vscode'];
+
+        for (const moduleName of EXTERNAL_MODULES.filter(name => !hostProvided.includes(name))) {
+            expect(dependencies).toContainKey(moduleName);
+            expect(devDependencies || {}).not.toContainKey(moduleName);
+        }
 
     });
 

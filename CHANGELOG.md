@@ -33,13 +33,23 @@ The issue expected assertions 2 and 3 to need re-pointing. They did not. The bun
 - a package esbuild **inlined** but left in `dependencies` fails assertion 2, whose message already reads *"Move it to devDependencies"*
 - a package left **external** by mistake and therefore not shipped fails assertion 3, which is the one that throws for an installed user rather than merely bloating the download
 
+Those two halves are **not symmetric**, and the review that found it was right to press. What neither assertion can see is a package inlined AND moved to `devDependencies` that actually needed to stay external -- assertion 2 iterates `dependencies` only, and an inlined package emits no require for assertion 3 to find. It builds green and breaks at command time. Nothing on the package side can know a module must be external, so `esbuild.test.js` pins the split from the side that decides it: `EXTERNAL_MODULES` must equal the runtime `dependencies` plus the host-provided `vscode`, and every module it names must ship. That does not let the repo guess that some future package needs externalising -- it removes every way to record that judgement incompletely.
+
 So `@faker-js/faker`, `js-yaml` and `xml2js` moved to `devDependencies` because the guard said to, not because a human remembered. Three tests pin the bundled shape against the same fixtures, and the guard passes unmodified against the real `vsce ls` listing.
 
 `xml2js` does still ship: `@salesforce/core` -> `@jsforce/jsforce-node` drags it back in as an external transitive, dead `xml2js.bc.js` and all, where it is now the largest single item left at 16.6% of the package. Reclaiming it is tracked on #137 rather than done here.
 
+### The published bundle is minified but keeps its names, because this extension reads its own stacks
+
+`ErrorHandlingService` puts `error.stack` straight into the GitHub issue template it builds for a user. Minifying renames every class, so a reported stack named nothing a maintainer could act on -- `RecipeService` does not appear in a plain minified bundle at all. `keepNames` restores that for **8.8 KB (+0.9%)**, and a test now pins the choice: nothing asserted the minify options before, which is exactly how it went unremarked.
+
+A source map would additionally restore file and line, and it is deliberately NOT shipped: Node does not apply one to `error.stack` unless started with `--enable-source-maps`, which the extension host is not, and the map measured **0.58 MB zipped -- ~11% of the package this change exists to shrink**. Frames therefore still read `extension.js:1:<column>`. That is a knowing trade, not an oversight.
+
 ### The watch loop is two watchers now
 
 One tool no longer does both jobs, so `watch` runs esbuild and `watch:typecheck` runs `tsc --noEmit --watch`. VS Code runs them in parallel itself (`dependsOrder: "parallel"`), so the Problems panel still fills from the tsc half and no `concurrently` dependency was added. Editor squiggles never came from the build task at all -- those are the TypeScript language server.
+
+The esbuild task carries a **background problem matcher** keyed on its own `[watch] build started` / `build finished` output. That is not cosmetic: `launch.json` runs the default build task as `preLaunchTask`, and VS Code only knows a background task's first run finished if a matcher says so -- without one it launches the host without waiting, and `esbuild.js` clears `out/` before starting the watcher, so F5 could reach a bundle that does not exist yet.
 
 ## [3.22.1] - The CI heap failures were a test mock escaping its own suite
 

@@ -61,5 +61,5 @@ jobs:
         # to execute an install hook here.
         npm install -g --ignore-scripts @vscode/vsce@3.9.2
 
-        # vsce publish runs "vscode:prepublish" (npm run compile) before packaging
+        # vsce publish runs "vscode:prepublish" (npm run compile && npm run bundle) before packaging
         vsce publish
