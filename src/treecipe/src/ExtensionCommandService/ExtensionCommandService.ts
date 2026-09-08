@@ -1559,7 +1559,6 @@ export class ExtensionCommandService {
         what distinguishes a model SENT from something on screen. Tracked as the FAILURE rather than
         as the success so its default cannot wedge anything: a panel that never speaks is treated as
         having drawn, which is what it did for every version before it could say otherwise.
-
     */
     private static picklistDependencyExplorerIsPanelRenderFailed: boolean = false;
 

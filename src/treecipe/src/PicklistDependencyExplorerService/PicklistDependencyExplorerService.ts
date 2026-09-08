@@ -4461,7 +4461,7 @@ export class PicklistDependencyExplorerService {
 
         A reveal after the panel was hidden reloads it from scratch, and the host answers "ready"
         with whatever it currently holds -- so the model is restored from the host's copy rather than
-        rebuilt from the manifest rather than re-read from disk.
+        re-read from disk and rebuilt.
     */
     /*
         A throw that did not come out of the render -- an event handler on a row, an expand that
