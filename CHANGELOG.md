@@ -43,6 +43,8 @@ Identifier name is too long: SDTPicklistDependencySpecs_Example_Everything_c (16
 
 `detectLegacyGeneratedArtifacts` now reports the whole family -- the aggregator, its test class, and every `SDTPicklistDependencySpecs_<Object>.cls` found by reading the classes directory, since an object api name is variable and there is no fixed name to check for. The warning says why it matters: a deploy failing on a 47-character identifier names a class this extension stopped generating, and nothing connected the two.
 
+That detection turned the warning's path list from five bounded entries into a directory listing, so it is capped at ten with the remainder counted. A notification is one run of text that truncates, and the actionable half -- what to delete from the org, and why a per-object class fails the deploy -- is at the END of it; a workspace holding one legacy class per object would have pushed it past the cut. The paths share one directory anyway, which the enumerated few already show.
+
 They are reported, not deleted -- the 3.0.0 posture, unchanged. What did change is that the per-object classes are named **together with the aggregator that calls them**, and deliberately kept out of `removeStalePerObjectSpecsClassFiles`. Sweeping them on their own would leave `SDTPicklistDependencySpecs.cls` calling classes that no longer exist, trading `identifier name is too long` for `variable does not exist` and leaving the user no better off.
 
 

@@ -3687,7 +3687,27 @@ ${testMethods}
 
     }
 
+    /*
+        A VS Code notification is one run of unformatted text that truncates, and the actionable half
+        of this warning -- what to delete from the ORG, and why a per-object class fails the deploy --
+        sits at the END of it. Before the per-object classes were detected, the path list was bounded
+        at five entries; it is now a directory listing, so a workspace holding one legacy class per
+        object puts hundreds of paths ahead of the part the reader needs. The enumeration is capped
+        and the remainder counted, which keeps the message a fixed size regardless of org.
+
+        The paths are not the payload anyway: they share one directory, which the enumerated few
+        already show.
+    */
+    private static maximumEnumeratedLegacyArtifactPaths = 10;
+
     static buildLegacyArtifactWarning(legacyArtifactPaths: string[]): string {
+
+        const enumeratedPaths = legacyArtifactPaths.slice(0, this.maximumEnumeratedLegacyArtifactPaths);
+        const unenumeratedPathCount = legacyArtifactPaths.length - enumeratedPaths.length;
+
+        const legacyArtifactSummary = unenumeratedPathCount > 0
+                                        ? `${enumeratedPaths.join(', ')} and ${unenumeratedPathCount} more`
+                                        : enumeratedPaths.join(', ');
 
         const legacyOrgClassNames = [
             ...this.legacySpecsClassNames,
@@ -3705,7 +3725,7 @@ ${testMethods}
             with "identifier name is too long". A user reading that error in their deploy output has
             no way to know it names a class this extension stopped generating.
         */
-        return `Picklist dependency classes from an earlier Treecipe version are still in this project: ${legacyArtifactPaths.join(', ')}. `
+        return `Picklist dependency classes from an earlier Treecipe version are still in this project: ${legacyArtifactSummary}. `
             + `They have been left in place. Delete them locally, and delete these classes from any org they were deployed to, `
             + `so the renamed SDT classes do not sit alongside a second copy of the framework: ${legacyOrgClassNames.join(', ')}. `
             + `Delete any "SDTPicklistDependencySpecs_<Object>" class together with the "SDTPicklistDependencySpecs" aggregator that calls it -- `

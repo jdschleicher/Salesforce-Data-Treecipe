@@ -3281,6 +3281,40 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        /*
+            A notification truncates, and the part that says what to delete from the ORG is at the
+            end. Detecting per-object classes turned a five-entry list into a directory listing, so
+            without a cap one legacy class per object buries the actionable half.
+        */
+        test('given more legacy paths than it enumerates, counts the remainder instead of listing them all', () => {
+
+            const manyLegacyPaths = Array.from({ length: 200 }, (unusedValue, index) =>
+                path.join(classesDirectoryPath, `SDTPicklistDependencySpecs_Object_${index}_c.cls`));
+
+            const warning = PicklistDependencyTestService.buildLegacyArtifactWarning(manyLegacyPaths);
+
+            expect(warning).toContain('and 190 more');
+            expect(warning).toContain('SDTPicklistDependencySpecs_Object_0_c.cls');
+            expect(warning).not.toContain('SDTPicklistDependencySpecs_Object_199_c.cls');
+
+            // THE ACTIONABLE HALF STILL SURVIVES A 200-OBJECT WORKSPACE
+            expect(warning).toContain('40-character');
+            expect(warning).toContain('SFTreecipePicklistDependencySpecs');
+
+        });
+
+        test('given few enough legacy paths to enumerate, names every one and counts no remainder', () => {
+
+            const warning = PicklistDependencyTestService.buildLegacyArtifactWarning([
+                path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls'),
+                path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Account.cls')
+            ]);
+
+            expect(warning).toContain('SDTPicklistDependencySpecs_Account.cls');
+            expect(warning).not.toContain('more.');
+
+        });
+
         test('the warning names the intermediate naming and why leaving one behind fails the deploy', () => {
 
             const legacyAggregatorFilePath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls');
