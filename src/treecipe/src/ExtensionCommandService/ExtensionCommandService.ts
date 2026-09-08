@@ -63,9 +63,6 @@ export const OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL = 'Open Explorer';
 interface IPicklistDependencyExplorerPanelMessage {
     command?: string;
     sourceFilePath?: string;
-    specFilePath?: string;
-    reportFilePath?: string;
-    methodName?: string;
     combinationKey?: string;
     // renderFailed ONLY -- what the panel threw, which no other channel can carry
     message?: string;
@@ -1356,8 +1353,12 @@ export class ExtensionCommandService {
     }
 
     /*
-        Reads local source metadata and the most recent persisted check, and renders both in a
-        webview panel.
+        Renders the generated picklist dependency STRUCTURE in a webview panel, and nothing else.
+
+        No check results are read here. The panel answers "which controlling value unlocks what",
+        which the spec manifest alone describes -- whether the org still agrees with it is what "Run
+        Picklist Dependency Check" is for, and that command reports its own outcome in its own
+        output channel and report.
 
         A webview rather than a served page: the panel needs no port, no runtime dependency and no
         second process, and it inherits the user's theme for free. The content security policy below
@@ -1381,7 +1382,6 @@ export class ExtensionCommandService {
                 throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
             }
 
-            const resultsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencyResultsFolderPath());
             const specsFolderPath = path.join(workspaceRoot, ConfigurationService.getPicklistDependencySpecsFolderPath());
 
             /*
@@ -1418,23 +1418,6 @@ export class ExtensionCommandService {
 
                 if ( manifestLoad.state === 'loaded' && manifestLoad.manifest ) {
 
-                    /*
-                        Results are loaded BEFORE the model is built, and deliberately so.
-
-                        They were measured at single-digit milliseconds -- the whole overlay, load and
-                        failure attribution together, is under 1% of an open -- so deferring them buys
-                        nothing, and it would cost something real: applyModelLimits keeps a FAILING
-                        combination over a passing one, and it cannot do that against statuses that
-                        have not been applied yet. A row the ceiling dropped for lack of a status is a
-                        row a failure then has nowhere to land on.
-                    */
-                    await this.reportPicklistDependencyExplorerPhase(
-                        explorerPanel,
-                        explorerLoadStatusItem,
-                        PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.loadingResults
-                    );
-                    const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
-
                     await this.reportPicklistDependencyExplorerPhase(
                         explorerPanel,
                         explorerLoadStatusItem,
@@ -1443,7 +1426,6 @@ export class ExtensionCommandService {
                     const explorerViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                         manifestLoad,
                         fullPathToObjectsDirectory,
-                        resultsLoad,
                         PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED,
                         workspaceRoot
                     );
@@ -1529,13 +1511,6 @@ export class ExtensionCommandService {
                 await this.reportPicklistDependencyExplorerPhase(
                     explorerPanel,
                     explorerLoadStatusItem,
-                    PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.loadingResults
-                );
-                const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(resultsFolderPath);
-
-                await this.reportPicklistDependencyExplorerPhase(
-                    explorerPanel,
-                    explorerLoadStatusItem,
                     PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView
                 );
 
@@ -1546,7 +1521,6 @@ export class ExtensionCommandService {
                     fullPathToObjectsDirectory,
                     collectionResult.specDetails,
                     collectionResult.skippedFieldWarnings,
-                    resultsLoad,
                     collectionResult.recordTypeSpecDetails,
                     previewContext
                 );
@@ -1661,19 +1635,21 @@ export class ExtensionCommandService {
     /*
         One allow-list per panel command, each built from the model currently rendered.
 
-        Every one of them matches the posted value against what the model NAMES rather than
-        validating it as a path, so a message arriving from anywhere else cannot make the extension
-        host open an arbitrary file on the user's disk. The spec and report lists are keyed on the
-        file AND the method together, so a legitimate file cannot be combined with a method name of
-        the sender's choosing either.
+        Both of them match the posted value against what the model NAMES rather than validating it
+        as a path, so a message arriving from anywhere else cannot make the extension host open an
+        arbitrary file on the user's disk or put arbitrary text on the clipboard.
+
+        There were four. The two keyed on a file AND an Apex method together -- the generated spec
+        class and the run report -- went with the buttons that addressed them, and the model no
+        longer carries a path for either. An action added back here needs its own list built the
+        same way; a handler that validates a posted path instead of matching it is the shape this
+        deliberately does not have.
 
         They start EMPTY and are only filled when a model is rendered. The panel now exists before
         any model does, and in that window every action is refused -- there is nothing on screen for
         one to have come from.
     */
     private static picklistDependencyExplorerRevealableSourceFilePaths: Set<string> = new Set();
-    private static picklistDependencyExplorerOpenableSpecTargets: Set<string> = new Set();
-    private static picklistDependencyExplorerOpenableRunReportTargets: Set<string> = new Set();
     private static picklistDependencyExplorerCopyableCombinationKeys: Set<string> = new Set();
 
     /*
@@ -1718,8 +1694,6 @@ export class ExtensionCommandService {
         ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
         ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
         ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
-        ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
-        ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
         ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
 
         if ( !existingExplorerPanel ) {
@@ -1737,8 +1711,6 @@ export class ExtensionCommandService {
                 ExtensionCommandService.picklistDependencyExplorerIsPanelRenderFailed = false;
                 ExtensionCommandService.picklistDependencyExplorerReportedFailureDescriptions = new Set();
                 ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
-                ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
-                ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
                 ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
             });
 
@@ -1849,10 +1821,6 @@ export class ExtensionCommandService {
 
         ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths =
             new Set(PicklistDependencyExplorerService.collectSourceFilePaths(explorerViewModel));
-        ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets =
-            new Set(PicklistDependencyExplorerService.collectOpenableSpecTargets(explorerViewModel));
-        ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets =
-            new Set(PicklistDependencyExplorerService.collectOpenableRunReportTargets(explorerViewModel));
         ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys =
             new Set(PicklistDependencyExplorerService.collectCombinationKeys(explorerViewModel));
 
@@ -2143,8 +2111,6 @@ export class ExtensionCommandService {
                         -- the same reason they start empty before the first render.
                     */
                     ExtensionCommandService.picklistDependencyExplorerRevealableSourceFilePaths = new Set();
-                    ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets = new Set();
-                    ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets = new Set();
                     ExtensionCommandService.picklistDependencyExplorerCopyableCombinationKeys = new Set();
 
                 }
@@ -2193,50 +2159,6 @@ export class ExtensionCommandService {
                 const fieldSourceUri = vscode.Uri.file(panelMessage.sourceFilePath);
                 await vscode.commands.executeCommand('revealInExplorer', fieldSourceUri);
                 await VSCodeWorkspaceService.openFileInEditor(panelMessage.sourceFilePath);
-
-                return;
-
-            }
-
-            if ( panelMessage?.command === 'openSpecMethod' && panelMessage.specFilePath && panelMessage.methodName ) {
-
-                const openTargetKey = PicklistDependencyExplorerService.buildOpenTargetKey(panelMessage.specFilePath, panelMessage.methodName);
-
-                if ( !ExtensionCommandService.picklistDependencyExplorerOpenableSpecTargets.has(openTargetKey) ) {
-                    return;
-                }
-
-                if ( !fs.existsSync(panelMessage.specFilePath) ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The generated class "${panelMessage.specFilePath}" no longer exists. Re-run "Salesforce Treecipe: Generate Picklist Dependency Tests" to write it again.`);
-                    return;
-                }
-
-                const specClassContent = fs.readFileSync(panelMessage.specFilePath, 'utf-8');
-                const specMethodLineNumber = PicklistDependencyExplorerService.findApexMethodDeclarationLineNumber(specClassContent, panelMessage.methodName);
-
-                await VSCodeWorkspaceService.openFileInEditor(panelMessage.specFilePath, specMethodLineNumber);
-
-                return;
-
-            }
-
-            if ( panelMessage?.command === 'openRunReport' && panelMessage.reportFilePath && panelMessage.methodName ) {
-
-                const openTargetKey = PicklistDependencyExplorerService.buildOpenTargetKey(panelMessage.reportFilePath, panelMessage.methodName);
-
-                if ( !ExtensionCommandService.picklistDependencyExplorerOpenableRunReportTargets.has(openTargetKey) ) {
-                    return;
-                }
-
-                if ( !fs.existsSync(panelMessage.reportFilePath) ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The check report "${panelMessage.reportFilePath}" no longer exists. Re-run "Salesforce Treecipe: Run Picklist Dependency Check" to write a new run.`);
-                    return;
-                }
-
-                const runReportContent = fs.readFileSync(panelMessage.reportFilePath, 'utf-8');
-                const runReportEntryLineNumber = PicklistDependencyExplorerService.findRunReportEntryLineNumber(runReportContent, panelMessage.methodName);
-
-                await VSCodeWorkspaceService.openFileInEditor(panelMessage.reportFilePath, runReportEntryLineNumber);
 
                 return;
 

@@ -2018,9 +2018,6 @@ describe('ExtensionCommandService', () => {
 
         test('given collected dependencies, opens a scripted webview panel carrying the rendered model', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             await extensionCommandService.openPicklistDependencyExplorer();
 
             expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
@@ -2041,24 +2038,52 @@ describe('ExtensionCommandService', () => {
 
         });
 
-        test('given a results folder, reads the latest run from the configured treecipe results path', async () => {
+        /*
+            The panel never looks at a check run. Asserted on the CONFIGURATION read rather than on
+            the absence of a results overlay, because that read is the first step of the whole
+            coupling: as long as the command never resolves the results folder, no later step can
+            reach one. It is also the assertion that fails loudly if the results path is threaded
+            back in for some other purpose.
+        */
+        test('never resolves the picklist dependency results folder -- the panel reads no run at all', async () => {
 
-            const loadLatestResultsSpy = jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
+            const resultsFolderPathSpy = jest.spyOn(ConfigurationService, 'getPicklistDependencyResultsFolderPath');
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
-            expect(loadLatestResultsSpy).toHaveBeenCalledWith(
-                expect.stringContaining('treecipe')
-            );
-            expect(loadLatestResultsSpy.mock.calls[0][0]).toContain('PicklistDependencyResults');
+            expect(resultsFolderPathSpy).not.toHaveBeenCalled();
+            expect(getRenderedViewModel().objects[0].rootNodes[0].fieldApiName).toBe('State__c');
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            The two actions that opened Apex are gone from the host as well as from the panel. A
+            message posting either is answered with nothing -- there is no allow-list for it to be
+            matched against, which is what makes "the model named it" still the whole gate.
+        */
+        test('given a message asking to open a generated class or a run report, opens nothing', async () => {
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            await receivedMessageHandler({
+                command: 'openSpecMethod',
+                specFilePath: '/workspace/force-app/main/default/classes/SDTPLDChainExampleSpecs.cls',
+                methodName: 'specForState'
+            });
+            await receivedMessageHandler({
+                command: 'openRunReport',
+                reportFilePath: '/workspace/treecipe/PicklistDependencyResults/report.md',
+                methodName: 'testChainExample'
+            });
+
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
 
         });
 
         test('given a reveal message naming a field the model contains, reveals and opens that field file', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
 
@@ -2077,9 +2102,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given a reveal message naming a path the model never produced, opens nothing', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2093,9 +2115,6 @@ describe('ExtensionCommandService', () => {
 
         test('given a message that is not a reveal request, opens nothing', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2108,9 +2127,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given the field file has since been deleted, warns rather than opening a missing path', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
             const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
@@ -2132,118 +2148,7 @@ describe('ExtensionCommandService', () => {
             model this render was built from -- a file the model names cannot be combined with a
             method name the model never named.
         */
-        test('given an open spec method message the model names, opens the generated class at the declaration', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
-            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-
-            jest.spyOn(fs, 'readFileSync').mockReturnValue(
-                'public class SDTChainExampleSpecs {\n\n    public static SDTPicklistDependencySpec specForState() {\n    }\n}'
-            );
-
-            await extensionCommandService.openPicklistDependencyExplorer();
-
-            const renderedViewModel = getRenderedViewModel();
-
-            const objectViewModel = renderedViewModel.objects[0];
-            const specMethodName = objectViewModel.rootNodes[0].specMethodName;
-
-            await receivedMessageHandler({
-                command: 'openSpecMethod',
-                specFilePath: objectViewModel.generatedClassFilePath,
-                methodName: specMethodName
-            });
-
-            expect(openFileInEditorSpy).toHaveBeenCalledWith(objectViewModel.generatedClassFilePath, expect.any(Number));
-
-        });
-
-        test('given an open spec method message pairing a real file with a method the model never named, opens nothing', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
-            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-
-            await extensionCommandService.openPicklistDependencyExplorer();
-
-            const renderedViewModel = getRenderedViewModel();
-
-            await receivedMessageHandler({
-                command: 'openSpecMethod',
-                specFilePath: renderedViewModel.objects[0].generatedClassFilePath,
-                methodName: 'deleteEverything'
-            });
-
-            expect(openFileInEditorSpy).not.toHaveBeenCalled();
-
-        });
-
-        test('given an open run report message the model names, opens the report at that method entry', async () => {
-
-            const reportFilePath = '/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-09-03T09-00-00/report.md';
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({
-                    state: 'loaded',
-                    message: '',
-                    resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-09-03T09-00-00/results.json',
-                    results: {
-                        targetOrg: 'devHub',
-                        ranAt: '2026-09-03T09:00:00Z',
-                        passed: true,
-                        failureCount: 0,
-                        methodsRun: 1,
-                        methodOutcomes: []
-                    }
-                });
-
-            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-
-            await extensionCommandService.openPicklistDependencyExplorer();
-
-            const renderedViewModel = getRenderedViewModel();
-
-            const testMethodName = renderedViewModel.objects[0].testMethodName;
-
-            jest.spyOn(fs, 'readFileSync').mockReturnValue(`# Picklist Dependency Check\n\n### ${testMethodName}\n`);
-
-            await receivedMessageHandler({
-                command: 'openRunReport',
-                reportFilePath: renderedViewModel.runSummary.reportFilePath,
-                methodName: testMethodName
-            });
-
-            expect(renderedViewModel.runSummary.reportFilePath).toBe(reportFilePath);
-            expect(openFileInEditorSpy).toHaveBeenCalledWith(reportFilePath, 3);
-
-        });
-
-        test('given an open run report message naming a file the model never named, opens nothing', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
-            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-
-            await extensionCommandService.openPicklistDependencyExplorer();
-
-            await receivedMessageHandler({
-                command: 'openRunReport',
-                reportFilePath: '/etc/passwd',
-                methodName: 'anything'
-            });
-
-            expect(openFileInEditorSpy).not.toHaveBeenCalled();
-
-        });
-
         test('given a copy reference message naming a combination the model declares, copies exactly that key', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const copyTextToClipboardSpy = jest.spyOn(VSCodeWorkspaceService, 'copyTextToClipboard').mockResolvedValue(undefined);
             jest.spyOn(VSCodeWorkspaceService, 'showInformationMessage').mockImplementation(() => undefined);
@@ -2258,9 +2163,6 @@ describe('ExtensionCommandService', () => {
 
         test('given a copy reference message naming a combination the model never declared, copies nothing', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const copyTextToClipboardSpy = jest.spyOn(VSCodeWorkspaceService, 'copyTextToClipboard').mockResolvedValue(undefined);
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2268,31 +2170,6 @@ describe('ExtensionCommandService', () => {
             await receivedMessageHandler({ command: 'copyCombinationReference', combinationKey: 'Anything__c.Else__c @ Whatever' });
 
             expect(copyTextToClipboardSpy).not.toHaveBeenCalled();
-
-        });
-
-        test('given the generated class has since been deleted, warns rather than opening a missing path', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
-            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
-
-            await extensionCommandService.openPicklistDependencyExplorer();
-
-            const renderedViewModel = getRenderedViewModel();
-
-            (fs.existsSync as unknown as jest.Mock).mockReturnValue(false);
-
-            await receivedMessageHandler({
-                command: 'openSpecMethod',
-                specFilePath: renderedViewModel.objects[0].generatedClassFilePath,
-                methodName: renderedViewModel.objects[0].rootNodes[0].specMethodName
-            });
-
-            expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('no longer exists'));
-            expect(openFileInEditorSpy).not.toHaveBeenCalled();
 
         });
 
@@ -2307,9 +2184,6 @@ describe('ExtensionCommandService', () => {
             };
 
             stubLoadedManifest(buildStubManifest([chainSpecDetail], [recordTypeSpecDetail]));
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const collectSpecDetailsSpy = jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory');
 
@@ -2330,9 +2204,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given a manifest, never re-walks the source metadata to build the panel', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const collectSpecDetailsSpy = jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory');
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2343,9 +2214,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given a manifest, every node names the generated class and spec method that asserts it', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
@@ -2360,9 +2228,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given a manifest recorded against changed metadata, renders a staleness banner naming the generate command', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockReturnValue({
@@ -2425,9 +2290,6 @@ describe('ExtensionCommandService', () => {
 
             jest.spyOn(PicklistDependencyManifestService, 'loadManifest')
                 .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2451,9 +2313,6 @@ describe('ExtensionCommandService', () => {
                     message: 'the manifest could not be read as JSON',
                     manifestFilePath: manifestFilePath
                 });
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2472,9 +2331,6 @@ describe('ExtensionCommandService', () => {
 
             jest.spyOn(PicklistDependencyTestService, 'collectSpecDetailsByObjectsDirectory')
                 .mockResolvedValue({ specDetails: [], recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] });
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2496,9 +2352,6 @@ describe('ExtensionCommandService', () => {
             };
 
             stubLoadedManifest(buildStubManifest([chainSpecDetail], [], [skippedField]));
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
@@ -2525,9 +2378,6 @@ describe('ExtensionCommandService', () => {
 
         test('given the command is run twice, reuses the one panel and reveals it rather than stacking tabs', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             await extensionCommandService.openPicklistDependencyExplorer();
             await extensionCommandService.openPicklistDependencyExplorer();
 
@@ -2542,9 +2392,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given the command is run twice, disposes the previous message listener', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             await extensionCommandService.openPicklistDependencyExplorer();
             await extensionCommandService.openPicklistDependencyExplorer();
 
@@ -2556,9 +2403,6 @@ describe('ExtensionCommandService', () => {
 
         test('given the panel is closed, drops the reference so the next run creates a new one', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             await extensionCommandService.openPicklistDependencyExplorer();
             registeredDisposeHandler();
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2569,9 +2413,6 @@ describe('ExtensionCommandService', () => {
 
         test('reports every phase into the panel and the status bar rather than leaving the command looking inert', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const statusBarPhaseItem = { text: '', show: jest.fn(), dispose: jest.fn() };
             (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarPhaseItem);
 
@@ -2579,7 +2420,6 @@ describe('ExtensionCommandService', () => {
 
             expect(getPostedPhaseMessages()).toEqual([
                 PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.readingManifest,
-                PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.loadingResults,
                 PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView
             ]);
 
@@ -2593,9 +2433,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('opens from the manifest alone, walking the objects directory for neither staleness nor structure', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness');
             const buildSourceFingerprintSpy = jest.spyOn(PicklistDependencyManifestService, 'buildSourceFingerprint');
@@ -2616,9 +2453,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given a check requested from the panel, walks once and answers into the banner', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockReturnValue({ freshness: 'fresh', message: '' });
@@ -2645,9 +2479,6 @@ describe('ExtensionCommandService', () => {
 
             (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Preview from metadata');
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness');
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2659,9 +2490,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given a panel reload after being hidden, replays the model and the freshness answer without rebuilding either', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockReturnValue({ freshness: 'staleMetadata', message: 'metadata has changed' });
@@ -2703,9 +2531,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given a panel that could not draw the model, reports it through the same error path as a host-side failure', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2729,9 +2554,6 @@ describe('ExtensionCommandService', () => {
 
         test('given a render failure carrying neither message nor stack, still reports something actionable', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2753,9 +2575,6 @@ describe('ExtensionCommandService', () => {
             silent render failure erased.
         */
         test('given the panel confirming it drew, records that a model is actually on screen', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
@@ -2812,9 +2631,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given a panel that reported it could not draw, refuses the walk it would otherwise run', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
@@ -2848,9 +2664,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given a refused check, restores the banner rather than leaving it narrating a walk that is not running', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -2868,9 +2681,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given a refused check after an answer already exists, restores that answer rather than notChecked', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockReturnValue({ freshness: 'staleMetadata', message: 'metadata has changed' });
@@ -2898,9 +2708,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given a runtime throw after a successful draw, keeps the panel usable', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
@@ -2917,9 +2724,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given a render failure, empties every action allow-list built from the model that is not on screen', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
@@ -2944,9 +2748,6 @@ describe('ExtensionCommandService', () => {
             distinct failure, not one per event.
         */
         test('given the same panel failure repeatedly, reports it once rather than once per event', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => {});
 
@@ -2974,9 +2775,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given the check itself throwing unexpectedly, still answers rather than leaving the banner checking', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockImplementation(() => {
                     throw new Error('something outside the walk exploded');
@@ -2997,9 +2795,6 @@ describe('ExtensionCommandService', () => {
 
         // AND THE IN-FLIGHT FLAG IS RELEASED, SO ONE UNEXPECTED THROW DOES NOT BLOCK EVERY LATER CHECK
         test('given the check throwing, releases the in-flight guard so a later check still runs', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockImplementationOnce(() => { throw new Error('transient explosion'); })
@@ -3041,9 +2836,6 @@ describe('ExtensionCommandService', () => {
         */
         test('given a second check while the first walk is still running, does not start an overlapping walk', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             await extensionCommandService.openPicklistDependencyExplorer();
 
             jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
@@ -3064,9 +2856,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given the panel closed across the walk, does not post the answer into a disposed panel', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             await extensionCommandService.openPicklistDependencyExplorer();
 
@@ -3108,9 +2897,6 @@ describe('ExtensionCommandService', () => {
 
             isPanelReadyAutoAnnounced = false;
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             await extensionCommandService.openPicklistDependencyExplorer();
 
             /*
@@ -3133,9 +2919,6 @@ describe('ExtensionCommandService', () => {
 
         test('posts the model exactly once per open, never both eagerly and again on the handshake', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
-
             await extensionCommandService.openPicklistDependencyExplorer();
 
             /*
@@ -3156,9 +2939,6 @@ describe('ExtensionCommandService', () => {
                 .mockReturnValue({ state: 'noManifestFound', message: 'no manifest was found' });
 
             (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(PREVIEW_FROM_METADATA_ACTION_LABEL);
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             /*
                 The scan takes seconds and the command now awaits it, so the tab can be closed across
@@ -3181,10 +2961,10 @@ describe('ExtensionCommandService', () => {
 
         test('given the panel closed before the model was built, renders nothing into it and posts nothing', async () => {
 
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockImplementation(() => {
+            jest.spyOn(PicklistDependencyManifestService, 'buildSpecDetailsByManifest')
+                .mockImplementation(manifest => {
                     registeredDisposeHandler();
-                    return { state: 'noResultsFound', message: 'no check has been run' };
+                    return { specDetails: [chainSpecDetail], recordTypeSpecDetails: [] };
                 });
 
             await extensionCommandService.openPicklistDependencyExplorer();
@@ -3196,9 +2976,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given the panel closed while the freshness walk was running, posts no answer into it', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockImplementation(() => {
@@ -3214,9 +2991,6 @@ describe('ExtensionCommandService', () => {
         });
 
         test('given a second open, does not replay the previous load freshness answer onto the new model', async () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'loadLatestResults')
-                .mockReturnValue({ state: 'noResultsFound', message: 'no check has been run' });
 
             const resolveManifestFreshnessSpy = jest.spyOn(PicklistDependencyManifestService, 'resolveManifestFreshness')
                 .mockReturnValue({ freshness: 'staleMetadata', message: 'metadata has changed' });
@@ -3253,10 +3027,13 @@ describe('ExtensionCommandService', () => {
                 In that window there is nothing on screen an action could have come from, so each one
                 is refused -- the allow-lists start empty rather than starting permissive.
             */
+            const copyTextToClipboardSpy = jest.spyOn(VSCodeWorkspaceService, 'copyTextToClipboard').mockResolvedValue(undefined);
+
             await receivedMessageHandler({ command: 'revealFieldSource', sourceFilePath: stateFieldSourceFilePath });
-            await receivedMessageHandler({ command: 'openSpecMethod', specFilePath: '/workspace/anything.cls', methodName: 'specForState' });
+            await receivedMessageHandler({ command: 'copyCombinationReference', combinationKey: 'Chain_Example__c.State__c @ USA' });
 
             expect(openFileInEditorSpy).not.toHaveBeenCalled();
+            expect(copyTextToClipboardSpy).not.toHaveBeenCalled();
             expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('revealInExplorer', expect.anything());
 
         });

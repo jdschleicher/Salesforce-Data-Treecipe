@@ -90,8 +90,14 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
             expect(fieldTypeToSnowfakeryMappings['formula']).toBe('### TODO - REMOVE ME - Formula fields are calculated, not generated');
         });
 
-        test('Location field returns correct faker expression', () => {
-            expect(fieldTypeToSnowfakeryMappings['location']).toBe(seeOnePagerPlaceholder);
+        /*
+            A Location field no longer reaches this map at all -- it is expanded into its Latitude
+            and Longitude component fields before a recipe value is looked up, so the gist-link
+            placeholder that stood in for that expansion has nothing left to describe.
+        */
+        test('Location field is absent from the map, so no recipe line can carry the one pager placeholder', () => {
+            expect(fieldTypeToSnowfakeryMappings).not.toHaveProperty('location');
+            expect(Object.values(fieldTypeToSnowfakeryMappings)).not.toContain(seeOnePagerPlaceholder);
         });
 
         test('All Salesforce field types have a corresponding mapping', () => {
@@ -99,7 +105,7 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
                 'text', 'textarea', 'longtextarea', 'html', 'email', 
                 'phone', 'url', 'number', 'currency', 'percent', 'date', 
                 'datetime', 'time', 'picklist', 'multiselectpicklist', 'checkbox', 
-                'lookup', 'masterdetail', 'formula', 'location'
+                'lookup', 'masterdetail', 'formula'
             ];
 
             expectedFields.forEach(field => {
@@ -554,6 +560,44 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
             expect(addressComponentToRecipeValue).not.toHaveProperty('StateCode');
             expect(addressComponentToRecipeValue).not.toHaveProperty('CountryCode');
+
+        });
+
+    });
+
+    describe('getGeolocationComponentToRecipeValueMap', () => {
+
+        test('returns an expression for every compound geolocation component, and only those', () => {
+
+            const geolocationComponentToRecipeValue = snowfakeryService.getGeolocationComponentToRecipeValueMap();
+
+            expect(Object.keys(geolocationComponentToRecipeValue)).toEqual(['Latitude', 'Longitude']);
+
+        });
+
+        test('returns the expected snowfakery expressions', () => {
+
+            const geolocationComponentToRecipeValue = snowfakeryService.getGeolocationComponentToRecipeValueMap();
+
+            expect(geolocationComponentToRecipeValue['Latitude']).toBe('${{fake.latitude}}');
+            expect(geolocationComponentToRecipeValue['Longitude']).toBe('${{fake.longitude}}');
+
+        });
+
+        /*
+            fake.latitude and fake.longitude take no bounds arguments -- the providers are defined
+            over -90..90 and -180..180, which is what makes naming them the way this backend states
+            the range. Asserting the provider is therefore asserting the bounds; a bounded numeric
+            provider with hand-written limits would be the alternative and is deliberately not used.
+        */
+        test('names the intrinsically bounded coordinate providers rather than a numeric range', () => {
+
+            const geolocationComponentToRecipeValue = snowfakeryService.getGeolocationComponentToRecipeValueMap();
+
+            expect(geolocationComponentToRecipeValue['Latitude']).toContain('fake.latitude');
+            expect(geolocationComponentToRecipeValue['Longitude']).toContain('fake.longitude');
+            expect(geolocationComponentToRecipeValue['Latitude']).not.toContain('random_int');
+            expect(geolocationComponentToRecipeValue['Longitude']).not.toContain('random_int');
 
         });
 

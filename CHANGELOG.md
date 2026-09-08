@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.16.2] - The CI heap failures were a test mock escaping its own suite
+## [3.19.1] - The CI heap failures were a test mock escaping its own suite
 
 ### One assignment, in one test, could exhaust a 4 GB heap in a different suite
 
@@ -41,25 +41,224 @@ The regression test is executed, not asserted as text: one test replaces `fs.pro
 
 No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
 
-### A green run on 3.16.1 is scheduling luck, not a fix
+### A green run on 3.19.0 is scheduling luck, not a fix
 
-Measured after merging 3.16.1: **`main` now passes four cold-cache runs in four.** Nothing about the defect changed -- the assignment is still there, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf. What changed is the per-file timing that decides which suites share a worker, because 3.16.0 and 3.16.1 added roughly 33 tests and took a cold run from ~30 s to ~76 s.
+**`main` passes cold-cache runs today, and the defect is untouched.** Re-measured against 3.19.0: three cold runs in three pass, where 3.15.0 failed two in three. The assignment is still on line 1603, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf. What moved is the per-file timing that decides which suites share a worker -- 3.16.0 through 3.19.0 added ~100 tests and took a cold run from ~30 s to ~60 s.
 
-Run the two suites on one worker and the defect answers for itself:
+Put the two suites on one worker and 3.19.0 answers for itself:
 
 ```
-# 3.16.1
-jest --maxWorkers=1 --runTestsByPath VSCodeWorkspaceService.test.ts RelationshipService.test.ts
-FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+jest --maxWorkers=1 --runTestsByPath \
+  VSCodeWorkspaceService.test.ts RelationshipService.test.ts
 
-# same command, this release
-Test Suites: 2 passed, 2 total
-Tests:       96 passed, 96 total
+3.19.0         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+this release   Test Suites: 2 passed, 2 total / Tests: 96 passed, 96 total
 ```
 
-So this is not a fix chasing a failure that has gone away. It is a fix for one that stopped being scheduled, and that the next test file added anywhere in the project can schedule again.
+So this is not a fix chasing a failure that has gone away. It is a fix for one that stopped being scheduled, and that the next test file added anywhere in the project can schedule again. Three releases have shipped since the failure was last seen in CI, and none of them touched the line that causes it.
 
-26 suites, 1361 tests, coverage 90.96/85.90/92.48/90.92 against 3.16.1's 90.93/85.84/92.46/90.88. Four cold-cache runs pass, and the pair that reproduces the heap exhaustion on 3.16.1 passes here. Before the merge, on 3.15.0, cold-cache runs of the whole suite failed two times in three.
+26 suites, 1430 tests (1423 + 7), coverage 91.09/86.03/92.54/91.05 against 3.19.0's 91.06/85.98/92.52/91.01 -- up on all four axes, with zero per-file regressions and the one added file at 100%. Three cold-cache runs pass, and the pair that exhausts the heap on 3.19.0 passes here.
+
+## [3.19.0] - Geolocation compound fields expand into the Latitude and Longitude components an insert can write
+
+Closes [#111](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/111).
+
+A Geolocation field (`<type>Location</type>`) generated a link instead of a value:
+
+```yaml
+Store_Location__c: '### TODO -- SEE ONE PAGER - https://gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445'
+```
+
+Like Address, Geolocation is a compound field the Collections API cannot accept. A record is inserted with its two component fields, `<FieldName>__Latitude__s` and `<FieldName>__Longitude__s`, so every Geolocation field in a recipe was hand-work: read the one pager, look up the naming convention, write two lines, delete the first.
+
+Now it expands, the same way an Address does:
+
+```yaml
+Store_Location__Latitude__s: |
+                ${{faker.location.latitude({ min: -90, max: 90 })}}
+Store_Location__Longitude__s: |
+                ${{faker.location.longitude({ min: -180, max: 180 })}}
+```
+
+and no line is emitted for `Store_Location__c` itself.
+
+### It is the second consumer of #4's path, not a second path
+
+`processFieldsDirectory` already collected compound fields during the walk and expanded them afterwards, returning several `FieldInfo` objects where every other field type returns one. Geolocation joins that collection rather than getting its own: `buildCompoundAddressComponentFieldInfos` is now `buildCompoundComponentFieldInfos`, and it picks the component recipes by compound kind and then applies the identical dedupe.
+
+That dedupe is why sharing it matters rather than being tidy. A component is dropped for two reasons -- the object's OOTB static mappings already name it, or the object has that component as its own field file -- and both produce the same duplicate YAML key. Those reasons do not depend on which compound type produced the component, so they stay in one place.
+
+`buildCompoundAddressComponentApiName` became `buildCompoundComponentApiName` for the same reason: Salesforce derives both compounds' component names by one rule, and the "Address" suffix swap holds for Geolocation rather than being incidental to it -- the components of a standard compound address ARE its geolocation, so `BillingAddress` *would* yield `BillingLatitude` and `BillingLongitude`, which are the real api names. To be clear about what this release does and does not do: nothing reaches that branch by the geolocation route, because only a `<type>Location</type>` field is expanded this way and in source metadata that is always a custom field. An `Address`-typed field still expands to the five address components and nothing else; emitting Lat/Long for standard address compounds would be its own change. `ICompoundAddressComponentRecipe` is now `ICompoundComponentRecipe`; the shape never was address-specific.
+
+### Detection is `<type>Location</type>` and nothing else
+
+There is no `customCompoundGeolocationFields` counterpart to the address config knob. That knob exists because a compound address field file can carry no `<type>` tag at all, in which case it parses as `AUTO_GENERATED` and no metadata signal is left to key on. A Geolocation field always declares its type, so there is no typeless case for config to rescue and a knob would only add a way to expand the wrong field.
+
+A `<type>Text</type>` field merely *named* `Location__c` is therefore untouched, and stays one ordinary text recipe line.
+
+### `<displayLocationInDecimal>` is deliberately not read
+
+The tag controls whether the **org displays** a coordinate as degrees/minutes/seconds; the API accepts decimal degrees either way. So it cannot change generated output -- and rather than let that follow silently from the tag going unread, a test generates from a `true` fixture and a `false` fixture and asserts the component lines are identical.
+
+### Bounds are in the expression, not in the faker default -- which costs a block scalar
+
+The faker-js values state `{ min: -90, max: 90 }` and `{ min: -180, max: 180 }` explicitly, as `|` block scalars.
+
+**The block form is not cosmetic.** A recipe value is a YAML *scalar*, and a plain one may not contain `": "`. Stating bounds puts a colon-space in the value, and `FakerJSRecipeProcessor` calls `yaml.load()` over the *whole* recipe file -- so a plain-scalar coordinate expression would not break its own line, it would make every field on every object in that file unreadable. Every faker-js expression in the service that carries a colon-space is emitted this way for exactly that reason (`number`, `percent`, `date`, `datetime`, `time`, and the precision/scale builders); these two now join them. Tests assert the property over *every* map the service exposes, not just the geolocation pair, so a future entry cannot reintroduce it. A generated coordinate is random, so sampling one proves nothing about the range a recipe constrains; putting the bounds in the recipe text makes the valid range something a reader and a test can both check, instead of a property of whichever faker version happens to be installed. Snowfakery's `fake.latitude` / `fake.longitude` take no bounds arguments -- those providers are defined over the valid ranges, which is what makes naming them the way that backend states the same thing.
+
+### The gist link is gone from both backends
+
+`'location'` is removed from `getMapSalesforceFieldToFakerValue()` in `FakerJSRecipeFakerService` and `SnowfakeryRecipeFakerService`. Tests assert the key is absent and that no value in either map carries the link, so no recipe path can still emit it.
+
+`Event.Location` is untouched: it is a plain Text field in the OOTB static map, not a Geolocation compound field, and a test pins its composed street/city/state/zip value byte-identically.
+
+### Interface
+
+`IRecipeFakerService` gains `getGeolocationComponentToRecipeValueMap()`, implemented by both backends alongside the existing `getAddressComponentToRecipeValueMap()`.
+## [3.18.0] - The Explorer's find box matches controlling values, and only the ones with a row on screen
+
+Closes [#125](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/125).
+
+The find box matched api names only: object, field, controlling field, record type. A reader asking "where does `Canada` appear as a controller?" had one route to the answer -- paste a combination reference -- and that requires already knowing which combination `Canada` lives in. This is the issue's option 1: **controlling values** join the haystack; dependent values do not.
+
+### What is matched
+
+Every combination row is headed by its controlling value, at field level and under each record type scope, so `buildNodeSearchText` now folds in the controlling value of every combination the node renders. Typing `Canada` shows every object with a row that says what `Canada` unlocks, and a single match still opens itself. The toolbar label reads **Find object, field or controlling value** and the placeholder names it too.
+
+The values a combination *unlocks* are deliberately not matched. A combination carries what its controlling value allows, and folding those lists in puts the product of the two picklists into the payload -- the exact expansion the manifest was restructured in 3.16.0 to stop materialising. Option 2 in the issue is its own decision, to be taken with its own measurements. A dependent value is still reachable where it is a **controlling** value one level down the chain (`Ohio` is a State__c value and a City__c controller), because that node's rows show it as one; a leaf value such as `Columbus` matches nothing, and the count says `0 of N` rather than showing everything.
+
+### The haystack is rebuilt from what survived the ceiling
+
+Search text is computed by the build, on the uncapped model. `applyModelLimits` drops combinations on three axes -- per field, per scope, and the total budget -- and a haystack left over from the build would still match a value no surviving row shows, handing the reader an object with no visible reason for matching. That is the mirror image of the false claim the issue warned about, and it is the one the find box must never make: a match always has a row on screen to show for it.
+
+So `applyModelLimits` ends with `rebuildSearchText`, after the total budget has run, and re-derives every node's and every object's haystack from the rows that remain. Tests pin the per-field cap, the total budget and the scope cap each removing a value from the haystack, and a model inside every cap keeping the build's text unchanged. A value the ceiling dropped is absent from the find box exactly as its row is absent from the panel, and it is counted in the same truncation notice.
+
+### Measured, as the issue asked
+
+The haystack grows with the number of **rendered** combinations, an axis `maxRenderedCombinations` already bounds. Re-measured on the 3.7.0 synthetic shapes through the real builder, against the current payload (which is smaller than the 3.7.0 table because the run overlay left it in 3.17.0):
+
+| Scenario | Objects | Combinations rendered | Before | After |
+|---|---|---|---|---|
+| Healthy 100 × 3 × 50 (inside every cap) | 100 | 15,000 | 3.58 MB | 4.21 MB (+0.63 MB) |
+| Healthy 400 × 3 × 400 (over every cap) | 250 | 20,000 | 7.72 MB | **8.58 MB (+0.86 MB)** |
+| Healthy 100 × 3 × 300 | 100 | 20,000 | 5.59 MB | 6.45 MB (+0.86 MB) |
+
+At the ceiling that is +11.1%, and it is bounded: the two 20,000-row shapes add the same 0.86 MB regardless of how many objects or fields carry them. Each rendered controlling value appears TWICE -- once in its node's haystack and once in its object's, which is what keeps the object-level match a single `indexOf` rather than a walk of the nodes on every keystroke -- so the search-text term is 2x what the node count suggests, and a future re-measure of the ceiling has to count both copies. The ceiling itself is unchanged.
+
+### Two things review caught
+
+**The haystack is joined on a newline, not a space.** Api names are `[A-Za-z0-9_]`, but a picklist value can carry spaces, and a space-joined haystack would let `america canada` match the tail of `North America` and the head of `Canada` -- an object with no row headed by that phrase, which is exactly the match with no visible reason this change exists to rule out. An `<input type="search">` can never contain a newline, so no query can match across the join; the panel already joins its record type haystack the same way for the same reason. A test pins that the phrase does not match while each value still does.
+
+**A skip-only object gets the same derivation as every other object.** It used to build its haystack inline, without the record type the skip names, so that record type became findable only once the ceiling had rebuilt the text. It now goes through `buildObjectSearchText` with no root nodes, and a test asserts the first render and the rebuilt one agree.
+
+### Tests
+
+- `search text`: a node matches every controlling value it renders; a value only a record type scope renders is matched; dependent values are not folded in and a leaf value matches nothing; a value with spaces and mixed case is lowercased whole; two values that together spell a phrase do not match the phrase; a skip-only object matches the record type its skip names from the first build, and the ceiling leaves it unchanged
+- `applyModelLimits`: a value dropped by the per-field cap, the total budget or the scope cap is no longer findable; a model inside every cap keeps the build's text
+- `the panel layout, executed`: a controlling value typed into the real find box, through the real filter, shows the object whose rows carry it and hides the other, with the match count reading `1 of 2`; a leaf value reads `0 of 2`; the label and placeholder name controlling values
+
+## [3.17.0] - The Picklist Dependency Explorer is a picture of the structure; the run overlay is disconnected, not deleted
+
+Closes [#123](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/123).
+
+The Explorer did two jobs. It drew the dependency structure -- which controlling value unlocks what -- and it reported the last Apex check run over the top of it: pass/fail badges on every row, a "Last check" banner, failure triage prose, a status filter, and buttons that opened the generated `.cls` at a spec method or the run's `report.md` at an object's entry.
+
+Those two jobs answer different questions, and fusing them made the first one wait on the second. A picklist dependency is a fact about your metadata. It is fully described by `manifest.json`, which the generate command already writes. Whether your **org** still agrees with it is a different question, and `Run Picklist Dependency Check` already answers that one in its own output channel and its own report.
+
+So the panel now does the first job only. **The overlay code is retained in full and simply has no caller** -- this is a disconnection, not a deletion.
+
+### What the panel no longer does
+
+`openPicklistDependencyExplorer` does not resolve the picklist dependency results folder at all, and the panel renders no badge, no banner, no triage, no status filter, and neither of the two actions that opened Apex. A test asserts on the *configuration read* rather than on the absence of an overlay, because that read is the first step of the whole coupling and nothing downstream can reach a run without it.
+
+The `loadingResults` load phase is gone with it: an open now reports `readingManifest` then `buildingView`.
+
+### What is retained, and still tested
+
+Every method the overlay is built from is still on `PicklistDependencyExplorerService`, still exported, and still held to the behaviour it always had: `loadLatestResults` and the run-folder walk beneath it, `parseFailureLines` and `extractFailureMessageForControllingValue`, `applyFailuresToNodes`, `buildUnattributedFailureMessage`, the ten-kind triage map and its three accessors, `resolveRunReportFilePath`, `collectOpenableSpecTargets`, `collectOpenableRunReportTargets`, `buildOpenTargetKey`, and both Apex/report line finders. Their tests and their `Mock*Results*` fixtures come with them.
+
+The orchestration that used to live *inside* `buildExplorerViewModel` -- look each object's generated test method up in the run, parse its failure lines, attribute them down the graph, decide whether anything landed nowhere, then set the statuses -- is now **`applyRunToViewModel`**, a method of its own. That is what makes "disconnected rather than deleted" concrete: the capability is whole and callable in one step, and re-connecting it is a wiring change rather than an archaeology exercise.
+
+```ts
+// what an Explorer open does
+const viewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(...);
+
+// what nothing currently does, but still works -- note the order
+PicklistDependencyExplorerService.applyModelLimits(
+    PicklistDependencyExplorerService.applyRunToViewModel(
+        PicklistDependencyExplorerService.buildUncappedExplorerViewModelByManifest(...),
+        resultsLoad
+    )
+);
+```
+
+**The order is part of the contract, and review caught that it had been inverted.** `applyModelLimits` drops rows; a failure naming a row that is already gone matches nothing, lands in the unattributed set, and holds the *whole* object at `'unknown'` -- every surviving row with it. Overlaying and then capping is the order the overlay ran in when it lived inside `buildExplorerViewModel`, so `buildUncappedExplorerViewModel` and `buildUncappedExplorerViewModelByManifest` exist to make that composition available. `buildExplorerViewModel` is unchanged for every existing caller -- it is now the uncapped build with the ceiling applied on the way out. Two tests pin both compositions, including the degraded one, so the wrong order cannot be reintroduced silently.
+
+### The overlay fields are OPTIONAL, which is the load-bearing detail
+
+`status`, `failures`, `failureCount`, `fieldLevelFailures`, `unattributedFailureMessages`, `runSummary`, `runLoadState`, `runLoadMessage` and `failureTriageByKind` are back on the view model interfaces as **optional**. `buildExplorerViewModel` never sets them; `applyRunToViewModel` assigns them.
+
+That keeps three things true at once. A structural model carries no verdict, so the posted payload does not grow by one status and one empty array per rendered row. The panel cannot read a verdict that is not there. And **absent** and **`'unknown'`** stay different statements: absent means "this model is not about a run", `'unknown'` means "a run was overlaid and did not cover this row". Making them required with an `'unknown'` default would collapse the two and leave the three-state rendering one line away from the panel.
+
+`generatedClassFilePath` is retained for the same reason -- `collectOpenableSpecTargets` reads it -- and still passes through `resolveOpenableManifestFilePath` on the way in. The guard is what makes keeping it safe; the current absence of a caller is not, because a future button would silently remove that.
+
+### The panel names no Apex at all
+
+`asserted by SDTPLDAccountSpecs.specAccountState()` on a field, `SDTPLDAccountSpecs.cls — test method …()` on an object, and `— asserted by SDTPicklistDependencyTests.cls` in the provenance banner are all gone from the panel. Which class or spec method was generated is not a fact about a dependency, and the panel is a picture of dependencies.
+
+The names are NOT deleted -- they are on the view model and in `manifest.json`, and the retained overlay still reads them. They are simply not rendered.
+
+They also come out of the find box. `buildNodeSearchText` and `buildObjectSearchText` no longer fold in the generated class, spec method or test method names: a query that matches text the reader cannot see returns a row with no visible reason for matching, so what is searchable is now exactly what is on screen.
+
+The skipped-field wording moved to dependency language with it -- "asserted by nothing" is now "no generated coverage", the badge reads `not covered`, and the contents section is `Not covered`. Same rows, same reasons, no assertion vocabulary.
+
+The provenance banner stays, minus the class name: it distinguishes a manifest-sourced model from a metadata preview, which is a statement about where the ROWS came from.
+
+### Both Apex commands are untouched
+
+`Generate Picklist Dependency Tests` and `Run Picklist Dependency Check` are unchanged, as are the emitted Apex, the test suite, the manifest schema and `report.md`. The generated names are still recorded per row in `manifest.json` and still carried on the view model -- the panel just does not render them, as above.
+
+The freshness check is untouched: its button, its five states (`notChecked`, `pendingCheck`, `checkFailed`, stale, fresh) and its refusal paths all behave exactly as before. Freshness is a question about your *metadata*, not about a run. So is the render guard -- `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener and the `render` vs `runtime` distinction are as they were in 3.15.0.
+
+### The truncation rule had to be replaced, not just unwired
+
+`applyModelLimits` kept a combination, scope or object the check had reported a failure for ahead of a passing one. A structural model has no statuses to prefer by, so that rule had nothing left to read.
+
+What survives a cap is now **manifest order** -- the first that fit, on every axis, including the total budget, which is spent in document order. The manifest is emitted deterministically, so the same org truncates to the same rows on every open, and a reader who cannot find a combination can tell from the notice that it was *cut* rather than wondering whether it *moved*. Inventing any other order (longest, most combinations, alphabetical) would have sorted the panel by something the generated Apex does not.
+
+Eight tests pin it, including one that runs the ceiling twice over the same model and asserts the same rows come back. An ordering nothing asserts is one a later refactor turns into "whatever the iteration produced".
+
+One retention rule survived, and it is not about a run: an object carrying a **skipped field** is still kept past the cap. A skipped field is the only thing the panel shows that no generated spec covers, and dropping the object holding it would leave a dependency that was never specced indistinguishable from one that does not exist.
+
+### Two truncation notices that were not true
+
+Review of this change caught both, and both are about the ceiling describing itself accurately rather than about what it drops.
+
+The node cap is applied to **root chains** -- a chain is dropped whole, because half a chain drawn as a graph misstates what controls what -- so a surviving chain brings every field beneath it. The notice nonetheless read "no object shows more than N at once". At a cap of 2, three chains of five fields renders **10** fields. The dropped count was right and the sentence was false; it now describes the cap in chains and says a rendered chain shows every field beneath it.
+
+`applyTotalCombinationBudget` sliced a holder's combinations without incrementing that holder's own `truncatedCombinationCount`, and the panel renders those per-field and per-scope counts beneath their rows. A field the budget emptied therefore rendered as a field that declares **no combinations at all**, with no local notice -- "rendered as something it was not", one level below where the aggregate notice was telling the truth. Each holder is now told what it lost, and a holder wholly inside the budget is left alone rather than sliced into an identical copy.
+
+Both were reachable on `main` too; this change rewrote the code and the wording around them, so they are fixed here rather than deferred. Three regression tests pin them, each asserting against the exact previous string or count.
+
+### The top of the panel is the find box
+
+The reader opens this panel to look one field up. Everything else at the top level is a caveat *about* the rows -- where they came from, whether they still match your metadata, what the rendering ceiling dropped, what was skipped -- and every one of them used to sit between the reader and the only control that gets them there.
+
+The toolbar is now the **first** thing under the scanned-path line, ahead of the provenance banner and both notice blocks. It is already `position: sticky`, so first is also where it stays on screen once the reader is down among the object sections. With no objects in the model it is not drawn at all: there is nothing to filter, and `applyFilter` -- the only thing that fills its match count -- never runs.
+
+The skipped-item list moved behind a disclosure and starts **collapsed**. What a reader has to see is the *count* -- that is what tells them the panel is not showing everything -- and the summary carries it either way. The list itself is one line per skipped item and is unbounded in how many the metadata skipped, which made it the longest block above the find box. Collapsed is not dropped: nothing is removed from the model, the section is still registered in the contents as `Not covered`, and every warning is still rendered under its own object, which is where a reader looking at that object meets it.
+
+The generation stamp moved into the header. `generated 2026-09-03T12:00:00Z by Treecipe 3.17.0` now sits on its own small line directly under the panel title, indented, and the provenance banner no longer carries a copy -- it keeps its heading, its freshness message, its `Check again` button and the manifest path. Stated once, and where you meet it.
+
+It is drawn only when there *is* one: a metadata preview was read from your source XML rather than generated, so its `generatedAt` is empty and no stamp appears. And it is revealed **last**, together with the scanned path, for the reason that line is: a header line filled from the model is exactly what made a failed render read as a finished one, so it stays hidden unless the whole body drew.
+
+All of this is asserted by executing the real panel script against the fake DOM harness rather than by matching its source, because all of it is a property of the rendered page: *where* the find box lands among the blocks, whether the list is open when it first draws, what the stamp says. That took three honest fixes to the harness -- its `classList` now answers `contains` from the classes an element actually carries rather than from its own `add` history (a section collapsed via `createElement('div', 'hidden')` was reported visible); its fake elements start with the classes the **shell markup** declares, so a header line the panel never revealed is not reported visible either, with a test pinning the markup they mirror; and it records listeners, so a test can open the disclosure the way a reader does.
+
+### Smaller things
+
+Every combination row now starts collapsed. It used to open for a row a check had reported a failure on, and singling out a subset on any other basis would put a claim about the rows into a disclosure state.
+
+The record type scope note changed for the same reason. It used to read "not asserted by the check: Apex describe returns picklist values without record type filtering" -- a statement about what verifies the row. It now says what the row **is**: the record type narrows the field-level dependency above it.
 
 ## [3.16.1] - customRelationshipMappings: the config wiring and the hierarchy result get tests
 

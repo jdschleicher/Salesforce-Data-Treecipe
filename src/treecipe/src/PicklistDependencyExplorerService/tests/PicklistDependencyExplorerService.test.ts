@@ -3,7 +3,6 @@ import {
     IPicklistDependencyResultsLoad,
     IPicklistDependencyExplorerViewModel,
     IPicklistDependencyCombinationViewModel,
-    PicklistDependencyCheckStatus,
     DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS,
     IPicklistDependencyExplorerModelLimits,
     PICKLIST_DEPENDENCY_EXPLORER_EXPAND_ALL_OBJECT_LIMIT,
@@ -31,11 +30,11 @@ expect.extend(matchers);
 
 jest.mock('vscode', () => ({}), { virtual: true });
 
+
 const mockResultsDirectoryPath = path.join(__dirname, 'mocks', 'MockPicklistDependencyResults');
 const mockMalformedResultsDirectoryPath = path.join(__dirname, 'mocks', 'MockMalformedResults');
 const mockResultsWithoutOutcomesDirectoryPath = path.join(__dirname, 'mocks', 'MockResultsWithoutOutcomes');
 const mockResultsWithReportDirectoryPath = path.join(__dirname, 'mocks', 'MockResultsWithReport');
-
 const mockObjectsDirectoryPath = path.join('/workspace', 'force-app', 'main', 'default', 'objects');
 
 function buildChainExampleSpecDetails(): IPicklistDependencySpecDetail[] {
@@ -108,14 +107,31 @@ function buildLimits(overrides: Partial<IPicklistDependencyExplorerModelLimits> 
     return { ...DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS, ...overrides };
 }
 
+function buildViewModel(specDetails: IPicklistDependencySpecDetail[]): IPicklistDependencyExplorerViewModel {
+
+    return PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, specDetails, []);
+
+}
+
 function buildNoResultsLoad(): IPicklistDependencyResultsLoad {
     return { state: 'noResultsFound', message: 'no check has been run' };
 }
 
-function buildViewModelWithLatestMockRun(specDetails: IPicklistDependencySpecDetail[]): IPicklistDependencyExplorerViewModel {
+/*
+    Builds the structure and then overlays a run onto it, which is what the Explorer's own build
+    used to do in one call. Two steps rather than one is the whole point: an Explorer open takes the
+    first step and stops, and these suites take both to hold the retained overlay to its behaviour.
+*/
+function buildViewModelWithRun(specDetails: IPicklistDependencySpecDetail[],
+                                    resultsLoad: IPicklistDependencyResultsLoad,
+                                    recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = []): IPicklistDependencyExplorerViewModel {
 
-    const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
-    return PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, specDetails, [], resultsLoad);
+    return PicklistDependencyExplorerService.applyRunToViewModel(
+        PicklistDependencyExplorerService.buildExplorerViewModel(
+            mockObjectsDirectoryPath, specDetails, [], recordTypeSpecDetails
+        ),
+        resultsLoad
+    );
 
 }
 
@@ -151,217 +167,6 @@ function buildPanelDocumentAndPayload(viewModel: IPicklistDependencyExplorerView
 }
 
 describe('PicklistDependencyExplorerService', () => {
-
-    describe('getResultsFolderTimestamp', () => {
-
-        it('given a check folder name, returns the trailing iso timestamp', () => {
-
-            const actualTimestamp = PicklistDependencyExplorerService.getResultsFolderTimestamp('check-devHub-2026-08-20T09-01-33');
-
-            expect(actualTimestamp).toBe('2026-08-20T09-01-33');
-
-        });
-
-        it('given an org identifier containing hyphens, still anchors the timestamp at the end of the name', () => {
-
-            const actualTimestamp = PicklistDependencyExplorerService.getResultsFolderTimestamp('check-my-scratch-org-01-2026-08-20T09-01-33');
-
-            expect(actualTimestamp).toBe('2026-08-20T09-01-33');
-
-        });
-
-        it('given a folder name the check command did not write, returns undefined', () => {
-
-            const actualTimestamp = PicklistDependencyExplorerService.getResultsFolderTimestamp('notACheckFolder');
-
-            expect(actualTimestamp).toBeUndefined();
-
-        });
-
-    });
-
-    describe('findLatestResultsFilePath', () => {
-
-        it('given several run folders, returns the results file from the most recent timestamp', () => {
-
-            const actualResultsFilePath = PicklistDependencyExplorerService.findLatestResultsFilePath(mockResultsDirectoryPath);
-
-            expect(actualResultsFilePath).toBe(
-                path.join(mockResultsDirectoryPath, 'check-devHub-2026-08-20T09-01-33', 'results.json')
-            );
-
-        });
-
-        /*
-            The stray file and the run folder holding only a report.md are both in the fixture tree
-            on purpose: that folder carries the NEWEST timestamp, so this resolves to the 08-20 run
-            only if a folder with no results.json is skipped rather than picked and then failed on.
-        */
-        it('given a run folder with no results file and a stray file beside it, skips both and returns the newest usable run', () => {
-
-            const actualResultsFilePath = PicklistDependencyExplorerService.findLatestResultsFilePath(mockResultsDirectoryPath);
-
-            expect(actualResultsFilePath).not.toContain('2026-08-25T11-11-11');
-            expect(actualResultsFilePath).toContain('check-devHub-2026-08-20T09-01-33');
-
-        });
-
-        it('given a results directory that does not exist, returns undefined rather than throwing', () => {
-
-            const actualResultsFilePath = PicklistDependencyExplorerService.findLatestResultsFilePath(
-                path.join(__dirname, 'mocks', 'ThisDirectoryDoesNotExist')
-            );
-
-            expect(actualResultsFilePath).toBeUndefined();
-
-        });
-
-    });
-
-    describe('loadLatestResults', () => {
-
-        it('given a valid results file, loads the run detail', () => {
-
-            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
-
-            expect(actualResultsLoad.state).toBe('loaded');
-            expect(actualResultsLoad.results.targetOrg).toBe('devHub');
-            expect(actualResultsLoad.results.passed).toBe(false);
-            expect(actualResultsLoad.results.methodOutcomes).toHaveLength(3);
-
-        });
-
-        it('given no results directory, reports the "no check has been run" state naming the directory scanned', () => {
-
-            const missingResultsDirectoryPath = path.join(__dirname, 'mocks', 'ThisDirectoryDoesNotExist');
-
-            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(missingResultsDirectoryPath);
-
-            expect(actualResultsLoad.state).toBe('noResultsFound');
-            expect(actualResultsLoad.message).toContain(missingResultsDirectoryPath);
-            expect(actualResultsLoad.results).toBeUndefined();
-
-        });
-
-        it('given a malformed results file, reports a readable message rather than throwing', () => {
-
-            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockMalformedResultsDirectoryPath);
-
-            expect(actualResultsLoad.state).toBe('unreadableResults');
-            expect(actualResultsLoad.message).toContain('could not be read as JSON');
-            expect(actualResultsLoad.results).toBeUndefined();
-
-        });
-
-        /*
-            A results.json can be well formed JSON carrying an outcomes list and still have had a
-            field mangled by whatever edited it. Every field is read defensively for that reason, so
-            a single bad value degrades to a placeholder rather than rendering "undefined" in the
-            panel banner or throwing on the way there.
-        */
-        it('given a results file whose fields carry the wrong types, falls back rather than surfacing undefined', () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'findLatestResultsFilePath')
-                .mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-08-20T09-01-33/results.json');
-
-            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
-                targetOrg: 42,
-                ranAt: null,
-                passed: 'yes',
-                failureCount: 'one',
-                // THE NULL ENTRY IS DELIBERATE -- A HOLE IN THE LIST MUST NOT THROW ON THE WAY TO THE PANEL
-                methodOutcomes: [{ methodName: 7, passed: 'true', message: 12 }, null]
-            }));
-
-            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults('/workspace/treecipe/PicklistDependencyResults');
-
-            expect(actualResultsLoad.state).toBe('loaded');
-            expect(actualResultsLoad.results.targetOrg).toBe('unknown org');
-            expect(actualResultsLoad.results.ranAt).toBe('unknown time');
-            expect(actualResultsLoad.results.passed).toBe(false);
-            expect(actualResultsLoad.results.failureCount).toBe(0);
-            expect(actualResultsLoad.results.methodsRun).toBe(2);
-            expect(actualResultsLoad.results.methodOutcomes[0].methodName).toBe('unknown');
-            expect(actualResultsLoad.results.methodOutcomes[0].passed).toBe(false);
-            expect(actualResultsLoad.results.methodOutcomes[0].message).toBeUndefined();
-            expect(actualResultsLoad.results.methodOutcomes[1].methodName).toBe('unknown');
-            expect(actualResultsLoad.results.methodOutcomes[1].passed).toBe(false);
-
-        });
-
-        it('given a results file that parses to null, reports it as unreadable', () => {
-
-            jest.spyOn(PicklistDependencyExplorerService, 'findLatestResultsFilePath')
-                .mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-08-20T09-01-33/results.json');
-            jest.spyOn(fs, 'readFileSync').mockReturnValue('null');
-
-            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults('/workspace/treecipe/PicklistDependencyResults');
-
-            expect(actualResultsLoad.state).toBe('unreadableResults');
-
-        });
-
-        it('given a results file with no methodOutcomes list, reports it as unreadable', () => {
-
-            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsWithoutOutcomesDirectoryPath);
-
-            expect(actualResultsLoad.state).toBe('unreadableResults');
-            expect(actualResultsLoad.message).toContain('methodOutcomes');
-
-        });
-
-    });
-
-    describe('parseFailureLines', () => {
-
-        it('given an apex assertion message, parses each failure line into its kind, scope and message', () => {
-
-            const assertionMessage = 'System.AssertException: Assertion Failed: Picklist dependency drift on Chain_Example__c -- 2 combination(s) no longer match local source metadata:\n'
-                + '  - MISSING_VALUES — Chain_Example__c.State__c @ USA: expected value(s) not unlocked in the org: Texas\n'
-                + '  - FORBIDDEN_VALUES_PRESENT — Chain_Example__c.City__c @ Ohio: value(s) unlocked that local metadata forbids: Toronto';
-
-            const actualFailures = PicklistDependencyExplorerService.parseFailureLines(assertionMessage);
-
-            expect(actualFailures).toHaveLength(2);
-            expect(actualFailures[0]).toEqual({
-                objectApiName: 'Chain_Example__c',
-                fieldApiName: 'State__c',
-                kind: 'MISSING_VALUES',
-                controllingValueAndMessage: 'USA: expected value(s) not unlocked in the org: Texas'
-            });
-            expect(actualFailures[1].kind).toBe('FORBIDDEN_VALUES_PRESENT');
-            expect(actualFailures[1].controllingValueAndMessage).toBe('Ohio: value(s) unlocked that local metadata forbids: Toronto');
-
-        });
-
-        it('given a failure line with no controlling value, parses it as a field level failure', () => {
-
-            const assertionMessage = '  - LOOKUP_ERROR — Chain_Example__c.State__c: Source returned no snapshot for this field';
-
-            const actualFailures = PicklistDependencyExplorerService.parseFailureLines(assertionMessage);
-
-            expect(actualFailures).toHaveLength(1);
-            expect(actualFailures[0].controllingValueAndMessage).toBeUndefined();
-            expect(actualFailures[0].fieldLevelMessage).toBe('Source returned no snapshot for this field');
-            expect(actualFailures[0].kind).toBe('LOOKUP_ERROR');
-
-        });
-
-        it('given no message at all, returns no failures', () => {
-
-            expect(PicklistDependencyExplorerService.parseFailureLines(undefined)).toEqual([]);
-
-        });
-
-        it('given a message carrying nothing that matches the failure line shape, returns no failures', () => {
-
-            const actualFailures = PicklistDependencyExplorerService.parseFailureLines('System.LimitException: Apex CPU time limit exceeded');
-
-            expect(actualFailures).toEqual([]);
-
-        });
-
-    });
 
     describe('buildFieldSourceFilePath', () => {
 
@@ -494,25 +299,76 @@ describe('PicklistDependencyExplorerService', () => {
 
     describe('buildExplorerViewModel', () => {
 
-        it('given no results at all, renders the structure with every combination marked not checked', () => {
+        /*
+            The panel is a picture of the STRUCTURE. Every field a check result used to occupy is
+            gone from the model rather than defaulted, so nothing downstream can read a stale
+            "unknown" and render a verdict badge over a row nothing verified. Asserted on the keys
+            rather than on their values for exactly that reason: a status of 'unknown' would satisfy
+            a value assertion while putting the whole three-state rendering back on screen.
+        */
+        it('carries no verdict of any kind -- not a run summary, not a status, not a failure', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
 
-            expect(actualViewModel.runLoadState).toBe('noResultsFound');
-            expect(actualViewModel.runSummary).toBeUndefined();
-            expect(actualViewModel.objects).toHaveLength(1);
-            expect(actualViewModel.objects[0].status).toBe('unknown');
-            expect(actualViewModel.objects[0].rootNodes[0].status).toBe('unknown');
-            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('unknown');
+            expect(actualViewModel).not.toContainKeys([
+                'runLoadState', 'runSummary', 'runLoadMessage', 'failureTriageByKind', 'truncatedFailedCombinationCount'
+            ]);
+
+            const stateNode = actualViewModel.objects[0].rootNodes[0];
+
+            expect(actualViewModel.objects[0]).not.toContainKeys(['status', 'failureCount', 'unattributedFailureMessages']);
+            expect(stateNode).not.toContainKeys(['status', 'failureCount', 'fieldLevelFailures']);
+            expect(stateNode.combinations[0]).not.toContainKeys(['status', 'failures']);
+
+        });
+
+        /*
+            The generated Apex is still NAMED. Disconnecting the panel from a run is not the same as
+            hiding what generated the rows -- the manifest's whole promise is that a row on screen
+            corresponds to a spec method that exists, and a panel that stopped saying which one could
+            no longer make it.
+        */
+        it('still names the generated class and test method that were emitted for each object', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+            );
+
+            expect(actualViewModel.objects[0].testMethodName).toBeTruthy();
+            expect(actualViewModel.objects[0]).toContainKey('generatedClassName');
+
+        });
+
+        /*
+            The generated class file path is RETAINED, because collectOpenableSpecTargets is retained
+            and reads it. Nothing in an Explorer open opens it, so what makes keeping it safe is the
+            workspace containment it goes through on the way in -- not the current absence of a
+            caller, which a future button would silently remove.
+        */
+        it('carries the generated class file path, and only from inside the workspace', () => {
+
+            const outOfWorkspaceContext = PicklistDependencyExplorerService.buildMetadataPreviewContext();
+            outOfWorkspaceContext.generatedClassFilePathsByObjectApiName = {
+                Chain_Example__c: PicklistDependencyExplorerService.resolveOpenableManifestFilePath(
+                    '/somewhere/else/SDTPLDChainExampleSpecs.cls', '/workspace'
+                )
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], [], outOfWorkspaceContext
+            );
+
+            expect(actualViewModel.objects[0]).toContainKey('generatedClassFilePath');
+            expect(actualViewModel.objects[0].generatedClassFilePath).toBe('');
 
         });
 
         it('given no dependent picklists, renders an empty object list and still names the scanned directory', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, [], [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, [], []
             );
 
             expect(actualViewModel.objects).toEqual([]);
@@ -523,161 +379,12 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('given the most recent run, overlays each failing combination with its kind and message', () => {
-
-            const actualViewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
-
-            expect(actualViewModel.runLoadState).toBe('loaded');
-            expect(actualViewModel.runSummary.targetOrg).toBe('devHub');
-            expect(actualViewModel.runSummary.passed).toBe(false);
-
-            const chainObjectViewModel = actualViewModel.objects[0];
-            expect(chainObjectViewModel.status).toBe('failed');
-            expect(chainObjectViewModel.failureCount).toBe(2);
-
-            const stateNode = chainObjectViewModel.rootNodes[0];
-            const failedUsaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
-            expect(failedUsaCombination.status).toBe('failed');
-            expect(failedUsaCombination.failures).toHaveLength(1);
-            expect(failedUsaCombination.failures[0].kind).toBe('MISSING_VALUES');
-            expect(failedUsaCombination.failures[0].message).toContain('Texas');
-
-            const passedCanadaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'Canada');
-            expect(passedCanadaCombination.status).toBe('passed');
-            expect(passedCanadaCombination.failures).toEqual([]);
-
-        });
-
-        it('given a failing combination on a chained field, overlays it on the nested node', () => {
-
-            const actualViewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
-
-            const cityNode = actualViewModel.objects[0].rootNodes[0].downstreamNodes[0];
-
-            expect(cityNode.fieldApiName).toBe('City__c');
-            expect(cityNode.status).toBe('failed');
-
-            const failedOhioCombination = cityNode.combinations.find(combination => combination.controllingValue === 'Ohio');
-            expect(failedOhioCombination.status).toBe('failed');
-            expect(failedOhioCombination.failures[0].kind).toBe('FORBIDDEN_VALUES_PRESENT');
-            expect(PicklistDependencyExplorerService.buildForbiddenValues(
-                cityNode.declaredValues, failedOhioCombination
-            )).toContain('Toronto');
-
-        });
-
-        it('given an object the run covered and passed, marks every combination passed', () => {
-
-            const dependencyExampleSpecDetails: IPicklistDependencySpecDetail[] = [
-                {
-                    objectApiName: 'Dependency_Example__c',
-                    fieldApiName: 'City__c',
-                    controllingFieldApiName: 'State__c',
-                    expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin'] }]
-                }
-            ];
-
-            const actualViewModel = buildViewModelWithLatestMockRun(dependencyExampleSpecDetails);
-
-            expect(actualViewModel.objects[0].status).toBe('passed');
-            expect(actualViewModel.objects[0].rootNodes[0].status).toBe('passed');
-            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('passed');
-
-        });
-
-        it('given an object absent from the loaded run, leaves it not checked rather than claiming it passed', () => {
-
-            const unrelatedSpecDetails: IPicklistDependencySpecDetail[] = [
-                {
-                    objectApiName: 'Never_Checked__c',
-                    fieldApiName: 'City__c',
-                    controllingFieldApiName: 'State__c',
-                    expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: [] }]
-                }
-            ];
-
-            const actualViewModel = buildViewModelWithLatestMockRun(unrelatedSpecDetails);
-
-            expect(actualViewModel.objects[0].status).toBe('unknown');
-            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('unknown');
-
-        });
-
-        it('given a failed run whose message names no combination, keeps the combinations not checked and surfaces the raw message', () => {
-
-            const unattributableResultsLoad: IPicklistDependencyResultsLoad = {
-                state: 'loaded',
-                message: '',
-                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-08-20T09-01-33/results.json',
-                results: {
-                    targetOrg: 'devHub',
-                    ranAt: '2026-08-20T09-01-33',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [
-                        {
-                            methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
-                            passed: false,
-                            message: 'System.LimitException: Apex CPU time limit exceeded'
-                        }
-                    ]
-                }
-            };
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], unattributableResultsLoad
-            );
-
-            const chainObjectViewModel = actualViewModel.objects[0];
-            expect(chainObjectViewModel.status).toBe('failed');
-            expect(chainObjectViewModel.unattributedFailureMessages.join('\n')).toContain('Apex CPU time limit exceeded');
-            expect(chainObjectViewModel.rootNodes[0].status).toBe('unknown');
-            expect(chainObjectViewModel.rootNodes[0].combinations[0].status).toBe('unknown');
-
-        });
-
-        it('given a field level failure with no controlling value, attaches it to the field rather than to a combination', () => {
-
-            const fieldLevelFailureResultsLoad: IPicklistDependencyResultsLoad = {
-                state: 'loaded',
-                message: '',
-                resultsFilePath: '/workspace/results.json',
-                results: {
-                    targetOrg: 'devHub',
-                    ranAt: '2026-08-20T09-01-33',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [
-                        {
-                            methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
-                            passed: false,
-                            message: '  - CONTROLLING_FIELD_MISMATCH — Chain_Example__c.State__c: the org reports Region__c as the controlling field'
-                        }
-                    ]
-                }
-            };
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], fieldLevelFailureResultsLoad
-            );
-
-            const stateNode = actualViewModel.objects[0].rootNodes[0];
-            expect(stateNode.status).toBe('failed');
-            expect(stateNode.fieldLevelFailures).toHaveLength(1);
-            expect(stateNode.fieldLevelFailures[0].kind).toBe('CONTROLLING_FIELD_MISMATCH');
-            expect(stateNode.fieldLevelFailures[0].message).toContain('Region__c');
-            expect(stateNode.combinations.every(combination => combination.status === 'passed')).toBe(true);
-
-        });
-
         it('given skipped field warnings, carries them into the model so the panel can say what is not shown', () => {
 
             const skippedFieldWarnings = ['No "valueSettings" markup found for dependent picklist "Chain_Example__c.Region__c"'];
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), skippedFieldWarnings, buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), skippedFieldWarnings
             );
 
             expect(actualViewModel.skippedFieldWarnings).toEqual(skippedFieldWarnings);
@@ -687,7 +394,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('counts nested chain nodes and their combinations in the totals', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
 
             expect(actualViewModel.dependentFieldCount).toBe(2);
@@ -698,7 +405,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('names the generated apex test method that covers each object', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
 
             expect(actualViewModel.objects[0].testMethodName).toBe('Chain_Example_c_picklistDependenciesMatchSourceMetadata');
@@ -721,7 +428,6 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath,
                 buildChainExampleSpecDetails(),
                 [],
-                buildNoResultsLoad(),
                 buildChainExampleRecordTypeSpecDetails()
             );
 
@@ -784,7 +490,7 @@ describe('PicklistDependencyExplorerService', () => {
             expect(viewModel.objects[0].recordTypeCombinationCount).toBe(5);
 
             // WITHOUT SCOPED DETAILS NOTHING CHANGES FOR AN OBJECT THAT HAS NO RECORD TYPES
-            const withoutScopes = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+            const withoutScopes = buildViewModel(buildChainExampleSpecDetails());
             expect(withoutScopes.recordTypeCombinationCount).toBe(0);
             expect(withoutScopes.objects[0].rootNodes[0].recordTypeScopes).toBeEmpty();
 
@@ -795,26 +501,6 @@ describe('PicklistDependencyExplorerService', () => {
             scoped combination "passed" off the back of that would report a scope nothing checked as
             verified -- the exact failure mode the describe source refuses a scoped spec to avoid.
         */
-        test('given a passing field level run, leaves scoped combinations unknown rather than claiming they passed', () => {
-
-            const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
-
-            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                resultsLoad,
-                buildChainExampleRecordTypeSpecDetails()
-            );
-
-            const stateNode = viewModel.objects[0].rootNodes[0];
-            const scopedStatuses = stateNode.recordTypeScopes[0].combinations.map(combination => combination.status);
-
-            expect(scopedStatuses.every(status => status === 'unknown')).toBeTrue();
-            expect(stateNode.recordTypeScopes[0].status).toBe('unknown');
-
-        });
-
     });
 
     describe('buildForbiddenValues for an unavailable controlling value', () => {
@@ -834,9 +520,7 @@ describe('PicklistDependencyExplorerService', () => {
                     controllingValue: 'Texas',
                     allowedValues: [],
                     hasForbiddenAssertion: true,
-                    controllingValueUnavailable: true,
-                    status: 'unknown',
-                    failures: []
+                    controllingValueUnavailable: true
                 }
             );
 
@@ -853,9 +537,7 @@ describe('PicklistDependencyExplorerService', () => {
                     controllingValue: 'Ohio',
                     allowedValues: [],
                     hasForbiddenAssertion: true,
-                    controllingValueUnavailable: false,
-                    status: 'unknown',
-                    failures: []
+                    controllingValueUnavailable: false
                 }
             );
 
@@ -897,365 +579,6 @@ describe('PicklistDependencyExplorerService', () => {
             scoped combination -- and a scoped FIELD-level failure belongs to its scope's rows rather
             than to the field's.
         */
-        test('given a record type scoped field level failure, does not attribute it to a scoped combination', () => {
-
-            const assertionMessage = '  - CONTROLLING_FIELD_MISMATCH — Chain_Example__c.State__c [North_America]: '
-                + 'Spec declares controlling field Country__c but the org has Region__c';
-
-            const resultsLoad: IPicklistDependencyResultsLoad = {
-                state: 'loaded',
-                message: 'loaded',
-                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
-                results: {
-                    targetOrg: 'devOrg',
-                    ranAt: '2026-09-02T09:00:00Z',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [{
-                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
-                        passed: false,
-                        message: assertionMessage
-                    }]
-                }
-            };
-
-            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                resultsLoad,
-                buildChainExampleRecordTypeSpecDetails()
-            );
-
-            const stateNode = viewModel.objects[0].rootNodes[0];
-
-            // NOT ON THE FIELD, WHOSE OWN SPEC THE RUN DID NOT REPORT AGAINST
-            expect(stateNode.fieldLevelFailures).toBeEmpty();
-
-            // AND NOT SILENTLY MATCHED ONTO A SCOPED COMBINATION EITHER -- IT NAMES NO CONTROLLING VALUE
-            const scopedCombinationFailures = stateNode.recordTypeScopes[0].combinations
-                .reduce((failureCount, combination) => failureCount + combination.failures.length, 0);
-            expect(scopedCombinationFailures).toBe(0);
-
-            expect(viewModel.objects[0].unattributedFailureMessages).toHaveLength(1);
-            expect(viewModel.objects[0].unattributedFailureMessages[0]).toContain('[North_America]');
-
-        });
-
-    });
-
-    describe('record type scoped failure attribution', () => {
-
-        test('parses the record type out of a scoped failure line', () => {
-
-            const parsedFailures = PicklistDependencyExplorerService.parseFailureLines(
-                '  - MISSING_VALUES — Chain_Example__c.State__c [North_America] @ USA: Expected values no longer valid: [Ohio]'
-            );
-
-            expect(parsedFailures).toHaveLength(1);
-            expect(parsedFailures[0].recordTypeDeveloperName).toBe('North_America');
-            expect(parsedFailures[0].fieldApiName).toBe('State__c');
-            expect(parsedFailures[0].controllingValueAndMessage).toBe('USA: Expected values no longer valid: [Ohio]');
-
-        });
-
-        test('leaves a field level failure line unscoped', () => {
-
-            const parsedFailures = PicklistDependencyExplorerService.parseFailureLines(
-                '  - MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]'
-            );
-
-            expect(parsedFailures[0].recordTypeDeveloperName).toBeUndefined();
-            expect(parsedFailures[0].controllingValueAndMessage).toBe('USA: Expected values no longer valid: [Ohio]');
-
-        });
-
-        /*
-            A scoped failure landing on the field-level row would report drift in a spec the run
-            never evaluated, and would do it on the row a reader trusts most.
-        */
-        test('attributes a scoped failure to its record type rather than to the field level row', () => {
-
-            const assertionMessage = 'Picklist dependency drift on Chain_Example__c -- 1 combination(s):\n'
-                + '  - MISSING_VALUES — Chain_Example__c.State__c [North_America] @ USA: Expected values no longer valid: [Ohio]';
-
-            const resultsLoad: IPicklistDependencyResultsLoad = {
-                state: 'loaded',
-                message: 'loaded',
-                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
-                results: {
-                    targetOrg: 'devOrg',
-                    ranAt: '2026-09-02T09:00:00Z',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [{
-                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
-                        passed: false,
-                        message: assertionMessage
-                    }]
-                }
-            };
-
-            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                resultsLoad,
-                buildChainExampleRecordTypeSpecDetails()
-            );
-
-            const stateNode = viewModel.objects[0].rootNodes[0];
-
-            const scopedUsa = stateNode.recordTypeScopes[0].combinations.find(combination => combination.controllingValue === 'USA');
-            expect(scopedUsa.status).toBe('failed');
-            expect(scopedUsa.failures).toHaveLength(1);
-            expect(scopedUsa.failures[0].kind).toBe('MISSING_VALUES');
-
-            const fieldLevelUsa = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
-            expect(fieldLevelUsa.status).not.toBe('failed');
-            expect(fieldLevelUsa.failures).toBeEmpty();
-
-            // AND THE FAILURE IS NOT LEFT LOOKING UNPLACEABLE, WHICH WOULD HOLD THE OBJECT AT UNKNOWN
-            expect(viewModel.objects[0].unattributedFailureMessages).toBeEmpty();
-
-        });
-
-        test('given a scoped failure naming a record type the metadata no longer declares, reports it with its scope', () => {
-
-            const assertionMessage = '  - MISSING_VALUES — Chain_Example__c.State__c [Deleted_Record_Type] @ USA: Expected values no longer valid: [Ohio]';
-
-            const resultsLoad: IPicklistDependencyResultsLoad = {
-                state: 'loaded',
-                message: 'loaded',
-                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
-                results: {
-                    targetOrg: 'devOrg',
-                    ranAt: '2026-09-02T09:00:00Z',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [{
-                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
-                        passed: false,
-                        message: assertionMessage
-                    }]
-                }
-            };
-
-            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                resultsLoad,
-                buildChainExampleRecordTypeSpecDetails()
-            );
-
-            expect(viewModel.objects[0].unattributedFailureMessages).toHaveLength(1);
-            expect(viewModel.objects[0].unattributedFailureMessages[0]).toContain('[Deleted_Record_Type]');
-
-        });
-
-    });
-
-    describe('failure attribution regressions', () => {
-
-        function buildColonValuedSpecDetails(): IPicklistDependencySpecDetail[] {
-
-            return [
-                {
-                    objectApiName: 'Account',
-                    fieldApiName: 'Sub_Type__c',
-                    controllingFieldApiName: 'Type__c',
-                    expectations: [
-                        { controllingValue: 'Tier 1: Premium', dependentValues: ['Gold'], forbiddenValues: ['Basic'] },
-                        { controllingValue: 'Tier 2', dependentValues: ['Basic'], forbiddenValues: ['Gold'] }
-                    ]
-                }
-            ];
-        }
-
-        function buildAccountResultsLoad(assertionMessage: string): IPicklistDependencyResultsLoad {
-
-            return {
-                state: 'loaded',
-                message: '',
-                resultsFilePath: '/workspace/results.json',
-                results: {
-                    targetOrg: 'devHub',
-                    ranAt: '2026-08-20T09-01-33',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [
-                        { methodName: 'Account_picklistDependenciesMatchSourceMetadata', passed: false, message: assertionMessage }
-                    ]
-                }
-            };
-        }
-
-        /*
-            A Salesforce picklist value may contain ": ", so splitting the failure line at the first
-            colon attributed the failure to a controlling value that does not exist -- and the
-            unmatched failure was then dropped, leaving the genuinely drifted combination green.
-        */
-        it('given a controlling value containing a colon, attributes the failure to the right combination', () => {
-
-            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 1: Premium: expected value(s) not unlocked in the org: Gold';
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildColonValuedSpecDetails(), [], buildAccountResultsLoad(assertionMessage)
-            );
-
-            const subTypeNode = actualViewModel.objects[0].rootNodes[0];
-            const premiumCombination = subTypeNode.combinations.find(combination => combination.controllingValue === 'Tier 1: Premium');
-
-            expect(premiumCombination.status).toBe('failed');
-            expect(premiumCombination.failures[0].kind).toBe('MISSING_VALUES');
-            expect(premiumCombination.failures[0].message).toBe('expected value(s) not unlocked in the org: Gold');
-            expect(actualViewModel.objects[0].unattributedFailureMessages).toEqual([]);
-
-        });
-
-        /*
-            The regression that mattered most: a parsed failure matching no combination was neither
-            applied nor reported, so the object showed as failed while every combination under it
-            showed as passed and the Apex message vanished from the panel entirely.
-        */
-        it('given a failure naming a combination this metadata no longer describes, holds the combinations at not checked and surfaces the message', () => {
-
-            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 3 Retired: expected value(s) not unlocked in the org: Platinum';
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildColonValuedSpecDetails(), [], buildAccountResultsLoad(assertionMessage)
-            );
-
-            const accountObject = actualViewModel.objects[0];
-
-            expect(accountObject.status).toBe('failed');
-            expect(accountObject.rootNodes[0].status).toBe('unknown');
-            expect(accountObject.rootNodes[0].combinations.every(combination => combination.status === 'unknown')).toBe(true);
-
-            const unattributedText = accountObject.unattributedFailureMessages.join('\n');
-            expect(unattributedText).toContain('Tier 3 Retired');
-            expect(unattributedText).toContain('Platinum');
-
-            // THE MESSAGE MUST ALSO SURVIVE INTO THE RENDERED SHELL, WHICH IS WHERE IT WAS PREVIOUSLY LOST
-            expect(buildPanelDocumentAndPayload(actualViewModel)).toContain('Platinum');
-
-        });
-
-        /*
-            SDTPicklistDependencyValidator raises MISSING_VALUES and FORBIDDEN_VALUES_PRESENT
-            independently for the same controlling value, so taking only the first hid a real
-            drift fact.
-        */
-        it('given two failure kinds on one combination, keeps both rather than only the first', () => {
-
-            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 2: expected value(s) not unlocked in the org: Basic\n'
-                + '  - FORBIDDEN_VALUES_PRESENT — Account.Sub_Type__c @ Tier 2: value(s) unlocked that local metadata forbids: Gold';
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildColonValuedSpecDetails(), [], buildAccountResultsLoad(assertionMessage)
-            );
-
-            const tierTwoCombination = actualViewModel.objects[0].rootNodes[0].combinations
-                .find(combination => combination.controllingValue === 'Tier 2');
-
-            expect(tierTwoCombination.failures).toHaveLength(2);
-            expect(tierTwoCombination.failures.map(failure => failure.kind))
-                .toEqual(['MISSING_VALUES', 'FORBIDDEN_VALUES_PRESENT']);
-            expect(actualViewModel.objects[0].failureCount).toBe(2);
-
-            const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
-            expect(actualWebviewHtml).toContain('FORBIDDEN_VALUES_PRESENT');
-            expect(actualWebviewHtml).toContain('MISSING_VALUES');
-
-        });
-
-        it('given a mutual upstream cycle, still shows both fields rather than rendering the object empty', () => {
-
-            const specDetails: IPicklistDependencySpecDetail[] = [
-                {
-                    objectApiName: 'Loop_Example__c',
-                    fieldApiName: 'First__c',
-                    controllingFieldApiName: 'Second__c',
-                    upstreamFieldApiName: 'Second__c',
-                    expectations: [{ controllingValue: 'A', dependentValues: ['B'], forbiddenValues: [] }]
-                },
-                {
-                    objectApiName: 'Loop_Example__c',
-                    fieldApiName: 'Second__c',
-                    controllingFieldApiName: 'First__c',
-                    upstreamFieldApiName: 'First__c',
-                    expectations: [{ controllingValue: 'B', dependentValues: ['A'], forbiddenValues: [] }]
-                }
-            ];
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()
-            );
-
-            // ONE MEMBER IS PROMOTED TO A ROOT AND THE OTHER HANGS BENEATH IT, SO BOTH ARE SHOWN EXACTLY ONCE
-            expect(actualViewModel.dependentFieldCount).toBe(2);
-            expect(PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
-                .map(node => node.fieldApiName).sort()).toEqual(['First__c', 'Second__c']);
-
-        });
-
-        it('given a field naming itself as upstream, treats it as a root rather than losing it', () => {
-
-            const specDetails: IPicklistDependencySpecDetail[] = [
-                {
-                    objectApiName: 'Self_Example__c',
-                    fieldApiName: 'Only__c',
-                    controllingFieldApiName: 'Only__c',
-                    upstreamFieldApiName: 'Only__c',
-                    expectations: [{ controllingValue: 'A', dependentValues: ['B'], forbiddenValues: [] }]
-                }
-            ];
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()
-            );
-
-            expect(actualViewModel.objects[0].rootNodes).toHaveLength(1);
-            expect(actualViewModel.objects[0].rootNodes[0].fieldApiName).toBe('Only__c');
-            expect(actualViewModel.objects[0].rootNodes[0].downstreamNodes).toEqual([]);
-
-        });
-
-    });
-
-    describe('extractFailureMessageForControllingValue', () => {
-
-        it('given a tail whose controlling value contains a colon, splits on the declared value rather than the first colon', () => {
-
-            const actualMessage = PicklistDependencyExplorerService.extractFailureMessageForControllingValue(
-                'Tier 1: Premium: expected value(s) not unlocked: Gold', 'Tier 1: Premium'
-            );
-
-            expect(actualMessage).toBe('expected value(s) not unlocked: Gold');
-
-        });
-
-        it('given a tail for a different controlling value, returns undefined so the caller can report it unattributed', () => {
-
-            const actualMessage = PicklistDependencyExplorerService.extractFailureMessageForControllingValue(
-                'Tier 3: something drifted', 'Tier 2'
-            );
-
-            expect(actualMessage).toBeUndefined();
-
-        });
-
-        it('given a tail that is exactly the controlling value, returns an empty message rather than undefined', () => {
-
-            expect(PicklistDependencyExplorerService.extractFailureMessageForControllingValue('Tier 2', 'Tier 2')).toBe('');
-
-        });
-
     });
 
     describe('buildDeclaredValuesByExpectations / buildForbiddenValues', () => {
@@ -1328,8 +651,7 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
                 mockObjectsDirectoryPath,
                 [{ objectApiName: 'Big__c', fieldApiName: 'Dependent__c', controllingFieldApiName: 'Controlling__c', expectations }],
-                [],
-                buildNoResultsLoad()
+                []
             );
 
             const embeddedJsonLength = measureRenderPayloadLength(actualViewModel);
@@ -1386,12 +708,12 @@ describe('PicklistDependencyExplorerService', () => {
             };
 
             const fieldLevelOnlyJsonLength = measureRenderPayloadLength(
-                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad())
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, [specDetail], [])
             );
 
             const withOneScopeJsonLength = measureRenderPayloadLength(
                 PicklistDependencyExplorerService.buildExplorerViewModel(
-                    mockObjectsDirectoryPath, [specDetail], [], buildNoResultsLoad(), [recordTypeSpecDetail]
+                    mockObjectsDirectoryPath, [specDetail], [], [recordTypeSpecDetail]
                 )
             );
 
@@ -1440,7 +762,6 @@ describe('PicklistDependencyExplorerService', () => {
                     expectations: [{ controllingValue: 'Assigned', dependentValues: declaredValues, forbiddenValues: [] }]
                 }],
                 [],
-                buildNoResultsLoad(),
                 [recordTypeSpecDetail]
             );
 
@@ -1462,7 +783,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('given a chained model, collects the source path of every node including nested ones', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
 
             const actualSourceFilePaths = PicklistDependencyExplorerService.collectSourceFilePaths(actualViewModel);
@@ -1501,7 +822,7 @@ describe('PicklistDependencyExplorerService', () => {
             ];
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, specDetails, []
             );
 
             const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
@@ -1518,7 +839,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('carries the empty state message with the model so the panel does not compose one of its own', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, [], [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, [], []
             );
 
             const actualRenderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(actualViewModel);
@@ -1532,7 +853,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('given a trailing phase, carries it so the panel keeps reporting what is still running after it paints', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
 
             const actualRenderMessage = PicklistDependencyExplorerService.buildRenderModelMessage(
@@ -1595,43 +916,97 @@ describe('PicklistDependencyExplorerService', () => {
         const postedHostMessages: any[] = [];
         const windowListenersByType: Record<string, Function> = {};
 
-        const buildFakeElement = (tagName: string): any => ({
-            tagName: tagName,
-            className: '',
+        const buildFakeElement = (tagName: string): any => {
+
             /*
-                textContent is a real accessor, not a plain field: assigning '' is how the panel
-                CLEARS a container, and a fake that kept its children would let a half-drawn page
-                still read as complete -- which would have this harness pass on the very bug it
-                exists to catch.
+                The class names this element ACTUALLY carries, which is not the same as the ones
+                classList was asked to add.
+
+                createElement sets them through className, and a collapsed section is collapsed
+                exactly that way -- createElement('div', 'hidden'). A classList that answered
+                contains() from its own add() history would report that element as visible, and a
+                toggle driven from that answer would open a section the panel had never closed. The
+                add/remove history is kept alongside because the render-guard tests assert on it.
             */
-            ownTextContent: '',
-            get textContent() { return this.ownTextContent; },
-            set textContent(nextTextContent: string) {
-                this.ownTextContent = nextTextContent;
-                if (!nextTextContent) { this.children.length = 0; }
-            },
-            children: [] as any[],
-            classList: {
-                added: [] as string[],
-                removed: [] as string[],
-                add(className: string) { this.added.push(className); },
-                remove(className: string) { this.removed.push(className); },
-                toggle(className: string, shouldBePresent: boolean) {
-                    if (shouldBePresent) { this.add(className); } else { this.remove(className); }
+            const carriedClassNames = new Set<string>();
+
+            const applyClassName = (nextClassName: string) => {
+                carriedClassNames.clear();
+                String(nextClassName || '').split(' ')
+                    .filter(className => !!className)
+                    .forEach(className => carriedClassNames.add(className));
+            };
+
+            const listenersByEventType: Record<string, Function[]> = {};
+
+            return {
+                tagName: tagName,
+                get className() { return Array.from(carriedClassNames).join(' '); },
+                set className(nextClassName: string) { applyClassName(nextClassName); },
+                /*
+                    textContent is a real accessor, not a plain field: assigning '' is how the panel
+                    CLEARS a container, and a fake that kept its children would let a half-drawn page
+                    still read as complete -- which would have this harness pass on the very bug it
+                    exists to catch.
+                */
+                ownTextContent: '',
+                get textContent() { return this.ownTextContent; },
+                set textContent(nextTextContent: string) {
+                    this.ownTextContent = nextTextContent;
+                    if (!nextTextContent) { this.children.length = 0; }
                 },
-                contains(className: string) { return this.added.includes(className); }
-            },
-            appendChild(childElement: any) { this.children.push(childElement); return childElement; },
-            addEventListener() { /* NO PANEL TEST DRIVES A CLICK -- THE HANDLERS ARE ASSERTED IN THE SHELL */ },
-            setAttribute() { /* NOOP */ },
-            scrollIntoView() { /* NOOP */ }
-        });
+                children: [] as any[],
+                classList: {
+                    added: [] as string[],
+                    removed: [] as string[],
+                    add(className: string) { carriedClassNames.add(className); this.added.push(className); },
+                    remove(className: string) { carriedClassNames.delete(className); this.removed.push(className); },
+                    // ONE ARGUMENT FLIPS WHAT IS CARRIED, WHICH IS THE FORM EVERY DISCLOSURE IN THE PANEL USES
+                    toggle(className: string, shouldBePresent?: boolean) {
+                        const nextPresence = shouldBePresent === undefined
+                            ? !carriedClassNames.has(className)
+                            : shouldBePresent;
+                        if (nextPresence) { this.add(className); } else { this.remove(className); }
+                        return nextPresence;
+                    },
+                    contains(className: string) { return carriedClassNames.has(className); }
+                },
+                appendChild(childElement: any) { this.children.push(childElement); return childElement; },
+                addEventListener(eventType: string, listener: Function) {
+                    listenersByEventType[eventType] = listenersByEventType[eventType] || [];
+                    listenersByEventType[eventType].push(listener);
+                },
+                // WHAT LETS A TEST OPEN A DISCLOSURE THE WAY A READER DOES, RATHER THAN ASSERTING ON ITS SOURCE
+                raiseEvent(eventType: string) {
+                    (listenersByEventType[eventType] || []).forEach(listener => {
+                        listener({ stopPropagation() { /* NOOP */ } });
+                    });
+                },
+                setAttribute() { /* NOOP */ },
+                scrollIntoView() { /* NOOP */ }
+            };
+
+        };
+
+        /*
+            Each one starts with the classes the SHELL MARKUP declares for it, not blank. The two
+            header lines are declared hidden there and revealed by the render, so a fake that started
+            them classless would report an unrendered header line as visible -- and a test asserting
+            it stays hidden would pass against a panel that had never hidden it. A test below pins
+            the markup these mirror.
+        */
+        const buildFakeElementWithClassName = (tagName: string, className: string): any => {
+            const fakeElement = buildFakeElement(tagName);
+            fakeElement.className = className;
+            return fakeElement;
+        };
 
         const elementsById: Record<string, any> = {
             explorerRoot: buildFakeElement('div'),
-            loadStatus: buildFakeElement('div'),
-            scannedPath: buildFakeElement('div'),
-            scannedPathValue: buildFakeElement('span')
+            loadStatus: buildFakeElementWithClassName('div', 'loadStatus'),
+            scannedPath: buildFakeElementWithClassName('div', 'muted hidden'),
+            scannedPathValue: buildFakeElementWithClassName('span', 'sourcePath'),
+            generatedStamp: buildFakeElementWithClassName('div', 'generatedStamp hidden')
         };
 
         const fakeDocument = {
@@ -1657,10 +1032,20 @@ describe('PicklistDependencyExplorerService', () => {
         const collectText = (element: any): string =>
             String(element.ownTextContent || '') + ' ' + element.children.map(collectText).join(' ');
 
+        const collectElementsByClassName = (element: any, className: string): any[] => {
+            const matches = element.classList.contains(className) ? [element] : [];
+            return element.children.reduce(
+                (foundElements: any[], childElement: any) =>
+                    foundElements.concat(collectElementsByClassName(childElement, className)),
+                matches
+            );
+        };
+
         return {
             postedHostMessages,
             elementsById,
             collectText,
+            collectElementsByClassName,
             postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
             raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent),
             raiseUnhandledRejection: (rejectionEvent: any) => windowListenersByType['unhandledrejection'](rejectionEvent)
@@ -1690,7 +1075,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const panel = runPanelScript();
             const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
             delete viewModel.truncationNotices;
 
@@ -1713,7 +1098,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const panel = runPanelScript();
             const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
             delete viewModel.truncationNotices;
 
@@ -1732,7 +1117,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const panel = runPanelScript();
             const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
             delete viewModel.truncationNotices;
 
@@ -1754,7 +1139,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const panel = runPanelScript();
             const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
             );
 
             panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
@@ -1809,6 +1194,279 @@ describe('PicklistDependencyExplorerService', () => {
 
             expect(bareFailure.message).not.toContain('[object');
             expect(bareFailure.message).toContain('error');
+
+        });
+
+    });
+
+    /*
+        The panel's TOP, executed.
+
+        Two things about it are properties of the rendered page rather than of the source, and the
+        harness above is what makes them assertable: WHERE the find box lands among the blocks that
+        describe the panel, and whether the skipped list is collapsed when it first draws. Asserting
+        either one as a string would say a call is present while saying nothing about the order the
+        reader meets it in.
+    */
+    describe('the panel layout, executed', () => {
+
+        const mockSkippedFieldWarnings = [
+            'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Region__c"',
+            'No "valueSettings" markup found for dependent picklist "Chain_Example__c.Territory__c"'
+        ];
+
+        function renderPanelWithSkippedWarnings() {
+
+            const panel = runPanelScript();
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildChainExampleSpecDetails(), mockSkippedFieldWarnings
+                ),
+                ''
+            ));
+
+            return panel;
+
+        }
+
+        function collectRootClassNames(panel: any): string[] {
+            return panel.elementsById.explorerRoot.children.map((childElement: any) => String(childElement.className));
+        }
+
+        /*
+            Manifest-sourced rather than the preview every other test here uses: a preview was never
+            generated, so it carries no generation stamp to place.
+        */
+        function renderManifestSourcedPanel() {
+
+            const panel = runPanelScript();
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                {
+                    specDetails: buildChainExampleSpecDetails(),
+                    recordTypeSpecDetails: [],
+                    skippedFieldWarnings: [],
+                    skippedFields: []
+                },
+                mockObjectsDirectoryPath,
+                path.join('/workspace', 'force-app', 'main', 'default', 'classes'),
+                '3.17.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                    { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
+                    mockObjectsDirectoryPath,
+                    { freshness: 'fresh', message: '' }
+                )
+            ));
+
+            return panel;
+
+        }
+
+        /*
+            The reader opened this panel to look a field up. Everything else at the top level is a
+            caveat ABOUT the rows, and each one used to sit between them and the only control that
+            gets them there.
+        */
+        it('draws the find box before every block that describes the panel', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+            const rootClassNames = collectRootClassNames(panel);
+
+            expect(rootClassNames[0]).toBe('toolbar');
+
+            // MATCHED ON THE LEADING CLASS: THE BANNER CARRIES ITS PROVENANCE AS A SECOND ONE
+            expect(rootClassNames.findIndex(className => className.startsWith('provenanceBanner'))).toBeGreaterThan(0);
+            expect(rootClassNames.indexOf('warningList')).toBeGreaterThan(0);
+
+        });
+
+        /*
+            With nothing to filter the box is not drawn at all: applyFilter is what fills its match
+            count and it only runs once there are sections, so an empty panel would carry a control
+            reporting nothing.
+        */
+        it('given a model with no objects, draws no find box and still reports the draw', () => {
+
+            const panel = runPanelScript();
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, [], [])
+            ));
+
+            expect(collectRootClassNames(panel)).not.toContain('toolbar');
+            expect(panel.collectText(panel.elementsById.explorerRoot)).toContain('No dependent picklists were found');
+            expect(panel.postedHostMessages.some((hostMessage: any) => hostMessage.command === 'rendered')).toBe(true);
+
+        });
+
+        /*
+            #125, end to end: the value is typed into the real find box, the real filter runs, and the
+            object whose rows carry that controlling value is the one left showing. A second object
+            with different controlling values is what makes "1 of 2" a statement about matching
+            rather than about the panel having one object.
+        */
+        it('given a controlling value typed into the find box, shows the object whose rows carry it and hides the rest', () => {
+
+            const panel = runPanelScript();
+
+            const otherObjectSpecDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Other_Object__c',
+                fieldApiName: 'Province__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'Mexico', dependentValues: ['Jalisco'], forbiddenValues: [] }]
+            }];
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, [...buildChainExampleSpecDetails(), ...otherObjectSpecDetails], []
+                ),
+                ''
+            ));
+
+            const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+            const findInputElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0].children[1];
+            const matchCountElement = panel.collectElementsByClassName(toolbarElement, 'matchCount')[0];
+
+            expect(findInputElement.tagName).toBe('input');
+
+            findInputElement.value = 'Canada';
+            findInputElement.raiseEvent('input');
+
+            const sectionElements = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'objectSection');
+            const hiddenSectionCount = sectionElements.filter((sectionElement: any) => sectionElement.classList.contains('hidden')).length;
+
+            expect(sectionElements).toHaveLength(2);
+            expect(hiddenSectionCount).toBe(1);
+            expect(panel.collectText(matchCountElement)).toContain('1 of 2 object(s) shown');
+            expect(panel.collectText(sectionElements.find((sectionElement: any) => !sectionElement.classList.contains('hidden')))).toContain('Chain_Example__c');
+
+            // A VALUE NO ROW IS HEADED BY MATCHES NOTHING, AND THE COUNT SAYS SO RATHER THAN SHOWING EVERYTHING
+            findInputElement.value = 'Columbus';
+            findInputElement.raiseEvent('input');
+
+            expect(panel.collectText(matchCountElement)).toContain('0 of 2 object(s) shown');
+
+        });
+
+        it('names controlling values in the find box label and placeholder', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+
+            const toolbarElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'toolbar')[0];
+            const findFieldElement = panel.collectElementsByClassName(toolbarElement, 'toolbarField')[0];
+
+            expect(panel.collectText(findFieldElement)).toContain('Find object, field or controlling value');
+            expect(findFieldElement.children[1].placeholder).toContain('controlling value');
+
+        });
+
+        it('draws the skipped items collapsed, with the count still stating how many are held', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+            const warningListElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'warningList')[0];
+
+            const summaryElement = warningListElement.children[0];
+            const detailElement = warningListElement.children[1];
+
+            expect(panel.collectText(summaryElement)).toContain('2 item(s) were skipped and have no generated coverage');
+
+            // COLLAPSED IS NOT DROPPED: EVERY WARNING IS THERE, BEHIND THE DISCLOSURE
+            expect(detailElement.classList.contains('hidden')).toBe(true);
+            expect(panel.collectText(detailElement)).toContain('Chain_Example__c.Region__c');
+            expect(panel.collectText(detailElement)).toContain('Chain_Example__c.Territory__c');
+
+        });
+
+        it('opens the skipped items when the summary is clicked, and closes them again', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+            const warningListElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'warningList')[0];
+
+            const summaryElement = warningListElement.children[0];
+            const disclosureElement = summaryElement.children[0];
+            const detailElement = warningListElement.children[1];
+
+            expect(disclosureElement.textContent).toBe('▸');
+
+            summaryElement.raiseEvent('click');
+
+            expect(detailElement.classList.contains('hidden')).toBe(false);
+            expect(disclosureElement.textContent).toBe('▾');
+
+            summaryElement.raiseEvent('click');
+
+            expect(detailElement.classList.contains('hidden')).toBe(true);
+            expect(disclosureElement.textContent).toBe('▸');
+
+        });
+
+        // WHAT THE FAKE DOCUMENT'S STARTING CLASSES MIRROR -- THE TWO HEADER LINES ARE HIDDEN UNTIL A RENDER REVEALS THEM
+        it('declares both model-filled header lines hidden in the shell markup', () => {
+
+            const actualShellHtml = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).toContain('<div id="generatedStamp" class="generatedStamp hidden"></div>');
+            expect(actualShellHtml).toContain('<div id="scannedPath" class="muted hidden">');
+
+        });
+
+        it('stamps when and by what version the specs were generated under the title', () => {
+
+            const panel = renderManifestSourcedPanel();
+
+            expect(panel.elementsById.generatedStamp.textContent)
+                .toBe('generated 2026-09-03T12:00:00Z by Treecipe 3.17.0');
+            expect(panel.elementsById.generatedStamp.classList.removed).toContain('hidden');
+
+        });
+
+        // ONE STATEMENT OF IT, NOT TWO -- THE BANNER KEEPS ITS HEADING, ITS CHECK BUTTON AND ITS PATH
+        it('states the generation stamp once, in the header rather than in the banner as well', () => {
+
+            const panel = renderManifestSourcedPanel();
+            const bannerElement = panel.collectElementsByClassName(panel.elementsById.explorerRoot, 'provenanceBanner')[0];
+
+            expect(panel.collectText(bannerElement)).not.toContain('2026-09-03T12:00:00Z');
+            expect(panel.collectText(bannerElement)).toContain('Generated specs');
+            expect(panel.collectText(bannerElement)).toContain('/workspace/treecipe/PicklistDependencySpecs/manifest.json');
+
+        });
+
+        /*
+            A preview was read from metadata rather than generated, so there is no moment to stamp.
+            "generated  by Treecipe " states nothing, and an empty line under the title states less.
+        */
+        it('given a metadata preview, draws no generation stamp at all', () => {
+
+            const panel = renderPanelWithSkippedWarnings();
+
+            expect(panel.elementsById.generatedStamp.classList.contains('hidden')).toBe(true);
+            expect(panel.elementsById.generatedStamp.textContent).toBe('');
+
+        });
+
+        /*
+            Held back with the scanned path, and for the same reason: a header line the model filled
+            is exactly what made a failed render read as a finished one.
+        */
+        it('given a model it cannot draw, leaves the generation stamp hidden', () => {
+
+            const panel = runPanelScript();
+            const viewModel: any = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+            );
+            delete viewModel.truncationNotices;
+
+            panel.postToPanel(PicklistDependencyExplorerService.buildRenderModelMessage(viewModel, ''));
+
+            expect(panel.elementsById.generatedStamp.classList.contains('hidden')).toBe(true);
+            expect(panel.elementsById.generatedStamp.classList.removed).not.toContain('hidden');
 
         });
 
@@ -2029,7 +1687,6 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath,
                 buildChainExampleSpecDetails(),
                 [],
-                buildNoResultsLoad(),
                 buildChainExampleRecordTypeSpecDetails()
             );
 
@@ -2047,8 +1704,8 @@ describe('PicklistDependencyExplorerService', () => {
             expect(actualWebviewHtml).toContain('scopeBodyBuilt');
             expect(actualWebviewHtml).toContain('buildScopeBody');
 
-            // THE PANEL MUST SAY WHY A SCOPED ROW NEVER GOES GREEN, BESIDE THE ROWS THEMSELVES
-            expect(actualWebviewHtml).toContain('not asserted by the check');
+            // THE PANEL MUST SAY WHAT A SCOPED ROW IS, BESIDE THE ROWS THEMSELVES
+            expect(actualWebviewHtml).toContain('narrows the field-level dependency above');
 
             /*
                 A record type developer name reaches the panel through the posted model like every
@@ -2064,7 +1721,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('given no dependent picklists, carries the empty state naming the scanned directory into the shell', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, [], [], buildNoResultsLoad()
+                mockObjectsDirectoryPath, [], []
             );
 
             const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
@@ -2079,7 +1736,7 @@ describe('PicklistDependencyExplorerService', () => {
             const markupObjectsDirectoryPath = '/workspace/<script>alert(1)</script>';
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                markupObjectsDirectoryPath, [], [], buildNoResultsLoad()
+                markupObjectsDirectoryPath, [], []
             );
 
             /*
@@ -2181,14 +1838,13 @@ describe('PicklistDependencyExplorerService', () => {
             });
 
             const manifestSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, freshResult
             );
 
             const specSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
                 mockObjectsDirectoryPath,
                 collectionResult.specDetails,
                 [],
-                buildNoResultsLoad(),
                 collectionResult.recordTypeSpecDetails
             );
 
@@ -2216,7 +1872,7 @@ describe('PicklistDependencyExplorerService', () => {
             });
 
             const manifestSourcedViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+                buildManifestLoad(collectionResult), mockObjectsDirectoryPath, freshResult
             );
 
             const cityNode = manifestSourcedViewModel.objects[0].rootNodes[0].downstreamNodes[0];
@@ -2237,7 +1893,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('marks the model as manifest sourced, so the panel can promise what it renders is asserted', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
             );
 
             expect(actualViewModel.modelSource).toBe('manifest');
@@ -2250,7 +1906,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('renders exactly the objects and fields the manifest declares', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
             );
 
             expect(actualViewModel.objects).toHaveLength(1);
@@ -2262,7 +1918,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('names the generated class and spec method on every node', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
             );
 
             const objectViewModel = actualViewModel.objects[0];
@@ -2284,7 +1940,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('gives every combination the stable key the manifest recorded for it', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+                buildManifestLoad(), mockObjectsDirectoryPath, freshResult
             );
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
@@ -2304,7 +1960,7 @@ describe('PicklistDependencyExplorerService', () => {
             }));
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                manifestLoad, mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult
+                manifestLoad, mockObjectsDirectoryPath, freshResult
             );
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
@@ -2329,8 +1985,7 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 buildManifestLoad(buildCollectionResult({ skippedFields: [skippedField], skippedFieldWarnings: [skippedField.warning] })),
                 mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                freshResult
+                                freshResult
             );
 
             const objectViewModel = actualViewModel.objects[0];
@@ -2359,8 +2014,7 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 buildManifestLoad(buildCollectionResult({ skippedFields: [skippedField], skippedFieldWarnings: [skippedField.warning] })),
                 mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                freshResult
+                                freshResult
             );
 
             const skipOnlyObject = actualViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Only_Skips__c');
@@ -2376,8 +2030,7 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 buildManifestLoad(),
                 mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                { freshness: 'staleMetadata', message: 'metadata changed since generation' }
+                                { freshness: 'staleMetadata', message: 'metadata changed since generation' }
             );
 
             expect(actualViewModel.manifestFreshness).toBe('staleMetadata');
@@ -2397,7 +2050,7 @@ describe('PicklistDependencyExplorerService', () => {
             manifestLoad.manifest.objectsDirectoryPath = '/etc/somewhere-else/objects';
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                manifestLoad, mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult, '/workspace'
+                manifestLoad, mockObjectsDirectoryPath, freshResult, '/workspace'
             );
 
             expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
@@ -2411,7 +2064,7 @@ describe('PicklistDependencyExplorerService', () => {
         it('given a manifest naming an objects directory inside the workspace, renders paths under it', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, buildNoResultsLoad(), freshResult, '/workspace'
+                buildManifestLoad(), mockObjectsDirectoryPath, freshResult, '/workspace'
             );
 
             expect(actualViewModel.scannedObjectsDirectoryPath).toBe(mockObjectsDirectoryPath);
@@ -2423,43 +2076,12 @@ describe('PicklistDependencyExplorerService', () => {
             re-derived. Re-deriving it is the second derivation this whole artifact exists to remove,
             and the two inputs differ the moment an entry is dropped at the parse boundary.
         */
-        it('looks up the run outcome by the test method name the manifest recorded', () => {
-
-            const manifestLoad = buildManifestLoad();
-            manifestLoad.manifest.objects[0].testMethodName = 'aDeliberatelyDifferentTestMethodName';
-
-            const resultsLoad = {
-                state: 'loaded' as const,
-                message: '',
-                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
-                results: {
-                    targetOrg: 'test-org',
-                    ranAt: '2026-09-03T13:00:00Z',
-                    passed: true,
-                    failureCount: 0,
-                    methodsRun: 1,
-                    methodOutcomes: [{ methodName: 'aDeliberatelyDifferentTestMethodName', passed: true }]
-                }
-            };
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                manifestLoad, mockObjectsDirectoryPath, resultsLoad, freshResult
-            );
-
-            expect(actualViewModel.objects[0].testMethodName).toBe('aDeliberatelyDifferentTestMethodName');
-
-            // THE RUN WAS ACTUALLY MATCHED, RATHER THAN THE OBJECT FALLING BACK TO "NOT CHECKED"
-            expect(actualViewModel.objects[0].status).toBe('passed');
-
-        });
-
         it('given a manifest load with no manifest, refuses rather than rendering an empty panel', () => {
 
             expect(() => PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 { state: 'unreadableManifest', message: 'broken' },
                 mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                freshResult
+                                freshResult
             )).toThrow('carries no manifest');
 
         });
@@ -2469,79 +2091,6 @@ describe('PicklistDependencyExplorerService', () => {
             combination the manifest does not declare must not be forced onto a row that looks
             similar -- the object goes to "unknown" and the text is surfaced unattributed.
         */
-        it('given a failure naming a combination the manifest never declared, holds the object at unknown', () => {
-
-            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
-
-            const resultsLoad = {
-                state: 'loaded' as const,
-                message: '',
-                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
-                results: {
-                    targetOrg: 'test-org',
-                    ranAt: '2026-09-03T13:00:00Z',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [{
-                        methodName: testMethodName,
-                        passed: false,
-                        message: 'MISSING_VALUES — Chain_Example__c.Nonexistent__c @ Mars: nothing here'
-                    }]
-                }
-            };
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, resultsLoad, freshResult
-            );
-
-            const objectViewModel = actualViewModel.objects[0];
-
-            expect(objectViewModel.unattributedFailureMessages).not.toBeEmpty();
-
-            PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes).forEach(node => {
-                node.combinations.forEach(combination => expect(combination.status).toBe('unknown'));
-            });
-
-        });
-
-        it('given a failure naming a combination the manifest DOES declare, attributes it to that row', () => {
-
-            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
-
-            const resultsLoad = {
-                state: 'loaded' as const,
-                message: '',
-                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
-                results: {
-                    targetOrg: 'test-org',
-                    ranAt: '2026-09-03T13:00:00Z',
-                    passed: false,
-                    failureCount: 1,
-                    methodsRun: 1,
-                    methodOutcomes: [{
-                        methodName: testMethodName,
-                        passed: false,
-                        message: 'MISSING_VALUES — Chain_Example__c.State__c @ USA: Ohio is no longer available'
-                    }]
-                }
-            };
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                buildManifestLoad(), mockObjectsDirectoryPath, resultsLoad, freshResult
-            );
-
-            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
-                .find(node => node.fieldApiName === 'State__c');
-
-            const usaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
-
-            expect(usaCombination.status).toBe('failed');
-            expect(usaCombination.combinationKey).toBe('Chain_Example__c.State__c @ USA');
-            expect(actualViewModel.objects[0].unattributedFailureMessages).toBeEmpty();
-
-        });
-
     });
 
     describe('metadata preview context', () => {
@@ -2554,7 +2103,6 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath,
                 buildChainExampleSpecDetails(),
                 [],
-                buildNoResultsLoad(),
                 [],
                 previewContext
             );
@@ -2597,8 +2145,7 @@ describe('PicklistDependencyExplorerService', () => {
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
                 { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
                 mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                { freshness: 'fresh', message: '' }
+                                { freshness: 'fresh', message: '' }
             );
 
             // THE WARNING IS METADATA, AND NO METADATA REACHES THE DOCUMENT -- IT IS POSTED AND WRITTEN THROUGH textContent
@@ -2608,13 +2155,12 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('renders the preview banner saying nothing asserts the rows below', () => {
+        it('renders the preview banner saying where the rows came from', () => {
 
             const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
                 mockObjectsDirectoryPath,
                 buildChainExampleSpecDetails(),
                 [],
-                buildNoResultsLoad(),
                 [],
                 PicklistDependencyExplorerService.buildMetadataPreviewContext()
             );
@@ -2622,7 +2168,23 @@ describe('PicklistDependencyExplorerService', () => {
             const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
 
             expect(actualWebviewHtml).toContain('Preview from metadata');
-            expect(actualWebviewHtml).toContain('nothing asserts any combination below');
+            expect(actualWebviewHtml).toContain('read from your source metadata rather than from a generated spec manifest');
+
+            /*
+                The panel names no generated Apex anywhere, preview or not.
+
+                Asserted against the SHELL alone rather than the document-plus-payload this helper
+                builds: the model still CARRIES the generated names -- they are manifest provenance
+                and nothing was deleted -- so a substring check over the payload would match data
+                the panel never renders. And asserted on the label CONSTRUCTIONS rather than on the
+                words, because the shell carries comments that legitimately discuss assertion.
+            */
+            const shellOnly = PicklistDependencyExplorerService.buildWebviewShellHtml('testNonce');
+
+            expect(shellOnly).not.toContain("'asserted by ' +");
+            expect(shellOnly).not.toContain("' — test method '");
+            expect(shellOnly).not.toContain('explorerModel.specsTestClassName');
+            expect(shellOnly).not.toContain("generatedClassName + '.cls'");
 
         });
 
@@ -2636,6 +2198,594 @@ describe('PicklistDependencyExplorerService', () => {
         it has none -- the one thing the panel must never do is invent an explanation for a failure
         it does not recognise.
     */
+    /*
+        Slice 1 of #83: the find box matches against text the SERVICE builds, so the rule lives here
+        under test rather than only inside the panel's script string.
+    */
+    describe('search text', () => {
+
+        it('given a node, matches on the field, what controls it, and every record type that narrows it', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                                    .find(node => node.fieldApiName === 'State__c');
+
+            expect(stateNode.searchText).toContain('state__c');
+            expect(stateNode.searchText).toContain('country__c');
+            expect(stateNode.searchText).toContain('north_america');
+
+        });
+
+        /*
+            Searching for a field has to reach the object holding it -- a reader who knows the field
+            name and not the object is exactly who the box is for.
+        */
+        it('given an object, matches on a field nested deep in its chain', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                []
+            );
+
+            expect(actualViewModel.objects[0].searchText).toContain('city__c');
+
+        });
+
+        it('given a node, does NOT fold a downstream field name into its parent', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                []
+            );
+
+            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
+
+            expect(stateNode.searchText).not.toContain('city__c');
+
+        });
+
+        it('given an object whose every field was skipped, still matches on the object name', () => {
+
+            const skippedField = {
+                objectApiName: 'Skipped_Only__c',
+                fieldApiName: 'Broken__c',
+                recordTypeDeveloperName: '',
+                warning: 'no valueSettings markup',
+                reason: 'noValueSettings' as const
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                [],
+                [skippedField.warning],
+                                [],
+                { ...PicklistDependencyExplorerService.buildMetadataPreviewContext(), skippedFields: [skippedField] }
+            );
+
+            expect(actualViewModel.objects[0].searchText).toContain('skipped_only__c');
+            expect(actualViewModel.objects[0].searchText).toContain('broken__c');
+
+        });
+
+        /*
+            #125: every combination is a row headed by its controlling value, so the value is on
+            screen and a reader asking "where does Canada appear as a controller" is answered by the
+            rows they can see.
+        */
+        it('given a node, matches on the controlling value of every combination it renders', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                []
+            );
+
+            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
+            const cityNode = stateNode.downstreamNodes.find(node => node.fieldApiName === 'City__c');
+
+            expect(stateNode.searchText).toContain('usa');
+            expect(stateNode.searchText).toContain('canada');
+            expect(cityNode.searchText).toContain('ohio');
+            expect(cityNode.searchText).toContain('texas');
+            expect(cityNode.searchText).toContain('ontario');
+
+        });
+
+        it('given a node, matches on a controlling value that only a record type scope renders', () => {
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [{
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Country__c',
+                recordTypeDeveloperName: 'North_America',
+                expectations: [
+                    { controllingValue: 'Mexico', dependentValues: ['Jalisco'], forbiddenValues: [] }
+                ]
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                recordTypeSpecDetails
+            );
+
+            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
+
+            expect(stateNode.searchText).toContain('mexico');
+
+        });
+
+        /*
+            The values a combination UNLOCKS are the product of the two picklists, which is the
+            expansion the manifest was restructured to stop materialising. Ohio is a dependent value
+            of State__c and is not in State's haystack; it is a controlling value of City__c, one
+            level down, and reaches the object through that node's rows.
+        */
+        it('given a node, does NOT fold its dependent values in, and still reaches the object through the node they control', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                []
+            );
+
+            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
+            const cityNode = stateNode.downstreamNodes.find(node => node.fieldApiName === 'City__c');
+
+            expect(stateNode.searchText).not.toContain('ohio');
+            // COLUMBUS IS A LEAF: NOTHING RENDERS IT AS A CONTROLLING VALUE, SO NOTHING MATCHES IT
+            expect(cityNode.searchText).not.toContain('columbus');
+            expect(actualViewModel.objects[0].searchText).not.toContain('columbus');
+            expect(actualViewModel.objects[0].searchText).toContain('ohio');
+
+        });
+
+        it('given a controlling value with spaces and mixed case, lowercases it whole so a typed phrase matches', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Region_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Region__c',
+                expectations: [
+                    { controllingValue: 'North America', dependentValues: ['Ohio'], forbiddenValues: [] }
+                ]
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                specDetails,
+                []
+            );
+
+            expect(actualViewModel.objects[0].rootNodes[0].searchText).toContain('north america');
+
+        });
+
+        /*
+            Review of #125: api names are [A-Za-z0-9_], but a picklist value can carry spaces, so a
+            haystack joined on a space would let a phrase match the tail of one value and the head
+            of the next -- an object with no row headed by that phrase. The join is a newline, which
+            an <input type="search"> can never produce, so a query can only ever match one entry.
+        */
+        it('given two values that together spell a phrase, does NOT match the phrase across the join', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Region_Example__c',
+                fieldApiName: 'State__c',
+                controllingFieldApiName: 'Region__c',
+                expectations: [
+                    { controllingValue: 'North America', dependentValues: ['Ohio'], forbiddenValues: [] },
+                    { controllingValue: 'Canada', dependentValues: ['Ontario'], forbiddenValues: [] }
+                ]
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                specDetails,
+                []
+            );
+
+            const node = actualViewModel.objects[0].rootNodes[0];
+
+            expect(node.searchText).toContain('north america');
+            expect(node.searchText).toContain('canada');
+            expect(node.searchText).not.toContain('america canada');
+            expect(actualViewModel.objects[0].searchText).not.toContain('america canada');
+            expect(node.searchText.split('\n')).toContain('north america');
+
+        });
+
+        /*
+            A skip-only object used to derive its haystack inline, without the record type the skip
+            names, so the record type became findable only once the ceiling had rebuilt the text.
+            One derivation for every object means the first render and the rebuilt one agree.
+        */
+        it('given an object whose only field was skipped under a record type, matches on that record type from the first build, and the ceiling leaves it unchanged', () => {
+
+            const skippedField = {
+                objectApiName: 'Skipped_Only__c',
+                fieldApiName: 'Broken__c',
+                recordTypeDeveloperName: 'Partner',
+                warning: 'no valueSettings markup',
+                reason: 'noValueSettings' as const
+            };
+
+            const builtViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                [],
+                [skippedField.warning],
+                [],
+                { ...PicklistDependencyExplorerService.buildMetadataPreviewContext(), skippedFields: [skippedField] }
+            );
+
+            const builtSearchText = builtViewModel.objects[0].searchText;
+
+            expect(builtSearchText).toContain('skipped_only__c');
+            expect(builtSearchText).toContain('broken__c');
+            expect(builtSearchText).toContain('partner');
+
+            const cappedViewModel = PicklistDependencyExplorerService.applyModelLimits(builtViewModel, buildLimits());
+
+            expect(cappedViewModel.objects[0].searchText).toBe(builtSearchText);
+
+        });
+
+    });
+
+    /*
+        Slice 2 of #83: a stated ceiling instead of an unbounded payload.
+    */
+    /*
+        The guards on the paths and budgets that reach the filesystem or the ceiling. Each answers a
+        degenerate input -- an empty manifest string, a budget of zero -- and each one silently
+        stopped being exercised when the run surface that used to drive it was removed.
+    */
+    describe('degenerate inputs to the path and budget guards', () => {
+
+        it('given no manifest path at all, resolves to empty rather than to the workspace root', () => {
+
+            expect(PicklistDependencyExplorerService.resolveOpenableManifestFilePath('', '/workspace')).toBe('');
+
+        });
+
+        /*
+            An empty objects directory in the manifest falls back to the CONFIGURED one. An older
+            manifest recorded no directory, and the structure it declares is still renderable -- only
+            the reveal targets need a real directory to be built under.
+        */
+        it('given no objects directory in the manifest, falls back to the configured one', () => {
+
+            expect(PicklistDependencyExplorerService.resolveRenderableObjectsDirectoryPath('', '/workspace/objects', '/workspace'))
+                .toBe('/workspace/objects');
+
+        });
+
+        // A BUDGET OF ZERO DISABLES THE TOTAL, IT DOES NOT DROP EVERY ROW
+        it('given a total budget of zero, drops nothing rather than emptying the panel', () => {
+
+            const viewModel = buildViewModel(buildChainExampleSpecDetails());
+
+            expect(PicklistDependencyExplorerService.applyTotalCombinationBudget(viewModel, 0)).toBe(0);
+            expect(viewModel.objects[0].rootNodes[0].combinations).not.toBeEmpty();
+
+        });
+
+        /*
+            The declared value ceiling applies to a record type SCOPE as well as to a field. A scope
+            draws its complement against what the record type assigns, so a capped scope universe
+            understates what the spec forbids exactly as a capped field one does -- and the panel has
+            to be told, per scope, not per field.
+        */
+        it('given a record type scope declaring more values than the ceiling allows, caps that scope too', () => {
+
+            const viewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath,
+                    buildChainExampleSpecDetails(),
+                    [],
+                    buildChainExampleRecordTypeSpecDetails()
+                ),
+                buildLimits({ maxDeclaredValuesPerNode: 1 })
+            );
+
+            const recordTypeScope = viewModel.objects[0].rootNodes[0].recordTypeScopes[0];
+
+            expect(recordTypeScope.declaredValues).toHaveLength(1);
+            expect(recordTypeScope.declaredValuesTruncated).toBeTrue();
+
+        });
+
+        /*
+            An empty panel has two quite different causes. A MANIFEST that declares no specs is not
+            the same as a workspace with no dependent picklists, and the message keys off the source
+            rather than off the empty list.
+        */
+        it('given a manifest declaring no specs, names the manifest rather than the objects directory', () => {
+
+            const viewModel = buildViewModel([]);
+            viewModel.modelSource = 'manifest';
+            viewModel.manifestFilePath = '/workspace/treecipe/PicklistDependencySpecs/manifest.json';
+
+            expect(PicklistDependencyExplorerService.buildEmptyStateMessage(viewModel))
+                .toContain('manifest.json" declares no generated specs');
+
+        });
+
+        /*
+            The third case: a preview whose manifest DID load. It is the one combination neither
+            branch above covers, and its message is about the objects directory -- a manifest that
+            read cleanly says nothing about why a metadata scan found no dependent picklists.
+        */
+        it('given a preview whose manifest loaded, names the objects directory that was scanned', () => {
+
+            const viewModel = buildViewModel([]);
+            viewModel.manifestLoadState = 'loaded';
+
+            expect(PicklistDependencyExplorerService.buildEmptyStateMessage(viewModel))
+                .toContain(`No dependent picklists were found in "${mockObjectsDirectoryPath}"`);
+
+        });
+
+    });
+
+    /*
+        THE RETAINED RUN-OVERLAY CAPABILITY.
+
+        Nothing in an Explorer open reaches any of it -- the panel is a picture of the structure.
+        These suites are what "disconnected rather than deleted" means in the test file: the code
+        still works, and it is still held to the behaviour it always had, so re-connecting it is a
+        wiring change rather than an archaeology exercise.
+    */
+    describe('getResultsFolderTimestamp', () => {
+
+        it('given a check folder name, returns the trailing iso timestamp', () => {
+
+            const actualTimestamp = PicklistDependencyExplorerService.getResultsFolderTimestamp('check-devHub-2026-08-20T09-01-33');
+
+            expect(actualTimestamp).toBe('2026-08-20T09-01-33');
+
+        });
+
+        it('given an org identifier containing hyphens, still anchors the timestamp at the end of the name', () => {
+
+            const actualTimestamp = PicklistDependencyExplorerService.getResultsFolderTimestamp('check-my-scratch-org-01-2026-08-20T09-01-33');
+
+            expect(actualTimestamp).toBe('2026-08-20T09-01-33');
+
+        });
+
+        it('given a folder name the check command did not write, returns undefined', () => {
+
+            const actualTimestamp = PicklistDependencyExplorerService.getResultsFolderTimestamp('notACheckFolder');
+
+            expect(actualTimestamp).toBeUndefined();
+
+        });
+
+    });
+
+    describe('findLatestResultsFilePath', () => {
+
+        it('given several run folders, returns the results file from the most recent timestamp', () => {
+
+            const actualResultsFilePath = PicklistDependencyExplorerService.findLatestResultsFilePath(mockResultsDirectoryPath);
+
+            expect(actualResultsFilePath).toBe(
+                path.join(mockResultsDirectoryPath, 'check-devHub-2026-08-20T09-01-33', 'results.json')
+            );
+
+        });
+
+        /*
+            The stray file and the run folder holding only a report.md are both in the fixture tree
+            on purpose: that folder carries the NEWEST timestamp, so this resolves to the 08-20 run
+            only if a folder with no results.json is skipped rather than picked and then failed on.
+        */
+        it('given a run folder with no results file and a stray file beside it, skips both and returns the newest usable run', () => {
+
+            const actualResultsFilePath = PicklistDependencyExplorerService.findLatestResultsFilePath(mockResultsDirectoryPath);
+
+            expect(actualResultsFilePath).not.toContain('2026-08-25T11-11-11');
+            expect(actualResultsFilePath).toContain('check-devHub-2026-08-20T09-01-33');
+
+        });
+
+        it('given a results directory that does not exist, returns undefined rather than throwing', () => {
+
+            const actualResultsFilePath = PicklistDependencyExplorerService.findLatestResultsFilePath(
+                path.join(__dirname, 'mocks', 'ThisDirectoryDoesNotExist')
+            );
+
+            expect(actualResultsFilePath).toBeUndefined();
+
+        });
+
+    });
+
+    describe('loadLatestResults', () => {
+
+        it('given a valid results file, loads the run detail', () => {
+
+            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
+
+            expect(actualResultsLoad.state).toBe('loaded');
+            expect(actualResultsLoad.results.targetOrg).toBe('devHub');
+            expect(actualResultsLoad.results.passed).toBe(false);
+            expect(actualResultsLoad.results.methodOutcomes).toHaveLength(3);
+
+        });
+
+        it('given no results directory, reports the "no check has been run" state naming the directory scanned', () => {
+
+            const missingResultsDirectoryPath = path.join(__dirname, 'mocks', 'ThisDirectoryDoesNotExist');
+
+            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(missingResultsDirectoryPath);
+
+            expect(actualResultsLoad.state).toBe('noResultsFound');
+            expect(actualResultsLoad.message).toContain(missingResultsDirectoryPath);
+            expect(actualResultsLoad.results).toBeUndefined();
+
+        });
+
+        it('given a malformed results file, reports a readable message rather than throwing', () => {
+
+            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockMalformedResultsDirectoryPath);
+
+            expect(actualResultsLoad.state).toBe('unreadableResults');
+            expect(actualResultsLoad.message).toContain('could not be read as JSON');
+            expect(actualResultsLoad.results).toBeUndefined();
+
+        });
+
+        /*
+            A results.json can be well formed JSON carrying an outcomes list and still have had a
+            field mangled by whatever edited it. Every field is read defensively for that reason, so
+            a single bad value degrades to a placeholder rather than rendering "undefined" in the
+            panel banner or throwing on the way there.
+        */
+        it('given a results file whose fields carry the wrong types, falls back rather than surfacing undefined', () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'findLatestResultsFilePath')
+                .mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-08-20T09-01-33/results.json');
+
+            jest.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
+                targetOrg: 42,
+                ranAt: null,
+                passed: 'yes',
+                failureCount: 'one',
+                // THE NULL ENTRY IS DELIBERATE -- A HOLE IN THE LIST MUST NOT THROW ON THE WAY TO THE PANEL
+                methodOutcomes: [{ methodName: 7, passed: 'true', message: 12 }, null]
+            }));
+
+            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults('/workspace/treecipe/PicklistDependencyResults');
+
+            expect(actualResultsLoad.state).toBe('loaded');
+            expect(actualResultsLoad.results.targetOrg).toBe('unknown org');
+            expect(actualResultsLoad.results.ranAt).toBe('unknown time');
+            expect(actualResultsLoad.results.passed).toBe(false);
+            expect(actualResultsLoad.results.failureCount).toBe(0);
+            expect(actualResultsLoad.results.methodsRun).toBe(2);
+            expect(actualResultsLoad.results.methodOutcomes[0].methodName).toBe('unknown');
+            expect(actualResultsLoad.results.methodOutcomes[0].passed).toBe(false);
+            expect(actualResultsLoad.results.methodOutcomes[0].message).toBeUndefined();
+            expect(actualResultsLoad.results.methodOutcomes[1].methodName).toBe('unknown');
+            expect(actualResultsLoad.results.methodOutcomes[1].passed).toBe(false);
+
+        });
+
+        it('given a results file that parses to null, reports it as unreadable', () => {
+
+            jest.spyOn(PicklistDependencyExplorerService, 'findLatestResultsFilePath')
+                .mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-2026-08-20T09-01-33/results.json');
+            jest.spyOn(fs, 'readFileSync').mockReturnValue('null');
+
+            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults('/workspace/treecipe/PicklistDependencyResults');
+
+            expect(actualResultsLoad.state).toBe('unreadableResults');
+
+        });
+
+        it('given a results file with no methodOutcomes list, reports it as unreadable', () => {
+
+            const actualResultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsWithoutOutcomesDirectoryPath);
+
+            expect(actualResultsLoad.state).toBe('unreadableResults');
+            expect(actualResultsLoad.message).toContain('methodOutcomes');
+
+        });
+
+    });
+
+    describe('parseFailureLines', () => {
+
+        it('given an apex assertion message, parses each failure line into its kind, scope and message', () => {
+
+            const assertionMessage = 'System.AssertException: Assertion Failed: Picklist dependency drift on Chain_Example__c -- 2 combination(s) no longer match local source metadata:\n'
+                + '  - MISSING_VALUES — Chain_Example__c.State__c @ USA: expected value(s) not unlocked in the org: Texas\n'
+                + '  - FORBIDDEN_VALUES_PRESENT — Chain_Example__c.City__c @ Ohio: value(s) unlocked that local metadata forbids: Toronto';
+
+            const actualFailures = PicklistDependencyExplorerService.parseFailureLines(assertionMessage);
+
+            expect(actualFailures).toHaveLength(2);
+            expect(actualFailures[0]).toEqual({
+                objectApiName: 'Chain_Example__c',
+                fieldApiName: 'State__c',
+                kind: 'MISSING_VALUES',
+                controllingValueAndMessage: 'USA: expected value(s) not unlocked in the org: Texas'
+            });
+            expect(actualFailures[1].kind).toBe('FORBIDDEN_VALUES_PRESENT');
+            expect(actualFailures[1].controllingValueAndMessage).toBe('Ohio: value(s) unlocked that local metadata forbids: Toronto');
+
+        });
+
+        it('given a failure line with no controlling value, parses it as a field level failure', () => {
+
+            const assertionMessage = '  - LOOKUP_ERROR — Chain_Example__c.State__c: Source returned no snapshot for this field';
+
+            const actualFailures = PicklistDependencyExplorerService.parseFailureLines(assertionMessage);
+
+            expect(actualFailures).toHaveLength(1);
+            expect(actualFailures[0].controllingValueAndMessage).toBeUndefined();
+            expect(actualFailures[0].fieldLevelMessage).toBe('Source returned no snapshot for this field');
+            expect(actualFailures[0].kind).toBe('LOOKUP_ERROR');
+
+        });
+
+        it('given no message at all, returns no failures', () => {
+
+            expect(PicklistDependencyExplorerService.parseFailureLines(undefined)).toEqual([]);
+
+        });
+
+        it('given a message carrying nothing that matches the failure line shape, returns no failures', () => {
+
+            const actualFailures = PicklistDependencyExplorerService.parseFailureLines('System.LimitException: Apex CPU time limit exceeded');
+
+            expect(actualFailures).toEqual([]);
+
+        });
+
+    });
+
+    describe('extractFailureMessageForControllingValue', () => {
+
+        it('given a tail whose controlling value contains a colon, splits on the declared value rather than the first colon', () => {
+
+            const actualMessage = PicklistDependencyExplorerService.extractFailureMessageForControllingValue(
+                'Tier 1: Premium: expected value(s) not unlocked: Gold', 'Tier 1: Premium'
+            );
+
+            expect(actualMessage).toBe('expected value(s) not unlocked: Gold');
+
+        });
+
+        it('given a tail for a different controlling value, returns undefined so the caller can report it unattributed', () => {
+
+            const actualMessage = PicklistDependencyExplorerService.extractFailureMessageForControllingValue(
+                'Tier 3: something drifted', 'Tier 2'
+            );
+
+            expect(actualMessage).toBeUndefined();
+
+        });
+
+        it('given a tail that is exactly the controlling value, returns an empty message rather than undefined', () => {
+
+            expect(PicklistDependencyExplorerService.extractFailureMessageForControllingValue('Tier 2', 'Tier 2')).toBe('');
+
+        });
+
+    });
+
     describe('buildFailureTriage', () => {
 
         const everyValidatorFailureKind = [
@@ -2727,12 +2877,7 @@ describe('PicklistDependencyExplorerService', () => {
 
         it('keeps the Apex kind and message, and resolves the triage through the model\'s shared map', () => {
 
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildFailingResultsLoad('MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]')
-            );
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), buildFailingResultsLoad('MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]'));
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
                                     .find(node => node.fieldApiName === 'State__c');
@@ -2752,12 +2897,7 @@ describe('PicklistDependencyExplorerService', () => {
         */
         it('given a recognised kind, carries no inline triage, so the prose is stored once per kind', () => {
 
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildFailingResultsLoad('MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]')
-            );
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), buildFailingResultsLoad('MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]'));
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
                                     .find(node => node.fieldApiName === 'State__c');
@@ -2772,12 +2912,7 @@ describe('PicklistDependencyExplorerService', () => {
         */
         it('given a kind the shared map has no entry for, carries its triage inline', () => {
 
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildFailingResultsLoad('SOME_FUTURE_KIND — Chain_Example__c.State__c @ USA: something new broke')
-            );
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), buildFailingResultsLoad('SOME_FUTURE_KIND — Chain_Example__c.State__c @ USA: something new broke'));
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
                                     .find(node => node.fieldApiName === 'State__c');
@@ -2790,9 +2925,7 @@ describe('PicklistDependencyExplorerService', () => {
 
         it('carries the shared map on the model root, with an entry for every kind the validator raises', () => {
 
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
-            );
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), buildNoResultsLoad());
 
             ['MISSING_VALUES', 'UNEXPECTED_VALUES', 'FORBIDDEN_VALUES_PRESENT', 'UNKNOWN_CONTROLLING_VALUE',
                 'UNEXPECTED_CONTROLLING_VALUE', 'CONTROLLING_FIELD_MISMATCH', 'CONTRADICTORY_EXPECTATION',
@@ -2805,12 +2938,7 @@ describe('PicklistDependencyExplorerService', () => {
 
         it('given a field level failure of a recognised kind, also leaves the triage to the shared map', () => {
 
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildFailingResultsLoad('LOOKUP_ERROR — Chain_Example__c.State__c: Source returned no snapshot for this field')
-            );
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), buildFailingResultsLoad('LOOKUP_ERROR — Chain_Example__c.State__c: Source returned no snapshot for this field'));
 
             const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
                                     .find(node => node.fieldApiName === 'State__c');
@@ -2818,504 +2946,6 @@ describe('PicklistDependencyExplorerService', () => {
             expect(stateNode.fieldLevelFailures[0].kind).toBe('LOOKUP_ERROR');
             expect(stateNode.fieldLevelFailures[0].triage).toBeUndefined();
             expect(actualViewModel.failureTriageByKind['LOOKUP_ERROR'].nextStep).toContain('readable by the running user');
-
-        });
-
-    });
-
-    /*
-        Slice 1 of #83: the find box matches against text the SERVICE builds, so the rule lives here
-        under test rather than only inside the panel's script string.
-    */
-    describe('search text', () => {
-
-        it('given a node, matches on the field, what controls it, and every record type that narrows it', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildNoResultsLoad(),
-                buildChainExampleRecordTypeSpecDetails()
-            );
-
-            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
-                                    .find(node => node.fieldApiName === 'State__c');
-
-            expect(stateNode.searchText).toContain('state__c');
-            expect(stateNode.searchText).toContain('country__c');
-            expect(stateNode.searchText).toContain('north_america');
-
-        });
-
-        /*
-            Searching for a field has to reach the object holding it -- a reader who knows the field
-            name and not the object is exactly who the box is for.
-        */
-        it('given an object, matches on a field nested deep in its chain', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildNoResultsLoad()
-            );
-
-            expect(actualViewModel.objects[0].searchText).toContain('city__c');
-
-        });
-
-        it('given a node, does NOT fold a downstream field name into its parent', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildNoResultsLoad()
-            );
-
-            const stateNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'State__c');
-
-            expect(stateNode.searchText).not.toContain('city__c');
-
-        });
-
-        it('given an object whose every field was skipped, still matches on the object name', () => {
-
-            const skippedField = {
-                objectApiName: 'Skipped_Only__c',
-                fieldApiName: 'Broken__c',
-                recordTypeDeveloperName: '',
-                warning: 'no valueSettings markup',
-                reason: 'noValueSettings' as const
-            };
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                [],
-                [skippedField.warning],
-                buildNoResultsLoad(),
-                [],
-                { ...PicklistDependencyExplorerService.buildMetadataPreviewContext(), skippedFields: [skippedField] }
-            );
-
-            expect(actualViewModel.objects[0].searchText).toContain('skipped_only__c');
-            expect(actualViewModel.objects[0].searchText).toContain('broken__c');
-
-        });
-
-    });
-
-    /*
-        Slice 2 of #83: a stated ceiling instead of an unbounded payload.
-    */
-    describe('selectWithinCap', () => {
-
-        it('given fewer items than the cap, returns them untouched', () => {
-
-            const items = ['a', 'b', 'c'];
-
-            expect(PicklistDependencyExplorerService.selectWithinCap(items, 10, () => false)).toBe(items);
-
-        });
-
-        it('given more items than the cap, keeps the retained ones and fills the rest in declared order', () => {
-
-            const items = ['a', 'b', 'c', 'd', 'e'];
-
-            const actualItems = PicklistDependencyExplorerService.selectWithinCap(items, 2, item => item === 'e');
-
-            expect(actualItems).toEqual(['a', 'e']);
-
-        });
-
-        /*
-            The cap bounds a pathological render. Dropping a reported failure to honour it would
-            break the only promise the panel makes, so the retained set is a floor rather than a
-            budget.
-        */
-        it('given more retained items than the cap, keeps every one of them anyway', () => {
-
-            const items = ['a', 'b', 'c', 'd', 'e'];
-
-            const actualItems = PicklistDependencyExplorerService.selectWithinCap(items, 2, item => item !== 'a');
-
-            expect(actualItems).toEqual(['b', 'c', 'd', 'e']);
-
-        });
-
-    });
-
-    describe('applyModelLimits', () => {
-
-        function buildManyObjectSpecDetails(objectCount: number): IPicklistDependencySpecDetail[] {
-
-            let specDetails: IPicklistDependencySpecDetail[] = [];
-
-            for ( let objectIndex = 0; objectIndex < objectCount; objectIndex++ ) {
-                specDetails.push({
-                    objectApiName: `Object_${objectIndex}__c`,
-                    fieldApiName: 'State__c',
-                    controllingFieldApiName: 'Country__c',
-                    expectations: [
-                        { controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] },
-                        { controllingValue: 'Canada', dependentValues: ['Ontario'], forbiddenValues: [] },
-                        { controllingValue: 'Mexico', dependentValues: ['Jalisco'], forbiddenValues: [] }
-                    ]
-                });
-            }
-
-            return specDetails;
-
-        }
-
-        function buildUncappedViewModel(objectCount: number): IPicklistDependencyExplorerViewModel {
-
-            return PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildManyObjectSpecDetails(objectCount),
-                [],
-                buildNoResultsLoad()
-            );
-
-        }
-
-        it('given more objects than the ceiling allows, renders the ceiling and says how many it dropped', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                buildUncappedViewModel(8),
-                buildLimits({ maxObjects: 3 })
-            );
-
-            expect(actualViewModel.objects).toHaveLength(3);
-            expect(actualViewModel.truncatedObjectCount).toBe(5);
-            expect(actualViewModel.truncationNotices[0]).toContain('Showing 3 of 8 objects');
-
-        });
-
-        it('never drops an object the check reported a failure for, however far down the list it sits', () => {
-
-            let viewModel = buildUncappedViewModel(8);
-            viewModel.objects[7].status = 'failed';
-            viewModel.objects[7].failureCount = 1;
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                viewModel,
-                buildLimits({ maxObjects: 2 })
-            );
-
-            expect(actualViewModel.objects.map(objectViewModel => objectViewModel.objectApiName)).toContain('Object_7__c');
-
-        });
-
-        it('never drops a combination the check reported a failure for', () => {
-
-            let viewModel = buildUncappedViewModel(1);
-            const lastCombination = viewModel.objects[0].rootNodes[0].combinations[2];
-            lastCombination.status = 'failed';
-            lastCombination.failures = [PicklistDependencyExplorerService.buildFailureDetailViewModel('MISSING_VALUES', 'Ohio is gone')];
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                viewModel,
-                buildLimits({ maxCombinationsPerNode: 1 })
-            );
-
-            const renderedControllingValues = actualViewModel.objects[0].rootNodes[0].combinations
-                                                    .map(combination => combination.controllingValue);
-
-            expect(renderedControllingValues).toEqual(['Mexico']);
-            expect(actualViewModel.objects[0].rootNodes[0].truncatedCombinationCount).toBe(2);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('combination(s) are not rendered');
-
-        });
-
-        /*
-            The counts describe the org; the notices describe the panel. Reducing the counts to match
-            what survived would leave a truncated panel quietly reporting a smaller org than the one
-            the manifest declares.
-        */
-        it('leaves the declared counts alone, so a truncated panel does not report a smaller org', () => {
-
-            const uncappedViewModel = buildUncappedViewModel(8);
-            const declaredCombinationCount = uncappedViewModel.combinationCount;
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                uncappedViewModel,
-                buildLimits({ maxObjects: 2, maxCombinationsPerNode: 1 })
-            );
-
-            expect(actualViewModel.combinationCount).toBe(declaredCombinationCount);
-            expect(actualViewModel.dependentFieldCount).toBe(8);
-
-        });
-
-        /*
-            The three-state guarantee under the ceiling: a row is either rendered as what it is, or
-            absent and counted. Nothing is re-labelled on the way through.
-        */
-        it('changes no status: a surviving combination reports exactly what it reported before', () => {
-
-            let viewModel = buildUncappedViewModel(4);
-            viewModel.objects[0].rootNodes[0].combinations[0].status = 'passed';
-            viewModel.objects[1].rootNodes[0].combinations[0].status = 'failed';
-
-            let statusesBeforeByKey: Record<string, PicklistDependencyCheckStatus> = {};
-            viewModel.objects.forEach(objectViewModel => {
-                objectViewModel.rootNodes[0].combinations.forEach((combination: IPicklistDependencyCombinationViewModel) => {
-                    statusesBeforeByKey[combination.combinationKey] = combination.status;
-                });
-            });
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                viewModel,
-                buildLimits({ maxObjects: 3, maxCombinationsPerNode: 2 })
-            );
-
-            actualViewModel.objects.forEach(objectViewModel => {
-                objectViewModel.rootNodes[0].combinations.forEach((combination: IPicklistDependencyCombinationViewModel) => {
-                    expect(combination.status).toBe(statusesBeforeByKey[combination.combinationKey]);
-                });
-            });
-
-        });
-
-        it('given a field carrying more record type scopes than the ceiling allows, caps them and says so', () => {
-
-            let recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [];
-
-            for ( let recordTypeIndex = 0; recordTypeIndex < 5; recordTypeIndex++ ) {
-                recordTypeSpecDetails.push({
-                    objectApiName: 'Object_0__c',
-                    fieldApiName: 'State__c',
-                    controllingFieldApiName: 'Country__c',
-                    recordTypeDeveloperName: `Record_Type_${recordTypeIndex}`,
-                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
-                });
-            }
-
-            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildManyObjectSpecDetails(1),
-                [],
-                buildNoResultsLoad(),
-                recordTypeSpecDetails
-            );
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                viewModel,
-                buildLimits({ maxRecordTypeScopesPerNode: 2 })
-            );
-
-            expect(actualViewModel.objects[0].rootNodes[0].recordTypeScopes).toHaveLength(2);
-            expect(actualViewModel.objects[0].rootNodes[0].truncatedRecordTypeScopeCount).toBe(3);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('record type scope(s) are not rendered');
-
-        });
-
-        /*
-            The bound that makes the ceiling a SIZE rather than a shape. The per-axis caps multiply
-            out to millions of rows, so before this budget existed a drifted org still serialized a
-            payload as large as the org -- which is the condition the ceiling exists to remove.
-        */
-        it('brings the TOTAL rendered combinations under one budget, across every object', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                buildUncappedViewModel(10),
-                buildLimits({ maxRenderedCombinations: 12 })
-            );
-
-            const renderedCombinationCount = actualViewModel.objects.reduce((combinationCount, objectViewModel) =>
-                combinationCount + PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes)
-                                        .reduce((nodeCombinationCount, node) => nodeCombinationCount + node.combinations.length, 0), 0);
-
-            // 10 OBJECTS x 3 COMBINATIONS IS 30 DECLARED; THE BUDGET IS WHAT IS ON SCREEN
-            expect(renderedCombinationCount).toBe(12);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('against a panel total of 12');
-
-        });
-
-        it('spends the budget on failing combinations before passing ones, whatever order they sit in', () => {
-
-            let viewModel = buildUncappedViewModel(10);
-
-            // THE LAST OBJECT'S ROWS ARE THE ONES THAT DRIFTED -- LAST IN DOCUMENT ORDER, FIRST IN THE BUDGET
-            viewModel.objects[9].rootNodes[0].combinations.forEach(combination => {
-                combination.status = 'failed';
-                combination.failures = [PicklistDependencyExplorerService.buildFailureDetailViewModel('MISSING_VALUES', 'gone')];
-            });
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                viewModel,
-                buildLimits({ maxRenderedCombinations: 3 })
-            );
-
-            const renderedCombinations = actualViewModel.objects.reduce((combinations: IPicklistDependencyCombinationViewModel[], objectViewModel) =>
-                combinations.concat(PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes)
-                                        .reduce((nodeCombinations: IPicklistDependencyCombinationViewModel[], node) => nodeCombinations.concat(node.combinations), [])), []);
-
-            expect(renderedCombinations).toHaveLength(3);
-            renderedCombinations.forEach(combination => expect(combination.status).toBe('failed'));
-            expect(actualViewModel.truncatedFailedCombinationCount).toBe(0);
-
-        });
-
-        /*
-            The one drop that costs the reader something the panel cannot give back. It is counted
-            and named separately, and the notice points at the run report as the complete record --
-            an unbounded payload is worse for them than a bounded one that says what is missing.
-        */
-        it('given more failures than the budget can hold, drops failures too and says where the full list is', () => {
-
-            let viewModel = buildUncappedViewModel(4);
-
-            viewModel.objects.forEach(objectViewModel => {
-                objectViewModel.rootNodes[0].combinations.forEach(combination => {
-                    combination.status = 'failed';
-                    combination.failures = [PicklistDependencyExplorerService.buildFailureDetailViewModel('MISSING_VALUES', 'gone')];
-                });
-            });
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                viewModel,
-                buildLimits({ maxRenderedCombinations: 5 })
-            );
-
-            // 4 OBJECTS x 3 FAILING COMBINATIONS IS 12 DECLARED, AND ONLY 5 ROWS TO PUT THEM IN
-            expect(actualViewModel.truncatedFailedCombinationCount).toBe(7);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('reported a FAILURE for are not');
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('run report');
-
-        });
-
-        it('given an object with more dependent picklists than the ceiling allows, drops whole chains and counts the fields', () => {
-
-            let specDetails: IPicklistDependencySpecDetail[] = [];
-            for ( let fieldIndex = 0; fieldIndex < 8; fieldIndex++ ) {
-                specDetails.push({
-                    objectApiName: 'Wide_Object__c',
-                    fieldApiName: `Dependent_${fieldIndex}__c`,
-                    controllingFieldApiName: 'Country__c',
-                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
-                });
-            }
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()),
-                buildLimits({ maxNodesPerObject: 3 })
-            );
-
-            expect(actualViewModel.objects[0].rootNodes).toHaveLength(3);
-            expect(actualViewModel.objects[0].truncatedNodeCount).toBe(5);
-            expect(actualViewModel.truncationNotices.join(' ')).toContain('dependent picklist(s) are not rendered');
-
-        });
-
-        /*
-            A chain is drawn by containment, so it is dropped whole: rendering a downstream field
-            without the field that controls it would misstate the dependency rather than shorten
-            the list. Chain_Example__c is Country -> State -> City, one root carrying two fields.
-        */
-        it('drops a chain whole rather than leaving a downstream field with no controlling field above it', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                PicklistDependencyExplorerService.buildExplorerViewModel(
-                    mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
-                ),
-                buildLimits({ maxNodesPerObject: 1 })
-            );
-
-            const rootNodes = actualViewModel.objects[0].rootNodes;
-
-            expect(rootNodes).toHaveLength(1);
-            expect(rootNodes[0].fieldApiName).toBe('State__c');
-            // THE CHAIN CAME WITH IT: CITY IS STILL BENEATH STATE, NOT ORPHANED OR DROPPED SEPARATELY
-            expect(rootNodes[0].downstreamNodes[0].fieldApiName).toBe('City__c');
-            expect(actualViewModel.objects[0].truncatedNodeCount).toBe(0);
-
-        });
-
-        /*
-            Applied twice, the counters have to ADD. Assigning would report only the second pass and
-            leave the panel quietly claiming less is missing than actually is -- the exact failure
-            the counts exist to prevent.
-        */
-        it('given two truncating passes, accumulates what was dropped rather than reporting only the last', () => {
-
-            const firstPassViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                buildUncappedViewModel(10),
-                buildLimits({ maxObjects: 6 })
-            );
-
-            expect(firstPassViewModel.truncatedObjectCount).toBe(4);
-
-            const secondPassViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                firstPassViewModel,
-                buildLimits({ maxObjects: 2 })
-            );
-
-            expect(secondPassViewModel.objects).toHaveLength(2);
-            expect(secondPassViewModel.truncatedObjectCount).toBe(8);
-            expect(secondPassViewModel.truncationNotices.length).toBeGreaterThan(1);
-
-        });
-
-        /*
-            The third axis, and the one that only measurement found: declaredValues holds every value
-            the FIELD declares, so it grows with the picklist rather than with how many combinations
-            survived the budget. With the other two axes capped it became the dominant term -- a
-            ~20MB payload at the stated combination ceiling.
-        */
-        it('given a field declaring more values than the ceiling allows, caps the universe and says the complement is unusable', () => {
-
-            let dependentValues: string[] = [];
-            for ( let valueIndex = 0; valueIndex < 40; valueIndex++ ) {
-                dependentValues.push(`Dependent_Value_${valueIndex}`);
-            }
-
-            const specDetails: IPicklistDependencySpecDetail[] = [{
-                objectApiName: 'Wide_Values__c',
-                fieldApiName: 'Dependent__c',
-                controllingFieldApiName: 'Country__c',
-                expectations: [{ controllingValue: 'USA', dependentValues, forbiddenValues: [] }]
-            }];
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, specDetails, [], buildNoResultsLoad()),
-                buildLimits({ maxDeclaredValuesPerNode: 10 })
-            );
-
-            const node = actualViewModel.objects[0].rootNodes[0];
-
-            expect(node.declaredValues).toHaveLength(10);
-            expect(node.declaredValuesTruncated).toBeTrue();
-
-        });
-
-        it('given a field inside the declared value ceiling, leaves the universe whole and the complement usable', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                PicklistDependencyExplorerService.buildExplorerViewModel(
-                    mockObjectsDirectoryPath, buildChainExampleSpecDetails(), [], buildNoResultsLoad()
-                ),
-                buildLimits()
-            );
-
-            PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes).forEach(node => {
-                expect(node.declaredValuesTruncated).toBeFalse();
-            });
-
-        });
-
-        it('given a model inside every limit, drops nothing and writes no notice', () => {
-
-            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
-                buildUncappedViewModel(3),
-                DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS
-            );
-
-            expect(actualViewModel.objects).toHaveLength(3);
-            expect(actualViewModel.truncatedObjectCount).toBe(0);
-            expect(actualViewModel.truncationNotices).toBeEmpty();
 
         });
 
@@ -3350,207 +2980,9 @@ describe('PicklistDependencyExplorerService', () => {
 
             const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsWithReportDirectoryPath);
 
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                resultsLoad
-            );
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), resultsLoad);
 
             expect(actualViewModel.runSummary.reportFilePath).toContain('report.md');
-
-        });
-
-    });
-
-    /*
-        Slice 3 of #83: a failed combination links to the code that generated it and to the run entry
-        that reported it. Each allow-list pairs the FILE with the METHOD, so a legitimate file cannot
-        be combined with a method name of the sender's choosing.
-    */
-    describe('openable targets', () => {
-
-        function buildManifestSourcedViewModel(resultsLoad: IPicklistDependencyResultsLoad = buildNoResultsLoad()): IPicklistDependencyExplorerViewModel {
-
-            const manifest = PicklistDependencyManifestService.buildManifest(
-                {
-                    specDetails: buildChainExampleSpecDetails(),
-                    recordTypeSpecDetails: buildChainExampleRecordTypeSpecDetails(),
-                    skippedFieldWarnings: [],
-                    skippedFields: []
-                },
-                mockObjectsDirectoryPath,
-                '/workspace/force-app/main/default/classes',
-                '3.5.0',
-                '2026-09-03T12:00:00Z',
-                'fingerprint-abc'
-            );
-
-            return PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
-                mockObjectsDirectoryPath,
-                resultsLoad,
-                { freshness: 'fresh', message: '' }
-            );
-
-        }
-
-        it('pairs each generated spec method with the class file it is declared in', () => {
-
-            const actualViewModel = buildManifestSourcedViewModel();
-            const objectViewModel = actualViewModel.objects[0];
-            const stateNode = PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes)
-                                    .find(node => node.fieldApiName === 'State__c');
-
-            const actualTargets = PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel);
-
-            expect(actualTargets).toContain(
-                PicklistDependencyExplorerService.buildOpenTargetKey(objectViewModel.generatedClassFilePath, stateNode.specMethodName)
-            );
-
-        });
-
-        it('includes the record type scoped spec methods, which is where a scoped failure points', () => {
-
-            const actualViewModel = buildManifestSourcedViewModel();
-            const objectViewModel = actualViewModel.objects[0];
-            const scopedMethodName = PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes)
-                                        .find(node => node.fieldApiName === 'State__c')
-                                        .recordTypeScopes[0].specMethodName;
-
-            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel)).toContain(
-                PicklistDependencyExplorerService.buildOpenTargetKey(objectViewModel.generatedClassFilePath, scopedMethodName)
-            );
-
-        });
-
-        /*
-            A metadata preview is asserted by nothing, so it names no generated code -- and offering
-            a link into a class that does not exist would contradict the banner above it.
-        */
-        it('given a metadata preview, offers no spec target at all', () => {
-
-            const previewViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
-                mockObjectsDirectoryPath,
-                buildChainExampleSpecDetails(),
-                [],
-                buildNoResultsLoad(),
-                [],
-                PicklistDependencyExplorerService.buildMetadataPreviewContext()
-            );
-
-            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(previewViewModel)).toBeEmpty();
-
-        });
-
-        it('given a run that wrote a report, pairs the report with each object test method it names', () => {
-
-            const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsWithReportDirectoryPath);
-            const actualViewModel = buildManifestSourcedViewModel(resultsLoad);
-
-            expect(PicklistDependencyExplorerService.collectOpenableRunReportTargets(actualViewModel)).toContain(
-                PicklistDependencyExplorerService.buildOpenTargetKey(
-                    actualViewModel.runSummary.reportFilePath,
-                    actualViewModel.objects[0].testMethodName
-                )
-            );
-
-        });
-
-        /*
-            The manifest is a json file on disk that a hand edit -- or someone else's commit --
-            controls, and loadManifest accepts generatedClassFilePath as a bare string. Before the
-            spec-method link existed that path was only ever RENDERED; now it is a path the
-            extension host can be asked to read, so it has to be brought back inside the workspace
-            exactly as the objects directory already is. An allow-list built from text that can name
-            anything on the disk is not an allow-list.
-        */
-        it('given a manifest naming a generated class outside the workspace, offers no spec target for it', () => {
-
-            const manifest = PicklistDependencyManifestService.buildManifest(
-                { specDetails: buildChainExampleSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
-                mockObjectsDirectoryPath,
-                '/workspace/force-app/main/default/classes',
-                '3.6.0',
-                '2026-09-03T12:00:00Z',
-                'fingerprint-abc'
-            );
-
-            // THE HAND EDIT: A PATH WITH NOTHING TO DO WITH THE WORKSPACE
-            manifest.objects[0].generatedClassFilePath = '/root/.ssh/id_rsa';
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
-                mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                { freshness: 'fresh', message: '' },
-                '/workspace'
-            );
-
-            expect(actualViewModel.objects[0].generatedClassFilePath).toBe('');
-            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel)).toBeEmpty();
-
-        });
-
-        it('given a manifest naming a classes directory outside the workspace, renders no path for it either', () => {
-
-            const manifest = PicklistDependencyManifestService.buildManifest(
-                { specDetails: buildChainExampleSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
-                mockObjectsDirectoryPath,
-                '/somewhere/else/entirely/classes',
-                '3.6.0',
-                '2026-09-03T12:00:00Z',
-                'fingerprint-abc'
-            );
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
-                mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                { freshness: 'fresh', message: '' },
-                '/workspace'
-            );
-
-            expect(actualViewModel.classesDirectoryPath).toBe('');
-
-        });
-
-        it('given a generated class inside the workspace, still offers its spec target', () => {
-
-            const manifest = PicklistDependencyManifestService.buildManifest(
-                { specDetails: buildChainExampleSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
-                mockObjectsDirectoryPath,
-                '/workspace/force-app/main/default/classes',
-                '3.6.0',
-                '2026-09-03T12:00:00Z',
-                'fingerprint-abc'
-            );
-
-            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
-                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
-                mockObjectsDirectoryPath,
-                buildNoResultsLoad(),
-                { freshness: 'fresh', message: '' },
-                '/workspace'
-            );
-
-            expect(actualViewModel.objects[0].generatedClassFilePath).toContain('/workspace/');
-            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel)).not.toBeEmpty();
-
-        });
-
-        it('given no run at all, offers no run report target', () => {
-
-            expect(PicklistDependencyExplorerService.collectOpenableRunReportTargets(buildManifestSourcedViewModel())).toBeEmpty();
-
-        });
-
-        it('collects every combination key the model declares, scoped rows included', () => {
-
-            const actualCombinationKeys = PicklistDependencyExplorerService.collectCombinationKeys(buildManifestSourcedViewModel());
-
-            expect(actualCombinationKeys).toContain('Chain_Example__c.State__c @ USA');
-            expect(actualCombinationKeys).toContain('Chain_Example__c.State__c [North_America] @ USA');
 
         });
 
@@ -3641,6 +3073,1571 @@ describe('PicklistDependencyExplorerService', () => {
 
     });
 
+    describe('record type scoped failure attribution', () => {
+
+        test('parses the record type out of a scoped failure line', () => {
+
+            const parsedFailures = PicklistDependencyExplorerService.parseFailureLines(
+                '  - MISSING_VALUES — Chain_Example__c.State__c [North_America] @ USA: Expected values no longer valid: [Ohio]'
+            );
+
+            expect(parsedFailures).toHaveLength(1);
+            expect(parsedFailures[0].recordTypeDeveloperName).toBe('North_America');
+            expect(parsedFailures[0].fieldApiName).toBe('State__c');
+            expect(parsedFailures[0].controllingValueAndMessage).toBe('USA: Expected values no longer valid: [Ohio]');
+
+        });
+
+        test('leaves a field level failure line unscoped', () => {
+
+            const parsedFailures = PicklistDependencyExplorerService.parseFailureLines(
+                '  - MISSING_VALUES — Chain_Example__c.State__c @ USA: Expected values no longer valid: [Ohio]'
+            );
+
+            expect(parsedFailures[0].recordTypeDeveloperName).toBeUndefined();
+            expect(parsedFailures[0].controllingValueAndMessage).toBe('USA: Expected values no longer valid: [Ohio]');
+
+        });
+
+        /*
+            A scoped failure landing on the field-level row would report drift in a spec the run
+            never evaluated, and would do it on the row a reader trusts most.
+        */
+        test('attributes a scoped failure to its record type rather than to the field level row', () => {
+
+            const assertionMessage = 'Picklist dependency drift on Chain_Example__c -- 1 combination(s):\n'
+                + '  - MISSING_VALUES — Chain_Example__c.State__c [North_America] @ USA: Expected values no longer valid: [Ohio]';
+
+            const resultsLoad: IPicklistDependencyResultsLoad = {
+                state: 'loaded',
+                message: 'loaded',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
+                results: {
+                    targetOrg: 'devOrg',
+                    ranAt: '2026-09-02T09:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
+                        passed: false,
+                        message: assertionMessage
+                    }]
+                }
+            };
+
+            const viewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), resultsLoad, buildChainExampleRecordTypeSpecDetails());
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+
+            const scopedUsa = stateNode.recordTypeScopes[0].combinations.find(combination => combination.controllingValue === 'USA');
+            expect(scopedUsa.status).toBe('failed');
+            expect(scopedUsa.failures).toHaveLength(1);
+            expect(scopedUsa.failures[0].kind).toBe('MISSING_VALUES');
+
+            const fieldLevelUsa = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+            expect(fieldLevelUsa.status).not.toBe('failed');
+            expect(fieldLevelUsa.failures).toBeEmpty();
+
+            // AND THE FAILURE IS NOT LEFT LOOKING UNPLACEABLE, WHICH WOULD HOLD THE OBJECT AT UNKNOWN
+            expect(viewModel.objects[0].unattributedFailureMessages).toBeEmpty();
+
+        });
+
+        test('given a scoped failure naming a record type the metadata no longer declares, reports it with its scope', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Chain_Example__c.State__c [Deleted_Record_Type] @ USA: Expected values no longer valid: [Ohio]';
+
+            const resultsLoad: IPicklistDependencyResultsLoad = {
+                state: 'loaded',
+                message: 'loaded',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/check/results.json',
+                results: {
+                    targetOrg: 'devOrg',
+                    ranAt: '2026-09-02T09:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
+                        passed: false,
+                        message: assertionMessage
+                    }]
+                }
+            };
+
+            const viewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), resultsLoad, buildChainExampleRecordTypeSpecDetails());
+
+            expect(viewModel.objects[0].unattributedFailureMessages).toHaveLength(1);
+            expect(viewModel.objects[0].unattributedFailureMessages[0]).toContain('[Deleted_Record_Type]');
+
+        });
+
+    });
+
+    describe('failure attribution regressions', () => {
+
+        function buildColonValuedSpecDetails(): IPicklistDependencySpecDetail[] {
+
+            return [
+                {
+                    objectApiName: 'Account',
+                    fieldApiName: 'Sub_Type__c',
+                    controllingFieldApiName: 'Type__c',
+                    expectations: [
+                        { controllingValue: 'Tier 1: Premium', dependentValues: ['Gold'], forbiddenValues: ['Basic'] },
+                        { controllingValue: 'Tier 2', dependentValues: ['Basic'], forbiddenValues: ['Gold'] }
+                    ]
+                }
+            ];
+        }
+
+        function buildAccountResultsLoad(assertionMessage: string): IPicklistDependencyResultsLoad {
+
+            return {
+                state: 'loaded',
+                message: '',
+                resultsFilePath: '/workspace/results.json',
+                results: {
+                    targetOrg: 'devHub',
+                    ranAt: '2026-08-20T09-01-33',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [
+                        { methodName: 'Account_picklistDependenciesMatchSourceMetadata', passed: false, message: assertionMessage }
+                    ]
+                }
+            };
+        }
+
+        /*
+            A Salesforce picklist value may contain ": ", so splitting the failure line at the first
+            colon attributed the failure to a controlling value that does not exist -- and the
+            unmatched failure was then dropped, leaving the genuinely drifted combination green.
+        */
+        it('given a controlling value containing a colon, attributes the failure to the right combination', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 1: Premium: expected value(s) not unlocked in the org: Gold';
+
+            const actualViewModel = buildViewModelWithRun(buildColonValuedSpecDetails(), buildAccountResultsLoad(assertionMessage));
+
+            const subTypeNode = actualViewModel.objects[0].rootNodes[0];
+            const premiumCombination = subTypeNode.combinations.find(combination => combination.controllingValue === 'Tier 1: Premium');
+
+            expect(premiumCombination.status).toBe('failed');
+            expect(premiumCombination.failures[0].kind).toBe('MISSING_VALUES');
+            expect(premiumCombination.failures[0].message).toBe('expected value(s) not unlocked in the org: Gold');
+            expect(actualViewModel.objects[0].unattributedFailureMessages).toEqual([]);
+
+        });
+
+        /*
+            The regression that mattered most: a parsed failure matching no combination was neither
+            applied nor reported, so the object showed as failed while every combination under it
+            showed as passed and the Apex message vanished from the panel entirely.
+        */
+        it('given a failure naming a combination this metadata no longer describes, holds the combinations at not checked and surfaces the message', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 3 Retired: expected value(s) not unlocked in the org: Platinum';
+
+            const actualViewModel = buildViewModelWithRun(buildColonValuedSpecDetails(), buildAccountResultsLoad(assertionMessage));
+
+            const accountObject = actualViewModel.objects[0];
+
+            expect(accountObject.status).toBe('failed');
+            expect(accountObject.rootNodes[0].status).toBe('unknown');
+            expect(accountObject.rootNodes[0].combinations.every(combination => combination.status === 'unknown')).toBe(true);
+
+            const unattributedText = accountObject.unattributedFailureMessages.join('\n');
+            expect(unattributedText).toContain('Tier 3 Retired');
+            expect(unattributedText).toContain('Platinum');
+
+            // THE MESSAGE MUST ALSO SURVIVE INTO THE RENDERED SHELL, WHICH IS WHERE IT WAS PREVIOUSLY LOST
+            expect(buildPanelDocumentAndPayload(actualViewModel)).toContain('Platinum');
+
+        });
+
+        /*
+            SDTPicklistDependencyValidator raises MISSING_VALUES and FORBIDDEN_VALUES_PRESENT
+            independently for the same controlling value, so taking only the first hid a real
+            drift fact.
+        */
+        it('given two failure kinds on one combination, keeps both rather than only the first', () => {
+
+            const assertionMessage = '  - MISSING_VALUES — Account.Sub_Type__c @ Tier 2: expected value(s) not unlocked in the org: Basic\n'
+                + '  - FORBIDDEN_VALUES_PRESENT — Account.Sub_Type__c @ Tier 2: value(s) unlocked that local metadata forbids: Gold';
+
+            const actualViewModel = buildViewModelWithRun(buildColonValuedSpecDetails(), buildAccountResultsLoad(assertionMessage));
+
+            const tierTwoCombination = actualViewModel.objects[0].rootNodes[0].combinations
+                .find(combination => combination.controllingValue === 'Tier 2');
+
+            expect(tierTwoCombination.failures).toHaveLength(2);
+            expect(tierTwoCombination.failures.map(failure => failure.kind))
+                .toEqual(['MISSING_VALUES', 'FORBIDDEN_VALUES_PRESENT']);
+            expect(actualViewModel.objects[0].failureCount).toBe(2);
+
+            const actualWebviewHtml = buildPanelDocumentAndPayload(actualViewModel);
+            expect(actualWebviewHtml).toContain('FORBIDDEN_VALUES_PRESENT');
+            expect(actualWebviewHtml).toContain('MISSING_VALUES');
+
+        });
+
+        it('given a mutual upstream cycle, still shows both fields rather than rendering the object empty', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Loop_Example__c',
+                    fieldApiName: 'First__c',
+                    controllingFieldApiName: 'Second__c',
+                    upstreamFieldApiName: 'Second__c',
+                    expectations: [{ controllingValue: 'A', dependentValues: ['B'], forbiddenValues: [] }]
+                },
+                {
+                    objectApiName: 'Loop_Example__c',
+                    fieldApiName: 'Second__c',
+                    controllingFieldApiName: 'First__c',
+                    upstreamFieldApiName: 'First__c',
+                    expectations: [{ controllingValue: 'B', dependentValues: ['A'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = buildViewModelWithRun(specDetails, buildNoResultsLoad());
+
+            // ONE MEMBER IS PROMOTED TO A ROOT AND THE OTHER HANGS BENEATH IT, SO BOTH ARE SHOWN EXACTLY ONCE
+            expect(actualViewModel.dependentFieldCount).toBe(2);
+            expect(PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .map(node => node.fieldApiName).sort()).toEqual(['First__c', 'Second__c']);
+
+        });
+
+        it('given a field naming itself as upstream, treats it as a root rather than losing it', () => {
+
+            const specDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Self_Example__c',
+                    fieldApiName: 'Only__c',
+                    controllingFieldApiName: 'Only__c',
+                    upstreamFieldApiName: 'Only__c',
+                    expectations: [{ controllingValue: 'A', dependentValues: ['B'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = buildViewModelWithRun(specDetails, buildNoResultsLoad());
+
+            expect(actualViewModel.objects[0].rootNodes).toHaveLength(1);
+            expect(actualViewModel.objects[0].rootNodes[0].fieldApiName).toBe('Only__c');
+            expect(actualViewModel.objects[0].rootNodes[0].downstreamNodes).toEqual([]);
+
+        });
+
+    });
+
+    describe('openable targets', () => {
+
+        function buildManifestSourcedViewModel(resultsLoad: IPicklistDependencyResultsLoad = buildNoResultsLoad()): IPicklistDependencyExplorerViewModel {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                {
+                    specDetails: buildChainExampleSpecDetails(),
+                    recordTypeSpecDetails: buildChainExampleRecordTypeSpecDetails(),
+                    skippedFieldWarnings: [],
+                    skippedFields: []
+                },
+                mockObjectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '3.5.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            return PicklistDependencyExplorerService.applyRunToViewModel(
+                PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                    { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
+                    mockObjectsDirectoryPath,
+                    { freshness: 'fresh', message: '' }
+                ),
+                resultsLoad
+            );
+
+        }
+
+        it('pairs each generated spec method with the class file it is declared in', () => {
+
+            const actualViewModel = buildManifestSourcedViewModel();
+            const objectViewModel = actualViewModel.objects[0];
+            const stateNode = PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes)
+                                    .find(node => node.fieldApiName === 'State__c');
+
+            const actualTargets = PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel);
+
+            expect(actualTargets).toContain(
+                PicklistDependencyExplorerService.buildOpenTargetKey(objectViewModel.generatedClassFilePath, stateNode.specMethodName)
+            );
+
+        });
+
+        it('includes the record type scoped spec methods, which is where a scoped failure points', () => {
+
+            const actualViewModel = buildManifestSourcedViewModel();
+            const objectViewModel = actualViewModel.objects[0];
+            const scopedMethodName = PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes)
+                                        .find(node => node.fieldApiName === 'State__c')
+                                        .recordTypeScopes[0].specMethodName;
+
+            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel)).toContain(
+                PicklistDependencyExplorerService.buildOpenTargetKey(objectViewModel.generatedClassFilePath, scopedMethodName)
+            );
+
+        });
+
+        /*
+            A metadata preview is asserted by nothing, so it names no generated code -- and offering
+            a link into a class that does not exist would contradict the banner above it.
+        */
+        it('given a metadata preview, offers no spec target at all', () => {
+
+            const previewViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                [],
+                PicklistDependencyExplorerService.buildMetadataPreviewContext()
+            );
+
+            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(previewViewModel)).toBeEmpty();
+
+        });
+
+        it('given a run that wrote a report, pairs the report with each object test method it names', () => {
+
+            const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsWithReportDirectoryPath);
+            const actualViewModel = buildManifestSourcedViewModel(resultsLoad);
+
+            expect(PicklistDependencyExplorerService.collectOpenableRunReportTargets(actualViewModel)).toContain(
+                PicklistDependencyExplorerService.buildOpenTargetKey(
+                    actualViewModel.runSummary.reportFilePath,
+                    actualViewModel.objects[0].testMethodName
+                )
+            );
+
+        });
+
+        /*
+            The manifest is a json file on disk that a hand edit -- or someone else's commit --
+            controls, and loadManifest accepts generatedClassFilePath as a bare string. Before the
+            spec-method link existed that path was only ever RENDERED; now it is a path the
+            extension host can be asked to read, so it has to be brought back inside the workspace
+            exactly as the objects directory already is. An allow-list built from text that can name
+            anything on the disk is not an allow-list.
+        */
+        it('given a manifest naming a generated class outside the workspace, offers no spec target for it', () => {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                { specDetails: buildChainExampleSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
+                mockObjectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '3.6.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            // THE HAND EDIT: A PATH WITH NOTHING TO DO WITH THE WORKSPACE
+            manifest.objects[0].generatedClassFilePath = '/root/.ssh/id_rsa';
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
+                mockObjectsDirectoryPath,
+                { freshness: 'fresh', message: '' },
+                '/workspace'
+            );
+
+            expect(actualViewModel.objects[0].generatedClassFilePath).toBe('');
+            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel)).toBeEmpty();
+
+        });
+
+        it('given a manifest naming a classes directory outside the workspace, renders no path for it either', () => {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                { specDetails: buildChainExampleSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
+                mockObjectsDirectoryPath,
+                '/somewhere/else/entirely/classes',
+                '3.6.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
+                mockObjectsDirectoryPath,
+                { freshness: 'fresh', message: '' },
+                '/workspace'
+            );
+
+            expect(actualViewModel.classesDirectoryPath).toBe('');
+
+        });
+
+        it('given a generated class inside the workspace, still offers its spec target', () => {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                { specDetails: buildChainExampleSpecDetails(), recordTypeSpecDetails: [], skippedFieldWarnings: [], skippedFields: [] },
+                mockObjectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '3.6.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            const actualViewModel = PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                { state: 'loaded', message: '', manifest, manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json' },
+                mockObjectsDirectoryPath,
+                { freshness: 'fresh', message: '' },
+                '/workspace'
+            );
+
+            expect(actualViewModel.objects[0].generatedClassFilePath).toContain('/workspace/');
+            expect(PicklistDependencyExplorerService.collectOpenableSpecTargets(actualViewModel)).not.toBeEmpty();
+
+        });
+
+        it('given no run at all, offers no run report target', () => {
+
+            expect(PicklistDependencyExplorerService.collectOpenableRunReportTargets(buildManifestSourcedViewModel())).toBeEmpty();
+
+        });
+
+        it('collects every combination key the model declares, scoped rows included', () => {
+
+            const actualCombinationKeys = PicklistDependencyExplorerService.collectCombinationKeys(buildManifestSourcedViewModel());
+
+            expect(actualCombinationKeys).toContain('Chain_Example__c.State__c @ USA');
+            expect(actualCombinationKeys).toContain('Chain_Example__c.State__c [North_America] @ USA');
+
+        });
+
+    });
+
+    /*
+        Three edges of the retained overlay that the suites above reach only incidentally. They are
+        cheap to pin and they are the ones a re-connection would lean on: a malformed failure line,
+        a scoped failure carrying no controlling value, and a report finder handed nothing.
+    */
+    describe('retained overlay edges', () => {
+
+        // "KIND -- Object.Field" WITH NEITHER AN "@" SCOPE NOR A ":" FIELD-LEVEL TAIL IS NOT A FAILURE LINE
+        it('given a failure line with neither tail shape, counts it as no failure at all', () => {
+
+            expect(PicklistDependencyExplorerService.parseFailureLines('MISSING_VALUES — Account.Region__c'))
+                .toBeEmpty();
+
+        });
+
+        /*
+            A scoped failure raised against the whole field carries no controlling value, so it can
+            match no scoped combination. It must leave the scope's rows alone rather than attaching
+            to the first one.
+        */
+        it('given a record-type scoped failure with no controlling value, attributes it to no scoped combination', () => {
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildChainExampleSpecDetails(),
+                [],
+                buildChainExampleRecordTypeSpecDetails()
+            );
+
+            const parsedFailures = PicklistDependencyExplorerService.parseFailureLines(
+                'CONTROLLING_FIELD_MISMATCH — Chain_Example__c.State__c [North_America]: controlled by something else'
+            );
+
+            expect(parsedFailures[0].controllingValueAndMessage).toBeUndefined();
+
+            PicklistDependencyExplorerService.applyFailuresToNodes(viewModel.objects[0].rootNodes, parsedFailures, false);
+
+            const northAmericaScope = viewModel.objects[0].rootNodes[0].recordTypeScopes[0];
+
+            northAmericaScope.combinations.forEach(combination => expect(combination.failures).toBeEmpty());
+            expect(northAmericaScope.failureCount).toBe(0);
+
+        });
+
+        /*
+            A failed run whose message parses to NO failure lines at all. Nothing can be attributed,
+            so the object is held at unknown and the raw Apex message is surfaced verbatim -- the
+            reader is told the object failed and shown exactly what the org said, rather than being
+            shown green rows under a failed object.
+        */
+        it('given a failed run whose message names nothing parseable, surfaces the raw message', () => {
+
+            const viewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), {
+                state: 'loaded',
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c'),
+                        passed: false,
+                        message: 'System.AssertException: the org rejected the describe call'
+                    }]
+                }
+            });
+
+            const objectViewModel = viewModel.objects[0];
+
+            expect(objectViewModel.status).toBe('failed');
+            expect(objectViewModel.unattributedFailureMessages)
+                .toEqual(['System.AssertException: the org rejected the describe call']);
+
+            // NOTHING LANDED, SO NO ROW IS CLAIMED EITHER WAY
+            objectViewModel.rootNodes[0].combinations.forEach(combination => expect(combination.status).toBe('unknown'));
+
+        });
+
+        it('given no report content or no method name, finds no report entry rather than guessing at one', () => {
+
+            expect(PicklistDependencyExplorerService.findRunReportEntryLineNumber('', 'testAccount')).toBe(0);
+            expect(PicklistDependencyExplorerService.findRunReportEntryLineNumber('### testAccount', '')).toBe(0);
+
+        });
+
+    });
+
+    /*
+        The retained overlay's BEHAVIOUR, not just its surface.
+
+        Restoring the code without these would leave it compiling and unproven -- and an overlay
+        nobody calls is exactly the code that rots silently. Each of these builds the structure and
+        then applies a run to it, which is the two-step shape the Explorer's own build used to hide.
+    */
+    describe('retained overlay behaviour', () => {
+
+        // THE SUITE-SCOPED HELPERS THESE TESTS CAME WITH, POINTED AT THE TWO-STEP BUILD
+        const manifestFilePath = '/workspace/treecipe/PicklistDependencySpecs/manifest.json';
+
+        function buildCollectionResult(overrides: Partial<IPicklistDependencyCollectionResult> = {}): IPicklistDependencyCollectionResult {
+
+            return {
+                specDetails: buildChainExampleSpecDetails(),
+                recordTypeSpecDetails: [],
+                skippedFieldWarnings: [],
+                skippedFields: [],
+                ...overrides
+            };
+
+        }
+
+        function buildViewModelWithLatestMockRun(specDetails: IPicklistDependencySpecDetail[]): IPicklistDependencyExplorerViewModel {
+
+            return buildViewModelWithRun(
+                specDetails,
+                PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath)
+            );
+
+        }
+
+        function buildManifestLoad(collectionResult: IPicklistDependencyCollectionResult = buildCollectionResult()) {
+
+            const manifest = PicklistDependencyManifestService.buildManifest(
+                collectionResult,
+                mockObjectsDirectoryPath,
+                '/workspace/force-app/main/default/classes',
+                '3.5.0',
+                '2026-09-03T12:00:00Z',
+                'fingerprint-abc'
+            );
+
+            return { state: 'loaded' as const, message: '', manifest, manifestFilePath };
+
+        }
+
+        const freshResult = { freshness: 'fresh' as const, message: '' };
+
+        it('given no results at all, renders the structure with every combination marked not checked', () => {
+
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), buildNoResultsLoad());
+
+            expect(actualViewModel.runLoadState).toBe('noResultsFound');
+            expect(actualViewModel.runSummary).toBeUndefined();
+            expect(actualViewModel.objects).toHaveLength(1);
+            expect(actualViewModel.objects[0].status).toBe('unknown');
+            expect(actualViewModel.objects[0].rootNodes[0].status).toBe('unknown');
+            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('unknown');
+
+        });
+
+        it('given the most recent run, overlays each failing combination with its kind and message', () => {
+
+            const actualViewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            expect(actualViewModel.runLoadState).toBe('loaded');
+            expect(actualViewModel.runSummary.targetOrg).toBe('devHub');
+            expect(actualViewModel.runSummary.passed).toBe(false);
+
+            const chainObjectViewModel = actualViewModel.objects[0];
+            expect(chainObjectViewModel.status).toBe('failed');
+            expect(chainObjectViewModel.failureCount).toBe(2);
+
+            const stateNode = chainObjectViewModel.rootNodes[0];
+            const failedUsaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+            expect(failedUsaCombination.status).toBe('failed');
+            expect(failedUsaCombination.failures).toHaveLength(1);
+            expect(failedUsaCombination.failures[0].kind).toBe('MISSING_VALUES');
+            expect(failedUsaCombination.failures[0].message).toContain('Texas');
+
+            const passedCanadaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'Canada');
+            expect(passedCanadaCombination.status).toBe('passed');
+            expect(passedCanadaCombination.failures).toEqual([]);
+
+        });
+
+        it('given a failing combination on a chained field, overlays it on the nested node', () => {
+
+            const actualViewModel = buildViewModelWithLatestMockRun(buildChainExampleSpecDetails());
+
+            const cityNode = actualViewModel.objects[0].rootNodes[0].downstreamNodes[0];
+
+            expect(cityNode.fieldApiName).toBe('City__c');
+            expect(cityNode.status).toBe('failed');
+
+            const failedOhioCombination = cityNode.combinations.find(combination => combination.controllingValue === 'Ohio');
+            expect(failedOhioCombination.status).toBe('failed');
+            expect(failedOhioCombination.failures[0].kind).toBe('FORBIDDEN_VALUES_PRESENT');
+            expect(PicklistDependencyExplorerService.buildForbiddenValues(
+                cityNode.declaredValues, failedOhioCombination
+            )).toContain('Toronto');
+
+        });
+
+        it('given an object the run covered and passed, marks every combination passed', () => {
+
+            const dependencyExampleSpecDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Dependency_Example__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: ['Austin'] }]
+                }
+            ];
+
+            const actualViewModel = buildViewModelWithLatestMockRun(dependencyExampleSpecDetails);
+
+            expect(actualViewModel.objects[0].status).toBe('passed');
+            expect(actualViewModel.objects[0].rootNodes[0].status).toBe('passed');
+            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('passed');
+
+        });
+
+        it('given an object absent from the loaded run, leaves it not checked rather than claiming it passed', () => {
+
+            const unrelatedSpecDetails: IPicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Never_Checked__c',
+                    fieldApiName: 'City__c',
+                    controllingFieldApiName: 'State__c',
+                    expectations: [{ controllingValue: 'Ohio', dependentValues: ['Columbus'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = buildViewModelWithLatestMockRun(unrelatedSpecDetails);
+
+            expect(actualViewModel.objects[0].status).toBe('unknown');
+            expect(actualViewModel.objects[0].rootNodes[0].combinations[0].status).toBe('unknown');
+
+        });
+
+        it('given a field level failure with no controlling value, attaches it to the field rather than to a combination', () => {
+
+            const fieldLevelFailureResultsLoad: IPicklistDependencyResultsLoad = {
+                state: 'loaded',
+                message: '',
+                resultsFilePath: '/workspace/results.json',
+                results: {
+                    targetOrg: 'devHub',
+                    ranAt: '2026-08-20T09-01-33',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [
+                        {
+                            methodName: 'Chain_Example_c_picklistDependenciesMatchSourceMetadata',
+                            passed: false,
+                            message: '  - CONTROLLING_FIELD_MISMATCH — Chain_Example__c.State__c: the org reports Region__c as the controlling field'
+                        }
+                    ]
+                }
+            };
+
+            const actualViewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), fieldLevelFailureResultsLoad);
+
+            const stateNode = actualViewModel.objects[0].rootNodes[0];
+            expect(stateNode.status).toBe('failed');
+            expect(stateNode.fieldLevelFailures).toHaveLength(1);
+            expect(stateNode.fieldLevelFailures[0].kind).toBe('CONTROLLING_FIELD_MISMATCH');
+            expect(stateNode.fieldLevelFailures[0].message).toContain('Region__c');
+            expect(stateNode.combinations.every(combination => combination.status === 'passed')).toBe(true);
+
+        });
+
+        /*
+            The run validates SDTPLDSpecs.all(), which holds the field-level specs only. Marking a
+            scoped combination "passed" off the back of that would report a scope nothing checked as
+            verified -- the exact failure mode the describe source refuses a scoped spec to avoid.
+        */
+        test('given a passing field level run, leaves scoped combinations unknown rather than claiming they passed', () => {
+
+            const resultsLoad = PicklistDependencyExplorerService.loadLatestResults(mockResultsDirectoryPath);
+
+            const viewModel = buildViewModelWithRun(buildChainExampleSpecDetails(), resultsLoad, buildChainExampleRecordTypeSpecDetails());
+
+            const stateNode = viewModel.objects[0].rootNodes[0];
+            const scopedStatuses = stateNode.recordTypeScopes[0].combinations.map(combination => combination.status);
+
+            expect(scopedStatuses.every(status => status === 'unknown')).toBeTrue();
+            expect(stateNode.recordTypeScopes[0].status).toBe('unknown');
+
+        });
+
+        /*
+            The test method the run outcome is looked up by comes from the manifest rather than being
+            re-derived. Re-deriving it is the second derivation this whole artifact exists to remove,
+            and the two inputs differ the moment an entry is dropped at the parse boundary.
+        */
+        it('looks up the run outcome by the test method name the manifest recorded', () => {
+
+            const manifestLoad = buildManifestLoad();
+            manifestLoad.manifest.objects[0].testMethodName = 'aDeliberatelyDifferentTestMethodName';
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: true,
+                    failureCount: 0,
+                    methodsRun: 1,
+                    methodOutcomes: [{ methodName: 'aDeliberatelyDifferentTestMethodName', passed: true }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                    PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                        manifestLoad, mockObjectsDirectoryPath, freshResult
+                    ),
+                    resultsLoad
+                );
+
+            expect(actualViewModel.objects[0].testMethodName).toBe('aDeliberatelyDifferentTestMethodName');
+
+            // THE RUN WAS ACTUALLY MATCHED, RATHER THAN THE OBJECT FALLING BACK TO "NOT CHECKED"
+            expect(actualViewModel.objects[0].status).toBe('passed');
+
+        });
+
+        /*
+            The three-state guarantee, held through the manifest path. A failure that names a
+            combination the manifest does not declare must not be forced onto a row that looks
+            similar -- the object goes to "unknown" and the text is surfaced unattributed.
+        */
+        it('given a failure naming a combination the manifest never declared, holds the object at unknown', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: testMethodName,
+                        passed: false,
+                        message: 'MISSING_VALUES — Chain_Example__c.Nonexistent__c @ Mars: nothing here'
+                    }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                    buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                ),
+                resultsLoad
+            );
+
+            const objectViewModel = actualViewModel.objects[0];
+
+            expect(objectViewModel.unattributedFailureMessages).not.toBeEmpty();
+
+            PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes).forEach(node => {
+                node.combinations.forEach(combination => expect(combination.status).toBe('unknown'));
+            });
+
+        });
+
+        it('given a failure naming a combination the manifest DOES declare, attributes it to that row', () => {
+
+            const testMethodName = PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c');
+
+            const resultsLoad = {
+                state: 'loaded' as const,
+                message: '',
+                resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                results: {
+                    targetOrg: 'test-org',
+                    ranAt: '2026-09-03T13:00:00Z',
+                    passed: false,
+                    failureCount: 1,
+                    methodsRun: 1,
+                    methodOutcomes: [{
+                        methodName: testMethodName,
+                        passed: false,
+                        message: 'MISSING_VALUES — Chain_Example__c.State__c @ USA: Ohio is no longer available'
+                    }]
+                }
+            };
+
+            const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                PicklistDependencyExplorerService.buildExplorerViewModelByManifest(
+                    buildManifestLoad(), mockObjectsDirectoryPath, freshResult
+                ),
+                resultsLoad
+            );
+
+            const stateNode = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .find(node => node.fieldApiName === 'State__c');
+
+            const usaCombination = stateNode.combinations.find(combination => combination.controllingValue === 'USA');
+
+            expect(usaCombination.status).toBe('failed');
+            expect(usaCombination.combinationKey).toBe('Chain_Example__c.State__c @ USA');
+            expect(actualViewModel.objects[0].unattributedFailureMessages).toBeEmpty();
+
+        });
+
+    });
+
+        /*
+            THE ORDER THE OVERLAY COMPOSES IN, WHICH IS THE ONE THING A RE-WIRE CAN GET WRONG.
+
+            The ceiling drops rows. A failure naming a row that is already gone matches nothing,
+            lands in the unattributed set, and holds the WHOLE object at "unknown" -- every
+            surviving row with it. Overlaying first and capping second is the order the overlay ran
+            in when it lived inside buildExplorerViewModel, and these pin the difference so it
+            cannot be re-composed the wrong way round unnoticed.
+        */
+        describe('the overlay must run before the ceiling', () => {
+
+            // TEN COMBINATIONS, A CAP OF TWO, AND A FAILURE NAMING ONE THE CAP DROPS
+            function buildTenCombinationSpecs(): IPicklistDependencySpecDetail[] {
+                return [{
+                    objectApiName: 'Chain_Example__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: Array.from({ length: 10 }, (unusedValue, expectationIndex) => ({
+                        controllingValue: `V${expectationIndex}`,
+                        dependentValues: ['x'],
+                        forbiddenValues: []
+                    }))
+                }];
+            }
+
+            function buildFailureOnDroppedRow(): IPicklistDependencyResultsLoad {
+                return {
+                    state: 'loaded',
+                    message: '',
+                    resultsFilePath: '/workspace/treecipe/PicklistDependencyResults/run/results.json',
+                    results: {
+                        targetOrg: 'test-org', ranAt: '2026-09-03T13:00:00Z',
+                        passed: false, failureCount: 1, methodsRun: 1,
+                        methodOutcomes: [{
+                            methodName: PicklistDependencyTestService.buildTestMethodNameByObjectApiName('Chain_Example__c'),
+                            passed: false,
+                            message: 'MISSING_VALUES — Chain_Example__c.State__c @ V9: lost a value'
+                        }]
+                    }
+                };
+            }
+
+            const cappedLimits = () => buildLimits({ maxCombinationsPerNode: 2 });
+
+            it('given the documented order, attributes normally even when the failing row was capped away', () => {
+
+                const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                    PicklistDependencyExplorerService.applyRunToViewModel(
+                        PicklistDependencyExplorerService.buildUncappedExplorerViewModel(
+                            mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                        ),
+                        buildFailureOnDroppedRow()
+                    ),
+                    cappedLimits()
+                );
+
+                const objectViewModel = actualViewModel.objects[0];
+
+                expect(objectViewModel.status).toBe('failed');
+
+                // THE FAILURE FOUND ITS ROW BEFORE THE CEILING REMOVED IT, SO NOTHING WAS LEFT UNPLACED
+                expect(objectViewModel.unattributedFailureMessages).toBeEmpty();
+
+                // AND THE SURVIVING ROWS CARRY THE VERDICT THE RUN ACTUALLY SUPPORTS
+                expect(objectViewModel.rootNodes[0].combinations[0].status).toBe('passed');
+
+            });
+
+            /*
+                The same inputs composed the obvious way round. This is not a supported order -- it
+                is asserted so the degradation is visible and pinned rather than discovered later by
+                someone re-wiring the overlay and wondering why a large org went grey.
+            */
+            it('given the ceiling first, the failure lands nowhere and holds the whole object back', () => {
+
+                const actualViewModel = PicklistDependencyExplorerService.applyRunToViewModel(
+                    PicklistDependencyExplorerService.applyModelLimits(
+                        PicklistDependencyExplorerService.buildExplorerViewModel(
+                            mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                        ),
+                        cappedLimits()
+                    ),
+                    buildFailureOnDroppedRow()
+                );
+
+                const objectViewModel = actualViewModel.objects[0];
+
+                expect(objectViewModel.unattributedFailureMessages).not.toBeEmpty();
+                expect(objectViewModel.rootNodes[0].combinations[0].status).toBe('unknown');
+
+            });
+
+            // THE MANIFEST-LESS GUARD LIVES ON THE UNCAPPED BUILD NOW, SO IT IS ASSERTED THERE TOO
+            it('given a manifest load carrying no manifest, refuses to build rather than rendering an empty panel', () => {
+
+                expect(() => PicklistDependencyExplorerService.buildUncappedExplorerViewModelByManifest(
+                    { state: 'noManifestFound', message: 'nothing here' },
+                    mockObjectsDirectoryPath,
+                    { freshness: 'fresh', message: '' }
+                )).toThrow('carries no manifest');
+
+            });
+
+            // buildExplorerViewModel STILL CAPS ON THE WAY OUT -- THE UNCAPPED BUILD IS THE OPT IN
+            it('given the plain build, the ceiling is already applied', () => {
+
+                const cappedViewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                );
+                const uncappedViewModel = PicklistDependencyExplorerService.buildUncappedExplorerViewModel(
+                    mockObjectsDirectoryPath, buildTenCombinationSpecs(), []
+                );
+
+                expect(uncappedViewModel.objects[0].rootNodes[0].combinations).toHaveLength(10);
+                expect(cappedViewModel.objects[0].rootNodes[0].combinations).toHaveLength(10);
+
+                // BOTH ARE INSIDE THE SHIPPED CAP; WHAT DIFFERS IS THAT ONE HAS BEEN THROUGH IT
+                expect(PicklistDependencyExplorerService.applyModelLimits(uncappedViewModel, cappedLimits())
+                    .objects[0].rootNodes[0].combinations).toHaveLength(2);
+
+            });
+
+        });
+
+    describe('selectWithinCap', () => {
+
+        it('given fewer items than the cap, returns them untouched', () => {
+
+            const items = ['a', 'b', 'c'];
+
+            expect(PicklistDependencyExplorerService.selectWithinCap(items, 10, () => false)).toBe(items);
+
+        });
+
+        it('given more items than the cap, keeps the retained ones and fills the rest in declared order', () => {
+
+            const items = ['a', 'b', 'c', 'd', 'e'];
+
+            const actualItems = PicklistDependencyExplorerService.selectWithinCap(items, 2, item => item === 'e');
+
+            expect(actualItems).toEqual(['a', 'e']);
+
+        });
+
+        /*
+            The cap bounds a pathological render. Dropping a reported failure to honour it would
+            break the only promise the panel makes, so the retained set is a floor rather than a
+            budget.
+        */
+        it('given more retained items than the cap, keeps every one of them anyway', () => {
+
+            const items = ['a', 'b', 'c', 'd', 'e'];
+
+            const actualItems = PicklistDependencyExplorerService.selectWithinCap(items, 2, item => item !== 'a');
+
+            expect(actualItems).toEqual(['b', 'c', 'd', 'e']);
+
+        });
+
+    });
+
+    describe('applyModelLimits', () => {
+
+        function buildManyObjectSpecDetails(objectCount: number): IPicklistDependencySpecDetail[] {
+
+            let specDetails: IPicklistDependencySpecDetail[] = [];
+
+            for ( let objectIndex = 0; objectIndex < objectCount; objectIndex++ ) {
+                specDetails.push({
+                    objectApiName: `Object_${objectIndex}__c`,
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [
+                        { controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] },
+                        { controllingValue: 'Canada', dependentValues: ['Ontario'], forbiddenValues: [] },
+                        { controllingValue: 'Mexico', dependentValues: ['Jalisco'], forbiddenValues: [] }
+                    ]
+                });
+            }
+
+            return specDetails;
+
+        }
+
+        function buildUncappedViewModel(objectCount: number): IPicklistDependencyExplorerViewModel {
+
+            return PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildManyObjectSpecDetails(objectCount),
+                []
+            );
+
+        }
+
+        /*
+            What survives the ceiling used to be decided by the check: any combination, scope or
+            object a run had reported a failure for was kept ahead of a passing one. The panel reads
+            no run, so there is no such property left, and these pin the rule that replaced it --
+            MANIFEST ORDER, on every axis. It is worth pinning rather than leaving implicit: an
+            ordering nothing asserts is one a future refactor can quietly turn into "whatever the
+            iteration happened to produce", and a reader who cannot find a row would then have no way
+            to tell a dropped row from a moved one.
+        */
+        it('keeps the objects the manifest declares FIRST, in the order it declares them', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(8),
+                buildLimits({ maxObjects: 3 })
+            );
+
+            expect(actualViewModel.objects.map(objectViewModel => objectViewModel.objectApiName))
+                .toEqual(['Object_0__c', 'Object_1__c', 'Object_2__c']);
+
+        });
+
+        it('keeps a field\'s combinations in declared order, taking the first that fit', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(1),
+                buildLimits({ maxCombinationsPerNode: 2 })
+            );
+
+            expect(actualViewModel.objects[0].rootNodes[0].combinations.map(combination => combination.controllingValue))
+                .toEqual(['USA', 'Canada']);
+            expect(actualViewModel.objects[0].rootNodes[0].truncatedCombinationCount).toBe(1);
+
+        });
+
+        /*
+            The same manifest has to truncate to the same rows every time. Reproducibility is the
+            whole point of ordering by the manifest rather than by a property of the rows: it is what
+            lets a reader conclude from the notice that a combination was CUT, rather than wondering
+            whether it moved somewhere else on the panel.
+        */
+        it('drops the same rows on every pass over the same model', () => {
+
+            const limits = buildLimits({ maxObjects: 3, maxCombinationsPerNode: 2 });
+
+            const firstPassViewModel = PicklistDependencyExplorerService.applyModelLimits(buildUncappedViewModel(8), limits);
+            const secondPassViewModel = PicklistDependencyExplorerService.applyModelLimits(buildUncappedViewModel(8), limits);
+
+            expect(secondPassViewModel.objects.map(objectViewModel => objectViewModel.objectApiName))
+                .toEqual(firstPassViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
+            expect(secondPassViewModel.objects[0].rootNodes[0].combinations.map(combination => combination.controllingValue))
+                .toEqual(firstPassViewModel.objects[0].rootNodes[0].combinations.map(combination => combination.controllingValue));
+
+        });
+
+        /*
+            The one retention rule that survived, and it is not about a run. A skipped field is the
+            only thing the panel shows that no generated spec covers, so an object carrying one is
+            kept past the cap -- dropping it would leave a dependency that was never specced
+            indistinguishable from one that does not exist.
+        */
+        it('keeps an object carrying a skipped field even where the cap would have dropped it', () => {
+
+            const uncappedViewModel = buildUncappedViewModel(8);
+            const lastObjectViewModel = uncappedViewModel.objects[7];
+
+            lastObjectViewModel.skippedFields = [{
+                fieldApiName: 'Unspecced__c',
+                recordTypeDeveloperName: '',
+                warning: 'no valueSettings markup',
+                reason: 'noValueSettings'
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                uncappedViewModel,
+                buildLimits({ maxObjects: 3 })
+            );
+
+            expect(actualViewModel.objects.map(objectViewModel => objectViewModel.objectApiName))
+                .toEqual(['Object_0__c', 'Object_1__c', 'Object_7__c']);
+            expect(actualViewModel.truncationNotices[0]).toContain('carrying a skipped field is shown');
+
+        });
+
+        // THE TOTAL BUDGET IS SPENT IN DOCUMENT ORDER TOO, WHICH IS THE SAME MANIFEST ORDER ONE LEVEL UP
+        it('spends the total budget in document order, keeping a prefix rather than a selection', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(3),
+                buildLimits({ maxRenderedCombinations: 4 })
+            );
+
+            expect(actualViewModel.objects[0].rootNodes[0].combinations.map(combination => combination.controllingValue))
+                .toEqual(['USA', 'Canada', 'Mexico']);
+            expect(actualViewModel.objects[1].rootNodes[0].combinations.map(combination => combination.controllingValue))
+                .toEqual(['USA']);
+            expect(actualViewModel.objects[2].rootNodes[0].combinations).toBeEmpty();
+
+        });
+
+        /*
+            The node cap is applied to ROOT CHAINS, and a surviving chain brings every field beneath
+            it. The notice therefore has to talk about chains: it previously said "no object shows
+            more than N at once", which a three-chains-of-five model falsifies outright -- 2 chains
+            kept renders 10 fields, not 2. The count was right and the sentence was not.
+        */
+        it('given the node cap, counts dropped FIELDS but describes the cap in chains', () => {
+
+            let chainedSpecDetails: IPicklistDependencySpecDetail[] = [];
+            for ( let chainIndex = 0; chainIndex < 3; chainIndex++ ) {
+                for ( let depthIndex = 0; depthIndex < 5; depthIndex++ ) {
+                    chainedSpecDetails.push({
+                        objectApiName: 'Big__c',
+                        fieldApiName: `C${chainIndex}_D${depthIndex}__c`,
+                        controllingFieldApiName: depthIndex === 0 ? 'Root__c' : `C${chainIndex}_D${depthIndex - 1}__c`,
+                        upstreamFieldApiName: depthIndex === 0 ? undefined : `C${chainIndex}_D${depthIndex - 1}__c`,
+                        expectations: [{ controllingValue: 'A', dependentValues: ['x'], forbiddenValues: [] }]
+                    });
+                }
+            }
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, chainedSpecDetails, []),
+                buildLimits({ maxNodesPerObject: 2 })
+            );
+
+            expect(actualViewModel.objects[0].rootNodes).toHaveLength(2);
+
+            // TEN FIELDS ARE ON SCREEN AT A CAP OF TWO, WHICH IS WHY THE NOTICE MAY NOT SAY "no object shows more than 2"
+            expect(PicklistDependencyExplorerService.countNodes(actualViewModel.objects[0].rootNodes)).toBe(10);
+            expect(actualViewModel.objects[0].truncatedNodeCount).toBe(5);
+
+            const nodeNotice = actualViewModel.truncationNotices.find(notice => notice.includes('dependent picklist(s) are not rendered'));
+
+            expect(nodeNotice).toContain('2 dependency chain(s) at once');
+            expect(nodeNotice).not.toContain('no object shows more than 2 at once');
+
+        });
+
+        /*
+            The total budget drops rows from a specific field, and the panel renders each field's own
+            dropped count beneath its rows. A field the budget emptied without incrementing that
+            count rendered as a field that declares NO combinations -- "rendered as something it was
+            not", which is precisely what the ceiling must never do.
+        */
+        it('given the total budget emptying a field, tells that field how many it lost', () => {
+
+            const budgetedSpecDetails: IPicklistDependencySpecDetail[] = ['F1__c', 'F2__c'].map(fieldApiName => ({
+                objectApiName: 'Big__c',
+                fieldApiName: fieldApiName,
+                controllingFieldApiName: 'Root__c',
+                expectations: Array.from({ length: 10 }, (unusedValue, expectationIndex) => ({
+                    controllingValue: `V${expectationIndex}`,
+                    dependentValues: ['x'],
+                    forbiddenValues: []
+                }))
+            }));
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, budgetedSpecDetails, []),
+                buildLimits({ maxRenderedCombinations: 10 })
+            );
+
+            const firstNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'F1__c');
+            const emptiedNode = actualViewModel.objects[0].rootNodes.find(node => node.fieldApiName === 'F2__c');
+
+            // THE FIELD INSIDE THE BUDGET KEEPS EVERYTHING AND CLAIMS NO LOSS
+            expect(firstNode.combinations).toHaveLength(10);
+            expect(firstNode.truncatedCombinationCount).toBe(0);
+
+            // THE EMPTIED FIELD SAYS SO, RATHER THAN LOOKING LIKE A FIELD WITH NO COMBINATIONS
+            expect(emptiedNode.combinations).toBeEmpty();
+            expect(emptiedNode.truncatedCombinationCount).toBe(10);
+
+        });
+
+        // A SCOPE IS A COMBINATION HOLDER TOO, AND CARRIES ITS OWN COUNT FOR THE SAME REASON
+        it('given the total budget emptying a record type scope, tells that scope too', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath,
+                    buildChainExampleSpecDetails(),
+                    [],
+                    buildChainExampleRecordTypeSpecDetails()
+                ),
+                buildLimits({ maxRenderedCombinations: 1 })
+            );
+
+            const allScopes = PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes)
+                .reduce((scopes, node) => scopes.concat(node.recordTypeScopes), []);
+            const emptiedScopes = allScopes.filter(recordTypeScope => recordTypeScope.combinations.length === 0);
+
+            expect(emptiedScopes).not.toBeEmpty();
+            emptiedScopes.forEach(recordTypeScope => expect(recordTypeScope.truncatedCombinationCount).toBeGreaterThan(0));
+
+        });
+
+        it('given more objects than the ceiling allows, renders the ceiling and says how many it dropped', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(8),
+                buildLimits({ maxObjects: 3 })
+            );
+
+            expect(actualViewModel.objects).toHaveLength(3);
+            expect(actualViewModel.truncatedObjectCount).toBe(5);
+            expect(actualViewModel.truncationNotices[0]).toContain('Showing the first 3 of 8 objects');
+
+        });
+
+        /*
+            The counts describe the org; the notices describe the panel. Reducing the counts to match
+            what survived would leave a truncated panel quietly reporting a smaller org than the one
+            the manifest declares.
+        */
+        it('leaves the declared counts alone, so a truncated panel does not report a smaller org', () => {
+
+            const uncappedViewModel = buildUncappedViewModel(8);
+            const declaredCombinationCount = uncappedViewModel.combinationCount;
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                uncappedViewModel,
+                buildLimits({ maxObjects: 2, maxCombinationsPerNode: 1 })
+            );
+
+            expect(actualViewModel.combinationCount).toBe(declaredCombinationCount);
+            expect(actualViewModel.dependentFieldCount).toBe(8);
+
+        });
+
+        /*
+            The three-state guarantee under the ceiling: a row is either rendered as what it is, or
+            absent and counted. Nothing is re-labelled on the way through.
+        */
+        it('given a field carrying more record type scopes than the ceiling allows, caps them and says so', () => {
+
+            let recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [];
+
+            for ( let recordTypeIndex = 0; recordTypeIndex < 5; recordTypeIndex++ ) {
+                recordTypeSpecDetails.push({
+                    objectApiName: 'Object_0__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: `Record_Type_${recordTypeIndex}`,
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+                });
+            }
+
+            const viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
+                mockObjectsDirectoryPath,
+                buildManyObjectSpecDetails(1),
+                [],
+                recordTypeSpecDetails
+            );
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                viewModel,
+                buildLimits({ maxRecordTypeScopesPerNode: 2 })
+            );
+
+            expect(actualViewModel.objects[0].rootNodes[0].recordTypeScopes).toHaveLength(2);
+            expect(actualViewModel.objects[0].rootNodes[0].truncatedRecordTypeScopeCount).toBe(3);
+            expect(actualViewModel.truncationNotices.join(' ')).toContain('record type scope(s) are not rendered');
+
+        });
+
+        /*
+            The bound that makes the ceiling a SIZE rather than a shape. The per-axis caps multiply
+            out to millions of rows, so before this budget existed a drifted org still serialized a
+            payload as large as the org -- which is the condition the ceiling exists to remove.
+        */
+        it('brings the TOTAL rendered combinations under one budget, across every object', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(10),
+                buildLimits({ maxRenderedCombinations: 12 })
+            );
+
+            const renderedCombinationCount = actualViewModel.objects.reduce((combinationCount, objectViewModel) =>
+                combinationCount + PicklistDependencyExplorerService.flattenNodes(objectViewModel.rootNodes)
+                                        .reduce((nodeCombinationCount, node) => nodeCombinationCount + node.combinations.length, 0), 0);
+
+            // 10 OBJECTS x 3 COMBINATIONS IS 30 DECLARED; THE BUDGET IS WHAT IS ON SCREEN
+            expect(renderedCombinationCount).toBe(12);
+            expect(actualViewModel.truncationNotices.join(' ')).toContain('against a panel total of 12');
+
+        });
+
+        /*
+            #125: search text names the controlling values a node RENDERS, and the build computes it
+            before the ceiling. A haystack left over from the build would match "Mexico" and show the
+            reader an object with no row carrying it -- a match with no visible reason, which is the
+            claim the find box must never make. Both drops are covered: the per-field cap and the
+            total budget, which runs last.
+        */
+        it('given a combination the per-field cap dropped, its controlling value is no longer findable', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(1),
+                buildLimits({ maxCombinationsPerNode: 2 })
+            );
+
+            const node = actualViewModel.objects[0].rootNodes[0];
+
+            expect(node.combinations.map(combination => combination.controllingValue)).toEqual(['USA', 'Canada']);
+            expect(node.searchText).toContain('canada');
+            expect(node.searchText).not.toContain('mexico');
+            expect(actualViewModel.objects[0].searchText).not.toContain('mexico');
+
+        });
+
+        it('given a combination the total budget dropped, its controlling value is no longer findable', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(2),
+                buildLimits({ maxRenderedCombinations: 4 })
+            );
+
+            // THE BUDGET IS SPENT IN DOCUMENT ORDER: THE FIRST OBJECT KEEPS ALL THREE, THE SECOND KEEPS ONE
+            expect(actualViewModel.objects[0].searchText).toContain('mexico');
+            expect(actualViewModel.objects[1].searchText).toContain('usa');
+            expect(actualViewModel.objects[1].searchText).not.toContain('canada');
+            expect(actualViewModel.objects[1].searchText).not.toContain('mexico');
+
+        });
+
+        it('given a record type scope the cap dropped, a controlling value only that scope rendered is no longer findable', () => {
+
+            const recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[] = [
+                {
+                    objectApiName: 'Object_0__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: 'A_First',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+                },
+                {
+                    objectApiName: 'Object_0__c',
+                    fieldApiName: 'State__c',
+                    controllingFieldApiName: 'Country__c',
+                    recordTypeDeveloperName: 'B_Second',
+                    expectations: [{ controllingValue: 'Brazil', dependentValues: ['Bahia'], forbiddenValues: [] }]
+                }
+            ];
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildManyObjectSpecDetails(1), [], recordTypeSpecDetails
+                ),
+                buildLimits({ maxRecordTypeScopesPerNode: 1 })
+            );
+
+            const node = actualViewModel.objects[0].rootNodes[0];
+
+            expect(node.recordTypeScopes.map(recordTypeScope => recordTypeScope.recordTypeDeveloperName)).toEqual(['A_First']);
+            expect(node.searchText).not.toContain('brazil');
+            expect(node.searchText).not.toContain('b_second');
+
+        });
+
+        it('given a model inside every cap, leaves the search text exactly as the build made it', () => {
+
+            const uncappedViewModel = buildUncappedViewModel(2);
+            const expectedSearchTexts = uncappedViewModel.objects.map(objectViewModel => objectViewModel.searchText);
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(uncappedViewModel, buildLimits());
+
+            expect(actualViewModel.objects.map(objectViewModel => objectViewModel.searchText)).toEqual(expectedSearchTexts);
+
+        });
+
+        /*
+            The one drop that costs the reader something the panel cannot give back. It is counted
+            and named separately, and the notice points at the run report as the complete record --
+            an unbounded payload is worse for them than a bounded one that says what is missing.
+        */
+        it('given an object with more dependent picklists than the ceiling allows, drops whole chains and counts the fields', () => {
+
+            let specDetails: IPicklistDependencySpecDetail[] = [];
+            for ( let fieldIndex = 0; fieldIndex < 8; fieldIndex++ ) {
+                specDetails.push({
+                    objectApiName: 'Wide_Object__c',
+                    fieldApiName: `Dependent_${fieldIndex}__c`,
+                    controllingFieldApiName: 'Country__c',
+                    expectations: [{ controllingValue: 'USA', dependentValues: ['Ohio'], forbiddenValues: [] }]
+                });
+            }
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, specDetails, []),
+                buildLimits({ maxNodesPerObject: 3 })
+            );
+
+            expect(actualViewModel.objects[0].rootNodes).toHaveLength(3);
+            expect(actualViewModel.objects[0].truncatedNodeCount).toBe(5);
+            expect(actualViewModel.truncationNotices.join(' ')).toContain('dependent picklist(s) are not rendered');
+
+        });
+
+        /*
+            A chain is drawn by containment, so it is dropped whole: rendering a downstream field
+            without the field that controls it would misstate the dependency rather than shorten
+            the list. Chain_Example__c is Country -> State -> City, one root carrying two fields.
+        */
+        it('drops a chain whole rather than leaving a downstream field with no controlling field above it', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+                ),
+                buildLimits({ maxNodesPerObject: 1 })
+            );
+
+            const rootNodes = actualViewModel.objects[0].rootNodes;
+
+            expect(rootNodes).toHaveLength(1);
+            expect(rootNodes[0].fieldApiName).toBe('State__c');
+            // THE CHAIN CAME WITH IT: CITY IS STILL BENEATH STATE, NOT ORPHANED OR DROPPED SEPARATELY
+            expect(rootNodes[0].downstreamNodes[0].fieldApiName).toBe('City__c');
+            expect(actualViewModel.objects[0].truncatedNodeCount).toBe(0);
+
+        });
+
+        /*
+            Applied twice, the counters have to ADD. Assigning would report only the second pass and
+            leave the panel quietly claiming less is missing than actually is -- the exact failure
+            the counts exist to prevent.
+        */
+        it('given two truncating passes, accumulates what was dropped rather than reporting only the last', () => {
+
+            const firstPassViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(10),
+                buildLimits({ maxObjects: 6 })
+            );
+
+            expect(firstPassViewModel.truncatedObjectCount).toBe(4);
+
+            const secondPassViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                firstPassViewModel,
+                buildLimits({ maxObjects: 2 })
+            );
+
+            expect(secondPassViewModel.objects).toHaveLength(2);
+            expect(secondPassViewModel.truncatedObjectCount).toBe(8);
+            expect(secondPassViewModel.truncationNotices.length).toBeGreaterThan(1);
+
+        });
+
+        /*
+            The third axis, and the one that only measurement found: declaredValues holds every value
+            the FIELD declares, so it grows with the picklist rather than with how many combinations
+            survived the budget. With the other two axes capped it became the dominant term -- a
+            ~20MB payload at the stated combination ceiling.
+        */
+        it('given a field declaring more values than the ceiling allows, caps the universe and says the complement is unusable', () => {
+
+            let dependentValues: string[] = [];
+            for ( let valueIndex = 0; valueIndex < 40; valueIndex++ ) {
+                dependentValues.push(`Dependent_Value_${valueIndex}`);
+            }
+
+            const specDetails: IPicklistDependencySpecDetail[] = [{
+                objectApiName: 'Wide_Values__c',
+                fieldApiName: 'Dependent__c',
+                controllingFieldApiName: 'Country__c',
+                expectations: [{ controllingValue: 'USA', dependentValues, forbiddenValues: [] }]
+            }];
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(mockObjectsDirectoryPath, specDetails, []),
+                buildLimits({ maxDeclaredValuesPerNode: 10 })
+            );
+
+            const node = actualViewModel.objects[0].rootNodes[0];
+
+            expect(node.declaredValues).toHaveLength(10);
+            expect(node.declaredValuesTruncated).toBeTrue();
+
+        });
+
+        it('given a field inside the declared value ceiling, leaves the universe whole and the complement usable', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                PicklistDependencyExplorerService.buildExplorerViewModel(
+                    mockObjectsDirectoryPath, buildChainExampleSpecDetails(), []
+                ),
+                buildLimits()
+            );
+
+            PicklistDependencyExplorerService.flattenNodes(actualViewModel.objects[0].rootNodes).forEach(node => {
+                expect(node.declaredValuesTruncated).toBeFalse();
+            });
+
+        });
+
+        it('given a model inside every limit, drops nothing and writes no notice', () => {
+
+            const actualViewModel = PicklistDependencyExplorerService.applyModelLimits(
+                buildUncappedViewModel(3),
+                DEFAULT_PICKLIST_DEPENDENCY_EXPLORER_MODEL_LIMITS
+            );
+
+            expect(actualViewModel.objects).toHaveLength(3);
+            expect(actualViewModel.truncatedObjectCount).toBe(0);
+            expect(actualViewModel.truncationNotices).toBeEmpty();
+
+        });
+
+    });
+
+    /*
+        Slice 3 of #83: a failed combination links to the code that generated it and to the run entry
+        that reported it. Each allow-list pairs the FILE with the METHOD, so a legitimate file cannot
+        be combined with a method name of the sender's choosing.
+    */
     describe('panel document navigation and triage wiring', () => {
 
         function buildRenderedHtml(): string {
@@ -3649,7 +4646,6 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath,
                 buildChainExampleSpecDetails(),
                 [],
-                buildNoResultsLoad(),
                 buildChainExampleRecordTypeSpecDetails()
             );
 
@@ -3661,7 +4657,7 @@ describe('PicklistDependencyExplorerService', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
-            expect(actualWebviewHtml).toContain('Find object or field');
+            expect(actualWebviewHtml).toContain('Find object, field or controlling value');
             expect(actualWebviewHtml).toContain('Expand all');
             expect(actualWebviewHtml).toContain('Collapse all');
             expect(actualWebviewHtml).toContain('not checked');
@@ -3708,23 +4704,29 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('posts each new panel action under its own command name', () => {
+        it('posts each surviving panel action under its own command name', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
-            expect(actualWebviewHtml).toContain("command: 'openSpecMethod'");
-            expect(actualWebviewHtml).toContain("command: 'openRunReport'");
             expect(actualWebviewHtml).toContain("command: 'copyCombinationReference'");
             expect(actualWebviewHtml).toContain("command: 'revealFieldSource'");
 
         });
 
-        it('labels the triage on screen so the Apex kind is never the only wording a reader gets', () => {
+        /*
+            The two actions that opened Apex are gone, not merely unbuttoned. A panel that still
+            posted either would be addressing an allow-list the host no longer builds, so the host
+            would silently do nothing -- which is indistinguishable, to a reader, from a click that
+            did not register.
+        */
+        it('posts nothing that would open a generated class or a run report', () => {
 
             const actualWebviewHtml = buildRenderedHtml();
 
-            expect(actualWebviewHtml).toContain('Likely cause');
-            expect(actualWebviewHtml).toContain('Next step');
+            expect(actualWebviewHtml).not.toContain('openSpecMethod');
+            expect(actualWebviewHtml).not.toContain('openRunReport');
+            expect(actualWebviewHtml).not.toContain('Open spec method');
+            expect(actualWebviewHtml).not.toContain('Open run report entry');
 
         });
 
@@ -3759,15 +4761,6 @@ describe('PicklistDependencyExplorerService', () => {
 
         });
 
-        it('resolves a failure\'s triage through the shared map rather than a copy per failure', () => {
-
-            const actualWebviewHtml = buildRenderedHtml();
-
-            expect(actualWebviewHtml).toContain('function resolveTriage(failure)');
-            expect(actualWebviewHtml).toContain('failure.triage || explorerModel.failureTriageByKind[failure.kind]');
-
-        });
-
         /*
             The keys are metadata-derived text, and a bare object literal makes "__proto__" and
             "constructor" mean something other than a key. buildCombinationKey's format happens to
@@ -3798,8 +4791,7 @@ describe('PicklistDependencyExplorerService', () => {
             let viewModel = PicklistDependencyExplorerService.buildExplorerViewModel(
                 mockObjectsDirectoryPath,
                 buildChainExampleSpecDetails(),
-                [],
-                buildNoResultsLoad()
+                []
             );
 
             viewModel = PicklistDependencyExplorerService.applyModelLimits(
@@ -3829,7 +4821,6 @@ describe('PicklistDependencyExplorerService', () => {
                 mockObjectsDirectoryPath,
                 buildChainExampleSpecDetails(),
                 [],
-                buildNoResultsLoad(),
                 buildChainExampleRecordTypeSpecDetails()
             );
 
@@ -3839,19 +4830,23 @@ describe('PicklistDependencyExplorerService', () => {
 
         describe('the forbidden complement collapses', () => {
 
-            it('draws "must not unlock" through the collapsible list, opened only for a failed row', () => {
+            it('draws "must not unlock" through the collapsible list, collapsed on every row', () => {
 
                 const actualWebviewHtml = buildRenderedHtml();
 
                 expect(actualWebviewHtml).toContain('appendCollapsibleValueList(');
                 expect(actualWebviewHtml).toContain("'must not unlock',");
-                expect(actualWebviewHtml).toContain("combination.status === 'failed'");
 
-                // COLLAPSED IS THE DEFAULT, AND THE ARROW HAS TO AGREE WITH THE BODY IT DESCRIBES
+                /*
+                    Collapsed is now the only state a row starts in. It used to open for a row a
+                    check had reported a failure on, and there is no such row: opening some subset
+                    on any other basis would put a claim about the rows into a disclosure state.
+                */
                 expect(actualWebviewHtml).toContain(
-                    "createElement('span', 'disclosure', startExpanded ? '▾' : '▸')"
+                    "createElement('span', 'disclosure', '▸')"
                 );
-                expect(actualWebviewHtml).toContain("'valueListValues' + (startExpanded ? '' : ' hidden')");
+                expect(actualWebviewHtml).toContain("createElement('div', 'valueListValues hidden')");
+                expect(actualWebviewHtml).not.toContain('startExpanded');
 
             });
 
@@ -3915,7 +4910,7 @@ describe('PicklistDependencyExplorerService', () => {
 
                 const actualWebviewHtml = buildRenderedHtml();
 
-                expect(actualWebviewHtml).toContain('function buildRecordTypeGroupElement(node, objectViewModel, sectionRecord)');
+                expect(actualWebviewHtml).toContain('function buildRecordTypeGroupElement(node, sectionRecord)');
                 expect(actualWebviewHtml).toContain("'Record Types (' + node.recordTypeScopes.length + ')'");
                 expect(actualWebviewHtml).toContain('if (node.recordTypeScopes.length) {');
                 expect(actualWebviewHtml).toContain("createElement('div', 'recordTypeScopes hidden')");
@@ -3928,16 +4923,6 @@ describe('PicklistDependencyExplorerService', () => {
                 note says. A passed badge over the group would assert exactly that. A FAILED count is
                 a different statement: it is about scopes a run did report against.
             */
-            it('shows a failed count and never a passed or unknown badge on the group header', () => {
-
-                const actualWebviewHtml = buildRenderedHtml();
-
-                expect(actualWebviewHtml).toContain("recordTypeScope.status === 'failed'");
-                expect(actualWebviewHtml).toContain("createElement('span', 'statusBadge failed', failedScopeCount + ' failed')");
-                expect(actualWebviewHtml).not.toContain('appendStatusBadge(headingElement');
-
-            });
-
             /*
                 Opening the group reveals headings that already exist. The BODIES stay lazy, which is
                 the whole reason the record type axis did not multiply the panel's element count.
@@ -3977,7 +4962,7 @@ describe('PicklistDependencyExplorerService', () => {
                     'sectionRecord.scopeRevealers.push(function () {\n            revealRecordTypeGroup();'
                 );
                 expect(actualWebviewHtml).toContain(
-                    'buildRecordTypeScopeElement(node, objectViewModel, recordTypeScope, sectionRecord, revealRecordTypeGroup)'
+                    'buildRecordTypeScopeElement(node, recordTypeScope, sectionRecord, revealRecordTypeGroup)'
                 );
 
             });
@@ -4161,7 +5146,9 @@ describe('PicklistDependencyExplorerService', () => {
                 const actualWebviewHtml = buildRenderedHtml();
 
                 expect(actualWebviewHtml).toContain('function registerPanelSection(labelText, sectionElement)');
-                expect(actualWebviewHtml).toContain("registerPanelSection('Last check', bannerElement);");
+
+                // THE "Last check" SECTION WENT WITH THE RUN BANNER -- NO SECTION IS REGISTERED FOR ONE NOW
+                expect(actualWebviewHtml).not.toContain("registerPanelSection('Last check'");
 
                 /*
                     The provenance banner registers itself once, in the renderer, from the label its
@@ -4180,7 +5167,7 @@ describe('PicklistDependencyExplorerService', () => {
                 expect(actualWebviewHtml).toContain(
                     'if (!explorerModel.skippedFieldWarnings.length) { return; }'
                 );
-                expect(actualWebviewHtml).toContain("registerPanelSection('Not asserted', warningsElement);");
+                expect(actualWebviewHtml).toContain("registerPanelSection('Not covered', warningsElement);");
 
             });
 

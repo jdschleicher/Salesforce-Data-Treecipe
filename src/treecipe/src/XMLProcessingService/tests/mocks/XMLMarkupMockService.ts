@@ -232,6 +232,66 @@ export class XMLMarkupMockService {
 
     }
 
+    /*
+        Named for the issue's worked example so the expected component api names read directly off the
+        compound field name. The pair below differ ONLY in <displayLocationInDecimal>, which is the
+        point of having both: that tag changes how the ORG DISPLAYS a coordinate, not what the API
+        accepts, so a recipe generated from either must be identical.
+    */
+    static getCompoundGeolocationFieldTypeXMLMarkup(): string {
+        const compoundGeolocationFieldMarkup = `
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Store_Location__c</fullName>
+    <displayLocationInDecimal>true</displayLocationInDecimal>
+    <label>Store Location</label>
+    <required>false</required>
+    <scale>5</scale>
+    <trackTrending>false</trackTrending>
+    <type>Location</type>
+</CustomField>
+`;
+        return compoundGeolocationFieldMarkup;
+
+    }
+
+    static getCompoundGeolocationDisplayedInDegreesFieldTypeXMLMarkup(): string {
+        const compoundGeolocationFieldMarkup = `
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Store_Location__c</fullName>
+    <displayLocationInDecimal>false</displayLocationInDecimal>
+    <label>Store Location</label>
+    <required>false</required>
+    <scale>5</scale>
+    <trackTrending>false</trackTrending>
+    <type>Location</type>
+</CustomField>
+`;
+        return compoundGeolocationFieldMarkup;
+
+    }
+
+    /*
+        A Text field whose api name merely reads like a geolocation. Nothing but <type> decides
+        expansion, so this must stay one ordinary text recipe line.
+    */
+    static getTextFieldNamedLikeGeolocationXMLMarkup(): string {
+        const textFieldNamedLikeGeolocationMarkup = `
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Location__c</fullName>
+    <label>Location</label>
+    <length>255</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+</CustomField>
+`;
+        return textFieldNamedLikeGeolocationMarkup;
+
+    }
+
     static getGeolocationXMLFieldDetail() {
 
         const locationXMLField: XMLFieldDetail = {
