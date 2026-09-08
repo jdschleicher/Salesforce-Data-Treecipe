@@ -140,7 +140,7 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyTestService, 'getSpecsTestClassFilePath').mockReturnValue(specsTestClassFilePath);
             jest.spyOn(PicklistDependencyTestService, 'getSourceApiVersion').mockReturnValue('64.0');
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: [] });
+                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: [], unavailableClassNames: [] });
 
             writeSpecsClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue({
                 aggregatorClassFilePath: specsClassFilePath,
@@ -1088,7 +1088,7 @@ describe('ExtensionCommandService', () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: [], unavailableClassNames: ['SDTPicklistDependencySpec', 'SDTPicklistDependencyValidator'] });
+                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: [], unavailableClassNames: ['SDTPicklistDependencySpec', 'SDTPicklistDependencyValidator'] });
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
@@ -1104,11 +1104,50 @@ describe('ExtensionCommandService', () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: ['PicklistDependencySpec'], unavailableClassNames: [] });
+                .mockReturnValue({ scaffoldedClassNames: ['PicklistDependencySpec'], refreshedClassNames: [], unavailableClassNames: [] });
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
             expect(getWrittenGenerationSummaryMarkdown()).toContain('Scaffolded the required framework class(es)');
+
+        });
+
+        /*
+            Refreshing a stale framework class is the only thing generation does that REPLACES a
+            file the user already had. Folding it into the success toast is how someone finds out
+            from their git diff instead of from us.
+        */
+        test('given refreshed framework classes, warns about them rather than only reporting them in the summary', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: ['SDTPicklistDependencySpec'], unavailableClassNames: [] });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => String(call[0]));
+            const refreshWarning = warningMessages.find(warningMessage => warningMessage.includes('have been overwritten'));
+
+            expect(refreshWarning).toBeDefined();
+            expect(refreshWarning).toContain('SDTPicklistDependencySpec');
+            // THE USER HAS TO BE TOLD LOCAL EDITS WENT, NOT JUST THAT SOMETHING CHANGED
+            expect(refreshWarning).toContain('local edits');
+
+            expect(getWrittenGenerationSummaryMarkdown()).toContain('Overwrote');
+
+        });
+
+        test('given no refreshed framework classes, raises no overwrite warning', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: [], unavailableClassNames: [] });
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => String(call[0]));
+
+            expect(warningMessages.some(warningMessage => warningMessage.includes('have been overwritten'))).toBe(false);
 
         });
 

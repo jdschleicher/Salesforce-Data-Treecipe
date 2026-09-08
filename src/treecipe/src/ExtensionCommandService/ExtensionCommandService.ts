@@ -615,6 +615,7 @@ export class ExtensionCommandService {
             manifestFilePath,
             recordTypeSpecCount: collectionResult.recordTypeSpecDetails.length,
             scaffoldedClassNames: frameworkScaffoldResult.scaffoldedClassNames,
+            refreshedClassNames: frameworkScaffoldResult.refreshedClassNames,
             removedStaleClassFileNames: specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath))
         };
 
@@ -628,6 +629,17 @@ export class ExtensionCommandService {
         */
         if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
+        }
+
+        /*
+            Also kept out of the run report, for the opposite reason to the one above: this is the
+            only thing generation does that REPLACES a file the user already had. It is not a
+            blocker -- the refresh is what makes the generated Apex compile -- but folding "we
+            overwrote six of your files" into a success toast is how a user finds out from their
+            git diff instead of from us.
+        */
+        if ( frameworkScaffoldResult.refreshedClassNames.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(`The framework class(es) ${frameworkScaffoldResult.refreshedClassNames.join(', ')} in "${classesDirectoryPath}" were from an earlier Salesforce Data Treecipe version and have been overwritten with the version ${specsClassName}.cls is generated against. The generated specs call the framework directly and would not have compiled otherwise. Review them in your diff -- any local edits to these classes have been replaced.`);
         }
 
         /*

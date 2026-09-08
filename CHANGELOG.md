@@ -1,5 +1,51 @@
 # Change Log
 
+## [3.21.0] - Generation keeps the framework it generates against, and names the classes an earlier version orphaned
+
+Closes [#133](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/133).
+
+Two deploy failures, found together against a real org, and neither one names its own cause in the error it produces.
+
+### The scaffolded framework was never refreshed, so generation emitted calls into a class that could not answer them
+
+`scaffoldMissingFrameworkClasses` did exactly what its name said: it copied a framework class in when the file was absent, and returned early when it was there. There was no path that updated one. The comment defended it -- *"so a user who has already deployed or customized them keeps their copy"* -- and that intent is the bug, because **the framework is not frozen**:
+
+| Framework class | Last changed |
+|---|---|
+| `SDTPicklistDependencySpec` | 3.2.0 -- `forRecordType`, `expectUnavailable`, `UNAVAILABLE`, `isRecordTypeScoped`, `label` |
+| `SDTSchemaPicklistDependencySource` | 3.2.0 |
+| `SDTPicklistDependencyValidator` | 3.4.0 |
+
+Meanwhile `buildSpecStatement` emits against whatever the CURRENT extension knows. A workspace scaffolded before 3.2.0 kept a `SDTPicklistDependencySpec` with no `forRecordType` forever, and every regeneration wrote fresh calls to it:
+
+```
+Method does not exist or incorrect signature: void forRecordType(String, String, String)
+  from the type SDTPicklistDependencySpec (143:42)
+```
+
+The generator was emitting calls against a framework API it never checked was present. Nothing looked: the result carried `unavailableClassNames` for a class that could not be supplied at all, and had no way to say *supplied, but older than what I generate against*. The org was the first thing to notice -- and it reported the error against the GENERATED class, not the stale one that could not resolve the call.
+
+The six `SDT`-prefixed framework classes are now owned by this extension, which is what the prefix has always claimed: a class in your package directory starting with `SDT` was put there by Salesforce Data Treecipe. One that differs from the shipped source is **overwritten**, in place, at whichever path holds it -- refreshing into the framework directory while a stale copy sat at the classes root would deploy the same ApexClass twice, which Salesforce rejects, so the two are not interchangeable.
+
+Three things it deliberately does not do. A class matching the shipped source is not rewritten, so its mtime does not move -- the same guarantee generated specs already had, and compared without line endings so a CRLF checkout on Windows does not report all six as stale on every run. An existing `.cls-meta.xml` is left alone, because it carries `apiVersion` and resetting a deliberate bump changes how the class deploys, which has nothing to do with the compile error this prevents; a meta xml that has gone *missing* beside a present `.cls` is still restored, since without it the class does not deploy at all. And a class present in the workspace that this extension cannot compare against is not reported unavailable: whatever little can be said about it, it is not a missing framework.
+
+Overwriting a file someone already had is the one thing generation does that can discard their work, so it gets **its own warning** naming every class replaced and saying local edits went with it -- not a line folded into a success toast, which is how you find out from your git diff instead of from us. The summary document names them too.
+
+### Three generations of the spec classes could sit on disk, and only two were recognised
+
+3.0.0 renamed twice, not once: `SFTreecipePicklistDependencySpecs` to `SDTPicklistDependencySpecs`, then -- when the 40-character ApexClass limit rejected the deploy -- to `SDTPLDSpecs`. Only the first rename was ever handled. `legacySpecsClassNames` listed the `SFTreecipe` pair, and the stale sweep matched `/^SDTPLDSpecs_/`, so the middle generation fell between them and was reported by nothing.
+
+It is also the generation that **cannot compile**. `SDTPicklistDependencySpecs_` spends 27 of the 40 characters before the object name begins:
+
+```
+Identifier name is too long: SDTPicklistDependencySpecs_Example_Everything_c (16:14)
+```
+
+`detectLegacyGeneratedArtifacts` now reports the whole family -- the aggregator, its test class, and every `SDTPicklistDependencySpecs_<Object>.cls` found by reading the classes directory, since an object api name is variable and there is no fixed name to check for. The warning says why it matters: a deploy failing on a 47-character identifier names a class this extension stopped generating, and nothing connected the two.
+
+They are reported, not deleted -- the 3.0.0 posture, unchanged. What did change is that the per-object classes are named **together with the aggregator that calls them**, and deliberately kept out of `removeStalePerObjectSpecsClassFiles`. Sweeping them on their own would leave `SDTPicklistDependencySpecs.cls` calling classes that no longer exist, trading `identifier name is too long` for `variable does not exist` and leaving the user no better off.
+
+
 ## [3.20.0] - The Explorer answers "what does this controlling value unlock", instead of leaving the reader to find the row that says so
 
 Closes [#127](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/127).

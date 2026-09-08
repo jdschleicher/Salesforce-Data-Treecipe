@@ -261,6 +261,13 @@ export interface IMergedTestSuiteContent {
 
 export interface IFrameworkScaffoldResult {
     scaffoldedClassNames: string[];
+    /*
+        Framework classes that were ALREADY in the workspace and have been overwritten with the
+        version this extension generates against. Kept apart from scaffoldedClassNames because the
+        two are not the same news: adding a missing file takes nothing away, and this replaces a
+        file the user already had.
+    */
+    refreshedClassNames: string[];
     // FRAMEWORK CLASSES NEITHER ALREADY IN THE WORKSPACE NOR AVAILABLE TO COPY FROM THE EXTENSION
     unavailableClassNames: string[];
 }
@@ -279,6 +286,8 @@ export interface IPicklistDependencyGenerationSummaryDetail {
     manifestFilePath: string;
     recordTypeSpecCount: number;
     scaffoldedClassNames: string[];
+    // FRAMEWORK CLASSES THE RUN OVERWROTE RATHER THAN ADDED -- SEE scaffoldMissingFrameworkClasses
+    refreshedClassNames: string[];
     // BASE NAMES RATHER THAN FULL PATHS: THE DIRECTORY IS ALREADY ITS OWN BULLET
     removedStaleClassFileNames: string[];
 }
@@ -326,14 +335,40 @@ export class PicklistDependencyTestService {
     private static maximumApexClassNameLength = 40;
 
     /*
-        Class names this command generated under its previous naming, checked for so a user
-        upgrading from 2.12.x-2.14.x is told what to delete rather than silently ending up with
-        two frameworks deployed side by side.
+        Class names this command generated under its previous namings, checked for so a user
+        upgrading is told what to delete rather than silently ending up with two frameworks deployed
+        side by side.
+
+        There are TWO earlier namings, not one, and covering only the first was a deploy failure:
+        2.12.x-2.14.x emitted the SFTreecipe-prefixed pair, and 3.0.0 passed through
+        SDTPicklistDependencySpecs before the 40-character limit forced the move to SDTPLDSpecs.
+        A workspace can therefore hold three generations of this family while only two were
+        recognised -- and the unrecognised one is the one that CANNOT COMPILE, since
+        "SDTPicklistDependencySpecs_" spends 27 of the 40 characters before the object name begins.
     */
     private static legacySpecsClassNames: string[] = [
         'SFTreecipePicklistDependencySpecs',
-        'SFTreecipePicklistDependencySpecsTest'
+        'SFTreecipePicklistDependencySpecsTest',
+        'SDTPicklistDependencySpecs',
+        'SDTPicklistDependencySpecsTest'
     ];
+
+    /*
+        The per-object classes of the 3.0.0 intermediate naming. Their object api name is variable,
+        so unlike the aggregator and test class above they cannot be checked for by name -- the
+        classes directory is read instead.
+
+        Deliberately NOT part of removeStalePerObjectSpecsClassFiles, which sweeps the CURRENT
+        naming. These are reported alongside their aggregator and deleted with it or not at all: the
+        aggregator calls every one of them, so removing the per-object classes on their own would
+        replace "identifier name is too long" with "variable does not exist" and leave the user
+        no better off.
+    */
+    private static legacyPerObjectSpecsClassFilePattern = /^SDTPicklistDependencySpecs_[A-Za-z0-9_]+\.cls$/;
+
+    static isLegacyPerObjectSpecsClassFileName(fileName: string): boolean {
+        return this.legacyPerObjectSpecsClassFilePattern.test(fileName);
+    }
 
     private static legacyFrameworkDirectoryName = 'PicklistDependencyFramework';
 
@@ -558,6 +593,15 @@ export class PicklistDependencyTestService {
         if ( summaryDetail.scaffoldedClassNames.length > 0 ) {
             whatHappenedBullets.push(
                 `Scaffolded the required framework class(es): ${summaryDetail.scaffoldedClassNames.map(asCode).join(', ')}.`
+            );
+        }
+
+        if ( summaryDetail.refreshedClassNames.length > 0 ) {
+            whatHappenedBullets.push(
+                `**Overwrote** ${summaryDetail.refreshedClassNames.length} framework class(es) that differed from the version these specs are `
+                + `generated against: ${summaryDetail.refreshedClassNames.map(asCode).join(', ')}. `
+                + `The generated Apex calls the framework directly, so a copy from an earlier Treecipe version fails to compile -- `
+                + `review these in your diff alongside the generated classes.`
             );
         }
 
@@ -3609,7 +3653,37 @@ ${testMethods}
 
         });
 
+        legacyArtifactPaths.push(...this.findLegacyPerObjectSpecsClassFilePaths(classesDirectoryPath));
+
         return legacyArtifactPaths;
+
+    }
+
+    /*
+        The per-object classes of the 3.0.0 naming, found by reading the directory rather than by
+        name -- an object api name is variable, so there is no name to check for.
+
+        Sorted so the warning reads the same on every machine, for the same reason
+        findStalePerObjectSpecsClassFilePaths is. An unreadable classes directory yields nothing
+        rather than raising: this reports on cleanup AFTER a successful generation, and failing the
+        run over a directory listing would discard a report on Apex that is already written.
+    */
+    static findLegacyPerObjectSpecsClassFilePaths(classesDirectoryPath: string): string[] {
+
+        if ( !fs.existsSync(classesDirectoryPath) ) {
+            return [];
+        }
+
+        try {
+
+            return fs.readdirSync(classesDirectoryPath)
+                .filter(fileName => this.isLegacyPerObjectSpecsClassFileName(fileName))
+                .sort()
+                .map(fileName => path.join(classesDirectoryPath, fileName));
+
+        } catch {
+            return [];
+        }
 
     }
 
@@ -3625,9 +3699,17 @@ ${testMethods}
             'SchemaPicklistDependencySource'
         ];
 
+        /*
+            The 40-character note is not a footnote: a SDTPicklistDependencySpecs_<Object> class
+            does not merely duplicate the framework, it FAILS THE DEPLOY of everything alongside it
+            with "identifier name is too long". A user reading that error in their deploy output has
+            no way to know it names a class this extension stopped generating.
+        */
         return `Picklist dependency classes from an earlier Treecipe version are still in this project: ${legacyArtifactPaths.join(', ')}. `
             + `They have been left in place. Delete them locally, and delete these classes from any org they were deployed to, `
-            + `so the renamed SDT classes do not sit alongside a second copy of the framework: ${legacyOrgClassNames.join(', ')}.`;
+            + `so the renamed SDT classes do not sit alongside a second copy of the framework: ${legacyOrgClassNames.join(', ')}. `
+            + `Delete any "SDTPicklistDependencySpecs_<Object>" class together with the "SDTPicklistDependencySpecs" aggregator that calls it -- `
+            + `that prefix exceeds the 40-character Apex class name limit, so leaving one behind fails the deploy of the classes generated now.`;
 
     }
 
@@ -3672,17 +3754,38 @@ ${testMethods}
     }
 
     /*
-        Copies only the framework classes the workspace is missing so a user who has already
-        deployed or customized them keeps their copy. Anything that could not be supplied is
-        reported back rather than swallowed -- the generated specs class does not compile without
-        the framework, so silently skipping a class would hand the user a broken file with no
-        indication of why.
+        Brings the workspace's framework classes up to the version this extension generates against.
+
+        Adding the missing ones is not enough, and that gap was a deploy failure rather than a
+        nicety: the framework is NOT frozen -- SDTPicklistDependencySpec gained forRecordType and
+        expectUnavailable in 3.2.0, SDTPicklistDependencyValidator changed in 3.4.0 -- while
+        buildSpecStatement emits calls against whatever the CURRENT extension knows. A copy
+        scaffolded by an earlier version stayed untouched forever, so generation happily wrote
+        "SDTPicklistDependencySpec.forRecordType(...)" against a class with no such method and the
+        first thing to notice was the org, reporting it against the GENERATED class rather than the
+        stale one it could not resolve.
+
+        So the six SDT-prefixed framework classes are owned by this extension, per the prefix rule:
+        a class in your package directory starting with SDT was put there by Salesforce Data
+        Treecipe, and one that differs from the shipped source is refreshed rather than preserved.
+        That is reported back separately from a scaffold and warned about loudly -- it is the one
+        thing this command does that can discard something a user wrote.
+
+        The .cls-meta.xml of a class already present is deliberately NOT rewritten: it carries
+        apiVersion, and resetting a deliberate bump is a change to how the class deploys that has
+        nothing to do with the compile error this exists to prevent. A meta xml that is MISSING
+        beside a present .cls is still written, since without it the class does not deploy at all.
+
+        Anything that could not be supplied is reported back rather than swallowed -- the generated
+        specs class does not compile without the framework, so silently skipping a class would hand
+        the user a broken file with no indication of why.
     */
     static scaffoldMissingFrameworkClasses(extensionPath: string, classesDirectoryPath: string): IFrameworkScaffoldResult {
 
         const shippedFrameworkClassesPath = path.join(extensionPath, 'apexPicklistDependencyFramework', this.frameworkDirectoryName);
 
         let scaffoldedClassNames: string[] = [];
+        let refreshedClassNames: string[] = [];
         let unavailableClassNames: string[] = [];
 
         const shippedFrameworkClassesExist = fs.existsSync(shippedFrameworkClassesPath);
@@ -3694,35 +3797,101 @@ ${testMethods}
 
         this.frameworkClassNames.forEach(frameworkClassName => {
 
-            const targetClassFilePath = path.join(frameworkDirectoryPath, `${frameworkClassName}.cls`);
+            const frameworkDirectoryClassFilePath = path.join(frameworkDirectoryPath, `${frameworkClassName}.cls`);
 
             /*
                 A copy already sitting at the classes root is honoured too. Earlier versions scaffolded
                 there, so re-running the command after an upgrade must not deploy the same class twice
-                under two paths -- Salesforce would reject the duplicate ApexClass.
+                under two paths -- Salesforce would reject the duplicate ApexClass. A refresh writes
+                back to whichever path HOLDS the class for the same reason: writing the fresh copy to
+                the framework directory while a stale one sat at the classes root would deploy both.
             */
             const legacyClassFilePath = path.join(classesDirectoryPath, `${frameworkClassName}.cls`);
 
-            if ( fs.existsSync(targetClassFilePath) || fs.existsSync(legacyClassFilePath) ) {
-                return;
-            }
+            const existingClassFilePath = fs.existsSync(frameworkDirectoryClassFilePath)
+                                            ? frameworkDirectoryClassFilePath
+                                            : ( fs.existsSync(legacyClassFilePath) ? legacyClassFilePath : undefined );
 
             const sourceClassFilePath = path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls`);
             const sourceMetaFilePath = `${sourceClassFilePath}-meta.xml`;
 
             // BOTH FILES ARE CHECKED UP FRONT SO A MISSING META XML CANNOT LEAVE AN ORPHANED CLASS FILE BEHIND
-            if ( !shippedFrameworkClassesExist || !fs.existsSync(sourceClassFilePath) || !fs.existsSync(sourceMetaFilePath) ) {
-                unavailableClassNames.push(frameworkClassName);
+            const shippedClassIsAvailable = shippedFrameworkClassesExist
+                                                && fs.existsSync(sourceClassFilePath)
+                                                && fs.existsSync(sourceMetaFilePath);
+
+            if ( existingClassFilePath === undefined ) {
+
+                /*
+                    Reported unavailable only when the class is ABSENT. A class already in the
+                    workspace that this extension cannot compare against is still a class the
+                    generated code can compile against, and calling it unavailable would raise a
+                    blocker for a workspace that has none.
+                */
+                if ( !shippedClassIsAvailable ) {
+                    unavailableClassNames.push(frameworkClassName);
+                    return;
+                }
+
+                fs.copyFileSync(sourceClassFilePath, frameworkDirectoryClassFilePath);
+                fs.copyFileSync(sourceMetaFilePath, `${frameworkDirectoryClassFilePath}-meta.xml`);
+                scaffoldedClassNames.push(frameworkClassName);
+                return;
+
+            }
+
+            if ( !shippedClassIsAvailable ) {
                 return;
             }
 
-            fs.copyFileSync(sourceClassFilePath, targetClassFilePath);
-            fs.copyFileSync(sourceMetaFilePath, `${targetClassFilePath}-meta.xml`);
-            scaffoldedClassNames.push(frameworkClassName);
+            const existingMetaFilePath = `${existingClassFilePath}-meta.xml`;
+
+            /*
+                A .cls whose meta xml went missing does not deploy, so the meta is restored even
+                though a meta already there is left alone. Done before the content comparison
+                below, which can decide the class itself needs no rewrite at all.
+            */
+            if ( !fs.existsSync(existingMetaFilePath) ) {
+                fs.copyFileSync(sourceMetaFilePath, existingMetaFilePath);
+            }
+
+            if ( !this.isFrameworkClassOutOfDate(existingClassFilePath, sourceClassFilePath) ) {
+                return;
+            }
+
+            fs.copyFileSync(sourceClassFilePath, existingClassFilePath);
+            refreshedClassNames.push(frameworkClassName);
 
         });
 
-        return { scaffoldedClassNames, unavailableClassNames };
+        return { scaffoldedClassNames, refreshedClassNames, unavailableClassNames };
+
+    }
+
+    /*
+        Whether the workspace's copy of a framework class differs from the one this extension ships.
+
+        Compared without line endings for the reason buildPlannedSpecsFile documents: on Windows a
+        CRLF checkout would otherwise differ from the LF source on every run, and this command would
+        rewrite all six framework classes every time it was invoked.
+
+        A file that exists but cannot be read is reported OUT OF DATE rather than raising, the same
+        call buildPlannedSpecsFile makes -- the copy that follows fails loudly and with a better
+        message than a read here could give, and of the two wrong answers, refreshing a file that
+        did not need it is the recoverable one.
+    */
+    static isFrameworkClassOutOfDate(existingClassFilePath: string, shippedClassFilePath: string): boolean {
+
+        try {
+
+            const existingContent = fs.readFileSync(existingClassFilePath, 'utf-8');
+            const shippedContent = fs.readFileSync(shippedClassFilePath, 'utf-8');
+
+            return this.normalizeLineEndingsForComparison(existingContent) !== this.normalizeLineEndingsForComparison(shippedContent);
+
+        } catch {
+            return true;
+        }
 
     }
 
