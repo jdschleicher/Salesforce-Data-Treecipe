@@ -54,18 +54,22 @@ class PackagedContentsChecker {
     static collectTopLevelPathViolations(packagedPaths, allowedTopLevelPaths = TOP_LEVEL_PATH_ALLOW_LIST) {
 
         const allowed = new Set(allowedTopLevelPaths);
-        const unexpectedSegments = new Set();
+        const exampleByUnexpectedSegment = new Map();
 
         for (const packagedPath of packagedPaths) {
             const topLevelSegment = this.getTopLevelSegment(packagedPath);
-            if (!allowed.has(topLevelSegment)) {
-                unexpectedSegments.add(topLevelSegment);
+            if (!allowed.has(topLevelSegment) && !exampleByUnexpectedSegment.has(topLevelSegment)) {
+                exampleByUnexpectedSegment.set(topLevelSegment, packagedPath);
             }
         }
 
-        return [...unexpectedSegments].sort().map(segment =>
-            `Unexpected top-level path "${segment}" is in the package. Exclude it in .vscodeignore, `
-            + `or add it to TOP_LEVEL_PATH_ALLOW_LIST if it is meant to ship.`
+        // The segment alone can be degenerate -- an absolute path yields "" and "./out/x.js"
+        // yields "." -- so the first path that produced it is named too, or the message tells a
+        // reader nothing about what to exclude.
+        return [...exampleByUnexpectedSegment.keys()].sort().map(segment =>
+            `Unexpected top-level path "${segment}" is in the package `
+            + `(first seen as "${exampleByUnexpectedSegment.get(segment)}"). `
+            + `Exclude it in .vscodeignore, or add it to TOP_LEVEL_PATH_ALLOW_LIST if it is meant to ship.`
         );
 
     }
@@ -81,13 +85,31 @@ class PackagedContentsChecker {
 
     }
 
+    // A require named only in a COMMENT is the failure that matters: it would keep assertion 2
+    // green for a dependency nothing loads, which is precisely how #121 stayed hidden. Block
+    // comments and whole-line "//" comments are removed; a trailing "//" is deliberately NOT,
+    // because a "//" inside a string ("https://...") would truncate the rest of a real line and
+    // turn a false positive into a false negative -- the worse direction. A require written
+    // inside a STRING LITERAL is therefore still counted; that is a known limitation, pinned by
+    // a spec rather than left to be rediscovered.
+    static stripComments(javascriptSource) {
+
+        return javascriptSource
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .split('\n')
+            .filter(line => !line.trimStart().startsWith('//'))
+            .join('\n');
+
+    }
+
     static collectBareModuleSpecifiers(javascriptSource) {
 
         const specifiers = new Set();
+        const scannableSource = this.stripComments(javascriptSource);
         let match;
 
         BARE_REQUIRE_PATTERN.lastIndex = 0;
-        while ((match = BARE_REQUIRE_PATTERN.exec(javascriptSource)) !== null) {
+        while ((match = BARE_REQUIRE_PATTERN.exec(scannableSource)) !== null) {
             const specifier = match[1];
             if (!specifier.startsWith('.') && !specifier.startsWith('/')) {
                 specifiers.add(specifier);
@@ -176,29 +198,101 @@ class PackagedContentsChecker {
 
     }
 
+    // Same containment discipline the extension applies to any manifest path it opens
+    // (CLAUDE.md: resolveOpenableManifestFilePath / isPathContainedInWorkspace). "vsce ls" never
+    // emits a "..", but the reader accepts a path from a FILE, and a reader that resolves outside
+    // the directory it was pointed at is the property worth keeping rather than the current
+    // absence of a producer that would exercise it. readFileSync also follows symlinks, which
+    // "vsce ls" lists as plain files, so the resolved real path is what gets checked.
+    static resolveContainedWorkspacePath(workspaceDirectoryPath, packagedPath) {
+
+        if (path.isAbsolute(packagedPath)) {
+            return null;
+        }
+
+        const workspaceRoot = this.getRealDirectoryPath(workspaceDirectoryPath);
+        const resolvedPath = this.getRealDirectoryPath(path.resolve(workspaceRoot, packagedPath));
+
+        const isContained = resolvedPath === workspaceRoot
+            || resolvedPath.startsWith(workspaceRoot + path.sep);
+
+        return isContained ? resolvedPath : null;
+
+    }
+
+    // Resolves what exists and falls back to the lexical path for what does not, so a listed but
+    // missing file is reported as missing rather than as an escape.
+    static getRealDirectoryPath(candidatePath) {
+
+        try {
+            return fs.realpathSync(candidatePath);
+        } catch (error) {
+            return path.resolve(candidatePath);
+        }
+
+    }
+
     static runAgainstWorkspace(vsceListFilePath, workspaceDirectoryPath) {
 
-        const packagedPaths = this.parsePackagedPaths(
-            fs.readFileSync(vsceListFilePath, 'utf8')
-        );
+        let vsceListContents;
+        try {
+            vsceListContents = fs.readFileSync(vsceListFilePath, 'utf8');
+        } catch (error) {
+            return [`Could not read the packaged listing "${vsceListFilePath}": ${error.message}`];
+        }
+
+        const packagedPaths = this.parsePackagedPaths(vsceListContents);
 
         if (packagedPaths.length === 0) {
             return [`"${vsceListFilePath}" lists no packaged paths. Did "vsce ls" run?`];
         }
 
-        const extensionManifest = JSON.parse(
-            fs.readFileSync(path.join(workspaceDirectoryPath, 'package.json'), 'utf8')
-        );
+        let extensionManifest;
+        const manifestPath = path.join(workspaceDirectoryPath, 'package.json');
+        try {
+            extensionManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        } catch (error) {
+            return [`Could not read "${manifestPath}": ${error.message}`];
+        }
 
-        return this.checkPackagedContents({
+        const escapedPaths = [];
+        const unreadablePaths = [];
+
+        const readPackagedSource = packagedPath => {
+
+            const containedPath = this.resolveContainedWorkspacePath(workspaceDirectoryPath, packagedPath);
+
+            if (containedPath === null) {
+                escapedPaths.push(packagedPath);
+                return '';
+            }
+
+            try {
+                return fs.readFileSync(containedPath, 'utf8');
+            } catch (error) {
+                unreadablePaths.push(`${packagedPath}: ${error.message}`);
+                return '';
+            }
+
+        };
+
+        const violations = this.checkPackagedContents({
             packagedPaths,
             declaredDependencyNames: Object.keys(extensionManifest.dependencies || {}),
-            readPackagedSource: packagedPath =>
-                fs.readFileSync(path.join(workspaceDirectoryPath, packagedPath), 'utf8')
+            readPackagedSource
         });
 
-    }
+        // Reported ahead of the assertions: a file that was not read cannot have contributed its
+        // requires, so assertion 2 would blame the dependency rather than the unread file.
+        return [
+            ...escapedPaths.map(packagedPath =>
+                `Packaged path "${packagedPath}" resolves outside the workspace and was not read.`
+            ),
+            ...unreadablePaths.map(detail => `Packaged path could not be read -- ${detail}`),
+            ...violations
+        ];
 
+    }
 
     // The command line entry point returns its exit code rather than calling process.exit, so the
     // failure path CI depends on is exercised by a test rather than by trusting CI to fail one day.

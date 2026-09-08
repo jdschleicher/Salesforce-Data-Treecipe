@@ -85,6 +85,34 @@ describe('PackagedContentsChecker.collectTopLevelPathViolations', () => {
 
     });
 
+    it('honors an injected allow list instead of the checked-in one', () => {
+
+        expect(PackagedContentsChecker.collectTopLevelPathViolations(
+            ['scratch/report.txt'],
+            ['scratch']
+        )).toBeEmpty();
+
+        expect(PackagedContentsChecker.collectTopLevelPathViolations(
+            ['out/extension.js'],
+            ['scratch']
+        )).toHaveLength(1);
+
+    });
+
+    it('names the first offending path, because the segment alone can be degenerate', () => {
+
+        const [absoluteViolation] = PackagedContentsChecker.collectTopLevelPathViolations(
+            ['/home/runner/out/extension.js']
+        );
+        expect(absoluteViolation).toInclude('/home/runner/out/extension.js');
+
+        const [relativeViolation] = PackagedContentsChecker.collectTopLevelPathViolations(
+            ['./out/extension.js']
+        );
+        expect(relativeViolation).toInclude('./out/extension.js');
+
+    });
+
     it('does not silently accept a nested path whose leading segment is disallowed', () => {
 
         const violations = PackagedContentsChecker.collectTopLevelPathViolations(['scripts/tests/tooling.js']);
@@ -396,6 +424,60 @@ describe('PackagedContentsChecker.runAgainstWorkspace', () => {
 
     });
 
+    it('reports a traversal path as unread instead of opening it', () => {
+
+        fs.writeFileSync(
+            path.join(workspaceDirectoryPath, 'package.json'),
+            JSON.stringify({ dependencies: {} }),
+            'utf8'
+        );
+        fs.writeFileSync(vsceListFilePath, 'package.json\nout/../../../../../../etc/hosts.js\n', 'utf8');
+
+        const violations = PackagedContentsChecker.runAgainstWorkspace(vsceListFilePath, workspaceDirectoryPath);
+
+        expect(violations[0]).toIncludeMultiple(['resolves outside the workspace', 'was not read']);
+
+    });
+
+    it('reports a listed file that is not on disk instead of throwing a stack trace', () => {
+
+        fs.writeFileSync(
+            path.join(workspaceDirectoryPath, 'package.json'),
+            JSON.stringify({ dependencies: {} }),
+            'utf8'
+        );
+        fs.writeFileSync(vsceListFilePath, 'package.json\nout/neverWritten.js\n', 'utf8');
+
+        const violations = PackagedContentsChecker.runAgainstWorkspace(vsceListFilePath, workspaceDirectoryPath);
+
+        expect(violations[0]).toInclude('could not be read');
+
+    });
+
+    it('reports a missing listing file instead of throwing', () => {
+
+        const violations = PackagedContentsChecker.runAgainstWorkspace(
+            path.join(workspaceDirectoryPath, 'no-such-listing.txt'),
+            workspaceDirectoryPath
+        );
+
+        expect(violations).toHaveLength(1);
+        expect(violations[0]).toInclude('Could not read the packaged listing');
+
+    });
+
+    it('reports an unparseable manifest instead of throwing', () => {
+
+        fs.writeFileSync(path.join(workspaceDirectoryPath, 'package.json'), '{ not json', 'utf8');
+        fs.writeFileSync(vsceListFilePath, 'package.json\n', 'utf8');
+
+        const violations = PackagedContentsChecker.runAgainstWorkspace(vsceListFilePath, workspaceDirectoryPath);
+
+        expect(violations).toHaveLength(1);
+        expect(violations[0]).toInclude('Could not read');
+
+    });
+
     // An empty listing means vsce did not run, and every assertion over an empty list passes.
     // Reporting "no violations" there is a green check that verified nothing.
     it('reports an empty listing rather than passing over it', () => {
@@ -499,6 +581,158 @@ describe('PackagedContentsChecker.main', () => {
 
 });
 
+describe('PackagedContentsChecker.resolveContainedWorkspacePath', () => {
+
+    let workspaceDirectoryPath;
+
+    beforeEach(() => {
+        workspaceDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'packaged-contents-containment-'));
+        fs.mkdirSync(path.join(workspaceDirectoryPath, 'out'));
+        fs.writeFileSync(path.join(workspaceDirectoryPath, 'out', 'extension.js'), '', 'utf8');
+    });
+
+    afterEach(() => {
+        fs.rmSync(workspaceDirectoryPath, { recursive: true, force: true });
+    });
+
+    it('resolves a path inside the workspace', () => {
+
+        const resolved = PackagedContentsChecker.resolveContainedWorkspacePath(
+            workspaceDirectoryPath,
+            'out/extension.js'
+        );
+
+        expect(resolved).toBe(fs.realpathSync(path.join(workspaceDirectoryPath, 'out', 'extension.js')));
+
+    });
+
+    it('refuses a traversal that climbs out of the workspace', () => {
+
+        const resolved = PackagedContentsChecker.resolveContainedWorkspacePath(
+            workspaceDirectoryPath,
+            'out/../../../../../../etc/hosts.js'
+        );
+
+        expect(resolved).toBeNull();
+
+    });
+
+    it('refuses an absolute path outright', () => {
+
+        expect(PackagedContentsChecker.resolveContainedWorkspacePath(
+            workspaceDirectoryPath,
+            '/etc/hosts.js'
+        )).toBeNull();
+
+    });
+
+    // readFileSync follows symlinks; "vsce ls" lists one as a plain file. Checking the lexical
+    // path only would let a link inside the workspace read a target outside it.
+    it('refuses a symlink whose target is outside the workspace', () => {
+
+        const outsideDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'packaged-contents-outside-'));
+        const outsideFile = path.join(outsideDirectory, 'secret.js');
+        fs.writeFileSync(outsideFile, 'require("exfiltrated");', 'utf8');
+        fs.symlinkSync(outsideFile, path.join(workspaceDirectoryPath, 'out', 'linked.js'));
+
+        try {
+            expect(PackagedContentsChecker.resolveContainedWorkspacePath(
+                workspaceDirectoryPath,
+                'out/linked.js'
+            )).toBeNull();
+        } finally {
+            fs.rmSync(outsideDirectory, { recursive: true, force: true });
+        }
+
+    });
+
+    it('still resolves a listed file that does not exist, so it is reported as missing not as an escape', () => {
+
+        const resolved = PackagedContentsChecker.resolveContainedWorkspacePath(
+            workspaceDirectoryPath,
+            'out/neverWritten.js'
+        );
+
+        expect(resolved).toBe(path.join(fs.realpathSync(workspaceDirectoryPath), 'out', 'neverWritten.js'));
+
+    });
+
+    it('accepts a traversal that stays inside the workspace', () => {
+
+        const resolved = PackagedContentsChecker.resolveContainedWorkspacePath(
+            workspaceDirectoryPath,
+            'out/../out/extension.js'
+        );
+
+        expect(resolved).toBe(fs.realpathSync(path.join(workspaceDirectoryPath, 'out', 'extension.js')));
+
+    });
+
+});
+
+describe('PackagedContentsChecker.stripComments', () => {
+
+    // The direction that matters: a dependency named only in a comment would keep assertion 2
+    // green for something nothing loads -- exactly how #121 stayed hidden.
+    it('does not count a require named in a whole-line comment', () => {
+
+        expect(PackagedContentsChecker.collectBareModuleSpecifiers(
+            '// legacy: require("jsforce")\nrequire("js-yaml");'
+        )).toEqual(['js-yaml']);
+
+    });
+
+    it('does not count a require named in a block comment', () => {
+
+        expect(PackagedContentsChecker.collectBareModuleSpecifiers(
+            '/* require("jsforce")\n   require("ts-node") */\nrequire("js-yaml");'
+        )).toEqual(['js-yaml']);
+
+    });
+
+    // A trailing "//" is deliberately not stripped: a "//" inside a string would truncate the
+    // rest of a real line, turning a false positive into a false negative -- the worse direction.
+    it('does not truncate a line carrying a url before a real require', () => {
+
+        expect(PackagedContentsChecker.collectBareModuleSpecifiers(
+            'const docs = "https://example.dev/x"; require("js-yaml");'
+        )).toEqual(['js-yaml']);
+
+    });
+
+    // Known limitation, pinned so it is a decision rather than a surprise.
+    it('still counts a require written inside a string literal', () => {
+
+        expect(PackagedContentsChecker.collectBareModuleSpecifiers(
+            'const help = \'run require("ts-node/register") first\';'
+        )).toEqual(['ts-node/register']);
+
+    });
+
+});
+
+describe('PackagedContentsChecker.isNodeBuiltinModule -- subpaths', () => {
+
+    it('recognizes a builtin subpath, so it is never mistaken for a package', () => {
+
+        expect(PackagedContentsChecker.isNodeBuiltinModule('fs/promises')).toBeTrue();
+        expect(PackagedContentsChecker.isNodeBuiltinModule('stream/promises')).toBeTrue();
+
+    });
+
+    it('leaves a builtin subpath out of the required package names', () => {
+
+        const requiredPackageNames = PackagedContentsChecker.collectRequiredPackageNames(
+            ['out/builtins.js'],
+            () => 'require("fs/promises"); require("node:path"); require("js-yaml");'
+        );
+
+        expect([...requiredPackageNames]).toEqual(['js-yaml']);
+
+    });
+
+});
+
 describe('the checked-in allow list', () => {
 
     it('names only the eight paths the extension ships', () => {
@@ -520,18 +754,31 @@ describe('the checked-in allow list', () => {
 
 describe('this repository', () => {
 
+    // Asserted as the PROPERTY rather than as a checked-in list of the four current dependencies.
+    // A hand-maintained snapshot here would have to be edited whenever a real runtime dependency
+    // is added -- the exact maintenance burden this guard exists to avoid.
     it('declares no runtime dependency the guard would reject', () => {
 
-        const extensionManifest = require('../../../package.json');
+        const workspaceDirectoryPath = path.resolve(__dirname, '..', '..', '..');
+        const extensionManifest = require(path.join(workspaceDirectoryPath, 'package.json'));
 
-        expect(Object.keys(extensionManifest.dependencies)).toEqual([
-            '@faker-js/faker',
-            '@salesforce/core',
-            'js-yaml',
-            'xml2js'
-        ]);
         expect(extensionManifest.devDependencies).toContainKey('ts-node');
         expect(extensionManifest.dependencies).not.toContainKey('ts-node');
+
+        const declaredDependencyNames = Object.keys(extensionManifest.dependencies);
+        const packagedSourcePaths = fs.readdirSync(path.join(workspaceDirectoryPath, 'out'))
+            .filter(entry => entry.endsWith('.js'))
+            .map(entry => `out/${entry}`);
+
+        const requiredPackageNames = PackagedContentsChecker.collectRequiredPackageNames(
+            packagedSourcePaths,
+            packagedPath => fs.readFileSync(path.join(workspaceDirectoryPath, packagedPath), 'utf8')
+        );
+
+        // out/extension.js alone reaches the whole graph, so anything it never pulls in is not a
+        // runtime dependency of the entry point.
+        expect(requiredPackageNames).not.toContain('ts-node');
+        expect(declaredDependencyNames).not.toContain('ts-node');
 
     });
 
