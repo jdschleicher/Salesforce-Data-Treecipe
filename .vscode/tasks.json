@@ -4,17 +4,39 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			// Since #137 the build is two watchers, because esbuild strips types without checking
+			// them and tsc no longer emits. VS Code runs them in parallel itself, so the Problems
+			// panel still fills from the tsc half without a "concurrently" dependency.
+			"label": "watch",
+			"dependsOn": ["npm: watch", "npm: watch:typecheck"],
+			"dependsOrder": "parallel",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": []
+		},
+		{
 			"type": "npm",
 			"script": "watch",
+			// No matcher: "$esbuild-watch" is not a built-in, and esbuild's own output is not in a
+			// format any built-in parses. Type errors reach the Problems panel from the tsc half.
+			"problemMatcher": [],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "never"
+			},
+			"group": "build"
+		},
+		{
+			"type": "npm",
+			"script": "watch:typecheck",
 			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never"
 			},
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			}
+			"group": "build"
 		},
 		{
             "label": "CUSTOM: CREATE SUMMARY FILES - CLEAN JEST TESTS RUN AND CREATE TEST SUMMARY FILES IN 'coverage' FOLDER",

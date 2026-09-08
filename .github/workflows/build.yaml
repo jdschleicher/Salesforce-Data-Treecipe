@@ -36,13 +36,19 @@ jobs:
 
     # ts-jest only typechecks files reachable from a test, and nothing imports src/extension.ts,
     # so without this step a type error in the extension entry point reaches the publish job.
-    - name: Compile TypeScript
+    # Since #137 this is "tsc --noEmit": esbuild emits, tsc only checks.
+    - name: Typecheck TypeScript
       run: npm run compile
+
+    # "vsce ls" reads what is on disk and does not run "vscode:prepublish", so the bundle has to
+    # exist before the packaged-contents check below or it would assert against an empty out/.
+    - name: Bundle extension
+      run: npm run bundle
 
     # #67 asked for a guard so what enters the .vsix cannot silently regress, and nothing was
     # added; #121 is what that cost -- ts-node sat in "dependencies" and shipped 1.6 MB of itself
     # plus its typescript peer to every Marketplace user. vsce is pinned here for the same reason
-    # the publish job pins it. "vsce ls" reads the compiled output, so this runs after compile.
+    # the publish job pins it. "vsce ls" reads the bundled output, so this runs after the bundle.
     - name: Install vsce
       run: npm install -g --ignore-scripts @vscode/vsce@3.9.2
 

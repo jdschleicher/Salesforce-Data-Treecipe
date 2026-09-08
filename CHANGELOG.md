@@ -1,5 +1,46 @@
 # Change Log
 
+## [3.23.0] - The extension is bundled: 90% of the .vsix was node_modules nothing loaded
+
+Closes [#137](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/137), the bundling half [#121](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/121) deferred to its own issue.
+
+`vscode:prepublish` ran `tsc` and nothing else, so `vsce` resolved the whole production dependency tree and shipped every file in it. Of 7.53 MB and 2,722 paths, this project's own compiled output was 909 KB across 38 files -- **about 3%**. esbuild now bundles the extension into one file.
+
+| | `.vsix` | files | raw |
+|---|---|---|---|
+| Before | 7.53 MB | 2,722 | 25.6 MB |
+| After | **5.41 MB** | **2,261** | 17.2 MB |
+| | **-2.12 MB (-28%)** | -461 | -8.4 MB |
+
+What left was never loaded on any path. `xml2js/lib/xml2js.bc.js` is a prebuilt **browser** bundle, 3.23 MB against the 1 KB `xml2js.js` the Node entry point actually resolves. faker shipped its ESM half beside the `.cjs` half tsc output required, 0.91 MB zipped of a format nothing in a CommonJS extension can reach. And ~70 locale chunks, where nothing in `src/` names a locale.
+
+### `@salesforce/core` stays external, and that is the whole risk boundary
+
+`vscode` cannot be bundled -- the host injects it. `@salesforce/core` is external for an unrelated reason: pino's `thread-stream` transports spawn workers **from a file path**, which a bundler cannot rewrite. It stays a real `dependency` and still ships from `node_modules`, so org auth, the Collections API insert and the picklist dependency check run against exactly the code they ran against before.
+
+That is also why the win is 28% rather than the "under 2 MB" a full bundle would reach: `@salesforce/core`'s 140-package closure is **85% of what remains**. Bundling it is its own issue, because the risk lands on the paths hardest to verify without a live org.
+
+### tsc stops emitting, and that is load-bearing rather than tidy
+
+esbuild strips types without checking them, so `compile` becomes `tsc --noEmit` -- still a typecheck, which is the only reason that CI step exists (nothing imports `src/extension.ts`, so ts-jest never reaches it).
+
+Leaving `outDir` in play would have been the quiet failure. Output from both tools landing in `out/` ships the entire tsc tree **alongside** the bundle, and `checkPackagedPaths.js` could not have caught it: that tsc output legitimately requires faker, xml2js and js-yaml, so every assertion would pass while the package grew past where it started. `esbuild.js` clears `out/` for the same reason `.vscodeignore` still names the old test-output paths -- `vsce` packages the working directory, not the git index, so a checkout that ran the old build still has that tree on disk.
+
+### The packaging guard is UNCHANGED, and it is what forced the dependency split
+
+The issue expected assertions 2 and 3 to need re-pointing. They did not. The bundle's only non-builtin bare requires are its two externals, so the guard's existing property -- every `dependencies` key is required from packaged `out/**`, and every bare require is a builtin, `vscode`, or declared -- already describes a bundled build exactly:
+
+- a package esbuild **inlined** but left in `dependencies` fails assertion 2, whose message already reads *"Move it to devDependencies"*
+- a package left **external** by mistake and therefore not shipped fails assertion 3, which is the one that throws for an installed user rather than merely bloating the download
+
+So `@faker-js/faker`, `js-yaml` and `xml2js` moved to `devDependencies` because the guard said to, not because a human remembered. Three tests pin the bundled shape against the same fixtures, and the guard passes unmodified against the real `vsce ls` listing.
+
+`xml2js` does still ship: `@salesforce/core` -> `@jsforce/jsforce-node` drags it back in as an external transitive, dead `xml2js.bc.js` and all, where it is now the largest single item left at 16.6% of the package. Reclaiming it is tracked on #137 rather than done here.
+
+### The watch loop is two watchers now
+
+One tool no longer does both jobs, so `watch` runs esbuild and `watch:typecheck` runs `tsc --noEmit --watch`. VS Code runs them in parallel itself (`dependsOrder: "parallel"`), so the Problems panel still fills from the tsc half and no `concurrently` dependency was added. Editor squiggles never came from the build task at all -- those are the TypeScript language server.
+
 ## [3.22.1] - The CI heap failures were a test mock escaping its own suite
 
 ### One assignment, in one test, could exhaust a 4 GB heap in a different suite
