@@ -1,5 +1,32 @@
 # Change Log
 
+## [3.20.0] - The Recipe Cockpit opens: a webview surface, wired end to end and carrying nothing
+
+Closes [#53](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/53), the first slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+**Salesforce Treecipe: Open Recipe Cockpit** opens a panel that says what it is for and nothing else. That is the point of this release: the cockpit will traverse a generated recipe and diff it against a live org describe, and neither of those is here. What is here is the surface both will render into, proven to work before either has anything to prove it with.
+
+### What the slice actually establishes
+
+A webview is the one part of an extension that cannot be verified by reading it. Its document runs in a separate context under a content security policy the extension does not get told it violated: a script the CSP denies does not fail loudly, it simply never runs, and the panel sits there rendering the markup that surrounded it. So the slice's deliverable is a completed round trip -- the panel's script runs, posts `ready`, the extension host answers `ack`, and the panel rewrites its own status line with what came back. A panel still reading "Connecting to the Treecipe extension host…" is a panel whose script did not run or whose message did not land, and it says so on screen rather than looking finished.
+
+`routePanelMessage` is the whole host half of that protocol, as a pure function returning the reply or nothing. It is separated from the subscription that calls it so the routing is asserted without a live webview -- and so the traverse and diff commands are added to something already under test rather than to a closure inside an event handler.
+
+### The constraints are set now, while there is nothing to bend them
+
+The two properties that are cheap to establish in an empty panel and expensive to retrofit into a full one:
+
+- **`buildWebviewShellHtml` takes a nonce and nothing else.** Recipes and org describes are metadata this extension does not control, so none of it will be interpolated into html: it arrives over `postMessage` and is written through `textContent`. That is what makes the builder need no escaping, rather than having escaping that a later field can be added without. Widening the signature to take a model is what would quietly re-open the markup context the guarantee rests on, so the tests pin the signature and pin that every inline block the shell emits carries the nonce -- an un-nonced one would be silently dead rather than a visible failure.
+- **`localResourceRoots` is `[]`, not omitted.** Omitting it does not deny the grant; VS Code then defaults to the extension directory plus every open workspace folder. The cockpit loads no file of any kind.
+
+### One panel, revealed rather than duplicated
+
+The panel is held on the service, so re-running the command reveals the tab this window already has and rebuilds its document with a fresh nonce -- one held across loads would outlive the single document it authorizes. The message subscription is disposed before it is replaced, and again when the panel closes: two listeners answering one `ready` is one acknowledgement the panel never asked for, and it is the shape that grows into duplicated work as commands are added. A message from a panel closed before the host handled it is dropped, because posting to a disposed webview throws and that throw would reach the user as an extension error for the ordinary act of closing a tab.
+
+The panel's own script is exercised by running it -- the real string the builder emits, against a fake DOM -- rather than asserted on as text. "The markup contains a message listener" would be equally true of one that ignored everything it received.
+
+The README documents the cockpit when it renders a recipe; documenting a panel that traverses nothing would describe a command by what it is going to do.
+
 ## [3.19.0] - Geolocation compound fields expand into the Latitude and Longitude components an insert can write
 
 Closes [#111](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/111).

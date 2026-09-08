@@ -69,6 +69,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const openRecipeCockpit = vscode.commands.registerCommand("treecipe.openRecipeCockpit", () => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.openRecipeCockpit();
+
+	});
+
 	const updatePicklistDependencyMetadata = vscode.commands.registerCommand("treecipe.updatePicklistDependencyMetadata", () => {
 
 		const extensionCommandService = new ExtensionCommandService();
@@ -85,7 +92,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		generatePicklistDependencyTests,
 		runPicklistDependencyCheck,
 		openPicklistDependencyExplorer,
-		updatePicklistDependencyMetadata
+		updatePicklistDependencyMetadata,
+		openRecipeCockpit
 	);
 	
 }

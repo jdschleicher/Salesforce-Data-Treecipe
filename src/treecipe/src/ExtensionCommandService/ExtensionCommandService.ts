@@ -27,6 +27,7 @@ import {
     PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED
 } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
+import { RecipeCockpitService } from "../RecipeCockpitService/RecipeCockpitService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -1365,6 +1366,29 @@ export class ExtensionCommandService {
         allows only the nonced inline style and script this extension emits, so the panel cannot
         reach the network even if a picklist value tried to make it.
     */
+    /*
+        Opens the Recipe Cockpit.
+
+        There is no work to guard around yet -- the panel's shell is static and everything it will
+        render arrives over postMessage in a later slice -- but the command is wrapped like every
+        other one from the start: a webview that cannot be created is exactly the failure a user
+        cannot diagnose without the report this raises.
+    */
+    async openRecipeCockpit() {
+
+        try {
+
+            RecipeCockpitService.openRecipeCockpitPanel();
+
+        } catch(error) {
+
+            const commandName = 'openRecipeCockpit';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
     async openPicklistDependencyExplorer() {
 
         try {
