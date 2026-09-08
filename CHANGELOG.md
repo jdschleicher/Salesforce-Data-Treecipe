@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.21.0] - Generation keeps the framework it generates against, and names the classes an earlier version orphaned
+## [3.22.0] - Generation keeps the framework it generates against, and names the classes an earlier version orphaned
 
 Closes [#133](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/133).
 
@@ -60,6 +60,31 @@ Identifier name is too long: SDTPicklistDependencySpecs_Example_Everything_c (16
 That detection turned the warning's path list from five bounded entries into a directory listing, so it is capped at ten with the remainder counted. A notification is one run of text that truncates, and the actionable half -- what to delete from the org, and why a per-object class fails the deploy -- is at the END of it; a workspace holding one legacy class per object would have pushed it past the cut. The paths share one directory anyway, which the enumerated few already show.
 
 They are reported, not deleted -- the 3.0.0 posture, unchanged. What did change is that the per-object classes are named **together with the aggregator that calls them**, and deliberately kept out of `removeStalePerObjectSpecsClassFiles`. Sweeping them on their own would leave `SDTPicklistDependencySpecs.cls` calling classes that no longer exist, trading `identifier name is too long` for `variable does not exist` and leaving the user no better off.
+## [3.21.0] - The Picklist Dependency Explorer opens on the find box: the provenance banner, the freshness check, the contents block and both header lines are gone
+
+Closes [#134](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/134).
+
+Four blocks sat between the panel title and the rows: a provenance banner, a table of contents, the scanned-objects path and a generation stamp. Every one of them was a statement *about* the rows rather than a way to reach one, and a reader who opened the panel to look a field up scrolled past all four to get to the find box. The find box is now the first thing the panel draws, and the only thing above the rows is what the ceiling dropped and what the metadata skipped -- the two caveats that say the panel is not showing everything.
+
+### The freshness check went with the banner that was its only entry point
+
+`Check against current metadata` lived in the provenance banner, and nothing else could start it. Removing the banner would have left the whole path unreachable rather than merely unused, so it is removed outright: the panel's `checkFreshness` message, the host's handler, the in-flight guard, the stored check context, the `applyFreshness` post and the replay that carried a resolved answer across a reveal.
+
+`PicklistDependencyManifestService.resolveManifestFreshness` and the freshness types go with it. **`buildSourceFingerprint` and `collectSourceFingerprintEntries` stay** -- they are what `Generate Picklist Dependency Tests` writes `sourceFingerprint` into `manifest.json` with, and that half was never the check. The manifest schema and its version are unchanged, so an existing manifest still loads and an existing `sourceFingerprint` is still recorded; nothing compares it any more.
+
+Four view model fields go with the rendering: `manifestFreshness`, `manifestFreshnessMessage`, `generatedAt` and `generatorVersion`. `modelSource`, `manifestLoadState`, `manifestLoadMessage`, `manifestFilePath` and `scannedObjectsDirectoryPath` all stay -- the empty state still names them, and it is the one place a metadata preview is still marked as one.
+
+### Dropping the contents means the find box is the whole navigation surface
+
+The contents listed the panel's sections and every object, and clicking an entry scrolled to it. It is gone, along with `registerPanelSection`, `updatePanelSectionLabel`, the section records and `jumpToObject`. The sections it listed still render; only the listing of them does not. On a large org the find box is now the only way to jump to an object, which is the trade this makes.
+
+### A header line that a render reveals cannot make a failed render look finished if there is no header line
+
+`revealHeaderLines` existed because the scanned path, written first, survived a throw in everything below it -- a heading and a path over an empty page reads exactly like a panel that loaded and found nothing. Both lines are out of the shell markup entirely rather than left in it unwritten, so there is nothing to hold back and nothing to hide again on failure. `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener and the unhandled-rejection report are all untouched: a panel that cannot draw still replaces its body with a failure notice and still tells the host.
+
+### What is unchanged
+
+Both Apex commands, the run overlay (`applyRunToViewModel` and everything under it, still exported and still tested), the rendering ceiling, the value-query summary, deep links, the record type disclosures, and both panel action allow-lists.
 
 ## [3.20.1] - `ts-node` stops shipping to every extension user, and CI now asserts what enters the package
 

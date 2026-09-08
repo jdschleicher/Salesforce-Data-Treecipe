@@ -140,67 +140,6 @@ export interface IPicklistDependencyManifestLoad {
     manifestFilePath?: string;
 }
 
-/*
-    "stale" is deliberately one state with a reason rather than a severity scale. Both reasons mean
-    the same thing to a reader -- what is on screen may not be what the org was asked about -- and
-    both carry the same next step, which is to regenerate.
-
-    "pendingCheck" is the state a model carries while the freshness walk has not run yet. It exists
-    because the walk is stat-per-file over the whole objects directory and now happens AFTER the
-    panel paints, so there is a window where the answer is genuinely not known. Reusing "fresh" for
-    that window would have the provenance banner assert the specs still match metadata nothing has
-    looked at -- the same class of claim the three-state status guarantee exists to prevent one row
-    lower down.
-
-    "notChecked" is the RESTING state, and it is what an open now produces: the walk is no longer
-    part of opening the panel, so the ordinary case is that nobody has looked. "pendingCheck" is
-    reserved for a walk that is actually in flight, which is only ever true between a reader
-    clicking the banner's check button and the answer coming back. Collapsing the two would have a
-    panel nobody asked to check sit forever behind a progress message for work that is not running.
-
-    "checkFailed" is the walk that ran and could not answer -- a deleted directory, a permission
-    error, a network mount that went away mid-stat. It is separate from the two stale values on the
-    same principle: reporting "your metadata changed" for an EACCES sends a reader looking for an
-    edit they never made. None of the four non-fresh values claims agreement with metadata, which is
-    the property the banner depends on.
-*/
-export type PicklistDependencyManifestFreshness = 'fresh'
-                                                    | 'staleObjectsDirectory'
-                                                    | 'staleMetadata'
-                                                    | 'pendingCheck'
-                                                    | 'notChecked'
-                                                    | 'checkFailed';
-
-/*
-    What a model built by an open carries.
-
-    There is deliberately no PENDING equivalent: "pendingCheck" is now PANEL-LOCAL state, set by the
-    panel when the reader clicks check and resolved by the answer that follows. The host never builds
-    a model carrying it, so a constant for it would be a shape nothing produces.
-
-    Frozen: it is passed into model builds, and one caller mutating it would change every later open.
-*/
-export const PICKLIST_DEPENDENCY_MANIFEST_FRESHNESS_NOT_CHECKED: Readonly<IPicklistDependencyManifestFreshnessResult> = Object.freeze({
-    freshness: 'notChecked' as PicklistDependencyManifestFreshness,
-    message: ''
-});
-
-/*
-    The three fields a freshness check actually reads, named as their own type.
-
-    The Explorer holds this across the life of a panel so a check can answer about the model ON
-    SCREEN rather than about whatever the manifest says by the time the reader clicks. Narrowed to a
-    Pick so what is held is three strings: pinning the whole parsed manifest for them retained tens
-    of megabytes on a large org, for a comparison that never touches the objects list.
-*/
-export type IPicklistDependencyManifestFreshnessSubject =
-    Pick<IPicklistDependencyManifest, 'objectsDirectoryPath' | 'sourceFingerprint' | 'generatedAt'>;
-
-export interface IPicklistDependencyManifestFreshnessResult {
-    freshness: PicklistDependencyManifestFreshness;
-    message: string;
-}
-
 export interface IPicklistDependencyManifestSpecDetails {
     specDetails: IPicklistDependencySpecDetail[];
     recordTypeSpecDetails: IRecordTypePicklistDependencySpecDetail[];
@@ -696,9 +635,9 @@ export class PicklistDependencyManifestService {
 
         Compared with generatedAt taken from the existing file, because that field is the one thing
         guaranteed to differ on every run and is not part of what the manifest DESCRIBES. Everything
-        else -- the specs, and the fingerprint the staleness banner is keyed off -- is compared
-        literally, so a run that only touched a file's mtime still rewrites and clears the banner
-        it would otherwise raise against specs the user just regenerated.
+        else -- the specs, and the recorded source fingerprint -- is compared
+        literally, so a re-run that changed nothing leaves the file byte-identical rather than
+        rewriting it with a new timestamp and showing up as a diff the user did not make.
     */
     static manifestMatchesExistingContent(manifest: IPicklistDependencyManifest, existingManifestContent: string): boolean {
 
@@ -1136,13 +1075,16 @@ export class PicklistDependencyManifestService {
             Every directory BELOW this one is allowed to be unreadable and contribute nothing: one
             locked subdirectory on a real org should cost that subdirectory, not the answer. The root
             is different in kind. If it cannot be read there is no metadata to fingerprint at all,
-            and folding that into an empty entry list produces sha256('') -- a digest that mismatches
-            whatever was recorded and is then reported as "your metadata has changed since these
-            specs were generated".
+            and folding that into an empty entry list produces sha256(''), which is a digest of
+            NOTHING recorded as though it described the org.
 
-            That was a false claim about a directory that is missing or locked, and it sent the
-            reader to regenerate from a directory that is not there. It is exactly the reading
-            checkFailed exists to prevent, so the root's failure has to reach the caller.
+            The staleness check this originally protected is gone, so the rationale is restated for
+            what the fingerprint is now: the value a GENERATION writes into manifest.json. Recording
+            sha256('') for a missing or locked objects directory would put a confident-looking digest
+            in the manifest attesting to metadata that was never read -- a false record rather than a
+            missing one. Whoever compares it next, in this repo or a later one, would be comparing
+            against a lie. The root's failure has to reach the caller instead, and a generation that
+            cannot read its objects directory has to fail rather than record.
         */
         fs.readdirSync(objectsDirectoryPath);
 
@@ -1170,8 +1112,8 @@ export class PicklistDependencyManifestService {
             A symlink is not asked whether it is a directory -- Dirent reports the LINK, not its
             target, so a symlinked ".field-meta.xml" answers false to isDirectory() and, treated as a
             directory, would be handed to readdirSync, throw ENOTDIR, and drop out of the fingerprint
-            entirely. That is a staleness blind spot rather than a crash: edits to that field would
-            never move the digest. stat follows the link and answers about the target.
+            entirely -- silently, so the digest would describe less metadata than the org has and
+            nothing would say so. stat follows the link and answers about the target.
         */
         const readResolvedDirectoryEntries = (directoryPath: string) => {
 
@@ -1283,94 +1225,6 @@ export class PicklistDependencyManifestService {
         const fingerprintEntries = this.collectSourceFingerprintEntries(objectsDirectoryPath);
 
         return crypto.createHash('sha256').update(fingerprintEntries.join('\n')).digest('hex');
-
-    }
-
-    /*
-        Whether what the manifest describes can still be trusted to describe the metadata on disk.
-
-        The objects directory is compared first and reported separately: a manifest recorded against
-        a DIFFERENT directory is not stale metadata, it is a manifest about something else entirely,
-        and telling a reader their metadata changed would send them looking for an edit they never
-        made.
-
-        A fingerprint mismatch is reported as possible drift rather than as certain drift. Touching
-        a file without editing it moves its mtime, so the check can say "regenerate to be sure" but
-        never "this specific thing changed" -- and a banner that overstates is one users learn to
-        dismiss.
-    */
-    static resolveManifestFreshness(manifest: IPicklistDependencyManifestFreshnessSubject,
-                                        objectsDirectoryPath: string): IPicklistDependencyManifestFreshnessResult {
-
-        if ( this.normalizeDirectoryPathForComparison(manifest.objectsDirectoryPath)
-                !== this.normalizeDirectoryPathForComparison(objectsDirectoryPath) ) {
-
-            return {
-                freshness: 'staleObjectsDirectory',
-                message: `These specs were generated from "${manifest.objectsDirectoryPath}", but the configured objects directory is now "${objectsDirectoryPath}". What is shown below describes the directory the specs were generated from. Run "Salesforce Treecipe: Generate Picklist Dependency Tests" to regenerate against the configured directory.`
-            };
-
-        }
-
-        /*
-            The walk is stat-per-file over a directory the extension does not own, and every one of
-            those stats can fail for a reason that has nothing to do with staleness: the directory
-            deleted between the panel opening and the reader clicking check, a permission change, a
-            network mount that went away mid-walk.
-
-            Contained HERE rather than at the call site because this is the only place that knows the
-            failure was a freshness question rather than the load. A throw escaping to the command
-            would be reported as the Explorer failing to load -- past a panel that has been on screen
-            and usable for however long the reader took to click the button.
-        */
-        let currentSourceFingerprint: string;
-
-        try {
-            currentSourceFingerprint = this.buildSourceFingerprint(objectsDirectoryPath);
-        } catch (error) {
-
-            /*
-                The directory being gone is the common case and is named as itself. Every other
-                reason -- a permission change, a mount that went away -- carries the error, because
-                guessing at a cause the reader can act on is worse than quoting the one we have.
-            */
-            const isMissingDirectory = error?.code === 'ENOENT';
-
-            return {
-                freshness: 'checkFailed',
-                message: isMissingDirectory
-                    ? `The objects directory "${objectsDirectoryPath}" could not be found, so these specs could not be checked against your current metadata. Check the "salesforceObjectsPath" value in treecipe.config.json. What is shown below is what the generated Apex asserts.`
-                    : `The object metadata in "${objectsDirectoryPath}" could not be read to check whether these specs still match it (${error?.message ?? error}). What is shown below is what the generated Apex asserts; whether it still matches your metadata is unknown.`
-            };
-
-        }
-
-        if ( manifest.sourceFingerprint.length > 0 && manifest.sourceFingerprint !== currentSourceFingerprint ) {
-
-            return {
-                freshness: 'staleMetadata',
-                message: `The object metadata in "${objectsDirectoryPath}" has changed since these specs were generated on ${manifest.generatedAt}. What is shown below is what the generated Apex asserts, which may no longer match your metadata. Run "Salesforce Treecipe: Generate Picklist Dependency Tests" to regenerate.`
-            };
-
-        }
-
-        return { freshness: 'fresh', message: '' };
-
-    }
-
-    /*
-        Compared as resolved paths so "./force-app/../force-app/main/default/objects" and the
-        directory it names do not read as two different scans. Case is left alone: a case-insensitive
-        compare would call two genuinely different directories equal on the platforms where that is
-        not true.
-    */
-    static normalizeDirectoryPathForComparison(directoryPath: string): string {
-
-        if ( !directoryPath ) {
-            return '';
-        }
-
-        return path.resolve(directoryPath).split(path.sep).join('/').replace(/\/+$/, '');
 
     }
 
