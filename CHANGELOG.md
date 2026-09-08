@@ -1,5 +1,103 @@
 # Change Log
 
+## [3.22.1] - The CI heap failures were a test mock escaping its own suite
+
+### One assignment, in one test, could exhaust a 4 GB heap in a different suite
+
+The Jest job on GitHub Actions had been failing roughly half the time with a worker exhausting its heap, always reported against `RelationshipService.test.ts`:
+
+```
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+FAIL src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts
+  A jest worker process (pid=2191) was terminated by another process: signal=SIGTERM
+```
+
+`RelationshipService.test.ts` is not where the memory went. Run on its own it peaks at 220 MB and passes under a 256 MB cap. The cause was in `VSCodeWorkspaceService.test.ts`:
+
+```ts
+const mockReaddir = jest.fn().mockResolvedValue([
+    { name: 'other1', isDirectory: () => true },
+    { name: 'other2', isDirectory: () => true }
+]);
+fs.promises.readdir = mockReaddir;
+```
+
+That is an **assignment**, not a `jest.spyOn`, and `fs` is a **Node core module**. Jest gives every test file a fresh module registry, but a core module is not part of it -- `require('fs')` hands every suite in a worker the same object -- and `restoreMocks` only restores what `jest.spyOn` registered, so an assignment leaves Jest nothing to undo. The replacement stayed installed for the rest of that worker's life.
+
+What it left installed is the worst possible answer for a recursive walk: **every path, forever, reads as two entries, both directories.** `DirectoryProcessor.processDirectory` descends into every directory it is handed, and `RelationshipService.test.ts` opens with a `beforeAll` that walks a real metadata directory through `vscode.workspace.fs.readDirectory` -- which its own mock implements with `fs.promises.readdir`. So the walk branched 2^depth and never terminated, taking the worker to 4 GB in CI (8 GB locally) before Jest killed it.
+
+Jest attributes a dead worker's failure to the file it was running, never to the file that poisoned it, which is why every report named the suite with no memory problem and none named the one with the defect.
+
+**Why it was intermittent, and why it never reproduced locally.** It fires only when Jest schedules `RelationshipService.test.ts` onto the same worker after `VSCodeWorkspaceService.test.ts`. That is a scheduling outcome, not a property of the code, so it hit about half of CI runs. It essentially never hits a developer's machine because a warm Jest cache changes the per-file timings that drive the scheduling: cold-cache runs -- which is every CI run, on a fresh checkout -- reproduced it two times in three, warm-cache runs zero times in many.
+
+**Why the 3.11.0 change did not fix it.** `10d1ce7` removed the per-child `Set` copy in `calculateLevelsRecursively`, which was a real allocation reduction and is still worth having. But it was not what exhausted the heap. The recursion this failure actually rides is in `processDirectory`, driven by a `readdir` that never returns a leaf, and no change to level calculation could have bounded it.
+
+### Two fixes: the test, and the class of bug
+
+- **The test uses `jest.spyOn`**, so `restoreMocks` can put `fs.promises.readdir` back. With this alone, the pair that reproduced the OOM deterministically now passes.
+- **`jestSetup/CoreModuleIsolation.ts` restores core module functions after every test**, registered through `setupFilesAfterEnv`. It snapshots the plain function properties of `fs` and `fs.promises` before a suite loads and puts back anything whose identity changed -- so a future assignment costs the test that wrote it rather than an unrelated suite scheduled after it. Getter-backed properties are read through a descriptor and left alone, since a getter is not something an assignment could have replaced.
+
+The regression test is executed, not asserted as text: one test replaces `fs.promises.readdir` by assignment exactly as the defect did, and the next test reads a real directory through it. Removing the guard fails that test.
+
+No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
+
+### It has now been watched moving, release by release
+
+This branch has now been re-based across five releases, and the baseline was re-measured against every one of them. The failure did not sit still, and watching it move is itself the evidence:
+
+| `main` at | full-suite cold runs | the two suites on one worker |
+|---|---|---|
+| 3.15.0 | **2 failures in 3** | OOM |
+| 3.19.0 | 0 in 3 | OOM, 2 of 2 |
+| 3.20.1 | 0 in 3 | OOM, 2 of 2 |
+| **3.21.0** | **1 failure in 4** | OOM, 2 of 2 |
+| 3.22.0 | 0 in 4 | OOM, 2 of 2 |
+
+The right-hand column never moves. The left-hand one moves every release, because every release changes the per-file timings that decide which suites share a worker -- and that is the only variable this failure has ever turned on. A green `main` is a scheduling outcome, not a fixed defect.
+
+On 3.21.0 the scheduling landed badly and `npm run jest-test-summary` on unmodified `main` produced this:
+
+```
+FAIL src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts
+  A jest worker process (pid=20249) was terminated by another process: signal=SIGTERM
+Test Suites: 1 failed, 25 passed, 26 total
+Time:        134.925 s
+```
+
+The original CI signature, in the real command, on the default branch of the day -- 135 s against a normal ~63 s, which is the heap thrashing before the worker is killed. #136 is what moved it into range: it deleted the provenance banner, the freshness check, the contents block and both header lines, and a large block of Explorer tests with them.
+
+3.22.0 moved it back out again -- four clean runs. Nothing about the defect changed in either direction. The assignment is still on line 1603 of `VSCodeWorkspaceService.test.ts`, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf.
+
+Forced onto one worker rather than waiting for the scheduler, it is deterministic:
+
+```
+jest --maxWorkers=1 --runTestsByPath \
+  VSCodeWorkspaceService.test.ts RelationshipService.test.ts
+
+3.22.0         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory (2 of 2)
+this release   Test Suites: 2 passed, 2 total / Tests: 96 passed, 96 total
+```
+
+Seven releases have shipped since this was first seen in CI. None of them touched the line that causes it, and every one of them changed the scheduling -- which is exactly why it has appeared to come and go, and why the next test file added anywhere in the project can bring it back without anyone editing the code that causes it.
+
+### Three defects in the guard itself, found by review
+
+The guard shipped with three wrong claims in its own comments, each disproved by running code rather than by reading it.
+
+- **It said its `afterEach` runs LAST among `afterEach` hooks. It runs FIRST.** Hooks registered from `setupFilesAfterEnv` and hooks declared at the top level of a test file are both hooks of jest-circus's ROOT block, and root-block `afterEach` hooks run in declaration order -- setup files are evaluated first. The consequence is real but currently unexercised: a file-scope `afterEach` asserting on an `fs` spy would find the property already restored. No suite does that, restoring early is still the right trade, and the comment now says what the code does.
+- **It said a getter "is not something an assignment could have replaced". On Node 20 that is false.** `fs.opendir`, `fs.opendirSync`, `fs.Dir`, `fs.ReadStream` and `fs.WriteStream` are getter/**setter** pairs: an assignment goes through the setter and sticks. Skipping every accessor property left the guard blind to directory and stream APIs -- the same class of call the original failure rode in on. Accessor properties that have a setter are now captured and restored; a getter with no setter stays skipped, because nothing can assign through it and invoking it to find out would run whatever it does.
+- **It captured per test FILE, and now captures once per WORKER.** The snapshot is stashed on the shared `fs` object under a symbol. This one is a conservative baseline rather than a fix for a reproduced hole, and is written down as such: per-file capture demonstrably contains the defect this guard was written for -- that leak is installed inside a test body, so the file's own `afterEach` restores it before the file ends -- and attempts to demonstrate per-file capture ADOPTING an `afterAll` leak produced results that did not reproduce across runs. The probe was unreliable and settled nothing. It is done this way anyway, because "whatever is on the object when this file started" is not a defensible definition of pristine and the earliest observed state is.
+
+Also from review: properties are enumerated with `getOwnPropertyNames` rather than `Object.keys`, since a non-enumerable function property is just as assignable; and the module name travels with the module instead of being derived from its position in an array.
+
+27 suites, 1522 tests (1507 + 15), coverage 91.34/86.36/92.77/91.31 against 3.22.0's 91.28/86.28/92.74/91.24 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.22.0 passes here.
+
+Every baseline quoted here was read from a CLEAN run. The 3.21.0 run that failed reported 88.09/81.75/90.41/88.00, which is not a coverage figure at all -- a whole suite did not execute. A failing run's coverage is not a baseline, and quoting it would have manufactured a three-point improvement for a change that touches no `src/` code.
+
+3.20.1 added a CI step asserting what enters the `.vsix`. `vsce ls` was run against this branch and the new `checkPackagedPaths.js` run over its output: 2,720 packaged paths, **zero of them under `jestSetup/`**, check passed. The guard's directory is excluded twice over -- by the pre-existing `**/*.ts` rule and by the `jestSetup/**` line added here.
+
+Both sides were measured with identical flags on Node 20. Two earlier baseline readings in this work were wrong, and both are recorded rather than discarded, because each would have put a false number in this file. One was the anomalous-first-coverage-run artifact 3.16.1 already documented: a fresh worktree reported `ErrorHandlingService.ts` a point higher, which showed up as a per-file regression this change cannot cause -- it touches no `src/` code, and that file's uncovered lines and functions are identical on both sides. Seven consecutive re-reads settled it. The other was a baseline measured in a worktree that had never been compiled, so 3.20.1's new packaged-paths test failed on a missing `out/` and the run it produced was not a baseline at all.
+
 ## [3.22.0] - Generation keeps the framework it generates against, and names the classes an earlier version orphaned
 
 Closes [#133](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/133).
