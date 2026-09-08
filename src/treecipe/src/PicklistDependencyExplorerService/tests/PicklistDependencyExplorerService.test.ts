@@ -5746,6 +5746,20 @@ describe('PicklistDependencyExplorerService', () => {
             );
             expect(actualWebviewHtml).not.toContain('https://');
 
+            /*
+                Re-homed here from the contents block's tests, which this feature deleted.
+
+                It is the panel's whole XSS invariant and it was only ever asserted in one place: no
+                metadata reaches the document as MARKUP. Every value is written through textContent,
+                so a single innerHTML anywhere in the panel script would reopen the context the
+                escaping helpers were deleted for not having. Losing the assertion with the block it
+                happened to live in would have left that invariant resting on a source comment.
+            */
+            expect(actualWebviewHtml).not.toContain('innerHTML');
+            expect(actualWebviewHtml).not.toContain('outerHTML');
+            expect(actualWebviewHtml).not.toContain('insertAdjacentHTML');
+            expect(actualWebviewHtml).not.toContain('document.write');
+
         });
 
         /*

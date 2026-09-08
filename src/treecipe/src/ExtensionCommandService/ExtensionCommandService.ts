@@ -1416,8 +1416,8 @@ export class ExtensionCommandService {
                     No manifest, or one that could not be read. Both are reported with the generate
                     command named, and the metadata scan the panel used to do unconditionally is
                     offered as an EXPLICIT action rather than performed silently -- 3.1.0's "no setup
-                    required" property is kept, but honestly: every row it produces is banner-marked
-                    un-asserted.
+                    required" property is kept, and the message that offers the scan is where the
+                    reader is told nothing has been generated for the rows it will produce.
                 */
                 const previewFromMetadataSelection = await vscode.window.showInformationMessage(
                     manifestLoad.message,

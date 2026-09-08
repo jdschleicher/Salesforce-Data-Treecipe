@@ -636,8 +636,8 @@ export class PicklistDependencyManifestService {
         Compared with generatedAt taken from the existing file, because that field is the one thing
         guaranteed to differ on every run and is not part of what the manifest DESCRIBES. Everything
         else -- the specs, and the recorded source fingerprint -- is compared
-        literally, so a run that only touched a file's mtime still rewrites and clears the banner
-        it would otherwise raise against specs the user just regenerated.
+        literally, so a re-run that changed nothing leaves the file byte-identical rather than
+        rewriting it with a new timestamp and showing up as a diff the user did not make.
     */
     static manifestMatchesExistingContent(manifest: IPicklistDependencyManifest, existingManifestContent: string): boolean {
 
@@ -1075,13 +1075,16 @@ export class PicklistDependencyManifestService {
             Every directory BELOW this one is allowed to be unreadable and contribute nothing: one
             locked subdirectory on a real org should cost that subdirectory, not the answer. The root
             is different in kind. If it cannot be read there is no metadata to fingerprint at all,
-            and folding that into an empty entry list produces sha256('') -- a digest that mismatches
-            whatever was recorded and is then reported as "your metadata has changed since these
-            specs were generated".
+            and folding that into an empty entry list produces sha256(''), which is a digest of
+            NOTHING recorded as though it described the org.
 
-            That was a false claim about a directory that is missing or locked, and it sent the
-            reader to regenerate from a directory that is not there. It is exactly the reading
-            checkFailed exists to prevent, so the root's failure has to reach the caller.
+            The staleness check this originally protected is gone, so the rationale is restated for
+            what the fingerprint is now: the value a GENERATION writes into manifest.json. Recording
+            sha256('') for a missing or locked objects directory would put a confident-looking digest
+            in the manifest attesting to metadata that was never read -- a false record rather than a
+            missing one. Whoever compares it next, in this repo or a later one, would be comparing
+            against a lie. The root's failure has to reach the caller instead, and a generation that
+            cannot read its objects directory has to fail rather than record.
         */
         fs.readdirSync(objectsDirectoryPath);
 
@@ -1109,8 +1112,8 @@ export class PicklistDependencyManifestService {
             A symlink is not asked whether it is a directory -- Dirent reports the LINK, not its
             target, so a symlinked ".field-meta.xml" answers false to isDirectory() and, treated as a
             directory, would be handed to readdirSync, throw ENOTDIR, and drop out of the fingerprint
-            entirely. That is a staleness blind spot rather than a crash: edits to that field would
-            never move the digest. stat follows the link and answers about the target.
+            entirely -- silently, so the digest would describe less metadata than the org has and
+            nothing would say so. stat follows the link and answers about the target.
         */
         const readResolvedDirectoryEntries = (directoryPath: string) => {
 

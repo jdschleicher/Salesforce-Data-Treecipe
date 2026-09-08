@@ -1882,10 +1882,11 @@ export class PicklistDependencyExplorerService {
     /*
         Which objects directory the rendered node paths are built under.
 
-        Normally the directory the manifest was RECORDED against, not the one configured now: the
-        two differing is what the staleness banner reports, and building paths from the current
-        configuration under specs generated elsewhere would produce reveal targets that do not
-        correspond to the specs on screen.
+        Normally the directory the manifest was RECORDED against, not the one configured now:
+        building paths from the current configuration under specs generated elsewhere would produce
+        reveal targets that do not correspond to the specs on screen. Nothing reports the two
+        differing any more, which makes using the recorded one load-bearing rather than merely
+        consistent -- it is now the only thing keeping a reveal target honest.
 
         But the manifest is a json file on disk, and this is the only string in it that reaches the
         filesystem. Every node's sourceFilePath is built under it, and those paths become the
