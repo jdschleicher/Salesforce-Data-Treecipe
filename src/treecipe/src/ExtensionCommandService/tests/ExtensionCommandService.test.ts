@@ -57,7 +57,7 @@ import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDE
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, IPicklistDependencySkippedField } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
+import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, IPicklistDependencySkippedField, IFrameworkScaffoldResult } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { VSCodeWorkspaceService } from "../../VSCodeWorkspace/VSCodeWorkspaceService";
 import {
@@ -69,6 +69,26 @@ import { PicklistDependencyManifestService } from "../../PicklistDependencyManif
 import { PicklistDependencyMetadataWriterService } from "../../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
+
+/*
+    A complete IFrameworkScaffoldResult with every outcome empty, overridden per test.
+
+    Written as a builder rather than object literals so that adding an outcome to the result does
+    not mean editing every mock in this file -- which is how a new outcome ends up untested at the
+    one call site that forgot it.
+*/
+const buildFrameworkScaffoldResult = (
+    overrides: Partial<IFrameworkScaffoldResult> = {}
+): IFrameworkScaffoldResult => ({
+    scaffoldedClassNames: [],
+    refreshedClassFilePaths: [],
+    restoredMetaXmlClassNames: [],
+    unavailableClassNames: [],
+    symlinkedClassNames: [],
+    duplicatedClassNames: [],
+    refreshFailedClassNames: [],
+    ...overrides
+});
 
 describe('ExtensionCommandService', () => {
 
@@ -140,7 +160,7 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(PicklistDependencyTestService, 'getSpecsTestClassFilePath').mockReturnValue(specsTestClassFilePath);
             jest.spyOn(PicklistDependencyTestService, 'getSourceApiVersion').mockReturnValue('64.0');
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: [], unavailableClassNames: [] });
+                .mockReturnValue(buildFrameworkScaffoldResult({}));
 
             writeSpecsClassFilesSpy = jest.spyOn(PicklistDependencyTestService, 'writeSpecsClassFiles').mockReturnValue({
                 aggregatorClassFilePath: specsClassFilePath,
@@ -1088,7 +1108,7 @@ describe('ExtensionCommandService', () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: [], unavailableClassNames: ['SDTPicklistDependencySpec', 'SDTPicklistDependencyValidator'] });
+                .mockReturnValue(buildFrameworkScaffoldResult({ unavailableClassNames: ['SDTPicklistDependencySpec', 'SDTPicklistDependencyValidator'] }));
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
@@ -1104,7 +1124,7 @@ describe('ExtensionCommandService', () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: ['PicklistDependencySpec'], refreshedClassNames: [], unavailableClassNames: [] });
+                .mockReturnValue(buildFrameworkScaffoldResult({ scaffoldedClassNames: ['PicklistDependencySpec'] }));
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
@@ -1121,7 +1141,7 @@ describe('ExtensionCommandService', () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: ['SDTPicklistDependencySpec'], unavailableClassNames: [] });
+                .mockReturnValue(buildFrameworkScaffoldResult({ refreshedClassFilePaths: ['/workspace/force-app/main/default/classes/SDTPicklistDependencyFramework/SDTPicklistDependencySpec.cls'] }));
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 
@@ -1137,11 +1157,72 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        /*
+            Three reasons a class can be left behind the version the specs call, one warning. Three
+            toasts would describe one run three times, and VS Code stacks them.
+        */
+        test('given classes it could not bring up to date, warns once naming each reason', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue(buildFrameworkScaffoldResult({
+                    symlinkedClassNames: ['SDTPicklistDependencySpec'],
+                    duplicatedClassNames: ['SDTPicklistDependencyReport'],
+                    refreshFailedClassNames: ['SDTPicklistDependencyValidator']
+                }));
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => String(call[0]));
+            const notUpdatedWarnings = warningMessages.filter(warningMessage => warningMessage.includes('NOT at the version'));
+
+            expect(notUpdatedWarnings).toHaveLength(1);
+            expect(notUpdatedWarnings[0]).toContain('SDTPicklistDependencySpec');
+            expect(notUpdatedWarnings[0]).toContain('SDTPicklistDependencyReport');
+            expect(notUpdatedWarnings[0]).toContain('SDTPicklistDependencyValidator');
+            expect(notUpdatedWarnings[0]).toContain('Duplicate ApexClass');
+
+            expect(getWrittenGenerationSummaryMarkdown()).toContain('Could not bring 3 framework class(es) up to date');
+
+        });
+
+        test('given nothing left behind, raises no not-updated warning', async () => {
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue(buildFrameworkScaffoldResult({ scaffoldedClassNames: ['SDTPicklistDependencySpec'] }));
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => String(call[0]));
+
+            expect(warningMessages.some(warningMessage => warningMessage.includes('NOT at the version'))).toBe(false);
+
+        });
+
+        // THE WARNING'S JOB IS "GO LOOK AT THESE IN YOUR DIFF", SO IT NAMES WHERE THEY ACTUALLY ARE
+        test('the overwrite warning names the file paths, not just the class names', async () => {
+
+            const legacyRootPath = '/workspace/force-app/main/default/classes/SDTPicklistDependencySpec.cls';
+
+            stubCollectionResult([specDetail]);
+            jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
+                .mockReturnValue(buildFrameworkScaffoldResult({ refreshedClassFilePaths: [legacyRootPath] }));
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            const warningMessages = (VSCodeWorkspaceService.showWarningMessage as jest.Mock).mock.calls.map(call => String(call[0]));
+            const refreshWarning = warningMessages.find(warningMessage => warningMessage.includes('have been overwritten'));
+
+            expect(refreshWarning).toContain(legacyRootPath);
+
+        });
+
         test('given no refreshed framework classes, raises no overwrite warning', async () => {
 
             stubCollectionResult([specDetail]);
             jest.spyOn(PicklistDependencyTestService, 'scaffoldMissingFrameworkClasses')
-                .mockReturnValue({ scaffoldedClassNames: [], refreshedClassNames: [], unavailableClassNames: [] });
+                .mockReturnValue(buildFrameworkScaffoldResult({}));
 
             await extensionCommandService.generatePicklistDependencyTests(extensionPath);
 

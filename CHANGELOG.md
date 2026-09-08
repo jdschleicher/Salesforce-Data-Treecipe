@@ -31,6 +31,20 @@ Three things it deliberately does not do. A class matching the shipped source is
 
 Overwriting a file someone already had is the one thing generation does that can discard their work, so it gets **its own warning** naming every class replaced and saying local edits went with it -- not a line folded into a success toast, which is how you find out from your git diff instead of from us. The summary document names them too.
 
+### Making that path destructive meant guarding what it can destroy
+
+Refreshing turns the framework step into the only thing generation does that replaces a file the user already had, and four cases only became reachable at the moment it did. Each is refused rather than written through, and every one of them reports.
+
+**Symlinks.** `copyFileSync` follows a destination symlink and truncates whatever it points at, so a framework `.cls` that is a link would have had its target overwritten with shipped Apex — a file outside the workspace, reached from inside it. This was inert before: an existing file returned early, so nothing was ever written through anything. The containment checks upstream do not answer it either, because they resolve the *classes* directory, which realpaths inside the workspace exactly as it should — it is the leaf, and the framework subdirectory below it, that can each redirect on their own. Both are now checked, a dangling link included (it reads as absent to `existsSync`, so the "nothing here yet" branch would have *created* the file it points at).
+
+**The same class at both paths.** A copy in the framework folder and another at the classes root is a `Duplicate ApexClass` deploy failure whatever the two contain, so refreshing one and reporting the class as handled would have put a success message in front of a broken deploy — which is what preferring one path silently did. Neither is written now; which copy to keep is the user's call.
+
+**A write that throws.** A read-only checkout, or a lock held on Windows. The framework step runs *after* the Apex, the suite and the manifest are on disk, so an exception escaping the loop would have abandoned the run having already replaced some files, losing the very list the overwrite warning is built from. Each class is guarded on its own and a failure is reported.
+
+**An unreadable shipped source.** Not evidence the workspace copy is stale — answering it that way sent the code into a copy *from* the file that could not be read. The workspace keeps what it has, which is the posture `unavailableClassNames` already encoded.
+
+All four mean the same thing to a deploy — the framework is not at the version the specs call, so it may not compile — and differ only in the remedy, so they arrive as one warning with a clause each rather than four toasts describing one run four times. The overwrite warning names file **paths** rather than class names: a refresh writes to whichever path held the class, so naming one directory would send the reader to the wrong place for a legacy-root copy. And a restored `.cls-meta.xml` is now reported too — it is a file appearing in the user's diff, and the summary names what the run wrote.
+
 ### Three generations of the spec classes could sit on disk, and only two were recognised
 
 3.0.0 renamed twice, not once: `SFTreecipePicklistDependencySpecs` to `SDTPicklistDependencySpecs`, then -- when the 40-character ApexClass limit rejected the deploy -- to `SDTPLDSpecs`. Only the first rename was ever handled. `legacySpecsClassNames` listed the `SFTreecipe` pair, and the stale sweep matched `/^SDTPLDSpecs_/`, so the middle generation fell between them and was reported by nothing.

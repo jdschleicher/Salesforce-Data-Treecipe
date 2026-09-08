@@ -266,10 +266,31 @@ export interface IFrameworkScaffoldResult {
         version this extension generates against. Kept apart from scaffoldedClassNames because the
         two are not the same news: adding a missing file takes nothing away, and this replaces a
         file the user already had.
+
+        PATHS rather than names, because the warning built from them tells the user to go look at
+        these in their diff -- and a refresh writes to whichever path held the class, so naming one
+        directory for all of them would send a reader to the wrong place for a legacy-root copy.
     */
-    refreshedClassNames: string[];
+    refreshedClassFilePaths: string[];
+    /*
+        Classes whose .cls was current but whose .cls-meta.xml had gone missing and was written back.
+        Reported because the summary names what the run WROTE, and this is a file appearing in the
+        user's diff -- but kept apart from a refresh, which replaces something rather than restoring
+        a missing half.
+    */
+    restoredMetaXmlClassNames: string[];
     // FRAMEWORK CLASSES NEITHER ALREADY IN THE WORKSPACE NOR AVAILABLE TO COPY FROM THE EXTENSION
     unavailableClassNames: string[];
+    /*
+        The three ways a class can be left NOT at the version the generated specs call. All three
+        mean the same thing to a deploy -- it may not compile -- and differ only in what the user
+        has to do about it, so they are reported together and separately from the successes.
+    */
+    symlinkedClassNames: string[];
+    // PRESENT AT BOTH THE FRAMEWORK DIRECTORY AND THE CLASSES ROOT -- A DUPLICATE ApexClass
+    duplicatedClassNames: string[];
+    // THE COPY ITSELF THREW: A READ-ONLY CHECKOUT, OR A LOCK HELD BY ANOTHER PROCESS
+    refreshFailedClassNames: string[];
 }
 
 /*
@@ -288,6 +309,10 @@ export interface IPicklistDependencyGenerationSummaryDetail {
     scaffoldedClassNames: string[];
     // FRAMEWORK CLASSES THE RUN OVERWROTE RATHER THAN ADDED -- SEE scaffoldMissingFrameworkClasses
     refreshedClassNames: string[];
+    // CLASSES WHOSE MISSING .cls-meta.xml WAS WRITTEN BACK
+    restoredMetaXmlClassNames: string[];
+    // CLASSES LEFT BEHIND THE VERSION THE SPECS CALL, WITH THE REASON THEY WERE
+    frameworkClassesNotUpdated: string[];
     // BASE NAMES RATHER THAN FULL PATHS: THE DIRECTORY IS ALREADY ITS OWN BULLET
     removedStaleClassFileNames: string[];
 }
@@ -593,6 +618,21 @@ export class PicklistDependencyTestService {
         if ( summaryDetail.scaffoldedClassNames.length > 0 ) {
             whatHappenedBullets.push(
                 `Scaffolded the required framework class(es): ${summaryDetail.scaffoldedClassNames.map(asCode).join(', ')}.`
+            );
+        }
+
+        if ( summaryDetail.restoredMetaXmlClassNames.length > 0 ) {
+            whatHappenedBullets.push(
+                `Restored the missing \`.cls-meta.xml\` for ${summaryDetail.restoredMetaXmlClassNames.map(asCode).join(', ')} -- `
+                + `a class without one does not deploy at all.`
+            );
+        }
+
+        if ( summaryDetail.frameworkClassesNotUpdated.length > 0 ) {
+            whatHappenedBullets.push(
+                `**Could not bring ${summaryDetail.frameworkClassesNotUpdated.length} framework class(es) up to date**: `
+                + `${summaryDetail.frameworkClassesNotUpdated.map(asCode).join(', ')}. `
+                + `The generated specs call the framework directly, so the deploy may fail to compile until these are resolved.`
             );
         }
 
@@ -3805,14 +3845,33 @@ ${testMethods}
         const shippedFrameworkClassesPath = path.join(extensionPath, 'apexPicklistDependencyFramework', this.frameworkDirectoryName);
 
         let scaffoldedClassNames: string[] = [];
-        let refreshedClassNames: string[] = [];
+        let refreshedClassFilePaths: string[] = [];
+        let restoredMetaXmlClassNames: string[] = [];
         let unavailableClassNames: string[] = [];
+        let symlinkedClassNames: string[] = [];
+        let duplicatedClassNames: string[] = [];
+        let refreshFailedClassNames: string[] = [];
 
         const shippedFrameworkClassesExist = fs.existsSync(shippedFrameworkClassesPath);
 
         const frameworkDirectoryPath = this.getFrameworkDirectoryPath(classesDirectoryPath);
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
+
+        /*
+            A symlinked framework DIRECTORY redirects all six writes at once, and a per-file check
+            below cannot see it -- a .cls inside a linked directory is not itself a link. Checked
+            before the mkdir, which succeeds on a link to an existing directory and would leave the
+            redirect in place.
+        */
+        if ( this.isSymbolicLinkPath(frameworkDirectoryPath) ) {
+            return {
+                scaffoldedClassNames, refreshedClassFilePaths, restoredMetaXmlClassNames,
+                unavailableClassNames, duplicatedClassNames, refreshFailedClassNames,
+                symlinkedClassNames: [...this.frameworkClassNames]
+            };
+        }
+
         fs.mkdirSync(frameworkDirectoryPath, { recursive: true });
 
         this.frameworkClassNames.forEach(frameworkClassName => {
@@ -3822,15 +3881,30 @@ ${testMethods}
             /*
                 A copy already sitting at the classes root is honoured too. Earlier versions scaffolded
                 there, so re-running the command after an upgrade must not deploy the same class twice
-                under two paths -- Salesforce would reject the duplicate ApexClass. A refresh writes
-                back to whichever path HOLDS the class for the same reason: writing the fresh copy to
-                the framework directory while a stale one sat at the classes root would deploy both.
+                under two paths -- Salesforce would reject the duplicate ApexClass.
             */
             const legacyClassFilePath = path.join(classesDirectoryPath, `${frameworkClassName}.cls`);
 
-            const existingClassFilePath = fs.existsSync(frameworkDirectoryClassFilePath)
+            const frameworkDirectoryCopyExists = fs.existsSync(frameworkDirectoryClassFilePath);
+            const legacyRootCopyExists = fs.existsSync(legacyClassFilePath);
+
+            /*
+                BOTH paths populated is its own outcome, not a preference to resolve.
+
+                Picking one and refreshing it leaves the other stale, and reports the class as
+                handled while the deploy still fails with "Duplicate ApexClass" -- a success message
+                in front of a broken deploy. Refreshing both would not help either: two files
+                declaring one class is a deploy failure whatever they contain. Only deleting one
+                fixes it, and which one to keep is the user's call, so this reports and stands down.
+            */
+            if ( frameworkDirectoryCopyExists && legacyRootCopyExists ) {
+                duplicatedClassNames.push(frameworkClassName);
+                return;
+            }
+
+            const existingClassFilePath = frameworkDirectoryCopyExists
                                             ? frameworkDirectoryClassFilePath
-                                            : ( fs.existsSync(legacyClassFilePath) ? legacyClassFilePath : undefined );
+                                            : ( legacyRootCopyExists ? legacyClassFilePath : undefined );
 
             const sourceClassFilePath = path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls`);
             const sourceMetaFilePath = `${sourceClassFilePath}-meta.xml`;
@@ -3853,9 +3927,27 @@ ${testMethods}
                     return;
                 }
 
-                fs.copyFileSync(sourceClassFilePath, frameworkDirectoryClassFilePath);
-                fs.copyFileSync(sourceMetaFilePath, `${frameworkDirectoryClassFilePath}-meta.xml`);
-                scaffoldedClassNames.push(frameworkClassName);
+                /*
+                    A DANGLING symlink reads as absent to existsSync, so without this the "nothing
+                    is here yet" branch would create the file the link points at, outside the
+                    workspace.
+                */
+                if ( this.isSymbolicLinkPath(frameworkDirectoryClassFilePath)
+                        || this.isSymbolicLinkPath(`${frameworkDirectoryClassFilePath}-meta.xml`) ) {
+                    symlinkedClassNames.push(frameworkClassName);
+                    return;
+                }
+
+                try {
+
+                    fs.copyFileSync(sourceClassFilePath, frameworkDirectoryClassFilePath);
+                    fs.copyFileSync(sourceMetaFilePath, `${frameworkDirectoryClassFilePath}-meta.xml`);
+                    scaffoldedClassNames.push(frameworkClassName);
+
+                } catch {
+                    refreshFailedClassNames.push(frameworkClassName);
+                }
+
                 return;
 
             }
@@ -3864,27 +3956,178 @@ ${testMethods}
                 return;
             }
 
+            /*
+                Refused before the class is even READ: following the link to compare it and then
+                writing through it is the whole defect, and reading it also reports a file outside
+                the workspace as this extension's to overwrite.
+            */
+            if ( this.isSymbolicLinkPath(existingClassFilePath) ) {
+                symlinkedClassNames.push(frameworkClassName);
+                return;
+            }
+
             const existingMetaFilePath = `${existingClassFilePath}-meta.xml`;
 
             /*
                 A .cls whose meta xml went missing does not deploy, so the meta is restored even
-                though a meta already there is left alone. Done before the content comparison
-                below, which can decide the class itself needs no rewrite at all.
+                though a meta already there is left alone. Reported, because the summary names what
+                the run wrote and this is a file appearing in the user's diff.
             */
-            if ( !fs.existsSync(existingMetaFilePath) ) {
-                fs.copyFileSync(sourceMetaFilePath, existingMetaFilePath);
+            if ( !fs.existsSync(existingMetaFilePath) && !this.isSymbolicLinkPath(existingMetaFilePath) ) {
+
+                try {
+                    fs.copyFileSync(sourceMetaFilePath, existingMetaFilePath);
+                    restoredMetaXmlClassNames.push(frameworkClassName);
+                } catch {
+                    refreshFailedClassNames.push(frameworkClassName);
+                    return;
+                }
+
             }
 
-            if ( !this.isFrameworkClassOutOfDate(existingClassFilePath, sourceClassFilePath) ) {
+            /*
+                An unreadable SHIPPED source is not evidence the workspace copy is stale, so it
+                leaves the copy alone -- the same posture unavailableClassNames encodes. Only an
+                unreadable EXISTING copy counts as out of date, per readFrameworkClassContent.
+            */
+            const shippedClassContent = this.readFrameworkClassContent(sourceClassFilePath);
+            if ( shippedClassContent === undefined ) {
                 return;
             }
 
-            fs.copyFileSync(sourceClassFilePath, existingClassFilePath);
-            refreshedClassNames.push(frameworkClassName);
+            if ( !this.isFrameworkClassOutOfDate(existingClassFilePath, shippedClassContent) ) {
+                return;
+            }
+
+            /*
+                Per class rather than around the loop. These are the first writes this command makes
+                over files that already exist -- a read-only checkout, or a lock held on Windows --
+                and a throw escaping here would abandon the run AFTER replacing some of them, losing
+                the very list the overwrite warning is built from. The Apex, the suite and the
+                manifest are already on disk by this point, so a failure to refresh one class is
+                reported rather than allowed to discard the report on everything else.
+            */
+            try {
+                fs.copyFileSync(sourceClassFilePath, existingClassFilePath);
+                refreshedClassFilePaths.push(existingClassFilePath);
+            } catch {
+                refreshFailedClassNames.push(frameworkClassName);
+            }
 
         });
 
-        return { scaffoldedClassNames, refreshedClassNames, unavailableClassNames };
+        return {
+            scaffoldedClassNames, refreshedClassFilePaths, restoredMetaXmlClassNames,
+            unavailableClassNames, symlinkedClassNames, duplicatedClassNames, refreshFailedClassNames
+        };
+
+    }
+
+    /*
+        One warning for every class this run could not bring up to date, whatever stopped it.
+
+        Built here rather than in the command for the reason the generation summary is: three
+        separate toasts for three reasons describe one run three times, and VS Code stacks them.
+        They share a headline -- the generated specs call the framework directly, so the deploy may
+        not compile -- and differ only in the remedy, which is one clause each.
+
+        Returns an empty string when nothing was left behind, so the caller can test it directly.
+    */
+    static buildFrameworkClassesNotUpdatedWarning(frameworkScaffoldResult: IFrameworkScaffoldResult): string {
+
+        let reasonClauses: string[] = [];
+
+        if ( frameworkScaffoldResult.symlinkedClassNames.length > 0 ) {
+            reasonClauses.push(
+                `${frameworkScaffoldResult.symlinkedClassNames.join(', ')} are symbolic links and were left untouched -- `
+                + `writing through a link would overwrite whatever it points at. Replace them with real files.`
+            );
+        }
+
+        if ( frameworkScaffoldResult.duplicatedClassNames.length > 0 ) {
+            reasonClauses.push(
+                `${frameworkScaffoldResult.duplicatedClassNames.join(', ')} exist BOTH in the `
+                + `"${this.frameworkDirectoryName}" folder and directly in the classes folder. Two files declaring one class `
+                + `is a "Duplicate ApexClass" deploy failure whatever they contain, so nothing was written to either. `
+                + `Delete whichever copy you do not want to keep.`
+            );
+        }
+
+        if ( frameworkScaffoldResult.refreshFailedClassNames.length > 0 ) {
+            reasonClauses.push(
+                `${frameworkScaffoldResult.refreshFailedClassNames.join(', ')} could not be written -- `
+                + `the file may be read-only or held open by another process.`
+            );
+        }
+
+        if ( reasonClauses.length === 0 ) {
+            return '';
+        }
+
+        return `Some picklist dependency framework class(es) are NOT at the version the generated specs are written against, `
+            + `so the deploy may fail to compile until they are resolved. ${reasonClauses.join(' ')}`;
+
+    }
+
+    /*
+        Every class the run left behind the version the specs call, in one list.
+
+        The three reasons are distinct to the WARNING, which says what to do about each, and the
+        same to the SUMMARY, which counts what the run did not manage. Derived once here so the two
+        cannot disagree about how many there were.
+    */
+    static getFrameworkClassesNotUpdated(frameworkScaffoldResult: IFrameworkScaffoldResult): string[] {
+        return [
+            ...frameworkScaffoldResult.symlinkedClassNames,
+            ...frameworkScaffoldResult.duplicatedClassNames,
+            ...frameworkScaffoldResult.refreshFailedClassNames
+        ];
+    }
+
+    /*
+        Whether a path is a symlink, without following it.
+
+        This exists because refreshing made the framework path DESTRUCTIVE. copyFileSync follows a
+        destination symlink and truncates whatever it points at, so a workspace whose
+        SDTPicklistDependencySpec.cls is a link to a file outside the project would have had that
+        file overwritten with shipped Apex. It was inert before: an existing file caused an early
+        return, so nothing was written through anything.
+
+        The containment checks upstream do not answer this. They resolve the CLASSES directory,
+        which realpaths inside the workspace exactly as it should -- it is the leaf, and the
+        framework subdirectory below it, that can each redirect on their own.
+
+        lstatSync throws on a path that is not there at all, which is not a symlink, so the failure
+        is the negative answer rather than an error.
+    */
+    static isSymbolicLinkPath(filePath: string): boolean {
+
+        try {
+            return fs.lstatSync(filePath).isSymbolicLink();
+        } catch {
+            return false;
+        }
+
+    }
+
+    /*
+        A framework class file's content, or undefined when it cannot be read.
+
+        The two callers want OPPOSITE answers from a read failure, which is why this reports the
+        failure rather than deciding for them: an unreadable copy in the WORKSPACE is treated as out
+        of date, since the copy that follows fails loudly and with a better message than a read here
+        could give; an unreadable SHIPPED source means there is nothing to compare against and
+        nothing to copy from, so the workspace keeps what it has. Answering both with "out of date"
+        -- which one try block spanning both reads does -- sends the second case into a copyFileSync
+        from the very file that could not be read, failing the whole command.
+    */
+    static readFrameworkClassContent(filePath: string): string | undefined {
+
+        try {
+            return fs.readFileSync(filePath, 'utf-8');
+        } catch {
+            return undefined;
+        }
 
     }
 
@@ -3894,24 +4137,16 @@ ${testMethods}
         Compared without line endings for the reason buildPlannedSpecsFile documents: on Windows a
         CRLF checkout would otherwise differ from the LF source on every run, and this command would
         rewrite all six framework classes every time it was invoked.
-
-        A file that exists but cannot be read is reported OUT OF DATE rather than raising, the same
-        call buildPlannedSpecsFile makes -- the copy that follows fails loudly and with a better
-        message than a read here could give, and of the two wrong answers, refreshing a file that
-        did not need it is the recoverable one.
     */
-    static isFrameworkClassOutOfDate(existingClassFilePath: string, shippedClassFilePath: string): boolean {
+    static isFrameworkClassOutOfDate(existingClassFilePath: string, shippedClassContent: string): boolean {
 
-        try {
+        const existingContent = this.readFrameworkClassContent(existingClassFilePath);
 
-            const existingContent = fs.readFileSync(existingClassFilePath, 'utf-8');
-            const shippedContent = fs.readFileSync(shippedClassFilePath, 'utf-8');
-
-            return this.normalizeLineEndingsForComparison(existingContent) !== this.normalizeLineEndingsForComparison(shippedContent);
-
-        } catch {
+        if ( existingContent === undefined ) {
             return true;
         }
+
+        return this.normalizeLineEndingsForComparison(existingContent) !== this.normalizeLineEndingsForComparison(shippedClassContent);
 
     }
 
