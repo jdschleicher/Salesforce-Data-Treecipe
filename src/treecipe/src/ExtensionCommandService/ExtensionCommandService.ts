@@ -1864,7 +1864,7 @@ export class ExtensionCommandService {
                 /*
                     Only a failure to DRAW invalidates the panel. A handler that threw after the rows
                     were on screen leaves them there and readable, and treating that as a dead panel
-                    would refuse a freshness check for a model the reader is looking at.
+                    would refuse an action addressing a row the reader is looking at.
                 */
                 if ( panelMessage.phase !== 'runtime' ) {
 

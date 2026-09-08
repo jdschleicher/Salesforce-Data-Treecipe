@@ -1003,10 +1003,7 @@ describe('PicklistDependencyExplorerService', () => {
 
         const elementsById: Record<string, any> = {
             explorerRoot: buildFakeElement('div'),
-            loadStatus: buildFakeElementWithClassName('div', 'loadStatus'),
-            scannedPath: buildFakeElementWithClassName('div', 'muted hidden'),
-            scannedPathValue: buildFakeElementWithClassName('span', 'sourcePath'),
-            generatedStamp: buildFakeElementWithClassName('div', 'generatedStamp hidden')
+            loadStatus: buildFakeElementWithClassName('div', 'loadStatus')
         };
 
         const fakeDocument = {

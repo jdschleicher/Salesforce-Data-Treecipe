@@ -2003,7 +2003,6 @@ describe('ExtensionCommandService', () => {
             (ExtensionCommandService as any).picklistDependencyExplorerPanel = undefined;
             (ExtensionCommandService as any).picklistDependencyExplorerMessageSubscription = undefined;
             (ExtensionCommandService as any).picklistDependencyExplorerRenderMessage = undefined;
-            (ExtensionCommandService as any).picklistDependencyExplorerFreshnessMessage = undefined;
             (ExtensionCommandService as any).picklistDependencyExplorerLoadPhaseMessage = '';
             (ExtensionCommandService as any).picklistDependencyExplorerLoadFailedMessage = undefined;
             (ExtensionCommandService as any).picklistDependencyExplorerIsPanelReady = false;
@@ -2667,7 +2666,6 @@ describe('ExtensionCommandService', () => {
             expect(postedPanelMessages).toHaveLength(0);
 
             (ExtensionCommandService as any).picklistDependencyExplorerRenderMessage = undefined;
-            (ExtensionCommandService as any).picklistDependencyExplorerFreshnessMessage = undefined;
             (ExtensionCommandService as any).picklistDependencyExplorerLoadPhaseMessage =
                 PICKLIST_DEPENDENCY_EXPLORER_LOAD_PHASES.buildingView;
 
