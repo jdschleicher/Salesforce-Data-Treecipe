@@ -31,6 +31,29 @@ const sourcesByPackagedPath = {
 
 const readFakeSource = packagedPath => sourcesByPackagedPath[packagedPath] || '';
 
+// What "vsce ls" lists after #137: one bundled file in out/, and node_modules carrying only the
+// closure of the packages esbuild left external.
+const bundledPackagedPaths = [
+    'package.json',
+    'README.md',
+    'CHANGELOG.md',
+    'LICENSE',
+    'images/datatreecipe.webp',
+    'apexPicklistDependencyFramework/SDTPicklistDependencyFramework/SDTPicklistDependencyValidator.cls',
+    'out/extension.js',
+    'node_modules/@salesforce/core/lib/index.js'
+];
+
+// esbuild inlines everything that is not external, so the bundle's bare requires are its two
+// externals plus node builtins -- verified against the real prototype bundle for #137.
+const bundledSourcesByPackagedPath = {
+    'out/extension.js':
+        'var e=require("vscode"),t=require("@salesforce/core");'
+        + 'var n=require("path"),o=require("node:fs");'
+};
+
+const readBundledSource = packagedPath => bundledSourcesByPackagedPath[packagedPath] || '';
+
 describe('PackagedContentsChecker.parsePackagedPaths', () => {
 
     it('drops blank lines and normalizes windows separators', () => {
@@ -345,6 +368,58 @@ describe('PackagedContentsChecker.checkPackagedContents', () => {
 
         expect(violations).toHaveLength(1);
         expect(violations[0]).toInclude('ts-node');
+
+    });
+
+    // #137 bundled the extension, and these two assertions are what make the resulting dependency
+    // split hold. They are unchanged by that work: what a bundled build changes is which packages
+    // legitimately appear in "dependencies", and the guard already asserts exactly that.
+    //
+    // Be precise about WHICH half each assertion covers, because they are not symmetric. A package
+    // esbuild inlined but LEFT IN "dependencies" fails assertion 2, and one left external but not
+    // shipped fails assertion 3. What neither can see is a package inlined AND moved to
+    // "devDependencies" that actually needed to stay external: assertion 2 iterates "dependencies"
+    // only, and an inlined package emits no require for assertion 3 to find. Nothing on this side
+    // knows a package must be external -- that decision lives in esbuild.js, which is where
+    // esbuild.test.js pins it against this manifest.
+    it('passes for the bundled shape, where only the externals stay declared', () => {
+
+        const violations = PackagedContentsChecker.checkPackagedContents({
+            packagedPaths: bundledPackagedPaths,
+            declaredDependencyNames: ['@salesforce/core'],
+            readPackagedSource: readBundledSource
+        });
+
+        expect(violations).toBeEmpty();
+
+    });
+
+    it('fails naming each bundled package still declared as a runtime dependency', () => {
+
+        const violations = PackagedContentsChecker.checkPackagedContents({
+            packagedPaths: bundledPackagedPaths,
+            declaredDependencyNames: ['@faker-js/faker', '@salesforce/core', 'js-yaml', 'xml2js'],
+            readPackagedSource: readBundledSource
+        });
+
+        expect(violations).toHaveLength(3);
+        expect(violations.join('\n')).toIncludeMultiple(['@faker-js/faker', 'js-yaml', 'xml2js']);
+        expect(violations.join('\n')).not.toInclude('@salesforce/core');
+
+    });
+
+    // The other direction, and the one that throws for an installed user rather than merely
+    // bloating the download: a package esbuild was told to leave external but nothing ships.
+    it('fails when the bundle requires an external that is not declared', () => {
+
+        const violations = PackagedContentsChecker.checkPackagedContents({
+            packagedPaths: bundledPackagedPaths,
+            declaredDependencyNames: [],
+            readPackagedSource: readBundledSource
+        });
+
+        expect(violations).toHaveLength(1);
+        expect(violations[0]).toInclude('@salesforce/core');
 
     });
 
