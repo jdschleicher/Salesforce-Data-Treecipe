@@ -1,5 +1,65 @@
 # Change Log
 
+## [3.22.0] - Generation keeps the framework it generates against, and names the classes an earlier version orphaned
+
+Closes [#133](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/133).
+
+Two deploy failures, found together against a real org, and neither one names its own cause in the error it produces.
+
+### The scaffolded framework was never refreshed, so generation emitted calls into a class that could not answer them
+
+`scaffoldMissingFrameworkClasses` did exactly what its name said: it copied a framework class in when the file was absent, and returned early when it was there. There was no path that updated one. The comment defended it -- *"so a user who has already deployed or customized them keeps their copy"* -- and that intent is the bug, because **the framework is not frozen**:
+
+| Framework class | Last changed |
+|---|---|
+| `SDTPicklistDependencySpec` | 3.2.0 -- `forRecordType`, `expectUnavailable`, `UNAVAILABLE`, `isRecordTypeScoped`, `label` |
+| `SDTSchemaPicklistDependencySource` | 3.2.0 |
+| `SDTPicklistDependencyValidator` | 3.4.0 |
+
+Meanwhile `buildSpecStatement` emits against whatever the CURRENT extension knows. A workspace scaffolded before 3.2.0 kept a `SDTPicklistDependencySpec` with no `forRecordType` forever, and every regeneration wrote fresh calls to it:
+
+```
+Method does not exist or incorrect signature: void forRecordType(String, String, String)
+  from the type SDTPicklistDependencySpec (143:42)
+```
+
+The generator was emitting calls against a framework API it never checked was present. Nothing looked: the result carried `unavailableClassNames` for a class that could not be supplied at all, and had no way to say *supplied, but older than what I generate against*. The org was the first thing to notice -- and it reported the error against the GENERATED class, not the stale one that could not resolve the call.
+
+The six `SDT`-prefixed framework classes are now owned by this extension, which is what the prefix has always claimed: a class in your package directory starting with `SDT` was put there by Salesforce Data Treecipe. One that differs from the shipped source is **overwritten**, in place, at whichever path holds it -- refreshing into the framework directory while a stale copy sat at the classes root would deploy the same ApexClass twice, which Salesforce rejects, so the two are not interchangeable.
+
+Three things it deliberately does not do. A class matching the shipped source is not rewritten, so its mtime does not move -- the same guarantee generated specs already had, and compared without line endings so a CRLF checkout on Windows does not report all six as stale on every run. An existing `.cls-meta.xml` is left alone, because it carries `apiVersion` and resetting a deliberate bump changes how the class deploys, which has nothing to do with the compile error this prevents; a meta xml that has gone *missing* beside a present `.cls` is still restored, since without it the class does not deploy at all. And a class present in the workspace that this extension cannot compare against is not reported unavailable: whatever little can be said about it, it is not a missing framework.
+
+Overwriting a file someone already had is the one thing generation does that can discard their work, so it gets **its own warning** naming every class replaced and saying local edits went with it -- not a line folded into a success toast, which is how you find out from your git diff instead of from us. The summary document names them too.
+
+### Making that path destructive meant guarding what it can destroy
+
+Refreshing turns the framework step into the only thing generation does that replaces a file the user already had, and four cases only became reachable at the moment it did. Each is refused rather than written through, and every one of them reports.
+
+**Symlinks.** `copyFileSync` follows a destination symlink and truncates whatever it points at, so a framework `.cls` that is a link would have had its target overwritten with shipped Apex — a file outside the workspace, reached from inside it. This was inert before: an existing file returned early, so nothing was ever written through anything. The containment checks upstream do not answer it either, because they resolve the *classes* directory, which realpaths inside the workspace exactly as it should — it is the leaf, and the framework subdirectory below it, that can each redirect on their own. Both are now checked, a dangling link included (it reads as absent to `existsSync`, so the "nothing here yet" branch would have *created* the file it points at).
+
+**The same class at both paths.** A copy in the framework folder and another at the classes root is a `Duplicate ApexClass` deploy failure whatever the two contain, so refreshing one and reporting the class as handled would have put a success message in front of a broken deploy — which is what preferring one path silently did. Neither is written now; which copy to keep is the user's call.
+
+**A write that throws.** A read-only checkout, or a lock held on Windows. The framework step runs *after* the Apex, the suite and the manifest are on disk, so an exception escaping the loop would have abandoned the run having already replaced some files, losing the very list the overwrite warning is built from. Each class is guarded on its own and a failure is reported.
+
+**An unreadable shipped source.** Not evidence the workspace copy is stale — answering it that way sent the code into a copy *from* the file that could not be read. The workspace keeps what it has, which is the posture `unavailableClassNames` already encoded.
+
+All four mean the same thing to a deploy — the framework is not at the version the specs call, so it may not compile — and differ only in the remedy, so they arrive as one warning with a clause each rather than four toasts describing one run four times. The overwrite warning names file **paths** rather than class names: a refresh writes to whichever path held the class, so naming one directory would send the reader to the wrong place for a legacy-root copy. And a restored `.cls-meta.xml` is now reported too — it is a file appearing in the user's diff, and the summary names what the run wrote.
+
+### Three generations of the spec classes could sit on disk, and only two were recognised
+
+3.0.0 renamed twice, not once: `SFTreecipePicklistDependencySpecs` to `SDTPicklistDependencySpecs`, then -- when the 40-character ApexClass limit rejected the deploy -- to `SDTPLDSpecs`. Only the first rename was ever handled. `legacySpecsClassNames` listed the `SFTreecipe` pair, and the stale sweep matched `/^SDTPLDSpecs_/`, so the middle generation fell between them and was reported by nothing.
+
+It is also the generation that **cannot compile**. `SDTPicklistDependencySpecs_` spends 27 of the 40 characters before the object name begins:
+
+```
+Identifier name is too long: SDTPicklistDependencySpecs_Example_Everything_c (16:14)
+```
+
+`detectLegacyGeneratedArtifacts` now reports the whole family -- the aggregator, its test class, and every `SDTPicklistDependencySpecs_<Object>.cls` found by reading the classes directory, since an object api name is variable and there is no fixed name to check for. The warning says why it matters: a deploy failing on a 47-character identifier names a class this extension stopped generating, and nothing connected the two.
+
+That detection turned the warning's path list from five bounded entries into a directory listing, so it is capped at ten with the remainder counted. A notification is one run of text that truncates, and the actionable half -- what to delete from the org, and why a per-object class fails the deploy -- is at the END of it; a workspace holding one legacy class per object would have pushed it past the cut. The paths share one directory anyway, which the enumerated few already show.
+
+They are reported, not deleted -- the 3.0.0 posture, unchanged. What did change is that the per-object classes are named **together with the aggregator that calls them**, and deliberately kept out of `removeStalePerObjectSpecsClassFiles`. Sweeping them on their own would leave `SDTPicklistDependencySpecs.cls` calling classes that no longer exist, trading `identifier name is too long` for `variable does not exist` and leaving the user no better off.
 ## [3.21.0] - The Picklist Dependency Explorer opens on the find box: the provenance banner, the freshness check, the contents block and both header lines are gone
 
 Closes [#134](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/134).

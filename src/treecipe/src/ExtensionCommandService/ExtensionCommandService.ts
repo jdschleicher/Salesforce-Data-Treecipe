@@ -565,7 +565,7 @@ export class ExtensionCommandService {
 
                 const manifestFilePath = PicklistDependencyManifestService.writeManifest(specsFolderPath, manifest);
 
-                generationProgress.report('Adding any missing framework classes...');
+                generationProgress.report('Adding or updating framework classes...');
 
                 const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
@@ -592,6 +592,9 @@ export class ExtensionCommandService {
             manifestFilePath,
             recordTypeSpecCount: collectionResult.recordTypeSpecDetails.length,
             scaffoldedClassNames: frameworkScaffoldResult.scaffoldedClassNames,
+            refreshedClassNames: frameworkScaffoldResult.refreshedClassFilePaths.map(refreshedFilePath => path.basename(refreshedFilePath)),
+            restoredMetaXmlClassNames: frameworkScaffoldResult.restoredMetaXmlClassNames,
+            frameworkClassesNotUpdated: PicklistDependencyTestService.getFrameworkClassesNotUpdated(frameworkScaffoldResult),
             removedStaleClassFileNames: specsClassWriteResult.removedStaleClassFilePaths.map(staleFilePath => path.basename(staleFilePath))
         };
 
@@ -605,6 +608,40 @@ export class ExtensionCommandService {
         */
         if ( frameworkScaffoldResult.unavailableClassNames.length > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(`${specsClassName}.cls was generated, but the required framework class(es) ${frameworkScaffoldResult.unavailableClassNames.join(', ')} could not be added to "${classesDirectoryPath}" and are not already present. The generated class will not compile until they are added from the Salesforce Data Treecipe repository.`);
+        }
+
+        /*
+            Also kept out of the run report, for the opposite reason to the one above: this is the
+            only thing generation does that REPLACES a file the user already had. It is not a
+            blocker -- the refresh is what makes the generated Apex compile -- but folding "we
+            overwrote six of your files" into a success toast is how a user finds out from their
+            git diff instead of from us.
+        */
+        /*
+            Every class the run could not bring up to date, in one warning rather than one per
+            reason -- see buildFrameworkClassesNotUpdatedWarning. Kept out of the run report for the
+            same reason the unavailable one is: the deploy may not compile, which is a blocker
+            rather than a footnote on a success message.
+        */
+        const frameworkClassesNotUpdatedWarning = PicklistDependencyTestService.buildFrameworkClassesNotUpdatedWarning(frameworkScaffoldResult);
+        if ( frameworkClassesNotUpdatedWarning ) {
+            VSCodeWorkspaceService.showWarningMessage(frameworkClassesNotUpdatedWarning);
+        }
+
+        /*
+            Also kept out of the run report, for the opposite reason to the two above: this is the
+            only thing generation does that REPLACES a file the user already had. It is not a
+            blocker -- the refresh is what makes the generated Apex compile -- but folding "we
+            overwrote your files" into a success toast is how a user finds out from their git diff
+            instead of from us.
+
+            The PATHS are named, not the class names: a refresh writes to whichever path held the
+            class, so naming one directory would send the reader to the wrong place for a copy that
+            sat at the classes root. Capped for the truncation reason buildLegacyArtifactWarning
+            documents.
+        */
+        if ( frameworkScaffoldResult.refreshedClassFilePaths.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(`These picklist dependency framework file(s) were from an earlier Salesforce Data Treecipe version and have been overwritten with the version ${specsClassName}.cls is generated against: ${frameworkScaffoldResult.refreshedClassFilePaths.join(', ')}. The generated specs call the framework directly and would not have compiled otherwise. Review them in your diff -- any local edits to these classes have been replaced.`);
         }
 
         /*
