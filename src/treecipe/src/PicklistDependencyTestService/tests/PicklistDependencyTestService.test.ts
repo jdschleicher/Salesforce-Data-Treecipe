@@ -3192,6 +3192,82 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        /*
+            The 3.0.0 intermediate naming. Regression coverage for a real deploy failure: these were
+            in neither legacySpecsClassNames nor the SDTPLDSpecs_ stale sweep, so a workspace could
+            hold them indefinitely while the extension reported nothing, and the deploy failed with
+            "identifier name is too long" naming a class the extension no longer generates.
+        */
+        test('given the SDTPicklistDependencySpecs aggregator and test class, reports both', () => {
+
+            const legacyAggregatorFilePath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls');
+            const legacyTestClassFilePath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpecsTest.cls');
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) =>
+                String(checkedPath) === legacyAggregatorFilePath || String(checkedPath) === legacyTestClassFilePath);
+
+            const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath);
+
+            expect(legacyArtifactPaths).toIncludeSameMembers([legacyAggregatorFilePath, legacyTestClassFilePath]);
+
+        });
+
+        test('given per-object classes from the intermediate naming, reports each one it finds on disk', () => {
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => String(checkedPath) === classesDirectoryPath);
+            jest.spyOn(fs, 'readdirSync').mockReturnValue([
+                'SDTPicklistDependencySpecs_Example_Everything_c.cls',
+                'SDTPicklistDependencySpecs_Account.cls',
+                'SDTPLDSpecs_Account.cls',
+                'SDTPLDSpecsTest.cls',
+                'AccountService.cls'
+            ] as any);
+
+            const legacyArtifactPaths = PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath);
+
+            // SORTED, SO THE WARNING READS THE SAME ON EVERY MACHINE
+            expect(legacyArtifactPaths).toEqual([
+                path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Account.cls'),
+                path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Example_Everything_c.cls')
+            ]);
+
+        });
+
+        /*
+            The current naming is what generation just wrote. Sweeping it as "legacy" would report
+            every class the run produced as something to delete.
+        */
+        test('the current SDTPLDSpecs naming is never reported as legacy', () => {
+
+            expect(PicklistDependencyTestService.isLegacyPerObjectSpecsClassFileName('SDTPLDSpecs_Account.cls')).toBeFalse();
+            expect(PicklistDependencyTestService.isLegacyPerObjectSpecsClassFileName('SDTPLDSpecsTest.cls')).toBeFalse();
+            expect(PicklistDependencyTestService.isLegacyPerObjectSpecsClassFileName('SDTPLDSpecs.cls')).toBeFalse();
+
+        });
+
+        test('a legacy per-object meta xml is not reported in its own right', () => {
+
+            expect(PicklistDependencyTestService.isLegacyPerObjectSpecsClassFileName(
+                'SDTPicklistDependencySpecs_Account.cls-meta.xml'
+            )).toBeFalse();
+
+            expect(PicklistDependencyTestService.isLegacyPerObjectSpecsClassFileName(
+                'SDTPicklistDependencySpecs_Account.cls'
+            )).toBeTrue();
+
+        });
+
+        test('given a classes directory that cannot be read, reports nothing rather than failing the run', () => {
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => String(checkedPath) === classesDirectoryPath);
+            jest.spyOn(fs, 'readdirSync').mockImplementation(() => {
+                throw new Error('EACCES: permission denied');
+            });
+
+            expect(PicklistDependencyTestService.detectLegacyGeneratedArtifacts(classesDirectoryPath)).toEqual([]);
+
+        });
+
         test('the warning names the paths to remove locally and the classes to delete from the org', () => {
 
             const legacyFrameworkDirectoryPath = path.join(classesDirectoryPath, 'PicklistDependencyFramework');
@@ -3202,6 +3278,53 @@ describe('PicklistDependencyTestService', () => {
             expect(warning).toContain('SFTreecipePicklistDependencySpecs');
             expect(warning).toContain('PicklistDependencyValidator');
             expect(warning).toContain('SchemaPicklistDependencySource');
+
+        });
+
+        /*
+            A notification truncates, and the part that says what to delete from the ORG is at the
+            end. Detecting per-object classes turned a five-entry list into a directory listing, so
+            without a cap one legacy class per object buries the actionable half.
+        */
+        test('given more legacy paths than it enumerates, counts the remainder instead of listing them all', () => {
+
+            const manyLegacyPaths = Array.from({ length: 200 }, (unusedValue, index) =>
+                path.join(classesDirectoryPath, `SDTPicklistDependencySpecs_Object_${index}_c.cls`));
+
+            const warning = PicklistDependencyTestService.buildLegacyArtifactWarning(manyLegacyPaths);
+
+            expect(warning).toContain('and 190 more');
+            expect(warning).toContain('SDTPicklistDependencySpecs_Object_0_c.cls');
+            expect(warning).not.toContain('SDTPicklistDependencySpecs_Object_199_c.cls');
+
+            // THE ACTIONABLE HALF STILL SURVIVES A 200-OBJECT WORKSPACE
+            expect(warning).toContain('40-character');
+            expect(warning).toContain('SFTreecipePicklistDependencySpecs');
+
+        });
+
+        test('given few enough legacy paths to enumerate, names every one and counts no remainder', () => {
+
+            const warning = PicklistDependencyTestService.buildLegacyArtifactWarning([
+                path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls'),
+                path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs_Account.cls')
+            ]);
+
+            expect(warning).toContain('SDTPicklistDependencySpecs_Account.cls');
+            expect(warning).not.toContain('more.');
+
+        });
+
+        test('the warning names the intermediate naming and why leaving one behind fails the deploy', () => {
+
+            const legacyAggregatorFilePath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpecs.cls');
+
+            const warning = PicklistDependencyTestService.buildLegacyArtifactWarning([legacyAggregatorFilePath]);
+
+            expect(warning).toContain('SDTPicklistDependencySpecs');
+            expect(warning).toContain('SDTPicklistDependencySpecsTest');
+            // THE PART THAT CONNECTS THE WARNING TO THE ERROR THE USER ACTUALLY SEES IN THEIR DEPLOY OUTPUT
+            expect(warning).toContain('40-character');
 
         });
 
@@ -3231,21 +3354,558 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
-        test('given a framework class already in the workspace, leaves it alone so a customized copy is preserved', () => {
+        test('given a framework class already in the workspace matching the shipped source, leaves it untouched', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            const copyFileSpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const alreadyPresentClassPath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpec.cls');
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath)
+                        || String(checkedPath) === alreadyPresentClassPath
+                        || String(checkedPath) === `${alreadyPresentClassPath}-meta.xml`;
+            });
+            jest.spyOn(fs, 'readFileSync').mockReturnValue('public class SDTPicklistDependencySpec {}' as any);
+
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('SDTPicklistDependencySpec');
+            expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(0);
+            expect(frameworkScaffoldResult.scaffoldedClassNames).toContain('SDTPicklistDependencyValidator');
+            expect(frameworkScaffoldResult.unavailableClassNames).toHaveLength(0);
+
+            // ITS mtime MUST NOT MOVE -- NOTHING IS WRITTEN BACK OVER THE MATCHING COPY
+            const copiedTargets = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
+            expect(copiedTargets).not.toContain(alreadyPresentClassPath);
+
+        });
+
+        /*
+            Symlink coverage, on the REAL filesystem rather than through fs spies.
+
+            The defect these guard is that copyFileSync follows a destination symlink and truncates
+            its target, and a spy that stubs copyFileSync cannot show that -- the whole question is
+            what the real call does to a real link. It was inert before refreshing existed, because
+            an existing file caused an early return and nothing was ever written through anything.
+        */
+        describe('symlinked framework classes, against the real filesystem', () => {
+
+            let temporaryRootPath: string;
+            let realClassesDirectoryPath: string;
+            let realFrameworkDirectoryPath: string;
+            let realExtensionPath: string;
+            let outsideVictimFilePath: string;
+
+            const originalVictimContent = 'DO NOT OVERWRITE ME';
+
+            beforeEach(() => {
+
+                temporaryRootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-symlink-'));
+
+                realExtensionPath = path.join(temporaryRootPath, 'extension');
+                const shippedPath = path.join(realExtensionPath, 'apexPicklistDependencyFramework', 'SDTPicklistDependencyFramework');
+                fs.mkdirSync(shippedPath, { recursive: true });
+
+                PicklistDependencyTestService.getFrameworkClassNames().forEach(frameworkClassName => {
+                    fs.writeFileSync(path.join(shippedPath, `${frameworkClassName}.cls`), `public class ${frameworkClassName} { /* shipped */ }`);
+                    fs.writeFileSync(path.join(shippedPath, `${frameworkClassName}.cls-meta.xml`), '<ApexClass/>');
+                });
+
+                realClassesDirectoryPath = path.join(temporaryRootPath, 'workspace', 'force-app', 'main', 'default', 'classes');
+                realFrameworkDirectoryPath = path.join(realClassesDirectoryPath, 'SDTPicklistDependencyFramework');
+                fs.mkdirSync(realFrameworkDirectoryPath, { recursive: true });
+
+                outsideVictimFilePath = path.join(temporaryRootPath, 'victim.txt');
+                fs.writeFileSync(outsideVictimFilePath, originalVictimContent);
+
+            });
+
+            afterEach(() => {
+                fs.rmSync(temporaryRootPath, { recursive: true, force: true });
+            });
+
+            test('given a framework class that is a symlink out of the workspace, leaves the target untouched', () => {
+
+                const symlinkedClassFilePath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+                fs.symlinkSync(outsideVictimFilePath, symlinkedClassFilePath);
+                fs.writeFileSync(`${symlinkedClassFilePath}-meta.xml`, '<ApexClass/>');
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(fs.readFileSync(outsideVictimFilePath, 'utf-8')).toBe(originalVictimContent);
+                expect(fs.lstatSync(symlinkedClassFilePath).isSymbolicLink()).toBeTrue();
+
+                expect(frameworkScaffoldResult.symlinkedClassNames).toContain('SDTPicklistDependencySpec');
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).not.toContain('SDTPicklistDependencySpec');
+
+                // EVERY OTHER CLASS IS STILL SCAFFOLDED -- ONE BAD LINK DOES NOT STOP THE REST
+                expect(frameworkScaffoldResult.scaffoldedClassNames).toContain('SDTPicklistDependencyValidator');
+
+            });
+
+            /*
+                A dangling link reads as ABSENT to existsSync, so the "nothing is here yet" branch
+                would CREATE the file it points at, outside the workspace.
+            */
+            test('given a dangling symlink where a framework class would go, creates nothing at its target', () => {
+
+                const uncreatedTargetPath = path.join(temporaryRootPath, 'never-created.txt');
+                const symlinkedClassFilePath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+                fs.symlinkSync(uncreatedTargetPath, symlinkedClassFilePath);
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(fs.existsSync(uncreatedTargetPath)).toBeFalse();
+                expect(frameworkScaffoldResult.symlinkedClassNames).toContain('SDTPicklistDependencySpec');
+                expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('SDTPicklistDependencySpec');
+
+            });
+
+            /*
+                A .cls inside a linked directory is not itself a link, so the per-file check cannot
+                see this one -- it redirects all six writes at once.
+            */
+            test('given a symlinked framework directory, writes nothing into it and reports every class', () => {
+
+                fs.rmSync(realFrameworkDirectoryPath, { recursive: true, force: true });
+
+                const outsideDirectoryPath = path.join(temporaryRootPath, 'outside-framework');
+                fs.mkdirSync(outsideDirectoryPath, { recursive: true });
+                fs.symlinkSync(outsideDirectoryPath, realFrameworkDirectoryPath);
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(fs.readdirSync(outsideDirectoryPath)).toEqual([]);
+                expect(frameworkScaffoldResult.symlinkedClassNames).toIncludeSameMembers(
+                    PicklistDependencyTestService.getFrameworkClassNames()
+                );
+                expect(frameworkScaffoldResult.scaffoldedClassNames).toHaveLength(0);
+
+            });
+
+            // THE ORDINARY CASE, THROUGH THE SAME REAL FILESYSTEM, SO THE GUARDS ARE NOT BLOCKING EVERYTHING
+            test('given no symlinks at all, still scaffolds every class normally', () => {
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(frameworkScaffoldResult.symlinkedClassNames).toHaveLength(0);
+                expect(frameworkScaffoldResult.scaffoldedClassNames).toIncludeSameMembers(
+                    PicklistDependencyTestService.getFrameworkClassNames()
+                );
+                expect(fs.readFileSync(path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls'), 'utf-8'))
+                    .toContain('shipped');
+
+            });
+
+            /*
+                Both paths populated. Refreshing one leaves the other stale and reports the class as
+                handled, while the deploy still fails with "Duplicate ApexClass" -- a success message
+                in front of a broken deploy. Refreshing both does not help either: two files
+                declaring one class is a deploy failure whatever they contain.
+            */
+            test('given the same class at BOTH the framework directory and the classes root, writes neither and reports the duplicate', () => {
+
+                const frameworkCopyPath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+                const rootCopyPath = path.join(realClassesDirectoryPath, 'SDTPicklistDependencySpec.cls');
+
+                fs.writeFileSync(frameworkCopyPath, 'STALE IN FRAMEWORK DIRECTORY');
+                fs.writeFileSync(`${frameworkCopyPath}-meta.xml`, '<ApexClass/>');
+                fs.writeFileSync(rootCopyPath, 'STALE AT ROOT');
+                fs.writeFileSync(`${rootCopyPath}-meta.xml`, '<ApexClass/>');
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(frameworkScaffoldResult.duplicatedClassNames).toEqual(['SDTPicklistDependencySpec']);
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(0);
+
+                // NEITHER COPY IS TOUCHED -- WHICH ONE TO KEEP IS THE USER'S CALL
+                expect(fs.readFileSync(frameworkCopyPath, 'utf-8')).toBe('STALE IN FRAMEWORK DIRECTORY');
+                expect(fs.readFileSync(rootCopyPath, 'utf-8')).toBe('STALE AT ROOT');
+
+                // AND THE RUN DOES NOT REPORT IT AS HANDLED
+                const notUpdatedWarning = PicklistDependencyTestService.buildFrameworkClassesNotUpdatedWarning(frameworkScaffoldResult);
+                expect(notUpdatedWarning).toContain('SDTPicklistDependencySpec');
+                expect(notUpdatedWarning).toContain('Duplicate ApexClass');
+
+            });
+
+            /*
+                A read-only checkout, or a lock held on Windows. Driven by making copyFileSync throw
+                rather than by chmod, which does not stop a root-owned CI container from writing and
+                so would pass without exercising anything.
+
+                What matters is that the loop CONTINUES: the Apex, the suite and the manifest are
+                already on disk by the time this runs, and a throw escaping here would abandon the
+                run after replacing some files, losing the very list the overwrite warning is built
+                from.
+            */
+            test('given a framework class whose write throws, reports it and still refreshes the rest', () => {
+
+                PicklistDependencyTestService.getFrameworkClassNames().forEach(frameworkClassName => {
+                    const stalePath = path.join(realFrameworkDirectoryPath, `${frameworkClassName}.cls`);
+                    fs.writeFileSync(stalePath, `public class ${frameworkClassName} { /* stale */ }`);
+                    fs.writeFileSync(`${stalePath}-meta.xml`, '<ApexClass/>');
+                });
+
+                const lockedClassPath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+
+                /*
+                    Captured BEFORE the spy. jest.requireActual('fs') hands back the same cached
+                    module object jest.spyOn patched, so delegating through it re-enters the mock
+                    and recurses until the stack gives out -- which this function's own try/catch
+                    would then report as every class failing to write.
+                */
+                const copyFileWithoutTheSpy = fs.copyFileSync;
+
+                jest.spyOn(fs, 'copyFileSync').mockImplementation((source: any, destination: any) => {
+                    if ( String(destination) === lockedClassPath ) {
+                        throw new Error('EPERM: operation not permitted');
+                    }
+                    copyFileWithoutTheSpy(source, destination);
+                });
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(frameworkScaffoldResult.refreshFailedClassNames).toEqual(['SDTPicklistDependencySpec']);
+                expect(PicklistDependencyTestService.buildFrameworkClassesNotUpdatedWarning(frameworkScaffoldResult))
+                    .toContain('read-only or held open');
+
+                // THE OTHER FIVE ARE STILL REFRESHED, AND STILL REPORTED
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(
+                    PicklistDependencyTestService.getFrameworkClassNames().length - 1
+                );
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).not.toContain(lockedClassPath);
+                expect(fs.readFileSync(lockedClassPath, 'utf-8')).toContain('stale');
+
+            });
+
+            // THE SAME PROTECTION ON THE SCAFFOLD BRANCH: A FIRST-TIME WRITE CAN FAIL TOO
+            test('given a first-time scaffold whose write throws, reports it and still scaffolds the rest', () => {
+
+                const copyFileWithoutTheSpy = fs.copyFileSync;
+                const failingClassPath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+
+                jest.spyOn(fs, 'copyFileSync').mockImplementation((source: any, destination: any) => {
+                    if ( String(destination) === failingClassPath ) {
+                        throw new Error('ENOSPC: no space left on device');
+                    }
+                    copyFileWithoutTheSpy(source, destination);
+                });
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(frameworkScaffoldResult.refreshFailedClassNames).toEqual(['SDTPicklistDependencySpec']);
+                expect(frameworkScaffoldResult.scaffoldedClassNames).toHaveLength(
+                    PicklistDependencyTestService.getFrameworkClassNames().length - 1
+                );
+
+            });
+
+            test('given a meta xml restore that throws, reports the class and does not go on to refresh it', () => {
+
+                const currentClassPath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+                fs.writeFileSync(currentClassPath, 'public class SDTPicklistDependencySpec { /* stale */ }');
+
+                const copyFileWithoutTheSpy = fs.copyFileSync;
+
+                jest.spyOn(fs, 'copyFileSync').mockImplementation((source: any, destination: any) => {
+                    if ( String(destination) === `${currentClassPath}-meta.xml` ) {
+                        throw new Error('EACCES: permission denied');
+                    }
+                    copyFileWithoutTheSpy(source, destination);
+                });
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(frameworkScaffoldResult.refreshFailedClassNames).toEqual(['SDTPicklistDependencySpec']);
+                expect(frameworkScaffoldResult.restoredMetaXmlClassNames).toHaveLength(0);
+
+                // THE CLASS IS LEFT AS IT WAS -- A .cls WITHOUT ITS META XML DOES NOT DEPLOY EITHER WAY
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).not.toContain(currentClassPath);
+                expect(fs.readFileSync(currentClassPath, 'utf-8')).toContain('stale');
+
+            });
+
+            /*
+                An unreadable SHIPPED source is not evidence the workspace copy is stale. Answering
+                it with "out of date" sends the code into a copyFileSync from the very file that
+                could not be read, failing the whole command.
+            */
+            test('given an unreadable shipped source, leaves the workspace copy alone rather than failing the run', () => {
+
+                const workspaceClassPath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+                fs.writeFileSync(workspaceClassPath, 'MINE, AND KEPT');
+                fs.writeFileSync(`${workspaceClassPath}-meta.xml`, '<ApexClass/>');
+
+                // CAPTURED BEFORE THE SPY, FOR THE RE-ENTRY REASON DOCUMENTED IN THE WRITE-FAILURE TEST ABOVE
+                const readFileWithoutTheSpy = fs.readFileSync;
+
+                jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any, ...readArguments: any[]) => {
+                    if ( String(readPath).startsWith(realExtensionPath) ) {
+                        throw new Error('EACCES: permission denied');
+                    }
+                    return readFileWithoutTheSpy(readPath, ...readArguments as []);
+                });
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(0);
+                expect(frameworkScaffoldResult.refreshFailedClassNames).not.toContain('SDTPicklistDependencySpec');
+
+            });
+
+            // A FILE APPEARING IN THE USER'S DIFF THAT NOTHING NAMED WAS A GAP IN THE RUN REPORT
+            test('restoring a missing meta xml is reported, not written silently', () => {
+
+                const currentClassPath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+                fs.copyFileSync(
+                    path.join(realExtensionPath, 'apexPicklistDependencyFramework', 'SDTPicklistDependencyFramework', 'SDTPicklistDependencySpec.cls'),
+                    currentClassPath
+                );
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(fs.existsSync(`${currentClassPath}-meta.xml`)).toBeTrue();
+                expect(frameworkScaffoldResult.restoredMetaXmlClassNames).toContain('SDTPicklistDependencySpec');
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(0);
+
+            });
+
+            test('given a stale real class alongside a symlinked one, refreshes the real one and refuses the link', () => {
+
+                fs.writeFileSync(path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencyValidator.cls'), 'public class SDTPicklistDependencyValidator { /* stale */ }');
+                fs.writeFileSync(path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencyValidator.cls-meta.xml'), '<ApexClass/>');
+
+                const symlinkedClassFilePath = path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+                fs.symlinkSync(outsideVictimFilePath, symlinkedClassFilePath);
+                fs.writeFileSync(`${symlinkedClassFilePath}-meta.xml`, '<ApexClass/>');
+
+                const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(
+                    realExtensionPath, realClassesDirectoryPath
+                );
+
+                expect(frameworkScaffoldResult.refreshedClassFilePaths).toEqual([
+                    path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencyValidator.cls')
+                ]);
+                expect(frameworkScaffoldResult.symlinkedClassNames).toEqual(['SDTPicklistDependencySpec']);
+                expect(fs.readFileSync(outsideVictimFilePath, 'utf-8')).toBe(originalVictimContent);
+                expect(fs.readFileSync(path.join(realFrameworkDirectoryPath, 'SDTPicklistDependencyValidator.cls'), 'utf-8')).toContain('shipped');
+
+            });
+
+        });
+
+        /*
+            The deploy failure this whole path exists to prevent, as a regression test.
+
+            A workspace whose SDTPicklistDependencySpec.cls predates 3.2.0 has no forRecordType, and
+            buildSpecStatement emits a call to it for every record-type-scoped spec. The old
+            behaviour returned early on any existing file, so the stale class survived every
+            regeneration and the org was the first thing to notice -- reporting the error against the
+            GENERATED class rather than the framework class that could not answer the call.
+        */
+        test('given a framework class predating the API the generator emits against, overwrites it in place', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            const copyFileSpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const frameworkDirectoryPath = path.join(classesDirectoryPath, 'SDTPicklistDependencyFramework');
+            const stalePresentClassPath = path.join(frameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath)
+                        || String(checkedPath) === stalePresentClassPath
+                        || String(checkedPath) === `${stalePresentClassPath}-meta.xml`;
+            });
+
+            const shippedSpecClassPath = path.join(shippedFrameworkClassesPath, 'SDTPicklistDependencySpec.cls');
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) => {
+                return String(readPath) === shippedSpecClassPath
+                        ? 'public class SDTPicklistDependencySpec { public static SDTPicklistDependencySpec forRecordType(String o, String f, String r) { return null; } }'
+                        : 'public class SDTPicklistDependencySpec { public static SDTPicklistDependencySpec forField(String o, String f) { return null; } }';
+            });
+
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            // THE PATH, NOT THE NAME -- THE OVERWRITE WARNING SENDS THE READER TO EXACTLY THIS FILE
+            expect(frameworkScaffoldResult.refreshedClassFilePaths).toEqual([stalePresentClassPath]);
+            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('SDTPicklistDependencySpec');
+            expect(frameworkScaffoldResult.unavailableClassNames).toHaveLength(0);
+
+            expect(copyFileSpy).toHaveBeenCalledWith(shippedSpecClassPath, stalePresentClassPath);
+
+        });
+
+        /*
+            Earlier versions scaffolded to the classes root. Writing the fresh copy to the framework
+            directory instead would leave the stale one at the root and deploy the same ApexClass
+            twice, which Salesforce rejects -- a worse failure than the one being fixed.
+        */
+        test('given a stale copy at the legacy classes root, refreshes it there rather than writing a second copy', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            const copyFileSpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const legacyRootClassPath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpec.cls');
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath)
+                        || String(checkedPath) === legacyRootClassPath
+                        || String(checkedPath) === `${legacyRootClassPath}-meta.xml`;
+            });
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) =>
+                String(readPath).startsWith(shippedFrameworkClassesPath) ? 'shipped' : 'stale');
+
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            expect(frameworkScaffoldResult.refreshedClassFilePaths).toEqual([legacyRootClassPath]);
+
+            const copiedTargets = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
+            expect(copiedTargets).toContain(legacyRootClassPath);
+            expect(copiedTargets).not.toContain(path.join(classesDirectoryPath, 'SDTPicklistDependencyFramework', 'SDTPicklistDependencySpec.cls'));
+
+        });
+
+        /*
+            git's default core.autocrlf=true checks these files out as CRLF on Windows. A raw byte
+            comparison would call all six classes stale on every run and rewrite them every time.
+        */
+        test('given a CRLF checkout of an otherwise identical class, refreshes nothing', () => {
 
             jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
             jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
 
             const alreadyPresentClassPath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpec.cls');
             jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
-                return String(checkedPath).startsWith(shippedFrameworkClassesPath) || String(checkedPath) === alreadyPresentClassPath;
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath)
+                        || String(checkedPath) === alreadyPresentClassPath
+                        || String(checkedPath) === `${alreadyPresentClassPath}-meta.xml`;
+            });
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) =>
+                String(readPath).startsWith(shippedFrameworkClassesPath)
+                    ? 'public class SDTPicklistDependencySpec {\n    // body\n}\n'
+                    : 'public class SDTPicklistDependencySpec {\r\n    // body\r\n}\r\n');
+
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(0);
+
+        });
+
+        /*
+            apiVersion lives in the meta xml. Overwriting it would reset a deliberate bump, which is
+            a change to how the class deploys and has nothing to do with the compile error the
+            refresh exists to prevent.
+        */
+        test('refreshing a class leaves an existing meta xml alone', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            const copyFileSpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const frameworkDirectoryPath = path.join(classesDirectoryPath, 'SDTPicklistDependencyFramework');
+            const stalePresentClassPath = path.join(frameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath)
+                        || String(checkedPath) === stalePresentClassPath
+                        || String(checkedPath) === `${stalePresentClassPath}-meta.xml`;
+            });
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) =>
+                String(readPath).startsWith(shippedFrameworkClassesPath) ? 'shipped' : 'stale');
+
+            PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            const copiedTargets = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
+            expect(copiedTargets).not.toContain(`${stalePresentClassPath}-meta.xml`);
+
+        });
+
+        // A .cls WITH NO META XML DOES NOT DEPLOY AT ALL, SO THE MISSING HALF IS RESTORED
+        test('given a present class whose meta xml has gone missing, writes the meta xml back', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            const copyFileSpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const frameworkDirectoryPath = path.join(classesDirectoryPath, 'SDTPicklistDependencyFramework');
+            const presentClassPath = path.join(frameworkDirectoryPath, 'SDTPicklistDependencySpec.cls');
+
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath) || String(checkedPath) === presentClassPath;
+            });
+            jest.spyOn(fs, 'readFileSync').mockReturnValue('identical' as any);
+
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            // THE CLASS ITSELF MATCHED, SO ONLY THE META XML IS WRITTEN
+            expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(0);
+
+            const copiedTargets = copyFileSpy.mock.calls.map(copyFileCall => String(copyFileCall[1]));
+            expect(copiedTargets).toContain(`${presentClassPath}-meta.xml`);
+            expect(copiedTargets).not.toContain(presentClassPath);
+
+        });
+
+        /*
+            "Unavailable" means the generated Apex has no framework to compile against. A class the
+            workspace already HAS is not that, however little this extension can say about it.
+        */
+        test('given a class present in the workspace but not shipped in the extension, reports it neither refreshed nor unavailable', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const presentClassPath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpec.cls');
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => String(checkedPath) === presentClassPath);
+
+            const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
+
+            expect(frameworkScaffoldResult.refreshedClassFilePaths).toHaveLength(0);
+            expect(frameworkScaffoldResult.unavailableClassNames).not.toContain('SDTPicklistDependencySpec');
+            // EVERY CLASS THE WORKSPACE DOES NOT HAVE IS STILL A BLOCKER
+            expect(frameworkScaffoldResult.unavailableClassNames).toContain('SDTPicklistDependencyValidator');
+
+        });
+
+        test('given an existing class that cannot be read, refreshes it rather than leaving a possibly stale copy', () => {
+
+            jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            jest.spyOn(fs, 'copyFileSync').mockImplementation(() => undefined);
+
+            const presentClassPath = path.join(classesDirectoryPath, 'SDTPicklistDependencySpec.cls');
+            jest.spyOn(fs, 'existsSync').mockImplementation((checkedPath: any) => {
+                return String(checkedPath).startsWith(shippedFrameworkClassesPath)
+                        || String(checkedPath) === presentClassPath
+                        || String(checkedPath) === `${presentClassPath}-meta.xml`;
+            });
+            jest.spyOn(fs, 'readFileSync').mockImplementation((readPath: any) => {
+                if ( String(readPath) === presentClassPath ) {
+                    throw new Error('EACCES: permission denied');
+                }
+                return 'shipped' as any;
             });
 
             const frameworkScaffoldResult = PicklistDependencyTestService.scaffoldMissingFrameworkClasses(extensionPath, classesDirectoryPath);
 
-            expect(frameworkScaffoldResult.scaffoldedClassNames).not.toContain('SDTPicklistDependencySpec');
-            expect(frameworkScaffoldResult.scaffoldedClassNames).toContain('SDTPicklistDependencyValidator');
-            expect(frameworkScaffoldResult.unavailableClassNames).toHaveLength(0);
+            expect(frameworkScaffoldResult.refreshedClassFilePaths).toEqual([presentClassPath]);
 
         });
 
@@ -4925,6 +5585,9 @@ describe('generation summary reporting', () => {
         manifestFilePath: '/workspace/treecipe/PicklistDependencySpecs/manifest.json',
         recordTypeSpecCount: 0,
         scaffoldedClassNames: [],
+        refreshedClassNames: [],
+        restoredMetaXmlClassNames: [],
+        frameworkClassesNotUpdated: [],
         removedStaleClassFileNames: []
     });
 
@@ -5006,6 +5669,45 @@ describe('generation summary reporting', () => {
             expect(summaryMarkdown).toContain('`SDTPLDSpecs.allRecordTypeScoped()`');
             expect(summaryMarkdown).toContain('`SDTPicklistDependencyValidator`, `SDTPicklistDependencySpec`');
             expect(summaryMarkdown).toContain('`SDTPLDSpecsForOldThing__c.cls`');
+
+        });
+
+        /*
+            The refresh REPLACES files the user already had, so the document has to name them --
+            it is the artifact they read when working out why their framework classes appear in a
+            diff they did not make.
+        */
+        test('names the framework classes the run overwrote, and says why they had to be', () => {
+
+            const summaryDetail = buildMinimalSummaryDetail();
+            summaryDetail.refreshedClassNames = ['SDTPicklistDependencySpec', 'SDTPicklistDependencyValidator'];
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(summaryDetail);
+
+            expect(summaryMarkdown).toContain('SDTPicklistDependencySpec');
+            expect(summaryMarkdown).toContain('SDTPicklistDependencyValidator');
+            expect(summaryMarkdown).toContain('Overwrote');
+            expect(summaryMarkdown).toContain('fails to compile');
+
+        });
+
+        test('names the classes whose missing meta xml was restored', () => {
+
+            const summaryDetail = buildMinimalSummaryDetail();
+            summaryDetail.restoredMetaXmlClassNames = ['SDTPicklistDependencySpec'];
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(summaryDetail);
+
+            expect(summaryMarkdown).toContain('Restored the missing');
+            expect(summaryMarkdown).toContain('SDTPicklistDependencySpec');
+
+        });
+
+        test('says nothing about overwritten framework classes when the run overwrote none', () => {
+
+            const summaryMarkdown = PicklistDependencyTestService.buildGenerationSummaryMarkdown(buildMinimalSummaryDetail());
+
+            expect(summaryMarkdown).not.toContain('Overwrote');
 
         });
 

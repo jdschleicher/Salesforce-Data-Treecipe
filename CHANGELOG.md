@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.21.1] - The CI heap failures were a test mock escaping its own suite
+## [3.22.1] - The CI heap failures were a test mock escaping its own suite
 
 ### One assignment, in one test, could exhaust a 4 GB heap in a different suite
 
@@ -41,9 +41,21 @@ The regression test is executed, not asserted as text: one test replaces `fs.pro
 
 No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
 
-### On 3.21.0 it is not even latent any more -- it fires
+### It has now been watched moving, release by release
 
-Earlier rounds of this branch had to argue that a green `main` was scheduling luck. That argument is no longer needed. Re-measured against 3.21.0, `npm run jest-test-summary` on unmodified `main` produced this:
+This branch has now been re-based across five releases, and the baseline was re-measured against every one of them. The failure did not sit still, and watching it move is itself the evidence:
+
+| `main` at | full-suite cold runs | the two suites on one worker |
+|---|---|---|
+| 3.15.0 | **2 failures in 3** | OOM |
+| 3.19.0 | 0 in 3 | OOM, 2 of 2 |
+| 3.20.1 | 0 in 3 | OOM, 2 of 2 |
+| **3.21.0** | **1 failure in 4** | OOM, 2 of 2 |
+| 3.22.0 | 0 in 4 | OOM, 2 of 2 |
+
+The right-hand column never moves. The left-hand one moves every release, because every release changes the per-file timings that decide which suites share a worker -- and that is the only variable this failure has ever turned on. A green `main` is a scheduling outcome, not a fixed defect.
+
+On 3.21.0 the scheduling landed badly and `npm run jest-test-summary` on unmodified `main` produced this:
 
 ```
 FAIL src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts
@@ -52,9 +64,9 @@ Test Suites: 1 failed, 25 passed, 26 total
 Time:        134.925 s
 ```
 
-The original CI signature, in the real command, on the current default branch -- 135 s against a normal ~63 s, which is the heap thrashing before the worker is killed. One failure in four full-suite runs.
+The original CI signature, in the real command, on the default branch of the day -- 135 s against a normal ~63 s, which is the heap thrashing before the worker is killed. #136 is what moved it into range: it deleted the provenance banner, the freshness check, the contents block and both header lines, and a large block of Explorer tests with them.
 
-3.21.0 is what moved it back: #136 deleted the provenance banner, the freshness check, the contents block and both header lines, and with them a large block of Explorer tests. That changed the per-file timings that decide which suites share a worker, which is the only variable this failure has ever turned on. Nothing about the defect changed -- the assignment is still on line 1603, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf.
+3.22.0 moved it back out again -- four clean runs. Nothing about the defect changed in either direction. The assignment is still on line 1603 of `VSCodeWorkspaceService.test.ts`, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf.
 
 Forced onto one worker rather than waiting for the scheduler, it is deterministic:
 
@@ -62,11 +74,11 @@ Forced onto one worker rather than waiting for the scheduler, it is deterministi
 jest --maxWorkers=1 --runTestsByPath \
   VSCodeWorkspaceService.test.ts RelationshipService.test.ts
 
-3.21.0         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory (2 of 2)
+3.22.0         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory (2 of 2)
 this release   Test Suites: 2 passed, 2 total / Tests: 96 passed, 96 total
 ```
 
-Six releases have shipped since this was first seen in CI, and none of them touched the line that causes it. Every one of them changed the scheduling, which is why it has appeared to come and go.
+Seven releases have shipped since this was first seen in CI. None of them touched the line that causes it, and every one of them changed the scheduling -- which is exactly why it has appeared to come and go, and why the next test file added anywhere in the project can bring it back without anyone editing the code that causes it.
 
 ### Three defects in the guard itself, found by review
 
@@ -78,14 +90,74 @@ The guard shipped with three wrong claims in its own comments, each disproved by
 
 Also from review: properties are enumerated with `getOwnPropertyNames` rather than `Object.keys`, since a non-enumerable function property is just as assignable; and the module name travels with the module instead of being derived from its position in an array.
 
-27 suites, 1488 tests (1473 + 15), coverage 91.20/86.19/92.71/91.16 against 3.21.0's 91.13/86.10/92.68/91.09 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.21.0 passes here.
+27 suites, 1522 tests (1507 + 15), coverage 91.34/86.36/92.77/91.31 against 3.22.0's 91.28/86.28/92.74/91.24 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.22.0 passes here.
 
-The 3.21.0 baseline was read from a CLEAN run. The run that failed reported 88.09/81.75/90.41/88.00, which is not a coverage figure at all -- a whole suite did not execute. A failing run's coverage is not a baseline, and quoting it would have manufactured a large fake improvement for this change.
+Every baseline quoted here was read from a CLEAN run. The 3.21.0 run that failed reported 88.09/81.75/90.41/88.00, which is not a coverage figure at all -- a whole suite did not execute. A failing run's coverage is not a baseline, and quoting it would have manufactured a three-point improvement for a change that touches no `src/` code.
 
 3.20.1 added a CI step asserting what enters the `.vsix`. `vsce ls` was run against this branch and the new `checkPackagedPaths.js` run over its output: 2,720 packaged paths, **zero of them under `jestSetup/`**, check passed. The guard's directory is excluded twice over -- by the pre-existing `**/*.ts` rule and by the `jestSetup/**` line added here.
 
 Both sides were measured with identical flags on Node 20. Two earlier baseline readings in this work were wrong, and both are recorded rather than discarded, because each would have put a false number in this file. One was the anomalous-first-coverage-run artifact 3.16.1 already documented: a fresh worktree reported `ErrorHandlingService.ts` a point higher, which showed up as a per-file regression this change cannot cause -- it touches no `src/` code, and that file's uncovered lines and functions are identical on both sides. Seven consecutive re-reads settled it. The other was a baseline measured in a worktree that had never been compiled, so 3.20.1's new packaged-paths test failed on a missing `out/` and the run it produced was not a baseline at all.
 
+## [3.22.0] - Generation keeps the framework it generates against, and names the classes an earlier version orphaned
+
+Closes [#133](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/133).
+
+Two deploy failures, found together against a real org, and neither one names its own cause in the error it produces.
+
+### The scaffolded framework was never refreshed, so generation emitted calls into a class that could not answer them
+
+`scaffoldMissingFrameworkClasses` did exactly what its name said: it copied a framework class in when the file was absent, and returned early when it was there. There was no path that updated one. The comment defended it -- *"so a user who has already deployed or customized them keeps their copy"* -- and that intent is the bug, because **the framework is not frozen**:
+
+| Framework class | Last changed |
+|---|---|
+| `SDTPicklistDependencySpec` | 3.2.0 -- `forRecordType`, `expectUnavailable`, `UNAVAILABLE`, `isRecordTypeScoped`, `label` |
+| `SDTSchemaPicklistDependencySource` | 3.2.0 |
+| `SDTPicklistDependencyValidator` | 3.4.0 |
+
+Meanwhile `buildSpecStatement` emits against whatever the CURRENT extension knows. A workspace scaffolded before 3.2.0 kept a `SDTPicklistDependencySpec` with no `forRecordType` forever, and every regeneration wrote fresh calls to it:
+
+```
+Method does not exist or incorrect signature: void forRecordType(String, String, String)
+  from the type SDTPicklistDependencySpec (143:42)
+```
+
+The generator was emitting calls against a framework API it never checked was present. Nothing looked: the result carried `unavailableClassNames` for a class that could not be supplied at all, and had no way to say *supplied, but older than what I generate against*. The org was the first thing to notice -- and it reported the error against the GENERATED class, not the stale one that could not resolve the call.
+
+The six `SDT`-prefixed framework classes are now owned by this extension, which is what the prefix has always claimed: a class in your package directory starting with `SDT` was put there by Salesforce Data Treecipe. One that differs from the shipped source is **overwritten**, in place, at whichever path holds it -- refreshing into the framework directory while a stale copy sat at the classes root would deploy the same ApexClass twice, which Salesforce rejects, so the two are not interchangeable.
+
+Three things it deliberately does not do. A class matching the shipped source is not rewritten, so its mtime does not move -- the same guarantee generated specs already had, and compared without line endings so a CRLF checkout on Windows does not report all six as stale on every run. An existing `.cls-meta.xml` is left alone, because it carries `apiVersion` and resetting a deliberate bump changes how the class deploys, which has nothing to do with the compile error this prevents; a meta xml that has gone *missing* beside a present `.cls` is still restored, since without it the class does not deploy at all. And a class present in the workspace that this extension cannot compare against is not reported unavailable: whatever little can be said about it, it is not a missing framework.
+
+Overwriting a file someone already had is the one thing generation does that can discard their work, so it gets **its own warning** naming every class replaced and saying local edits went with it -- not a line folded into a success toast, which is how you find out from your git diff instead of from us. The summary document names them too.
+
+### Making that path destructive meant guarding what it can destroy
+
+Refreshing turns the framework step into the only thing generation does that replaces a file the user already had, and four cases only became reachable at the moment it did. Each is refused rather than written through, and every one of them reports.
+
+**Symlinks.** `copyFileSync` follows a destination symlink and truncates whatever it points at, so a framework `.cls` that is a link would have had its target overwritten with shipped Apex — a file outside the workspace, reached from inside it. This was inert before: an existing file returned early, so nothing was ever written through anything. The containment checks upstream do not answer it either, because they resolve the *classes* directory, which realpaths inside the workspace exactly as it should — it is the leaf, and the framework subdirectory below it, that can each redirect on their own. Both are now checked, a dangling link included (it reads as absent to `existsSync`, so the "nothing here yet" branch would have *created* the file it points at).
+
+**The same class at both paths.** A copy in the framework folder and another at the classes root is a `Duplicate ApexClass` deploy failure whatever the two contain, so refreshing one and reporting the class as handled would have put a success message in front of a broken deploy — which is what preferring one path silently did. Neither is written now; which copy to keep is the user's call.
+
+**A write that throws.** A read-only checkout, or a lock held on Windows. The framework step runs *after* the Apex, the suite and the manifest are on disk, so an exception escaping the loop would have abandoned the run having already replaced some files, losing the very list the overwrite warning is built from. Each class is guarded on its own and a failure is reported.
+
+**An unreadable shipped source.** Not evidence the workspace copy is stale — answering it that way sent the code into a copy *from* the file that could not be read. The workspace keeps what it has, which is the posture `unavailableClassNames` already encoded.
+
+All four mean the same thing to a deploy — the framework is not at the version the specs call, so it may not compile — and differ only in the remedy, so they arrive as one warning with a clause each rather than four toasts describing one run four times. The overwrite warning names file **paths** rather than class names: a refresh writes to whichever path held the class, so naming one directory would send the reader to the wrong place for a legacy-root copy. And a restored `.cls-meta.xml` is now reported too — it is a file appearing in the user's diff, and the summary names what the run wrote.
+
+### Three generations of the spec classes could sit on disk, and only two were recognised
+
+3.0.0 renamed twice, not once: `SFTreecipePicklistDependencySpecs` to `SDTPicklistDependencySpecs`, then -- when the 40-character ApexClass limit rejected the deploy -- to `SDTPLDSpecs`. Only the first rename was ever handled. `legacySpecsClassNames` listed the `SFTreecipe` pair, and the stale sweep matched `/^SDTPLDSpecs_/`, so the middle generation fell between them and was reported by nothing.
+
+It is also the generation that **cannot compile**. `SDTPicklistDependencySpecs_` spends 27 of the 40 characters before the object name begins:
+
+```
+Identifier name is too long: SDTPicklistDependencySpecs_Example_Everything_c (16:14)
+```
+
+`detectLegacyGeneratedArtifacts` now reports the whole family -- the aggregator, its test class, and every `SDTPicklistDependencySpecs_<Object>.cls` found by reading the classes directory, since an object api name is variable and there is no fixed name to check for. The warning says why it matters: a deploy failing on a 47-character identifier names a class this extension stopped generating, and nothing connected the two.
+
+That detection turned the warning's path list from five bounded entries into a directory listing, so it is capped at ten with the remainder counted. A notification is one run of text that truncates, and the actionable half -- what to delete from the org, and why a per-object class fails the deploy -- is at the END of it; a workspace holding one legacy class per object would have pushed it past the cut. The paths share one directory anyway, which the enumerated few already show.
+
+They are reported, not deleted -- the 3.0.0 posture, unchanged. What did change is that the per-object classes are named **together with the aggregator that calls them**, and deliberately kept out of `removeStalePerObjectSpecsClassFiles`. Sweeping them on their own would leave `SDTPicklistDependencySpecs.cls` calling classes that no longer exist, trading `identifier name is too long` for `variable does not exist` and leaving the user no better off.
 ## [3.21.0] - The Picklist Dependency Explorer opens on the find box: the provenance banner, the freshness check, the contents block and both header lines are gone
 
 Closes [#134](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/134).
