@@ -67,6 +67,7 @@ import {
 } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
+import { RecipeCockpitService } from "../../RecipeCockpitService/RecipeCockpitService";
 import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 
@@ -3163,6 +3164,47 @@ describe('ExtensionCommandService', () => {
 
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             expect(writeFileSyncSpy).not.toHaveBeenCalled();
+
+        });
+
+    });
+
+    describe('openRecipeCockpit', () => {
+
+        let extensionCommandService: ExtensionCommandService;
+
+        beforeEach(() => {
+            extensionCommandService = new ExtensionCommandService();
+        });
+
+        it('opens the cockpit panel through the service that owns it', async () => {
+
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
+                .mockReturnValue({} as any);
+
+            await extensionCommandService.openRecipeCockpit();
+
+            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        /*
+            A webview that cannot be created leaves nothing on screen to say so, which is the one
+            failure mode of a command whose entire job is to put something there.
+        */
+        it('given the panel cannot be created, routes the error through ErrorHandlingService', async () => {
+
+            jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel').mockImplementation(() => {
+                throw new Error('webview could not be created');
+            });
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError')
+                .mockImplementation(() => undefined);
+
+            await extensionCommandService.openRecipeCockpit();
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('webview could not be created');
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('openRecipeCockpit');
 
         });
 

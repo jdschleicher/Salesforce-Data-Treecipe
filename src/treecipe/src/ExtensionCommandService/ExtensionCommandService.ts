@@ -21,6 +21,7 @@ import {
 } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
+import { RecipeCockpitService } from "../RecipeCockpitService/RecipeCockpitService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -1360,6 +1361,29 @@ export class ExtensionCommandService {
         } catch(error) {
 
             const commandName = 'runPicklistDependencyCheck';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    /*
+        Opens the Recipe Cockpit.
+
+        There is no work to guard around yet -- the panel's shell is static and everything it will
+        render arrives over postMessage in a later slice -- but the command is wrapped like every
+        other one from the start: a webview that cannot be created is exactly the failure a user
+        cannot diagnose without the report this raises.
+    */
+    async openRecipeCockpit() {
+
+        try {
+
+            RecipeCockpitService.openRecipeCockpitPanel();
+
+        } catch(error) {
+
+            const commandName = 'openRecipeCockpit';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
