@@ -6,6 +6,8 @@ src/**
 vsc-extension-quickstart.md
 **/tsconfig.json
 **/eslint.config.mjs
+esbuild.js
+esbuild.test.js
 **/*.map
 **/*.ts
 **/.vscode-test.*
@@ -47,6 +49,7 @@ docs/**
 CLAUDE.md
 tasks.md
 jest.config.js
+jestSetup/**
 
 # A debug dump of an ObjectInfoWrapper from a development run. 160KB, referenced by no code.
 wrappers.json
@@ -57,8 +60,10 @@ wrappers.json
 # publish that machine's scratch org names and run reports.
 treecipe/**
 
-# Compiled Jest output and test doubles. The **/*.ts rule above removes the sources but not what
-# tsc emitted, so the mock services under each service's tests/ folder ship without this.
+# Compiled Jest output and test doubles. Since #137 "out/" holds one bundled file and tsc emits
+# nothing, so these match nothing on a clean build -- they are kept because vsce packages the
+# WORKING DIRECTORY rather than the git index, and a checkout that ran the old tsc build before
+# this change still has that tree on disk. esbuild.js clears out/ for the same reason.
 out/*.test.js
 out/**/*.test.js
 out/**/tests/**

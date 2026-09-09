@@ -13,5 +13,14 @@
 			"jest",
 			"node"
 		],
-	}
+	},
+	// Default excludes are replaced rather than added to, so node_modules and the outDir are
+	// named here as well. jestSetup/ is jest harness code: it lives outside rootDir so that
+	// nothing tsc emits into out/ -- and therefore nothing the .vsix ships -- comes from it.
+	// ts-jest type checks it as part of the test program.
+	"exclude": [
+		"node_modules",
+		"out",
+		"jestSetup"
+	]
 }

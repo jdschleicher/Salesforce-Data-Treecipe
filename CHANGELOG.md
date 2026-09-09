@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.21.0] - The Recipe Cockpit opens: a webview surface, wired end to end and carrying nothing
+## [3.24.0] - The Recipe Cockpit opens: a webview surface, wired end to end and carrying nothing
 
 Closes [#53](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/53), the first slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
 
@@ -30,6 +30,290 @@ The panel's own script is exercised by running it -- the real string the builder
 The explorer carries four mechanisms this panel does not: a host-held model replayed on `ready`, a measured ceiling on what is rendered, rows built on first expand, and a render guard with a `rendered` ack. None has anything to act on in a panel with no model -- a guard around a render that does not exist is untestable except trivially -- so they land with the slice that gives them something to bound. The interface constraints above are the ones that had to be set now, because they are the ones a later slice cannot add without unwinding what is already built on them.
 
 The README documents the cockpit when it renders a recipe; documenting a panel that traverses nothing would describe a command by what it is going to do. CLAUDE.md, which is the architecture reference rather than the user's, records it now.
+## [3.23.0] - The extension is bundled: 90% of the .vsix was node_modules nothing loaded
+
+Closes [#137](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/137), the bundling half [#121](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/121) deferred to its own issue.
+
+`vscode:prepublish` ran `tsc` and nothing else, so `vsce` resolved the whole production dependency tree and shipped every file in it. Of 7.53 MB and 2,722 paths, this project's own compiled output was 909 KB across 38 files -- **about 3%**. esbuild now bundles the extension into one file.
+
+| | `.vsix` | files | raw |
+|---|---|---|---|
+| Before | 7.53 MB | 2,722 | 25.6 MB |
+| After | **5.41 MB** | **2,261** | 17.2 MB |
+| | **-2.12 MB (-28%)** | -461 | -8.4 MB |
+
+What left was never loaded on any path. `xml2js/lib/xml2js.bc.js` is a prebuilt **browser** bundle, 3.23 MB against the 1 KB `xml2js.js` the Node entry point actually resolves. faker shipped its ESM half beside the `.cjs` half tsc output required, 0.91 MB zipped of a format nothing in a CommonJS extension can reach. And ~70 locale chunks, where nothing in `src/` names a locale.
+
+### `@salesforce/core` stays external, and that is the whole risk boundary
+
+`vscode` cannot be bundled -- the host injects it. `@salesforce/core` is external for an unrelated reason: pino's `thread-stream` transports spawn workers **from a file path**, which a bundler cannot rewrite. It stays a real `dependency` and still ships from `node_modules`, so org auth, the Collections API insert and the picklist dependency check run against exactly the code they ran against before.
+
+That is also why the win is 28% rather than the "under 2 MB" a full bundle would reach: `@salesforce/core`'s 140-package closure is **85% of what remains**. Bundling it is its own issue, because the risk lands on the paths hardest to verify without a live org.
+
+### tsc stops emitting, and that is load-bearing rather than tidy
+
+esbuild strips types without checking them, so `compile` becomes `tsc --noEmit` -- still a typecheck, which is the only reason that CI step exists (nothing imports `src/extension.ts`, so ts-jest never reaches it).
+
+Leaving `outDir` in play would have been the quiet failure. Output from both tools landing in `out/` ships the entire tsc tree **alongside** the bundle, and `checkPackagedPaths.js` could not have caught it: that tsc output legitimately requires faker, xml2js and js-yaml, so every assertion would pass while the package grew past where it started. `esbuild.js` clears `out/` for the same reason `.vscodeignore` still names the old test-output paths -- `vsce` packages the working directory, not the git index, so a checkout that ran the old build still has that tree on disk.
+
+### The packaging guard is UNCHANGED, and it is what forced the dependency split
+
+The issue expected assertions 2 and 3 to need re-pointing. They did not. The bundle's only non-builtin bare requires are its two externals, so the guard's existing property -- every `dependencies` key is required from packaged `out/**`, and every bare require is a builtin, `vscode`, or declared -- already describes a bundled build exactly:
+
+- a package esbuild **inlined** but left in `dependencies` fails assertion 2, whose message already reads *"Move it to devDependencies"*
+- a package left **external** by mistake and therefore not shipped fails assertion 3, which is the one that throws for an installed user rather than merely bloating the download
+
+Those two halves are **not symmetric**, and the review that found it was right to press. What neither assertion can see is a package inlined AND moved to `devDependencies` that actually needed to stay external -- assertion 2 iterates `dependencies` only, and an inlined package emits no require for assertion 3 to find. It builds green and breaks at command time. Nothing on the package side can know a module must be external, so `esbuild.test.js` pins the split from the side that decides it: `EXTERNAL_MODULES` must equal the runtime `dependencies` plus the host-provided `vscode`, and every module it names must ship. That does not let the repo guess that some future package needs externalising -- it removes every way to record that judgement incompletely.
+
+So `@faker-js/faker`, `js-yaml` and `xml2js` moved to `devDependencies` because the guard said to, not because a human remembered. Three tests pin the bundled shape against the same fixtures, and the guard passes unmodified against the real `vsce ls` listing.
+
+`xml2js` does still ship: `@salesforce/core` -> `@jsforce/jsforce-node` drags it back in as an external transitive, dead `xml2js.bc.js` and all, where it is now the largest single item left at 16.6% of the package. Reclaiming it is tracked on #137 rather than done here.
+
+### The published bundle is minified but keeps its names, because this extension reads its own stacks
+
+`ErrorHandlingService` puts `error.stack` straight into the GitHub issue template it builds for a user. Minifying renames every class, so a reported stack named nothing a maintainer could act on -- `RecipeService` does not appear in a plain minified bundle at all. `keepNames` restores that for **8.8 KB (+0.9%)**, and a test now pins the choice: nothing asserted the minify options before, which is exactly how it went unremarked.
+
+A source map would additionally restore file and line, and it is deliberately NOT shipped: Node does not apply one to `error.stack` unless started with `--enable-source-maps`, which the extension host is not, and the map measured **0.58 MB zipped -- ~11% of the package this change exists to shrink**. Frames therefore still read `extension.js:1:<column>`. That is a knowing trade, not an oversight.
+
+### The watch loop is two watchers now
+
+One tool no longer does both jobs, so `watch` runs esbuild and `watch:typecheck` runs `tsc --noEmit --watch`. VS Code runs them in parallel itself (`dependsOrder: "parallel"`), so the Problems panel still fills from the tsc half and no `concurrently` dependency was added. Editor squiggles never came from the build task at all -- those are the TypeScript language server.
+
+The esbuild task carries a **background problem matcher** keyed on its own `[watch] build started` / `build finished` output. That is not cosmetic: `launch.json` runs the default build task as `preLaunchTask`, and VS Code only knows a background task's first run finished if a matcher says so -- without one it launches the host without waiting, and `esbuild.js` clears `out/` before starting the watcher, so F5 could reach a bundle that does not exist yet.
+
+## [3.22.1] - The CI heap failures were a test mock escaping its own suite
+
+### One assignment, in one test, could exhaust a 4 GB heap in a different suite
+
+The Jest job on GitHub Actions had been failing roughly half the time with a worker exhausting its heap, always reported against `RelationshipService.test.ts`:
+
+```
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+FAIL src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts
+  A jest worker process (pid=2191) was terminated by another process: signal=SIGTERM
+```
+
+`RelationshipService.test.ts` is not where the memory went. Run on its own it peaks at 220 MB and passes under a 256 MB cap. The cause was in `VSCodeWorkspaceService.test.ts`:
+
+```ts
+const mockReaddir = jest.fn().mockResolvedValue([
+    { name: 'other1', isDirectory: () => true },
+    { name: 'other2', isDirectory: () => true }
+]);
+fs.promises.readdir = mockReaddir;
+```
+
+That is an **assignment**, not a `jest.spyOn`, and `fs` is a **Node core module**. Jest gives every test file a fresh module registry, but a core module is not part of it -- `require('fs')` hands every suite in a worker the same object -- and `restoreMocks` only restores what `jest.spyOn` registered, so an assignment leaves Jest nothing to undo. The replacement stayed installed for the rest of that worker's life.
+
+What it left installed is the worst possible answer for a recursive walk: **every path, forever, reads as two entries, both directories.** `DirectoryProcessor.processDirectory` descends into every directory it is handed, and `RelationshipService.test.ts` opens with a `beforeAll` that walks a real metadata directory through `vscode.workspace.fs.readDirectory` -- which its own mock implements with `fs.promises.readdir`. So the walk branched 2^depth and never terminated, taking the worker to 4 GB in CI (8 GB locally) before Jest killed it.
+
+Jest attributes a dead worker's failure to the file it was running, never to the file that poisoned it, which is why every report named the suite with no memory problem and none named the one with the defect.
+
+**Why it was intermittent, and why it never reproduced locally.** It fires only when Jest schedules `RelationshipService.test.ts` onto the same worker after `VSCodeWorkspaceService.test.ts`. That is a scheduling outcome, not a property of the code, so it hit about half of CI runs. It essentially never hits a developer's machine because a warm Jest cache changes the per-file timings that drive the scheduling: cold-cache runs -- which is every CI run, on a fresh checkout -- reproduced it two times in three, warm-cache runs zero times in many.
+
+**Why the 3.11.0 change did not fix it.** `10d1ce7` removed the per-child `Set` copy in `calculateLevelsRecursively`, which was a real allocation reduction and is still worth having. But it was not what exhausted the heap. The recursion this failure actually rides is in `processDirectory`, driven by a `readdir` that never returns a leaf, and no change to level calculation could have bounded it.
+
+### Two fixes: the test, and the class of bug
+
+- **The test uses `jest.spyOn`**, so `restoreMocks` can put `fs.promises.readdir` back. With this alone, the pair that reproduced the OOM deterministically now passes.
+- **`jestSetup/CoreModuleIsolation.ts` restores core module functions after every test**, registered through `setupFilesAfterEnv`. It snapshots the plain function properties of `fs` and `fs.promises` before a suite loads and puts back anything whose identity changed -- so a future assignment costs the test that wrote it rather than an unrelated suite scheduled after it. Getter-backed properties are read through a descriptor and left alone, since a getter is not something an assignment could have replaced.
+
+The regression test is executed, not asserted as text: one test replaces `fs.promises.readdir` by assignment exactly as the defect did, and the next test reads a real directory through it. Removing the guard fails that test.
+
+No production code changed. `processDirectory` compares `entryType === vscode.FileType.Directory` with strict equality, and a symlinked directory carries `SymbolicLink | Directory`, so the unbounded walk this failure depends on is not reachable from a real filesystem -- only from a `readdir` that lies.
+
+### It has now been watched moving, release by release
+
+This branch has now been re-based across five releases, and the baseline was re-measured against every one of them. The failure did not sit still, and watching it move is itself the evidence:
+
+| `main` at | full-suite cold runs | the two suites on one worker |
+|---|---|---|
+| 3.15.0 | **2 failures in 3** | OOM |
+| 3.19.0 | 0 in 3 | OOM, 2 of 2 |
+| 3.20.1 | 0 in 3 | OOM, 2 of 2 |
+| **3.21.0** | **1 failure in 4** | OOM, 2 of 2 |
+| 3.22.0 | 0 in 4 | OOM, 2 of 2 |
+
+The right-hand column never moves. The left-hand one moves every release, because every release changes the per-file timings that decide which suites share a worker -- and that is the only variable this failure has ever turned on. A green `main` is a scheduling outcome, not a fixed defect.
+
+On 3.21.0 the scheduling landed badly and `npm run jest-test-summary` on unmodified `main` produced this:
+
+```
+FAIL src/treecipe/src/RelationshipService/tests/RelationshipService.test.ts
+  A jest worker process (pid=20249) was terminated by another process: signal=SIGTERM
+Test Suites: 1 failed, 25 passed, 26 total
+Time:        134.925 s
+```
+
+The original CI signature, in the real command, on the default branch of the day -- 135 s against a normal ~63 s, which is the heap thrashing before the worker is killed. #136 is what moved it into range: it deleted the provenance banner, the freshness check, the contents block and both header lines, and a large block of Explorer tests with them.
+
+3.22.0 moved it back out again -- four clean runs. Nothing about the defect changed in either direction. The assignment is still on line 1603 of `VSCodeWorkspaceService.test.ts`, `restoreMocks` still cannot undo it, and the walk it feeds still has no leaf.
+
+Forced onto one worker rather than waiting for the scheduler, it is deterministic:
+
+```
+jest --maxWorkers=1 --runTestsByPath \
+  VSCodeWorkspaceService.test.ts RelationshipService.test.ts
+
+3.22.0         FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory (2 of 2)
+this release   Test Suites: 2 passed, 2 total / Tests: 96 passed, 96 total
+```
+
+Seven releases have shipped since this was first seen in CI. None of them touched the line that causes it, and every one of them changed the scheduling -- which is exactly why it has appeared to come and go, and why the next test file added anywhere in the project can bring it back without anyone editing the code that causes it.
+
+### Three defects in the guard itself, found by review
+
+The guard shipped with three wrong claims in its own comments, each disproved by running code rather than by reading it.
+
+- **It said its `afterEach` runs LAST among `afterEach` hooks. It runs FIRST.** Hooks registered from `setupFilesAfterEnv` and hooks declared at the top level of a test file are both hooks of jest-circus's ROOT block, and root-block `afterEach` hooks run in declaration order -- setup files are evaluated first. The consequence is real but currently unexercised: a file-scope `afterEach` asserting on an `fs` spy would find the property already restored. No suite does that, restoring early is still the right trade, and the comment now says what the code does.
+- **It said a getter "is not something an assignment could have replaced". On Node 20 that is false.** `fs.opendir`, `fs.opendirSync`, `fs.Dir`, `fs.ReadStream` and `fs.WriteStream` are getter/**setter** pairs: an assignment goes through the setter and sticks. Skipping every accessor property left the guard blind to directory and stream APIs -- the same class of call the original failure rode in on. Accessor properties that have a setter are now captured and restored; a getter with no setter stays skipped, because nothing can assign through it and invoking it to find out would run whatever it does.
+- **It captured per test FILE, and now captures once per WORKER.** The snapshot is stashed on the shared `fs` object under a symbol. This one is a conservative baseline rather than a fix for a reproduced hole, and is written down as such: per-file capture demonstrably contains the defect this guard was written for -- that leak is installed inside a test body, so the file's own `afterEach` restores it before the file ends -- and attempts to demonstrate per-file capture ADOPTING an `afterAll` leak produced results that did not reproduce across runs. The probe was unreliable and settled nothing. It is done this way anyway, because "whatever is on the object when this file started" is not a defensible definition of pristine and the earliest observed state is.
+
+Also from review: properties are enumerated with `getOwnPropertyNames` rather than `Object.keys`, since a non-enumerable function property is just as assignable; and the module name travels with the module instead of being derived from its position in an array.
+
+27 suites, 1522 tests (1507 + 15), coverage 91.34/86.36/92.77/91.31 against 3.22.0's 91.28/86.28/92.74/91.24 -- up on all four axes, with zero per-file regressions and the one added file at 100/100/100/100. Cold-cache runs pass, and the pair that exhausts the heap on 3.22.0 passes here.
+
+Every baseline quoted here was read from a CLEAN run. The 3.21.0 run that failed reported 88.09/81.75/90.41/88.00, which is not a coverage figure at all -- a whole suite did not execute. A failing run's coverage is not a baseline, and quoting it would have manufactured a three-point improvement for a change that touches no `src/` code.
+
+3.20.1 added a CI step asserting what enters the `.vsix`. `vsce ls` was run against this branch and the new `checkPackagedPaths.js` run over its output: 2,720 packaged paths, **zero of them under `jestSetup/`**, check passed. The guard's directory is excluded twice over -- by the pre-existing `**/*.ts` rule and by the `jestSetup/**` line added here.
+
+Both sides were measured with identical flags on Node 20. Two earlier baseline readings in this work were wrong, and both are recorded rather than discarded, because each would have put a false number in this file. One was the anomalous-first-coverage-run artifact 3.16.1 already documented: a fresh worktree reported `ErrorHandlingService.ts` a point higher, which showed up as a per-file regression this change cannot cause -- it touches no `src/` code, and that file's uncovered lines and functions are identical on both sides. Seven consecutive re-reads settled it. The other was a baseline measured in a worktree that had never been compiled, so 3.20.1's new packaged-paths test failed on a missing `out/` and the run it produced was not a baseline at all.
+
+## [3.22.0] - Generation keeps the framework it generates against, and names the classes an earlier version orphaned
+
+Closes [#133](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/133).
+
+Two deploy failures, found together against a real org, and neither one names its own cause in the error it produces.
+
+### The scaffolded framework was never refreshed, so generation emitted calls into a class that could not answer them
+
+`scaffoldMissingFrameworkClasses` did exactly what its name said: it copied a framework class in when the file was absent, and returned early when it was there. There was no path that updated one. The comment defended it -- *"so a user who has already deployed or customized them keeps their copy"* -- and that intent is the bug, because **the framework is not frozen**:
+
+| Framework class | Last changed |
+|---|---|
+| `SDTPicklistDependencySpec` | 3.2.0 -- `forRecordType`, `expectUnavailable`, `UNAVAILABLE`, `isRecordTypeScoped`, `label` |
+| `SDTSchemaPicklistDependencySource` | 3.2.0 |
+| `SDTPicklistDependencyValidator` | 3.4.0 |
+
+Meanwhile `buildSpecStatement` emits against whatever the CURRENT extension knows. A workspace scaffolded before 3.2.0 kept a `SDTPicklistDependencySpec` with no `forRecordType` forever, and every regeneration wrote fresh calls to it:
+
+```
+Method does not exist or incorrect signature: void forRecordType(String, String, String)
+  from the type SDTPicklistDependencySpec (143:42)
+```
+
+The generator was emitting calls against a framework API it never checked was present. Nothing looked: the result carried `unavailableClassNames` for a class that could not be supplied at all, and had no way to say *supplied, but older than what I generate against*. The org was the first thing to notice -- and it reported the error against the GENERATED class, not the stale one that could not resolve the call.
+
+The six `SDT`-prefixed framework classes are now owned by this extension, which is what the prefix has always claimed: a class in your package directory starting with `SDT` was put there by Salesforce Data Treecipe. One that differs from the shipped source is **overwritten**, in place, at whichever path holds it -- refreshing into the framework directory while a stale copy sat at the classes root would deploy the same ApexClass twice, which Salesforce rejects, so the two are not interchangeable.
+
+Three things it deliberately does not do. A class matching the shipped source is not rewritten, so its mtime does not move -- the same guarantee generated specs already had, and compared without line endings so a CRLF checkout on Windows does not report all six as stale on every run. An existing `.cls-meta.xml` is left alone, because it carries `apiVersion` and resetting a deliberate bump changes how the class deploys, which has nothing to do with the compile error this prevents; a meta xml that has gone *missing* beside a present `.cls` is still restored, since without it the class does not deploy at all. And a class present in the workspace that this extension cannot compare against is not reported unavailable: whatever little can be said about it, it is not a missing framework.
+
+Overwriting a file someone already had is the one thing generation does that can discard their work, so it gets **its own warning** naming every class replaced and saying local edits went with it -- not a line folded into a success toast, which is how you find out from your git diff instead of from us. The summary document names them too.
+
+### Making that path destructive meant guarding what it can destroy
+
+Refreshing turns the framework step into the only thing generation does that replaces a file the user already had, and four cases only became reachable at the moment it did. Each is refused rather than written through, and every one of them reports.
+
+**Symlinks.** `copyFileSync` follows a destination symlink and truncates whatever it points at, so a framework `.cls` that is a link would have had its target overwritten with shipped Apex — a file outside the workspace, reached from inside it. This was inert before: an existing file returned early, so nothing was ever written through anything. The containment checks upstream do not answer it either, because they resolve the *classes* directory, which realpaths inside the workspace exactly as it should — it is the leaf, and the framework subdirectory below it, that can each redirect on their own. Both are now checked, a dangling link included (it reads as absent to `existsSync`, so the "nothing here yet" branch would have *created* the file it points at).
+
+**The same class at both paths.** A copy in the framework folder and another at the classes root is a `Duplicate ApexClass` deploy failure whatever the two contain, so refreshing one and reporting the class as handled would have put a success message in front of a broken deploy — which is what preferring one path silently did. Neither is written now; which copy to keep is the user's call.
+
+**A write that throws.** A read-only checkout, or a lock held on Windows. The framework step runs *after* the Apex, the suite and the manifest are on disk, so an exception escaping the loop would have abandoned the run having already replaced some files, losing the very list the overwrite warning is built from. Each class is guarded on its own and a failure is reported.
+
+**An unreadable shipped source.** Not evidence the workspace copy is stale — answering it that way sent the code into a copy *from* the file that could not be read. The workspace keeps what it has, which is the posture `unavailableClassNames` already encoded.
+
+All four mean the same thing to a deploy — the framework is not at the version the specs call, so it may not compile — and differ only in the remedy, so they arrive as one warning with a clause each rather than four toasts describing one run four times. The overwrite warning names file **paths** rather than class names: a refresh writes to whichever path held the class, so naming one directory would send the reader to the wrong place for a legacy-root copy. And a restored `.cls-meta.xml` is now reported too — it is a file appearing in the user's diff, and the summary names what the run wrote.
+
+### Three generations of the spec classes could sit on disk, and only two were recognised
+
+3.0.0 renamed twice, not once: `SFTreecipePicklistDependencySpecs` to `SDTPicklistDependencySpecs`, then -- when the 40-character ApexClass limit rejected the deploy -- to `SDTPLDSpecs`. Only the first rename was ever handled. `legacySpecsClassNames` listed the `SFTreecipe` pair, and the stale sweep matched `/^SDTPLDSpecs_/`, so the middle generation fell between them and was reported by nothing.
+
+It is also the generation that **cannot compile**. `SDTPicklistDependencySpecs_` spends 27 of the 40 characters before the object name begins:
+
+```
+Identifier name is too long: SDTPicklistDependencySpecs_Example_Everything_c (16:14)
+```
+
+`detectLegacyGeneratedArtifacts` now reports the whole family -- the aggregator, its test class, and every `SDTPicklistDependencySpecs_<Object>.cls` found by reading the classes directory, since an object api name is variable and there is no fixed name to check for. The warning says why it matters: a deploy failing on a 47-character identifier names a class this extension stopped generating, and nothing connected the two.
+
+That detection turned the warning's path list from five bounded entries into a directory listing, so it is capped at ten with the remainder counted. A notification is one run of text that truncates, and the actionable half -- what to delete from the org, and why a per-object class fails the deploy -- is at the END of it; a workspace holding one legacy class per object would have pushed it past the cut. The paths share one directory anyway, which the enumerated few already show.
+
+They are reported, not deleted -- the 3.0.0 posture, unchanged. What did change is that the per-object classes are named **together with the aggregator that calls them**, and deliberately kept out of `removeStalePerObjectSpecsClassFiles`. Sweeping them on their own would leave `SDTPicklistDependencySpecs.cls` calling classes that no longer exist, trading `identifier name is too long` for `variable does not exist` and leaving the user no better off.
+## [3.21.0] - The Picklist Dependency Explorer opens on the find box: the provenance banner, the freshness check, the contents block and both header lines are gone
+
+Closes [#134](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/134).
+
+Four blocks sat between the panel title and the rows: a provenance banner, a table of contents, the scanned-objects path and a generation stamp. Every one of them was a statement *about* the rows rather than a way to reach one, and a reader who opened the panel to look a field up scrolled past all four to get to the find box. The find box is now the first thing the panel draws, and the only thing above the rows is what the ceiling dropped and what the metadata skipped -- the two caveats that say the panel is not showing everything.
+
+### The freshness check went with the banner that was its only entry point
+
+`Check against current metadata` lived in the provenance banner, and nothing else could start it. Removing the banner would have left the whole path unreachable rather than merely unused, so it is removed outright: the panel's `checkFreshness` message, the host's handler, the in-flight guard, the stored check context, the `applyFreshness` post and the replay that carried a resolved answer across a reveal.
+
+`PicklistDependencyManifestService.resolveManifestFreshness` and the freshness types go with it. **`buildSourceFingerprint` and `collectSourceFingerprintEntries` stay** -- they are what `Generate Picklist Dependency Tests` writes `sourceFingerprint` into `manifest.json` with, and that half was never the check. The manifest schema and its version are unchanged, so an existing manifest still loads and an existing `sourceFingerprint` is still recorded; nothing compares it any more.
+
+Four view model fields go with the rendering: `manifestFreshness`, `manifestFreshnessMessage`, `generatedAt` and `generatorVersion`. `modelSource`, `manifestLoadState`, `manifestLoadMessage`, `manifestFilePath` and `scannedObjectsDirectoryPath` all stay -- the empty state still names them, and it is the one place a metadata preview is still marked as one.
+
+### Dropping the contents means the find box is the whole navigation surface
+
+The contents listed the panel's sections and every object, and clicking an entry scrolled to it. It is gone, along with `registerPanelSection`, `updatePanelSectionLabel`, the section records and `jumpToObject`. The sections it listed still render; only the listing of them does not. On a large org the find box is now the only way to jump to an object, which is the trade this makes.
+
+### A header line that a render reveals cannot make a failed render look finished if there is no header line
+
+`revealHeaderLines` existed because the scanned path, written first, survived a throw in everything below it -- a heading and a path over an empty page reads exactly like a panel that loaded and found nothing. Both lines are out of the shell markup entirely rather than left in it unwritten, so there is nothing to hold back and nothing to hide again on failure. `renderPanelGuarded`, the `rendered` acknowledgement, the `window` error listener and the unhandled-rejection report are all untouched: a panel that cannot draw still replaces its body with a failure notice and still tells the host.
+
+### What is unchanged
+
+Both Apex commands, the run overlay (`applyRunToViewModel` and everything under it, still exported and still tested), the rendering ceiling, the value-query summary, deep links, the record type disclosures, and both panel action allow-lists.
+
+## [3.20.1] - `ts-node` stops shipping to every extension user, and CI now asserts what enters the package
+
+Closes [#121](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/121), and adds the regression guard [#67](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/67) asked for and never got.
+
+`ts-node` was declared in `dependencies`. Nothing in `src/` imports it -- it exists for the `e2e-test` npm script and the `npx ts-node` note in `src/nodeDevelopmentSuppport/fakerjsRecipeParsing.ts`. But the extension is unbundled, so `vsce publish` resolves the production dependency tree and ships it, and every Marketplace install carried it.
+
+It is now a `devDependency`.
+
+### The cost was 4.15 MB, not the 1.6 MB `ts-node` weighs
+
+`ts-node` declares `typescript` as a peer dependency, so the whole compiler was resolved into the production tree behind it. Measured on this tree, packaging the same source before and after:
+
+| | Files (`vsce package`) | Paths (`vsce ls`) | `.vsix` |
+|---|---|---|---|
+| Before | 2,916 | 2,914 | 11.66 MB |
+| After | 2,722 | 2,720 | 7.51 MB |
+
+Both counts are given because they differ by two and the difference is not a discrepancy: `vsce package` also writes `extension.vsixmanifest` and `[Content_Types].xml`, which `vsce ls` does not list. The removal is **194 paths** on either measure.
+
+194 paths and 20.4 MB uncompressed leave the package: `ts-node` (84 files), `typescript` (30), and the transitives unique to them -- `acorn`, `acorn-walk`, `@cspotcode/source-map-support`, `@jridgewell/*`, `arg`, `create-require`, `make-error`, `v8-compile-cache-lib`, `yn`, `@tsconfig/*`, `@types/node`, `undici-types`. Nothing is added.
+
+Every bare `require()` in the shipped `out/**` still resolves from inside the packaged `.vsix`, and all nine commands are still declared in the packaged manifest and registered in `out/extension.js`.
+
+### The guard is computed, so it is not a file people regenerate without reading
+
+`vsce ls` runs in CI after compile, and `.github/workflowScripts/checkPackagedPaths.js` makes three assertions over the result:
+
+1. **Every packaged path's first segment is one of eight checked-in names** -- `CHANGELOG.md`, `LICENSE`, `README.md`, `apexPicklistDependencyFramework`, `images`, `node_modules`, `out`, `package.json`. This is the `#67` class of leak: `.sfdx/` carrying an `apex.db` and the whole StandardApexLibrary, `.sf/orgs/<ORG_ID>/` naming the packaging developer's org, plus `docs/`, `coverage/`, `treecipe/` and `src/`. `.vscodeignore` excludes all of them today; nothing noticed when it stopped.
+2. **Every key in `dependencies` is `require`d from some packaged `out/**` file.** This is the assertion that fails on `ts-node`, and it is the reason the guard is not a snapshot: a genuine runtime dependency is imported by construction, so adding one needs no edit here, while a build-only tool placed in `dependencies` is never imported and is caught the first time CI runs.
+3. **Every bare `require()` in packaged output is a Node builtin, `vscode`, or declared in `dependencies`.** The other direction -- shipped code reaching for something only `devDependencies` install resolves on a contributor's machine and throws on a user's.
+
+A checked-in list of all 2,720 paths would catch more, and would have to be regenerated by hand on every transitive bump. Only the eight top-level names are checked in; the dependency half is derived from the compiled output on every run.
+
+**It is scanned off the packaged list, not off disk.** `.vscodeignore` removes `out/**/tests/**`, so the `require("jest-extended")` calls under it never ship. Walking `out/` on disk would report a runtime `devDependency` leak that does not exist -- which is exactly the false positive that made this worth checking before believing.
+
+The listing is written to the runner temp directory rather than the workspace, because `vsce` packages the working directory rather than the git index, and a `vsce-ls.txt` left behind would be an unexpected top-level path in the next run.
+
+### The reader is contained, and every read that can fail says so
+
+`resolveContainedWorkspacePath` rejects an absolute path outright and resolves through `realpathSync` before requiring the result to sit under the workspace root, so the **symlink** half is covered and not only the lexical half -- `readFileSync` follows a symlink that `vsce ls` lists as a plain file. A path that escapes is reported as unread rather than opened. This is the same containment the extension applies to any manifest path it opens; `vsce ls` never emits a `..`, and the property is worth holding independently of the current absence of a producer that would exercise it.
+
+A listed file that is missing still resolves lexically, so it is reported as **missing** rather than as an escape -- two different facts that should not collapse into one message. The listing read, the manifest parse and every source read return a diagnostic instead of a stack trace, and unread-path reports are emitted **ahead of** the assertions: a file that was not read contributed no requires, so assertion 2 would otherwise blame the dependency rather than the unread file.
+
+Comments are stripped before the require scan, because a dependency named only in a comment would keep assertion 2 green for something nothing loads -- which is how #121 stayed hidden. Block comments and whole-line `//` comments go; a **trailing** `//` deliberately does not, since a `//` inside a string (`"https://..."`) would truncate the rest of a real line and turn a false positive into a false negative, the worse direction. A require written inside a string literal is therefore still counted, and a test pins that rather than leaving it to be rediscovered.
+
+### What this deliberately does not do
+
+Bundling with esbuild or webpack would cut the package far more than 4.15 MB and is the standard VS Code recommendation, but it is a build-system change with its own risk and belongs in its own issue. `vsce publish --no-dependencies` would ship a broken extension while the code is unbundled. `@faker-js/faker` (9.7 MB) and `@salesforce/core` (2.2 MB) stay -- both are genuinely required at runtime, as assertion 2 now proves rather than assumes.
+
 ## [3.20.0] - The Explorer answers "what does this controlling value unlock", instead of leaving the reader to find the row that says so
 
 Closes [#127](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/127).

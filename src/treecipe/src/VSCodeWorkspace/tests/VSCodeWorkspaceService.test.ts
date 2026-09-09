@@ -1596,11 +1596,22 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
     
         test('given no directories with dataset substring, should not return non-dataset directories', async () => {
 
-            const mockReaddir = jest.fn().mockResolvedValue([
+            /*
+                Through jest.spyOn rather than by assigning to fs.promises.readdir. An assignment
+                is not restorable: jest resets the module registry between test files, but fs is a
+                CORE module, so every suite in a worker shares one object and restoreMocks only
+                puts back what jest.spyOn registered.
+
+                This canned answer is the worst possible one to leave behind -- two entries, both
+                directories, for every path ever read. DirectoryProcessor.processDirectory descends
+                into every directory it is handed, so the walk in RelationshipService.test.ts's
+                beforeAll branched forever and exhausted the worker's heap whenever jest scheduled
+                that suite onto this one's worker.
+            */
+            jest.spyOn(fs.promises, 'readdir').mockResolvedValue([
                 { name: 'other1', isDirectory: () => true },
                 { name: 'other2', isDirectory: () => true }
-            ]);
-            fs.promises.readdir = mockReaddir;
+            ] as unknown as fs.Dirent[]);
     
             const quickPickItems: vscode.QuickPickItem[] = [];
             const directoryPath = '/mock/directory/path';

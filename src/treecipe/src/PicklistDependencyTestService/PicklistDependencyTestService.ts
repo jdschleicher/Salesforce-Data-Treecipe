@@ -261,8 +261,36 @@ export interface IMergedTestSuiteContent {
 
 export interface IFrameworkScaffoldResult {
     scaffoldedClassNames: string[];
+    /*
+        Framework classes that were ALREADY in the workspace and have been overwritten with the
+        version this extension generates against. Kept apart from scaffoldedClassNames because the
+        two are not the same news: adding a missing file takes nothing away, and this replaces a
+        file the user already had.
+
+        PATHS rather than names, because the warning built from them tells the user to go look at
+        these in their diff -- and a refresh writes to whichever path held the class, so naming one
+        directory for all of them would send a reader to the wrong place for a legacy-root copy.
+    */
+    refreshedClassFilePaths: string[];
+    /*
+        Classes whose .cls was current but whose .cls-meta.xml had gone missing and was written back.
+        Reported because the summary names what the run WROTE, and this is a file appearing in the
+        user's diff -- but kept apart from a refresh, which replaces something rather than restoring
+        a missing half.
+    */
+    restoredMetaXmlClassNames: string[];
     // FRAMEWORK CLASSES NEITHER ALREADY IN THE WORKSPACE NOR AVAILABLE TO COPY FROM THE EXTENSION
     unavailableClassNames: string[];
+    /*
+        The three ways a class can be left NOT at the version the generated specs call. All three
+        mean the same thing to a deploy -- it may not compile -- and differ only in what the user
+        has to do about it, so they are reported together and separately from the successes.
+    */
+    symlinkedClassNames: string[];
+    // PRESENT AT BOTH THE FRAMEWORK DIRECTORY AND THE CLASSES ROOT -- A DUPLICATE ApexClass
+    duplicatedClassNames: string[];
+    // THE COPY ITSELF THREW: A READ-ONLY CHECKOUT, OR A LOCK HELD BY ANOTHER PROCESS
+    refreshFailedClassNames: string[];
 }
 
 /*
@@ -279,6 +307,12 @@ export interface IPicklistDependencyGenerationSummaryDetail {
     manifestFilePath: string;
     recordTypeSpecCount: number;
     scaffoldedClassNames: string[];
+    // FRAMEWORK CLASSES THE RUN OVERWROTE RATHER THAN ADDED -- SEE scaffoldMissingFrameworkClasses
+    refreshedClassNames: string[];
+    // CLASSES WHOSE MISSING .cls-meta.xml WAS WRITTEN BACK
+    restoredMetaXmlClassNames: string[];
+    // CLASSES LEFT BEHIND THE VERSION THE SPECS CALL, WITH THE REASON THEY WERE
+    frameworkClassesNotUpdated: string[];
     // BASE NAMES RATHER THAN FULL PATHS: THE DIRECTORY IS ALREADY ITS OWN BULLET
     removedStaleClassFileNames: string[];
 }
@@ -326,14 +360,40 @@ export class PicklistDependencyTestService {
     private static maximumApexClassNameLength = 40;
 
     /*
-        Class names this command generated under its previous naming, checked for so a user
-        upgrading from 2.12.x-2.14.x is told what to delete rather than silently ending up with
-        two frameworks deployed side by side.
+        Class names this command generated under its previous namings, checked for so a user
+        upgrading is told what to delete rather than silently ending up with two frameworks deployed
+        side by side.
+
+        There are TWO earlier namings, not one, and covering only the first was a deploy failure:
+        2.12.x-2.14.x emitted the SFTreecipe-prefixed pair, and 3.0.0 passed through
+        SDTPicklistDependencySpecs before the 40-character limit forced the move to SDTPLDSpecs.
+        A workspace can therefore hold three generations of this family while only two were
+        recognised -- and the unrecognised one is the one that CANNOT COMPILE, since
+        "SDTPicklistDependencySpecs_" spends 27 of the 40 characters before the object name begins.
     */
     private static legacySpecsClassNames: string[] = [
         'SFTreecipePicklistDependencySpecs',
-        'SFTreecipePicklistDependencySpecsTest'
+        'SFTreecipePicklistDependencySpecsTest',
+        'SDTPicklistDependencySpecs',
+        'SDTPicklistDependencySpecsTest'
     ];
+
+    /*
+        The per-object classes of the 3.0.0 intermediate naming. Their object api name is variable,
+        so unlike the aggregator and test class above they cannot be checked for by name -- the
+        classes directory is read instead.
+
+        Deliberately NOT part of removeStalePerObjectSpecsClassFiles, which sweeps the CURRENT
+        naming. These are reported alongside their aggregator and deleted with it or not at all: the
+        aggregator calls every one of them, so removing the per-object classes on their own would
+        replace "identifier name is too long" with "variable does not exist" and leave the user
+        no better off.
+    */
+    private static legacyPerObjectSpecsClassFilePattern = /^SDTPicklistDependencySpecs_[A-Za-z0-9_]+\.cls$/;
+
+    static isLegacyPerObjectSpecsClassFileName(fileName: string): boolean {
+        return this.legacyPerObjectSpecsClassFilePattern.test(fileName);
+    }
 
     private static legacyFrameworkDirectoryName = 'PicklistDependencyFramework';
 
@@ -558,6 +618,30 @@ export class PicklistDependencyTestService {
         if ( summaryDetail.scaffoldedClassNames.length > 0 ) {
             whatHappenedBullets.push(
                 `Scaffolded the required framework class(es): ${summaryDetail.scaffoldedClassNames.map(asCode).join(', ')}.`
+            );
+        }
+
+        if ( summaryDetail.restoredMetaXmlClassNames.length > 0 ) {
+            whatHappenedBullets.push(
+                `Restored the missing \`.cls-meta.xml\` for ${summaryDetail.restoredMetaXmlClassNames.map(asCode).join(', ')} -- `
+                + `a class without one does not deploy at all.`
+            );
+        }
+
+        if ( summaryDetail.frameworkClassesNotUpdated.length > 0 ) {
+            whatHappenedBullets.push(
+                `**Could not bring ${summaryDetail.frameworkClassesNotUpdated.length} framework class(es) up to date**: `
+                + `${summaryDetail.frameworkClassesNotUpdated.map(asCode).join(', ')}. `
+                + `The generated specs call the framework directly, so the deploy may fail to compile until these are resolved.`
+            );
+        }
+
+        if ( summaryDetail.refreshedClassNames.length > 0 ) {
+            whatHappenedBullets.push(
+                `**Overwrote** ${summaryDetail.refreshedClassNames.length} framework class(es) that differed from the version these specs are `
+                + `generated against: ${summaryDetail.refreshedClassNames.map(asCode).join(', ')}. `
+                + `The generated Apex calls the framework directly, so a copy from an earlier Treecipe version fails to compile -- `
+                + `review these in your diff alongside the generated classes.`
             );
         }
 
@@ -3609,11 +3693,61 @@ ${testMethods}
 
         });
 
+        legacyArtifactPaths.push(...this.findLegacyPerObjectSpecsClassFilePaths(classesDirectoryPath));
+
         return legacyArtifactPaths;
 
     }
 
+    /*
+        The per-object classes of the 3.0.0 naming, found by reading the directory rather than by
+        name -- an object api name is variable, so there is no name to check for.
+
+        Sorted so the warning reads the same on every machine, for the same reason
+        findStalePerObjectSpecsClassFilePaths is. An unreadable classes directory yields nothing
+        rather than raising: this reports on cleanup AFTER a successful generation, and failing the
+        run over a directory listing would discard a report on Apex that is already written.
+    */
+    static findLegacyPerObjectSpecsClassFilePaths(classesDirectoryPath: string): string[] {
+
+        if ( !fs.existsSync(classesDirectoryPath) ) {
+            return [];
+        }
+
+        try {
+
+            return fs.readdirSync(classesDirectoryPath)
+                .filter(fileName => this.isLegacyPerObjectSpecsClassFileName(fileName))
+                .sort()
+                .map(fileName => path.join(classesDirectoryPath, fileName));
+
+        } catch {
+            return [];
+        }
+
+    }
+
+    /*
+        A VS Code notification is one run of unformatted text that truncates, and the actionable half
+        of this warning -- what to delete from the ORG, and why a per-object class fails the deploy --
+        sits at the END of it. Before the per-object classes were detected, the path list was bounded
+        at five entries; it is now a directory listing, so a workspace holding one legacy class per
+        object puts hundreds of paths ahead of the part the reader needs. The enumeration is capped
+        and the remainder counted, which keeps the message a fixed size regardless of org.
+
+        The paths are not the payload anyway: they share one directory, which the enumerated few
+        already show.
+    */
+    private static maximumEnumeratedLegacyArtifactPaths = 10;
+
     static buildLegacyArtifactWarning(legacyArtifactPaths: string[]): string {
+
+        const enumeratedPaths = legacyArtifactPaths.slice(0, this.maximumEnumeratedLegacyArtifactPaths);
+        const unenumeratedPathCount = legacyArtifactPaths.length - enumeratedPaths.length;
+
+        const legacyArtifactSummary = unenumeratedPathCount > 0
+                                        ? `${enumeratedPaths.join(', ')} and ${unenumeratedPathCount} more`
+                                        : enumeratedPaths.join(', ');
 
         const legacyOrgClassNames = [
             ...this.legacySpecsClassNames,
@@ -3625,9 +3759,17 @@ ${testMethods}
             'SchemaPicklistDependencySource'
         ];
 
-        return `Picklist dependency classes from an earlier Treecipe version are still in this project: ${legacyArtifactPaths.join(', ')}. `
+        /*
+            The 40-character note is not a footnote: a SDTPicklistDependencySpecs_<Object> class
+            does not merely duplicate the framework, it FAILS THE DEPLOY of everything alongside it
+            with "identifier name is too long". A user reading that error in their deploy output has
+            no way to know it names a class this extension stopped generating.
+        */
+        return `Picklist dependency classes from an earlier Treecipe version are still in this project: ${legacyArtifactSummary}. `
             + `They have been left in place. Delete them locally, and delete these classes from any org they were deployed to, `
-            + `so the renamed SDT classes do not sit alongside a second copy of the framework: ${legacyOrgClassNames.join(', ')}.`;
+            + `so the renamed SDT classes do not sit alongside a second copy of the framework: ${legacyOrgClassNames.join(', ')}. `
+            + `Delete any "SDTPicklistDependencySpecs_<Object>" class together with the "SDTPicklistDependencySpecs" aggregator that calls it -- `
+            + `that prefix exceeds the 40-character Apex class name limit, so leaving one behind fails the deploy of the classes generated now.`;
 
     }
 
@@ -3672,29 +3814,69 @@ ${testMethods}
     }
 
     /*
-        Copies only the framework classes the workspace is missing so a user who has already
-        deployed or customized them keeps their copy. Anything that could not be supplied is
-        reported back rather than swallowed -- the generated specs class does not compile without
-        the framework, so silently skipping a class would hand the user a broken file with no
-        indication of why.
+        Brings the workspace's framework classes up to the version this extension generates against.
+
+        Adding the missing ones is not enough, and that gap was a deploy failure rather than a
+        nicety: the framework is NOT frozen -- SDTPicklistDependencySpec gained forRecordType and
+        expectUnavailable in 3.2.0, SDTPicklistDependencyValidator changed in 3.4.0 -- while
+        buildSpecStatement emits calls against whatever the CURRENT extension knows. A copy
+        scaffolded by an earlier version stayed untouched forever, so generation happily wrote
+        "SDTPicklistDependencySpec.forRecordType(...)" against a class with no such method and the
+        first thing to notice was the org, reporting it against the GENERATED class rather than the
+        stale one it could not resolve.
+
+        So the six SDT-prefixed framework classes are owned by this extension, per the prefix rule:
+        a class in your package directory starting with SDT was put there by Salesforce Data
+        Treecipe, and one that differs from the shipped source is refreshed rather than preserved.
+        That is reported back separately from a scaffold and warned about loudly -- it is the one
+        thing this command does that can discard something a user wrote.
+
+        The .cls-meta.xml of a class already present is deliberately NOT rewritten: it carries
+        apiVersion, and resetting a deliberate bump is a change to how the class deploys that has
+        nothing to do with the compile error this exists to prevent. A meta xml that is MISSING
+        beside a present .cls is still written, since without it the class does not deploy at all.
+
+        Anything that could not be supplied is reported back rather than swallowed -- the generated
+        specs class does not compile without the framework, so silently skipping a class would hand
+        the user a broken file with no indication of why.
     */
     static scaffoldMissingFrameworkClasses(extensionPath: string, classesDirectoryPath: string): IFrameworkScaffoldResult {
 
         const shippedFrameworkClassesPath = path.join(extensionPath, 'apexPicklistDependencyFramework', this.frameworkDirectoryName);
 
         let scaffoldedClassNames: string[] = [];
+        let refreshedClassFilePaths: string[] = [];
+        let restoredMetaXmlClassNames: string[] = [];
         let unavailableClassNames: string[] = [];
+        let symlinkedClassNames: string[] = [];
+        let duplicatedClassNames: string[] = [];
+        let refreshFailedClassNames: string[] = [];
 
         const shippedFrameworkClassesExist = fs.existsSync(shippedFrameworkClassesPath);
 
         const frameworkDirectoryPath = this.getFrameworkDirectoryPath(classesDirectoryPath);
 
         fs.mkdirSync(classesDirectoryPath, { recursive: true });
+
+        /*
+            A symlinked framework DIRECTORY redirects all six writes at once, and a per-file check
+            below cannot see it -- a .cls inside a linked directory is not itself a link. Checked
+            before the mkdir, which succeeds on a link to an existing directory and would leave the
+            redirect in place.
+        */
+        if ( this.isSymbolicLinkPath(frameworkDirectoryPath) ) {
+            return {
+                scaffoldedClassNames, refreshedClassFilePaths, restoredMetaXmlClassNames,
+                unavailableClassNames, duplicatedClassNames, refreshFailedClassNames,
+                symlinkedClassNames: [...this.frameworkClassNames]
+            };
+        }
+
         fs.mkdirSync(frameworkDirectoryPath, { recursive: true });
 
         this.frameworkClassNames.forEach(frameworkClassName => {
 
-            const targetClassFilePath = path.join(frameworkDirectoryPath, `${frameworkClassName}.cls`);
+            const frameworkDirectoryClassFilePath = path.join(frameworkDirectoryPath, `${frameworkClassName}.cls`);
 
             /*
                 A copy already sitting at the classes root is honoured too. Earlier versions scaffolded
@@ -3703,26 +3885,268 @@ ${testMethods}
             */
             const legacyClassFilePath = path.join(classesDirectoryPath, `${frameworkClassName}.cls`);
 
-            if ( fs.existsSync(targetClassFilePath) || fs.existsSync(legacyClassFilePath) ) {
+            const frameworkDirectoryCopyExists = fs.existsSync(frameworkDirectoryClassFilePath);
+            const legacyRootCopyExists = fs.existsSync(legacyClassFilePath);
+
+            /*
+                BOTH paths populated is its own outcome, not a preference to resolve.
+
+                Picking one and refreshing it leaves the other stale, and reports the class as
+                handled while the deploy still fails with "Duplicate ApexClass" -- a success message
+                in front of a broken deploy. Refreshing both would not help either: two files
+                declaring one class is a deploy failure whatever they contain. Only deleting one
+                fixes it, and which one to keep is the user's call, so this reports and stands down.
+            */
+            if ( frameworkDirectoryCopyExists && legacyRootCopyExists ) {
+                duplicatedClassNames.push(frameworkClassName);
                 return;
             }
+
+            const existingClassFilePath = frameworkDirectoryCopyExists
+                                            ? frameworkDirectoryClassFilePath
+                                            : ( legacyRootCopyExists ? legacyClassFilePath : undefined );
 
             const sourceClassFilePath = path.join(shippedFrameworkClassesPath, `${frameworkClassName}.cls`);
             const sourceMetaFilePath = `${sourceClassFilePath}-meta.xml`;
 
             // BOTH FILES ARE CHECKED UP FRONT SO A MISSING META XML CANNOT LEAVE AN ORPHANED CLASS FILE BEHIND
-            if ( !shippedFrameworkClassesExist || !fs.existsSync(sourceClassFilePath) || !fs.existsSync(sourceMetaFilePath) ) {
-                unavailableClassNames.push(frameworkClassName);
+            const shippedClassIsAvailable = shippedFrameworkClassesExist
+                                                && fs.existsSync(sourceClassFilePath)
+                                                && fs.existsSync(sourceMetaFilePath);
+
+            if ( existingClassFilePath === undefined ) {
+
+                /*
+                    Reported unavailable only when the class is ABSENT. A class already in the
+                    workspace that this extension cannot compare against is still a class the
+                    generated code can compile against, and calling it unavailable would raise a
+                    blocker for a workspace that has none.
+                */
+                if ( !shippedClassIsAvailable ) {
+                    unavailableClassNames.push(frameworkClassName);
+                    return;
+                }
+
+                /*
+                    A DANGLING symlink reads as absent to existsSync, so without this the "nothing
+                    is here yet" branch would create the file the link points at, outside the
+                    workspace.
+                */
+                if ( this.isSymbolicLinkPath(frameworkDirectoryClassFilePath)
+                        || this.isSymbolicLinkPath(`${frameworkDirectoryClassFilePath}-meta.xml`) ) {
+                    symlinkedClassNames.push(frameworkClassName);
+                    return;
+                }
+
+                try {
+
+                    fs.copyFileSync(sourceClassFilePath, frameworkDirectoryClassFilePath);
+                    fs.copyFileSync(sourceMetaFilePath, `${frameworkDirectoryClassFilePath}-meta.xml`);
+                    scaffoldedClassNames.push(frameworkClassName);
+
+                } catch {
+                    refreshFailedClassNames.push(frameworkClassName);
+                }
+
+                return;
+
+            }
+
+            if ( !shippedClassIsAvailable ) {
                 return;
             }
 
-            fs.copyFileSync(sourceClassFilePath, targetClassFilePath);
-            fs.copyFileSync(sourceMetaFilePath, `${targetClassFilePath}-meta.xml`);
-            scaffoldedClassNames.push(frameworkClassName);
+            /*
+                Refused before the class is even READ: following the link to compare it and then
+                writing through it is the whole defect, and reading it also reports a file outside
+                the workspace as this extension's to overwrite.
+            */
+            if ( this.isSymbolicLinkPath(existingClassFilePath) ) {
+                symlinkedClassNames.push(frameworkClassName);
+                return;
+            }
+
+            const existingMetaFilePath = `${existingClassFilePath}-meta.xml`;
+
+            /*
+                A .cls whose meta xml went missing does not deploy, so the meta is restored even
+                though a meta already there is left alone. Reported, because the summary names what
+                the run wrote and this is a file appearing in the user's diff.
+            */
+            if ( !fs.existsSync(existingMetaFilePath) && !this.isSymbolicLinkPath(existingMetaFilePath) ) {
+
+                try {
+                    fs.copyFileSync(sourceMetaFilePath, existingMetaFilePath);
+                    restoredMetaXmlClassNames.push(frameworkClassName);
+                } catch {
+                    refreshFailedClassNames.push(frameworkClassName);
+                    return;
+                }
+
+            }
+
+            /*
+                An unreadable SHIPPED source is not evidence the workspace copy is stale, so it
+                leaves the copy alone -- the same posture unavailableClassNames encodes. Only an
+                unreadable EXISTING copy counts as out of date, per readFrameworkClassContent.
+            */
+            const shippedClassContent = this.readFrameworkClassContent(sourceClassFilePath);
+            if ( shippedClassContent === undefined ) {
+                return;
+            }
+
+            if ( !this.isFrameworkClassOutOfDate(existingClassFilePath, shippedClassContent) ) {
+                return;
+            }
+
+            /*
+                Per class rather than around the loop. These are the first writes this command makes
+                over files that already exist -- a read-only checkout, or a lock held on Windows --
+                and a throw escaping here would abandon the run AFTER replacing some of them, losing
+                the very list the overwrite warning is built from. The Apex, the suite and the
+                manifest are already on disk by this point, so a failure to refresh one class is
+                reported rather than allowed to discard the report on everything else.
+            */
+            try {
+                fs.copyFileSync(sourceClassFilePath, existingClassFilePath);
+                refreshedClassFilePaths.push(existingClassFilePath);
+            } catch {
+                refreshFailedClassNames.push(frameworkClassName);
+            }
 
         });
 
-        return { scaffoldedClassNames, unavailableClassNames };
+        return {
+            scaffoldedClassNames, refreshedClassFilePaths, restoredMetaXmlClassNames,
+            unavailableClassNames, symlinkedClassNames, duplicatedClassNames, refreshFailedClassNames
+        };
+
+    }
+
+    /*
+        One warning for every class this run could not bring up to date, whatever stopped it.
+
+        Built here rather than in the command for the reason the generation summary is: three
+        separate toasts for three reasons describe one run three times, and VS Code stacks them.
+        They share a headline -- the generated specs call the framework directly, so the deploy may
+        not compile -- and differ only in the remedy, which is one clause each.
+
+        Returns an empty string when nothing was left behind, so the caller can test it directly.
+    */
+    static buildFrameworkClassesNotUpdatedWarning(frameworkScaffoldResult: IFrameworkScaffoldResult): string {
+
+        let reasonClauses: string[] = [];
+
+        if ( frameworkScaffoldResult.symlinkedClassNames.length > 0 ) {
+            reasonClauses.push(
+                `${frameworkScaffoldResult.symlinkedClassNames.join(', ')} are symbolic links and were left untouched -- `
+                + `writing through a link would overwrite whatever it points at. Replace them with real files.`
+            );
+        }
+
+        if ( frameworkScaffoldResult.duplicatedClassNames.length > 0 ) {
+            reasonClauses.push(
+                `${frameworkScaffoldResult.duplicatedClassNames.join(', ')} exist BOTH in the `
+                + `"${this.frameworkDirectoryName}" folder and directly in the classes folder. Two files declaring one class `
+                + `is a "Duplicate ApexClass" deploy failure whatever they contain, so nothing was written to either. `
+                + `Delete whichever copy you do not want to keep.`
+            );
+        }
+
+        if ( frameworkScaffoldResult.refreshFailedClassNames.length > 0 ) {
+            reasonClauses.push(
+                `${frameworkScaffoldResult.refreshFailedClassNames.join(', ')} could not be written -- `
+                + `the file may be read-only or held open by another process.`
+            );
+        }
+
+        if ( reasonClauses.length === 0 ) {
+            return '';
+        }
+
+        return `Some picklist dependency framework class(es) are NOT at the version the generated specs are written against, `
+            + `so the deploy may fail to compile until they are resolved. ${reasonClauses.join(' ')}`;
+
+    }
+
+    /*
+        Every class the run left behind the version the specs call, in one list.
+
+        The three reasons are distinct to the WARNING, which says what to do about each, and the
+        same to the SUMMARY, which counts what the run did not manage. Derived once here so the two
+        cannot disagree about how many there were.
+    */
+    static getFrameworkClassesNotUpdated(frameworkScaffoldResult: IFrameworkScaffoldResult): string[] {
+        return [
+            ...frameworkScaffoldResult.symlinkedClassNames,
+            ...frameworkScaffoldResult.duplicatedClassNames,
+            ...frameworkScaffoldResult.refreshFailedClassNames
+        ];
+    }
+
+    /*
+        Whether a path is a symlink, without following it.
+
+        This exists because refreshing made the framework path DESTRUCTIVE. copyFileSync follows a
+        destination symlink and truncates whatever it points at, so a workspace whose
+        SDTPicklistDependencySpec.cls is a link to a file outside the project would have had that
+        file overwritten with shipped Apex. It was inert before: an existing file caused an early
+        return, so nothing was written through anything.
+
+        The containment checks upstream do not answer this. They resolve the CLASSES directory,
+        which realpaths inside the workspace exactly as it should -- it is the leaf, and the
+        framework subdirectory below it, that can each redirect on their own.
+
+        lstatSync throws on a path that is not there at all, which is not a symlink, so the failure
+        is the negative answer rather than an error.
+    */
+    static isSymbolicLinkPath(filePath: string): boolean {
+
+        try {
+            return fs.lstatSync(filePath).isSymbolicLink();
+        } catch {
+            return false;
+        }
+
+    }
+
+    /*
+        A framework class file's content, or undefined when it cannot be read.
+
+        The two callers want OPPOSITE answers from a read failure, which is why this reports the
+        failure rather than deciding for them: an unreadable copy in the WORKSPACE is treated as out
+        of date, since the copy that follows fails loudly and with a better message than a read here
+        could give; an unreadable SHIPPED source means there is nothing to compare against and
+        nothing to copy from, so the workspace keeps what it has. Answering both with "out of date"
+        -- which one try block spanning both reads does -- sends the second case into a copyFileSync
+        from the very file that could not be read, failing the whole command.
+    */
+    static readFrameworkClassContent(filePath: string): string | undefined {
+
+        try {
+            return fs.readFileSync(filePath, 'utf-8');
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    /*
+        Whether the workspace's copy of a framework class differs from the one this extension ships.
+
+        Compared without line endings for the reason buildPlannedSpecsFile documents: on Windows a
+        CRLF checkout would otherwise differ from the LF source on every run, and this command would
+        rewrite all six framework classes every time it was invoked.
+    */
+    static isFrameworkClassOutOfDate(existingClassFilePath: string, shippedClassContent: string): boolean {
+
+        const existingContent = this.readFrameworkClassContent(existingClassFilePath);
+
+        if ( existingContent === undefined ) {
+            return true;
+        }
+
+        return this.normalizeLineEndingsForComparison(existingContent) !== this.normalizeLineEndingsForComparison(shippedClassContent);
 
     }
 

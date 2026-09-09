@@ -4,17 +4,59 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			// Since #137 the build is two watchers, because esbuild strips types without checking
+			// them and tsc no longer emits. VS Code runs them in parallel itself, so the Problems
+			// panel still fills from the tsc half without a "concurrently" dependency.
+			"label": "watch",
+			"dependsOn": ["npm: watch", "npm: watch:typecheck"],
+			"dependsOrder": "parallel",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": []
+		},
+		{
 			"type": "npm",
 			"script": "watch",
+			// launch.json runs the default build task as preLaunchTask, and VS Code only knows a
+			// BACKGROUND task's first run finished if a matcher tells it. With none it either
+			// refuses to track the task or launches the host without waiting -- and esbuild.js
+			// clears out/ before starting the watcher, so F5 could reach a missing bundle.
+			// There is no built-in esbuild matcher, so this keys on esbuild's own watch output:
+			//   [watch] build started / [watch] build finished, watching for changes...
+			// Errors themselves still surface from the tsc half, which owns typechecking.
+			"problemMatcher": [
+				{
+					"pattern": [
+						{
+							"regexp": "^\\s*(✘|▲)\\s+\\[(ERROR|WARNING)\\]\\s+(.*)$",
+							"severity": 2,
+							"message": 3
+						}
+					],
+					"background": {
+						"activeOnStart": true,
+						"beginsPattern": "^\\[watch\\] build started",
+						"endsPattern": "^\\[watch\\] build finished"
+					}
+				}
+			],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "never"
+			},
+			"group": "build"
+		},
+		{
+			"type": "npm",
+			"script": "watch:typecheck",
 			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never"
 			},
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			}
+			"group": "build"
 		},
 		{
             "label": "CUSTOM: CREATE SUMMARY FILES - CLEAN JEST TESTS RUN AND CREATE TEST SUMMARY FILES IN 'coverage' FOLDER",
