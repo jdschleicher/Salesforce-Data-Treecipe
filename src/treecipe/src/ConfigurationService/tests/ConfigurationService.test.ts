@@ -5,6 +5,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { ConfigurationService } from '../ConfigurationService';
 
 import * as fs from 'fs';
+import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -16,6 +17,8 @@ jest.mock('vscode', () => ({
                 };
                 return mockConfig[key];
             }),
+            // update RETURNS A THENABLE, AND VS CODE REJECTS IT WHEN THERE IS NO WORKSPACE TO WRITE TO
+            update: jest.fn().mockResolvedValue(undefined),
         })),
     },
     Uri: {
@@ -23,8 +26,10 @@ jest.mock('vscode', () => ({
     },
     window: {
         showErrorMessage: jest.fn(),
+        showWarningMessage: jest.fn(),
         showQuickPick: jest.fn()
     },
+    ConfigurationTarget: { Workspace: 2 },
     ThemeIcon: jest.fn().mockImplementation(
         (name) => ({ id: name })
     )
@@ -99,7 +104,7 @@ describe('Shared ConfigurationService Tests', () => {
                 return 'faker-js';
             });
 
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
             
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
             jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
@@ -138,7 +143,7 @@ describe('Shared ConfigurationService Tests', () => {
                 return 'snowfakery';
             });
 
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
             
             jest.spyOn(fs, 'existsSync').mockReturnValue(false);
             jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
@@ -224,7 +229,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             const actualTreecipeConfiguratoinDetail = ConfigurationService.getTreecipeConfigurationDetail();
             expect(actualTreecipeConfiguratoinDetail.dataFakerService).toBe("snowfakery");
@@ -248,7 +253,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             const actualCompoundAddressFields = ConfigurationService.getCustomCompoundAddressFields();
 
@@ -265,7 +270,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             expect(ConfigurationService.getCustomCompoundAddressFields()).toEqual([]);
 
@@ -285,7 +290,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             expect(() => ConfigurationService.getCustomCompoundAddressFields()).not.toThrow();
             expect(ConfigurationService.getCustomCompoundAddressFields()).toEqual([]);
@@ -302,7 +307,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             expect(ConfigurationService.getCustomCompoundAddressFields()).toEqual(["Site_Address__c", "BillingAddress"]);
 
@@ -329,7 +334,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             const actualMappings = ConfigurationService.getCustomRelationshipMappings();
 
@@ -349,7 +354,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             const actualMappings = ConfigurationService.getCustomRelationshipMappings();
 
@@ -367,7 +372,7 @@ describe('Shared ConfigurationService Tests', () => {
 
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             const actualMappings = ConfigurationService.getCustomRelationshipMappings();
 
@@ -392,7 +397,7 @@ describe('Shared ConfigurationService Tests', () => {
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
             jest.spyOn(fs, 'readFileSync').mockReturnValue(expectedConfigDetailJson);
-            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockReturnValue();
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
 
             const actualConfigurationObjectsPath = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
             expect(actualConfigurationObjectsPath).toBe(mockObjectsPath);
@@ -583,7 +588,76 @@ describe('Shared ConfigurationService Tests', () => {
         });
       });
 
+
+    describe('setExtensionConfigValue', () => {
+
+        const buildWorkspaceConfigurationWithUpdate = (update: jest.Mock) => {
+            (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({ get: jest.fn(), update });
+        };
+
+        it('given the write lands, reports success', async () => {
+
+            const updateMock = jest.fn().mockResolvedValue(undefined);
+            buildWorkspaceConfigurationWithUpdate(updateMock);
+
+            const wasWritten = await ConfigurationService.setExtensionConfigValue('recipeCockpitEnabled', true);
+
+            expect(wasWritten).toBe(true);
+            expect(updateMock).toHaveBeenCalledWith('recipeCockpitEnabled', true, vscode.ConfigurationTarget.Workspace);
+
+        });
+
+        /*
+            THE DEFECT.
+
+            VS Code refuses a workspace write in a window with no folder open, because there is no
+            .vscode/settings.json to write into. The rejection used to be left unawaited, which made
+            it an unhandled rejection: nothing written, nothing reported, and the caller carrying on
+            as though it had been.
+        */
+        it('given the write is rejected, answers false rather than rejecting', async () => {
+
+            buildWorkspaceConfigurationWithUpdate(
+                jest.fn().mockRejectedValue(new Error('Unable to write to Workspace Settings because no workspace is opened.'))
+            );
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            const wasWritten = await ConfigurationService.setExtensionConfigValue('recipeCockpitEnabled', true);
+
+            expect(wasWritten).toBe(false);
+
+        });
+
+        it('given the write is rejected, names the setting and the reason', async () => {
+
+            buildWorkspaceConfigurationWithUpdate(
+                jest.fn().mockRejectedValue(new Error('Unable to write to Workspace Settings because no workspace is opened.'))
+            );
+            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage')
+                .mockImplementation(() => undefined);
+
+            await ConfigurationService.setExtensionConfigValue('recipeCockpitEnabled', true);
+
+            const reportedWarning = String(showWarningMessageSpy.mock.calls[0][0]);
+            expect(reportedWarning).toContain('salesforce-data-treecipe.recipeCockpitEnabled');
+            expect(reportedWarning).toContain('no workspace is opened');
+
+        });
+
+        // A REJECTION THAT IS NOT AN Error STILL HAS TO PRODUCE A READABLE REASON RATHER THAN "[object Object]"
+        it('given the rejection is not an Error, still reports a readable reason', async () => {
+
+            buildWorkspaceConfigurationWithUpdate(jest.fn().mockRejectedValue('settings.json is read-only'));
+            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage')
+                .mockImplementation(() => undefined);
+
+            const wasWritten = await ConfigurationService.setExtensionConfigValue('selectedFakerService', 'faker-js');
+
+            expect(wasWritten).toBe(false);
+            expect(String(showWarningMessageSpy.mock.calls[0][0])).toContain('settings.json is read-only');
+
+        });
+
+    });
+
 });
-
-
-

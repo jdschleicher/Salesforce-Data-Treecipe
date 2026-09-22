@@ -1423,6 +1423,18 @@ export class ExtensionCommandService {
         }
 
         /*
+            No workspace, no cockpit -- the same guard the explorer command uses.
+
+            The cockpit traverses a generated recipe and diffs it against an org, both of which are
+            workspace artifacts, so there is nothing for it to render in a window with no folder
+            open. The flag is workspace-scoped too, so asking first would put a choice in front of
+            someone that there is nowhere to record and nothing to apply it to.
+        */
+        if ( !VSCodeWorkspaceService.getWorkspaceRoot() ) {
+            return false;
+        }
+
+        /*
             Re-shown after the issue list is opened rather than treated as an answer.
 
             A VS Code dialog closes on whichever button is clicked, so opening the issues in a
@@ -1443,7 +1455,17 @@ export class ExtensionCommandService {
             return false;
         }
 
-        ConfigurationService.setExtensionConfigValue('recipeCockpitEnabled', true);
+        /*
+            The panel opens either way: the reader opted in, and a setting that could not be saved
+            is not a reason to refuse them what they just asked for. What it does change is that
+            this workspace will ask again, so it says so rather than letting the warning reappear
+            next time looking like the first time.
+        */
+        const previewFlagWasSaved = await ConfigurationService.setExtensionConfigValue('recipeCockpitEnabled', true);
+
+        if ( !previewFlagWasSaved ) {
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit is enabled for this session, but the preview setting could not be saved to this workspace -- you will be asked again next time.');
+        }
 
         return true;
 
@@ -2125,7 +2147,7 @@ export class ExtensionCommandService {
         try {
 
             let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
-            ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+            await ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
             
             const existingTreecipeConfigDetail:TreecipeConfigDetail = ConfigurationService.getTreecipeConfigurationDetail();
             existingTreecipeConfigDetail.dataFakerService = selectedDataFakerService;

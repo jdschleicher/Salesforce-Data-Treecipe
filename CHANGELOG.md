@@ -14,6 +14,19 @@ The check is in the command handler rather than a `when` clause on the palette e
 
 The flag is written at **workspace** scope through the existing `ConfigurationService` setter, so opting in to the preview in one project says nothing about the next one, and a dismissed warning writes nothing at all.
 
+### A config write that did not land used to say nothing
+
+Closes [#139](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/139), found while building the flag above.
+
+`ConfigurationService.setExtensionConfigValue` left `update()`'s thenable unawaited. VS Code REJECTS that thenable in a window with no folder open -- there is no `.vscode/settings.json` for a workspace-scoped write to go into -- so the failure became an unhandled rejection: nothing written, nothing reported, and the caller carrying on as though it had succeeded. Invisible for a setting nothing reads back, and the whole defect for one a user was just asked to choose. The cockpit opt-in was accepted, dropped, and asked for again next time with nothing said about why.
+
+The setter is now `async`, awaits the write, and answers a boolean, reporting a failure with the setting name and the reason. That is one change at the one place all five call sites go through, rather than five guards.
+
+What the two callers who can act on the answer now do:
+
+- **The cockpit refuses in a window with no workspace folder**, the same guard `Open Picklist Dependency Explorer` already uses. It traverses a generated recipe and diffs it against an org -- both workspace artifacts -- so asking a reader to opt in would put a choice in front of them that there is nowhere to record and nothing to apply it to. And if the write fails for some other reason the panel still opens, because the reader opted in and a setting that could not be saved is no reason to refuse them what they asked for; what it says is that this workspace will ask again.
+- **Activation stops writing where there is nowhere to write.** `useSnowfakeryAsDefault` was set unconditionally on every activation, which is how a user who opened a single file could be warned about a setting they never chose.
+
 ### What the slice actually establishes
 
 A webview is the one part of an extension that cannot be verified by reading it. Its document runs in a separate context under a content security policy the extension does not get told it violated: a script the CSP denies does not fail loudly, it simply never runs, and the panel sits there rendering the markup that surrounded it. So the slice's deliverable is a completed round trip -- the panel's script runs, posts `ready`, the extension host answers `ack`, and the panel rewrites its own status line with what came back. A panel still reading "Connecting to the Treecipe extension host…" is a panel whose script did not run or whose message did not land, and it says so on screen rather than looking finished.
