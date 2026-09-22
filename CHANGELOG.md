@@ -6,6 +6,27 @@ Closes [#53](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/53)
 
 **Salesforce Treecipe: Open Recipe Cockpit** opens a panel that says what it is for and nothing else. That is the point of this release: the cockpit will traverse a generated recipe and diff it against a live org describe, and neither of those is here. What is here is the surface both will render into, proven to work before either has anything to prove it with.
 
+### Nobody meets the cockpit by accident
+
+Every slice of the cockpit ships behind `salesforce-data-treecipe.recipeCockpitEnabled`, and the command is where a workspace opts in: running **Open Recipe Cockpit** the first time shows a modal warning, and nothing opens until it is accepted. The warning says the panel is unfinished on purpose rather than broken, that the switch is scoped to this workspace and reversible from settings, and offers a **View Known Issues** button onto every issue carrying the `recipe-cockpit` label -- which is the link rather than the text beneath it, because a VS Code dialog renders its detail as plain text and has no clickable link in it. Choosing that button re-shows the warning instead of ending the command: a dialog closes on whichever button is clicked, so opening a browser would otherwise leave the reader to re-run the command to answer the question they went to research.
+
+The check is in the command handler rather than a `when` clause on the palette entry. Hiding a command hides it from the palette and from nothing else -- a keybinding, a task or another extension can still execute it by id. Putting the gate where the panel is created is also what makes the later slices need no flag of their own: a cockpit that was never opted in to has no panel, so it has no model built, no message posted and nothing on screen for a panel action to have come from.
+
+The flag is written at **workspace** scope through the existing `ConfigurationService` setter, so opting in to the preview in one project says nothing about the next one, and a dismissed warning writes nothing at all.
+
+### A config write that did not land used to say nothing
+
+Closes [#139](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/139), found while building the flag above.
+
+`ConfigurationService.setExtensionConfigValue` left `update()`'s thenable unawaited. VS Code REJECTS that thenable in a window with no folder open -- there is no `.vscode/settings.json` for a workspace-scoped write to go into -- so the failure became an unhandled rejection: nothing written, nothing reported, and the caller carrying on as though it had succeeded. Invisible for a setting nothing reads back, and the whole defect for one a user was just asked to choose. The cockpit opt-in was accepted, dropped, and asked for again next time with nothing said about why.
+
+The setter is now `async`, awaits the write, and answers a boolean, reporting a failure with the setting name and the reason. That is one change at the one place all five call sites go through, rather than five guards.
+
+What the two callers who can act on the answer now do:
+
+- **The cockpit refuses in a window with no workspace folder**, the same guard `Open Picklist Dependency Explorer` already uses, and that guard runs BEFORE the flag is read. The flag is written at workspace scope but read through the merged configuration -- default, then user, then workspace -- and it is contributed in `package.json`, so a reader who set it once at User scope would otherwise carry it into a folderless window and be handed a cockpit with no recipe to traverse. Checking the workspace first is what makes "no workspace, no cockpit" true for every reader rather than only for the ones who have not opted in yet. The cockpit traverses a generated recipe and diffs it against an org -- both workspace artifacts -- so asking a reader to opt in there would put a choice in front of them that there is nowhere to record and nothing to apply it to. And if the write fails for some other reason the panel still opens, because the reader opted in and a setting that could not be saved is no reason to refuse them what they asked for; what it says is that this workspace will ask again.
+- **Activation stops writing where there is nowhere to write.** `useSnowfakeryAsDefault` was set unconditionally on every activation, which is how a user who opened a single file could be warned about a setting they never chose.
+
 ### What the slice actually establishes
 
 A webview is the one part of an extension that cannot be verified by reading it. Its document runs in a separate context under a content security policy the extension does not get told it violated: a script the CSP denies does not fail loudly, it simply never runs, and the panel sits there rendering the markup that surrounded it. So the slice's deliverable is a completed round trip -- the panel's script runs, posts `ready`, the extension host answers `ack`, and the panel rewrites its own status line with what came back. A panel still reading "Connecting to the Treecipe extension host…" is a panel whose script did not run or whose message did not land, and it says so on screen rather than looking finished.

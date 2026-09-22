@@ -15,6 +15,7 @@ export interface ExtensionConfig {
     selectedFakerService?: string;
     treecipeConfigurationPath?: string;
     useSnowfakeryAsDefault: boolean;
+    recipeCockpitEnabled?: boolean;
 }
 
 export interface TreecipeConfigDetail {
@@ -35,10 +36,35 @@ export class ConfigurationService {
     
     }
 
-    static setExtensionConfigValue<K extends keyof ExtensionConfig>( key: K, value: ExtensionConfig[K]) {
+    /*
+        Writes a setting at WORKSPACE scope, and answers whether it landed.
+
+        update() returns a thenable that REJECTS -- VS Code refuses a workspace write in a window
+        with no folder open, because there is no .vscode/settings.json to write into. Leaving that
+        thenable unawaited made every failure an unhandled rejection: nothing was written, nothing
+        was reported, and the caller carried on as though it had been. That is invisible for a
+        setting nothing reads back, and it is the whole defect for one a user was asked to choose:
+        the cockpit's preview opt-in was accepted, dropped, and asked for again next time.
+
+        The boolean is what a caller acts on. The warning here names the setting and the reason for
+        the callers that cannot -- a write buried in a path with nothing to say to the user.
+    */
+    static async setExtensionConfigValue<K extends keyof ExtensionConfig>( key: K, value: ExtensionConfig[K]): Promise<boolean> {
 
         const vsCodeWorkspaceConfig = vscode.workspace.getConfiguration(this.configSection);
-        vsCodeWorkspaceConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+
+        try {
+
+            await vsCodeWorkspaceConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+            return true;
+
+        } catch(error) {
+
+            const failureReason = error instanceof Error ? error.message : String(error);
+            VSCodeWorkspaceService.showWarningMessage(`"${this.configSection}.${String(key)}" could not be saved to this workspace's settings: ${failureReason}`);
+            return false;
+
+        }
 
     }
 
@@ -106,7 +132,12 @@ export class ConfigurationService {
             const configurationDirectory = this.getDefaultTreecipeConfigurationFolderName();
             const fullConfigurationDirectoryPath = `${workspaceRoot}/${configurationDirectory}`;
             configurationPath = path.join(fullConfigurationDirectoryPath, configurationFileName);
-            this.setExtensionConfigValue(treecipeConfigurationKey, configurationPath);
+            /*
+                This resolver is synchronous and returns the path whether or not the write lands.
+                setExtensionConfigValue reports its own failure, so the void is what it means:
+                the caller has nothing to do with the answer.
+            */
+            void this.setExtensionConfigValue(treecipeConfigurationKey, configurationPath);
 
         }
 
@@ -128,7 +159,7 @@ export class ConfigurationService {
             // NO SELECTION MADE
             return;
         };
-        ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+        await ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
 
         const configurationDetail = {
             // REPLACE ALL BACKSLASHES WITH FORWARD SLASHES IN PATH SO THERE IS CONSISTENT VALUE AND READ DIRECTORY WORKS AS EXPECTED

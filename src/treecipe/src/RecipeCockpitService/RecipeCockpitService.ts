@@ -20,6 +20,38 @@ export const RECIPE_COCKPIT_READY_ACKNOWLEDGEMENT = 'Connected to the Treecipe e
 export const RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT = 'Connecting to the Treecipe extension host…';
 
 /*
+    Where the cockpit's tracked work lives, as a label query rather than a list of issue numbers.
+
+    The epic and its slices are numbered, but a link to any one of them goes stale the moment a
+    slice is split or a defect is filed against the panel. The label is what stays true: whatever
+    carries it is what the cockpit is, has, and is missing on the day the reader clicks.
+*/
+export const RECIPE_COCKPIT_ISSUES_URL = 'https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit';
+
+export const ENABLE_RECIPE_COCKPIT_ACTION_LABEL = 'Enable Recipe Cockpit';
+
+export const VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL = 'View Known Issues';
+
+export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an in-development preview.';
+
+/*
+    The detail the reader accepts before the flag is written.
+
+    It names the three things that decide whether enabling is a mistake for them: that the panel is
+    deliberately incomplete rather than broken, that the switch is scoped to THIS workspace and
+    reversible from settings, and where the open work is listed. The url is repeated in the text as
+    well as offered as a button because a VS Code dialog renders its detail as plain text -- there
+    is no clickable link in a modal, so the button is the link and this line is what a reader can
+    copy if they would rather not hand the dialog a browser.
+*/
+export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it renders no recipe data yet, and its layout, its messages and the shape of what it shows will change between releases.
+
+Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
+
+What is built, what is next, and what is known to be missing are tracked under the recipe-cockpit label:
+${RECIPE_COCKPIT_ISSUES_URL}`;
+
+/*
     Everything the cockpit webview can post back.
 
     One shape with every field optional, matching the explorer: a handler states which fields its

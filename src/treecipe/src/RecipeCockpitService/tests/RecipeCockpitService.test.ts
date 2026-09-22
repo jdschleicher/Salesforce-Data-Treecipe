@@ -13,7 +13,9 @@ import {
     RECIPE_COCKPIT_VIEW_TYPE,
     RECIPE_COCKPIT_PANEL_TITLE,
     RECIPE_COCKPIT_READY_ACKNOWLEDGEMENT,
-    RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT
+    RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT,
+    RECIPE_COCKPIT_ISSUES_URL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
 
 describe('RecipeCockpitService', () => {
@@ -411,6 +413,53 @@ describe('RecipeCockpitService', () => {
             RecipeCockpitService.openRecipeCockpitPanel();
 
             expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(2);
+
+        });
+
+    });
+
+
+    describe('the preview warning the feature flag is accepted through', () => {
+
+        /*
+            A label query rather than a list of issue numbers.
+
+            The epic and its slices are numbered, but a link to any one of them goes stale the
+            moment a slice is split or a defect is filed against the panel. Whatever carries the
+            label is what the cockpit is and is missing on the day the reader clicks.
+        */
+        it('points at every issue carrying the recipe-cockpit label in this repository', () => {
+
+            expect(RECIPE_COCKPIT_ISSUES_URL).toStartWith('https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues');
+            expect(RECIPE_COCKPIT_ISSUES_URL).toContain('label%3Arecipe-cockpit');
+
+        });
+
+        /*
+            A modal renders its detail as PLAIN TEXT -- there is no clickable link in a VS Code
+            dialog, so the button is the link and this line is what a reader can copy instead.
+        */
+        it('names the url, the setting it writes and the scope it writes it at', () => {
+
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain(RECIPE_COCKPIT_ISSUES_URL);
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('salesforce-data-treecipe.recipeCockpitEnabled');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('THIS WORKSPACE');
+
+        });
+
+        /*
+            The url belongs to the DIALOG, which is the extension host's, and not to the panel.
+
+            The shell's content security policy is default-src 'none', so a link rendered into the
+            document would be dead rather than merely unused -- and interpolating any url into the
+            template is the first step back toward a markup context the builder has none of.
+        */
+        it('is not reachable from the panel document, which loads and links nothing', () => {
+
+            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+
+            expect(actualShellHtml).not.toContain(RECIPE_COCKPIT_ISSUES_URL);
+            expect(actualShellHtml).not.toContain('github.com');
 
         });
 
