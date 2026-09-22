@@ -15,6 +15,7 @@ export interface ExtensionConfig {
     selectedFakerService?: string;
     treecipeConfigurationPath?: string;
     useSnowfakeryAsDefault: boolean;
+    recipeCockpitEnabled?: boolean;
 }
 
 export interface TreecipeConfigDetail {

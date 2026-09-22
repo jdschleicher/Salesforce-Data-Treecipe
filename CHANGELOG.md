@@ -6,6 +6,14 @@ Closes [#53](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/53)
 
 **Salesforce Treecipe: Open Recipe Cockpit** opens a panel that says what it is for and nothing else. That is the point of this release: the cockpit will traverse a generated recipe and diff it against a live org describe, and neither of those is here. What is here is the surface both will render into, proven to work before either has anything to prove it with.
 
+### Nobody meets the cockpit by accident
+
+Every slice of the cockpit ships behind `salesforce-data-treecipe.recipeCockpitEnabled`, and the command is where a workspace opts in: running **Open Recipe Cockpit** the first time shows a modal warning, and nothing opens until it is accepted. The warning says the panel is unfinished on purpose rather than broken, that the switch is scoped to this workspace and reversible from settings, and offers a **View Known Issues** button onto every issue carrying the `recipe-cockpit` label -- which is the link rather than the text beneath it, because a VS Code dialog renders its detail as plain text and has no clickable link in it. Choosing that button re-shows the warning instead of ending the command: a dialog closes on whichever button is clicked, so opening a browser would otherwise leave the reader to re-run the command to answer the question they went to research.
+
+The check is in the command handler rather than a `when` clause on the palette entry. Hiding a command hides it from the palette and from nothing else -- a keybinding, a task or another extension can still execute it by id. Putting the gate where the panel is created is also what makes the later slices need no flag of their own: a cockpit that was never opted in to has no panel, so it has no model built, no message posted and nothing on screen for a panel action to have come from.
+
+The flag is written at **workspace** scope through the existing `ConfigurationService` setter, so opting in to the preview in one project says nothing about the next one, and a dismissed warning writes nothing at all.
+
 ### What the slice actually establishes
 
 A webview is the one part of an extension that cannot be verified by reading it. Its document runs in a separate context under a content security policy the extension does not get told it violated: a script the CSP denies does not fail loudly, it simply never runs, and the panel sits there rendering the markup that surrounded it. So the slice's deliverable is a completed round trip -- the panel's script runs, posts `ready`, the extension host answers `ack`, and the panel rewrites its own status line with what came back. A panel still reading "Connecting to the Treecipe extension host…" is a panel whose script did not run or whose message did not land, and it says so on screen rather than looking finished.

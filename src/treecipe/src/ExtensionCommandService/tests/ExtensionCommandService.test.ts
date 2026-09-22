@@ -14,8 +14,11 @@ jest.mock('vscode', () => ({
     },
     Uri: {
         file: (filePath: string) => ({ fsPath: filePath }),
-        joinPath: jest.fn()
+        joinPath: jest.fn(),
+        parse: (uriValue: string) => ({ toString: () => uriValue })
     },
+    // THE COCKPIT PREVIEW WARNING'S "View Known Issues" IS THE ONLY CALLER -- IT OPENS A BROWSER
+    env: { openExternal: jest.fn() },
     window: {
         showWarningMessage: jest.fn(),
         showInformationMessage: jest.fn(),
@@ -67,7 +70,14 @@ import {
 } from "../../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
-import { RecipeCockpitService } from "../../RecipeCockpitService/RecipeCockpitService";
+import {
+    RecipeCockpitService,
+    RECIPE_COCKPIT_ISSUES_URL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
+    ENABLE_RECIPE_COCKPIT_ACTION_LABEL,
+    VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
+} from "../../RecipeCockpitService/RecipeCockpitService";
 import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 
@@ -3173,18 +3183,121 @@ describe('ExtensionCommandService', () => {
 
         let extensionCommandService: ExtensionCommandService;
 
+        const enableRecipeCockpitFlag = (isEnabled: boolean) => jest.spyOn(ConfigurationService, 'getExtensionConfigValue')
+            .mockImplementation((configKey) => (configKey === 'recipeCockpitEnabled' ? isEnabled : undefined) as any);
+
         beforeEach(() => {
+
             extensionCommandService = new ExtensionCommandService();
+
+            /*
+                restoreMocks covers jest.spyOn and nothing else, and these two are jest.fn()s from
+                the module factory -- so their call history and their queued once-values are shared
+                by every test in this file until they are reset here.
+            */
+            (vscode.window.showWarningMessage as jest.Mock).mockReset();
+            (vscode.env.openExternal as jest.Mock).mockReset();
+
         });
 
-        it('opens the cockpit panel through the service that owns it', async () => {
+        it('given the workspace has opted in, opens the cockpit panel without prompting again', async () => {
 
+            enableRecipeCockpitFlag(true);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
                 .mockReturnValue({} as any);
 
             await extensionCommandService.openRecipeCockpit();
 
             expect(openRecipeCockpitPanelSpy).toHaveBeenCalledTimes(1);
+            // THE WARNING IS THE OPT-IN, NOT A CONFIRMATION -- A WORKSPACE ACCEPTS IT ONCE
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+        });
+
+        /*
+            The whole of the feature flag is this branch.
+
+            Every later slice renders into a panel that is never created here, so a cockpit the
+            reader has not opted in to has no model built, no message posted and nothing on screen
+            for a panel action to have come from.
+        */
+        it('given the workspace has not opted in, warns before anything is opened', async () => {
+
+            enableRecipeCockpitFlag(false);
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
+                .mockReturnValue({} as any);
+            const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
+                .mockImplementation(() => undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await extensionCommandService.openRecipeCockpit();
+
+            expect(openRecipeCockpitPanelSpy).not.toHaveBeenCalled();
+            // A DISMISSED WARNING WRITES NOTHING -- THE NEXT RUN ASKS AGAIN
+            expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
+
+            const [warningMessage, warningOptions] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+            expect(warningMessage).toBe(RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE);
+            expect(warningOptions.modal).toBe(true);
+            expect(warningOptions.detail).toBe(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL);
+
+        });
+
+        it('given the warning is accepted, writes the workspace flag and opens the panel', async () => {
+
+            enableRecipeCockpitFlag(false);
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
+                .mockReturnValue({} as any);
+            const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
+                .mockImplementation(() => undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(ENABLE_RECIPE_COCKPIT_ACTION_LABEL);
+
+            await extensionCommandService.openRecipeCockpit();
+
+            expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('recipeCockpitEnabled', true);
+            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        /*
+            A VS Code dialog closes on whichever button is clicked, so opening the issue list would
+            otherwise be the END of the command: the reader would come back from the browser to no
+            dialog and have to re-run the command to answer the question they went to research.
+        */
+        it('given the reader opens the issue list, re-shows the warning rather than ending the command', async () => {
+
+            enableRecipeCockpitFlag(false);
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
+                .mockReturnValue({} as any);
+            jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockImplementation(() => undefined);
+            (vscode.window.showWarningMessage as jest.Mock)
+                .mockResolvedValueOnce(VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL)
+                .mockResolvedValueOnce(ENABLE_RECIPE_COCKPIT_ACTION_LABEL);
+
+            await extensionCommandService.openRecipeCockpit();
+
+            const openedExternalUri = (vscode.env.openExternal as jest.Mock).mock.calls[0][0];
+            expect(openedExternalUri.toString()).toBe(RECIPE_COCKPIT_ISSUES_URL);
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
+            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('given the issue list is opened and the warning is then cancelled, nothing is enabled', async () => {
+
+            enableRecipeCockpitFlag(false);
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
+                .mockReturnValue({} as any);
+            const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
+                .mockImplementation(() => undefined);
+            (vscode.window.showWarningMessage as jest.Mock)
+                .mockResolvedValueOnce(VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL)
+                .mockResolvedValueOnce(undefined);
+
+            await extensionCommandService.openRecipeCockpit();
+
+            expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
+            expect(openRecipeCockpitPanelSpy).not.toHaveBeenCalled();
 
         });
 
@@ -3194,6 +3307,7 @@ describe('ExtensionCommandService', () => {
         */
         it('given the panel cannot be created, routes the error through ErrorHandlingService', async () => {
 
+            enableRecipeCockpitFlag(true);
             jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel').mockImplementation(() => {
                 throw new Error('webview could not be created');
             });

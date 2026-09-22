@@ -88,6 +88,11 @@
           "salesforce-data-treecipe.useSnowfakeryAsDefault": {
             "type": "boolean",
             "description": "feature flag to drive snowfakery-data-treecipe to leverage snowfakery as default faker provider"
+          },
+          "salesforce-data-treecipe.recipeCockpitEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "feature flag for the in-development Recipe Cockpit preview. Enabled per workspace by running \"Salesforce Treecipe: Open Recipe Cockpit\" and accepting the preview warning; turn it off here to hide the panel again"
           }
         }
       }

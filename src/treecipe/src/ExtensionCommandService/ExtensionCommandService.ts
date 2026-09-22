@@ -21,7 +21,14 @@ import {
 } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
-import { RecipeCockpitService } from "../RecipeCockpitService/RecipeCockpitService";
+import {
+    RecipeCockpitService,
+    RECIPE_COCKPIT_ISSUES_URL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
+    ENABLE_RECIPE_COCKPIT_ACTION_LABEL,
+    VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
+} from "../RecipeCockpitService/RecipeCockpitService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -1368,7 +1375,7 @@ export class ExtensionCommandService {
     }
 
     /*
-        Opens the Recipe Cockpit.
+        Opens the Recipe Cockpit, once the workspace has opted in to the preview.
 
         There is no work to guard around yet -- the panel's shell is static and everything it will
         render arrives over postMessage in a later slice -- but the command is wrapped like every
@@ -1379,6 +1386,12 @@ export class ExtensionCommandService {
 
         try {
 
+            const recipeCockpitIsEnabled = await this.confirmRecipeCockpitPreviewEnabled();
+
+            if ( !recipeCockpitIsEnabled ) {
+                return;
+            }
+
             RecipeCockpitService.openRecipeCockpitPanel();
 
         } catch(error) {
@@ -1387,6 +1400,63 @@ export class ExtensionCommandService {
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
+
+    }
+
+    /*
+        The cockpit's feature flag, and the one place it is turned on.
+
+        This command is the whole gate, and it is a RUNTIME check rather than a palette "when"
+        clause: hiding a command hides it from the palette and from nothing else -- a keybinding, a
+        task or another extension can still execute it by id. Every later slice renders into the
+        panel this returns false ahead of, so nothing downstream needs a flag check of its own:
+        there is no model built, no message posted and no panel to act on until a reader has
+        accepted the warning here.
+
+        Nothing is written when the reader cancels. The flag is workspace-scoped, so opting in to
+        the preview in one project says nothing about the next one.
+    */
+    private async confirmRecipeCockpitPreviewEnabled(): Promise<boolean> {
+
+        if ( ConfigurationService.getExtensionConfigValue('recipeCockpitEnabled') === true ) {
+            return true;
+        }
+
+        /*
+            Re-shown after the issue list is opened rather than treated as an answer.
+
+            A VS Code dialog closes on whichever button is clicked, so opening the issues in a
+            browser would otherwise END the command -- leaving the reader to re-run it to answer
+            the question they just went away to research.
+        */
+        let previewWarningSelection = await this.showRecipeCockpitPreviewWarning();
+
+        while ( previewWarningSelection === VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL ) {
+
+            await vscode.env.openExternal(vscode.Uri.parse(RECIPE_COCKPIT_ISSUES_URL));
+            previewWarningSelection = await this.showRecipeCockpitPreviewWarning();
+
+        }
+
+        if ( previewWarningSelection !== ENABLE_RECIPE_COCKPIT_ACTION_LABEL ) {
+            // CANCELLED OR DISMISSED -- THE FLAG IS NOT WRITTEN AND NO PANEL IS OPENED
+            return false;
+        }
+
+        ConfigurationService.setExtensionConfigValue('recipeCockpitEnabled', true);
+
+        return true;
+
+    }
+
+    private async showRecipeCockpitPreviewWarning(): Promise<string | undefined> {
+
+        return await vscode.window.showWarningMessage(
+            RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE,
+            { modal: true, detail: RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL },
+            ENABLE_RECIPE_COCKPIT_ACTION_LABEL,
+            VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
+        );
 
     }
 
