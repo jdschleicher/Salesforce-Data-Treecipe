@@ -1418,20 +1418,24 @@ export class ExtensionCommandService {
     */
     private async confirmRecipeCockpitPreviewEnabled(): Promise<boolean> {
 
-        if ( ConfigurationService.getExtensionConfigValue('recipeCockpitEnabled') === true ) {
-            return true;
-        }
-
         /*
-            No workspace, no cockpit -- the same guard the explorer command uses.
+            No workspace, no cockpit -- the same guard the explorer command uses, and it comes
+            FIRST rather than after the flag.
 
-            The cockpit traverses a generated recipe and diffs it against an org, both of which are
-            workspace artifacts, so there is nothing for it to render in a window with no folder
-            open. The flag is workspace-scoped too, so asking first would put a choice in front of
-            someone that there is nowhere to record and nothing to apply it to.
+            The flag is WRITTEN at workspace scope but it is READ through the merged configuration
+            (default < user < workspace), and it is contributed in package.json, so nothing stops a
+            user setting it once at User scope. Checking the flag first would then answer true in a
+            window with no folder open and hand back a cockpit with no recipe to traverse, no org
+            artifacts to diff and no scope its opt-in was ever recorded at. Ordering the guard
+            above the flag is what makes "no workspace, no cockpit" true for every reader rather
+            than only for the ones who have not opted in yet.
         */
         if ( !VSCodeWorkspaceService.getWorkspaceRoot() ) {
             return false;
+        }
+
+        if ( ConfigurationService.getExtensionConfigValue('recipeCockpitEnabled') === true ) {
+            return true;
         }
 
         /*

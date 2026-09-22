@@ -3291,6 +3291,26 @@ describe('ExtensionCommandService', () => {
             too. Asking first would put a choice in front of a reader that there is nowhere to
             record and nothing to apply it to.
         */
+        /*
+            The flag is WRITTEN at workspace scope but READ through the merged configuration, and
+            it is contributed in package.json -- so a reader can set it once at User scope and
+            carry it into a window with no folder open. Checking the flag before the workspace
+            would hand that reader a cockpit with nothing to render.
+        */
+        it('given the flag is enabled at user scope but no workspace folder is open, opens nothing', async () => {
+
+            enableRecipeCockpitFlag(true);
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
+                .mockReturnValue({} as any);
+
+            await extensionCommandService.openRecipeCockpit();
+
+            expect(openRecipeCockpitPanelSpy).not.toHaveBeenCalled();
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+        });
+
         it('given no workspace folder is open, asks nothing and opens nothing', async () => {
 
             enableRecipeCockpitFlag(false);
