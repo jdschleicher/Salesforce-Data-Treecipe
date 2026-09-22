@@ -35,21 +35,37 @@ npm run jest-test 2>&1 | tail -15
 
 ## Step 3 — vsce Package Build
 
-```bash
-npx vsce package --no-dependencies 2>&1
-```
-
-**Pass:** Exits 0, produces a `.vsix` file.
-**Fail:** BLOCKER — the exact package Marketplace users would install cannot be built.
+Package the way `release.yaml` publishes: **no `--no-dependencies`**, and vsce **pinned to the version CI uses**.
 
 ```bash
+npx --yes @vscode/vsce@3.9.2 package 2>&1 | tail -3
 ls *.vsix 2>/dev/null && echo "VSIX produced" || echo "No VSIX found"
 ```
 
-List the packaged contents to verify no unexpected files are included:
+**Pass:** Exits 0, produces a `.vsix` of roughly **5 MB across ~2,261 files**.
+**Fail:** BLOCKER — the exact package Marketplace users would install cannot be built.
+
+**Both of those details are load-bearing, and getting either wrong reports a green check on an artifact nobody ships:**
+
+- **`--no-dependencies` builds a BROKEN package, not a smaller one.** `@salesforce/core` is deliberately `external` in `esbuild.js` — pino's `thread-stream` transports spawn workers from a file path, which a bundler cannot rewrite (see CHANGELOG 3.23.0). The bundle therefore emits a literal `require("@salesforce/core")`, so a `.vsix` without that tree throws at the first org-touching command: **Insert Data Set by Directory**, **Run Picklist Dependency Check**, and the Recipe Cockpit's org describe. That flag reports ~770 KB / 20 files, which is not this extension.
+- **Unpinned `npx vsce` resolves a newer version that runs the prepublish script during `ls`** and writes its stdout into the listing. The guard below then reports phantom top-level paths such as `> tsc --noEmit -p .` and `Bundled src`. Pin to `3.9.2`, as `build.yaml` does.
+
+Now run the repo's own packaged-contents guard against a real listing — the same two commands CI runs, and the thing that actually catches a regression in what ships:
+
 ```bash
-npx vsce ls 2>&1 | head -50
+VSCE_LS_OUTPUT="$(mktemp -t vsce-ls-XXXXXX.txt)"
+npm run bundle >/dev/null 2>&1
+npx --yes @vscode/vsce@3.9.2 ls > "$VSCE_LS_OUTPUT"
+node .github/workflowScripts/checkPackagedPaths.js "$VSCE_LS_OUTPUT"
+head -20 "$VSCE_LS_OUTPUT"
+rm -f "$VSCE_LS_OUTPUT"
 ```
+
+**Pass:** `Package contents check passed.`
+
+The listing goes to a temp path rather than the working directory on purpose: `vsce` packages the **working directory**, not the git index, so a listing file left in the repo is itself an unexpected top-level path in the next run.
+
+`node_modules` appearing in that listing is **correct** — see Step 5.
 
 ---
 
@@ -57,28 +73,37 @@ npx vsce ls 2>&1 | head -50
 
 Read `package.json` and verify:
 
-**4a. All 5 commands are declared:**
+**4a. Every declared command is registered, and every registered command is declared:**
+
+A hardcoded list of expected commands goes stale the moment one is added — it grew from 5 to 10 without the check noticing, and it could only ever report the 5 it knew about. The manifest cannot validate itself, so check it against the **other** half of the contract: `contributes.commands` in `package.json` against `registerCommand` in `src/extension.ts`. A command declared but never registered fails at invocation; a command registered but never declared is unreachable from the palette.
+
 ```bash
 node -e "
-const pkg = require('./package.json');
-const commands = (pkg.contributes && pkg.contributes.commands) || [];
-console.log('Commands declared: ' + commands.length);
-commands.forEach(c => console.log(' - ' + c.command + ': ' + c.title));
-const expected = [
-  'treecipe.initiateConfiguration',
-  'treecipe.generateTreecipe',
-  'treecipe.runFakerByRecipe',
-  'treecipe.insertDataSetBySelectedDirectory',
-  'treecipe.changeFakerImplementationService'
-];
-const missing = expected.filter(e => !commands.find(c => c.command === e));
-if (missing.length) {
-  console.log('MISSING commands: ' + missing.join(', '));
-} else {
-  console.log('PASS — all 5 commands present');
+const fs = require('fs');
+
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const declared = ((pkg.contributes && pkg.contributes.commands) || []).map(c => c.command);
+
+// \\x27 \\x22 \\x60 are ' \" and a backtick -- written as escapes so the regex survives the shell quoting
+const registered = [...fs.readFileSync('src/extension.ts', 'utf8')
+    .matchAll(/registerCommand\(\s*[\x27\x22\x60]([^\x27\x22\x60]+)[\x27\x22\x60]/g)].map(m => m[1]);
+
+console.log('declared in package.json  : ' + declared.length);
+console.log('registered in extension.ts: ' + registered.length);
+declared.forEach(c => console.log(' - ' + c));
+
+const notRegistered = declared.filter(c => !registered.includes(c));
+const notDeclared = registered.filter(c => !declared.includes(c));
+
+if (notRegistered.length) { console.log('DECLARED BUT NOT REGISTERED: ' + notRegistered.join(', ')); }
+if (notDeclared.length) { console.log('REGISTERED BUT NOT DECLARED: ' + notDeclared.join(', ')); }
+if (!notRegistered.length && !notDeclared.length) {
+  console.log('PASS -- all ' + declared.length + ' commands declared and registered');
 }
-" 2>&1
+"
 ```
+
+**Fail:** BLOCKER either way. A declared command with no handler throws *\"command not found\"* for a user who picked it out of the palette.
 
 **4b. Version, publisher, engines:**
 ```bash
@@ -104,14 +129,17 @@ cat .vscodeignore 2>/dev/null || echo ".vscodeignore NOT FOUND"
 ```
 
 Verify the `.vscodeignore` excludes at minimum:
-- `src/` — TypeScript source (only compiled `out/` ships)
-- `node_modules/` — dependencies (caller installs from registry)
+- `src/` — TypeScript source (only the bundled `out/` ships)
 - `**/*.test.ts` — test files
 - `coverage/` — test coverage reports
 - `.claude/` — project tooling
 - `.github/` — CI workflows
+- `docs/`, `CLAUDE.md`, `jestSetup/` — repo-side documentation and harness
+- `.sfdx/`, `.sf/`, `treecipe/` — machine-local CLI state and command output, which `vsce` would otherwise package because it reads the **working directory** rather than the git index
 
-**Flag [HIGH]:** If `src/`, `coverage/`, or `.claude/` are not excluded — these inflate the `.vsix` unnecessarily and expose internal tooling.
+**Flag [HIGH]:** If `src/`, `coverage/`, or `.claude/` are not excluded — these inflate the `.vsix` and ship internal tooling.
+
+**`node_modules` is NOT on that list, and must not be added to it.** A VS Code extension normally ships no dependencies, but this one has `@salesforce/core` as a deliberate `external` (Step 3), so its tree has to be in the package for the extension to run at all. Excluding it here is the same defect as packaging with `--no-dependencies`: a much smaller `.vsix` that throws on the first org-touching command. `node_modules` is in `checkPackagedPaths.js`'s `TOP_LEVEL_PATH_ALLOW_LIST` for exactly this reason, and that guard — not this file listing — is what catches something unexpected entering the package.
 
 ---
 
@@ -163,7 +191,12 @@ Remove the generated `.vsix` (it's a build artifact, not for committing):
 
 ```bash
 rm -f *.vsix && echo "VSIX cleaned up"
+git status --short
 ```
+
+`git status` is the check that matters here rather than the `rm`: `vsce` packages the working directory, so anything this run left behind ships in the next one.
+
+**Always report the real package size in the Step 3 verdict.** Two figures circulate for this extension and only one of them is real — ~5 MB / ~2,261 files is what publishes; ~770 KB / 20 files is a `--no-dependencies` build that cannot run. Quoting the smaller one into release notes or a PR body is how the wrong number spreads.
 
 ---
 
@@ -183,19 +216,23 @@ PASS — N tests passed
 FAIL — N tests failing
 
 ### Step 3 — vsce Package
-PASS — salesforce-data-treecipe-X.Y.Z.vsix produced
+PASS — salesforce-data-treecipe-X.Y.Z.vsix produced (N files, N MB) — packaged contents check passed
   OR
 FAIL — vsce package failed (see above)
+  OR
+FAIL — packaged contents check reported unexpected top-level paths: <list>
 
 ### Step 4 — package.json Manifest
-PASS — all 5 commands declared, version/publisher/engines present
+PASS — all N commands declared and registered, version/publisher/engines present
   OR
-FAIL — missing commands: <list>
+FAIL — declared but not registered: <list> / registered but not declared: <list>
 
 ### Step 5 — .vscodeignore
-PASS — src/, node_modules/, coverage/, .claude/ all excluded
+PASS — src/, coverage/, .claude/, .github/ excluded; node_modules correctly NOT excluded
   OR
 [HIGH] <path> not excluded — will bloat the .vsix
+  OR
+[HIGH] node_modules excluded — the externalized @salesforce/core would not ship
 
 ### Step 6 — CHANGELOG Version Sync
 PASS — MATCH: vX.Y.Z
