@@ -3206,11 +3206,12 @@ describe('ExtensionCommandService', () => {
 
             enableRecipeCockpitFlag(true);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
 
             await extensionCommandService.openRecipeCockpit();
 
-            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledTimes(1);
+            // THE PANEL LOADS THE LATEST RUN UNDER THE WORKSPACE THE GUARD ABOVE IT CHECKED FOR
+            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledWith('/workspace');
             // THE WARNING IS THE OPT-IN, NOT A CONFIRMATION -- A WORKSPACE ACCEPTS IT ONCE
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 
@@ -3227,7 +3228,7 @@ describe('ExtensionCommandService', () => {
 
             enableRecipeCockpitFlag(false);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
             const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
                 .mockResolvedValue(true);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
@@ -3249,7 +3250,7 @@ describe('ExtensionCommandService', () => {
 
             enableRecipeCockpitFlag(false);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
             const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
                 .mockResolvedValue(true);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(ENABLE_RECIPE_COCKPIT_ACTION_LABEL);
@@ -3270,7 +3271,7 @@ describe('ExtensionCommandService', () => {
 
             enableRecipeCockpitFlag(false);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
             jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
             (vscode.window.showWarningMessage as jest.Mock)
                 .mockResolvedValueOnce(VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL)
@@ -3302,7 +3303,7 @@ describe('ExtensionCommandService', () => {
             enableRecipeCockpitFlag(true);
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
 
             await extensionCommandService.openRecipeCockpit();
 
@@ -3316,7 +3317,7 @@ describe('ExtensionCommandService', () => {
             enableRecipeCockpitFlag(false);
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
             const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
                 .mockResolvedValue(true);
 
@@ -3337,7 +3338,7 @@ describe('ExtensionCommandService', () => {
 
             enableRecipeCockpitFlag(false);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
             jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(false);
             const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage')
                 .mockImplementation(() => undefined);
@@ -3355,7 +3356,7 @@ describe('ExtensionCommandService', () => {
 
             enableRecipeCockpitFlag(false);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
-                .mockReturnValue({} as any);
+                .mockResolvedValue({} as any);
             const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
                 .mockResolvedValue(true);
             (vscode.window.showWarningMessage as jest.Mock)
@@ -3376,9 +3377,7 @@ describe('ExtensionCommandService', () => {
         it('given the panel cannot be created, routes the error through ErrorHandlingService', async () => {
 
             enableRecipeCockpitFlag(true);
-            jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel').mockImplementation(() => {
-                throw new Error('webview could not be created');
-            });
+            jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel').mockRejectedValue(new Error('webview could not be created'));
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError')
                 .mockImplementation(() => undefined);
 

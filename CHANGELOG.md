@@ -1,5 +1,58 @@
 # Change Log
 
+## [3.25.0] - The Recipe Cockpit traverses a generated recipe
+
+Closes [#54](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/54), the second slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+**Salesforce Treecipe: Open Recipe Cockpit** now opens on the latest Generate Treecipe run. It lists every object in the recipe and, under each one, every field with its type and the faker expression behind it. A filter narrows the fields as you type, and clicking an object or field name opens the recipe `.yml` at that line. The panel is still behind the workspace flag from 3.24.0; comparing the recipe with an org is the next slice.
+
+### What it reads
+
+Every Generate Treecipe run already writes `treecipeObjectsWrapper-<timestamp>.json`, the full `ObjectInfoWrapper`, next to its recipe files. The cockpit reads that file rather than re-walking the metadata or parsing the YAML as data, so it shows the run that was generated, not a second derivation of it.
+
+- **Runs are ordered by the timestamp in the folder name, not by the name itself.** A faker-js run folder is `recipe-fakerjs-<ts>` and a snowfakery run folder is `recipe-<ts>`. Sorting by name would put every faker-js run above every snowfakery run whatever their dates, and the test fixture is built so that mistake fails. A folder with no wrapper, or no run timestamp, is not listed.
+- **Other runs are one selector away.** A `<select>` beside the filter lists every run, labelled with its UTC time and faker backend. A run that cannot be read keeps the selector on screen, so the reader can choose another.
+- **The file is on disk, so nothing in it is trusted.** Every value is type-checked before it is rendered. A field entry with no api name is dropped and counted in a notice rather than drawn as a nameless row. An object the wrapper holds only because a lookup points at it, such as `User`, has no recipe and is not listed.
+- **Fields that only the recipe file carries are listed too.** Standard-field mappings (`Account.Name`) and the record type line are written straight into the recipe and never become a `FieldInfo`. A view built from the wrapper alone would tell a reader that Account has no `Name` while it is visible in the file. Those rows are marked *read from the recipe file*.
+
+Line numbers come from the `.yml` files the run wrote. Both faker backends emit the same object header through `RecipeService` (`- object:` at column zero, `  fields:`, one field per four-space line), so one line reader serves both, with no backend-specific code and nothing for the two backends to drift apart on. Recipe files are read only if they resolve inside the workspace, with symlinks resolved through `SfdxProjectService.isPathContainedInWorkspace`. An object whose file resolves elsewhere is still listed, with nothing to open.
+
+### A filter never looks like a truncation
+
+An object with no matching field stays on screen, collapsed and marked *no matching fields*, rather than disappearing. A hidden object would read as "not in the recipe". Typing an object's name shows all its fields. Otherwise a field matches on its name, label, type, controlling field or faker expression, and the object header shows `2 of 14 fields`.
+
+Field rows are built on first expand, so a collapsed object costs only its header. A filter opens at most 25 matching objects on its own. A one-letter query matches nearly every field, and opening every object for it would build the whole recipe on one keystroke. Objects past the limit stay collapsed, with their match counts shown.
+
+### Measured, not capped
+
+The epic asked whether 12,000 fields over `postMessage` needed a ceiling like the Explorer's. These numbers come from pushing synthetic runs through the real `buildRecipeViewModel`, with a third of the fields being 15-value picklists:
+
+| fields | wrapper on disk | build | posted payload |
+|---:|---:|---:|---:|
+| 405 | 0.15 MB | 5 ms | 0.14 MB |
+| 12,000 | 4.46 MB | 62 ms | 4.05 MB |
+| 120,000 | 44.77 MB | 529 ms | 40.67 MB |
+
+The payload is always smaller than the file it came from, and 10x the epic's worst case is about the Explorer's own measured ceiling (39.79 MB). This slice adds no cap. The diff overlay in #57 adds per-row data and should be measured again then.
+
+### The protocol
+
+The Explorer settled each of these, and the cockpit follows it rather than inventing a second approach:
+
+- **The panel opens before the load** and names each phase (`Finding generated recipe runs…`, `Reading the generated recipe run…`) in its status line and the status bar, yielding between phases so they actually render.
+- **Every host message is stored and posted only once the panel says `ready`,** and each `ready` (every reveal reloads the document) replays the model. Posting eagerly as well would render twice.
+- **`routePanelMessage` stays a pure function.** It now takes the host's panel state and returns an action rather than a reply, so every allow-list decision is tested without a webview.
+- **`openSource {filePath, lineNumber}` is matched, never validated.** The pair must be one the rendered model named, and both fields are type-checked first. A line the model did not name in a file it did, a stringified line number, and a path it never named are all refused the same way. `selectRun` is matched against the run names the selector offered.
+- **Allow-lists take effect only when the panel reports `rendered`.** They are built when the model is posted, but a successful post only means the message left the host. Every `ready` clears the active lists until the replayed model is drawn again, so no action is honoured before its row is on screen.
+- **A render guard and `renderFailed`.** A render that throws replaces the body with a failure notice. The failure goes to `ErrorHandlingService` once per distinct message. Only a failure to *draw* empties the allow-lists; a throw after the draw leaves the rows usable.
+- **A run chosen while another is loading supersedes it,** and a load into a panel closed mid-flight renders nothing.
+
+The shell builder still takes a nonce and nothing else, and a test now pins that signature. Every value from the recipe is written with `textContent`, and a test asserts the document contains no `innerHTML`.
+
+### Replaced from 3.24.0
+
+The `ready`/`ack` handshake line is gone. The recipe replaces it as proof that the round trip happened, as that slice intended. `RECIPE_COCKPIT_READY_ACKNOWLEDGEMENT` is removed, and the status line now shows load phases. The preview warning no longer says the panel "renders no recipe data yet".
+
 ## [3.24.0] - The Recipe Cockpit opens: a webview surface, wired end to end and carrying nothing
 
 Closes [#53](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/53), the first slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).

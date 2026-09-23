@@ -1,0 +1,11 @@
+# Relationship Tree: RelationshipTree_1
+# Objects must be processed in this order for proper lookup resolution
+
+# Level 0 - Lead
+# Lead (No relationships)
+
+- object: Lead
+  nickname: Lead_NickName
+  count: 1
+  fields:
+    Company: ${{ faker.company.name() }}

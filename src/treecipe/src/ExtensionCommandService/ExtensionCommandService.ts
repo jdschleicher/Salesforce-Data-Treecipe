@@ -1375,12 +1375,12 @@ export class ExtensionCommandService {
     }
 
     /*
-        Opens the Recipe Cockpit, once the workspace has opted in to the preview.
+        Opens the Recipe Cockpit, once the workspace has opted in to the preview, and loads the
+        latest generated recipe run into it.
 
-        There is no work to guard around yet -- the panel's shell is static and everything it will
-        render arrives over postMessage in a later slice -- but the command is wrapped like every
-        other one from the start: a webview that cannot be created is exactly the failure a user
-        cannot diagnose without the report this raises.
+        The load is awaited here so a failure in it -- after the panel has shown it -- still reaches
+        the report this raises, which is the one a user cannot diagnose a broken webview without.
+        Runs chosen later from the panel's own selector report through the panel's handler.
     */
     async openRecipeCockpit() {
 
@@ -1392,7 +1392,7 @@ export class ExtensionCommandService {
                 return;
             }
 
-            RecipeCockpitService.openRecipeCockpitPanel();
+            await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot());
 
         } catch(error) {
 
