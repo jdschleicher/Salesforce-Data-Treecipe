@@ -9,8 +9,17 @@ import { VSCodeWorkspaceService } from './treecipe/src/VSCodeWorkspace/VSCodeWor
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
 
-	// below set config value of "useSnowfakeryAsDefault" will be used until an implementation is built fully for faker-js
-	ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', false);
+	/*
+		The "useSnowfakeryAsDefault" value is used until an implementation is built fully for faker-js.
+
+		It is written at workspace scope, so a window with no folder open has nowhere to put it --
+		VS Code rejects that write, and attempting it on every activation is how a user who opened a
+		single file got a warning about a setting they never chose. Nothing reads this value in that
+		state either, because every command it feeds needs a workspace of its own.
+	*/
+	if ( vscode.workspace.workspaceFolders?.length ) {
+		void ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', false);
+	}
 
 	// LETS LAZILY CREATED OUTPUT CHANNELS BE DISPOSED BY VS CODE WITHOUT CREATING THEM AT ACTIVATION
 	VSCodeWorkspaceService.registerExtensionSubscriptions(context.subscriptions);
@@ -69,6 +78,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
+	const openRecipeCockpit = vscode.commands.registerCommand("treecipe.openRecipeCockpit", () => {
+
+		const extensionCommandService = new ExtensionCommandService();
+		extensionCommandService.openRecipeCockpit();
+
+	});
+
 	const updatePicklistDependencyMetadata = vscode.commands.registerCommand("treecipe.updatePicklistDependencyMetadata", () => {
 
 		const extensionCommandService = new ExtensionCommandService();
@@ -85,7 +101,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		generatePicklistDependencyTests,
 		runPicklistDependencyCheck,
 		openPicklistDependencyExplorer,
-		updatePicklistDependencyMetadata
+		updatePicklistDependencyMetadata,
+		openRecipeCockpit
 	);
 	
 }

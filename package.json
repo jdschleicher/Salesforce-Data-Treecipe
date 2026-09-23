@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "3.23.0",
+  "version": "3.24.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -65,6 +65,11 @@
         "command": "treecipe.updatePicklistDependencyMetadata",
         "title": "Update Picklist Dependency Metadata from Specs",
         "category": "Salesforce Treecipe"
+      },
+      {
+        "command": "treecipe.openRecipeCockpit",
+        "title": "Open Recipe Cockpit",
+        "category": "Salesforce Treecipe"
       }
     ],
     "configuration": [
@@ -83,6 +88,11 @@
           "salesforce-data-treecipe.useSnowfakeryAsDefault": {
             "type": "boolean",
             "description": "feature flag to drive snowfakery-data-treecipe to leverage snowfakery as default faker provider"
+          },
+          "salesforce-data-treecipe.recipeCockpitEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "feature flag for the in-development Recipe Cockpit preview. Enabled per workspace by running \"Salesforce Treecipe: Open Recipe Cockpit\" and accepting the preview warning; turn it off here to hide the panel again"
           }
         }
       }

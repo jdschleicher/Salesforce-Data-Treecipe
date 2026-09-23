@@ -21,6 +21,14 @@ import {
 } from "../PicklistDependencyExplorerService/PicklistDependencyExplorerService";
 import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
+import {
+    RecipeCockpitService,
+    RECIPE_COCKPIT_ISSUES_URL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
+    ENABLE_RECIPE_COCKPIT_ACTION_LABEL,
+    VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
+} from "../RecipeCockpitService/RecipeCockpitService";
 
 import { AuthInfo } from '@salesforce/core';
 
@@ -1367,6 +1375,118 @@ export class ExtensionCommandService {
     }
 
     /*
+        Opens the Recipe Cockpit, once the workspace has opted in to the preview.
+
+        There is no work to guard around yet -- the panel's shell is static and everything it will
+        render arrives over postMessage in a later slice -- but the command is wrapped like every
+        other one from the start: a webview that cannot be created is exactly the failure a user
+        cannot diagnose without the report this raises.
+    */
+    async openRecipeCockpit() {
+
+        try {
+
+            const recipeCockpitIsEnabled = await this.confirmRecipeCockpitPreviewEnabled();
+
+            if ( !recipeCockpitIsEnabled ) {
+                return;
+            }
+
+            RecipeCockpitService.openRecipeCockpitPanel();
+
+        } catch(error) {
+
+            const commandName = 'openRecipeCockpit';
+            ErrorHandlingService.handleCapturedError(error, commandName);
+
+        }
+
+    }
+
+    /*
+        The cockpit's feature flag, and the one place it is turned on.
+
+        This command is the whole gate, and it is a RUNTIME check rather than a palette "when"
+        clause: hiding a command hides it from the palette and from nothing else -- a keybinding, a
+        task or another extension can still execute it by id. Every later slice renders into the
+        panel this returns false ahead of, so nothing downstream needs a flag check of its own:
+        there is no model built, no message posted and no panel to act on until a reader has
+        accepted the warning here.
+
+        Nothing is written when the reader cancels. The flag is workspace-scoped, so opting in to
+        the preview in one project says nothing about the next one.
+    */
+    private async confirmRecipeCockpitPreviewEnabled(): Promise<boolean> {
+
+        /*
+            No workspace, no cockpit -- the same guard the explorer command uses, and it comes
+            FIRST rather than after the flag.
+
+            The flag is WRITTEN at workspace scope but it is READ through the merged configuration
+            (default < user < workspace), and it is contributed in package.json, so nothing stops a
+            user setting it once at User scope. Checking the flag first would then answer true in a
+            window with no folder open and hand back a cockpit with no recipe to traverse, no org
+            artifacts to diff and no scope its opt-in was ever recorded at. Ordering the guard
+            above the flag is what makes "no workspace, no cockpit" true for every reader rather
+            than only for the ones who have not opted in yet.
+        */
+        if ( !VSCodeWorkspaceService.getWorkspaceRoot() ) {
+            return false;
+        }
+
+        if ( ConfigurationService.getExtensionConfigValue('recipeCockpitEnabled') === true ) {
+            return true;
+        }
+
+        /*
+            Re-shown after the issue list is opened rather than treated as an answer.
+
+            A VS Code dialog closes on whichever button is clicked, so opening the issues in a
+            browser would otherwise END the command -- leaving the reader to re-run it to answer
+            the question they just went away to research.
+        */
+        let previewWarningSelection = await this.showRecipeCockpitPreviewWarning();
+
+        while ( previewWarningSelection === VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL ) {
+
+            await vscode.env.openExternal(vscode.Uri.parse(RECIPE_COCKPIT_ISSUES_URL));
+            previewWarningSelection = await this.showRecipeCockpitPreviewWarning();
+
+        }
+
+        if ( previewWarningSelection !== ENABLE_RECIPE_COCKPIT_ACTION_LABEL ) {
+            // CANCELLED OR DISMISSED -- THE FLAG IS NOT WRITTEN AND NO PANEL IS OPENED
+            return false;
+        }
+
+        /*
+            The panel opens either way: the reader opted in, and a setting that could not be saved
+            is not a reason to refuse them what they just asked for. What it does change is that
+            this workspace will ask again, so it says so rather than letting the warning reappear
+            next time looking like the first time.
+        */
+        const previewFlagWasSaved = await ConfigurationService.setExtensionConfigValue('recipeCockpitEnabled', true);
+
+        if ( !previewFlagWasSaved ) {
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit is enabled for this session, but the preview setting could not be saved to this workspace -- you will be asked again next time.');
+        }
+
+        return true;
+
+    }
+
+    private async showRecipeCockpitPreviewWarning(): Promise<string | undefined> {
+
+        return await vscode.window.showWarningMessage(
+            RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE,
+            { modal: true, detail: RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL },
+            ENABLE_RECIPE_COCKPIT_ACTION_LABEL,
+            VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
+        );
+
+    }
+
+    /*
         Renders the generated picklist dependency STRUCTURE in a webview panel, and nothing else.
 
         No check results are read here. The panel answers "which controlling value unlocks what",
@@ -2031,7 +2151,7 @@ export class ExtensionCommandService {
         try {
 
             let selectedDataFakerService = await VSCodeWorkspaceService.promptForFakerServiceImplementation();
-            ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
+            await ConfigurationService.setExtensionConfigValue('selectedFakerService', selectedDataFakerService);
             
             const existingTreecipeConfigDetail:TreecipeConfigDetail = ConfigurationService.getTreecipeConfigurationDetail();
             existingTreecipeConfigDetail.dataFakerService = selectedDataFakerService;
