@@ -32,6 +32,7 @@ Users have two choices of "Fake Data" implementations:
     - [6. **Salesforce Treecipe: Run Picklist Dependency Check**](#6-salesforce-treecipe-run-picklist-dependency-check)
     - [7. **Salesforce Treecipe: Open Picklist Dependency Explorer**](#7-salesforce-treecipe-open-picklist-dependency-explorer)
     - [8. **Salesforce Treecipe: Update Picklist Dependency Metadata from Specs**](#8-salesforce-treecipe-update-picklist-dependency-metadata-from-specs)
+    - [9. **Salesforce Treecipe: Open Recipe Cockpit** (preview)](#9-salesforce-treecipe-open-recipe-cockpit)
   - [VIDEO WALKTHROUGHS](#video-walkthroughs)
       - [Initiate Treecipe Configuration with expected Objects directory](#initiate-treecipe-configuration-with-expected-objects-directory)
       - [Generate Treecipe based on treecipe.config.jcon (keep an eye out for OOTB fields and "REMOVE ME" lines)](#generate-treecipe-based-on-treecipeconfigjcon-keep-an-eye-out-for-ootb-fields-and-remove-me-lines)
@@ -416,6 +417,24 @@ Notes:
 * **An orphaning cascade** — removing a value that is itself another picklist's controlling field — names the downstream field and skips that field. Every unaffected field still writes
 * **A spec class that cannot be parsed** aborts naming the file and writes nothing. An unparseable class is never treated as "this object has no dependencies"
 * **Record-type-scoped specs are not written back.** A record type narrows what it exposes; applying that to `valueSettings` would assert the narrowing against every record type
+
+---
+
+### <a name="9-salesforce-treecipe-open-recipe-cockpit"></a>9. **Salesforce Treecipe: Open Recipe Cockpit** (preview)
+
+A panel for browsing a generated recipe: every object, every field, the field's type and the faker expression behind it, with a filter and one-click jumps into the recipe file.
+
+**Prerequisite:** [Generate Treecipe](#2-salesforce-treecipe-generate-treecipe) must have been run at least once. With no generated run the panel says so and names that command.
+
+**It is a preview.** The first time you run it in a workspace, a warning asks you to opt in. The switch is `salesforce-data-treecipe.recipeCockpitEnabled`, written for **this workspace only**, and you can turn it off in Settings. What is built and what is still missing is tracked under the [`recipe-cockpit` label](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit). Comparing a recipe with a live org is the next part and is not here yet.
+
+How it works:
+
+* **It reads what Generate Treecipe already wrote.** Every run leaves a `treecipeObjectsWrapper-<timestamp>.json` next to its recipe files under `treecipe/GeneratedRecipes/`. The panel reads that file rather than re-parsing your metadata, and opens on the **latest** run
+* **Switch runs from the selector** next to the filter box. Each run is labelled with when it was generated (UTC) and which faker backend wrote it
+* **Filter** narrows fields as you type. It matches field names, labels, types, controlling fields and faker expressions. Typing an object's name shows all of its fields. An object with nothing matching **stays listed**, collapsed and marked *no matching fields*, so a filter never looks like missing data
+* **Click an object or field name** to open the recipe `.yml` at that exact line
+* **Fields that only the recipe file carries are shown too.** Standard-field mappings such as `Account.Name`, and the record type line, are written straight into the recipe and are not in the wrapper file. They appear marked *read from the recipe file*
 
 ---
 

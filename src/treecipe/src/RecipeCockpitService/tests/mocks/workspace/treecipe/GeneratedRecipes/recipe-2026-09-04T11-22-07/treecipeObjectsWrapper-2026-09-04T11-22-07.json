@@ -1,0 +1,27 @@
+{
+  "ObjectToObjectInfoMap": {
+    "User": {
+      "ApiName": "User"
+    },
+    "Contact": {
+      "ApiName": "Contact",
+      "Fields": [
+        { "objectName": "Contact", "fieldName": "LastName", "fieldLabel": "Last Name", "type": "Text", "recipeValue": "${{fake.LastName}}" },
+        { "objectName": "Contact", "fieldName": "AccountId", "fieldLabel": "Account", "type": "Lookup", "referenceTo": "Account", "recipeValue": "### TODO -- REFERENCE ID REQUIRED" },
+        { "objectName": "Contact", "fieldLabel": "An entry with no field api name" }
+      ]
+    },
+    "Account": {
+      "ApiName": "Account",
+      "Fields": [
+        { "objectName": "Account", "fieldName": "Legacy_Code__c", "fieldLabel": "Legacy Code", "type": "Text", "recipeValue": "${{fake.Word}}" },
+        { "objectName": "Account", "fieldName": "Number_of_Contacts__c", "fieldLabel": "Number of Contacts", "type": "Number", "recipeValue": "|\n                ${{ random_number(min=0, max=999999) }}" },
+        { "objectName": "Account", "fieldName": "Industry_Group__c", "fieldLabel": "Industry Group", "type": "Picklist", "controllingField": "Industry", "recipeValue": "\n        if:\n            - choice:\n                when: ${{ Industry == 'Agriculture' }}\n                pick: Ag Co-op" },
+        { "objectName": "Account", "fieldName": "Industry", "fieldLabel": "Industry", "type": "Picklist", "recipeValue": "${{ random_choice('Agriculture','Banking','Retail') }}" }
+      ]
+    }
+  },
+  "RecipeFiles": [
+    { "fileName": "recipe_relationshiptree_1.yml", "content": "", "objectCount": 3, "maxLevel": 1, "objects": ["Account", "User", "Contact"] }
+  ]
+}

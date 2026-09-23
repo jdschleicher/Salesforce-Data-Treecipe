@@ -1,0 +1,13 @@
+{
+  "ObjectToObjectInfoMap": {
+    "Lead": {
+      "ApiName": "Lead",
+      "Fields": [
+        { "objectName": "Lead", "fieldName": "Company", "fieldLabel": "Company", "type": "Text", "recipeValue": "${{ faker.company.name() }}" }
+      ]
+    }
+  },
+  "RecipeFiles": [
+    { "fileName": "recipe_relationshiptree_1.yml", "content": "", "objectCount": 1, "maxLevel": 0, "objects": ["Lead"] }
+  ]
+}

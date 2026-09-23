@@ -1,0 +1,5 @@
+- object: Case
+  nickname: Case_NickName
+  count: 1
+  fields:
+    Subject: ${{fake.Sentence}}

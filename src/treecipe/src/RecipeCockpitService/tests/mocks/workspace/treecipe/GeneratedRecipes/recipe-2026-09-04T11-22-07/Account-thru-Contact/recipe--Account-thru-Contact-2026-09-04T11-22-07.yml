@@ -1,0 +1,29 @@
+# Relationship Tree: RelationshipTree_1
+# Objects must be processed in this order for proper lookup resolution
+
+# Level 0 - Account
+# Account (Children: Contact)
+
+- object: Account
+  nickname: Account_NickName
+  count: 1
+  fields:
+    Name: ${{fake.Company}}
+    Industry: ${{ random_choice('Agriculture','Banking','Retail') }}
+    Industry_Group__c:
+        if:
+            - choice:
+                when: ${{ Industry == 'Agriculture' }}
+                pick: Ag Co-op
+    Number_of_Contacts__c: |
+                ${{ random_number(min=0, max=999999) }}
+
+# Level 1 - Contact
+# Contact (Parents: Account)
+
+- object: Contact
+  nickname: Contact_NickName
+  count: 1
+  fields:
+    LastName: ${{fake.LastName}}
+    AccountId: ### TODO -- REFERENCE ID REQUIRED
