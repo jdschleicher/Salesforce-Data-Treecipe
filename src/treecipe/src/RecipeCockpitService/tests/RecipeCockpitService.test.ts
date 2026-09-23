@@ -22,8 +22,10 @@ import {
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_NO_RUN_MESSAGE,
     RECIPE_COCKPIT_LOAD_PHASES,
-    RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT
+    RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
+    RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET
 } from '../RecipeCockpitService';
+import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
@@ -213,7 +215,11 @@ describe('RecipeCockpitService', () => {
 
             expect(actualRecipe.selectedRunFolderName).toBe(LATEST_RUN_FOLDER_NAME);
             expect(actualRecipe.runs.map(run => run.runFolderName)).toEqual([LATEST_RUN_FOLDER_NAME, FAKER_JS_RUN_FOLDER_NAME]);
-            // USER IS A KEY THE WRAPPER HOLDS FOR A LOOKUP -- NO RECIPE WAS WRITTEN FOR IT
+            /*
+                User is a key the wrapper holds for a lookup, and RelationshipService lists it in the
+                tree's RecipeFiles objects -- the fixture is that shape -- but no recipe was written
+                for it, so it is not a recipe object.
+            */
             expect(actualRecipe.objects.map(objectViewModel => objectViewModel.objectApiName)).toEqual(['Account', 'Contact']);
             expect(actualRecipe.emptyStateMessage).toBe('');
 
@@ -299,6 +305,7 @@ describe('RecipeCockpitService', () => {
             const actualRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT, 'recipe-1999-01-01T00-00-00');
 
             expect(actualRecipe.selectedRunFolderName).toBe(LATEST_RUN_FOLDER_NAME);
+            expect(actualRecipe.notices[0]).toBe('The run "recipe-1999-01-01T00-00-00" is no longer on disk, so the latest run is shown instead.');
 
         });
 
@@ -386,12 +393,23 @@ describe('RecipeCockpitService', () => {
 
                 const actualRecipe = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot);
 
-                // Contact IS IN A RECIPE FILE, SO IT IS LISTED EVEN WITH NO FIELDS; Lead IS IN NEITHER
+                // Contact HAS NO Fields AND NO RECIPE FILE CARRIES IT, SO IT IS A LOOKUP TARGET; Lead IS IN NEITHER LIST
                 expect(actualRecipe.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel.fields.length])).toEqual([
-                    ['Contact', 0],
                     ['Account', 1]
                 ]);
                 expect(actualRecipe.notices).toEqual(['3 field entries in the objects wrapper had no field api name and are not shown.']);
+
+            });
+
+            it('given an object with no Fields that a recipe file does carry, lists it with the fields the file has', () => {
+
+                fs.writeFileSync(path.join(runFolderPath, 'recipe.yml'), '- object: Contact\n  fields:\n    LastName: x\n');
+                writeObjectsWrapper(JSON.stringify({ ObjectToObjectInfoMap: { Contact: {} }, RecipeFiles: [{ objects: ['Contact'] }] }));
+
+                const actualRecipe = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot);
+
+                expect(actualRecipe.objects.map(objectViewModel => objectViewModel.objectApiName)).toEqual(['Contact']);
+                expect(actualRecipe.objects[0].fields[0]).toMatchObject({ fieldApiName: 'LastName', isOnlyInRecipeFile: true });
 
             });
 
@@ -567,6 +585,7 @@ describe('RecipeCockpitService', () => {
             ['nothing at all', [''], ''],
             // THE RELATIVE INDENTATION IS WHICH "pick" BELONGS TO WHICH "when"
             ['a nested block', ['', '        if:', '            - choice:', '                pick: a'], 'if:\n    - choice:\n        pick: a'],
+            ['a value longer than the engine\'s argument limit', ['|', ...Array.from({ length: 200000 }, () => '    x')], Array.from({ length: 200000 }, () => 'x').join('\n')],
             ['a leading value with continuation lines', [' ### TODO: pick one', '                    Account.Retail', '                    Account.Bank'], '### TODO: pick one\nAccount.Retail\nAccount.Bank']
         ])('given %s, keeps only the structure a reader needs', (unusedDescription, expressionLines, expectedExpression) => {
 
@@ -602,7 +621,7 @@ describe('RecipeCockpitService', () => {
         });
 
         const withRenderedRecipe = () => {
-            panelState.recipeDataMessage = { command: 'recipeData', recipe: buildRecipeViewModel() };
+            panelState.recipeDataMessage = { command: 'recipeData', recipe: buildRecipeViewModel(), renderSequence: 7 };
             panelState.openableSourceKeys = new Set([RecipeCockpitService.buildOpenSourceKey('/workspace/recipe.yml', 12)]);
             panelState.selectableRunFolderNames = new Set([LATEST_RUN_FOLDER_NAME]);
         };
@@ -648,11 +667,27 @@ describe('RecipeCockpitService', () => {
 
         describe('rendered', () => {
 
-            it('given a model was sent, activates the actions it offers', () => {
+            it('given the model that was sent, activates the actions it offers', () => {
 
                 withRenderedRecipe();
 
-                expect(RecipeCockpitService.routePanelMessage({ command: 'rendered' }, panelState)).toEqual({ kind: 'activateActions' });
+                expect(RecipeCockpitService.routePanelMessage({ command: 'rendered', renderSequence: 7 }, panelState)).toEqual({ kind: 'activateActions' });
+
+            });
+
+            /*
+                A replayed model's ack can land after a newer load has posted. Promoting the newer
+                model's targets on it would honour rows that are not on screen yet, and refuse the
+                ones that are.
+            */
+            it.each([
+                ['an earlier model', 6],
+                ['no model at all', undefined]
+            ])('given the acknowledgement of %s, activates nothing', (unusedDescription, renderSequence) => {
+
+                withRenderedRecipe();
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'rendered', renderSequence }, panelState)).toBeUndefined();
 
             });
 
@@ -917,7 +952,7 @@ describe('RecipeCockpitService', () => {
 
         const renderFixtureRecipe = () => {
             const panel = runPanelScript();
-            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT) });
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
             return panel;
         };
 
@@ -959,7 +994,7 @@ describe('RecipeCockpitService', () => {
             expect(panel.findAll(panel.cockpitBodyElement, 'notice').map(notice => notice.textContent)).toEqual([
                 '1 field entry in the objects wrapper had no field api name and is not shown.'
             ]);
-            expect(panel.postedHostMessages).toContainEqual({ command: 'rendered' });
+            expect(panel.postedHostMessages).toContainEqual({ command: 'rendered', renderSequence: 1 });
             expect(panel.isHidden(panel.loadStatusElement)).toBe(true);
 
         });
@@ -1030,15 +1065,19 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given the filter is cleared, shows every field and collapses the objects again', () => {
+        it('given the filter is cleared, shows every field and puts back the objects the reader had open', () => {
 
             const panel = renderFixtureRecipe();
-            const [accountElement] = panel.objectElements();
+            const [accountElement, contactElement] = panel.objectElements();
 
+            panel.findAll(contactElement, 'toggle')[0].dispatch('click');
             panel.typeIntoFilter('industry');
+            expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(true);
+
             panel.typeIntoFilter('');
 
             expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBe(true);
+            expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(false);
             expect(panel.objectCountOf(accountElement)).toBe('5 fields');
             expect(panel.findAll(accountElement, 'field').every(fieldElement => !panel.isHidden(fieldElement))).toBe(true);
 
@@ -1062,6 +1101,35 @@ describe('RecipeCockpitService', () => {
             const expandedObjectElements = panel.objectElements().filter(objectElement => !panel.isHidden(panel.objectBodyOf(objectElement)));
             expect(expandedObjectElements).toHaveLength(RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT);
             expect(panel.objectCountOf(panel.objectElements()[RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT])).toBe('1 of 1 field');
+
+        });
+
+        /*
+            An expand builds every row of the object, so the object limit alone lets 25 wide objects
+            build 20,000 rows on one keystroke. The first match always opens, however wide.
+        */
+        it('stops opening objects once the next would pass the row budget, and always opens the first', () => {
+
+            const buildWideObject = (objectApiName: string, fieldCount: number) => ({
+                objectApiName: objectApiName,
+                recipeFilePath: '',
+                recipeFileName: '',
+                fields: Array.from({ length: fieldCount }, (unusedValue, fieldIndex) => ({
+                    fieldApiName: `Shared_${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
+                }))
+            });
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({ objects: [
+                buildWideObject('Widest__c', RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET + 1),
+                buildWideObject('Narrow__c', 1),
+                buildWideObject('AlsoNarrow__c', 1)
+            ] }) });
+
+            panel.typeIntoFilter('shared');
+
+            expect(panel.objectElements().map(objectElement => !panel.isHidden(panel.objectBodyOf(objectElement)))).toEqual([true, false, false]);
+            expect(panel.objectCountOf(panel.objectElements()[1])).toBe('1 of 1 field');
 
         });
 
@@ -1141,7 +1209,7 @@ describe('RecipeCockpitService', () => {
 
             expect(panel.findAll(panel.cockpitBodyElement, 'object')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'emptyState')[0].textContent).toContain('could not draw');
-            expect(panel.postedHostMessages).not.toContainEqual({ command: 'rendered' });
+            expect(panel.postedHostMessages.map(hostMessage => hostMessage.command)).not.toContain('rendered');
             expect(panel.postedHostMessages).toContainEqual(expect.objectContaining({ command: 'renderFailed', phase: 'render' }));
             // THE STATUS LINE IS LEFT ALONE -- CLEARING IT WOULD READ AS A FINISHED LOAD
             expect(panel.isHidden(panel.loadStatusElement)).toBe(false);
@@ -1160,6 +1228,19 @@ describe('RecipeCockpitService', () => {
                 message: 'lazy expand broke',
                 stack: 'at ensureObjectBodyBuilt'
             });
+
+        });
+
+        it('given a run fails to load, puts the selector back on the run whose rows are still on screen', () => {
+
+            const panel = renderFixtureRecipe();
+            const runSelectElement = panel.findAll(panel.cockpitBodyElement, 'runSelect')[0];
+
+            runSelectElement.value = FAKER_JS_RUN_FOLDER_NAME;
+            runSelectElement.dispatch('change');
+            panel.postToPanel({ command: 'loadFailed', message: 'The Recipe Cockpit could not finish loading: EIO' });
+
+            expect(runSelectElement.value).toBe(LATEST_RUN_FOLDER_NAME);
 
         });
 
@@ -1196,6 +1277,9 @@ describe('RecipeCockpitService', () => {
         let registeredMessageSubscriptions: { dispose: jest.Mock }[];
         let postedPanelMessages: any[];
         let createdStatusBarItems: { text: string; dispose: jest.Mock }[];
+
+        // WHAT THE REAL PANEL ECHOES: THE SEQUENCE OF THE LAST MODEL IT WAS POSTED
+        const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
 
         function buildFakeWebviewPanel() {
 
@@ -1283,7 +1367,11 @@ describe('RecipeCockpitService', () => {
 
             await receivedMessageHandler({ command: 'ready' });
 
-            expect(postedPanelMessages).toEqual([{ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT) }]);
+            expect(postedPanelMessages).toEqual([{
+                command: 'recipeData',
+                recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT),
+                renderSequence: expect.any(Number)
+            }]);
 
         });
 
@@ -1291,7 +1379,7 @@ describe('RecipeCockpitService', () => {
 
             await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
             await receivedMessageHandler({ command: 'ready' });
-            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             postedPanelMessages.length = 0;
 
             await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
@@ -1316,7 +1404,7 @@ describe('RecipeCockpitService', () => {
             await receivedMessageHandler({ command: 'openSource', filePath: LATEST_RECIPE_FILE_PATH, lineNumber: 12 });
             expect(openFileInEditorSpy).not.toHaveBeenCalled();
 
-            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             await receivedMessageHandler({ command: 'openSource', filePath: LATEST_RECIPE_FILE_PATH, lineNumber: 12 });
 
             expect(openFileInEditorSpy).toHaveBeenCalledWith(LATEST_RECIPE_FILE_PATH, 12);
@@ -1330,7 +1418,7 @@ describe('RecipeCockpitService', () => {
 
             await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
             await receivedMessageHandler({ command: 'ready' });
-            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             await receivedMessageHandler({ command: 'ready' });
 
             await receivedMessageHandler({ command: 'openSource', filePath: LATEST_RECIPE_FILE_PATH, lineNumber: 12 });
@@ -1346,7 +1434,7 @@ describe('RecipeCockpitService', () => {
 
             await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
             await receivedMessageHandler({ command: 'ready' });
-            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'boom' });
             await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'boom' });
             await receivedMessageHandler({ command: 'openSource', filePath: LATEST_RECIPE_FILE_PATH, lineNumber: 12 });
@@ -1358,6 +1446,24 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        it('given the recipe file now resolves outside the workspace, warns instead of opening it', async () => {
+
+            const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
+            await receivedMessageHandler({ command: 'ready' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+
+            // A SYMLINK SWAPPED IN AFTER THE MODEL WAS BUILT
+            jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockReturnValue(false);
+            await receivedMessageHandler({ command: 'openSource', filePath: LATEST_RECIPE_FILE_PATH, lineNumber: 12 });
+
+            expect(openFileInEditorSpy).not.toHaveBeenCalled();
+            expect(String(showWarningMessageSpy.mock.calls[0][0])).toContain('outside this workspace');
+
+        });
+
         it('given the recipe file was deleted since the render, warns instead of opening it', async () => {
 
             const openFileInEditorSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
@@ -1366,7 +1472,7 @@ describe('RecipeCockpitService', () => {
 
             await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
             await receivedMessageHandler({ command: 'ready' });
-            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             await receivedMessageHandler({ command: 'openSource', filePath: LATEST_RECIPE_FILE_PATH, lineNumber: 12 });
 
             expect(openFileInEditorSpy).not.toHaveBeenCalled();
@@ -1399,7 +1505,7 @@ describe('RecipeCockpitService', () => {
 
             await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
             await receivedMessageHandler({ command: 'ready' });
-            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
 
             jest.spyOn(RecipeCockpitService, 'buildRecipeViewModelByRuns').mockImplementation(() => {
                 throw new Error('EIO');
@@ -1420,7 +1526,7 @@ describe('RecipeCockpitService', () => {
 
             await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
             await receivedMessageHandler({ command: 'ready' });
-            await receivedMessageHandler({ command: 'rendered' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             postedPanelMessages.length = 0;
 
             const firstSelection = receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
@@ -1432,6 +1538,39 @@ describe('RecipeCockpitService', () => {
                 .map(hostMessage => hostMessage.recipe.selectedRunFolderName);
 
             expect(renderedRunFolderNames).toEqual([LATEST_RUN_FOLDER_NAME]);
+
+        });
+
+        it('given a superseded load throws, neither shows nor reports its failure', async () => {
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
+            await receivedMessageHandler({ command: 'ready' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            postedPanelMessages.length = 0;
+
+            const buildRecipeViewModelByRuns = RecipeCockpitService.buildRecipeViewModelByRuns.bind(RecipeCockpitService);
+            jest.spyOn(RecipeCockpitService, 'buildRecipeViewModelByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
+                if ( requestedRunFolderName === FAKER_JS_RUN_FOLDER_NAME ) {
+                    throw new Error('EIO');
+                }
+                return buildRecipeViewModelByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
+            });
+
+            /*
+                The first load is let through its first phase so it is inside the reading phase --
+                past every isCurrentLoad check -- when the second supersedes it. Started together,
+                the first would bail out at a check and never reach the throw this is about.
+            */
+            const firstSelection = receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+            await new Promise(resolveTick => setImmediate(resolveTick));
+            const secondSelection = receivedMessageHandler({ command: 'selectRun', runFolderName: LATEST_RUN_FOLDER_NAME });
+            await Promise.all([firstSelection, secondSelection]);
+
+            expect(RecipeCockpitService.buildRecipeViewModelByRuns).toHaveBeenCalledWith(expect.anything(), MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME);
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+            expect(postedPanelMessages.map(hostMessage => hostMessage.command)).not.toContain('loadFailed');
 
         });
 

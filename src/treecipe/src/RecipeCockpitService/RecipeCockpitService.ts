@@ -33,6 +33,14 @@ export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found 
 */
 export const RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT = 25;
 
+/*
+    The same bound on the axis the object limit does not reach: an expand builds EVERY row of the
+    object, and Salesforce allows 800 fields on one, so 25 objects is up to 20,000 rows. A filter
+    stops opening objects once the next would take it past this many rows -- the first matching
+    object always opens, however wide, so a query never answers with nothing expanded.
+*/
+export const RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET = 2000;
+
 const RUN_FOLDER_TIMESTAMP_PATTERN = /-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/;
 
 const FAKER_JS_RUN_FOLDER_PREFIX = 'recipe-fakerjs-';
@@ -153,6 +161,7 @@ export interface IRecipeCockpitPanelMessage {
     lineNumber?: unknown;
     runFolderName?: unknown;
     phase?: unknown;
+    renderSequence?: unknown;
     message?: unknown;
     stack?: unknown;
 }
@@ -162,9 +171,16 @@ export interface IRecipeCockpitLoadPhaseMessage {
     message: string;
 }
 
+/*
+    renderSequence is echoed back by the panel's "rendered", so an acknowledgement can only promote
+    the allow-lists of the model it was actually drawn from. Without it, a replayed model's ack
+    arriving after a newer load had posted would activate the NEWER model's targets while the older
+    one's rows were on screen.
+*/
 export interface IRecipeCockpitRecipeDataMessage {
     command: 'recipeData';
     recipe: IRecipeCockpitRecipeViewModel;
+    renderSequence: number;
 }
 
 export interface IRecipeCockpitLoadFailedMessage {
@@ -233,6 +249,8 @@ export class RecipeCockpitService {
         and the superseded load must not render over the one the reader asked for last.
     */
     private static recipeCockpitLoadSequence = 0;
+
+    private static recipeCockpitRenderSequence = 0;
 
     static buildInitialPanelState(workspaceRoot: string): IRecipeCockpitPanelState {
 
@@ -348,9 +366,12 @@ export class RecipeCockpitService {
 
         } catch (loadError) {
 
-            if ( isCurrentLoad() ) {
-                this.failLoad(cockpitPanel, `The Recipe Cockpit could not finish loading: ${loadError?.message ?? loadError}`);
+            // A LOAD THE READER ALREADY REPLACED, OR WHOSE PANEL THEY CLOSED, IS NOT THEIRS TO BE TOLD ABOUT
+            if ( !isCurrentLoad() ) {
+                return;
             }
+
+            this.failLoad(cockpitPanel, `The Recipe Cockpit could not finish loading: ${loadError?.message ?? loadError}`);
 
             throw loadError;
 
@@ -411,7 +432,11 @@ export class RecipeCockpitService {
     private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel, recipeViewModel: IRecipeCockpitRecipeViewModel) {
 
         const panelState = this.recipeCockpitPanelState;
-        const recipeDataMessage: IRecipeCockpitRecipeDataMessage = { command: 'recipeData', recipe: recipeViewModel };
+        const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
+            command: 'recipeData',
+            recipe: recipeViewModel,
+            renderSequence: ++this.recipeCockpitRenderSequence
+        };
 
         panelState.recipeDataMessage = recipeDataMessage;
         panelState.loadFailedMessage = undefined;
@@ -510,6 +535,16 @@ export class RecipeCockpitService {
 
             case 'openSource':
 
+                /*
+                    Containment was checked when the model was built, and is checked AGAIN here: the
+                    file can have been replaced by a symlink out of the workspace since, and the
+                    allow-list only says the model named this path, not where it resolves now.
+                */
+                if ( !SfdxProjectService.isPathContainedInWorkspace(path.resolve(panelAction.filePath), path.resolve(panelState.workspaceRoot)) ) {
+                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${panelAction.filePath}" now resolves outside this workspace, so it was not opened. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+                    return;
+                }
+
                 if ( !fs.existsSync(panelAction.filePath) ) {
                     VSCodeWorkspaceService.showWarningMessage(`The recipe file "${panelAction.filePath}" no longer exists. Re-open the Recipe Cockpit to load the runs currently on disk.`);
                     return;
@@ -546,8 +581,8 @@ export class RecipeCockpitService {
 
             case 'rendered':
 
-                // AN ACKNOWLEDGEMENT CANNOT PRECEDE A MODEL
-                if ( !panelState.recipeDataMessage ) {
+                // AN ACKNOWLEDGEMENT CANNOT PRECEDE A MODEL, AND ONLY ACTIVATES THE ONE IT WAS DRAWN FROM
+                if ( !panelState.recipeDataMessage || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence ) {
                     return undefined;
                 }
 
@@ -773,7 +808,8 @@ export class RecipeCockpitService {
             return { runs: [], selectedRunFolderName: '', objects: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE };
         }
 
-        const selectedRun = recipeRuns.find(recipeRun => recipeRun.runFolderName === requestedRunFolderName) ?? recipeRuns[0];
+        const requestedRun = recipeRuns.find(recipeRun => recipeRun.runFolderName === requestedRunFolderName);
+        const selectedRun = requestedRun ?? recipeRuns[0];
 
         const recipeViewModel: IRecipeCockpitRecipeViewModel = {
             runs: runViewModels,
@@ -795,8 +831,20 @@ export class RecipeCockpitService {
         const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
         const recipeSourceRead = this.readRecipeSourceFiles(selectedRun.runFolderPath, workspaceRoot);
 
-        recipeViewModel.objects = this.attachRecipeSources(normalizedObjectsWrapper.objects, recipeSourceRead.recipeSourceFiles);
-        recipeViewModel.notices = [...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices];
+        /*
+            An object the wrapper holds with no Fields is one a lookup points at. RelationshipService
+            still lists it in its tree's RecipeFiles objects, but no recipe is written for it -- so it
+            is kept only if a recipe file actually carries it.
+        */
+        recipeViewModel.objects = this.attachRecipeSources(normalizedObjectsWrapper.objects, recipeSourceRead.recipeSourceFiles)
+            .filter(objectViewModel => !normalizedObjectsWrapper.fieldlessObjectApiNames.has(objectViewModel.objectApiName)
+                                        || !!objectViewModel.recipeFilePath);
+
+        const missingRunNotices = requestedRunFolderName && !requestedRun
+            ? [`The run "${requestedRunFolderName}" is no longer on disk, so the latest run is shown instead.`]
+            : [];
+
+        recipeViewModel.notices = [...missingRunNotices, ...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices];
 
         if ( recipeViewModel.objects.length === 0 ) {
             recipeViewModel.emptyStateMessage = normalizedObjectsWrapper.isObjectsWrapper
@@ -819,13 +867,13 @@ export class RecipeCockpitService {
         Objects come in RECIPE order, the order RecipeFiles says they are inserted in, because that
         is the order the reader meets them in the files the panel opens.
     */
-    static normalizeObjectsWrapper(parsedObjectsWrapper: unknown): { objects: IRecipeCockpitObjectViewModel[]; notices: string[]; isObjectsWrapper: boolean } {
+    static normalizeObjectsWrapper(parsedObjectsWrapper: unknown): { objects: IRecipeCockpitObjectViewModel[]; notices: string[]; isObjectsWrapper: boolean; fieldlessObjectApiNames: Set<string> } {
 
         const objectsWrapperRecord = this.asRecord(parsedObjectsWrapper);
         const objectToObjectInfoMap = this.asRecord(objectsWrapperRecord?.ObjectToObjectInfoMap);
 
         if ( !objectToObjectInfoMap ) {
-            return { objects: [], notices: [], isObjectsWrapper: false };
+            return { objects: [], notices: [], isObjectsWrapper: false, fieldlessObjectApiNames: new Set() };
         }
 
         const recipeObjectApiNames: string[] = [];
@@ -845,20 +893,27 @@ export class RecipeCockpitService {
         const wrapperObjectApiNames = Object.keys(objectToObjectInfoMap);
         const recipeObjectApiNameSet = new Set(recipeObjectApiNames);
 
-        const orderedObjectApiNames = [
+        const orderedObjectApiNames = new Set([
             ...recipeObjectApiNames.filter(objectApiName => Object.prototype.hasOwnProperty.call(objectToObjectInfoMap, objectApiName)),
             ...wrapperObjectApiNames.filter(objectApiName => !recipeObjectApiNameSet.has(objectApiName))
-        ].filter((objectApiName, objectIndex, objectApiNames) => objectApiNames.indexOf(objectApiName) === objectIndex);
+        ]);
 
         const objects: IRecipeCockpitObjectViewModel[] = [];
+        const fieldlessObjectApiNames = new Set<string>();
         let unreadableFieldCount = 0;
 
         orderedObjectApiNames.forEach(objectApiName => {
 
             const wrapperFields = this.asRecord(objectToObjectInfoMap[objectApiName])?.Fields;
 
-            if ( !Array.isArray(wrapperFields) && !recipeObjectApiNameSet.has(objectApiName) ) {
-                return;
+            if ( !Array.isArray(wrapperFields) ) {
+
+                if ( !recipeObjectApiNameSet.has(objectApiName) ) {
+                    return;
+                }
+
+                fieldlessObjectApiNames.add(objectApiName);
+
             }
 
             const fields: IRecipeCockpitFieldViewModel[] = [];
@@ -892,7 +947,7 @@ export class RecipeCockpitService {
             ? [`${unreadableFieldCount} field ${unreadableFieldCount === 1 ? 'entry' : 'entries'} in the objects wrapper had no field api name and ${unreadableFieldCount === 1 ? 'is' : 'are'} not shown.`]
             : [];
 
-        return { objects: objects, notices: notices, isObjectsWrapper: true };
+        return { objects: objects, notices: notices, isObjectsWrapper: true, fieldlessObjectApiNames: fieldlessObjectApiNames };
 
     }
 
@@ -926,7 +981,11 @@ export class RecipeCockpitService {
 
         const leadingText = firstLine.trim();
         const bodyLines = continuationLines.filter(continuationLine => !!continuationLine.trim());
-        const indentWidth = Math.min(...bodyLines.map(bodyLine => bodyLine.length - bodyLine.trimStart().length));
+        // A LOOP RATHER THAN Math.min(...spread), WHICH THROWS PAST THE ENGINE'S ARGUMENT LIMIT ON A LONG ENOUGH VALUE
+        const indentWidth = bodyLines.reduce(
+            (narrowestIndent, bodyLine) => Math.min(narrowestIndent, bodyLine.length - bodyLine.trimStart().length),
+            Number.POSITIVE_INFINITY
+        );
         const dedentedLines = bodyLines.map(bodyLine => bodyLine.slice(indentWidth).trimEnd());
 
         const isBlockIndicatorOnly = !leadingText || /^[|>][-+]?$/.test(leadingText);
@@ -1275,10 +1334,13 @@ export class RecipeCockpitService {
     const loadStatusElement = document.getElementById('loadStatus');
     const cockpitBodyElement = document.getElementById('cockpitBody');
     const AUTO_EXPAND_OBJECT_LIMIT = ${RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT};
+    const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
 
     let objectStates = [];
     let filterQuery = '';
     let matchCountElement = null;
+    let runSelectElement = null;
+    let renderedRunFolderName = '';
 
     /*
         Every node the panel draws is made here and filled through textContent, so nothing from the
@@ -1418,6 +1480,8 @@ export class RecipeCockpitService {
         let matchingFieldCount = 0;
         let matchingObjectCount = 0;
         let autoExpandedObjectCount = 0;
+        let autoExpandedRowCount = 0;
+        let isAutoExpandBudgetSpent = false;
 
         objectStates.forEach(function (objectState) {
 
@@ -1445,14 +1509,28 @@ export class RecipeCockpitService {
                 objectState.countElement.textContent = 'no matching fields';
             }
 
+            // A CLEARED FILTER GIVES BACK WHAT THE READER HAD OPENED, RATHER THAN CLOSING IT ON THEM
             if (!filterQuery) {
+                setObjectExpanded(objectState, objectState.isExpandedByReader);
+                return;
+            }
+
+            if (objectMatchingFieldCount === 0 || isAutoExpandBudgetSpent) {
                 setObjectExpanded(objectState, false);
                 return;
             }
 
-            const shouldExpand = objectMatchingFieldCount > 0 && autoExpandedObjectCount < AUTO_EXPAND_OBJECT_LIMIT;
-            if (shouldExpand) { autoExpandedObjectCount++; }
-            setObjectExpanded(objectState, shouldExpand);
+            const fitsRowBudget = autoExpandedObjectCount === 0 || autoExpandedRowCount + objectFieldCount <= AUTO_EXPAND_ROW_BUDGET;
+
+            if (autoExpandedObjectCount >= AUTO_EXPAND_OBJECT_LIMIT || !fitsRowBudget) {
+                isAutoExpandBudgetSpent = true;
+                setObjectExpanded(objectState, false);
+                return;
+            }
+
+            autoExpandedObjectCount++;
+            autoExpandedRowCount += objectFieldCount;
+            setObjectExpanded(objectState, true);
 
         });
 
@@ -1485,7 +1563,7 @@ export class RecipeCockpitService {
 
         if (recipe.runs.length > 0) {
 
-            const runSelectElement = createElement('select', 'runSelect');
+            runSelectElement = createElement('select', 'runSelect');
             runSelectElement.setAttribute('aria-label', 'Generated recipe run');
 
             recipe.runs.forEach(function (run) {
@@ -1533,6 +1611,7 @@ export class RecipeCockpitService {
             }),
             isBodyBuilt: false,
             isExpanded: false,
+            isExpandedByReader: false,
             toggleElement: toggleElement,
             bodyElement: bodyElement,
             countElement: createElement('span', 'objectCount muted')
@@ -1540,7 +1619,8 @@ export class RecipeCockpitService {
 
         toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
         toggleElement.addEventListener('click', function () {
-            setObjectExpanded(objectState, !objectState.isExpanded);
+            objectState.isExpandedByReader = !objectState.isExpanded;
+            setObjectExpanded(objectState, objectState.isExpandedByReader);
         });
 
         objectHeaderElement.appendChild(toggleElement);
@@ -1569,6 +1649,8 @@ export class RecipeCockpitService {
         cockpitBodyElement.textContent = '';
         objectStates = [];
         matchCountElement = null;
+        runSelectElement = null;
+        renderedRunFolderName = recipe.selectedRunFolderName;
 
         const hasObjects = recipe.objects.length > 0;
 
@@ -1598,6 +1680,7 @@ export class RecipeCockpitService {
         cockpitBodyElement.textContent = '';
         objectStates = [];
         matchCountElement = null;
+        runSelectElement = null;
         cockpitBodyElement.appendChild(createElement('div', 'emptyState', 'The Recipe Cockpit could not draw this recipe. The error has been reported; re-open the cockpit to try again.'));
 
     }
@@ -1624,12 +1707,12 @@ export class RecipeCockpitService {
 
     }
 
-    function renderPanelGuarded(recipe) {
+    function renderPanelGuarded(recipe, renderSequence) {
 
         try {
 
             renderPanel(recipe);
-            vscodeApi.postMessage({ command: 'rendered' });
+            vscodeApi.postMessage({ command: 'rendered', renderSequence: renderSequence });
 
             return true;
 
@@ -1657,7 +1740,7 @@ export class RecipeCockpitService {
         if (hostMessage.command === 'recipeData') {
 
             // THE STATUS LINE IS LEFT ALONE WHEN THE RENDER FAILED -- CLEARING IT WOULD READ AS FINISHED
-            if (renderPanelGuarded(hostMessage.recipe)) {
+            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence)) {
                 setLoadStatus('', false);
             }
 
@@ -1666,7 +1749,14 @@ export class RecipeCockpitService {
         }
 
         if (hostMessage.command === 'loadFailed') {
+
             setLoadStatus(hostMessage.message, true);
+
+            // A RUN THAT FAILED TO LOAD LEAVES THE PREVIOUS ONE'S ROWS ON SCREEN, SO THE SELECTOR NAMES THAT ONE AGAIN
+            if (runSelectElement) {
+                runSelectElement.value = renderedRunFolderName;
+            }
+
         }
 
     });

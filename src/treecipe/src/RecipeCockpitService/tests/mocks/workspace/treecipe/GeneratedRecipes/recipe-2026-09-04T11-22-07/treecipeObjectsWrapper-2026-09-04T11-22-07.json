@@ -22,6 +22,6 @@
     }
   },
   "RecipeFiles": [
-    { "fileName": "recipe_relationshiptree_1.yml", "content": "", "objectCount": 2, "maxLevel": 1, "objects": ["Account", "Contact"] }
+    { "fileName": "recipe_relationshiptree_1.yml", "content": "", "objectCount": 3, "maxLevel": 1, "objects": ["Account", "User", "Contact"] }
   ]
 }
