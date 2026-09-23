@@ -4,6 +4,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
+import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IOrgDescribeRequestResult, SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -19,6 +21,10 @@ export const RECIPE_COCKPIT_LOAD_PHASES = {
     findingRuns: 'Finding generated recipe runs…',
     readingRun: 'Reading the generated recipe run…'
 };
+
+export const RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL = 'Describe in an org…';
+
+export const RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org to describe the objects of this recipe in';
 
 export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Run "Generate Treecipe" first, then open the Recipe Cockpit again.';
 
@@ -72,7 +78,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
     is no clickable link in a modal, so the button is the link and this line is what a reader can
     copy if they would rather not hand the dialog a browser.
 */
-export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe but does not yet compare it with an org, and its layout, its messages and the shape of what it shows will change between releases.
+export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe and can describe its objects in an org you choose, but does not yet compare the two, and its layout, its messages and the shape of what it shows will change between releases.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -188,9 +194,32 @@ export interface IRecipeCockpitLoadFailedMessage {
     message: string;
 }
 
+export interface IRecipeCockpitOrgDescribeObjectSummary {
+    objectApiName: string;
+    isDescribed: boolean;
+    describedFieldCount: number;
+    failureMessage: string;
+}
+
+/*
+    What one org describe said about the recipe on screen, as a SUMMARY: the normalized field model
+    stays in the host's describe cache, because nothing the panel draws yet needs it and the diff
+    that will is computed host side. renderSequence ties it to the model it described -- a describe
+    of an earlier run's objects must not be drawn over a later run's rows.
+*/
+export interface IRecipeCockpitOrgDescribeMessage {
+    command: 'orgDescribe';
+    orgLabel: string;
+    summary: string;
+    isFailure: boolean;
+    objects: IRecipeCockpitOrgDescribeObjectSummary[];
+    renderSequence: number;
+}
+
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
-                                        | IRecipeCockpitLoadFailedMessage;
+                                        | IRecipeCockpitLoadFailedMessage
+                                        | IRecipeCockpitOrgDescribeMessage;
 
 /*
     What the host should DO about a panel message -- the router's answer, kept as data so the
@@ -201,7 +230,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'activateActions' }
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
-    | { kind: 'selectRun'; runFolderName: string };
+    | { kind: 'selectRun'; runFolderName: string }
+    | { kind: 'selectOrg' };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -211,6 +241,11 @@ export type RecipeCockpitPanelAction =
     left the host, not that anything is on screen -- and every reload of the document (each reveal
     of a hidden tab) empties the active pair until the replayed model is drawn again. An action is
     honoured only when the panel has confirmed the row it came from is actually drawn.
+
+    The describable objects are an allow-list of the same kind with no payload to match: the panel
+    only asks for "an org describe", and WHICH objects are described is read from here, never from
+    the message. isOrgDescribeInFlight refuses a second request while the first is still picking
+    or describing, so two quick picks cannot race to post two answers.
 */
 export interface IRecipeCockpitPanelState {
     workspaceRoot: string;
@@ -218,10 +253,14 @@ export interface IRecipeCockpitPanelState {
     loadPhaseMessage: string;
     recipeDataMessage?: IRecipeCockpitRecipeDataMessage;
     loadFailedMessage?: IRecipeCockpitLoadFailedMessage;
+    orgDescribeMessage?: IRecipeCockpitOrgDescribeMessage;
     pendingOpenableSourceKeys: Set<string>;
     pendingSelectableRunFolderNames: Set<string>;
+    pendingDescribableObjectApiNames: Set<string>;
     openableSourceKeys: Set<string>;
     selectableRunFolderNames: Set<string>;
+    describableObjectApiNames: Set<string>;
+    isOrgDescribeInFlight: boolean;
     reportedFailureDescriptions: Set<string>;
 }
 
@@ -260,8 +299,11 @@ export class RecipeCockpitService {
             loadPhaseMessage: '',
             pendingOpenableSourceKeys: new Set(),
             pendingSelectableRunFolderNames: new Set(),
+            pendingDescribableObjectApiNames: new Set(),
             openableSourceKeys: new Set(),
             selectableRunFolderNames: new Set(),
+            describableObjectApiNames: new Set(),
+            isOrgDescribeInFlight: false,
             reportedFailureDescriptions: new Set()
         };
 
@@ -440,10 +482,13 @@ export class RecipeCockpitService {
 
         panelState.recipeDataMessage = recipeDataMessage;
         panelState.loadFailedMessage = undefined;
+        // A DESCRIBE ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
+        panelState.orgDescribeMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
+        panelState.pendingDescribableObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
 
         this.postToPanel(cockpitPanel, recipeDataMessage);
 
@@ -507,6 +552,7 @@ export class RecipeCockpitService {
                 panelState.isPanelReady = true;
                 panelState.openableSourceKeys = new Set();
                 panelState.selectableRunFolderNames = new Set();
+                panelState.describableObjectApiNames = new Set();
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
                 return;
 
@@ -514,6 +560,7 @@ export class RecipeCockpitService {
 
                 panelState.openableSourceKeys = panelState.pendingOpenableSourceKeys;
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
+                panelState.describableObjectApiNames = panelState.pendingDescribableObjectApiNames;
                 return;
 
             case 'reportRenderFailure': {
@@ -524,6 +571,7 @@ export class RecipeCockpitService {
                 if ( panelAction.invalidatesPanel ) {
                     panelState.openableSourceKeys = new Set();
                     panelState.selectableRunFolderNames = new Set();
+                    panelState.describableObjectApiNames = new Set();
                 }
 
                 const renderFailureError = new Error(`The Recipe Cockpit panel could not render the recipe: ${panelAction.failureDescription}`);
@@ -558,7 +606,154 @@ export class RecipeCockpitService {
                 await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelAction.runFolderName);
                 return;
 
+            case 'selectOrg':
+
+                await this.describeRecipeObjectsInSelectedOrg(cockpitPanel, panelState);
+                return;
+
         }
+
+    }
+
+    /*
+        Asks which authorized org to describe in, describes every object of the model on screen
+        there, and posts what came back.
+
+        The objects are the ones the rendered model named, captured BEFORE the quick pick: the
+        reader can switch runs while the picker is open, and the describe answers for the recipe
+        they asked about. Its answer is posted only if that model is still the one on screen.
+        Nothing here is fatal to the panel -- no authorized org, a connection that fails and an
+        object the org does not have are all told to the reader and leave the rows as they were.
+    */
+    private static async describeRecipeObjectsInSelectedOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+
+        const describedRecipeDataMessage = panelState.recipeDataMessage;
+        const objectApiNames = [...panelState.describableObjectApiNames];
+
+        if ( !describedRecipeDataMessage || objectApiNames.length === 0 ) {
+            return;
+        }
+
+        panelState.isOrgDescribeInFlight = true;
+
+        try {
+
+            const selectedOrgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER);
+
+            if ( !selectedOrgDetail ) {
+                return;
+            }
+
+            const orgLabel = this.buildOrgLabel(selectedOrgDetail);
+            let orgDescribeMessage: IRecipeCockpitOrgDescribeMessage;
+
+            try {
+
+                const describeResult = await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Recipe Cockpit: describing ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} in ${orgLabel}`,
+                    cancellable: true
+                }, async (progress, cancellationToken) => (
+                    await SalesforceOrgService.describeObjects(
+                        selectedOrgDetail.username,
+                        objectApiNames,
+                        () => SalesforceOrgService.getConnection(selectedOrgDetail.targetOrgIdentifier),
+                        {
+                            onObjectDescribed: (completedCount, requestedCount) => progress.report({
+                                increment: 100 / requestedCount,
+                                message: `${completedCount} of ${requestedCount}`
+                            }),
+                            isCancellationRequested: () => cancellationToken.isCancellationRequested
+                        }
+                    )
+                ));
+
+                orgDescribeMessage = this.buildOrgDescribeMessage(orgLabel, describeResult, describedRecipeDataMessage.renderSequence);
+
+            } catch (connectionError) {
+
+                orgDescribeMessage = this.buildOrgConnectionFailureMessage(orgLabel, connectionError, describedRecipeDataMessage.renderSequence);
+
+            }
+
+            if ( orgDescribeMessage.isFailure || orgDescribeMessage.objects.some(objectSummary => !objectSummary.isDescribed) ) {
+                VSCodeWorkspaceService.showWarningMessage(orgDescribeMessage.summary);
+            }
+
+            const isDescribedModelStillOnScreen = this.recipeCockpitPanel === cockpitPanel
+                                                    && this.recipeCockpitPanelState === panelState
+                                                    && panelState.recipeDataMessage === describedRecipeDataMessage;
+
+            if ( !isDescribedModelStillOnScreen ) {
+                return;
+            }
+
+            panelState.orgDescribeMessage = orgDescribeMessage;
+            this.postToPanel(cockpitPanel, orgDescribeMessage);
+
+        } finally {
+            panelState.isOrgDescribeInFlight = false;
+        }
+
+    }
+
+    // THE ALIAS A READER CHOSE BY, WITH THE USERNAME THAT SAYS WHICH ORG IT CURRENTLY POINTS AT
+    static buildOrgLabel(orgDetail: IAuthenticatedOrgDetail): string {
+
+        return orgDetail.alias ? `${orgDetail.alias} (${orgDetail.username})` : orgDetail.username;
+
+    }
+
+    static buildOrgDescribeMessage(orgLabel: string,
+                                    describeResult: IOrgDescribeRequestResult,
+                                    renderSequence: number): IRecipeCockpitOrgDescribeMessage {
+
+        const objectSummaries: IRecipeCockpitOrgDescribeObjectSummary[] = describeResult.outcomes.map(describeOutcome => ({
+            objectApiName: describeOutcome.objectApiName,
+            isDescribed: !!describeOutcome.describe,
+            describedFieldCount: describeOutcome.describe?.fields.length ?? 0,
+            failureMessage: describeOutcome.describe ? '' : ( describeOutcome.failureMessage || 'unknown error' )
+        }));
+
+        const requestedCount = objectSummaries.length;
+        const describedCount = objectSummaries.filter(objectSummary => objectSummary.isDescribed).length;
+        const cachedCount = describeResult.outcomes.filter(describeOutcome => describeOutcome.wasCached).length;
+        const failedCount = requestedCount - describedCount;
+
+        const describedText = `${describedCount} of ${requestedCount} ${requestedCount === 1 ? 'object' : 'objects'} described`;
+        const cachedText = cachedCount > 0 ? ` (${cachedCount} from this session's cache)` : '';
+
+        let summary = `Described in ${orgLabel}: ${describedText}${cachedText}.`;
+
+        if ( describeResult.wasCancelled ) {
+            summary = `The describe in ${orgLabel} was cancelled: ${describedText}${cachedText}.`;
+        } else if ( failedCount > 0 ) {
+            summary = `${summary} ${failedCount} could not be described.`;
+        }
+
+        return {
+            command: 'orgDescribe',
+            orgLabel: orgLabel,
+            summary: summary,
+            isFailure: false,
+            objects: objectSummaries,
+            renderSequence: renderSequence
+        };
+
+    }
+
+    static buildOrgConnectionFailureMessage(orgLabel: string, connectionError: unknown, renderSequence: number): IRecipeCockpitOrgDescribeMessage {
+
+        const failureText = ( connectionError as { message?: unknown } )?.message;
+
+        return {
+            command: 'orgDescribe',
+            orgLabel: orgLabel,
+            summary: `Could not connect to ${orgLabel}: ${typeof failureText === 'string' && failureText ? failureText : String(connectionError)}. Re-authorize the org with "sf org login web" and try again.`,
+            isFailure: true,
+            objects: [],
+            renderSequence: renderSequence
+        };
 
     }
 
@@ -629,6 +824,15 @@ export class RecipeCockpitService {
 
             }
 
+            case 'selectOrg':
+
+                // ONLY ONCE A MODEL WITH OBJECTS IS CONFIRMED ON SCREEN, AND ONE REQUEST AT A TIME
+                if ( panelState.describableObjectApiNames.size === 0 || panelState.isOrgDescribeInFlight ) {
+                    return undefined;
+                }
+
+                return { kind: 'selectOrg' };
+
             case 'selectRun': {
 
                 const { runFolderName } = panelMessage;
@@ -658,6 +862,10 @@ export class RecipeCockpitService {
 
         if ( panelState.recipeDataMessage ) {
             replayMessages.push(panelState.recipeDataMessage);
+        }
+
+        if ( panelState.recipeDataMessage && panelState.orgDescribeMessage ) {
+            replayMessages.push(panelState.orgDescribeMessage);
         }
 
         if ( panelState.loadFailedMessage ) {
@@ -1288,7 +1496,21 @@ export class RecipeCockpitService {
         background-color: var(--vscode-dropdown-background);
         border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
     }
+    .toolbar button {
+        padding: 0.3rem 0.6rem;
+        color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+        background-color: var(--vscode-button-secondaryBackground, transparent);
+        border: 1px solid var(--vscode-panel-border);
+        cursor: pointer;
+    }
     .matchCount { margin-bottom: 0.75rem; }
+    .orgStatus {
+        border-left: 3px solid var(--vscode-panel-border);
+        padding: 0.3rem 0.6rem;
+        margin: 0.4rem 0 0.75rem 0;
+    }
+    .orgStatus.failed { border-left-color: var(--vscode-errorForeground); }
+    .orgDescribeFailure { color: var(--vscode-descriptionForeground); }
     .notice {
         border-left: 3px solid var(--vscode-editorWarning-foreground);
         padding: 0.3rem 0.6rem;
@@ -1340,7 +1562,9 @@ export class RecipeCockpitService {
     let filterQuery = '';
     let matchCountElement = null;
     let runSelectElement = null;
+    let orgStatusElement = null;
     let renderedRunFolderName = '';
+    let renderedSequence = null;
 
     /*
         Every node the panel draws is made here and filled through textContent, so nothing from the
@@ -1581,11 +1805,23 @@ export class RecipeCockpitService {
 
         }
 
+        // THE PANEL ASKS ONLY FOR "A DESCRIBE" -- WHICH OBJECTS, AND IN WHICH ORG, THE HOST DECIDES
+        if (hasObjects) {
+            const describeButtonElement = createElement('button', 'describeInOrg', '${RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL}');
+            describeButtonElement.setAttribute('title', 'Choose an authorized org and describe the objects of this recipe in it');
+            describeButtonElement.addEventListener('click', function () {
+                vscodeApi.postMessage({ command: 'selectOrg' });
+            });
+            toolbarElement.appendChild(describeButtonElement);
+        }
+
         cockpitBodyElement.appendChild(toolbarElement);
 
         if (hasObjects) {
             matchCountElement = createElement('div', 'matchCount muted');
             cockpitBodyElement.appendChild(matchCountElement);
+            orgStatusElement = createElement('div', 'orgStatus hidden');
+            cockpitBodyElement.appendChild(orgStatusElement);
         }
 
     }
@@ -1614,7 +1850,8 @@ export class RecipeCockpitService {
             isExpandedByReader: false,
             toggleElement: toggleElement,
             bodyElement: bodyElement,
-            countElement: createElement('span', 'objectCount muted')
+            countElement: createElement('span', 'objectCount muted'),
+            orgDescribeElement: createElement('span', 'orgDescribeStatus muted hidden')
         };
 
         toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
@@ -1631,6 +1868,7 @@ export class RecipeCockpitService {
         }
 
         objectHeaderElement.appendChild(objectState.countElement);
+        objectHeaderElement.appendChild(objectState.orgDescribeElement);
 
         objectElement.appendChild(objectHeaderElement);
         objectElement.appendChild(bodyElement);
@@ -1650,6 +1888,8 @@ export class RecipeCockpitService {
         objectStates = [];
         matchCountElement = null;
         runSelectElement = null;
+        orgStatusElement = null;
+        renderedSequence = null;
         renderedRunFolderName = recipe.selectedRunFolderName;
 
         const hasObjects = recipe.objects.length > 0;
@@ -1681,6 +1921,8 @@ export class RecipeCockpitService {
         objectStates = [];
         matchCountElement = null;
         runSelectElement = null;
+        orgStatusElement = null;
+        renderedSequence = null;
         cockpitBodyElement.appendChild(createElement('div', 'emptyState', 'The Recipe Cockpit could not draw this recipe. The error has been reported; re-open the cockpit to try again.'));
 
     }
@@ -1712,6 +1954,7 @@ export class RecipeCockpitService {
         try {
 
             renderPanel(recipe);
+            renderedSequence = renderSequence;
             vscodeApi.postMessage({ command: 'rendered', renderSequence: renderSequence });
 
             return true;
@@ -1724,6 +1967,52 @@ export class RecipeCockpitService {
             return false;
 
         }
+
+    }
+
+    /*
+        What an org describe said, on the summary line and on each object's header. Drawn only over
+        the model it described: a describe of an earlier run's objects says nothing about these rows.
+    */
+    function renderOrgDescribe(orgDescribe) {
+
+        if (!orgStatusElement || orgDescribe.renderSequence !== renderedSequence) { return; }
+
+        orgStatusElement.textContent = '';
+        orgStatusElement.appendChild(createElement('div', 'orgDescribeSummary', orgDescribe.summary));
+        orgStatusElement.classList.remove('hidden');
+
+        if (orgDescribe.isFailure) {
+            orgStatusElement.classList.add('failed');
+        } else {
+            orgStatusElement.classList.remove('failed');
+        }
+
+        const summariesByObjectApiName = {};
+        orgDescribe.objects.forEach(function (objectSummary) {
+            summariesByObjectApiName[objectSummary.objectApiName] = objectSummary;
+            if (!objectSummary.isDescribed) {
+                orgStatusElement.appendChild(createElement('div', 'orgDescribeFailure', objectSummary.objectApiName + ': ' + objectSummary.failureMessage));
+            }
+        });
+
+        objectStates.forEach(function (objectState) {
+
+            const objectSummary = Object.prototype.hasOwnProperty.call(summariesByObjectApiName, objectState.object.objectApiName)
+                ? summariesByObjectApiName[objectState.object.objectApiName]
+                : null;
+
+            if (!objectSummary) {
+                objectState.orgDescribeElement.classList.add('hidden');
+                return;
+            }
+
+            objectState.orgDescribeElement.textContent = objectSummary.isDescribed
+                ? 'org: ' + pluralize(objectSummary.describedFieldCount, 'field', 'fields')
+                : 'not described in the org';
+            objectState.orgDescribeElement.classList.remove('hidden');
+
+        });
 
     }
 
@@ -1746,6 +2035,11 @@ export class RecipeCockpitService {
 
             return;
 
+        }
+
+        if (hostMessage.command === 'orgDescribe') {
+            renderOrgDescribe(hostMessage);
+            return;
         }
 
         if (hostMessage.command === 'loadFailed') {

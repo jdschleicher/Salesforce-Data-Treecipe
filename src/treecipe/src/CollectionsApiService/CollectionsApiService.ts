@@ -1,5 +1,6 @@
-import { Connection, Org, SfError } from "@salesforce/core";
+import { Connection, SfError } from "@salesforce/core";
 import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
+import { SalesforceOrgService } from "../SalesforceOrgService/SalesforceOrgService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 
 import * as vscode from 'vscode';
@@ -92,10 +93,8 @@ export class CollectionsApiService {
 
     static async getConnectionFromAlias(orgAlias: string) {
 
-        const localOrgDetail = await Org.create({ aliasOrUsername: orgAlias });
-        const connection = localOrgDetail.getConnection();
-        
-        return connection;
+        return await SalesforceOrgService.getConnection(orgAlias);
+
     }
 
     static async upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath: string,

@@ -6,6 +6,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { MockDirectoryService } from '../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService';
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -30,6 +31,21 @@ jest.mock('vscode', () => ({
 
 
 describe('Shared tests for CollectionsApiService', () => {
+
+    describe('getConnectionFromAlias', () => {
+
+        // THE INSERT PATH AND THE RECIPE COCKPIT'S DESCRIBE PATH RESOLVE AN ORG THROUGH ONE HELPER
+        test('resolves the org through the shared SalesforceOrgService connection helper', async () => {
+
+            const fakeConnection = { describe: jest.fn() };
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(fakeConnection as any);
+
+            expect(await CollectionsApiService.getConnectionFromAlias('devhub')).toBe(fakeConnection);
+            expect(getConnectionSpy).toHaveBeenCalledWith('devhub');
+
+        });
+
+    });
 
     describe('promptForDataSetObjectsPathVSCodeQuickItems', () => {
 

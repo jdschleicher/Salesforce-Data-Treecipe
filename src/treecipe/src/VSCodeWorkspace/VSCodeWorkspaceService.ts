@@ -796,14 +796,31 @@ export class VSCodeWorkspaceService {
     */
     static async promptForAuthenticatedTargetOrg(authenticatedOrgDetails: IAuthenticatedOrgDetail[]): Promise<string | undefined> {
 
+        const selectedOrgDetail = await this.promptForAuthenticatedOrgDetail(authenticatedOrgDetails, 'Select the Salesforce org to check picklist dependencies against');
+
+        return selectedOrgDetail?.targetOrgIdentifier;
+
+    }
+
+    // THE WHOLE DETAIL RATHER THAN ITS IDENTIFIER, FOR A CALLER THAT ALSO NEEDS THE USERNAME BEHIND AN ALIAS
+    static async promptForAuthenticatedOrgDetail(authenticatedOrgDetails: IAuthenticatedOrgDetail[],
+                                                    placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
+
         const orgQuickPickItems = this.buildAuthenticatedOrgQuickPickItems(authenticatedOrgDetails);
 
         const selectedOrgQuickPickItem = await vscode.window.showQuickPick(orgQuickPickItems, {
-            placeHolder: 'Select the Salesforce org to check picklist dependencies against',
+            placeHolder: placeHolder,
             ignoreFocusOut: true
         });
 
-        return selectedOrgQuickPickItem?.detail;
+        if ( !selectedOrgQuickPickItem ) {
+            return undefined;
+        }
+
+        return authenticatedOrgDetails.find(authenticatedOrgDetail => (
+            authenticatedOrgDetail.targetOrgIdentifier === selectedOrgQuickPickItem.detail
+            && authenticatedOrgDetail.username === selectedOrgQuickPickItem.description
+        ));
 
     }
 

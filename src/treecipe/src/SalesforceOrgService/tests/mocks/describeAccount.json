@@ -1,0 +1,119 @@
+{
+    "name": "Account",
+    "label": "Account",
+    "custom": false,
+    "createable": true,
+    "fields": [
+        {
+            "name": "Id",
+            "label": "Account ID",
+            "type": "id",
+            "length": 18,
+            "precision": 0,
+            "scale": 0,
+            "digits": 0,
+            "nillable": false,
+            "createable": false,
+            "calculated": false,
+            "controllerName": null,
+            "picklistValues": [],
+            "referenceTo": []
+        },
+        {
+            "name": "Name",
+            "label": "Account Name",
+            "type": "string",
+            "length": 255,
+            "precision": 0,
+            "scale": 0,
+            "digits": 0,
+            "nillable": false,
+            "createable": true,
+            "calculated": false,
+            "controllerName": null,
+            "picklistValues": [],
+            "referenceTo": []
+        },
+        {
+            "name": "AnnualRevenue__c",
+            "label": "Annual Revenue",
+            "type": "currency",
+            "length": 0,
+            "precision": 18,
+            "scale": 2,
+            "digits": 0,
+            "nillable": true,
+            "createable": true,
+            "calculated": false,
+            "controllerName": null,
+            "picklistValues": [],
+            "referenceTo": []
+        },
+        {
+            "name": "Region__c",
+            "label": "Region",
+            "type": "picklist",
+            "length": 255,
+            "precision": 0,
+            "scale": 0,
+            "digits": 0,
+            "nillable": true,
+            "createable": true,
+            "calculated": false,
+            "controllerName": null,
+            "picklistValues": [
+                { "active": true, "defaultValue": true, "label": "North America", "validFor": null, "value": "NA" },
+                { "active": true, "defaultValue": false, "label": "Europe & Middle East", "validFor": null, "value": "EMEA" },
+                { "active": false, "defaultValue": false, "label": "Retired", "validFor": null, "value": "Retired" }
+            ],
+            "referenceTo": []
+        },
+        {
+            "name": "Country__c",
+            "label": "Country",
+            "type": "picklist",
+            "length": 255,
+            "precision": 0,
+            "scale": 0,
+            "digits": 0,
+            "nillable": true,
+            "createable": true,
+            "calculated": false,
+            "controllerName": "Region__c",
+            "picklistValues": [
+                { "active": true, "defaultValue": false, "label": "Canada", "validFor": "gAAA", "value": "Canada" }
+            ],
+            "referenceTo": []
+        },
+        {
+            "name": "ParentId",
+            "label": "Parent Account ID",
+            "type": "reference",
+            "length": 18,
+            "precision": 0,
+            "scale": 0,
+            "digits": 0,
+            "nillable": true,
+            "createable": true,
+            "calculated": false,
+            "controllerName": null,
+            "picklistValues": [],
+            "referenceTo": ["Account"]
+        },
+        {
+            "name": "Rating_Score__c",
+            "label": "Rating Score",
+            "type": "double",
+            "length": 0,
+            "precision": 5,
+            "scale": 1,
+            "digits": 0,
+            "nillable": true,
+            "createable": false,
+            "calculated": true,
+            "controllerName": null,
+            "picklistValues": [],
+            "referenceTo": []
+        }
+    ]
+}
