@@ -20,7 +20,8 @@ import {
     IOrgDescribeSource,
     NO_AUTHORIZED_ORGS_MESSAGE,
     ORG_DESCRIBE_CANCELLED_MESSAGE,
-    ORG_DESCRIBE_CONCURRENCY
+    ORG_DESCRIBE_CONCURRENCY,
+    ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -242,6 +243,46 @@ describe('SalesforceOrgService', () => {
             await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Missing__c'], async () => describeSource);
 
             expect((describeSource.describe as jest.Mock).mock.calls.filter(([objectApiName]) => objectApiName === 'Missing__c')).toHaveLength(2);
+
+        });
+
+        /*
+            The names come from files in the workspace, and jsforce joins the name into the describe
+            URL's path unencoded -- a name that is not an api name is refused before any request.
+        */
+        it.each([
+            ['a path traversal', 'x/../../query?q=SELECT+Id+FROM+User'],
+            ['a slash', 'Account/describe'],
+            ['a leading digit', '1Account'],
+            ['a space', 'My Object'],
+            ['nothing', '']
+        ])('given %s for a name, sends no request for it and records it as that object\'s failure', async (unusedDescription, objectApiName) => {
+
+            const { describeSource, describedObjectApiNames } = buildDescribeSource({ Account: ACCOUNT_DESCRIBE });
+
+            const describeResult = await SalesforceOrgService.describeObjects(ORG_USERNAME, [objectApiName, 'Account'], async () => describeSource);
+
+            expect(describedObjectApiNames).toEqual(['Account']);
+            expect(describeResult.outcomes[0]).toEqual({ objectApiName: objectApiName, failureMessage: ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE, wasCached: false });
+
+        });
+
+        it('given only unusable names, makes no connection at all', async () => {
+
+            const describeSourceFactory = jest.fn();
+
+            const describeResult = await SalesforceOrgService.describeObjects(ORG_USERNAME, ['../sobjects'], describeSourceFactory);
+
+            expect(describeSourceFactory).not.toHaveBeenCalled();
+            expect(describeResult.wasCancelled).toBe(false);
+
+        });
+
+        it.each([
+            'Account', 'Custom_Object__c', 'ns__Custom__c', 'Setting__mdt', 'Order_Event__e', 'External__x', 'Account__History'
+        ])('accepts %s as an object api name', (objectApiName) => {
+
+            expect(SalesforceOrgService.isUsableObjectApiName(objectApiName)).toBe(true);
 
         });
 

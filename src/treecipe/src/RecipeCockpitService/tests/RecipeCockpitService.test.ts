@@ -917,6 +917,7 @@ describe('RecipeCockpitService', () => {
                 orgLabel: 'devhub',
                 summary: 'Described in devhub: 1 of 1 object described.',
                 isFailure: false,
+                isCancelled: false,
                 objects: [{ objectApiName: 'Account', isDescribed: true, describedFieldCount: 3, failureMessage: '' }],
                 renderSequence: 3
             });
@@ -954,6 +955,7 @@ describe('RecipeCockpitService', () => {
             }, 3);
 
             expect(orgDescribeMessage.summary).toBe('The describe in devhub was cancelled: 1 of 2 objects described.');
+            expect(orgDescribeMessage.isCancelled).toBe(true);
 
         });
 
@@ -968,6 +970,7 @@ describe('RecipeCockpitService', () => {
                 orgLabel: 'devhub',
                 summary: 'Could not connect to devhub: No authorization information found for devhub.. Re-authorize the org with "sf org login web" and try again.',
                 isFailure: true,
+                isCancelled: false,
                 objects: [],
                 renderSequence: 4
             });
@@ -1978,7 +1981,8 @@ describe('RecipeCockpitService', () => {
                 await receivedMessageHandler({ command: 'selectOrg' });
 
                 expect(promptForAuthorizedOrgSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER);
-                expect(getConnectionSpy).toHaveBeenCalledWith('devhub');
+                // BY USERNAME, THE IDENTITY THE CACHE IS KEYED BY, NOT BY AN ALIAS THAT CAN BE RE-POINTED
+                expect(getConnectionSpy).toHaveBeenCalledWith('jd@example.com');
                 expect(describeSource.describe.mock.calls.map(([objectApiName]) => objectApiName).sort()).toEqual(['Account', 'Contact']);
                 expect(vscode.window.withProgress).toHaveBeenCalledWith(
                     expect.objectContaining({ location: vscode.ProgressLocation.Notification, cancellable: true }),
@@ -1990,6 +1994,7 @@ describe('RecipeCockpitService', () => {
                     orgLabel: 'devhub (jd@example.com)',
                     summary: 'Described in devhub (jd@example.com): 1 of 2 objects described. 1 could not be described.',
                     isFailure: false,
+                    isCancelled: false,
                     objects: [
                         { objectApiName: 'Account', isDescribed: true, describedFieldCount: 2, failureMessage: '' },
                         { objectApiName: 'Contact', isDescribed: false, describedFieldCount: 0, failureMessage: 'NOT_FOUND: The requested resource does not exist' }
@@ -2138,6 +2143,61 @@ describe('RecipeCockpitService', () => {
                 await receivedMessageHandler({ command: 'ready' });
 
                 expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
+
+            });
+
+            /*
+                A new run's model is posted before the panel acks drawing it. A click in that gap must
+                not describe the PREVIOUS run's objects and tag the answer with the new model -- the
+                panel would draw it over rows it says nothing about.
+            */
+            it('given another run was posted but not yet drawn, describes nothing until it is', async () => {
+
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(promptForAuthorizedOrgSpy).not.toHaveBeenCalled();
+
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                const newRunObjectApiNames = postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').pop()
+                    .recipe.objects.map((objectViewModel: any) => objectViewModel.objectApiName).sort();
+
+                expect(promptForAuthorizedOrgSpy).toHaveBeenCalledTimes(1);
+                expect(describeSource.describe.mock.calls.map(([objectApiName]) => objectApiName).sort()).toEqual(newRunObjectApiNames);
+                expect(newRunObjectApiNames).not.toEqual(['Account', 'Contact']);
+
+            });
+
+            it('given the reader cancels the describe, draws what it got without a warning they did not need', async () => {
+
+                (vscode.window.withProgress as jest.Mock).mockImplementation(async (progressOptions: any, progressTask: Function) => (
+                    progressTask({ report: jest.fn() }, { isCancellationRequested: true })
+                ));
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(postedOrgDescribes()[0]).toEqual(expect.objectContaining({ isCancelled: true }));
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('given the answer arrives for a run no longer on screen, raises no warning about it', async () => {
+
+                await openRenderedCockpit();
+
+                promptForAuthorizedOrgSpy.mockImplementation(async () => {
+                    await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+                    return ORG_DETAIL;
+                });
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
 
             });
 

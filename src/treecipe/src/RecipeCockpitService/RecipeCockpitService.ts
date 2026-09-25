@@ -212,6 +212,7 @@ export interface IRecipeCockpitOrgDescribeMessage {
     orgLabel: string;
     summary: string;
     isFailure: boolean;
+    isCancelled: boolean;
     objects: IRecipeCockpitOrgDescribeObjectSummary[];
     renderSequence: number;
 }
@@ -489,6 +490,13 @@ export class RecipeCockpitService {
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
         panelState.pendingDescribableObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
+        /*
+            Emptied rather than left on the previous model until the new one's "rendered": a describe
+            reads its objects from here but tags its answer with the CURRENT model's renderSequence,
+            so a click landing between this post and the ack would describe the old run's objects
+            and draw the answer over the new run's rows.
+        */
+        panelState.describableObjectApiNames = new Set();
 
         this.postToPanel(cockpitPanel, recipeDataMessage);
 
@@ -657,7 +665,8 @@ export class RecipeCockpitService {
                     await SalesforceOrgService.describeObjects(
                         selectedOrgDetail.username,
                         objectApiNames,
-                        () => SalesforceOrgService.getConnection(selectedOrgDetail.targetOrgIdentifier),
+                        // BY THE USERNAME THE CACHE IS KEYED BY -- AN ALIAS RE-POINTED SINCE THE PICK WOULD CACHE ONE ORG'S ANSWER UNDER ANOTHER
+                        () => SalesforceOrgService.getConnection(selectedOrgDetail.username),
                         {
                             onObjectDescribed: (completedCount, requestedCount) => progress.report({
                                 increment: 100 / requestedCount,
@@ -676,16 +685,20 @@ export class RecipeCockpitService {
 
             }
 
-            if ( orgDescribeMessage.isFailure || orgDescribeMessage.objects.some(objectSummary => !objectSummary.isDescribed) ) {
-                VSCodeWorkspaceService.showWarningMessage(orgDescribeMessage.summary);
-            }
-
             const isDescribedModelStillOnScreen = this.recipeCockpitPanel === cockpitPanel
                                                     && this.recipeCockpitPanelState === panelState
                                                     && panelState.recipeDataMessage === describedRecipeDataMessage;
 
+            // AN ANSWER THE READER MOVED AWAY FROM IS NOT THEIRS TO BE TOLD ABOUT, AND A CANCEL IS ONE THEY CHOSE
             if ( !isDescribedModelStillOnScreen ) {
                 return;
+            }
+
+            const hasUnexpectedFailure = orgDescribeMessage.isFailure
+                                            || ( !orgDescribeMessage.isCancelled && orgDescribeMessage.objects.some(objectSummary => !objectSummary.isDescribed) );
+
+            if ( hasUnexpectedFailure ) {
+                VSCodeWorkspaceService.showWarningMessage(orgDescribeMessage.summary);
             }
 
             panelState.orgDescribeMessage = orgDescribeMessage;
@@ -736,6 +749,7 @@ export class RecipeCockpitService {
             orgLabel: orgLabel,
             summary: summary,
             isFailure: false,
+            isCancelled: describeResult.wasCancelled,
             objects: objectSummaries,
             renderSequence: renderSequence
         };
@@ -751,6 +765,7 @@ export class RecipeCockpitService {
             orgLabel: orgLabel,
             summary: `Could not connect to ${orgLabel}: ${typeof failureText === 'string' && failureText ? failureText : String(connectionError)}. Re-authorize the org with "sf org login web" and try again.`,
             isFailure: true,
+            isCancelled: false,
             objects: [],
             renderSequence: renderSequence
         };

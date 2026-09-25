@@ -6,6 +6,17 @@ export const NO_AUTHORIZED_ORGS_MESSAGE = 'No authorized Salesforce orgs were fo
 
 export const ORG_DESCRIBE_CANCELLED_MESSAGE = 'cancelled before it was described';
 
+export const ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE = 'not a Salesforce object api name, so it was not sent to the org';
+
+/*
+    What an sObject api name can be: a letter, then letters, digits and underscores -- which covers
+    a namespace prefix and every suffix (__c, __mdt, __e, __x). The name comes from files in the
+    workspace, and jsforce joins it into the describe URL's PATH unencoded, so a name like
+    "x/../../query" would otherwise send an authenticated request to an endpoint of the file's
+    choosing in the org the reader picked.
+*/
+const OBJECT_API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+
 /*
     How many describe calls are in flight at once. One at a time makes a 100-object recipe a
     100-round-trip wait; all at once lets a large recipe burst past the org's concurrent request
@@ -165,6 +176,11 @@ export class SalesforceOrgService {
 
         const uncachedObjectApiNames = requestedObjectApiNames.filter(objectApiName => {
 
+            if ( !this.isUsableObjectApiName(objectApiName) ) {
+                recordOutcome({ objectApiName: objectApiName, failureMessage: ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE, wasCached: false });
+                return false;
+            }
+
             const cachedDescribe = this.describeCache.get(this.buildDescribeCacheKey(orgUsername, objectApiName));
 
             if ( cachedDescribe ) {
@@ -183,33 +199,34 @@ export class SalesforceOrgService {
             const describeSource = await describeSourceFactory();
             const pendingObjectApiNames = [...uncachedObjectApiNames];
 
-            const describeNext = async (): Promise<void> => {
+            // EACH WORKER TAKES THE NEXT NAME UNTIL NONE ARE LEFT, SO AT MOST ORG_DESCRIBE_CONCURRENCY ARE IN FLIGHT
+            const describeUntilDrained = async (): Promise<void> => {
 
-                const objectApiName = pendingObjectApiNames.shift();
+                let objectApiName = pendingObjectApiNames.shift();
 
-                if ( objectApiName === undefined || isCancellationRequested() ) {
-                    return;
+                while ( objectApiName !== undefined && !isCancellationRequested() ) {
+
+                    try {
+
+                        const normalizedDescribe = this.normalizeDescribeResult(objectApiName, await describeSource.describe(objectApiName));
+                        this.describeCache.set(this.buildDescribeCacheKey(orgUsername, objectApiName), normalizedDescribe);
+                        recordOutcome({ objectApiName: objectApiName, describe: normalizedDescribe, wasCached: false });
+
+                    } catch (describeError) {
+
+                        recordOutcome({ objectApiName: objectApiName, failureMessage: this.describeFailure(describeError), wasCached: false });
+
+                    }
+
+                    objectApiName = pendingObjectApiNames.shift();
+
                 }
-
-                try {
-
-                    const normalizedDescribe = this.normalizeDescribeResult(objectApiName, await describeSource.describe(objectApiName));
-                    this.describeCache.set(this.buildDescribeCacheKey(orgUsername, objectApiName), normalizedDescribe);
-                    recordOutcome({ objectApiName: objectApiName, describe: normalizedDescribe, wasCached: false });
-
-                } catch (describeError) {
-
-                    recordOutcome({ objectApiName: objectApiName, failureMessage: this.describeFailure(describeError), wasCached: false });
-
-                }
-
-                await describeNext();
 
             };
 
             await Promise.all(Array.from(
                 { length: Math.min(ORG_DESCRIBE_CONCURRENCY, uncachedObjectApiNames.length) },
-                () => describeNext()
+                () => describeUntilDrained()
             ));
 
         }
@@ -229,6 +246,12 @@ export class SalesforceOrgService {
         });
 
         return { outcomes: outcomes, wasCancelled: wasCancelled };
+
+    }
+
+    static isUsableObjectApiName(objectApiName: string): boolean {
+
+        return typeof objectApiName === 'string' && OBJECT_API_NAME_PATTERN.test(objectApiName);
 
     }
 
