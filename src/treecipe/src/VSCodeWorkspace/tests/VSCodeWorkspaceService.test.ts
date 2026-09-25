@@ -266,6 +266,38 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
+    describe('promptForAuthenticatedOrgDetail', () => {
+
+        const orgDetails = [
+            { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' },
+            { targetOrgIdentifier: 'scratch@example.com', username: 'scratch@example.com', alias: undefined }
+        ];
+
+        test('given a selection, returns the whole detail, username included, and shows the caller\'s placeholder', async () => {
+
+            const showQuickPickSpy = jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue({
+                label: 'devhub',
+                description: 'jd@example.com',
+                detail: 'devhub'
+            } as never);
+
+            const selectedOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetail(orgDetails, 'Pick the org to describe in');
+
+            expect(selectedOrgDetail).toBe(orgDetails[0]);
+            expect(showQuickPickSpy).toHaveBeenCalledWith(expect.any(Array), { placeHolder: 'Pick the org to describe in', ignoreFocusOut: true });
+
+        });
+
+        test('given the quick pick is dismissed, returns undefined', async () => {
+
+            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined as never);
+
+            expect(await VSCodeWorkspaceService.promptForAuthenticatedOrgDetail(orgDetails, 'Pick')).toBeUndefined();
+
+        });
+
+    });
+
     describe('picklist dependency check output channel', () => {
 
         function buildMockOutputChannel() {

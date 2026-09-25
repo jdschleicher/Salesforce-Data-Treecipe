@@ -1,5 +1,37 @@
 # Change Log
 
+## [3.26.0] - The Recipe Cockpit describes a recipe's objects in an org
+
+Closes [#55](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/55), the third slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+The cockpit has a **Describe in an org…** button next to the filter. It opens a picker of every org the Salesforce CLI has authorized, then describes each object in the recipe on screen in the chosen org. The panel shows a summary line and, on each object's header, how many fields the org has for it or that it could not be described. This slice only connects and describes. Comparing the org with the recipe is the next slice (#56), and nothing here draws a difference.
+
+### One connection helper, no new dependency
+
+`SalesforceOrgService` is a new service. `getConnection` is now the only place an alias or username becomes a connection (`Org.create({ aliasOrUsername }).getConnection()` from `@salesforce/core`). `CollectionsApiService.getConnectionFromAlias` delegates to it, so the insert path and the describe path resolve an org the same way.
+
+The picker reuses what `Run Picklist Dependency Check` already uses: `AuthInfo.listAllAuthorizations()` goes through `PicklistDependencyCheckService.buildAuthenticatedOrgDetails` and is shown by `VSCodeWorkspaceService.promptForAuthenticatedOrgDetail`. That new method takes a placeholder and returns the whole org detail, username included, and `promptForAuthenticatedTargetOrg` now delegates to it. With no authorized org, a warning says to run `sf org login web` rather than showing an empty picker.
+
+### The describe
+
+- **Pure normalization.** `normalizeDescribeResult` reduces a describe to what can be compared with a recipe field: api name, label, type, length, precision, scale, picklist values (value, label, active, default), controlling field, lookup targets, and nillable / createable / calculated. The result comes over the network, so every value is type-checked. A value of the wrong type defaults (`''`, `0`, `false`), and a field with no name is dropped. A describe with no field list is recorded as that object's failure instead of being passed on as an object with no fields.
+- **Cached for the session, keyed by org username.** The cache is keyed by username, not alias, because an alias can be re-pointed at another org between two requests. A repeat request that the cache can answer makes no connection at all. Failures are never cached, because their usual causes (an expired session, an object not deployed yet) are things the reader fixes before asking again.
+- **Only api names reach the org.** The object names come from files in the workspace, and jsforce joins a name into the describe URL's path without encoding it. A name that is not an sObject api name (a letter, then letters, digits and underscores, which covers namespaces and every `__c`/`__mdt`/`__e`/`__x` suffix) is recorded as that object's failure and never sent, so a crafted `x/../../query` cannot aim an authenticated request at another endpoint.
+- **Connected by username.** The connection is opened with the username the cache is keyed by rather than the alias, so an alias re-pointed after the pick cannot cache one org's answer under another.
+- **Failures are per object.** An object the org does not have is a normal result for a recipe generated from local metadata. It is recorded on that object (`NOT_FOUND: …`) and the other objects are still described. If the connection itself fails, that says something about the org, not about one object: the panel shows *Could not connect to …* and how to re-authorize, and a warning notification says the same. Either way the rows stay on screen and usable.
+- **Progress and cancellation.** The describe runs under a cancellable `withProgress` notification that counts objects, with at most five describes in flight at once (`ORG_DESCRIBE_CONCURRENCY`). A cancelled request marks the objects it did not reach as cancelled rather than as failures.
+
+### The protocol
+
+It follows the rules the cockpit already had:
+
+- **`selectOrg` carries no payload.** The panel only asks for a describe. Which objects get described comes from the host's own model (`describableObjectApiNames`), so nothing the panel posts can widen the request. That list is set when the model is posted, the same way as the other allow-lists, and takes effect only when the panel reports `rendered`. Every `ready` clears it.
+- **A new model starts with nothing describable.** Posting a model empties the active list of objects to describe, not only the pending one. Otherwise a click between a new run's post and its `rendered` ack would describe the previous run's objects and tag the answer with the new model.
+- **One request at a time.** A second click while the picker is open or a describe is running is ignored.
+- **The answer is tied to the model it described.** The objects are captured before the picker opens. If the reader switches runs or closes the panel while the describe runs, the result is dropped rather than drawn over a different run's rows, and no warning is raised for it. A cancel the reader chose raises no warning either. The panel checks the `renderSequence` too. Loading another run clears the previous describe, and a reload replays the describe right after the model it belongs to.
+- **Only a summary is posted.** The panel receives each object's field count or failure. The normalized field model stays in the host's cache, where the diff will read it.
+- **The flag gate is unchanged.** The describe can only be started from the panel, which only exists once the workspace has opted in. This slice adds no command, keybinding or other way in.
+
 ## [3.25.0] - The Recipe Cockpit traverses a generated recipe
 
 Closes [#54](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/54), the second slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).

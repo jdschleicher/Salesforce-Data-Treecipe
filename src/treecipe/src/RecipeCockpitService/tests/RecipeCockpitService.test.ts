@@ -7,8 +7,9 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
-    window: { createWebviewPanel: jest.fn() },
-    ViewColumn: { One: 1 }
+    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn() },
+    ViewColumn: { One: 1 },
+    ProgressLocation: { Notification: 15 }
 }), { virtual: true });
 
 import {
@@ -23,8 +24,11 @@ import {
     RECIPE_COCKPIT_NO_RUN_MESSAGE,
     RECIPE_COCKPIT_LOAD_PHASES,
     RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
-    RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET
+    RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET,
+    RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL,
+    RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER
 } from '../RecipeCockpitService';
+import { SalesforceOrgService, ORG_DESCRIBE_CANCELLED_MESSAGE } from '../../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
@@ -651,6 +655,20 @@ describe('RecipeCockpitService', () => {
             });
 
             // THE STRUCTURE STAYS WORTH SHOWING, AND THE READER STILL HAS TO BE TOLD THE LOAD BEHIND IT DIED
+            // THE DESCRIBE IS DRAWN OVER THE MODEL IT DESCRIBED, SO IT CAN ONLY FOLLOW IT
+            it('given a model and an org describe of it, replays the describe after the model and before a failure', () => {
+
+                withRenderedRecipe();
+                panelState.orgDescribeMessage = RecipeCockpitService.buildOrgConnectionFailureMessage('devhub', new Error('expired'), 7);
+                panelState.loadFailedMessage = { command: 'loadFailed', message: 'it broke' };
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'ready' }, panelState)).toEqual({
+                    kind: 'replay',
+                    hostMessages: [panelState.recipeDataMessage, panelState.orgDescribeMessage, panelState.loadFailedMessage]
+                });
+
+            });
+
             it('given a model and then a failed load, replays both, the failure last', () => {
 
                 withRenderedRecipe();
@@ -818,6 +836,48 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        describe('selectOrg', () => {
+
+            it('given a rendered model with objects, asks the host to describe them', () => {
+
+                withRenderedRecipe();
+                panelState.describableObjectApiNames = new Set(['Account']);
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg' }, panelState)).toEqual({ kind: 'selectOrg' });
+
+            });
+
+            // WHICH OBJECTS ARE DESCRIBED IS THE HOST'S MODEL, SO NOTHING THE PANEL POSTS ALONGSIDE CAN WIDEN IT
+            it('ignores any payload posted with it', () => {
+
+                withRenderedRecipe();
+                panelState.describableObjectApiNames = new Set(['Account']);
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg', objectApiNames: ['User'] } as any, panelState)).toEqual({ kind: 'selectOrg' });
+
+            });
+
+            it('given the panel has not confirmed drawing the model, describes nothing', () => {
+
+                withRenderedRecipe();
+                panelState.pendingDescribableObjectApiNames = new Set(['Account']);
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg' }, panelState)).toBeUndefined();
+
+            });
+
+            it('given a describe is already picking or running, starts no second one', () => {
+
+                withRenderedRecipe();
+                panelState.describableObjectApiNames = new Set(['Account']);
+                panelState.isOrgDescribeInFlight = true;
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg' }, panelState)).toBeUndefined();
+
+            });
+
+        });
+
         it.each([
             ['an unrecognized command', { command: 'traverseRecipe' }],
             ['a message with no command at all', {}],
@@ -825,6 +885,101 @@ describe('RecipeCockpitService', () => {
         ])('given %s, answers with nothing', (unusedDescription, panelMessage) => {
 
             expect(RecipeCockpitService.routePanelMessage(panelMessage, panelState)).toBeUndefined();
+
+        });
+
+    });
+
+    describe('buildOrgLabel', () => {
+
+        it('names the alias with the username it points at, or the username alone', () => {
+
+            expect(RecipeCockpitService.buildOrgLabel({ targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' })).toBe('devhub (jd@example.com)');
+            expect(RecipeCockpitService.buildOrgLabel({ targetOrgIdentifier: 'jd@example.com', username: 'jd@example.com' })).toBe('jd@example.com');
+
+        });
+
+    });
+
+    describe('buildOrgDescribeMessage', () => {
+
+        const accountDescribe = { objectApiName: 'Account', objectLabel: 'Account', fields: [] as any[] };
+
+        it('given every object described, counts them and each one\'s fields', () => {
+
+            const orgDescribeMessage = RecipeCockpitService.buildOrgDescribeMessage('devhub', {
+                outcomes: [{ objectApiName: 'Account', describe: { ...accountDescribe, fields: [{}, {}, {}] as any[] }, wasCached: false }],
+                wasCancelled: false
+            }, 3);
+
+            expect(orgDescribeMessage).toEqual({
+                command: 'orgDescribe',
+                orgLabel: 'devhub',
+                summary: 'Described in devhub: 1 of 1 object described.',
+                isFailure: false,
+                isCancelled: false,
+                objects: [{ objectApiName: 'Account', isDescribed: true, describedFieldCount: 3, failureMessage: '' }],
+                renderSequence: 3
+            });
+
+        });
+
+        it('given some objects failed, says how many and carries each failure on its object', () => {
+
+            const orgDescribeMessage = RecipeCockpitService.buildOrgDescribeMessage('devhub', {
+                outcomes: [
+                    { objectApiName: 'Account', describe: accountDescribe, wasCached: true },
+                    { objectApiName: 'Widget__c', failureMessage: 'NOT_FOUND: The requested resource does not exist', wasCached: false },
+                    { objectApiName: 'Gadget__c', wasCached: false }
+                ],
+                wasCancelled: false
+            }, 3);
+
+            expect(orgDescribeMessage.summary).toBe('Described in devhub: 1 of 3 objects described (1 from this session\'s cache). 2 could not be described.');
+            expect(orgDescribeMessage.objects.map(objectSummary => objectSummary.failureMessage)).toEqual([
+                '',
+                'NOT_FOUND: The requested resource does not exist',
+                'unknown error'
+            ]);
+
+        });
+
+        it('given the describe was cancelled, says so rather than reporting the rest as failures', () => {
+
+            const orgDescribeMessage = RecipeCockpitService.buildOrgDescribeMessage('devhub', {
+                outcomes: [
+                    { objectApiName: 'Account', describe: accountDescribe, wasCached: false },
+                    { objectApiName: 'Contact', failureMessage: ORG_DESCRIBE_CANCELLED_MESSAGE, wasCached: false }
+                ],
+                wasCancelled: true
+            }, 3);
+
+            expect(orgDescribeMessage.summary).toBe('The describe in devhub was cancelled: 1 of 2 objects described.');
+            expect(orgDescribeMessage.isCancelled).toBe(true);
+
+        });
+
+    });
+
+    describe('buildOrgConnectionFailureMessage', () => {
+
+        it('says the org could not be reached, why, and how to fix it', () => {
+
+            expect(RecipeCockpitService.buildOrgConnectionFailureMessage('devhub', new Error('No authorization information found for devhub.'), 4)).toEqual({
+                command: 'orgDescribe',
+                orgLabel: 'devhub',
+                summary: 'Could not connect to devhub: No authorization information found for devhub.. Re-authorize the org with "sf org login web" and try again.',
+                isFailure: true,
+                isCancelled: false,
+                objects: [],
+                renderSequence: 4
+            });
+
+        });
+
+        it('given something thrown that is not an Error, still says what it was', () => {
+
+            expect(RecipeCockpitService.buildOrgConnectionFailureMessage('devhub', 'ECONNRESET', 4).summary).toContain('Could not connect to devhub: ECONNRESET.');
 
         });
 
@@ -1269,6 +1424,110 @@ describe('RecipeCockpitService', () => {
 
     });
 
+    describe('the panel script, describing in an org', () => {
+
+        const renderFixtureRecipe = (renderSequence = 1) => {
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence });
+            return panel;
+        };
+
+        const describedFixture = (renderSequence: number) => RecipeCockpitService.buildOrgDescribeMessage('devhub (jd@example.com)', {
+            outcomes: [
+                { objectApiName: 'Account', describe: { objectApiName: 'Account', objectLabel: 'Account', fields: [{}, {}, {}] as any[] }, wasCached: false },
+                { objectApiName: 'Contact', failureMessage: 'NOT_FOUND: The requested resource does not exist', wasCached: false }
+            ],
+            wasCancelled: false
+        }, renderSequence);
+
+        const orgDescribeStatusOf = (panel: any, objectElement: any) => panel.findAll(objectElement.children[0], 'orgDescribeStatus')[0];
+
+        it('offers the describe beside the filter, and asks the host for it with no payload', () => {
+
+            const panel = renderFixtureRecipe();
+            const describeButtons = panel.findAll(panel.cockpitBodyElement.children[0], 'describeInOrg');
+
+            expect(describeButtons).toHaveLength(1);
+            expect(describeButtons[0].textContent).toBe(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL);
+
+            describeButtons[0].dispatch('click');
+
+            expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'selectOrg' });
+
+        });
+
+        it('given a run with no objects, offers nothing to describe', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: buildRecipeViewModel({ emptyStateMessage: 'nothing here' }), renderSequence: 1 });
+
+            expect(panel.findAll(panel.cockpitBodyElement, 'describeInOrg')).toEqual([]);
+
+        });
+
+        it('shows nothing about an org until one has been described', () => {
+
+            const panel = renderFixtureRecipe();
+
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0])).toBe(true);
+            expect(panel.objectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+
+        });
+
+        it('given a describe of the rows on screen, draws its summary, each failure, and each object\'s answer on its header', () => {
+
+            const panel = renderFixtureRecipe(4);
+            panel.postToPanel(describedFixture(4));
+
+            const orgStatusElement = panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0];
+
+            expect(panel.isHidden(orgStatusElement)).toBe(false);
+            expect(orgStatusElement.classList.contains('failed')).toBe(false);
+            expect(panel.findAll(orgStatusElement, 'orgDescribeSummary')[0].textContent)
+                .toBe('Described in devhub (jd@example.com): 1 of 2 objects described. 1 could not be described.');
+            expect(panel.findAll(orgStatusElement, 'orgDescribeFailure').map((failureElement: any) => failureElement.textContent))
+                .toEqual(['Contact: NOT_FOUND: The requested resource does not exist']);
+
+            expect(panel.objectElements().map((objectElement: any) => orgDescribeStatusOf(panel, objectElement).textContent))
+                .toEqual(['org: 3 fields', 'not described in the org']);
+            expect(panel.objectElements().every((objectElement: any) => !panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+
+        });
+
+        it('given a connection failure, marks the summary as one', () => {
+
+            const panel = renderFixtureRecipe(4);
+            panel.postToPanel(RecipeCockpitService.buildOrgConnectionFailureMessage('devhub', new Error('expired'), 4));
+
+            const orgStatusElement = panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0];
+
+            expect(orgStatusElement.classList.contains('failed')).toBe(true);
+            expect(panel.objectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+
+        });
+
+        // A DESCRIBE OF AN EARLIER RUN'S OBJECTS SAYS NOTHING ABOUT THESE ROWS
+        it('given a describe of a model that is not the one on screen, draws nothing', () => {
+
+            const panel = renderFixtureRecipe(5);
+            panel.postToPanel(describedFixture(4));
+
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0])).toBe(true);
+            expect(panel.objectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+
+        });
+
+        it('given a describe before any model was drawn, draws nothing and does not throw', () => {
+
+            const panel = runPanelScript();
+
+            expect(() => panel.postToPanel(describedFixture(1))).not.toThrow();
+            expect(panel.findAll(panel.cockpitBodyElement, 'orgStatus')).toEqual([]);
+
+        });
+
+    });
+
     describe('openRecipeCockpitPanel', () => {
 
         let createdWebviewPanel: any;
@@ -1670,6 +1929,292 @@ describe('RecipeCockpitService', () => {
             await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
 
             expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(2);
+
+        });
+
+        describe('describing the recipe in an org', () => {
+
+            const ORG_DETAIL = { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' };
+
+            let describeSource: { describe: jest.Mock };
+            let promptForAuthorizedOrgSpy: jest.SpyInstance;
+            let getConnectionSpy: jest.SpyInstance;
+            let showWarningMessageSpy: jest.SpyInstance;
+
+            const postedOrgDescribes = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'orgDescribe');
+
+            const openRenderedCockpit = async () => {
+                await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
+                await receivedMessageHandler({ command: 'ready' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            };
+
+            beforeEach(() => {
+
+                SalesforceOrgService.clearDescribeCache();
+
+                describeSource = {
+                    describe: jest.fn().mockImplementation(async (objectApiName: string) => {
+                        if ( objectApiName === 'Contact' ) {
+                            throw Object.assign(new Error('The requested resource does not exist'), { errorCode: 'NOT_FOUND' });
+                        }
+                        return { name: objectApiName, label: objectApiName, fields: [{ name: 'Id', type: 'id' }, { name: 'Name', type: 'string' }] };
+                    })
+                };
+
+                promptForAuthorizedOrgSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(ORG_DETAIL);
+                getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(describeSource as any);
+                showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+                // ON THE MODULE FACTORY RATHER THAN A SPY, SO restoreMocks DOES NOT RESET IT BETWEEN TESTS
+                (vscode.window.withProgress as jest.Mock).mockReset();
+                (vscode.window.withProgress as jest.Mock).mockImplementation(async (progressOptions: any, progressTask: Function) => (
+                    progressTask({ report: jest.fn() }, { isCancellationRequested: false })
+                ));
+
+            });
+
+            it('describes every object of the rendered recipe in the chosen org, under a cancellable progress notification', async () => {
+
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(promptForAuthorizedOrgSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER);
+                // BY USERNAME, THE IDENTITY THE CACHE IS KEYED BY, NOT BY AN ALIAS THAT CAN BE RE-POINTED
+                expect(getConnectionSpy).toHaveBeenCalledWith('jd@example.com');
+                expect(describeSource.describe.mock.calls.map(([objectApiName]) => objectApiName).sort()).toEqual(['Account', 'Contact']);
+                expect(vscode.window.withProgress).toHaveBeenCalledWith(
+                    expect.objectContaining({ location: vscode.ProgressLocation.Notification, cancellable: true }),
+                    expect.any(Function)
+                );
+
+                expect(postedOrgDescribes()).toEqual([{
+                    command: 'orgDescribe',
+                    orgLabel: 'devhub (jd@example.com)',
+                    summary: 'Described in devhub (jd@example.com): 1 of 2 objects described. 1 could not be described.',
+                    isFailure: false,
+                    isCancelled: false,
+                    objects: [
+                        { objectApiName: 'Account', isDescribed: true, describedFieldCount: 2, failureMessage: '' },
+                        { objectApiName: 'Contact', isDescribed: false, describedFieldCount: 0, failureMessage: 'NOT_FOUND: The requested resource does not exist' }
+                    ],
+                    renderSequence: lastRenderSequence()
+                }]);
+
+            });
+
+            it('given an object the org could not describe, tells the reader outside the panel too', async () => {
+
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(showWarningMessageSpy).toHaveBeenCalledWith(postedOrgDescribes()[0].summary);
+
+            });
+
+            it('given every object described, raises no warning', async () => {
+
+                describeSource.describe.mockImplementation(async (objectApiName: string) => ({ name: objectApiName, fields: [] }));
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+                expect(postedOrgDescribes()[0].summary).toBe('Described in devhub (jd@example.com): 2 of 2 objects described.');
+
+            });
+
+            it('answers a repeat request from the session cache, without connecting or describing again', async () => {
+
+                describeSource.describe.mockImplementation(async (objectApiName: string) => ({ name: objectApiName, fields: [] }));
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(getConnectionSpy).toHaveBeenCalledTimes(1);
+                expect(describeSource.describe).toHaveBeenCalledTimes(2);
+                expect(postedOrgDescribes()[1].summary).toBe('Described in devhub (jd@example.com): 2 of 2 objects described (2 from this session\'s cache).');
+
+            });
+
+            it('given the panel has not confirmed drawing the recipe, does not even offer the picker', async () => {
+
+                await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
+                await receivedMessageHandler({ command: 'ready' });
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(promptForAuthorizedOrgSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('given the picker is dismissed, connects to nothing and posts nothing', async () => {
+
+                promptForAuthorizedOrgSpy.mockResolvedValue(undefined);
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(getConnectionSpy).not.toHaveBeenCalled();
+                expect(postedOrgDescribes()).toEqual([]);
+
+            });
+
+            it('given the org cannot be connected to, says so in the panel and outside it, and the panel stays usable', async () => {
+
+                getConnectionSpy.mockRejectedValue(new Error('No authorization information found for devhub.'));
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(postedOrgDescribes()).toEqual([expect.objectContaining({ isFailure: true, objects: [] })]);
+                expect(postedOrgDescribes()[0].summary).toContain('No authorization information found for devhub.');
+                expect(showWarningMessageSpy).toHaveBeenCalledWith(postedOrgDescribes()[0].summary);
+
+                getConnectionSpy.mockResolvedValue(describeSource as any);
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(postedOrgDescribes()).toHaveLength(2);
+                expect(postedOrgDescribes()[1].isFailure).toBe(false);
+
+            });
+
+            it('given a second request while the picker is still open, starts no second describe', async () => {
+
+                let resolvePicker: (orgDetail: typeof ORG_DETAIL) => void = () => undefined;
+                promptForAuthorizedOrgSpy.mockImplementation(() => new Promise(resolvePromise => { resolvePicker = resolvePromise; }));
+                await openRenderedCockpit();
+
+                const firstRequest = receivedMessageHandler({ command: 'selectOrg' });
+                await receivedMessageHandler({ command: 'selectOrg' });
+                resolvePicker(ORG_DETAIL);
+                await firstRequest;
+
+                expect(promptForAuthorizedOrgSpy).toHaveBeenCalledTimes(1);
+                expect(postedOrgDescribes()).toHaveLength(1);
+
+            });
+
+            // EVERY REVEAL RELOADS THE DOCUMENT, AND THE DESCRIBE IS PART OF WHAT WAS ON SCREEN
+            it('replays the describe after the recipe when the panel reloads', async () => {
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'selectOrg' });
+                postedPanelMessages.length = 0;
+
+                await receivedMessageHandler({ command: 'ready' });
+
+                expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData', 'orgDescribe']);
+
+            });
+
+            it('given another run is loaded, drops the describe of the previous one', async () => {
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+                postedPanelMessages.length = 0;
+                await receivedMessageHandler({ command: 'ready' });
+
+                expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
+
+            });
+
+            // THE READER ASKED ABOUT THE RECIPE THAT WAS ON SCREEN, AND IT IS NOT ON SCREEN ANY MORE
+            it('given the run is switched while the picker is open, describes the recipe it was asked about and draws nothing over the new one', async () => {
+
+                await openRenderedCockpit();
+
+                promptForAuthorizedOrgSpy.mockImplementation(async () => {
+                    await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+                    return ORG_DETAIL;
+                });
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(describeSource.describe.mock.calls.map(([objectApiName]) => objectApiName).sort()).toEqual(['Account', 'Contact']);
+                expect(postedOrgDescribes()).toEqual([]);
+
+                postedPanelMessages.length = 0;
+                await receivedMessageHandler({ command: 'ready' });
+
+                expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
+
+            });
+
+            /*
+                A new run's model is posted before the panel acks drawing it. A click in that gap must
+                not describe the PREVIOUS run's objects and tag the answer with the new model -- the
+                panel would draw it over rows it says nothing about.
+            */
+            it('given another run was posted but not yet drawn, describes nothing until it is', async () => {
+
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(promptForAuthorizedOrgSpy).not.toHaveBeenCalled();
+
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                const newRunObjectApiNames = postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').pop()
+                    .recipe.objects.map((objectViewModel: any) => objectViewModel.objectApiName).sort();
+
+                expect(promptForAuthorizedOrgSpy).toHaveBeenCalledTimes(1);
+                expect(describeSource.describe.mock.calls.map(([objectApiName]) => objectApiName).sort()).toEqual(newRunObjectApiNames);
+                expect(newRunObjectApiNames).not.toEqual(['Account', 'Contact']);
+
+            });
+
+            it('given the reader cancels the describe, draws what it got without a warning they did not need', async () => {
+
+                (vscode.window.withProgress as jest.Mock).mockImplementation(async (progressOptions: any, progressTask: Function) => (
+                    progressTask({ report: jest.fn() }, { isCancellationRequested: true })
+                ));
+                await openRenderedCockpit();
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(postedOrgDescribes()[0]).toEqual(expect.objectContaining({ isCancelled: true }));
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('given the answer arrives for a run no longer on screen, raises no warning about it', async () => {
+
+                await openRenderedCockpit();
+
+                promptForAuthorizedOrgSpy.mockImplementation(async () => {
+                    await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+                    return ORG_DETAIL;
+                });
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('given the panel is closed while the describe runs, posts nothing into it', async () => {
+
+                await openRenderedCockpit();
+
+                promptForAuthorizedOrgSpy.mockImplementation(async () => {
+                    registeredDisposeHandler();
+                    return ORG_DETAIL;
+                });
+
+                await receivedMessageHandler({ command: 'selectOrg' });
+
+                expect(postedOrgDescribes()).toEqual([]);
+
+            });
 
         });
 

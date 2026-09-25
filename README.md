@@ -426,7 +426,7 @@ A panel for browsing a generated recipe: every object, every field, the field's 
 
 **Prerequisite:** [Generate Treecipe](#2-salesforce-treecipe-generate-treecipe) must have been run at least once. With no generated run the panel says so and names that command.
 
-**It is a preview.** The first time you run it in a workspace, a warning asks you to opt in. The switch is `salesforce-data-treecipe.recipeCockpitEnabled`, written for **this workspace only**, and you can turn it off in Settings. What is built and what is still missing is tracked under the [`recipe-cockpit` label](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit). Comparing a recipe with a live org is the next part and is not here yet.
+**It is a preview.** The first time you run it in a workspace, a warning asks you to opt in. The switch is `salesforce-data-treecipe.recipeCockpitEnabled`, written for **this workspace only**, and you can turn it off in Settings. What is built and what is still missing is tracked under the [`recipe-cockpit` label](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit). It can describe the recipe's objects in an org you choose; comparing the recipe with that org field by field is the next part and is not here yet.
 
 How it works:
 
@@ -435,6 +435,7 @@ How it works:
 * **Filter** narrows fields as you type. It matches field names, labels, types, controlling fields and faker expressions. Typing an object's name shows all of its fields. An object with nothing matching **stays listed**, collapsed and marked *no matching fields*, so a filter never looks like missing data
 * **Click an object or field name** to open the recipe `.yml` at that exact line
 * **Fields that only the recipe file carries are shown too.** Standard-field mappings such as `Account.Name`, and the record type line, are written straight into the recipe and are not in the wrapper file. They appear marked *read from the recipe file*
+* **Describe in an org…** lists every org the Salesforce CLI has authorized (`sf org login web` adds one) and describes each object of the recipe on screen in the org you pick. A summary line and each object's header show how many fields the org has for it, or why it could not be described. Describes are cached for the VS Code session, so asking again for the same org does not call the API again
 
 ---
 
