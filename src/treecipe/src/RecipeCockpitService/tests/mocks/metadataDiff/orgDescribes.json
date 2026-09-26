@@ -1,0 +1,33 @@
+[
+  {
+    "objectApiName": "Account",
+    "objectLabel": "Account",
+    "fields": [
+      { "fieldApiName": "Id", "fieldLabel": "Account ID", "fieldType": "id", "length": 18, "precision": 0, "scale": 0, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": false, "isCreateable": false, "isCalculated": false },
+      { "fieldApiName": "CreatedDate", "fieldLabel": "Created Date", "fieldType": "datetime", "length": 0, "precision": 0, "scale": 0, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": false, "isCreateable": false, "isCalculated": false },
+      { "fieldApiName": "Name", "fieldLabel": "Account Name", "fieldType": "string", "length": 255, "precision": 0, "scale": 0, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": false, "isCreateable": true, "isCalculated": false },
+      { "fieldApiName": "Number_of_Contacts__c", "fieldLabel": "Number of Contacts", "fieldType": "double", "length": 0, "precision": 6, "scale": 0, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false },
+      { "fieldApiName": "Rating__c", "fieldLabel": "Rating", "fieldType": "picklist", "length": 255, "precision": 0, "scale": 0, "picklistValues": [ { "value": "Hot", "label": "Hot", "isActive": true, "isDefault": false } ], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false },
+      { "fieldApiName": "Industry", "fieldLabel": "Industry", "fieldType": "picklist", "length": 255, "precision": 0, "scale": 0, "picklistValues": [
+          { "value": "Agriculture", "label": "Agriculture", "isActive": true, "isDefault": false },
+          { "value": "Banking", "label": "Banking", "isActive": false, "isDefault": false },
+          { "value": "Retail", "label": "Retail", "isActive": true, "isDefault": false },
+          { "value": "Technology", "label": "Technology", "isActive": true, "isDefault": false }
+        ], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false },
+      { "fieldApiName": "Type", "fieldLabel": "Account Type", "fieldType": "picklist", "length": 255, "precision": 0, "scale": 0, "picklistValues": [
+          { "value": "Partner", "label": "Partner", "isActive": true, "isDefault": false },
+          { "value": "Customer", "label": "Customer", "isActive": true, "isDefault": true }
+        ], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false },
+      { "fieldApiName": "HQ_Location__Latitude__s", "fieldLabel": "HQ Location (Latitude)", "fieldType": "double", "length": 0, "precision": 18, "scale": 15, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false },
+      { "fieldApiName": "Region__c", "fieldLabel": "Region", "fieldType": "string", "length": 80, "precision": 0, "scale": 0, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false }
+    ]
+  },
+  {
+    "objectApiName": "Opportunity",
+    "objectLabel": "Opportunity",
+    "fields": [
+      { "fieldApiName": "Id", "fieldLabel": "Opportunity ID", "fieldType": "id", "length": 18, "precision": 0, "scale": 0, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": false, "isCreateable": false, "isCalculated": false },
+      { "fieldApiName": "StageName", "fieldLabel": "Stage", "fieldType": "picklist", "length": 255, "precision": 0, "scale": 0, "picklistValues": [ { "value": "Prospecting", "label": "Prospecting", "isActive": true, "isDefault": true } ], "controllingField": "", "referenceTo": [], "isNillable": false, "isCreateable": true, "isCalculated": false }
+    ]
+  }
+]

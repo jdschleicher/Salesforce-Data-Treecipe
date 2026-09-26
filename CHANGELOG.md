@@ -1,5 +1,32 @@
 # Change Log
 
+## [3.27.0] - The Recipe Cockpit's metadata diff engine
+
+Closes [#56](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/56), the fourth slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+`RecipeCockpitMetadataDiff.computeMetadataDiff(recipeObjects, orgObjects, recipePicklistValues)` compares the recipe's field set with the org's describe and classifies every field as `new-in-org`, `removed-from-org`, `type-changed`, `picklist-changed` or `unchanged`. Nothing calls it yet and the panel does not change: showing the differences is the next slice (#57).
+
+### Pure, and it imports nothing
+
+`RecipeCockpitMetadataDiff.ts` has no imports at all, and a test fails if one is added. It cannot reach `vscode`, `@salesforce/core`, an org or the configuration, and it does not check the cockpit's feature flag. The panel that will render it already sits behind the flag.
+
+Its input types are structural. The cockpit's `IRecipeCockpitObjectViewModel` and `SalesforceOrgService`'s `INormalizedOrgObjectDescribe` satisfy them as they are, so neither side is converted into a third model. A test assigns both to the input types, so `ts-jest` fails that test file if either model drifts away from them.
+
+### How it classifies
+
+- **Types are mapped, not compared as strings.** The metadata `<type>` a recipe field carries and the type a describe returns use different words: `Text` describes as `string`, `Lookup`/`MasterDetail`/`Hierarchy` as `reference`, `Checkbox` as `boolean`, and `Number` as `double`, `int` or `long`. A string comparison would call nearly every field a type change. A field whose recipe type is empty (a standard-field mapping only the recipe file carries, such as `Account.Name`) or has no mapping (such as `Summary`) is marked `isTypeComparable: false` and is never reported as a type change.
+- **A compound field's components are not compared on type.** `DirectoryProcessor.buildCompoundComponentFieldInfos` writes every component of a Location or Address field (`Loc__Latitude__s`, `Addr__Street__s`) into the wrapper typed `Text`, while the org describes latitude as `double` and street as `textarea`. A recipe type that is synthetic would have reported every geolocation and custom address field as changed in every org, so an `__s` field is `isTypeComparable: false`.
+- **A type change outranks a picklist change.** Once the org has turned a picklist into a text field, its values are gone rather than changed.
+- **Picklist values are compared only when both sides are picklists and the recipe recorded values.** The org side counts only ACTIVE values, because an inactive value is not one a record can be given. The result names the added and the removed values. A field the recipe recorded no values for makes no claim about them, while an empty recorded list does make one.
+- **Org fields a recipe cannot write are counted, not listed.** `Id`, `CreatedDate` and every other field that is not createable appear on every describe and in no recipe. Listing them as `new-in-org` would bury the one new field a reader has to act on, so each object carries an `uncreateableOrgOnlyFieldCount` instead.
+- **Objects on one side only** are `recipe-only` (every field `removed-from-org`) or `org-only` (every createable field `new-in-org`), and neither throws. The org side is taken to be what the org HAS, so a caller must leave out an object whose describe failed rather than let a timeout read as a deleted object.
+- **Api names match case-insensitively**, as Salesforce matches them. The result keeps the recipe's spelling.
+- **Deterministic output.** Objects, fields and picklist values are sorted by ordinal comparison rather than `localeCompare`, whose order depends on the extension host's locale. Status counts are totalled per object and across the diff.
+
+### Recipe picklist values stay on the host
+
+The model posted to the panel carries no picklist values. `normalizeObjectsWrapper` now also returns `picklistValuesByObjectApiName`, which holds each picklist field's active values from the objects wrapper's `FieldInfo.picklistValues`. A DEPENDENT picklist gets no entry. One backed by a global value set records only the values its `valueSettings` name, not the whole set (`XmlFileProcessor.extractPicklistDetailsFromValueSettings`). The wrapper does not say which value set a field used, so it cannot be told apart from a local one, and treating either list as the field's values would report every unlisted org value as added. That map is host-only: the field view model is unchanged, and a test pins that no field row gains a `picklistValues` key. The 3.25.0 payload measurements therefore still hold. #57 re-measures when it posts per-row diff data.
+
 ## [3.26.0] - The Recipe Cockpit describes a recipe's objects in an org
 
 Closes [#55](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/55), the third slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).

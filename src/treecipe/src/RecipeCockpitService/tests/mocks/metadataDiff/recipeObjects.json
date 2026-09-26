@@ -1,0 +1,32 @@
+{
+  "objects": [
+    {
+      "objectApiName": "Account",
+      "recipeFilePath": "",
+      "recipeFileName": "",
+      "fields": [
+        { "fieldApiName": "Legacy_Code__c", "fieldLabel": "Legacy Code", "fieldType": "Text", "recipeValue": "${{fake.Word}}", "controllingField": "", "isOnlyInRecipeFile": false },
+        { "fieldApiName": "Number_of_Contacts__c", "fieldLabel": "Number of Contacts", "fieldType": "Number", "recipeValue": "${{ random_number(min=0, max=999999) }}", "controllingField": "", "isOnlyInRecipeFile": false },
+        { "fieldApiName": "Rating__c", "fieldLabel": "Rating", "fieldType": "Text", "recipeValue": "${{fake.Word}}", "controllingField": "", "isOnlyInRecipeFile": false },
+        { "fieldApiName": "Industry", "fieldLabel": "Industry", "fieldType": "Picklist", "recipeValue": "${{ random_choice('Agriculture','Banking','Retail') }}", "controllingField": "", "isOnlyInRecipeFile": false },
+        { "fieldApiName": "Type", "fieldLabel": "Type", "fieldType": "Picklist", "recipeValue": "${{ random_choice('Customer','Partner') }}", "controllingField": "", "isOnlyInRecipeFile": false },
+        { "fieldApiName": "HQ_Location__Latitude__s", "fieldLabel": "HQ Location Latitude", "fieldType": "Text", "recipeValue": "${{fake.latitude}}", "controllingField": "", "isOnlyInRecipeFile": false },
+        { "fieldApiName": "Name", "fieldLabel": "", "fieldType": "", "recipeValue": "${{fake.Company}}", "controllingField": "", "isOnlyInRecipeFile": true }
+      ]
+    },
+    {
+      "objectApiName": "Contact",
+      "recipeFilePath": "",
+      "recipeFileName": "",
+      "fields": [
+        { "fieldApiName": "LastName", "fieldLabel": "Last Name", "fieldType": "Text", "recipeValue": "${{fake.LastName}}", "controllingField": "", "isOnlyInRecipeFile": false }
+      ]
+    }
+  ],
+  "picklistValuesByObjectApiName": {
+    "Account": {
+      "Industry": ["Agriculture", "Banking", "Retail"],
+      "Type": ["Customer", "Partner"]
+    }
+  }
+}
