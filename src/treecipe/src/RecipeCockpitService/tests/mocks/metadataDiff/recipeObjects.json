@@ -10,6 +10,7 @@
         { "fieldApiName": "Rating__c", "fieldLabel": "Rating", "fieldType": "Text", "recipeValue": "${{fake.Word}}", "controllingField": "", "isOnlyInRecipeFile": false },
         { "fieldApiName": "Industry", "fieldLabel": "Industry", "fieldType": "Picklist", "recipeValue": "${{ random_choice('Agriculture','Banking','Retail') }}", "controllingField": "", "isOnlyInRecipeFile": false },
         { "fieldApiName": "Type", "fieldLabel": "Type", "fieldType": "Picklist", "recipeValue": "${{ random_choice('Customer','Partner') }}", "controllingField": "", "isOnlyInRecipeFile": false },
+        { "fieldApiName": "HQ_Location__Latitude__s", "fieldLabel": "HQ Location Latitude", "fieldType": "Text", "recipeValue": "${{fake.latitude}}", "controllingField": "", "isOnlyInRecipeFile": false },
         { "fieldApiName": "Name", "fieldLabel": "", "fieldType": "", "recipeValue": "${{fake.Company}}", "controllingField": "", "isOnlyInRecipeFile": true }
       ]
     },

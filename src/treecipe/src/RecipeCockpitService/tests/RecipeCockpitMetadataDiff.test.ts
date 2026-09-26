@@ -173,6 +173,18 @@ describe('RecipeCockpitMetadataDiff', () => {
 
         });
 
+        test('a compound component the wrapper typed Text is not compared on its type', () => {
+
+            // DirectoryProcessor WRITES EVERY __s COMPONENT AS 'Text'; THE ORG DESCRIBES LATITUDE AS A double
+            const latitudeField = findField(findObject(diffFixtures().objects, 'Account'), 'HQ_Location__Latitude__s');
+
+            expect(latitudeField.status).toBe('unchanged');
+            expect(latitudeField.recipeFieldType).toBe('Text');
+            expect(latitudeField.orgFieldType).toBe('double');
+            expect(latitudeField.isTypeComparable).toBeFalse();
+
+        });
+
         test('org fields a recipe cannot write are counted, never listed as new-in-org', () => {
 
             const accountResult = findObject(diffFixtures().objects, 'Account');
@@ -206,10 +218,10 @@ describe('RecipeCockpitMetadataDiff', () => {
             const diffResult = diffFixtures();
 
             expect(findObject(diffResult.objects, 'Account').statusCounts).toEqual({
-                'new-in-org': 1, 'removed-from-org': 1, 'type-changed': 1, 'picklist-changed': 1, 'unchanged': 3
+                'new-in-org': 1, 'removed-from-org': 1, 'type-changed': 1, 'picklist-changed': 1, 'unchanged': 4
             });
             expect(diffResult.statusCounts).toEqual({
-                'new-in-org': 2, 'removed-from-org': 2, 'type-changed': 1, 'picklist-changed': 1, 'unchanged': 3
+                'new-in-org': 2, 'removed-from-org': 2, 'type-changed': 1, 'picklist-changed': 1, 'unchanged': 4
             });
 
         });
@@ -228,7 +240,7 @@ describe('RecipeCockpitMetadataDiff', () => {
             expect(reversedResult).toEqual(forwardResult);
             expect(forwardResult.objects.map(objectResult => objectResult.objectApiName)).toEqual(['Account', 'Contact', 'Opportunity']);
             expect(findObject(forwardResult.objects, 'Account').fields.map(fieldResult => fieldResult.fieldApiName)).toEqual([
-                'Industry', 'Legacy_Code__c', 'Name', 'Number_of_Contacts__c', 'Rating__c', 'Region__c', 'Type'
+                'HQ_Location__Latitude__s', 'Industry', 'Legacy_Code__c', 'Name', 'Number_of_Contacts__c', 'Rating__c', 'Region__c', 'Type'
             ]);
 
         });
@@ -394,6 +406,17 @@ describe('RecipeCockpitMetadataDiff', () => {
         test('a mapped type that describes as something else is not the same type', () => {
 
             expect(RecipeCockpitMetadataDiff.isSameFieldType('Checkbox', 'string')).toBeFalse();
+
+        });
+
+        test('a removed compound component makes no claim about its type either', () => {
+
+            const diffResult = RecipeCockpitMetadataDiff.computeMetadataDiff(
+                [recipeObject('Account', [['Mailing__Street__s', 'Text']])],
+                []
+            );
+
+            expect(diffResult.objects[0].fields[0]).toEqual(expect.objectContaining({ status: 'removed-from-org', isTypeComparable: false }));
 
         });
 

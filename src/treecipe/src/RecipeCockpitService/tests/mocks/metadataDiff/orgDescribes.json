@@ -18,6 +18,7 @@
           { "value": "Partner", "label": "Partner", "isActive": true, "isDefault": false },
           { "value": "Customer", "label": "Customer", "isActive": true, "isDefault": true }
         ], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false },
+      { "fieldApiName": "HQ_Location__Latitude__s", "fieldLabel": "HQ Location (Latitude)", "fieldType": "double", "length": 0, "precision": 18, "scale": 15, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false },
       { "fieldApiName": "Region__c", "fieldLabel": "Region", "fieldType": "string", "length": 80, "precision": 0, "scale": 0, "picklistValues": [], "controllingField": "", "referenceTo": [], "isNillable": true, "isCreateable": true, "isCalculated": false }
     ]
   },

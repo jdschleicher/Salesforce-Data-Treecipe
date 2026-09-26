@@ -142,8 +142,8 @@ export interface IRecipeCockpitRecipeViewModel {
     What normalizeObjectsWrapper reads from the wrapper. picklistValuesByObjectApiName is HOST-ONLY:
     the metadata diff compares it with the org's describe, and it is kept off the field view model
     so the model posted to the panel does not grow by every picklist's values. Only a field whose
-    wrapper entry carries a picklistValues array has an entry -- no entry means the recipe makes no
-    claim about the field's values, which is different from an empty list.
+    wrapper entry carries a picklistValues array and no controllingField has an entry -- no entry
+    means the recipe makes no claim about the field's values, which is different from an empty list.
 */
 export interface IRecipeCockpitNormalizedObjectsWrapper {
     objects: IRecipeCockpitObjectViewModel[];
@@ -1167,7 +1167,16 @@ export class RecipeCockpitService {
                     return;
                 }
 
-                if ( Array.isArray(wrapperFieldRecord.picklistValues) ) {
+                /*
+                    A DEPENDENT picklist backed by a global value set records only the values its
+                    valueSettings name (XmlFileProcessor.extractPicklistDetailsFromValueSettings), not
+                    the set -- and the wrapper does not say which value set a field used, so a local
+                    dependent picklist cannot be told apart from it. Recording either as the field's
+                    values would report every unlisted org value as added, so neither makes a claim.
+                */
+                const isDependentPicklist = !!this.asString(wrapperFieldRecord.controllingField);
+
+                if ( Array.isArray(wrapperFieldRecord.picklistValues) && !isDependentPicklist ) {
                     const picklistValuesByFieldApiName = picklistValuesByObjectApiName.get(objectApiName) ?? new Map<string, string[]>();
                     picklistValuesByFieldApiName.set(fieldApiName, this.readActivePicklistValues(wrapperFieldRecord.picklistValues));
                     picklistValuesByObjectApiName.set(objectApiName, picklistValuesByFieldApiName);

@@ -109,6 +109,14 @@ const DESCRIBE_TYPES_BY_METADATA_TYPE: ReadonlyMap<string, readonly string[]> = 
 
 const PICKLIST_DESCRIBE_TYPES = new Set(['picklist', 'multipicklist']);
 
+/*
+    A compound field's components (Loc__Latitude__s, Addr__Street__s) end in __s, and
+    DirectoryProcessor.buildCompoundComponentFieldInfos writes every one of them into the wrapper
+    typed 'Text' whatever it describes as -- latitude is a double, street a textarea. The recipe
+    side's type for these is synthetic, so it is not compared.
+*/
+const COMPOUND_COMPONENT_API_NAME_PATTERN = /__s$/i;
+
 export class RecipeCockpitMetadataDiff {
 
     /*
@@ -175,7 +183,7 @@ export class RecipeCockpitMetadataDiff {
 
             fieldResults.push(orgField
                 ? this.diffField(recipeField, orgField, recipePicklistValuesByFieldKey.get(fieldKey))
-                : this.buildFieldResult(recipeField.fieldApiName, 'removed-from-org', recipeField.fieldType, '', this.isTypeMapped(recipeField.fieldType)));
+                : this.buildFieldResult(recipeField.fieldApiName, 'removed-from-org', recipeField.fieldType, '', this.isTypeComparable(recipeField)));
 
         });
 
@@ -220,7 +228,7 @@ export class RecipeCockpitMetadataDiff {
                                 orgField: IMetadataDiffOrgField,
                                 recipePicklistValues: string[] | undefined): IMetadataDiffFieldResult {
 
-        const isTypeComparable = this.isTypeMapped(recipeField.fieldType);
+        const isTypeComparable = this.isTypeComparable(recipeField);
 
         if ( isTypeComparable && !this.isSameFieldType(recipeField.fieldType, orgField.fieldType) ) {
             return this.buildFieldResult(recipeField.fieldApiName, 'type-changed', recipeField.fieldType, orgField.fieldType, true);
@@ -249,6 +257,12 @@ export class RecipeCockpitMetadataDiff {
         fieldResult.removedPicklistValues = removedPicklistValues;
 
         return fieldResult;
+
+    }
+
+    static isTypeComparable(recipeField: IMetadataDiffRecipeField): boolean {
+
+        return this.isTypeMapped(recipeField.fieldType) && !COMPOUND_COMPONENT_API_NAME_PATTERN.test(recipeField.fieldApiName);
 
     }
 

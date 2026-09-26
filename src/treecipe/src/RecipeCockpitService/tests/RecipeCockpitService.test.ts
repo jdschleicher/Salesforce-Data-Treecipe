@@ -538,6 +538,12 @@ describe('RecipeCockpitService', () => {
                             ]
                         },
                         { fieldName: 'Status__c', type: 'Picklist', picklistValues: [] },
+                        {
+                            fieldName: 'Sub_Industry__c',
+                            type: 'Picklist',
+                            controllingField: 'Industry',
+                            picklistValues: [ { picklistOptionApiName: 'Dairy', label: 'Dairy', isActive: true } ]
+                        },
                         { fieldName: 'Legacy_Code__c', type: 'Text' }
                     ]
                 }
@@ -552,6 +558,15 @@ describe('RecipeCockpitService', () => {
             expect(normalizedWrapper.picklistValuesByObjectApiName).toEqual(new Map([
                 ['Account', new Map([['Industry', ['Agriculture', 'Retail']], ['Status__c', []]])]
             ]));
+
+        });
+
+        it('records nothing for a dependent picklist, whose values may be only the ones its valueSettings name', () => {
+
+            const normalizedWrapper = RecipeCockpitService.normalizeObjectsWrapper(wrapperWithPicklists);
+
+            expect(normalizedWrapper.picklistValuesByObjectApiName.get('Account')?.has('Sub_Industry__c')).toBe(false);
+            expect(normalizedWrapper.objects[0].fields.map(fieldViewModel => fieldViewModel.fieldApiName)).toContain('Sub_Industry__c');
 
         });
 
