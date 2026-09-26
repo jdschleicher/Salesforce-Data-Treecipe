@@ -138,6 +138,21 @@ export interface IRecipeCockpitRecipeViewModel {
     emptyStateMessage: string;
 }
 
+/*
+    What normalizeObjectsWrapper reads from the wrapper. picklistValuesByObjectApiName is HOST-ONLY:
+    the metadata diff compares it with the org's describe, and it is kept off the field view model
+    so the model posted to the panel does not grow by every picklist's values. Only a field whose
+    wrapper entry carries a picklistValues array has an entry -- no entry means the recipe makes no
+    claim about the field's values, which is different from an empty list.
+*/
+export interface IRecipeCockpitNormalizedObjectsWrapper {
+    objects: IRecipeCockpitObjectViewModel[];
+    notices: string[];
+    isObjectsWrapper: boolean;
+    fieldlessObjectApiNames: Set<string>;
+    picklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
+}
+
 export interface IRecipeSourceFieldEntry {
     lineNumber: number;
     valueText: string;
@@ -1090,13 +1105,13 @@ export class RecipeCockpitService {
         Objects come in RECIPE order, the order RecipeFiles says they are inserted in, because that
         is the order the reader meets them in the files the panel opens.
     */
-    static normalizeObjectsWrapper(parsedObjectsWrapper: unknown): { objects: IRecipeCockpitObjectViewModel[]; notices: string[]; isObjectsWrapper: boolean; fieldlessObjectApiNames: Set<string> } {
+    static normalizeObjectsWrapper(parsedObjectsWrapper: unknown): IRecipeCockpitNormalizedObjectsWrapper {
 
         const objectsWrapperRecord = this.asRecord(parsedObjectsWrapper);
         const objectToObjectInfoMap = this.asRecord(objectsWrapperRecord?.ObjectToObjectInfoMap);
 
         if ( !objectToObjectInfoMap ) {
-            return { objects: [], notices: [], isObjectsWrapper: false, fieldlessObjectApiNames: new Set() };
+            return { objects: [], notices: [], isObjectsWrapper: false, fieldlessObjectApiNames: new Set(), picklistValuesByObjectApiName: new Map() };
         }
 
         const recipeObjectApiNames: string[] = [];
@@ -1123,6 +1138,7 @@ export class RecipeCockpitService {
 
         const objects: IRecipeCockpitObjectViewModel[] = [];
         const fieldlessObjectApiNames = new Set<string>();
+        const picklistValuesByObjectApiName = new Map<string, Map<string, string[]>>();
         let unreadableFieldCount = 0;
 
         orderedObjectApiNames.forEach(objectApiName => {
@@ -1151,6 +1167,12 @@ export class RecipeCockpitService {
                     return;
                 }
 
+                if ( Array.isArray(wrapperFieldRecord.picklistValues) ) {
+                    const picklistValuesByFieldApiName = picklistValuesByObjectApiName.get(objectApiName) ?? new Map<string, string[]>();
+                    picklistValuesByFieldApiName.set(fieldApiName, this.readActivePicklistValues(wrapperFieldRecord.picklistValues));
+                    picklistValuesByObjectApiName.set(objectApiName, picklistValuesByFieldApiName);
+                }
+
                 fields.push({
                     fieldApiName: fieldApiName,
                     fieldLabel: this.asString(wrapperFieldRecord.fieldLabel),
@@ -1170,7 +1192,29 @@ export class RecipeCockpitService {
             ? [`${unreadableFieldCount} field ${unreadableFieldCount === 1 ? 'entry' : 'entries'} in the objects wrapper had no field api name and ${unreadableFieldCount === 1 ? 'is' : 'are'} not shown.`]
             : [];
 
-        return { objects: objects, notices: notices, isObjectsWrapper: true, fieldlessObjectApiNames: fieldlessObjectApiNames };
+        return { objects: objects, notices: notices, isObjectsWrapper: true, fieldlessObjectApiNames: fieldlessObjectApiNames, picklistValuesByObjectApiName: picklistValuesByObjectApiName };
+
+    }
+
+    /*
+        A FieldInfo's picklistValues as the values a record can be given: an entry with no
+        picklistOptionApiName names nothing and is skipped, and one marked isActive: false is not
+        a value a record can take. An absent isActive is active, as XmlFileProcessor defaults it.
+    */
+    static readActivePicklistValues(wrapperPicklistValues: unknown[]): string[] {
+
+        return wrapperPicklistValues.reduce<string[]>((activePicklistValues, wrapperPicklistValue) => {
+
+            const picklistValueRecord = this.asRecord(wrapperPicklistValue);
+            const picklistOptionApiName = picklistValueRecord?.picklistOptionApiName;
+
+            if ( typeof picklistOptionApiName === 'string' && picklistValueRecord.isActive !== false ) {
+                activePicklistValues.push(picklistOptionApiName);
+            }
+
+            return activePicklistValues;
+
+        }, []);
 
     }
 

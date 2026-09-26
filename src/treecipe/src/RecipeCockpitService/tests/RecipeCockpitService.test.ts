@@ -520,6 +520,67 @@ describe('RecipeCockpitService', () => {
 
     });
 
+    describe('normalizeObjectsWrapper, recipe picklist values for the metadata diff', () => {
+
+        const wrapperWithPicklists = {
+            ObjectToObjectInfoMap: {
+                Account: {
+                    Fields: [
+                        {
+                            fieldName: 'Industry',
+                            type: 'Picklist',
+                            picklistValues: [
+                                { picklistOptionApiName: 'Agriculture', label: 'Agriculture' },
+                                { picklistOptionApiName: 'Banking', label: 'Banking', isActive: false },
+                                { picklistOptionApiName: 'Retail', label: 'Retail', isActive: true },
+                                { label: 'No api name' },
+                                'not a record'
+                            ]
+                        },
+                        { fieldName: 'Status__c', type: 'Picklist', picklistValues: [] },
+                        { fieldName: 'Legacy_Code__c', type: 'Text' }
+                    ]
+                }
+            },
+            RecipeFiles: [ { objects: ['Account'] } ]
+        };
+
+        it('records each picklist field\'s active values, keyed by object and field', () => {
+
+            const normalizedWrapper = RecipeCockpitService.normalizeObjectsWrapper(wrapperWithPicklists);
+
+            expect(normalizedWrapper.picklistValuesByObjectApiName).toEqual(new Map([
+                ['Account', new Map([['Industry', ['Agriculture', 'Retail']], ['Status__c', []]])]
+            ]));
+
+        });
+
+        it('records nothing for a field whose wrapper entry carries no picklist values', () => {
+
+            const normalizedWrapper = RecipeCockpitService.normalizeObjectsWrapper(wrapperWithPicklists);
+
+            expect(normalizedWrapper.picklistValuesByObjectApiName.get('Account')?.has('Legacy_Code__c')).toBe(false);
+
+        });
+
+        it('keeps the values off the field view model, so the posted payload does not grow', () => {
+
+            const normalizedWrapper = RecipeCockpitService.normalizeObjectsWrapper(wrapperWithPicklists);
+
+            normalizedWrapper.objects.forEach(objectViewModel => objectViewModel.fields.forEach(fieldViewModel => {
+                expect(Object.keys(fieldViewModel)).not.toContain('picklistValues');
+            }));
+
+        });
+
+        it('records nothing when the file is not an objects wrapper', () => {
+
+            expect(RecipeCockpitService.normalizeObjectsWrapper({ unrelated: true }).picklistValuesByObjectApiName.size).toBe(0);
+
+        });
+
+    });
+
     describe('parseRecipeSource', () => {
 
         it('locates each object header and each field line, and collects a field\'s continuation lines', () => {
