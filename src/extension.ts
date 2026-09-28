@@ -30,9 +30,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		
 	});
 
+	// RETURNED SO executeCommand SETTLES WHEN GENERATION DOES -- THE RECIPE COCKPIT RELOADS THE RUN IT WROTE
 	const generateTreecipe = vscode.commands.registerCommand('treecipe.generateTreecipe', () => {
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.generateRecipeFromConfigurationDetail();
+		return extensionCommandService.generateRecipeFromConfigurationDetail();
 
 	});
 

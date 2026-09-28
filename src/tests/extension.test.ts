@@ -30,6 +30,7 @@ jest.mock('@salesforce/core', () => ({
 import { activate } from '../extension';
 import { ConfigurationService } from '../treecipe/src/ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
+import { ExtensionCommandService } from '../treecipe/src/ExtensionCommandService/ExtensionCommandService';
 
 /*
     The only tests for the extension entry point, and they exist for one behaviour rather than for
@@ -92,6 +93,26 @@ describe('activate', () => {
         expect(registeredCommandIds).toContain('treecipe.openRecipeCockpit');
         expect(registeredCommandIds).toContain('treecipe.generateTreecipe');
         expect(registeredCommandIds).toHaveLength(require('../../package.json').contributes.commands.length);
+
+    });
+
+    /*
+        The Recipe Cockpit's "Regenerate recipe" awaits executeCommand and then loads the run that
+        generation wrote. executeCommand settles with whatever the handler RETURNS, so a handler that
+        starts generation without returning it lets the cockpit reload before anything was written.
+    */
+    it('returns the generation from the Generate Treecipe handler, so a caller can wait for it', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const generation = Promise.resolve();
+        jest.spyOn(ExtensionCommandService.prototype, 'generateRecipeFromConfigurationDetail').mockReturnValue(generation);
+
+        await activate(buildExtensionContext() as never);
+
+        const [, generateTreecipeHandler] = (vscode.commands.registerCommand as jest.Mock).mock.calls
+            .find(registerCall => registerCall[0] === 'treecipe.generateTreecipe');
+
+        expect(generateTreecipeHandler()).toBe(generation);
 
     });
 

@@ -6,6 +6,13 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IOrgDescribeRequestResult, SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
+import {
+    IMetadataDiffFieldResult,
+    METADATA_DIFF_FIELD_STATUSES,
+    MetadataDiffFieldStatus,
+    RecipeCockpitMetadataDiff,
+    RecipePicklistValuesByObjectApiName
+} from './RecipeCockpitMetadataDiff';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -22,9 +29,37 @@ export const RECIPE_COCKPIT_LOAD_PHASES = {
     readingRun: 'Reading the generated recipe run…'
 };
 
-export const RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL = 'Describe in an org…';
+export const RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL = 'Compare with an org…';
 
-export const RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org to describe the objects of this recipe in';
+export const RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org to compare the objects of this recipe with';
+
+export const RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND = 'treecipe.generateTreecipe';
+
+export const RECIPE_COCKPIT_REGENERATE_ACTION_LABEL = 'Regenerate recipe';
+
+/*
+    Said beside the button rather than left for the reader to discover: Generate Treecipe reads the
+    object metadata in THIS WORKSPACE, never the org. A field the comparison reports as new in the
+    org reaches the regenerated recipe only once its metadata has been retrieved into the project,
+    so a button that implied otherwise would promise a fix it cannot make.
+*/
+export const RECIPE_COCKPIT_REGENERATE_NOTE = 'Regenerate recipe re-runs Generate Treecipe from the object metadata in this workspace, not from the org. Retrieve the org\'s changes first (for example with "sf project retrieve start") for them to reach the regenerated recipe.';
+
+// WHAT THE PANEL CALLS EACH STATUS, ON A ROW'S BADGE AND IN THE STATUS FILTER
+export const RECIPE_COCKPIT_DIFF_STATUS_LABELS: Readonly<Record<MetadataDiffFieldStatus, string>> = {
+    'new-in-org': 'new in org',
+    'removed-from-org': 'removed from org',
+    'type-changed': 'type changed',
+    'picklist-changed': 'picklist changed',
+    'unchanged': 'unchanged'
+};
+
+/*
+    How many added or removed picklist values a row NAMES before it says how many more there are.
+    The whole list is posted -- it is bounded by the size of one picklist -- but a row naming a
+    thousand values is not one a reader can scan, and the count is what they act on.
+*/
+export const RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN = 20;
 
 export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Run "Generate Treecipe" first, then open the Recipe Cockpit again.';
 
@@ -78,7 +113,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
     is no clickable link in a modal, so the button is the link and this line is what a reader can
     copy if they would rather not hand the dialog a browser.
 */
-export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe and can describe its objects in an org you choose, but does not yet compare the two, and its layout, its messages and the shape of what it shows will change between releases.
+export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe and compares its fields with an org you choose, but does not yet write a change back into a recipe, and its layout, its messages and the shape of what it shows will change between releases.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -209,6 +244,38 @@ export interface IRecipeCockpitLoadFailedMessage {
     message: string;
 }
 
+/*
+    One field the comparison found DIFFERENT, as the panel draws it. An unchanged field is not sent:
+    every recipe row of a compared object that has no entry here is unchanged, so posting one entry
+    per unchanged field would grow the payload with the recipe for no information. A new-in-org
+    field has no recipe row at all, and is drawn as a row of its own from this entry.
+*/
+export interface IRecipeCockpitFieldDiffViewModel {
+    fieldApiName: string;
+    status: MetadataDiffFieldStatus;
+    recipeFieldType: string;
+    orgFieldType: string;
+    addedPicklistValues: string[];
+    removedPicklistValues: string[];
+}
+
+/*
+    One COMPARED object. An object whose describe failed or was cancelled is absent -- the diff
+    engine reads the org side as what the org HAS, so passing it would report every one of its
+    fields removed -- and the panel draws the absence as "not compared", never as a status.
+*/
+export interface IRecipeCockpitObjectDiffViewModel {
+    objectApiName: string;
+    changedFields: IRecipeCockpitFieldDiffViewModel[];
+    statusCounts: Record<MetadataDiffFieldStatus, number>;
+    uncreateableOrgOnlyFieldCount: number;
+}
+
+export interface IRecipeCockpitDiffViewModel {
+    objects: IRecipeCockpitObjectDiffViewModel[];
+    statusCounts: Record<MetadataDiffFieldStatus, number>;
+}
+
 export interface IRecipeCockpitOrgDescribeObjectSummary {
     objectApiName: string;
     isDescribed: boolean;
@@ -217,10 +284,10 @@ export interface IRecipeCockpitOrgDescribeObjectSummary {
 }
 
 /*
-    What one org describe said about the recipe on screen, as a SUMMARY: the normalized field model
-    stays in the host's describe cache, because nothing the panel draws yet needs it and the diff
-    that will is computed host side. renderSequence ties it to the model it described -- a describe
-    of an earlier run's objects must not be drawn over a later run's rows.
+    What one org comparison said about the recipe on screen: a per-object describe SUMMARY and the
+    diff computed host side. The normalized describe stays in the host's cache -- the panel draws
+    statuses, not describes. renderSequence ties it to the model it compared -- a comparison of an
+    earlier run's objects must not be drawn over a later run's rows.
 */
 export interface IRecipeCockpitOrgDescribeMessage {
     command: 'orgDescribe';
@@ -229,13 +296,28 @@ export interface IRecipeCockpitOrgDescribeMessage {
     isFailure: boolean;
     isCancelled: boolean;
     objects: IRecipeCockpitOrgDescribeObjectSummary[];
+    diff: IRecipeCockpitDiffViewModel;
+    renderSequence: number;
+}
+
+// WHERE A COMPARISON IS WHILE IT RUNS, DRAWN IN THE PANEL AS WELL AS IN THE NOTIFICATION
+export interface IRecipeCockpitOrgProgressMessage {
+    command: 'orgProgress';
+    message: string;
     renderSequence: number;
 }
 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
-                                        | IRecipeCockpitOrgDescribeMessage;
+                                        | IRecipeCockpitOrgDescribeMessage
+                                        | IRecipeCockpitOrgProgressMessage;
+
+// THE LOADER'S WHOLE ANSWER: WHAT IS POSTED, AND THE PICKLIST VALUES THAT STAY ON THE HOST FOR THE DIFF
+export interface IRecipeCockpitLoadedRecipe {
+    recipeViewModel: IRecipeCockpitRecipeViewModel;
+    recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
+}
 
 /*
     What the host should DO about a panel message -- the router's answer, kept as data so the
@@ -247,7 +329,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
-    | { kind: 'selectOrg' };
+    | { kind: 'selectOrg' }
+    | { kind: 'regenerateRecipe' };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -262,14 +345,19 @@ export type RecipeCockpitPanelAction =
     only asks for "an org describe", and WHICH objects are described is read from here, never from
     the message. isOrgDescribeInFlight refuses a second request while the first is still picking
     or describing, so two quick picks cannot race to post two answers.
+
+    recipePicklistValuesByObjectApiName belongs to recipeDataMessage and is replaced with it: it is
+    the diff's recipe side for picklists, and it is never posted.
 */
 export interface IRecipeCockpitPanelState {
     workspaceRoot: string;
     isPanelReady: boolean;
     loadPhaseMessage: string;
     recipeDataMessage?: IRecipeCockpitRecipeDataMessage;
+    recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
     loadFailedMessage?: IRecipeCockpitLoadFailedMessage;
     orgDescribeMessage?: IRecipeCockpitOrgDescribeMessage;
+    orgProgressMessage?: IRecipeCockpitOrgProgressMessage;
     pendingOpenableSourceKeys: Set<string>;
     pendingSelectableRunFolderNames: Set<string>;
     pendingDescribableObjectApiNames: Set<string>;
@@ -277,6 +365,7 @@ export interface IRecipeCockpitPanelState {
     selectableRunFolderNames: Set<string>;
     describableObjectApiNames: Set<string>;
     isOrgDescribeInFlight: boolean;
+    isRegenerateInFlight: boolean;
     reportedFailureDescriptions: Set<string>;
 }
 
@@ -313,6 +402,7 @@ export class RecipeCockpitService {
             workspaceRoot: workspaceRoot,
             isPanelReady: false,
             loadPhaseMessage: '',
+            recipePicklistValuesByObjectApiName: new Map(),
             pendingOpenableSourceKeys: new Set(),
             pendingSelectableRunFolderNames: new Set(),
             pendingDescribableObjectApiNames: new Set(),
@@ -320,6 +410,7 @@ export class RecipeCockpitService {
             selectableRunFolderNames: new Set(),
             describableObjectApiNames: new Set(),
             isOrgDescribeInFlight: false,
+            isRegenerateInFlight: false,
             reportedFailureDescriptions: new Set()
         };
 
@@ -414,13 +505,13 @@ export class RecipeCockpitService {
 
             await this.reportLoadPhase(cockpitPanel, loadStatusItem, RECIPE_COCKPIT_LOAD_PHASES.readingRun);
 
-            const recipeViewModel = this.buildRecipeViewModelByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
+            const loadedRecipe = this.loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
 
             if ( !isCurrentLoad() ) {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, recipeViewModel);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe);
 
         } catch (loadError) {
 
@@ -487,9 +578,10 @@ export class RecipeCockpitService {
 
     }
 
-    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel, recipeViewModel: IRecipeCockpitRecipeViewModel) {
+    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel, loadedRecipe: IRecipeCockpitLoadedRecipe) {
 
         const panelState = this.recipeCockpitPanelState;
+        const recipeViewModel = loadedRecipe.recipeViewModel;
         const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             command: 'recipeData',
             recipe: recipeViewModel,
@@ -497,9 +589,11 @@ export class RecipeCockpitService {
         };
 
         panelState.recipeDataMessage = recipeDataMessage;
+        panelState.recipePicklistValuesByObjectApiName = loadedRecipe.recipePicklistValuesByObjectApiName;
         panelState.loadFailedMessage = undefined;
-        // A DESCRIBE ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
+        // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
         panelState.orgDescribeMessage = undefined;
+        panelState.orgProgressMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
@@ -634,6 +728,11 @@ export class RecipeCockpitService {
                 await this.describeRecipeObjectsInSelectedOrg(cockpitPanel, panelState);
                 return;
 
+            case 'regenerateRecipe':
+
+                await this.regenerateRecipe(cockpitPanel, panelState);
+                return;
+
         }
 
     }
@@ -651,6 +750,7 @@ export class RecipeCockpitService {
     private static async describeRecipeObjectsInSelectedOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
 
         const describedRecipeDataMessage = panelState.recipeDataMessage;
+        const describedRecipePicklistValues = panelState.recipePicklistValuesByObjectApiName;
         const objectApiNames = [...panelState.describableObjectApiNames];
 
         if ( !describedRecipeDataMessage || objectApiNames.length === 0 ) {
@@ -668,11 +768,18 @@ export class RecipeCockpitService {
             }
 
             const orgLabel = this.buildOrgLabel(selectedOrgDetail);
-            let orgDescribeMessage: IRecipeCockpitOrgDescribeMessage;
+            const objectCountText = `${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'}`;
+            const reportProgress = (progressText: string) => this.reportOrgProgress(
+                cockpitPanel, panelState, describedRecipeDataMessage, `Comparing with ${orgLabel}: ${progressText}`
+            );
+            let describeResult: IOrgDescribeRequestResult | undefined;
+            let connectionFailureMessage: IRecipeCockpitOrgDescribeMessage | undefined;
+
+            reportProgress(`describing ${objectCountText}…`);
 
             try {
 
-                const describeResult = await vscode.window.withProgress({
+                describeResult = await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: `Recipe Cockpit: describing ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} in ${orgLabel}`,
                     cancellable: true
@@ -683,22 +790,32 @@ export class RecipeCockpitService {
                         // BY THE USERNAME THE CACHE IS KEYED BY -- AN ALIAS RE-POINTED SINCE THE PICK WOULD CACHE ONE ORG'S ANSWER UNDER ANOTHER
                         () => SalesforceOrgService.getConnection(selectedOrgDetail.username),
                         {
-                            onObjectDescribed: (completedCount, requestedCount) => progress.report({
-                                increment: 100 / requestedCount,
-                                message: `${completedCount} of ${requestedCount}`
-                            }),
+                            onObjectDescribed: (completedCount, requestedCount) => {
+                                progress.report({ increment: 100 / requestedCount, message: `${completedCount} of ${requestedCount}` });
+                                reportProgress(`described ${completedCount} of ${requestedCount} ${requestedCount === 1 ? 'object' : 'objects'}…`);
+                            },
                             isCancellationRequested: () => cancellationToken.isCancellationRequested
                         }
                     )
                 ));
 
-                orgDescribeMessage = this.buildOrgDescribeMessage(orgLabel, describeResult, describedRecipeDataMessage.renderSequence);
-
             } catch (connectionError) {
 
-                orgDescribeMessage = this.buildOrgConnectionFailureMessage(orgLabel, connectionError, describedRecipeDataMessage.renderSequence);
+                connectionFailureMessage = this.buildOrgConnectionFailureMessage(orgLabel, connectionError, describedRecipeDataMessage.renderSequence);
 
             }
+
+            /*
+                Compared OUTSIDE the connection's try: only a describe that failed is the org's
+                failure. A throw in the comparison is this extension's, and reporting it as "could
+                not connect" would send the reader to re-authorize an org that answered.
+            */
+            const orgDescribeMessage = connectionFailureMessage ?? this.buildOrgDescribeMessage(
+                orgLabel,
+                describeResult,
+                describedRecipeDataMessage.renderSequence,
+                this.buildRecipeDiffViewModel(describedRecipeDataMessage.recipe.objects, describeResult, describedRecipePicklistValues)
+            );
 
             const isDescribedModelStillOnScreen = this.recipeCockpitPanel === cockpitPanel
                                                     && this.recipeCockpitPanelState === panelState
@@ -716,12 +833,122 @@ export class RecipeCockpitService {
                 VSCodeWorkspaceService.showWarningMessage(orgDescribeMessage.summary);
             }
 
+            panelState.orgProgressMessage = undefined;
             panelState.orgDescribeMessage = orgDescribeMessage;
             this.postToPanel(cockpitPanel, orgDescribeMessage);
 
         } finally {
             panelState.isOrgDescribeInFlight = false;
+            // A COMPARISON THAT ENDED WITHOUT AN ANSWER -- DISMISSED, SUPERSEDED -- MUST NOT REPLAY AS ONE STILL RUNNING
+            panelState.orgProgressMessage = undefined;
         }
+
+    }
+
+    /*
+        Stored as well as posted, so a reveal in the middle of a comparison replays where it is, and
+        only for the model the comparison is OF: a reader who switched runs mid-describe has a panel
+        about another recipe, and a progress line over it would describe work it is not waiting on.
+    */
+    private static reportOrgProgress(cockpitPanel: vscode.WebviewPanel,
+                                        panelState: IRecipeCockpitPanelState,
+                                        describedRecipeDataMessage: IRecipeCockpitRecipeDataMessage,
+                                        progressText: string) {
+
+        if ( this.recipeCockpitPanelState !== panelState || panelState.recipeDataMessage !== describedRecipeDataMessage ) {
+            return;
+        }
+
+        const orgProgressMessage: IRecipeCockpitOrgProgressMessage = {
+            command: 'orgProgress',
+            message: progressText,
+            renderSequence: describedRecipeDataMessage.renderSequence
+        };
+
+        panelState.orgProgressMessage = orgProgressMessage;
+        this.postToPanel(cockpitPanel, orgProgressMessage);
+
+    }
+
+    /*
+        The v1 "apply": hands off to Generate Treecipe, then loads the run it wrote.
+
+        The command is the unflagged one a reader can already run from the palette -- the cockpit's
+        flag gates this BUTTON by gating the panel it is drawn in, not the command it hands off to.
+        It regenerates from the workspace's metadata, which is why the panel says so beside the
+        button (RECIPE_COCKPIT_REGENERATE_NOTE). The latest run is loaded afterwards whether or not
+        generation wrote one: Generate Treecipe reports its own failures, and reloading an
+        unchanged latest run shows the reader exactly what is on disk.
+    */
+    private static async regenerateRecipe(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+
+        panelState.isRegenerateInFlight = true;
+
+        try {
+            await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
+        } finally {
+            panelState.isRegenerateInFlight = false;
+        }
+
+        if ( this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState ) {
+            return;
+        }
+
+        await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot);
+
+    }
+
+    /*
+        The recipe on screen against what the org described, as the panel draws it.
+
+        Only DESCRIBED objects are compared: RecipeCockpitMetadataDiff reads its org side as what the
+        org has, so an object whose describe failed or was cancelled would come back with every field
+        removed-from-org. Leaving it out of BOTH sides is what lets the panel say "not compared"
+        instead. Outcomes are keyed by the names the host requested, which are the model's own.
+    */
+    static buildRecipeDiffViewModel(recipeObjects: IRecipeCockpitObjectViewModel[],
+                                    describeResult: IOrgDescribeRequestResult,
+                                    recipePicklistValuesByObjectApiName: RecipePicklistValuesByObjectApiName): IRecipeCockpitDiffViewModel {
+
+        const describedOutcomes = describeResult.outcomes.filter(describeOutcome => !!describeOutcome.describe);
+        const describedObjectApiNames = new Set(describedOutcomes.map(describeOutcome => describeOutcome.objectApiName));
+
+        const metadataDiff = RecipeCockpitMetadataDiff.computeMetadataDiff(
+            recipeObjects.filter(recipeObject => describedObjectApiNames.has(recipeObject.objectApiName)),
+            describedOutcomes.map(describeOutcome => describeOutcome.describe),
+            recipePicklistValuesByObjectApiName
+        );
+
+        return {
+            objects: metadataDiff.objects.map(objectResult => ({
+                objectApiName: objectResult.objectApiName,
+                changedFields: objectResult.fields
+                    .filter(fieldResult => fieldResult.status !== 'unchanged')
+                    .map(fieldResult => this.buildFieldDiffViewModel(fieldResult)),
+                statusCounts: objectResult.statusCounts,
+                uncreateableOrgOnlyFieldCount: objectResult.uncreateableOrgOnlyFieldCount
+            })),
+            statusCounts: metadataDiff.statusCounts
+        };
+
+    }
+
+    private static buildFieldDiffViewModel(fieldResult: IMetadataDiffFieldResult): IRecipeCockpitFieldDiffViewModel {
+
+        return {
+            fieldApiName: fieldResult.fieldApiName,
+            status: fieldResult.status,
+            recipeFieldType: fieldResult.recipeFieldType,
+            orgFieldType: fieldResult.orgFieldType,
+            addedPicklistValues: fieldResult.addedPicklistValues,
+            removedPicklistValues: fieldResult.removedPicklistValues
+        };
+
+    }
+
+    static buildEmptyDiffViewModel(): IRecipeCockpitDiffViewModel {
+
+        return { objects: [], statusCounts: RecipeCockpitMetadataDiff.buildEmptyStatusCounts() };
 
     }
 
@@ -734,7 +961,8 @@ export class RecipeCockpitService {
 
     static buildOrgDescribeMessage(orgLabel: string,
                                     describeResult: IOrgDescribeRequestResult,
-                                    renderSequence: number): IRecipeCockpitOrgDescribeMessage {
+                                    renderSequence: number,
+                                    recipeDiff: IRecipeCockpitDiffViewModel = RecipeCockpitService.buildEmptyDiffViewModel()): IRecipeCockpitOrgDescribeMessage {
 
         const objectSummaries: IRecipeCockpitOrgDescribeObjectSummary[] = describeResult.outcomes.map(describeOutcome => ({
             objectApiName: describeOutcome.objectApiName,
@@ -766,6 +994,7 @@ export class RecipeCockpitService {
             isFailure: false,
             isCancelled: describeResult.wasCancelled,
             objects: objectSummaries,
+            diff: recipeDiff,
             renderSequence: renderSequence
         };
 
@@ -782,6 +1011,7 @@ export class RecipeCockpitService {
             isFailure: true,
             isCancelled: false,
             objects: [],
+            diff: this.buildEmptyDiffViewModel(),
             renderSequence: renderSequence
         };
 
@@ -863,6 +1093,22 @@ export class RecipeCockpitService {
 
                 return { kind: 'selectOrg' };
 
+            case 'regenerateRecipe':
+
+                /*
+                    Offered only beside a comparison of the model the panel confirmed drawing: the
+                    active describable set is non-empty only after that model's "rendered", and a
+                    comparison is stored only while its model is the one on screen.
+                */
+                if ( panelState.describableObjectApiNames.size === 0
+                        || !panelState.orgDescribeMessage
+                        || panelState.orgDescribeMessage.diff.objects.length === 0
+                        || panelState.isRegenerateInFlight ) {
+                    return undefined;
+                }
+
+                return { kind: 'regenerateRecipe' };
+
             case 'selectRun': {
 
                 const { runFolderName } = panelMessage;
@@ -896,6 +1142,10 @@ export class RecipeCockpitService {
 
         if ( panelState.recipeDataMessage && panelState.orgDescribeMessage ) {
             replayMessages.push(panelState.orgDescribeMessage);
+        }
+
+        if ( panelState.recipeDataMessage && panelState.orgProgressMessage ) {
+            replayMessages.push(panelState.orgProgressMessage);
         }
 
         if ( panelState.loadFailedMessage ) {
@@ -1037,13 +1287,24 @@ export class RecipeCockpitService {
                                         workspaceRoot: string,
                                         requestedRunFolderName?: string): IRecipeCockpitRecipeViewModel {
 
+        return this.loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName).recipeViewModel;
+
+    }
+
+    static loadRecipeRunByRuns(recipeRuns: IRecipeCockpitRun[],
+                                workspaceRoot: string,
+                                requestedRunFolderName?: string): IRecipeCockpitLoadedRecipe {
+
         const runViewModels = recipeRuns.map((recipeRun, runIndex) => ({
             runFolderName: recipeRun.runFolderName,
             label: this.buildRunLabel(recipeRun, runIndex === 0)
         }));
 
         if ( recipeRuns.length === 0 ) {
-            return { runs: [], selectedRunFolderName: '', objects: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE };
+            return {
+                recipeViewModel: { runs: [], selectedRunFolderName: '', objects: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE },
+                recipePicklistValuesByObjectApiName: new Map()
+            };
         }
 
         const requestedRun = recipeRuns.find(recipeRun => recipeRun.runFolderName === requestedRunFolderName);
@@ -1063,7 +1324,7 @@ export class RecipeCockpitService {
             parsedObjectsWrapper = JSON.parse(fs.readFileSync(selectedRun.objectsWrapperFilePath, 'utf-8'));
         } catch (readError) {
             recipeViewModel.emptyStateMessage = `The objects wrapper "${path.basename(selectedRun.objectsWrapperFilePath)}" for this run could not be read: ${readError?.message ?? readError}. Choose another run, or run "Generate Treecipe" again.`;
-            return recipeViewModel;
+            return { recipeViewModel: recipeViewModel, recipePicklistValuesByObjectApiName: new Map() };
         }
 
         const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
@@ -1090,7 +1351,7 @@ export class RecipeCockpitService {
                 : `"${path.basename(selectedRun.objectsWrapperFilePath)}" is not a Treecipe objects wrapper. Choose another run, or run "Generate Treecipe" again.`;
         }
 
-        return recipeViewModel;
+        return { recipeViewModel: recipeViewModel, recipePicklistValuesByObjectApiName: normalizedObjectsWrapper.picklistValuesByObjectApiName };
 
     }
 
@@ -1604,6 +1865,29 @@ export class RecipeCockpitService {
     .sourceLink:hover { text-decoration: underline; }
     .objectBody { padding: 0.25rem 0 0.25rem 1.5rem; }
     .field { padding: 0.25rem 0; }
+    .orgProgress { margin: 0.4rem 0; }
+    .diffSummary { margin-top: 0.2rem; }
+    .regenerate { margin-top: 0.4rem; }
+    .regenerate button {
+        padding: 0.25rem 0.6rem;
+        color: var(--vscode-button-foreground);
+        background-color: var(--vscode-button-background);
+        border: none;
+        cursor: pointer;
+    }
+    .regenerateNote { margin-top: 0.25rem; }
+    .diffBadge {
+        font-size: 0.85em;
+        padding: 0 0.35rem;
+        border: 1px solid currentColor;
+        border-radius: 0.6rem;
+    }
+    .diff-new-in-org { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-foreground)); }
+    .diff-removed-from-org { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-errorForeground)); }
+    .diff-type-changed { color: var(--vscode-editorWarning-foreground, var(--vscode-foreground)); }
+    .diff-picklist-changed { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-foreground)); }
+    .diff-unchanged { color: var(--vscode-descriptionForeground); }
+    .diffDetail { margin: 0.15rem 0 0 0; color: var(--vscode-descriptionForeground); word-break: break-word; }
     .expression {
         margin: 0.15rem 0 0 0;
         white-space: pre-wrap;
@@ -1625,12 +1909,20 @@ export class RecipeCockpitService {
     const cockpitBodyElement = document.getElementById('cockpitBody');
     const AUTO_EXPAND_OBJECT_LIMIT = ${RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT};
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
+    const DIFF_STATUSES = ${JSON.stringify(METADATA_DIFF_FIELD_STATUSES)};
+    const DIFF_STATUS_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DIFF_STATUS_LABELS)};
+    const DIFF_PICKLIST_VALUES_SHOWN = ${RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN};
+    const REGENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL)};
+    const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
 
     let objectStates = [];
     let filterQuery = '';
+    let statusFilter = 'all';
     let matchCountElement = null;
     let runSelectElement = null;
+    let statusFilterElement = null;
     let orgStatusElement = null;
+    let orgProgressElement = null;
     let renderedRunFolderName = '';
     let renderedSequence = null;
 
@@ -1706,13 +1998,49 @@ export class RecipeCockpitService {
             fieldHeaderElement.appendChild(createElement('span', 'recipeFileOnly muted', 'read from the recipe file'));
         }
 
+        if (fieldState.diffStatus) {
+            fieldHeaderElement.appendChild(createElement('span', 'diffBadge diff-' + fieldState.diffStatus, DIFF_STATUS_LABELS[fieldState.diffStatus]));
+        }
+
         fieldRowElement.appendChild(fieldHeaderElement);
+
+        appendDiffDetail(fieldRowElement, fieldState.diff);
 
         if (field.recipeValue) {
             fieldRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
         }
 
         return fieldRowElement;
+
+    }
+
+    function listValues(values) {
+
+        const shownValues = values.slice(0, DIFF_PICKLIST_VALUES_SHOWN);
+        const hiddenCount = values.length - shownValues.length;
+
+        return shownValues.join(', ') + (hiddenCount > 0 ? ' and ' + hiddenCount + ' more' : '');
+
+    }
+
+    // WHAT A BADGE CANNOT SAY ON ITS OWN: WHICH TYPES, AND WHICH VALUES
+    function appendDiffDetail(fieldRowElement, fieldDiff) {
+
+        if (!fieldDiff) { return; }
+
+        if (fieldDiff.status === 'type-changed') {
+            fieldRowElement.appendChild(createElement('div', 'diffDetail', 'recipe: ' + fieldDiff.recipeFieldType + ' · org: ' + fieldDiff.orgFieldType));
+        }
+
+        if (fieldDiff.addedPicklistValues.length > 0) {
+            fieldRowElement.appendChild(createElement('div', 'diffDetail',
+                pluralize(fieldDiff.addedPicklistValues.length, 'value', 'values') + ' active in the org and not in the recipe: ' + listValues(fieldDiff.addedPicklistValues)));
+        }
+
+        if (fieldDiff.removedPicklistValues.length > 0) {
+            fieldRowElement.appendChild(createElement('div', 'diffDetail',
+                pluralize(fieldDiff.removedPicklistValues.length, 'value', 'values') + ' in the recipe and not active in the org: ' + listValues(fieldDiff.removedPicklistValues)));
+        }
 
     }
 
@@ -1759,14 +2087,30 @@ export class RecipeCockpitService {
     }
 
     /*
+        A row of an object that was not compared has no status, so it matches no status filter:
+        a row that says nothing about the org is not one the reader asked to see by its status.
+    */
+    function isStatusMatch(fieldState) {
+
+        if (statusFilter === 'all') { return true; }
+        if (statusFilter === 'changed') { return !!fieldState.diffStatus && fieldState.diffStatus !== 'unchanged'; }
+
+        return fieldState.diffStatus === statusFilter;
+
+    }
+
+    /*
         Narrows fields live, and never hides an OBJECT.
 
         An object whose name matches keeps all its fields; otherwise only the fields whose name,
-        label, type, controlling field or faker expression match are shown. An object with no match
-        stays on screen, collapsed and labelled, because hiding it would make a filter look like a
-        truncation -- the reader could not tell "not in the recipe" from "filtered away".
+        label, type, controlling field or faker expression match are shown. The status filter
+        narrows either way. An object with no match stays on screen, collapsed and labelled,
+        because hiding it would make a filter look like a truncation -- the reader could not tell
+        "not in the recipe" from "filtered away".
     */
     function applyFilter() {
+
+        const isFiltering = !!filterQuery || statusFilter !== 'all';
 
         let totalFieldCount = 0;
         let matchingFieldCount = 0;
@@ -1781,7 +2125,7 @@ export class RecipeCockpitService {
             let objectMatchingFieldCount = 0;
 
             objectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = isObjectNameMatch || fieldState.searchText.indexOf(filterQuery) !== -1;
+                fieldState.isMatch = (isObjectNameMatch || fieldState.searchText.indexOf(filterQuery) !== -1) && isStatusMatch(fieldState);
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 applyFieldVisibility(fieldState);
             });
@@ -1790,10 +2134,11 @@ export class RecipeCockpitService {
             totalFieldCount += objectFieldCount;
             matchingFieldCount += objectMatchingFieldCount;
 
-            const isObjectMatch = isObjectNameMatch || objectMatchingFieldCount > 0;
+            // AN EMPTY FIND BOX "MATCHES" EVERY NAME, SO UNDER A STATUS FILTER ONLY A MATCHING ROW MAKES A MATCHING OBJECT
+            const isObjectMatch = (isObjectNameMatch && statusFilter === 'all') || objectMatchingFieldCount > 0;
             if (isObjectMatch) { matchingObjectCount++; }
 
-            if (!filterQuery || isObjectNameMatch) {
+            if (!isFiltering || (isObjectNameMatch && statusFilter === 'all')) {
                 objectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
             } else if (objectMatchingFieldCount > 0) {
                 objectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
@@ -1802,7 +2147,7 @@ export class RecipeCockpitService {
             }
 
             // A CLEARED FILTER GIVES BACK WHAT THE READER HAD OPENED, RATHER THAN CLOSING IT ON THEM
-            if (!filterQuery) {
+            if (!isFiltering) {
                 setObjectExpanded(objectState, objectState.isExpandedByReader);
                 return;
             }
@@ -1828,7 +2173,7 @@ export class RecipeCockpitService {
 
         if (!matchCountElement) { return; }
 
-        matchCountElement.textContent = filterQuery
+        matchCountElement.textContent = isFiltering
             ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') + ' · ' + matchingObjectCount + ' of ' + pluralize(objectStates.length, 'object', 'objects')
             : pluralize(totalFieldCount, 'field', 'fields') + ' · ' + pluralize(objectStates.length, 'object', 'objects');
 
@@ -1873,10 +2218,33 @@ export class RecipeCockpitService {
 
         }
 
+        // SHOWN ONCE A COMPARISON IS DRAWN -- BEFORE THAT NO ROW HAS A STATUS TO FILTER BY
+        if (hasObjects) {
+
+            statusFilterElement = createElement('select', 'statusFilter hidden');
+            statusFilterElement.setAttribute('aria-label', 'Show fields by their comparison with the org');
+
+            [['all', 'All fields'], ['changed', 'Changed fields only']].concat(DIFF_STATUSES.map(function (diffStatus) {
+                return [diffStatus, 'Only ' + DIFF_STATUS_LABELS[diffStatus]];
+            })).forEach(function (statusOption) {
+                const statusOptionElement = createElement('option', '', statusOption[1]);
+                statusOptionElement.value = statusOption[0];
+                statusFilterElement.appendChild(statusOptionElement);
+            });
+
+            statusFilterElement.value = statusFilter;
+            statusFilterElement.addEventListener('change', function () {
+                statusFilter = String(statusFilterElement.value || 'all');
+                applyFilter();
+            });
+            toolbarElement.appendChild(statusFilterElement);
+
+        }
+
         // THE PANEL ASKS ONLY FOR "A DESCRIBE" -- WHICH OBJECTS, AND IN WHICH ORG, THE HOST DECIDES
         if (hasObjects) {
             const describeButtonElement = createElement('button', 'describeInOrg', '${RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL}');
-            describeButtonElement.setAttribute('title', 'Choose an authorized org and describe the objects of this recipe in it');
+            describeButtonElement.setAttribute('title', 'Choose an authorized org, describe the objects of this recipe in it, and mark each field with how it compares');
             describeButtonElement.addEventListener('click', function () {
                 vscodeApi.postMessage({ command: 'selectOrg' });
             });
@@ -1888,9 +2256,25 @@ export class RecipeCockpitService {
         if (hasObjects) {
             matchCountElement = createElement('div', 'matchCount muted');
             cockpitBodyElement.appendChild(matchCountElement);
+            orgProgressElement = createElement('div', 'orgProgress muted hidden');
+            cockpitBodyElement.appendChild(orgProgressElement);
             orgStatusElement = createElement('div', 'orgStatus hidden');
             cockpitBodyElement.appendChild(orgStatusElement);
         }
+
+    }
+
+    function buildFieldState(field, fieldDiff, diffStatus) {
+
+        return {
+            field: field,
+            // LOWERCASED ONCE HERE RATHER THAN ON EVERY KEYSTROKE
+            searchText: [field.fieldApiName, field.fieldLabel, field.fieldType, field.controllingField, field.recipeValue].join('\\n').toLowerCase(),
+            isMatch: true,
+            rowElement: null,
+            diff: fieldDiff,
+            diffStatus: diffStatus
+        };
 
     }
 
@@ -1904,22 +2288,15 @@ export class RecipeCockpitService {
         const objectState = {
             object: object,
             objectSearchText: object.objectApiName.toLowerCase(),
-            fieldStates: object.fields.map(function (field) {
-                return {
-                    field: field,
-                    // LOWERCASED ONCE HERE RATHER THAN ON EVERY KEYSTROKE
-                    searchText: [field.fieldApiName, field.fieldLabel, field.fieldType, field.controllingField, field.recipeValue].join('\\n').toLowerCase(),
-                    isMatch: true,
-                    rowElement: null
-                };
-            }),
+            fieldStates: object.fields.map(function (field) { return buildFieldState(field, null, null); }),
             isBodyBuilt: false,
             isExpanded: false,
             isExpandedByReader: false,
             toggleElement: toggleElement,
             bodyElement: bodyElement,
             countElement: createElement('span', 'objectCount muted'),
-            orgDescribeElement: createElement('span', 'orgDescribeStatus muted hidden')
+            orgDescribeElement: createElement('span', 'orgDescribeStatus muted hidden'),
+            diffElement: createElement('span', 'objectDiff hidden')
         };
 
         toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
@@ -1937,6 +2314,7 @@ export class RecipeCockpitService {
 
         objectHeaderElement.appendChild(objectState.countElement);
         objectHeaderElement.appendChild(objectState.orgDescribeElement);
+        objectHeaderElement.appendChild(objectState.diffElement);
 
         objectElement.appendChild(objectHeaderElement);
         objectElement.appendChild(bodyElement);
@@ -1956,9 +2334,13 @@ export class RecipeCockpitService {
         objectStates = [];
         matchCountElement = null;
         runSelectElement = null;
+        statusFilterElement = null;
         orgStatusElement = null;
+        orgProgressElement = null;
         renderedSequence = null;
         renderedRunFolderName = recipe.selectedRunFolderName;
+        // A NEW MODEL HAS NO COMPARISON, SO A STATUS FILTER LEFT ON WOULD HIDE EVERY ROW OF IT
+        statusFilter = 'all';
 
         const hasObjects = recipe.objects.length > 0;
 
@@ -1989,7 +2371,9 @@ export class RecipeCockpitService {
         objectStates = [];
         matchCountElement = null;
         runSelectElement = null;
+        statusFilterElement = null;
         orgStatusElement = null;
+        orgProgressElement = null;
         renderedSequence = null;
         cockpitBodyElement.appendChild(createElement('div', 'emptyState', 'The Recipe Cockpit could not draw this recipe. The error has been reported; re-open the cockpit to try again.'));
 
@@ -2046,6 +2430,8 @@ export class RecipeCockpitService {
 
         if (!orgStatusElement || orgDescribe.renderSequence !== renderedSequence) { return; }
 
+        orgProgressElement.classList.add('hidden');
+
         orgStatusElement.textContent = '';
         orgStatusElement.appendChild(createElement('div', 'orgDescribeSummary', orgDescribe.summary));
         orgStatusElement.classList.remove('hidden');
@@ -2082,6 +2468,130 @@ export class RecipeCockpitService {
 
         });
 
+        // A FAILED CONNECTION COMPARED NOTHING, AND REPLACES WHATEVER AN EARLIER COMPARISON SAID
+        applyDiff(orgDescribe.diff, !orgDescribe.isFailure);
+
+        if (orgDescribe.diff.objects.length > 0) {
+            orgStatusElement.appendChild(createElement('div', 'diffSummary', 'Compared ' + pluralize(orgDescribe.diff.objects.length, 'object', 'objects') + ': ' + describeStatusCounts(orgDescribe.diff.statusCounts, true)));
+            orgStatusElement.appendChild(buildRegenerateElement());
+        }
+
+    }
+
+    function describeStatusCounts(statusCounts, includesUnchanged) {
+
+        const countTexts = DIFF_STATUSES
+            .filter(function (diffStatus) { return (includesUnchanged || diffStatus !== 'unchanged') && statusCounts[diffStatus] > 0; })
+            .map(function (diffStatus) { return statusCounts[diffStatus] + ' ' + DIFF_STATUS_LABELS[diffStatus]; });
+
+        return countTexts.length > 0 ? countTexts.join(' · ') : 'no changes';
+
+    }
+
+    function buildRegenerateElement() {
+
+        const regenerateElement = createElement('div', 'regenerate');
+        const regenerateButtonElement = createElement('button', 'regenerateRecipe', REGENERATE_ACTION_LABEL);
+
+        regenerateButtonElement.setAttribute('title', REGENERATE_NOTE);
+        regenerateButtonElement.addEventListener('click', function () {
+            regenerateButtonElement.disabled = true;
+            regenerateButtonElement.textContent = 'Regenerating…';
+            vscodeApi.postMessage({ command: 'regenerateRecipe' });
+        });
+
+        regenerateElement.appendChild(regenerateButtonElement);
+        regenerateElement.appendChild(createElement('div', 'regenerateNote muted', REGENERATE_NOTE));
+
+        return regenerateElement;
+
+    }
+
+    /*
+        Lays a comparison over the rows already drawn. Every row of a compared object gets a status
+        -- one with no entry in the diff is unchanged, which the host does not post -- a field only
+        the org has becomes a row of its own, and an object that was not compared says so rather
+        than showing statuses it has none of. Rows built from an earlier comparison are rebuilt from
+        this one, so a field only an OLDER org had does not survive into a newer answer.
+    */
+    function applyDiff(diff, isComparisonShown) {
+
+        const objectDiffsByApiName = {};
+        diff.objects.forEach(function (objectDiff) { objectDiffsByApiName[objectDiff.objectApiName] = objectDiff; });
+
+        objectStates.forEach(function (objectState) {
+
+            const objectDiff = isComparisonShown && Object.prototype.hasOwnProperty.call(objectDiffsByApiName, objectState.object.objectApiName)
+                ? objectDiffsByApiName[objectState.object.objectApiName]
+                : null;
+
+            const changedFieldsByApiName = {};
+            (objectDiff ? objectDiff.changedFields : []).forEach(function (fieldDiff) { changedFieldsByApiName[fieldDiff.fieldApiName] = fieldDiff; });
+
+            objectState.fieldStates = objectState.fieldStates.filter(function (fieldState) { return !fieldState.field.isOnlyInOrg; });
+
+            objectState.fieldStates.forEach(function (fieldState) {
+                const fieldDiff = Object.prototype.hasOwnProperty.call(changedFieldsByApiName, fieldState.field.fieldApiName)
+                    ? changedFieldsByApiName[fieldState.field.fieldApiName]
+                    : null;
+                fieldState.diff = fieldDiff;
+                fieldState.diffStatus = objectDiff ? (fieldDiff ? fieldDiff.status : 'unchanged') : null;
+            });
+
+            (objectDiff ? objectDiff.changedFields : []).filter(function (fieldDiff) { return fieldDiff.status === 'new-in-org'; }).forEach(function (fieldDiff) {
+                objectState.fieldStates.push(buildFieldState({
+                    fieldApiName: fieldDiff.fieldApiName,
+                    fieldLabel: '',
+                    fieldType: fieldDiff.orgFieldType,
+                    recipeValue: '',
+                    controllingField: '',
+                    isOnlyInRecipeFile: false,
+                    isOnlyInOrg: true
+                }, fieldDiff, fieldDiff.status));
+            });
+
+            if (!isComparisonShown) {
+                objectState.diffElement.classList.add('hidden');
+            } else {
+                objectState.diffElement.textContent = objectDiff ? describeStatusCounts(objectDiff.statusCounts, false) : 'not compared';
+                objectState.diffElement.setAttribute('title', objectDiff
+                    ? pluralize(objectDiff.uncreateableOrgOnlyFieldCount, 'org field', 'org fields') + ' a recipe cannot write (system and formula fields) are not listed'
+                    : 'This object could not be described in the org, so its fields were not compared');
+                objectState.diffElement.classList.remove('hidden');
+            }
+
+            objectState.bodyElement.textContent = '';
+            objectState.isBodyBuilt = false;
+
+            if (objectState.isExpanded) {
+                ensureObjectBodyBuilt(objectState);
+            }
+
+        });
+
+        if (statusFilterElement) {
+
+            if (diff.objects.length > 0 && isComparisonShown) {
+                statusFilterElement.classList.remove('hidden');
+            } else {
+                statusFilterElement.classList.add('hidden');
+                statusFilter = 'all';
+                statusFilterElement.value = 'all';
+            }
+
+        }
+
+        applyFilter();
+
+    }
+
+    function renderOrgProgress(orgProgress) {
+
+        if (!orgProgressElement || orgProgress.renderSequence !== renderedSequence) { return; }
+
+        orgProgressElement.textContent = orgProgress.message;
+        orgProgressElement.classList.remove('hidden');
+
     }
 
     window.addEventListener('message', function (hostMessageEvent) {
@@ -2107,6 +2617,11 @@ export class RecipeCockpitService {
 
         if (hostMessage.command === 'orgDescribe') {
             renderOrgDescribe(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'orgProgress') {
+            renderOrgProgress(hostMessage);
             return;
         }
 

@@ -1,5 +1,64 @@
 # Change Log
 
+## [3.28.0] - The Recipe Cockpit compares a recipe with an org
+
+Closes [#57](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/57), the fifth slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59). This completes the v1 "viewer + metadata diff" milestone.
+
+**Describe in an org…** is now **Compare with an org…**. After the objects are described, the host runs `RecipeCockpitMetadataDiff.computeMetadataDiff` (3.27.0) over them, and the panel marks every field of the recipe with its status: *new in org*, *removed from org*, *type changed*, *picklist changed* or *unchanged*. A status filter narrows the rows, and **Regenerate recipe** hands off to Generate Treecipe.
+
+### What the panel shows
+
+- **A badge on every row of a compared object.** A type change says both types (`recipe: Number · org: string`). A picklist change names the values active in the org and missing from the recipe, and the other way round. A row names the first 20 values and counts the rest.
+- **A row for each field only the org has.** It has no recipe line to open, so its name is not a link. Fields a recipe cannot write (`Id`, `CreatedDate`, formula fields) are not rows: each object's header counts them in its tooltip, as the diff engine does.
+- **A per-object line on each header** (`1 new in org · 1 type changed`, or `no changes`) and a totals line under the describe summary.
+- **"not compared", never a status, for an object that was not described.** The diff engine reads its org side as what the org has, so an object whose describe failed or was cancelled is left out of both sides by `buildRecipeDiffViewModel`. Passing it through would have reported every one of its fields as removed. The engine's comment asked for this in 3.27.0, and a test now fails if the filter is removed.
+- **A connection failure clears the previous comparison** rather than leaving an older org's statuses under a summary that says nothing was reached.
+- **A later comparison rebuilds the rows**, so a field only an earlier org had does not survive into the next answer.
+
+### Filtering by status
+
+A selector appears once a comparison is drawn, with *All fields*, *Changed fields only* and one entry per status. It combines with the text filter: typing an object's name still shows all its fields, and the status then narrows them. A row of an object that was not compared matches no status. Objects are never hidden, as before. Every status filter, like a text query, opens at most 25 matching objects and 2,000 rows by itself. A new model resets the selector to *All fields*, because a status left on would hide every row of a recipe that has not been compared yet.
+
+Building this found one defect in the existing filter, which the tests now pin. With the find box empty, every object "matched" by name, so *Changed fields only* reported `2 of 2 objects` when one object had no changed rows.
+
+### Progress and errors in the panel
+
+The cancellable notification from 3.26.0 is still there. The panel now also shows a line (`Comparing with devhub (jd@example.com): described 3 of 12 objects…`) that the answer replaces. The host stores it like every other message, so a reveal in the middle of a describe replays it. It is dropped when the comparison ends in any way, including a dismissed picker or a run switched mid-describe. It is tagged with the `renderSequence` of the model being compared, so it is never drawn over another run's rows.
+
+The comparison is computed **outside** the connection's `try`. Before, a throw in the diff would have been reported as "Could not connect to devhub… Re-authorize the org", sending the reader to re-authorize an org that had answered. It now reaches `ErrorHandlingService` as the extension's own failure, and the next comparison is not refused as one still in flight.
+
+### Regenerate recipe
+
+This is the v1 "apply". It runs `treecipe.generateTreecipe`, the same unflagged command as the palette, and then loads the run it wrote. **It regenerates from the object metadata in the workspace, not from the org.** A field the comparison reports as new in the org reaches the recipe only after its metadata is retrieved into the project. The panel says so beside the button (`RECIPE_COCKPIT_REGENERATE_NOTE`), because otherwise the button looks like it fixes differences it cannot fix.
+
+- **The command handler now returns its promise.** `extension.ts` used to start generation and return nothing, so `executeCommand` resolved at once and the cockpit would have reloaded before anything was written. A test in `extension.test.ts` pins the returned promise.
+- `regenerateRecipe` carries no payload. The router honours it only when the panel has confirmed drawing the model, a comparison of that model with at least one compared object is stored, and no regeneration is already running. A panel closed during generation gets no load started into it.
+- The cockpit's flag gates the **button**, by gating the panel it is drawn in. No new entry point reaches cockpit code, so nothing needed a flag check of its own (per the issue's note).
+
+### The protocol, and one deviation from the issue
+
+The issue proposed `runOrgDiff {alias}` from the panel and a separate `diffData` reply. That was not followed. In 3.26.0 the panel's `selectOrg` deliberately carries no data: the host shows the org picker and reads which objects to describe from an allow-list, so the panel never names an org or an object. The comparison therefore rides on the existing `orgDescribe` message as a `diff` field, which keeps one stored answer and one replay order. The new host message is `orgProgress`, and the new panel message is `regenerateRecipe`.
+
+`diff` is always present. A connection failure, or a message built with no comparison, carries an empty one, so the panel never has to check whether the field exists.
+
+### What is posted, measured
+
+An unchanged field is **not posted**. Every recipe row of a compared object with no entry is unchanged, so the payload grows with the differences rather than with the recipe. The recipe's picklist values still never leave the host. `loadRecipeRunByRuns` returns them next to the model, the panel state keeps them with the model they belong to, and `buildRecipeViewModelByRuns` is now a wrapper over it.
+
+These numbers come from synthetic runs pushed through the real `buildRecipeDiffViewModel` and `buildOrgDescribeMessage`, with a third of the fields being 15-value picklists, and are compared with the recipe message for the same run. *Typical* changes 5% of fields. *Worst* is an org that shares nothing with the recipe: every picklist swaps all 15 values, every other field is retyped or removed, and each changed field has a new org field beside it.
+
+| fields | typical: changed / build / message | worst: changed / build / message | recipe message |
+|---:|---:|---:|---:|
+| 405 | 42 / 3 ms / 0.01 MB | 810 / 3 ms / 0.16 MB | 0.06 MB |
+| 12,000 | 1,200 / 45 ms / 0.25 MB | 24,000 / 74 ms / 4.72 MB | 1.67 MB |
+| 120,000 | 12,000 / 349 ms / 2.47 MB | 240,000 / 595 ms / 47.16 MB | 16.71 MB |
+
+The recipe message here has empty faker expressions, so it is smaller than the 3.25.0 figures. The comparison adds about 15% in the typical case. The worst case at 10x the epic's field count passes the Explorer's measured ceiling (39.79 MB), but it only happens when the reader compares with an org that has almost none of the recipe's fields, which is the wrong org. This slice adds no cap. The panel's own cost stays bounded by what it expands: a comparison rebuilds only the bodies of objects already open, and the auto-expand limits apply to status filters as to text.
+
+### Testing
+
+The tests cover `buildRecipeDiffViewModel` (every status, implied unchanged fields, failed and cancelled objects left out, and no picklist claim without recorded values), `loadRecipeRunByRuns`, and the `regenerateRecipe` router. On the host, they cover the comparison using the run's recorded picklist values, progress and its replay, a comparison that throws, and regeneration (the hand-off, the reload, a double click, a failure, and a panel closed mid-generation). The panel script runs against the fake DOM for badges, details, rows for fields only in the org, "not compared", the filters, rebuilding on a later answer, clearing on failure, progress, and the regenerate button. Ten mutations of the new guards were each checked to fail at least one test.
+
 ## [3.27.0] - The Recipe Cockpit's metadata diff engine
 
 Closes [#56](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/56), the fourth slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
