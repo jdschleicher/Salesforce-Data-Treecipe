@@ -1,16 +1,18 @@
-import { ChildProcess, exec } from 'child_process';
+import { ChildProcess, exec, execFile, ExecFileException } from 'child_process';
 
 import { SnowfakeryRecipeProcessor } from '../SnowfakeryRecipeProcessor';
 
 
 
 jest.mock('child_process', () => ({
-    exec: jest.fn()
+    exec: jest.fn(),
+    execFile: jest.fn()
 }));
 
 import * as fs from 'fs';
 
 import { VSCodeWorkspaceService } from '../../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ErrorHandlingService } from '../../../ErrorHandlingService/ErrorHandlingService';
 
 jest.mock('vscode', () => ({
 
@@ -83,62 +85,104 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
 
     describe('generateFakeDataBySelectedRecipeFile', () => {
 
-        const mockedRunSnowfakeryExecChildProcessCommand = jest.mocked(exec);
+        const mockedExecFile = jest.mocked(execFile);
+        const mockedExec = jest.mocked(exec);
+        const expectedExecFileOptions = { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10 };
 
-        test('should return generated fake data from SnowfakeryMockService', async () => {
+        beforeEach(() => {
+            mockedExecFile.mockReset();
+            mockedExec.mockReset();
+        });
+
+        const mockExecFileCallback = (cliCommandError: Error | null, standardOut: unknown) => {
+            mockedExecFile.mockImplementation(((command, args, options, handleCliCommandCallback) => {
+                handleCliCommandCallback(cliCommandError, standardOut, '');
+                return {} as ChildProcess;
+            }) as typeof execFile);
+        };
+
+        const mockErrorCaptureDependencies = () => {
+            jest.spyOn(fs, 'writeFile').mockReturnValue();
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('rootMock/mock');
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockReturnValue();
+            jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockImplementation();
+        };
+
+        test('should return generated fake data for an ordinary path, passing it as an argument with the 10 MB buffer', async () => {
             
             const expectedFakeData = { data: 'fake data' };
-
-            /*
-              the below cliErrorMock set to null is what is needed to simulate a successful execution
-              with this cliErroMock arg as null, the logic will result in truthy 
-            */ 
-
-            const cliErrorMock = null;
-            const mockedMaxBuffer = {maxBuffer:  10485760};
-            const execChildProcessMockImplementation = (cliCommand, mockedMaxBuffer, handleCliCommandCallback) => {
-                handleCliCommandCallback(cliErrorMock, expectedFakeData);
-                return {} as ChildProcess;
-            };
-  
-            mockedRunSnowfakeryExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
+            mockExecFileCallback(null, expectedFakeData);
   
             const mockRecipeFilePath = 'path/to/recipe.yml';
             const result = await snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile(mockRecipeFilePath);
   
-            expect(mockedRunSnowfakeryExecChildProcessCommand).toHaveBeenCalledWith(
-                  `snowfakery ${ mockRecipeFilePath } --output-format json`,
-                  mockedMaxBuffer,
-                  expect.any(Function)
+            expect(mockedExecFile).toHaveBeenCalledWith(
+                'snowfakery',
+                [mockRecipeFilePath, '--output-format', 'json'],
+                expectedExecFileOptions,
+                expect.any(Function)
             );
+            expect(mockedExec).not.toHaveBeenCalled();
             expect(result).toBe(expectedFakeData);
 
         });
 
-        test('should throw expected error message when Snowfakery command cli is not found', async () => {
+        test.each([
+            ['backticks', 'recipes/a`touch pwned`.yaml'],
+            ['command substitution', 'recipes/a$(touch pwned).yaml'],
+            ['a command separator', 'recipes/a; touch pwned ;.yaml'],
+            ['a conditional chain', 'recipes/a && touch pwned && b.yaml'],
+            ['a space', '/Users/some one/My Project/recipes/recipe.yaml']
+        ])('should pass a recipe path containing %s through as one literal argument', async (_description, recipeFilePath) => {
+
+            mockExecFileCallback(null, '[]');
+
+            await snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFilePath);
+
+            expect(mockedExecFile).toHaveBeenCalledTimes(1);
+            const [command, args, options] = mockedExecFile.mock.calls[0] as unknown as [string, string[], { shell?: unknown }];
+            expect(command).toBe('snowfakery');
+            expect(args).toEqual([recipeFilePath, '--output-format', 'json']);
+            expect(options.shell).toBeUndefined();
+            expect(mockedExec).not.toHaveBeenCalled();
+
+        });
+
+        test('should capture and reject with the CLI message when snowfakery exits non zero', async () => {
             
-            jest.spyOn(fs, 'writeFile').mockReturnValue();
+            mockErrorCaptureDependencies();
+            const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile');
 
-            const mockWorkspaceRoot = 'rootMock/mock';
-            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
-            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockReturnValue();
-            jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockImplementation();
+            const expectedCliErrorMessage = 'Command failed: snowfakery path/to/recipe.yml --output-format json\nbad recipe';
+            const cliErrorMock: ExecFileException = Object.assign(new Error(expectedCliErrorMessage), { code: 1 });
+            mockExecFileCallback(cliErrorMock, '');
 
-            const expectedCliErrorMessage = 'Command failed';
-            const cliErrorMock = new Error(expectedCliErrorMessage);
-            const expectedFailureStdOut = 'command not found: snowfakery';
-            const mockedMaxBuffer = {maxBuffer:  10485760};
-            const execChildProcessMockImplementation = (cliCommand, mockedMaxBuffer, handleCliCommandCallback) => {
-                handleCliCommandCallback(cliErrorMock, expectedFailureStdOut);
-                return {} as ChildProcess;
-            };
+            const rejection = snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile('path/to/recipe.yml');
 
-            mockedRunSnowfakeryExecChildProcessCommand.mockImplementation(execChildProcessMockImplementation);
-            const mockRecipeFilePath = 'path/to/recipe.yml';
-            const expectedCustomSnowfakeryErrorName:string  = 'SnowfakeryEvaluationError';
+            await expect(rejection).rejects.toThrow(expectedCliErrorMessage);
+            await expect(rejection).rejects.toMatchObject({ name: 'SnowfakeryEvaluationError', message: expectedCliErrorMessage });
+            expect(captureSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ name: 'SnowfakeryEvaluationError', message: expectedCliErrorMessage }),
+                'SnowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile'
+            );
 
-            await expect(snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile(mockRecipeFilePath)).rejects.toThrow(
-                `${ expectedCliErrorMessage }`
+        });
+
+        test('should capture and reject with an install hint when snowfakery cannot be spawned', async () => {
+
+            mockErrorCaptureDependencies();
+            const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile');
+
+            const spawnError: ExecFileException = Object.assign(new Error('spawn snowfakery ENOENT'), { code: 'ENOENT' });
+            mockExecFileCallback(spawnError, '');
+
+            const rejection = snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile('path/to/recipe.yml');
+
+            await expect(rejection).rejects.toThrow('The snowfakery CLI could not be started (ENOENT)');
+            await expect(rejection).rejects.toThrow('spawn snowfakery ENOENT');
+            expect(captureSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ name: 'SnowfakeryEvaluationError' }),
+                'SnowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile'
             );
 
         });
