@@ -422,11 +422,11 @@ Notes:
 
 ### <a name="9-salesforce-treecipe-open-recipe-cockpit"></a>9. **Salesforce Treecipe: Open Recipe Cockpit** (preview)
 
-A panel for browsing a generated recipe: every object, every field, the field's type and the faker expression behind it, with a filter and one-click jumps into the recipe file.
+A panel for browsing a generated recipe (every object, every field, the field's type and the faker expression behind it, with a filter and one-click jumps into the recipe file) and for comparing it with an org, field by field.
 
 **Prerequisite:** [Generate Treecipe](#2-salesforce-treecipe-generate-treecipe) must have been run at least once. With no generated run the panel says so and names that command.
 
-**It is a preview.** The first time you run it in a workspace, a warning asks you to opt in. The switch is `salesforce-data-treecipe.recipeCockpitEnabled`, written for **this workspace only**, and you can turn it off in Settings. What is built and what is still missing is tracked under the [`recipe-cockpit` label](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit). It can describe the recipe's objects in an org you choose; comparing the recipe with that org field by field is the next part and is not here yet.
+**It is a preview.** The first time you run it in a workspace, a warning asks you to opt in. The switch is `salesforce-data-treecipe.recipeCockpitEnabled`, written for **this workspace only**, and you can turn it off in Settings. What is built and what is still missing is tracked under the [`recipe-cockpit` label](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit). It can compare the recipe with an org you choose. It cannot yet write a change back into a recipe.
 
 How it works:
 
@@ -435,7 +435,15 @@ How it works:
 * **Filter** narrows fields as you type. It matches field names, labels, types, controlling fields and faker expressions. Typing an object's name shows all of its fields. An object with nothing matching **stays listed**, collapsed and marked *no matching fields*, so a filter never looks like missing data
 * **Click an object or field name** to open the recipe `.yml` at that exact line
 * **Fields that only the recipe file carries are shown too.** Standard-field mappings such as `Account.Name`, and the record type line, are written straight into the recipe and are not in the wrapper file. They appear marked *read from the recipe file*
-* **Describe in an org…** lists every org the Salesforce CLI has authorized (`sf org login web` adds one) and describes each object of the recipe on screen in the org you pick. A summary line and each object's header show how many fields the org has for it, or why it could not be described. Describes are cached for the VS Code session, so asking again for the same org does not call the API again
+* **Compare with an org…** lists every org the Salesforce CLI has authorized (`sf org login web` adds one), describes each object of the recipe on screen in the org you pick, and marks every field with how it compares:
+  * *new in org*: the org has a field the recipe does not. It gets a row of its own. Fields a recipe cannot write, such as `Id` and formula fields, are counted on the object's header rather than listed
+  * *removed from org*: the recipe writes a field the org no longer has
+  * *type changed*: the row says what the type is in the recipe and in the org
+  * *picklist changed*: the row names the values active in the org and missing from the recipe, and the other way round
+  * *unchanged*
+* Progress shows in the panel while the org is described, and a failure is reported there. An object the org could not describe is marked *not compared* rather than given statuses it has none of. Describes are cached for the VS Code session, so comparing with the same org again does not call the API again
+* **Filter by status** with the selector that appears once a comparison is drawn: *Changed fields only*, or one status. It combines with the text filter
+* **Regenerate recipe** runs Generate Treecipe and loads the run it writes. It regenerates from the object metadata **in your workspace**, not from the org, so retrieve the org's changes first (for example `sf project retrieve start`) for them to reach the recipe
 
 ---
 

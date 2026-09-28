@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
     window: { createWebviewPanel: jest.fn(), withProgress: jest.fn() },
+    commands: { executeCommand: jest.fn() },
     ViewColumn: { One: 1 },
     ProgressLocation: { Notification: 15 }
 }), { virtual: true });
@@ -26,8 +27,13 @@ import {
     RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET,
     RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL,
-    RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER
+    RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER,
+    RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
+    RECIPE_COCKPIT_REGENERATE_ACTION_LABEL,
+    RECIPE_COCKPIT_REGENERATE_NOTE,
+    RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN
 } from '../RecipeCockpitService';
+import { INormalizedOrgField, INormalizedOrgObjectDescribe } from '../../SalesforceOrgService/SalesforceOrgService';
 import { SalesforceOrgService, ORG_DESCRIBE_CANCELLED_MESSAGE } from '../../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -43,6 +49,48 @@ const LATEST_RECIPE_FILE_PATH = path.join(
     'Account-thru-Contact',
     'recipe--Account-thru-Contact-2026-09-04T11-22-07.yml'
 );
+
+function buildOrgField(fieldApiName: string, fieldType: string, overrides: Partial<INormalizedOrgField> = {}): INormalizedOrgField {
+
+    return {
+        fieldApiName: fieldApiName,
+        fieldLabel: fieldApiName,
+        fieldType: fieldType,
+        length: 0,
+        precision: 0,
+        scale: 0,
+        picklistValues: [],
+        controllingField: '',
+        referenceTo: [],
+        isNillable: true,
+        isCreateable: true,
+        isCalculated: false,
+        ...overrides
+    };
+
+}
+
+const buildOrgPicklistValue = (value: string, isActive = true) => ({ value: value, label: value, isActive: isActive, isDefault: false });
+
+/*
+    The fixture run's Account as an org would describe it, with one of every status against the
+    recipe: Name matches, Industry has gained Retail and lost Banking, Number_of_Contacts__c is text
+    in the org, Legacy_Code__c is gone, Rating__c is new, and Id is a field no recipe can write.
+*/
+const ACCOUNT_ORG_DESCRIBE: INormalizedOrgObjectDescribe = {
+    objectApiName: 'Account',
+    objectLabel: 'Account',
+    fields: [
+        buildOrgField('Id', 'id', { isCreateable: false }),
+        buildOrgField('Name', 'string'),
+        buildOrgField('Industry', 'picklist', { picklistValues: [buildOrgPicklistValue('Agriculture'), buildOrgPicklistValue('Retail'), buildOrgPicklistValue('Mining', false)] }),
+        buildOrgField('Industry_Group__c', 'picklist', { controllingField: 'Industry' }),
+        buildOrgField('Number_of_Contacts__c', 'string'),
+        buildOrgField('Rating__c', 'picklist')
+    ]
+};
+
+const RECIPE_PICKLIST_VALUES = new Map([['Account', new Map([['Industry', ['Agriculture', 'Banking']]])]]);
 
 function buildRecipeViewModel(overrides: Partial<IRecipeCockpitRecipeViewModel> = {}): IRecipeCockpitRecipeViewModel {
 
@@ -966,6 +1014,159 @@ describe('RecipeCockpitService', () => {
 
     });
 
+    describe('buildRecipeDiffViewModel', () => {
+
+        const recipeObjects = () => RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
+
+        const describeResult = {
+            outcomes: [
+                { objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: false },
+                { objectApiName: 'Contact', failureMessage: 'NOT_FOUND: The requested resource does not exist', wasCached: false }
+            ],
+            wasCancelled: false
+        };
+
+        it('posts each changed field with what changed, and leaves the unchanged ones implied', () => {
+
+            const recipeDiff = RecipeCockpitService.buildRecipeDiffViewModel(recipeObjects(), describeResult, RECIPE_PICKLIST_VALUES);
+            const [accountDiff] = recipeDiff.objects;
+
+            expect(accountDiff.changedFields).toEqual([
+                { fieldApiName: 'Industry', status: 'picklist-changed', recipeFieldType: 'Picklist', orgFieldType: 'picklist', addedPicklistValues: ['Retail'], removedPicklistValues: ['Banking'] },
+                { fieldApiName: 'Legacy_Code__c', status: 'removed-from-org', recipeFieldType: 'Text', orgFieldType: '', addedPicklistValues: [], removedPicklistValues: [] },
+                { fieldApiName: 'Number_of_Contacts__c', status: 'type-changed', recipeFieldType: 'Number', orgFieldType: 'string', addedPicklistValues: [], removedPicklistValues: [] },
+                { fieldApiName: 'Rating__c', status: 'new-in-org', recipeFieldType: '', orgFieldType: 'picklist', addedPicklistValues: [], removedPicklistValues: [] }
+            ]);
+            expect(accountDiff.statusCounts).toEqual({ 'new-in-org': 1, 'removed-from-org': 1, 'type-changed': 1, 'picklist-changed': 1, 'unchanged': 2 });
+            expect(accountDiff.uncreateableOrgOnlyFieldCount).toBe(1);
+
+        });
+
+        // THE DIFF READS ITS ORG SIDE AS WHAT THE ORG HAS -- A FAILED DESCRIBE PASSED IN WOULD REPORT EVERY FIELD REMOVED
+        it('compares only the objects the org described, and counts nothing for the rest', () => {
+
+            const recipeDiff = RecipeCockpitService.buildRecipeDiffViewModel(recipeObjects(), describeResult, RECIPE_PICKLIST_VALUES);
+
+            expect(recipeDiff.objects.map(objectDiff => objectDiff.objectApiName)).toEqual(['Account']);
+            expect(recipeDiff.statusCounts['removed-from-org']).toBe(1);
+
+        });
+
+        it('given a cancelled describe, compares what was described before the cancel', () => {
+
+            const recipeDiff = RecipeCockpitService.buildRecipeDiffViewModel(recipeObjects(), {
+                outcomes: [
+                    { objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: true },
+                    { objectApiName: 'Contact', failureMessage: ORG_DESCRIBE_CANCELLED_MESSAGE, wasCached: false }
+                ],
+                wasCancelled: true
+            }, new Map());
+
+            expect(recipeDiff.objects.map(objectDiff => objectDiff.objectApiName)).toEqual(['Account']);
+
+        });
+
+        // A FIELD THE RECIPE RECORDED NO VALUES FOR MAKES NO CLAIM ABOUT THEM
+        it('given no recipe picklist values, makes no picklist claim', () => {
+
+            const recipeDiff = RecipeCockpitService.buildRecipeDiffViewModel(recipeObjects(), describeResult, new Map());
+
+            expect(recipeDiff.objects[0].changedFields.map(fieldDiff => fieldDiff.fieldApiName)).not.toContain('Industry');
+
+        });
+
+    });
+
+    describe('loadRecipeRunByRuns', () => {
+
+        it('answers the posted model and, beside it, the picklist values that stay on the host', () => {
+
+            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
+            const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, MOCK_WORKSPACE_ROOT);
+
+            expect(loadedRecipe.recipeViewModel).toEqual(RecipeCockpitService.buildRecipeViewModelByRuns(recipeRuns, MOCK_WORKSPACE_ROOT));
+            expect(loadedRecipe.recipePicklistValuesByObjectApiName).toBeInstanceOf(Map);
+            expect(JSON.stringify(loadedRecipe.recipeViewModel)).not.toContain('picklistValues');
+
+        });
+
+        it('given no run, answers no picklist values', () => {
+
+            expect(RecipeCockpitService.loadRecipeRunByRuns([], MOCK_WORKSPACE_ROOT).recipePicklistValuesByObjectApiName.size).toBe(0);
+
+        });
+
+    });
+
+    describe('routePanelMessage, regenerateRecipe', () => {
+
+        const comparedDescribe = (renderSequence: number) => RecipeCockpitService.buildOrgDescribeMessage('devhub', {
+            outcomes: [{ objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: false }],
+            wasCancelled: false
+        }, renderSequence, RecipeCockpitService.buildRecipeDiffViewModel(
+            RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects,
+            { outcomes: [{ objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: false }], wasCancelled: false },
+            new Map()
+        ));
+
+        const buildComparedPanelState = (): IRecipeCockpitPanelState => ({
+            ...RecipeCockpitService.buildInitialPanelState(MOCK_WORKSPACE_ROOT),
+            recipeDataMessage: { command: 'recipeData', recipe: buildRecipeViewModel(), renderSequence: 2 },
+            describableObjectApiNames: new Set(['Account']),
+            orgDescribeMessage: comparedDescribe(2)
+        });
+
+        it('given a comparison of the model on screen, regenerates, ignoring any payload', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', filePath: '/etc/passwd' }, buildComparedPanelState()))
+                .toEqual({ kind: 'regenerateRecipe' });
+
+        });
+
+        it('given the panel has not confirmed drawing the model, regenerates nothing', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe' }, {
+                ...buildComparedPanelState(),
+                describableObjectApiNames: new Set()
+            })).toBeUndefined();
+
+        });
+
+        it('given nothing has been compared, regenerates nothing', () => {
+
+            const panelState = buildComparedPanelState();
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe' }, { ...panelState, orgDescribeMessage: undefined })).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe' }, {
+                ...panelState,
+                orgDescribeMessage: RecipeCockpitService.buildOrgConnectionFailureMessage('devhub', new Error('expired'), 2)
+            })).toBeUndefined();
+
+        });
+
+        it('given a regeneration is already running, starts no second one', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe' }, {
+                ...buildComparedPanelState(),
+                isRegenerateInFlight: true
+            })).toBeUndefined();
+
+        });
+
+        it('replays a comparison still in progress after the model and any earlier answer', () => {
+
+            const panelState: IRecipeCockpitPanelState = {
+                ...buildComparedPanelState(),
+                orgProgressMessage: { command: 'orgProgress', message: 'Comparing with devhub: described 1 of 2 objects…', renderSequence: 2 }
+            };
+
+            expect(RecipeCockpitService.buildReplayMessages(panelState).map(hostMessage => hostMessage.command))
+                .toEqual(['recipeData', 'orgDescribe', 'orgProgress']);
+
+        });
+
+    });
+
     describe('buildOrgLabel', () => {
 
         it('names the alias with the username it points at, or the username alone', () => {
@@ -995,6 +1196,8 @@ describe('RecipeCockpitService', () => {
                 isFailure: false,
                 isCancelled: false,
                 objects: [{ objectApiName: 'Account', isDescribed: true, describedFieldCount: 3, failureMessage: '' }],
+                // A MESSAGE BUILT WITH NO COMPARISON CARRIES AN EMPTY ONE, NEVER AN ABSENT ONE THE PANEL WOULD HAVE TO GUARD
+                diff: { objects: [], statusCounts: { 'new-in-org': 0, 'removed-from-org': 0, 'type-changed': 0, 'picklist-changed': 0, 'unchanged': 0 } },
                 renderSequence: 3
             });
 
@@ -1048,6 +1251,7 @@ describe('RecipeCockpitService', () => {
                 isFailure: true,
                 isCancelled: false,
                 objects: [],
+                diff: { objects: [], statusCounts: { 'new-in-org': 0, 'removed-from-org': 0, 'type-changed': 0, 'picklist-changed': 0, 'unchanged': 0 } },
                 renderSequence: 4
             });
 
@@ -1604,6 +1808,326 @@ describe('RecipeCockpitService', () => {
 
     });
 
+    describe('the panel script, comparing with an org', () => {
+
+        const COMPARED_ORG_LABEL = 'devhub (jd@example.com)';
+
+        const accountOnlyDescribeResult = {
+            outcomes: [
+                { objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: false },
+                { objectApiName: 'Contact', failureMessage: 'NOT_FOUND: The requested resource does not exist', wasCached: false }
+            ],
+            wasCancelled: false
+        };
+
+        const buildComparison = (renderSequence: number, orgDescribe: INormalizedOrgObjectDescribe = ACCOUNT_ORG_DESCRIBE) => {
+            const describeResult = { ...accountOnlyDescribeResult, outcomes: [{ ...accountOnlyDescribeResult.outcomes[0], describe: orgDescribe }, accountOnlyDescribeResult.outcomes[1]] };
+            return RecipeCockpitService.buildOrgDescribeMessage(
+                COMPARED_ORG_LABEL,
+                describeResult,
+                renderSequence,
+                RecipeCockpitService.buildRecipeDiffViewModel(RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects, describeResult, RECIPE_PICKLIST_VALUES)
+            );
+        };
+
+        const renderComparedRecipe = () => {
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            panel.postToPanel(buildComparison(1));
+            return panel;
+        };
+
+        const expand = (panel: any, objectElement: any) => panel.findAll(objectElement, 'toggle')[0].dispatch('click');
+
+        const badgesOf = (panel: any, objectElement: any) => panel.findAll(panel.objectBodyOf(objectElement), 'field')
+            .filter((fieldElement: any) => !panel.isHidden(fieldElement))
+            .map((fieldElement: any) => [
+                panel.findAll(fieldElement, 'fieldName')[0].textContent,
+                panel.findAll(fieldElement, 'diffBadge').map((badgeElement: any) => badgeElement.textContent).join('')
+            ]);
+
+        const chooseStatus = (panel: any, statusValue: string) => {
+            const statusFilterElement = panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0];
+            statusFilterElement.value = statusValue;
+            statusFilterElement.dispatch('change');
+        };
+
+        const objectDiffTextOf = (panel: any, objectElement: any) => panel.findAll(objectElement.children[0], 'objectDiff')[0];
+
+        it('marks every row of a compared object with its status, and adds a row for each field only the org has', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement] = panel.objectElements();
+
+            expand(panel, accountElement);
+
+            expect(badgesOf(panel, accountElement)).toEqual([
+                ['Name', 'unchanged'],
+                ['Industry', 'picklist changed'],
+                ['Industry_Group__c', 'unchanged'],
+                ['Number_of_Contacts__c', 'type changed'],
+                ['Legacy_Code__c', 'removed from org'],
+                ['Rating__c', 'new in org']
+            ]);
+
+            // A FIELD ONLY THE ORG HAS IS NOT IN ANY RECIPE FILE, SO THERE IS NO LINE TO OPEN
+            const ratingRow = panel.findAll(accountElement, 'field')[5];
+            expect(panel.findAll(ratingRow, 'sourceLink')).toEqual([]);
+            expect(panel.findAll(ratingRow, 'fieldType')[0].textContent).toBe('picklist');
+
+        });
+
+        it('says what changed on a row, not only that something did', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement] = panel.objectElements();
+
+            expand(panel, accountElement);
+
+            const detailsOf = (rowIndex: number) => panel.findAll(panel.findAll(accountElement, 'field')[rowIndex], 'diffDetail').map((detailElement: any) => detailElement.textContent);
+
+            expect(detailsOf(1)).toEqual([
+                '1 value active in the org and not in the recipe: Retail',
+                '1 value in the recipe and not active in the org: Banking'
+            ]);
+            expect(detailsOf(3)).toEqual(['recipe: Number · org: string']);
+            expect(detailsOf(0)).toEqual([]);
+
+        });
+
+        it('names only the first picklist values on a row, and counts the rest', () => {
+
+            const manyValues = Array.from({ length: RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN + 3 }, (unusedValue, valueIndex) => `Value_${String(valueIndex).padStart(2, '0')}`);
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            panel.postToPanel(buildComparison(1, {
+                ...ACCOUNT_ORG_DESCRIBE,
+                fields: ACCOUNT_ORG_DESCRIBE.fields.map(orgField => orgField.fieldApiName === 'Industry'
+                    ? { ...orgField, picklistValues: ['Agriculture', 'Banking', ...manyValues].map(value => buildOrgPicklistValue(value)) }
+                    : orgField)
+            }));
+
+            const [accountElement] = panel.objectElements();
+            expand(panel, accountElement);
+            const [industryDetail] = panel.findAll(panel.findAll(accountElement, 'field')[1], 'diffDetail');
+
+            expect(industryDetail.textContent).toStartWith(`${manyValues.length} values active in the org and not in the recipe: Value_00, `);
+            expect(industryDetail.textContent).toEndWith(`Value_${String(RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN - 1).padStart(2, '0')} and 3 more`);
+
+        });
+
+        // A FAILED DESCRIBE IS NOT AN ORG WITHOUT THE OBJECT
+        it('says an object that could not be described was not compared, and marks none of its rows', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement, contactElement] = panel.objectElements();
+
+            expect(objectDiffTextOf(panel, accountElement).textContent).toBe('1 new in org · 1 removed from org · 1 type changed · 1 picklist changed');
+            expect(objectDiffTextOf(panel, accountElement).attributes.title).toBe('1 org field a recipe cannot write (system and formula fields) are not listed');
+            expect(objectDiffTextOf(panel, contactElement).textContent).toBe('not compared');
+
+            expand(panel, contactElement);
+            expect(panel.findAll(contactElement, 'diffBadge')).toEqual([]);
+
+        });
+
+        it('sums the comparison under the describe summary, and offers to regenerate with what that can and cannot do', () => {
+
+            const panel = renderComparedRecipe();
+            const orgStatusElement = panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0];
+
+            expect(panel.findAll(orgStatusElement, 'diffSummary')[0].textContent)
+                .toBe('Compared 1 object: 1 new in org · 1 removed from org · 1 type changed · 1 picklist changed · 2 unchanged');
+
+            const [regenerateButton] = panel.findAll(orgStatusElement, 'regenerateRecipe');
+            expect(regenerateButton.textContent).toBe(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL);
+            expect(panel.findAll(orgStatusElement, 'regenerateNote')[0].textContent).toBe(RECIPE_COCKPIT_REGENERATE_NOTE);
+            expect(RECIPE_COCKPIT_REGENERATE_NOTE).toContain('not from the org');
+
+            regenerateButton.dispatch('click');
+
+            expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'regenerateRecipe' });
+            expect(regenerateButton.disabled).toBe(true);
+
+        });
+
+        it('offers no status filter and no regenerate until something has been compared', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(true);
+
+            panel.postToPanel(RecipeCockpitService.buildOrgDescribeMessage(COMPARED_ORG_LABEL, {
+                outcomes: accountOnlyDescribeResult.outcomes.map(describeOutcome => ({ objectApiName: describeOutcome.objectApiName, failureMessage: 'NOT_FOUND', wasCached: false })),
+                wasCancelled: false
+            }, 1));
+
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(true);
+            expect(panel.findAll(panel.cockpitBodyElement, 'regenerateRecipe')).toEqual([]);
+            expect(panel.objectElements().map((objectElement: any) => objectDiffTextOf(panel, objectElement).textContent)).toEqual(['not compared', 'not compared']);
+
+        });
+
+        it('given "changed fields only", shows only the rows that differ, and hides every row of an object not compared', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement, contactElement] = panel.objectElements();
+
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(false);
+
+            chooseStatus(panel, 'changed');
+
+            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Industry', 'Number_of_Contacts__c', 'Legacy_Code__c', 'Rating__c']);
+            expect(panel.objectCountOf(accountElement)).toBe('4 of 6 fields');
+            expect(panel.objectCountOf(contactElement)).toBe('no matching fields');
+            expect(panel.isHidden(contactElement)).toBe(false);
+            expect(panel.findAll(panel.cockpitBodyElement, 'matchCount')[0].textContent).toBe('4 of 8 fields · 1 of 2 objects');
+
+        });
+
+        it('narrows to one status, and combines with the text filter', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement] = panel.objectElements();
+
+            chooseStatus(panel, 'removed-from-org');
+            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Legacy_Code__c']);
+
+            chooseStatus(panel, 'unchanged');
+            panel.typeIntoFilter('industry');
+            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Industry_Group__c']);
+
+            // A STATUS STILL NARROWS AN OBJECT NAMED IN THE FIND BOX
+            panel.typeIntoFilter('account');
+            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Name', 'Industry_Group__c']);
+            expect(panel.objectCountOf(accountElement)).toBe('2 of 6 fields');
+
+        });
+
+        it('given every filter is cleared, shows every row and puts back what the reader had open', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement, contactElement] = panel.objectElements();
+
+            expand(panel, contactElement);
+            chooseStatus(panel, 'changed');
+            chooseStatus(panel, 'all');
+
+            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBe(true);
+            expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(false);
+            expect(panel.objectCountOf(accountElement)).toBe('6 fields');
+
+        });
+
+        it('given a later comparison, rebuilds the rows from it rather than keeping the previous org\'s', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement] = panel.objectElements();
+            expand(panel, accountElement);
+
+            panel.postToPanel(buildComparison(1, { ...ACCOUNT_ORG_DESCRIBE, fields: ACCOUNT_ORG_DESCRIBE.fields.filter(orgField => orgField.fieldApiName !== 'Rating__c') }));
+
+            expect(badgesOf(panel, accountElement).map(([fieldApiName]: string[]) => fieldApiName)).not.toContain('Rating__c');
+            expect(panel.findAll(accountElement, 'field')).toHaveLength(5);
+
+        });
+
+        it('given the next comparison cannot connect, clears every status and the filter rather than leaving the old answer', () => {
+
+            const panel = renderComparedRecipe();
+            const [accountElement] = panel.objectElements();
+            chooseStatus(panel, 'changed');
+
+            panel.postToPanel(RecipeCockpitService.buildOrgConnectionFailureMessage(COMPARED_ORG_LABEL, new Error('expired'), 1));
+
+            expand(panel, accountElement);
+            expect(panel.findAll(accountElement, 'diffBadge')).toEqual([]);
+            expect(panel.visibleFieldNamesOf(accountElement)).toHaveLength(5);
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(true);
+            expect(panel.isHidden(objectDiffTextOf(panel, accountElement))).toBe(true);
+            expect(panel.findAll(panel.cockpitBodyElement, 'regenerateRecipe')).toEqual([]);
+
+        });
+
+        it('given a new model, starts it with every field shown whatever status was chosen before', () => {
+
+            const panel = renderComparedRecipe();
+            chooseStatus(panel, 'new-in-org');
+
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 2 });
+
+            const [accountElement] = panel.objectElements();
+            expand(panel, accountElement);
+            expect(panel.visibleFieldNamesOf(accountElement)).toHaveLength(5);
+            expect(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0].value).toBe('all');
+
+        });
+
+        it('shows where a comparison is while it runs, and replaces it with the answer', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            const orgProgressElement = panel.findAll(panel.cockpitBodyElement, 'orgProgress')[0];
+
+            expect(panel.isHidden(orgProgressElement)).toBe(true);
+
+            panel.postToPanel({ command: 'orgProgress', message: 'Comparing with devhub: described 1 of 2 objects…', renderSequence: 1 });
+            expect(panel.isHidden(orgProgressElement)).toBe(false);
+            expect(orgProgressElement.textContent).toBe('Comparing with devhub: described 1 of 2 objects…');
+
+            panel.postToPanel(buildComparison(1));
+            expect(panel.isHidden(orgProgressElement)).toBe(true);
+
+        });
+
+        it('given the comparison ended with no answer, hides its progress line', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            const orgProgressElement = panel.findAll(panel.cockpitBodyElement, 'orgProgress')[0];
+
+            panel.postToPanel({ command: 'orgProgress', message: 'Comparing with devhub: described 2 of 2 objects…', renderSequence: 1 });
+            panel.postToPanel({ command: 'orgProgress', message: '', renderSequence: 1 });
+
+            expect(panel.isHidden(orgProgressElement)).toBe(true);
+
+        });
+
+        it('says why an object was not compared, in the describe\'s own words', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            const cancelledDescribeResult = {
+                outcomes: [
+                    { objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: false },
+                    { objectApiName: 'Contact', failureMessage: ORG_DESCRIBE_CANCELLED_MESSAGE, wasCached: false }
+                ],
+                wasCancelled: true
+            };
+            panel.postToPanel(RecipeCockpitService.buildOrgDescribeMessage(COMPARED_ORG_LABEL, cancelledDescribeResult, 1,
+                RecipeCockpitService.buildRecipeDiffViewModel(RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects, cancelledDescribeResult, new Map())));
+
+            const [, contactElement] = panel.objectElements();
+
+            expect(objectDiffTextOf(panel, contactElement).attributes.title).toBe(`Not compared: ${ORG_DESCRIBE_CANCELLED_MESSAGE}`);
+
+        });
+
+        it('given progress of a comparison of another model, draws nothing', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 2 });
+
+            panel.postToPanel({ command: 'orgProgress', message: 'Comparing…', renderSequence: 1 });
+
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'orgProgress')[0])).toBe(true);
+            expect(() => runPanelScript().postToPanel({ command: 'orgProgress', message: 'Comparing…', renderSequence: 1 })).not.toThrow();
+
+        });
+
+    });
+
     describe('openRecipeCockpitPanel', () => {
 
         let createdWebviewPanel: any;
@@ -1842,7 +2366,7 @@ describe('RecipeCockpitService', () => {
             await receivedMessageHandler({ command: 'ready' });
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
 
-            jest.spyOn(RecipeCockpitService, 'buildRecipeViewModelByRuns').mockImplementation(() => {
+            jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation(() => {
                 throw new Error('EIO');
             });
             await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
@@ -1885,12 +2409,12 @@ describe('RecipeCockpitService', () => {
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             postedPanelMessages.length = 0;
 
-            const buildRecipeViewModelByRuns = RecipeCockpitService.buildRecipeViewModelByRuns.bind(RecipeCockpitService);
-            jest.spyOn(RecipeCockpitService, 'buildRecipeViewModelByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
+            const loadRecipeRunByRuns = RecipeCockpitService.loadRecipeRunByRuns.bind(RecipeCockpitService);
+            jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
                 if ( requestedRunFolderName === FAKER_JS_RUN_FOLDER_NAME ) {
                     throw new Error('EIO');
                 }
-                return buildRecipeViewModelByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
+                return loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
             });
 
             /*
@@ -1903,7 +2427,7 @@ describe('RecipeCockpitService', () => {
             const secondSelection = receivedMessageHandler({ command: 'selectRun', runFolderName: LATEST_RUN_FOLDER_NAME });
             await Promise.all([firstSelection, secondSelection]);
 
-            expect(RecipeCockpitService.buildRecipeViewModelByRuns).toHaveBeenCalledWith(expect.anything(), MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME);
+            expect(RecipeCockpitService.loadRecipeRunByRuns).toHaveBeenCalledWith(expect.anything(), MOCK_WORKSPACE_ROOT, FAKER_JS_RUN_FOLDER_NAME);
             expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
             expect(postedPanelMessages.map(hostMessage => hostMessage.command)).not.toContain('loadFailed');
 
@@ -2075,6 +2599,8 @@ describe('RecipeCockpitService', () => {
                         { objectApiName: 'Account', isDescribed: true, describedFieldCount: 2, failureMessage: '' },
                         { objectApiName: 'Contact', isDescribed: false, describedFieldCount: 0, failureMessage: 'NOT_FOUND: The requested resource does not exist' }
                     ],
+                    // CONTACT'S DESCRIBE FAILED, SO IT IS NOT COMPARED -- NEVER REPORTED AS EVERY FIELD REMOVED
+                    diff: expect.objectContaining({ objects: [expect.objectContaining({ objectApiName: 'Account' })] }),
                     renderSequence: lastRenderSequence()
                 }]);
 
@@ -2289,6 +2815,273 @@ describe('RecipeCockpitService', () => {
                 await receivedMessageHandler({ command: 'selectOrg' });
 
                 expect(postedOrgDescribes()).toEqual([]);
+
+            });
+
+            describe('comparing and regenerating', () => {
+
+                const postedOrgProgress = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'orgProgress');
+
+                // THE RECIPE'S PICKLIST VALUES ARE READ FROM THE RUN ON THE HOST, AND NEVER POSTED
+                const withRecipePicklistValues = () => {
+                    const loadRecipeRunByRuns = RecipeCockpitService.loadRecipeRunByRuns.bind(RecipeCockpitService);
+                    jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => ({
+                        ...loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName),
+                        recipePicklistValuesByObjectApiName: RECIPE_PICKLIST_VALUES
+                    }));
+                };
+
+                beforeEach(() => {
+
+                    describeSource.describe.mockImplementation(async (objectApiName: string) => {
+                        if ( objectApiName === 'Contact' ) {
+                            throw Object.assign(new Error('The requested resource does not exist'), { errorCode: 'NOT_FOUND' });
+                        }
+                        return {
+                            name: 'Account',
+                            label: 'Account',
+                            fields: [
+                                { name: 'Id', type: 'id', createable: false },
+                                { name: 'Name', type: 'string', createable: true },
+                                { name: 'Industry', type: 'picklist', createable: true, picklistValues: [{ value: 'Agriculture', active: true }, { value: 'Retail', active: true }] },
+                                { name: 'Number_of_Contacts__c', type: 'string', createable: true },
+                                { name: 'Rating__c', type: 'picklist', createable: true }
+                            ]
+                        };
+                    });
+
+                    (vscode.commands.executeCommand as jest.Mock).mockReset();
+                    (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
+
+                });
+
+                it('compares the described objects against the recipe, with the picklist values the run recorded', async () => {
+
+                    withRecipePicklistValues();
+                    await openRenderedCockpit();
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    const [orgDescribe] = postedOrgDescribes();
+                    expect(orgDescribe.diff.objects.map((objectDiff: any) => objectDiff.objectApiName)).toEqual(['Account']);
+                    expect(orgDescribe.diff.objects[0].changedFields.map((fieldDiff: any) => [fieldDiff.fieldApiName, fieldDiff.status])).toEqual([
+                        ['Industry', 'picklist-changed'],
+                        ['Industry_Group__c', 'removed-from-org'],
+                        ['Legacy_Code__c', 'removed-from-org'],
+                        ['Number_of_Contacts__c', 'type-changed'],
+                        ['Rating__c', 'new-in-org']
+                    ]);
+                    expect(orgDescribe.diff.objects[0].changedFields[0]).toEqual(expect.objectContaining({ addedPicklistValues: ['Retail'], removedPicklistValues: ['Banking'] }));
+
+                });
+
+                it('reports progress in the panel while it describes, and stops replaying it once answered', async () => {
+
+                    await openRenderedCockpit();
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    expect(postedOrgProgress().map(progressMessage => progressMessage.message)).toEqual([
+                        'Comparing with devhub (jd@example.com): describing 2 objects…',
+                        'Comparing with devhub (jd@example.com): described 1 of 2 objects…',
+                        'Comparing with devhub (jd@example.com): described 2 of 2 objects…'
+                    ]);
+                    expect(postedOrgProgress().every(progressMessage => progressMessage.renderSequence === lastRenderSequence())).toBe(true);
+
+                    const commands = postedPanelMessages.map(hostMessage => hostMessage.command);
+                    expect(commands.lastIndexOf('orgProgress')).toBeLessThan(commands.indexOf('orgDescribe'));
+
+                    postedPanelMessages.length = 0;
+                    await receivedMessageHandler({ command: 'ready' });
+                    expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData', 'orgDescribe']);
+
+                });
+
+                // A REVEAL MID-DESCRIBE RELOADS THE DOCUMENT, WHICH HAS TO SAY THE COMPARISON IS STILL RUNNING
+                it('given the panel reloads mid-describe, replays where the comparison is', async () => {
+
+                    let replayedCommands: string[] = [];
+                    await openRenderedCockpit();
+
+                    promptForAuthorizedOrgSpy.mockImplementation(async () => ORG_DETAIL);
+                    getConnectionSpy.mockImplementation(async () => {
+                        postedPanelMessages.length = 0;
+                        await receivedMessageHandler({ command: 'ready' });
+                        replayedCommands = postedPanelMessages.map(hostMessage => hostMessage.command);
+                        return describeSource;
+                    });
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    expect(replayedCommands).toEqual(['recipeData', 'orgProgress']);
+
+                });
+
+                it('given the comparison itself throws, reports it as the extension\'s failure rather than the org\'s, and stops replaying progress', async () => {
+
+                    const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+                    jest.spyOn(RecipeCockpitService, 'buildRecipeDiffViewModel').mockImplementation(() => { throw new TypeError('diff broke'); });
+                    await openRenderedCockpit();
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+                    expect(handleCapturedErrorSpy.mock.calls[0][0]).toEqual(new TypeError('diff broke'));
+                    expect(postedOrgDescribes()).toEqual([]);
+                    expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+                    // NO ANSWER IS COMING TO REPLACE THE PROGRESS LINE, SO THE PANEL IS TOLD TO DROP IT
+                    expect(postedOrgProgress().pop()).toEqual({ command: 'orgProgress', message: '', renderSequence: lastRenderSequence() });
+
+                    postedPanelMessages.length = 0;
+                    await receivedMessageHandler({ command: 'ready' });
+                    expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
+
+                    // AND THE NEXT REQUEST IS NOT REFUSED AS ONE STILL IN FLIGHT
+                    (RecipeCockpitService.buildRecipeDiffViewModel as jest.Mock).mockRestore();
+                    await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                    await receivedMessageHandler({ command: 'selectOrg' });
+                    expect(postedOrgDescribes()).toHaveLength(1);
+
+                });
+
+                it('given an answer was posted, sends no clearing message after it', async () => {
+
+                    await openRenderedCockpit();
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    expect(postedPanelMessages[postedPanelMessages.length - 1].command).toBe('orgDescribe');
+                    expect(postedOrgProgress().every(progressMessage => !!progressMessage.message)).toBe(true);
+
+                });
+
+                it('given the picker is dismissed, reports no progress', async () => {
+
+                    promptForAuthorizedOrgSpy.mockResolvedValue(undefined);
+                    await openRenderedCockpit();
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    expect(postedOrgProgress()).toEqual([]);
+
+                });
+
+                it('given the run is switched mid-describe, reports no progress over the new run', async () => {
+
+                    await openRenderedCockpit();
+
+                    getConnectionSpy.mockImplementation(async () => {
+                        await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+                        postedPanelMessages.length = 0;
+                        return describeSource;
+                    });
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    expect(postedOrgProgress()).toEqual([]);
+
+                });
+
+                it('hands off to Generate Treecipe, then loads the run it wrote', async () => {
+
+                    const executeCommand = vscode.commands.executeCommand as jest.Mock;
+                    await openRenderedCockpit();
+                    await receivedMessageHandler({ command: 'selectOrg' });
+                    const comparedRenderSequence = lastRenderSequence();
+
+                    await receivedMessageHandler({ command: 'regenerateRecipe' });
+
+                    expect(executeCommand).toHaveBeenCalledTimes(1);
+                    expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
+                    expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
+
+                    // THE COMPARISON WAS OF THE PREVIOUS RUN, SO IT IS NOT REPLAYED OVER THE REGENERATED ONE
+                    postedPanelMessages.length = 0;
+                    await receivedMessageHandler({ command: 'ready' });
+                    expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
+
+                });
+
+                it('given nothing has been compared, does not regenerate', async () => {
+
+                    await openRenderedCockpit();
+
+                    await receivedMessageHandler({ command: 'regenerateRecipe' });
+
+                    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+
+                });
+
+                it('given a second click while Generate Treecipe runs, regenerates once', async () => {
+
+                    let finishGeneration: () => void = () => undefined;
+                    (vscode.commands.executeCommand as jest.Mock).mockImplementation(() => new Promise<void>(resolvePromise => { finishGeneration = resolvePromise; }));
+                    await openRenderedCockpit();
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    const firstClick = receivedMessageHandler({ command: 'regenerateRecipe' });
+                    await receivedMessageHandler({ command: 'regenerateRecipe' });
+                    finishGeneration();
+                    await firstClick;
+
+                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+
+                });
+
+                it('given the panel is closed while Generate Treecipe runs, loads nothing into it', async () => {
+
+                    await openRenderedCockpit();
+                    await receivedMessageHandler({ command: 'selectOrg' });
+                    const loadSpy = jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns');
+                    const statusBarItemCountBefore = createdStatusBarItems.length;
+                    (vscode.commands.executeCommand as jest.Mock).mockImplementation(async () => { registeredDisposeHandler(); });
+
+                    await receivedMessageHandler({ command: 'regenerateRecipe' });
+
+                    // NOT EVEN STARTED: A LOAD WOULD PUT A STATUS BAR ITEM UP FOR A PANEL THAT IS GONE
+                    expect(loadSpy).not.toHaveBeenCalled();
+                    expect(createdStatusBarItems).toHaveLength(statusBarItemCountBefore);
+
+                });
+
+                /*
+                    The panel disables its button on the click and only a render gives one back, so a
+                    failure that skipped the reload would leave a button that can never be pressed.
+                */
+                it('given Generate Treecipe fails, still reloads the panel, and reports the failure once', async () => {
+
+                    const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+                    (vscode.commands.executeCommand as jest.Mock).mockRejectedValueOnce(new Error('no config'));
+                    await openRenderedCockpit();
+                    await receivedMessageHandler({ command: 'selectOrg' });
+                    const comparedRenderSequence = lastRenderSequence();
+
+                    await receivedMessageHandler({ command: 'regenerateRecipe' });
+
+                    expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
+                    expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+                    expect(handleCapturedErrorSpy.mock.calls[0][0]).toEqual(new Error('no config'));
+
+                });
+
+                // THE COMPARISON THAT ROUTES THE ACTION IS REPLACED ONLY WHEN THE RELOADED MODEL RENDERS
+                it('given a second request after Generate Treecipe finishes but before the reload has, regenerates once', async () => {
+
+                    await openRenderedCockpit();
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    const loadRecipeRunByRuns = RecipeCockpitService.loadRecipeRunByRuns.bind(RecipeCockpitService);
+                    jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
+                        void receivedMessageHandler({ command: 'regenerateRecipe' });
+                        return loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
+                    });
+
+                    await receivedMessageHandler({ command: 'regenerateRecipe' });
+
+                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+
+                });
 
             });
 
