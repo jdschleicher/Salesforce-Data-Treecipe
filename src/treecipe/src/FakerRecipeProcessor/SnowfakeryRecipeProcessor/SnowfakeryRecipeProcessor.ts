@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { exec, execFile, ExecFileOptionsWithStringEncoding } from 'child_process';
 import * as vscode from 'vscode';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
@@ -39,15 +39,26 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
 
         const snowfakeryJsonResult = await new Promise((resolve, reject) => {
 
-            const generateCommand = `snowfakery ${ fullRecipeFileNamePath } --output-format json`;
-            const handleSnowfakeryDataGenerationCallback = (cliCommandError, snowfakeryCliJson) => {
+            /*
+                The recipe path is a file name from the workspace -- content that arrives with a cloned
+                repository -- so it is handed to snowfakery as ONE argv element and never reaches a shell.
+                Interpolating it into an exec string made backticks, $(), ; and && in a file name live,
+                and split any path containing a space into two arguments.
+            */
+            const snowfakeryArguments = [fullRecipeFileNamePath, '--output-format', 'json'];
+            const execFileOptions: ExecFileOptionsWithStringEncoding = {
+                encoding: 'utf8',
+                maxBuffer: 1024 * 1024 * 10
+            };
+
+            const handleSnowfakeryDataGenerationCallback = (cliCommandError: NodeJS.ErrnoException | null, snowfakeryCliJson: string) => {
 
                 if (cliCommandError) {
                     
                     const executedCommand = "SnowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile";
                     
                     const customFakerEvaluationError = new Error();
-                    customFakerEvaluationError.message = cliCommandError.message;
+                    customFakerEvaluationError.message = SnowfakeryRecipeProcessor.getSnowfakeryGenerationErrorMessage(cliCommandError);
             
                     customFakerEvaluationError.name = "SnowfakeryEvaluationError";
                     customFakerEvaluationError.stack = cliCommandError.stack;
@@ -70,11 +81,26 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
             };
 
             // perform CLI snowfakery command
-            exec(generateCommand, { maxBuffer: 1024 * 1024 * 10}, handleSnowfakeryDataGenerationCallback);
+            execFile('snowfakery', snowfakeryArguments, execFileOptions, handleSnowfakeryDataGenerationCallback);
 
         });
 
         return snowfakeryJsonResult;
+
+    }
+
+    /*
+        execFile reports both failures through one error object, and "code" tells them apart: a STRING
+        is an errno from a spawn that never ran (ENOENT when snowfakery is not on PATH), a NUMBER is
+        snowfakery's own non zero exit, whose message already carries its stderr.
+    */
+    static getSnowfakeryGenerationErrorMessage(cliCommandError: NodeJS.ErrnoException): string {
+
+        if ( typeof cliCommandError.code === 'string' ) {
+            return `The snowfakery CLI could not be started (${ cliCommandError.code }). Confirm snowfakery is installed and on PATH, then run the command again. ${ cliCommandError.message }`;
+        }
+
+        return cliCommandError.message;
 
     }
 

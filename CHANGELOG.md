@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.28.1] - Run Faker by Recipe passes the recipe path to snowfakery as an argument
+
+Closes [#115](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/115).
+
+`SnowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile` built `snowfakery <path> --output-format json` by string concatenation and ran it with `child_process.exec`, which goes through a shell. The path is the name of a recipe file in the workspace, which can come from a cloned repository. A recipe named `` a`id > /tmp/pwned`.yaml ``, `a$(...).yaml` or `a; rm -rf ~ ;.yaml` ran its payload when someone used **Run Faker by Recipe** on it. The same concatenation also broke on any workspace path with a space in it.
+
+The call now uses `execFile('snowfakery', [path, '--output-format', 'json'], ...)`, as `PicklistDependencyCheckService` already does. The path reaches snowfakery as one argument and no shell is involved.
+
+- **Unchanged:** the 10 MB `maxBuffer`, the error capture file and its `SnowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile` label, the `SnowfakeryEvaluationError` name, and the `snowfakery --version` install check. That check runs a constant string, so it stays on `exec`.
+- **Spawn failures are named.** `execFile` reports a non-zero exit and a spawn that never ran through the same error object. A string `code` means the spawn failed, so an `ENOENT` now reads "The snowfakery CLI could not be started (ENOENT). Confirm snowfakery is installed and on PATH…" and keeps the original message after it. A non-zero exit keeps snowfakery's own message, which already includes its stderr.
+- **Tests.** The mocked suite asserts the exact argv for ordinary paths, for paths containing backticks, `$()`, `;` and `&&`, and for a path with a space. A new suite, `SnowfakeryRecipeProcessor.shellInjection.test.ts` (POSIX only), spawns a real process against a stand-in `snowfakery` on PATH. The stand-in echoes its argv, and the suite checks that the argv is exactly three elements and that no marker file was created. Adding `shell: true` to the options fails 11 tests across the two suites.
+
 ## [3.28.0] - The Recipe Cockpit compares a recipe with an org
 
 Closes [#57](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/57), the fifth slice of [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59). This completes the v1 "viewer + metadata diff" milestone.
