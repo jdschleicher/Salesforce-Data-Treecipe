@@ -2081,6 +2081,39 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        it('given the comparison ended with no answer, hides its progress line', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            const orgProgressElement = panel.findAll(panel.cockpitBodyElement, 'orgProgress')[0];
+
+            panel.postToPanel({ command: 'orgProgress', message: 'Comparing with devhub: described 2 of 2 objects…', renderSequence: 1 });
+            panel.postToPanel({ command: 'orgProgress', message: '', renderSequence: 1 });
+
+            expect(panel.isHidden(orgProgressElement)).toBe(true);
+
+        });
+
+        it('says why an object was not compared, in the describe\'s own words', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            const cancelledDescribeResult = {
+                outcomes: [
+                    { objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: false },
+                    { objectApiName: 'Contact', failureMessage: ORG_DESCRIBE_CANCELLED_MESSAGE, wasCached: false }
+                ],
+                wasCancelled: true
+            };
+            panel.postToPanel(RecipeCockpitService.buildOrgDescribeMessage(COMPARED_ORG_LABEL, cancelledDescribeResult, 1,
+                RecipeCockpitService.buildRecipeDiffViewModel(RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects, cancelledDescribeResult, new Map())));
+
+            const [, contactElement] = panel.objectElements();
+
+            expect(objectDiffTextOf(panel, contactElement).attributes.title).toBe(`Not compared: ${ORG_DESCRIBE_CANCELLED_MESSAGE}`);
+
+        });
+
         it('given progress of a comparison of another model, draws nothing', () => {
 
             const panel = runPanelScript();
@@ -2897,6 +2930,9 @@ describe('RecipeCockpitService', () => {
                     expect(postedOrgDescribes()).toEqual([]);
                     expect(showWarningMessageSpy).not.toHaveBeenCalled();
 
+                    // NO ANSWER IS COMING TO REPLACE THE PROGRESS LINE, SO THE PANEL IS TOLD TO DROP IT
+                    expect(postedOrgProgress().pop()).toEqual({ command: 'orgProgress', message: '', renderSequence: lastRenderSequence() });
+
                     postedPanelMessages.length = 0;
                     await receivedMessageHandler({ command: 'ready' });
                     expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
@@ -2906,6 +2942,17 @@ describe('RecipeCockpitService', () => {
                     await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
                     await receivedMessageHandler({ command: 'selectOrg' });
                     expect(postedOrgDescribes()).toHaveLength(1);
+
+                });
+
+                it('given an answer was posted, sends no clearing message after it', async () => {
+
+                    await openRenderedCockpit();
+
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    expect(postedPanelMessages[postedPanelMessages.length - 1].command).toBe('orgDescribe');
+                    expect(postedOrgProgress().every(progressMessage => !!progressMessage.message)).toBe(true);
 
                 });
 
@@ -2998,18 +3045,41 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('given Generate Treecipe fails, routes the failure through ErrorHandlingService and can be retried', async () => {
+                /*
+                    The panel disables its button on the click and only a render gives one back, so a
+                    failure that skipped the reload would leave a button that can never be pressed.
+                */
+                it('given Generate Treecipe fails, still reloads the panel, and reports the failure once', async () => {
 
                     const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
                     (vscode.commands.executeCommand as jest.Mock).mockRejectedValueOnce(new Error('no config'));
                     await openRenderedCockpit();
                     await receivedMessageHandler({ command: 'selectOrg' });
+                    const comparedRenderSequence = lastRenderSequence();
 
                     await receivedMessageHandler({ command: 'regenerateRecipe' });
-                    await receivedMessageHandler({ command: 'regenerateRecipe' });
 
+                    expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
                     expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
-                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(2);
+                    expect(handleCapturedErrorSpy.mock.calls[0][0]).toEqual(new Error('no config'));
+
+                });
+
+                // THE COMPARISON THAT ROUTES THE ACTION IS REPLACED ONLY WHEN THE RELOADED MODEL RENDERS
+                it('given a second request after Generate Treecipe finishes but before the reload has, regenerates once', async () => {
+
+                    await openRenderedCockpit();
+                    await receivedMessageHandler({ command: 'selectOrg' });
+
+                    const loadRecipeRunByRuns = RecipeCockpitService.loadRecipeRunByRuns.bind(RecipeCockpitService);
+                    jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
+                        void receivedMessageHandler({ command: 'regenerateRecipe' });
+                        return loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
+                    });
+
+                    await receivedMessageHandler({ command: 'regenerateRecipe' });
+
+                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
 
                 });
 

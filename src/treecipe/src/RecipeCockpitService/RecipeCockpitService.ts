@@ -43,7 +43,7 @@ export const RECIPE_COCKPIT_REGENERATE_ACTION_LABEL = 'Regenerate recipe';
     org reaches the regenerated recipe only once its metadata has been retrieved into the project,
     so a button that implied otherwise would promise a fix it cannot make.
 */
-export const RECIPE_COCKPIT_REGENERATE_NOTE = 'Regenerate recipe re-runs Generate Treecipe from the object metadata in this workspace, not from the org. Retrieve the org\'s changes first (for example with "sf project retrieve start") for them to reach the regenerated recipe.';
+export const RECIPE_COCKPIT_REGENERATE_NOTE = 'Regenerate recipe re-runs Generate Treecipe from the object metadata in this workspace, not from the org, then opens the latest run. Retrieve the org\'s changes first (for example with "sf project retrieve start") for them to reach the regenerated recipe.';
 
 // WHAT THE PANEL CALLS EACH STATUS, ON A ROW'S BADGE AND IN THE STATUS FILTER
 export const RECIPE_COCKPIT_DIFF_STATUS_LABELS: Readonly<Record<MetadataDiffFieldStatus, string>> = {
@@ -838,9 +838,21 @@ export class RecipeCockpitService {
             this.postToPanel(cockpitPanel, orgDescribeMessage);
 
         } finally {
+
             panelState.isOrgDescribeInFlight = false;
-            // A COMPARISON THAT ENDED WITHOUT AN ANSWER -- DISMISSED, SUPERSEDED -- MUST NOT REPLAY AS ONE STILL RUNNING
+
+            /*
+                Still set only when the comparison ended WITHOUT posting an answer -- an answer
+                clears it first. The host must stop replaying it, and the panel has to be told too:
+                it hides the line when an answer arrives, and none is coming.
+            */
+            const unansweredProgressMessage = panelState.orgProgressMessage;
             panelState.orgProgressMessage = undefined;
+
+            if ( unansweredProgressMessage && this.recipeCockpitPanelState === panelState ) {
+                this.postToPanel(cockpitPanel, { command: 'orgProgress', message: '', renderSequence: unansweredProgressMessage.renderSequence });
+            }
+
         }
 
     }
@@ -882,19 +894,41 @@ export class RecipeCockpitService {
     */
     private static async regenerateRecipe(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
 
+        /*
+            In flight until the RELOAD has finished, not only the command: the comparison that routes
+            this action is replaced only when the reloaded model renders, so clearing the flag in
+            between would route a second regeneration off the first one's comparison.
+
+            The run is reloaded even when generation FAILED. The panel disabled its button on the
+            click and only a render gives one back, so a failure that skipped the reload would leave
+            the reader a button that can never be pressed again. The failure is still rethrown for
+            ErrorHandlingService once the panel is usable.
+        */
         panelState.isRegenerateInFlight = true;
 
+        let hasGenerationFailed = false;
+        let generationError: unknown;
+
         try {
-            await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
+
+            try {
+                await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
+            } catch (commandError) {
+                hasGenerationFailed = true;
+                generationError = commandError;
+            }
+
+            if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot);
+            }
+
         } finally {
             panelState.isRegenerateInFlight = false;
         }
 
-        if ( this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState ) {
-            return;
+        if ( hasGenerationFailed ) {
+            throw generationError;
         }
-
-        await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot);
 
     }
 
@@ -2469,7 +2503,7 @@ export class RecipeCockpitService {
         });
 
         // A FAILED CONNECTION COMPARED NOTHING, AND REPLACES WHATEVER AN EARLIER COMPARISON SAID
-        applyDiff(orgDescribe.diff, !orgDescribe.isFailure);
+        applyDiff(orgDescribe.diff, !orgDescribe.isFailure, summariesByObjectApiName);
 
         if (orgDescribe.diff.objects.length > 0) {
             orgStatusElement.appendChild(createElement('div', 'diffSummary', 'Compared ' + pluralize(orgDescribe.diff.objects.length, 'object', 'objects') + ': ' + describeStatusCounts(orgDescribe.diff.statusCounts, true)));
@@ -2514,7 +2548,7 @@ export class RecipeCockpitService {
         than showing statuses it has none of. Rows built from an earlier comparison are rebuilt from
         this one, so a field only an OLDER org had does not survive into a newer answer.
     */
-    function applyDiff(diff, isComparisonShown) {
+    function applyDiff(diff, isComparisonShown, summariesByObjectApiName) {
 
         const objectDiffsByApiName = {};
         diff.objects.forEach(function (objectDiff) { objectDiffsByApiName[objectDiff.objectApiName] = objectDiff; });
@@ -2554,9 +2588,13 @@ export class RecipeCockpitService {
                 objectState.diffElement.classList.add('hidden');
             } else {
                 objectState.diffElement.textContent = objectDiff ? describeStatusCounts(objectDiff.statusCounts, false) : 'not compared';
+                const objectSummary = Object.prototype.hasOwnProperty.call(summariesByObjectApiName, objectState.object.objectApiName)
+                    ? summariesByObjectApiName[objectState.object.objectApiName]
+                    : null;
+                // THE DESCRIBE'S OWN REASON -- A CANCELLED DESCRIBE IS NOT ONE THE ORG COULD NOT ANSWER
                 objectState.diffElement.setAttribute('title', objectDiff
                     ? pluralize(objectDiff.uncreateableOrgOnlyFieldCount, 'org field', 'org fields') + ' a recipe cannot write (system and formula fields) are not listed'
-                    : 'This object could not be described in the org, so its fields were not compared');
+                    : 'Not compared: ' + (objectSummary && objectSummary.failureMessage ? objectSummary.failureMessage : 'this object was not described in the org'));
                 objectState.diffElement.classList.remove('hidden');
             }
 
@@ -2588,6 +2626,12 @@ export class RecipeCockpitService {
     function renderOrgProgress(orgProgress) {
 
         if (!orgProgressElement || orgProgress.renderSequence !== renderedSequence) { return; }
+
+        // AN EMPTY MESSAGE IS A COMPARISON THAT ENDED WITH NO ANSWER TO REPLACE THE LINE
+        if (!orgProgress.message) {
+            orgProgressElement.classList.add('hidden');
+            return;
+        }
 
         orgProgressElement.textContent = orgProgress.message;
         orgProgressElement.classList.remove('hidden');
