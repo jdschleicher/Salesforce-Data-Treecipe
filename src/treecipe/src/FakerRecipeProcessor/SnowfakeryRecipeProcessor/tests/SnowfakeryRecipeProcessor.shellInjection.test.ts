@@ -7,15 +7,15 @@ import { SnowfakeryRecipeProcessor } from '../SnowfakeryRecipeProcessor';
 /*
     jest hands a test a COPY of process.env, while the real child_process spawns with the real one,
     so the stand-in snowfakery this suite puts on PATH would be invisible to the child. The wrapper
-    forwards the test's env and nothing else: the command, the argv and every option the processor
+    merges the test's env under any env the processor sets, and changes nothing else: the command, the argv and every option the processor
     chose reach the real execFile as they were passed.
 */
 jest.mock('child_process', () => {
     const actualChildProcess = jest.requireActual('child_process');
     return {
         ...actualChildProcess,
-        execFile: (command: string, args: string[], options: object, callback: (...callbackArgs: unknown[]) => void) =>
-            actualChildProcess.execFile(command, args, { ...options, env: process.env }, callback)
+        execFile: (command: string, args: string[], options: { env?: NodeJS.ProcessEnv }, callback: (...callbackArgs: unknown[]) => void) =>
+            actualChildProcess.execFile(command, args, { ...options, env: { ...process.env, ...options.env } }, callback)
     };
 });
 
@@ -59,7 +59,11 @@ describeOnPosix('SnowfakeryRecipeProcessor.generateFakeDataBySelectedRecipeFile 
 
     afterEach(() => {
 
-        process.env.PATH = originalPath;
+        if ( originalPath === undefined ) {
+            delete process.env.PATH;
+        } else {
+            process.env.PATH = originalPath;
+        }
         fs.rmSync(sandboxDirectoryPath, { recursive: true, force: true });
 
     });

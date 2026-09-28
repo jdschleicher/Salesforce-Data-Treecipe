@@ -1,4 +1,4 @@
-import { exec, execFile, ExecFileOptionsWithStringEncoding } from 'child_process';
+import { exec, execFile, ExecFileException, ExecFileOptionsWithStringEncoding } from 'child_process';
 import * as vscode from 'vscode';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
@@ -51,7 +51,7 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
                 maxBuffer: 1024 * 1024 * 10
             };
 
-            const handleSnowfakeryDataGenerationCallback = (cliCommandError: NodeJS.ErrnoException | null, snowfakeryCliJson: string) => {
+            const handleSnowfakeryDataGenerationCallback = (cliCommandError: ExecFileException | null, snowfakeryCliJson: string) => {
 
                 if (cliCommandError) {
                     
@@ -94,7 +94,7 @@ export class SnowfakeryRecipeProcessor implements IFakerRecipeProcessor {
         is an errno from a spawn that never ran (ENOENT when snowfakery is not on PATH), a NUMBER is
         snowfakery's own non zero exit, whose message already carries its stderr.
     */
-    static getSnowfakeryGenerationErrorMessage(cliCommandError: NodeJS.ErrnoException): string {
+    static getSnowfakeryGenerationErrorMessage(cliCommandError: ExecFileException): string {
 
         if ( typeof cliCommandError.code === 'string' ) {
             return `The snowfakery CLI could not be started (${ cliCommandError.code }). Confirm snowfakery is installed and on PATH, then run the command again. ${ cliCommandError.message }`;
