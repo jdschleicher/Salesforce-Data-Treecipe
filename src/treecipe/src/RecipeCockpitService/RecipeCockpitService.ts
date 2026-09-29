@@ -1636,7 +1636,8 @@ export class RecipeCockpitService {
         This reads the layout both faker backends emit -- RecipeService writes the same object
         header for each -- rather than parsing YAML: "- object: X" at column zero, "  fields:" under
         it, and one field per line at exactly four spaces. Anything deeper is the continuation of the
-        field above (a block scalar, a choice-if, a commented TODO), and anything shallower ends the
+        field above (a block scalar, a choice-if, a commented TODO), a comment at four spaces or
+        fewer ends that field without ending the block, and anything else shallower ends the
         fields block. The first occurrence wins, for an object and for a field, which is the line a
         reader jumping to it expects.
     */
@@ -1699,6 +1700,12 @@ export class RecipeCockpitService {
 
             if ( isInFieldsBlock && /^ {5,}\S/.test(recipeLine) ) {
                 currentFieldValueLines?.push(recipeLine);
+                return;
+            }
+
+            // A COMMENT AT FIELD DEPTH OR SHALLOWER ENDS THE FIELD ABOVE BUT NOT THE BLOCK -- IT IS WHERE RecipeCockpitRecipeWriter.commentOutField LEAVES A FIELD
+            if ( isInFieldsBlock && /^ {1,4}#/.test(recipeLine) ) {
+                closeCurrentField();
                 return;
             }
 

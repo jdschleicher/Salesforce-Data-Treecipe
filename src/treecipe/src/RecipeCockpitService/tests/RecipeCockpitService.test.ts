@@ -680,6 +680,30 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // A COMMENT IS NOT YAML STRUCTURE: READING ONE AS THE END OF THE BLOCK HID EVERY FIELD WRITTEN AFTER IT
+        it('ends the field above a comment at field depth or shallower, and keeps reading the fields block', () => {
+
+            const recipeContent = [
+                '- object: Account',
+                '  fields:',
+                '    Industry: x',
+                '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- removed',
+                '    # Rating: y',
+                '  # a note of the reader\'s own',
+                '    Phone: |',
+                '        ${{ z }}',
+                '    # a trailing note',
+                '        stray deeper line'
+            ].join('\n');
+
+            const accountEntry = RecipeCockpitService.parseRecipeSource(recipeContent).get('Account');
+
+            expect(Array.from(accountEntry.fieldEntries.keys())).toEqual(['Industry', 'Phone']);
+            expect(accountEntry.fieldEntries.get('Industry').valueText).toBe('x');
+            expect(accountEntry.fieldEntries.get('Phone')).toEqual({ lineNumber: 7, valueText: '${{ z }}' });
+
+        });
+
         it('keeps the first occurrence of an object and of a field, and reads CRLF files', () => {
 
             const recipeContent = [

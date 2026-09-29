@@ -1,5 +1,47 @@
 # Change Log
 
+## [3.29.0] - The Recipe Cockpit's recipe writer
+
+Closes [#148](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/148), the first of four slices of the cockpit's v2 write-back ([#58](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/58), under [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59)). Nothing a user can see changes yet: this is the one function every later write-back slice edits a recipe through.
+
+`RecipeCockpitRecipeWriter` takes recipe text and returns new recipe text plus a description of what changed. Like `RecipeCockpitMetadataDiff` it has static methods only and **imports nothing**, and a test fails if it gains an import. It touches no disk, no webview and no `vscode`.
+
+### Operations
+
+Each is addressed by object api name and field api name, and returns either `{ isApplied: true, recipeText, edit }` or `{ isApplied: false, refusal }`. `edit` names the operation, the 1-based line it starts at, and the lines removed and inserted.
+
+- `insertField(text, object, field, valueText)` appends to the object's `fields:` block, after its last line (a field, a continuation or a comment).
+- `replaceFieldValue(text, object, field, valueText)` replaces the field line and every continuation line under it.
+- `commentOutField(text, object, field, reason)` rewrites the field's lines as `    # ` comments under a `    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- <field> -- <reason>` marker. It is reversible where deletion is not.
+- `restoreCommentedOutField(text, object, field)` is its inverse, and gives back the original text byte for byte.
+- `setObjectProperty(text, object, 'nickname' | 'count', value)` rewrites the one property line, the primitive slice 4 needs.
+
+`valueText` is what follows `Field: `, exactly as the faker services build it: one line, or a first line followed by lines indented five spaces or more. A value starting with a newline (the dependent-picklist `if:` block) leaves `Field: ` with its trailing space, as `RecipeService.appendFieldRecipeToObjectRecipe` writes it. The open question on the issue (should the marker carry a date or an org) is answered by `reason`: the caller writes what it knows, and slice 3 knows the org.
+
+### Refusals
+
+A write never guesses. `parseRecipeSource` takes the first occurrence of an object or a field, which is the right rule for jumping to a line and the wrong one for changing it. The writer returns a typed refusal instead of changed text for: an unknown object or field, an object written twice, a field written twice, an object with no `fields:` block or with two, an `insertField` for a field that already exists, a property line missing or written twice, a value that would not read back as that one field (a second line under five spaces, a trailing blank line, a bare carriage return), a count that is not a whole number, a nickname that is not a name, and a field or object api name that is not one (so no value can smuggle a new `- object:` line in through its name). Restoring refuses a field that has been inserted again, one commented out twice, and a marker whose next line is not the field it names.
+
+### Why lines, not a YAML emitter
+
+Both backends write recipes as template strings, and the `### TODO` comments in them carry meaning: which record type to pick, which lookup needs a reference. `js-yaml`, the only YAML library in the tree, drops every comment on `dump`, so a load-and-dump round trip is lossy by construction.
+
+- **Chosen: line-level patching.** No new dependency. It keeps every comment, and it reuses the layout contract the cockpit already reads recipes by (`- object:` at column zero, `  fields:`, one field per line at four spaces, anything deeper as a continuation). Every line outside the touched field's own lines is byte-identical before and after, and so is its line ending: new lines take the ending of the line they follow, so a CRLF file stays CRLF, and a missing final newline stays missing.
+- **Not chosen: the `yaml` package's comment-preserving `Document` API.** It is a new runtime dependency (and a `/supply-chain-check`), and it re-flows `${{ }}` scalars and block indentation, so it would still need every fidelity test below.
+
+### One change to the reader
+
+`RecipeCockpitService.parseRecipeSource` read any line of four spaces or fewer that was not a field as the end of the `fields:` block. A comment is not YAML structure, so one `    # note` hid every field written after it from the cockpit. A comment at field depth or shallower now ends the field above it and not the block. That is also where `commentOutField` leaves a field, and the round-trip tests fail if the rule is reverted.
+
+### Tests and fixtures
+
+`tests/mocks/recipeWriter/` holds Generate Treecipe's own output for the `DirectoryProcessingService` mock metadata, one file per backend. Each has a dependent-picklist `if:` block, record-type `### TODO` option blocks, compound address and geolocation fields, a `|` block scalar, `### TODO -- REFERENCE ID REQUIRED` lookups and the relationship-tree header comments. Two edits, both recorded in the test file:
+
+- `MultiPicklist__c` and `Picklist__c` are left out. With record types, the generators write a value followed by `### TODO` lines at a deeper indent, and a comment ends a plain scalar, so **js-yaml refuses those two fields as generated**. That is a generator defect outside this slice.
+- Snowfakery writes every value inline, so the snowfakery Account's `Description` was made a `|` block scalar by hand.
+
+Every field of both fixtures is replaced (single line and block scalar), commented out and restored, and every object gets an insert and both property writes, under LF and CRLF, with and without a final newline. After each one the test checks that every other line is byte-identical, that `parseRecipeSource` reports the intended change and every other object and field unchanged (wherever the edit moved its line), and that `js-yaml` still loads the result.
+
 ## [3.28.1] - Run Faker by Recipe passes the recipe path to snowfakery as an argument
 
 Closes [#115](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/115).
