@@ -11,8 +11,13 @@ import * as yaml from 'js-yaml';
     (&#10;, &#x2028;), so each name reads as ONE line in the source and only xml2js turns it into a
     break. Location covers the compound path: its component names are built from the hostile name.
 
-    Every file must load in js-yaml and PyYAML with only the ordinary field, and Run Faker by Recipe
-    over the faker-js recipe must evaluate nothing a name carries.
+    The same object also carries the two other metadata NAMES that reach a recipe: a record type
+    <fullName> (written into the RecordTypeId options and every record-type line in both backends)
+    and a dependent picklist's <controllingField> (written into its when: expression). One record
+    type and one controlling field are ordinary, so the valid path is exercised beside the refused one.
+
+    Every file must load in js-yaml and PyYAML with only the declared valid fields, and Run Faker by
+    Recipe over the faker-js recipe must evaluate nothing a name carries.
 
     vscode is replaced by a read-only stand-in over the real file system, as in
     DirectoryProcessor.hostilePicklistValues.test.ts.
@@ -77,8 +82,18 @@ const EXPECTED_HOSTILE_FIELD_NAMES = [
 ];
 // LOCATION EXPANDS TO TWO COMPONENTS, EACH CARRYING THE HOSTILE NAME
 const EXPECTED_SKIPPED_FIELD_COUNT = EXPECTED_HOSTILE_FIELD_NAMES.length + 1;
-const DECLARED_FIELD_API_NAMES = ['Ordinary__c'];
+const EXPECTED_HOSTILE_CONTROLLING_FIELD_NAMES = [
+    `Controlling__c\n    ${INJECTED_LINE}\n    Z`,
+    `Controlling__c == 'A' or globalThis.${INJECTION_MARKER} or Controlling__c`
+];
+const EXPECTED_HOSTILE_RECORD_TYPE_NAMES = [
+    `Evil\n    ${INJECTED_LINE}\n    Z`,
+    `Evil\u2028    ${INJECTED_LINE}\u2028    Z`
+];
+const DECLARED_FIELD_API_NAMES = ['Controlling__c', 'DependentExpression__c', 'DependentLineBreak__c', 'Ordinary__c', 'RecordTypeId', 'RecordTypePicklist__c'];
 const SKIPPED_FIELD_TODO_PATTERN = /^ {4}### TODO -- FIELD SKIPPED -- api name ".*" is not a valid Salesforce api name/;
+const SKIPPED_RECORD_TYPE_TODO_PATTERN = /^ {4}### TODO -- RECORD TYPE SKIPPED -- developer name ".*" is not a valid Salesforce api name/;
+const SKIPPED_DEPENDENT_PICKLIST_TODO_PATTERN = /^ {4}(?:DependentExpression__c|DependentLineBreak__c): {2}### TODO -- DEPENDENT PICKLIST SKIPPED -- controlling field ".*" is not a valid Salesforce api name/;
 const EVERY_LINE_BREAK = /\r\n|\r|\n|\u0085|\u2028|\u2029/;
 
 type LoadedRecipeEntry = { object?: string, fields?: Record<string, unknown> };
@@ -113,8 +128,14 @@ describe('the hostile field api name fixture', () => {
         const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(HOSTILE_OBJECTS_PATH));
         const decodedFieldNames = objectInfoWrapper.ObjectToObjectInfoMap[HOSTILE_OBJECT_API_NAME].Fields.map(fieldInfo => fieldInfo.fieldName);
 
-        expect(decodedFieldNames).toEqual(expect.arrayContaining([...DECLARED_FIELD_API_NAMES, ...EXPECTED_HOSTILE_FIELD_NAMES.filter(fieldName => !fieldName.startsWith('Geo'))]));
+        expect(decodedFieldNames).toEqual(expect.arrayContaining([...DECLARED_FIELD_API_NAMES.filter(fieldName => fieldName !== 'RecordTypeId'), ...EXPECTED_HOSTILE_FIELD_NAMES.filter(fieldName => !fieldName.startsWith('Geo'))]));
         expect(decodedFieldNames.filter(fieldName => fieldName.startsWith('Geo'))).toHaveLength(2);
+        expect(objectInfoWrapper.ObjectToObjectInfoMap[HOSTILE_OBJECT_API_NAME].Fields
+            .filter(fieldInfo => fieldInfo.controllingField)
+            .map(fieldInfo => fieldInfo.controllingField)
+            .sort()).toEqual([...EXPECTED_HOSTILE_CONTROLLING_FIELD_NAMES].sort());
+        expect(Object.keys(objectInfoWrapper.ObjectToObjectInfoMap[HOSTILE_OBJECT_API_NAME].RecordTypesMap).sort())
+            .toEqual([...EXPECTED_HOSTILE_RECORD_TYPE_NAMES, 'Valid'].sort());
 
     });
 
@@ -134,22 +155,26 @@ describe.each([
         recipeFiles = await generateRecipeFiles(createFakerService);
     });
 
-    test('writes the hostile object with only the ordinary field', () => {
+    test('writes the hostile object with only the declared valid fields', () => {
 
         const hostileEntries = recipeFiles
             .flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedRecipeEntry[])
             .filter(recipeEntry => recipeEntry.object === HOSTILE_OBJECT_API_NAME);
 
         expect(hostileEntries).toHaveLength(1);
-        expect(Object.keys(hostileEntries[0].fields)).toEqual(DECLARED_FIELD_API_NAMES);
+        expect(Object.keys(hostileEntries[0].fields).sort()).toEqual(DECLARED_FIELD_API_NAMES);
+        expect(hostileEntries[0].fields['DependentLineBreak__c']).toBeNull();
+        expect(hostileEntries[0].fields['DependentExpression__c']).toBeNull();
 
     });
 
-    test('writes each skipped field as one TODO line, and no line names the injected field', () => {
+    test('writes each skipped field, record type and dependent picklist as one TODO line, and no line names the injected field', () => {
 
         const recipeLines = findHostileRecipeFile(recipeFiles).content.split(EVERY_LINE_BREAK);
 
         expect(recipeLines.filter(recipeLine => SKIPPED_FIELD_TODO_PATTERN.test(recipeLine))).toHaveLength(EXPECTED_SKIPPED_FIELD_COUNT);
+        expect(recipeLines.filter(recipeLine => SKIPPED_RECORD_TYPE_TODO_PATTERN.test(recipeLine))).toHaveLength(EXPECTED_HOSTILE_RECORD_TYPE_NAMES.length);
+        expect(recipeLines.filter(recipeLine => SKIPPED_DEPENDENT_PICKLIST_TODO_PATTERN.test(recipeLine))).toHaveLength(EXPECTED_HOSTILE_CONTROLLING_FIELD_NAMES.length);
         recipeLines.forEach(recipeLine => {
             expect(recipeLine).not.toMatch(new RegExp(`^\\s*${INJECTED_FIELD_API_NAME}:`));
         });
@@ -182,18 +207,20 @@ describe('Run Faker by Recipe with faker-js over hostile field api names', () =>
         delete (globalThis as Record<string, unknown>)[INJECTION_MARKER];
     });
 
-    test('generates only the ordinary field and never evaluates an injected expression', async () => {
+    test('generates only the declared valid fields and never evaluates an injected expression', async () => {
 
         const hostileRecipeFile = findHostileRecipeFile(await generateRecipeFiles(() => new FakerJSRecipeFakerService()));
         const recipeFilePath = path.join(recipeDirectoryPath, hostileRecipeFile.fileName);
-        fs.writeFileSync(recipeFilePath, hostileRecipeFile.content);
+        // THE RECORD TYPE LINE IS A TODO THE USER RESOLVES BY HAND BEFORE A RUN; IT IS RESOLVED TO THE ONE VALID RECORD TYPE, AS A USER WOULD
+        const runnableRecipeText = hostileRecipeFile.content.replace(/^( {4}RecordTypeId: ).*$/m, '$1Valid');
+        fs.writeFileSync(recipeFilePath, runnableRecipeText);
 
         const generatedRecords = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile(recipeFilePath)) as Array<{ object: string, fields: Record<string, string> }>;
         const hostileRecords = generatedRecords.filter(generatedRecord => generatedRecord.object === HOSTILE_OBJECT_API_NAME);
 
         expect(globalThis).not.toHaveProperty(INJECTION_MARKER);
         expect(hostileRecords).toHaveLength(1);
-        expect(Object.keys(hostileRecords[0].fields)).toEqual(DECLARED_FIELD_API_NAMES);
+        expect(Object.keys(hostileRecords[0].fields).sort()).toEqual(DECLARED_FIELD_API_NAMES);
 
     });
 

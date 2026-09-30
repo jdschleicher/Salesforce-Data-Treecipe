@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>DependentLineBreak__c</fullName>
+    <label>DependentLineBreak__c</label>
+    <required>false</required>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>Controlling__c&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}&#10;    Z</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>X</fullName>
+                <default>false</default>
+                <label>X</label>
+            </value>
+            <value>
+                <fullName>Y</fullName>
+                <default>false</default>
+                <label>Y</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>A</controllingFieldValue>
+            <valueName>X</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>B</controllingFieldValue>
+            <valueName>Y</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

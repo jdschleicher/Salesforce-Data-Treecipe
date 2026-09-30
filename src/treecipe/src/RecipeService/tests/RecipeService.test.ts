@@ -4,6 +4,7 @@ import { XMLFieldDetail } from "../../XMLProcessingService/XMLFieldDetail";
 
 import { RecipeMockService } from "./mocks/RecipeMockService";
 import { SnowfakeryRecipeFakerService } from "../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService";
+import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
@@ -738,6 +739,150 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
             compoundGeolocationComponentRecipes.forEach((componentRecipe) => {
                 expect(componentRecipe.recipeValue).not.toContain('gist.github.com/jdschleicher/4abfd188a933598833285ee76e560445');
+            });
+
+        });
+
+    });
+
+});
+
+/*
+    #120, as extended in review: a record type <fullName> and a dependent picklist's <controllingField>
+    are metadata NAMES that reach recipe VALUES, where the field-key check alone does not see them.
+    Both backends, because every record-type and when: sink is per backend.
+*/
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('metadata names reaching recipe values, with the %s backend', (unusedBackend, createFakerService) => {
+
+    const recipeService = new RecipeService(createFakerService());
+    const injectedLine = 'Injected__c: ${{ globalThis.__treecipeInjected = true }}';
+    const hostileNames: Array<[string, string]> = [
+        ['a line feed', `Evil\n    ${injectedLine}\n    Z`],
+        ['a carriage return', `Evil\r    ${injectedLine}\r    Z`],
+        ['a PyYAML-only line separator', `Evil\u2028    ${injectedLine}\u2028    Z`],
+        ['an expression', "Controlling__c == 'A' or globalThis.__treecipeInjected or Controlling__c"],
+        ['nothing but whitespace', '   ']
+    ];
+    const everyLineBreak = /\r\n|\r|\n|\u0085|\u2028|\u2029/;
+    const buildRecordTypeWrapper = (developerName: string): RecordTypeWrapper => ({
+        DeveloperName: developerName,
+        RecordTypeId: '',
+        PicklistFieldSectionsToPicklistDetail: { Controlling__c: ['A'] }
+    });
+
+    describe('getDependentPicklistRecipeFakerValue', () => {
+
+        test.each(hostileNames)('given a controlling field carrying %s, writes one comment line and never calls the backend', (unusedDescription, hostileControllingField) => {
+
+            const buildDependentSpy = jest.spyOn(recipeService['fakerService'], 'buildDependentPicklistRecipeFakerValue');
+            const dependentFieldDetail: XMLFieldDetail = {
+                fieldType: 'Picklist',
+                apiName: 'Dependent__c',
+                fieldLabel: 'Dependent',
+                controllingField: hostileControllingField,
+                picklistValues: [{ picklistOptionApiName: 'X', label: 'X', default: false, controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['A'] }],
+                xmlMarkup: ''
+            };
+
+            const actualRecipeValue = recipeService.getDependentPicklistRecipeFakerValue(dependentFieldDetail, { Valid: buildRecordTypeWrapper('Valid') });
+            const objectRecipe = recipeService.appendFieldRecipeToObjectRecipe(RecipeMockService.getFakeInitialObjectRecipeMarkup(), actualRecipeValue, 'Dependent__c');
+
+            expect(buildDependentSpy).not.toHaveBeenCalled();
+            expect(actualRecipeValue.split(everyLineBreak)).toHaveLength(1);
+            expect(actualRecipeValue).toMatch(/^ ### TODO -- DEPENDENT PICKLIST SKIPPED -- controlling field ".*" is not a valid Salesforce api name .*; fix the <controllingField> of "Dependent__c" and regenerate$/);
+            expect((yaml.load(objectRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields).toEqual({ Dependent__c: null });
+
+        });
+
+        test('given an ordinary controlling field, builds the dependent picklist through the backend as before', () => {
+
+            const buildDependentSpy = jest.spyOn(recipeService['fakerService'], 'buildDependentPicklistRecipeFakerValue');
+            const dependentFieldDetail: XMLFieldDetail = {
+                fieldType: 'Picklist',
+                apiName: 'Dependent__c',
+                fieldLabel: 'Dependent',
+                controllingField: 'Controlling__c',
+                picklistValues: [{ picklistOptionApiName: 'X', label: 'X', default: false, controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: ['A'] }],
+                xmlMarkup: ''
+            };
+
+            recipeService.getDependentPicklistRecipeFakerValue(dependentFieldDetail, {});
+
+            expect(buildDependentSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+    });
+
+    describe('initiateRecipeByObjectName', () => {
+
+        test.each(hostileNames)('given a record type developer name carrying %s, lists only the valid record type and writes one comment line for the other', (unusedDescription, hostileDeveloperName) => {
+
+            const recordTypeMap: Record<string, RecordTypeWrapper> = {
+                Valid: buildRecordTypeWrapper('Valid'),
+                [hostileDeveloperName]: buildRecordTypeWrapper(hostileDeveloperName)
+            };
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
+            const recipeLines = actualRecipe.split(everyLineBreak);
+
+            expect(recipeLines.filter(recipeLine => recipeLine.includes('Thing__c.'))).toEqual([`${' '.repeat(20)}Thing__c.Valid`]);
+            expect(recipeLines.filter(recipeLine => /^ {4}### TODO -- RECORD TYPE SKIPPED -- developer name ".*" is not a valid Salesforce api name/.test(recipeLine))).toHaveLength(1);
+            expect(Object.keys((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields)).toEqual(['RecordTypeId']);
+
+        });
+
+        test('given only invalid record type developer names, writes no RecordTypeId line', () => {
+
+            const hostileDeveloperName = hostileNames[0][1];
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', { [hostileDeveloperName]: buildRecordTypeWrapper(hostileDeveloperName) }, {});
+
+            expect(actualRecipe).not.toContain('RecordTypeId');
+            expect(actualRecipe).toContain('### TODO -- RECORD TYPE SKIPPED');
+            expect((yaml.load(actualRecipe) as Array<{ fields: unknown }>)[0].fields).toBeNull();
+
+        });
+
+        test('given only ordinary record type developer names, is byte-identical to the unpartitioned recipe', () => {
+
+            const recordTypeMap = { First: buildRecordTypeWrapper('First'), Second: buildRecordTypeWrapper('Second') };
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
+
+            expect(actualRecipe).toBe(`\n- object: Thing__c
+  nickname: Thing__c_NickName
+  count: 1
+  fields:
+    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    Thing__c.First
+                    Thing__c.Second`);
+
+        });
+
+    });
+
+    describe('partitionRecordTypesByWritableDeveloperName', () => {
+
+        test('keeps each valid developer name with its wrapper and lists every other one, in map order', () => {
+
+            const validWrapper = buildRecordTypeWrapper('Valid');
+            const recordTypeMap = { Valid: validWrapper, [hostileNames[0][1]]: buildRecordTypeWrapper(hostileNames[0][1]), '1Leading': buildRecordTypeWrapper('1Leading') };
+
+            const actualPartition = RecipeService.partitionRecordTypesByWritableDeveloperName(recordTypeMap);
+
+            expect(actualPartition.writableRecordTypeApiToRecordTypeWrapperMap).toEqual({ Valid: validWrapper });
+            expect(actualPartition.skippedRecordTypeDeveloperNames.sort()).toEqual([hostileNames[0][1], '1Leading'].sort());
+
+        });
+
+        test.each([undefined, null, {}])('given %p, returns an empty partition', (missingRecordTypeMap) => {
+
+            expect(RecipeService.partitionRecordTypesByWritableDeveloperName(missingRecordTypeMap)).toEqual({
+                writableRecordTypeApiToRecordTypeWrapperMap: {},
+                skippedRecordTypeDeveloperNames: []
             });
 
         });

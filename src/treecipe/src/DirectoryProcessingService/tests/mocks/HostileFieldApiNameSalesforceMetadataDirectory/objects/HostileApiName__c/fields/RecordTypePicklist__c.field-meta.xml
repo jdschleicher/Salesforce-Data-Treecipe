@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>RecordTypePicklist__c</fullName>
+    <label>RecordTypePicklist__c</label>
+    <required>false</required>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>P</fullName>
+                <default>false</default>
+                <label>P</label>
+            </value>
+            <value>
+                <fullName>Q</fullName>
+                <default>false</default>
+                <label>Q</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>
