@@ -190,7 +190,8 @@ export class XmlFileProcessor {
       return [];
     }
 
-    let controllingValuesByDependentValue: Record<string, string[]> = {};
+    // NULL PROTOTYPED: THE KEYS ARE PICKLIST VALUES, AND "toString" OR "__proto__" AS A KEY OTHERWISE READS OR REPLACES AN INHERITED MEMBER
+    let controllingValuesByDependentValue: Record<string, string[]> = Object.create(null);
 
     dependentPicklistValueSettings.forEach(dependentPicklistSetting => {
 

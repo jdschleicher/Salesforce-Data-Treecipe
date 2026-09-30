@@ -489,6 +489,28 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         });
 
+        /*
+            #160. The keys are picklist values, and "constructor" in a {} map read back the inherited
+            function (so push threw), while "__proto__" assigned into one replaced the prototype.
+        */
+        test.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])('given the controlling value %s, keys it as data', (prototypeMemberName) => {
+
+            let xmlFieldDetail = new XMLFieldDetail();
+            xmlFieldDetail.picklistValues = ['first', 'second'].map(picklistOptionApiName => ({
+                picklistOptionApiName: picklistOptionApiName,
+                label: picklistOptionApiName,
+                default: false,
+                isActive: true,
+                controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: [prototypeMemberName]
+            })) as IPicklistValue[];
+
+            const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
+
+            expect(Object.keys(controllingValueToPicklistOptions)).toEqual([prototypeMemberName]);
+            expect(Object.getOwnPropertyDescriptor(controllingValueToPicklistOptions, prototypeMemberName).value).toEqual(['first', 'second']);
+
+        });
+
     });
 
     describe('buildCompoundComponentApiName', () => {

@@ -1,5 +1,36 @@
 # Change Log
 
+## [3.29.4] - A picklist value named like a JavaScript built-in is kept as data
+
+Closes [#160](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/160), found in the review of #159.
+
+Picklist values were used as keys of plain `{}` maps. A value that is also the name of an `Object.prototype` member, such as `constructor`, `toString`, `valueOf`, `hasOwnProperty` or `__proto__`, read back the inherited member instead of a missing key. A picklist in a construction-industry org can have `constructor` as an ordinary value. The effects were:
+
+| Where | Value | Before |
+|---|---|---|
+| `RecipeService.buildControllingValueToPicklistOptions` | controlling value | **Threw** `….push is not a function`. Generate Treecipe and Generate Picklist Dependency Tests both failed, since they share this map. |
+| `XmlFileProcessor.extractPicklistDetailsFromValueSettings` (a dependent picklist backed by a global value set) | dependent value | **Threw** `… is not iterable` while the field XML was being parsed. |
+| `PicklistDependencyTestService.buildExpectations` | declared controlling value that unlocks nothing | Would have **skipped** its `expectNone`, because `in` also sees the prototype. The first row hid this. |
+| `PicklistDependencyTestService.resolveGlobalValueSetDependentValues` | controlling value `__proto__` | **Dropped silently.** Assigning `obj['__proto__']` on a `{}` replaces the prototype instead of adding a key. The issue didn't list this one; the end-to-end test found it. |
+
+Each map is now built with `Object.create(null)`, the pattern `GlobalValueSetSingleton` and `PicklistDependencyMetadataWriterService` already use. Each membership check is an own-key check (`Object.prototype.hasOwnProperty.call`). The return type is still `Record<string, string[]>`, and both faker services still iterate it with `for…in`, so neither backend changes.
+
+**Tests.**
+- New fixture `PrototypeNamedSalesforceMetadataDirectory` holds two objects:
+  - `PrototypeNamed__c`: a controlling picklist, a local dependent picklist, a global-value-set-backed dependent picklist, a multi-select and a record type, each carrying all five names plus one ordinary value.
+  - `OnlyPrototype__c`: the unhappy path. Its controlling picklist is only `__proto__`, and its dependent picklist is only `constructor`.
+- `DirectoryProcessor.prototypeNamedPicklistValues.test.ts` runs the fixture through the real pipeline with **each backend**. It checks:
+  - both objects are written with exactly their declared fields;
+  - every file loads identically in js-yaml and PyYAML;
+  - the default and multi-select expressions carry each name;
+  - each dependent field has one `when:` per controlling value, offering exactly what the value settings unlock;
+  - Run Faker by Recipe with faker-js generates every name, and a global-value-set-backed dependent value is always one its controlling value unlocks;
+  - Generate Picklist Dependency Tests emits an expectation for every name, and the Apex and `manifest.json` both round-trip them.
+- The unit tests for each site cover all five names.
+- Reverting any one `Object.create(null)` fails tests. With the maps null-prototyped, the own-key check in `buildControllingValueToPicklistOptions` is redundant, but it is kept, as #160 asks.
+
+Ordinary metadata generates the same recipes and specs as before; every existing fixture test passes unchanged.
+
 ## [3.29.3] - CI runs again, and a recipe check that cannot run fails instead of skipping
 
 Closes [#158](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/158). Test harness only; nothing a user sees changes.

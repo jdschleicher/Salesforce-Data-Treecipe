@@ -942,6 +942,38 @@ describe('PicklistDependencyTestService', () => {
 
         });
 
+        /*
+            #160. Whether a declared controlling value already has an expectation is an OWN-key
+            question: "constructor" in a {} map is true through the prototype, and would have
+            dropped the expectNone that value is owed.
+        */
+        test.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])('given the declared controlling value %s unlocks nothing, still emits its expectation', (prototypeMemberName) => {
+
+            const expectations = PicklistDependencyTestService.buildExpectations({ usa: ['west'] }, ['west'], ['usa', prototypeMemberName]);
+
+            expect(expectations.find(expectation => expectation.controllingValue === prototypeMemberName))
+                .toEqual({ controllingValue: prototypeMemberName, dependentValues: [], forbiddenValues: [] });
+
+        });
+
+        test.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])('given a global value set field whose controlling value is %s, keeps that value when filtering to the set', (prototypeMemberName) => {
+
+            jest.spyOn(PicklistDependencyTestService, 'getGlobalValueSetPicklistValues').mockReturnValue(['west', 'east']);
+
+            let fieldDetail = new XMLFieldDetail();
+            fieldDetail.apiName = 'Region__c';
+            fieldDetail.globalValueSetName = 'Regions';
+
+            const controllingValueToPicklistOptions: Record<string, string[]> = Object.create(null);
+            controllingValueToPicklistOptions[prototypeMemberName] = ['west', 'removed'];
+
+            const resolution = PicklistDependencyTestService.resolveGlobalValueSetDependentValues('Account', fieldDetail, controllingValueToPicklistOptions);
+
+            expect(Object.keys(resolution.controllingValueToPicklistOptions)).toEqual([prototypeMemberName]);
+            expect(Object.getOwnPropertyDescriptor(resolution.controllingValueToPicklistOptions, prototypeMemberName).value).toEqual(['west']);
+
+        });
+
         test('given a fields directory listed in reverse order, produces a byte identical class body', async () => {
 
             pointMockedVSCodeFileSystemAtFixtures();

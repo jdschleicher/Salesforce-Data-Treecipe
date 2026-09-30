@@ -1390,7 +1390,8 @@ export class PicklistDependencyTestService {
         const declaredDependentValueSet = new Set(declaredDependentValues);
 
         let undeclaredValueNames = new Set<string>();
-        let filteredControllingValueToPicklistOptions: Record<string, string[]> = {};
+        // NULL PROTOTYPED, AS THE MAP IT FILTERS IS: A "__proto__" KEY ASSIGNED INTO {} REPLACES THE PROTOTYPE AND THE VALUE IS LOST
+        let filteredControllingValueToPicklistOptions: Record<string, string[]> = Object.create(null);
 
         Object.entries(controllingValueToPicklistOptions).forEach(([controllingValue, dependentValues]) => {
 
@@ -1504,7 +1505,7 @@ export class PicklistDependencyTestService {
 
         declaredControllingValues.forEach(controllingValue => {
 
-            if ( controllingValue in controllingValueToPicklistOptions ) {
+            if ( Object.prototype.hasOwnProperty.call(controllingValueToPicklistOptions, controllingValue) ) {
                 return;
             }
 
