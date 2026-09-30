@@ -73,8 +73,11 @@ jobs:
       with:
         python-version: '3.12'
 
+    # A BLOCK scalar, because ":all: " in a plain one is a YAML mapping indicator: that one line made
+    # this whole file unparseable, and GitHub reports an unparseable workflow as a run with no jobs.
     - name: Install PyYAML and Jinja2 for the recipe escaping tests
-      run: python3 -m pip install --only-binary=:all: PyYAML==6.0.2 Jinja2==3.1.6 MarkupSafe==3.0.2
+      run: |
+        python3 -m pip install --only-binary=:all: PyYAML==6.0.2 Jinja2==3.1.6 MarkupSafe==3.0.2
 
     - name: Run Jest tests
       run: xvfb-run -a npm run jest-test-summary

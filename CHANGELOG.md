@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.29.3] - In CI, a recipe check that cannot run fails instead of skipping
+## [3.29.3] - CI runs again, and a recipe check that cannot run fails instead of skipping
 
 Closes [#158](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/158). Test harness only; nothing a user sees changes.
 
@@ -25,7 +25,17 @@ All of them now go through one gate, `PythonTestHarness.testRequiringModules('ya
 - the #154 suite reports **2 failed, 4 passed** with `CI=true`, and **2 skipped, 4 passed** without it;
 - the Jinja-gated snowfakery suite fails all 27 `.each` rows by name.
 
-No workflow change and no new dependency: CI has installed pinned PyYAML and Jinja2 since 3.29.2.
+No new dependency.
+
+### CI has not run since 3.29.2, and now it does
+
+3.29.2 added a step to `build.yaml` that installs PyYAML and Jinja2, written as the plain scalar `run: python3 -m pip install --only-binary=:all: PyYAML==…`. The `: ` inside it is a YAML mapping indicator, which is the same defect class 3.29.2 fixed for picklist values. GitHub could not parse the workflow at all. It reports that as a run with **no jobs**, concluded `failure` the moment it starts, with no log and no failing step. So:
+- every push since that commit failed, including `main` after #159 merged;
+- no pull request run started, which leaves a required check at "Expected — Waiting for status to be reported".
+
+The step is now a block scalar (`run: |`), which runs exactly the same command. This is a workflow change, which #158 ruled out, but it repairs the workflow rather than changing what CI does.
+
+A new guard, `.github/workflowScripts/tests/workflowFiles.test.js`, loads every workflow file with js-yaml and checks it has triggers, jobs, and steps that each run a command or use an action. Against the broken `build.yaml` it fails with `bad indentation of a mapping entry (77:53)`, the position GitHub rejected. An unparseable workflow now fails `npm run jest-test` locally, instead of failing silently on GitHub.
 
 ## [3.29.2] - Every picklist value is written into a recipe as inert data (security)
 
