@@ -1,5 +1,27 @@
 # Change Log
 
+## [3.29.1] - Recipes with record-type picklists load again
+
+Closes [#153](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/153), found while building the fixtures for 3.29.0.
+
+When an object has record types, Generate Treecipe writes each `Picklist` and `MultiselectPicklist` field it has record-type values for as the field's default expression followed by a `### TODO` and an expression per record type. The TODOs are comments, but each record type's expression was a **bare line** indented under the field's value, and that is not YAML: js-yaml (faker-js) refused it with `bad indentation of a mapping entry` and PyYAML (snowfakery) with `expected <block end>, but found '<scalar>'`. Run Faker by Recipe loads the whole file, so **one such field stopped every object in its recipe from generating data**, in both backends.
+
+Each record type's expression is now a **commented** line under its TODO:
+
+```yaml
+    Picklist__c: ${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}
+                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                    # ${{ random_choice('cle', 'eastlake') }}
+```
+
+The recipe runs as written, on the field's default values. To use one record type's values, swap its line in as the field's value. The indentation and the TODO wording are unchanged, so the Recipe Cockpit still lists the variants under the field.
+
+- **Both backends**, in `buildRecordTypeBasedPicklistRecipeValue` and `buildRecordTypeBasedMultipicklistRecipeValue`. A field with no record-type values, and a record type with none for the field, generate exactly what they did before.
+- **Tests.** faker-js had no test of its record-type output at all; it now pins the exact picklist and multi-select output. Both backends assert the field loads as YAML where `RecipeService` puts it, with the default as its value, and that a quote, `&` and `#` in a value are escaped in the commented line exactly as in the default. A new suite, `DirectoryProcessor.generatedRecipeYaml.test.ts`, runs the real Generate Treecipe pipeline over the mock metadata with each backend and loads every recipe file it writes with js-yaml, and with PyYAML wherever `python3` has it (the check is skipped, not failed, where it does not). Reverting the fix fails 18 tests.
+- **The 3.29.0 recipe-writer fixtures get both fields back**, regenerated from the real pipeline; they differ from before by exactly those 20 lines.
+
+Not changed: the `RecordTypeId` line is valid YAML but loads as every developer name joined into one string, which is a wrong value rather than an unloadable file, and is left for a separate issue. Recipes generated before this release are not rewritten; regenerating fixes them.
+
 ## [3.29.0] - The Recipe Cockpit's recipe writer
 
 Closes [#148](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/148), the first of four slices of the cockpit's v2 write-back ([#58](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/58), under [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59)). Nothing a user can see changes yet: this is the one function every later write-back slice edits a recipe through.
@@ -43,10 +65,7 @@ Both backends write recipes as template strings, and the `### TODO` comments in 
 
 ### Tests and fixtures
 
-`tests/mocks/recipeWriter/` holds Generate Treecipe's own output for the `DirectoryProcessingService` mock metadata, one file per backend. Each has a dependent-picklist `if:` block, record-type `### TODO` option blocks, compound address and geolocation fields, a `|` block scalar, `### TODO -- REFERENCE ID REQUIRED` lookups and the relationship-tree header comments. Two edits, both recorded in the test file:
-
-- `MultiPicklist__c` and `Picklist__c` are left out. With record types, the generators write a value followed by `### TODO` lines at a deeper indent, and a comment ends a plain scalar, so **js-yaml refuses those two fields as generated**. That is a generator defect outside this slice.
-- Snowfakery writes every value inline, so the snowfakery Account's `Description` was made a `|` block scalar by hand.
+`tests/mocks/recipeWriter/` holds Generate Treecipe's own output for the `DirectoryProcessingService` mock metadata, one file per backend. Each has a dependent-picklist `if:` block, record-type `### TODO` option blocks, compound address and geolocation fields, a `|` block scalar, `### TODO -- REFERENCE ID REQUIRED` lookups and the relationship-tree header comments. One edit, recorded in the test file: snowfakery writes every value inline, so the snowfakery Account's `Description` was made a `|` block scalar by hand. (`MultiPicklist__c` and `Picklist__c` were left out when this shipped, because the generators wrote them as YAML no parser accepts. 3.29.1 fixes the generators and restores both fields.)
 
 Every field of both fixtures is replaced (single line and block scalar), commented out and restored, and every object gets an insert and both property writes, under LF and CRLF, with and without a final newline. After each one the test checks that every other line is byte-identical, that `parseRecipeSource` reports the intended change and every other object and field unchanged (wherever the edit moved its line), and that `js-yaml` still loads the result.
 

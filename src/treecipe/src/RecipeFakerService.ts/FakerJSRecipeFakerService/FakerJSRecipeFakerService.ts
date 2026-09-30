@@ -180,7 +180,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJoinedChoicesSyntax} ${this.closingRecipeSyntax}`;
 
                 let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
-                recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}${recordTypBasedFakeRecipeValue}`;
+                // COMMENTED OUT: A BARE EXPRESSION INDENTED UNDER THE FIELD'S VALUE IS NOT YAML, AND BOTH PARSERS REJECT THE WHOLE FILE
+                recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}# ${recordTypBasedFakeRecipeValue}`;
 
                 if ( allRecordTypeBasedPicklistOptions.trim() === '' ) {
                     // check to see if allRecordTypeBasedPicklistOptions has been given an initial value to properly handle recipe spacing
@@ -228,7 +229,8 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 const fakerJSJoinedMultiPicklsitChoicesSyntax = this.buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(availableRecordTypePicklistValuesForField);
                 const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} ${fakerJSJoinedMultiPicklsitChoicesSyntax} ${this.closingRecipeSyntax}`;
                 let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the Multiselect faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
-                recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}${recordTypBasedFakeRecipeValue}`;
+                // COMMENTED OUT: A BARE EXPRESSION INDENTED UNDER THE FIELD'S VALUE IS NOT YAML, AND BOTH PARSERS REJECT THE WHOLE FILE
+                recordTypeTodoVerbiage += `${newLineBreak}${this.generateTabs(5)}# ${recordTypBasedFakeRecipeValue}`;
 
                 if ( allRecordTypeBasedMultiselectPicklistOptions.trim() === '' ) {
                     // check to see if allRecordTypeBasedPicklistOptions has been given an initial value to properly handle recipe spacing

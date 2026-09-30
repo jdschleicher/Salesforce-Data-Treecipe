@@ -2,6 +2,14 @@ import { RecipeMockService } from "../../../RecipeService/tests/mocks/RecipeMock
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { SnowfakeryRecipeFakerService } from "../SnowfakeryRecipeFakerService";
+import * as yaml from 'js-yaml';
+
+// A FIELD'S RECIPE VALUE ONLY HAS TO BE VALID YAML WHERE RecipeService PUTS IT: AFTER "Field: " UNDER AN OBJECT'S fields BLOCK
+function loadFieldInRecipe(fieldApiName: string, recipeValue: string): unknown {
+    const recipeYaml = `- object: Example_Everything__c\n  fields:\n    ${fieldApiName}: ${recipeValue}\n`;
+    const parsedRecipe = yaml.load(recipeYaml) as Array<{ fields: Record<string, unknown> }>;
+    return parsedRecipe[0].fields[fieldApiName];
+}
 
 describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
@@ -427,6 +435,61 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
             const expectedFakerValue = RecipeMockService.getMockMultiselectPicklistRecordTypesRecipe();
 
             expect(actualFakerValue).toBe(expectedFakerValue);
+
+        });
+
+    });
+
+    /*
+        With record types, each record type's expression used to follow its TODO as a bare line
+        indented under the field's value, which neither js-yaml nor PyYAML accepts -- one such field
+        made the whole recipe file unloadable. Each variant is now a COMMENTED line under its TODO.
+    */
+    describe('record-type picklist variants', () => {
+
+        const recordTypeWrapperMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
+
+        test.each([
+            ['picklist', 'buildPicklistRecipeValueByXMLFieldDetail', 'Picklist__c', ['cle','eastlake','madison','mentor','wickliffe','willoughby']],
+            ['multi-select picklist', 'buildMultiSelectPicklistRecipeValueByXMLFieldDetail', 'MultiPicklist__c', ['chicken','chorizo','egg','fish','pork','steak','tofu']]
+        ] as const)('a %s with record types loads as YAML, with its default as the value', (unusedDescription, builderName, fieldApiName, choices) => {
+
+            const defaultRecipeValue = snowfakeryService[builderName]([...choices], {}, fieldApiName);
+            const actualRecipeValue = snowfakeryService[builderName]([...choices], recordTypeWrapperMap, fieldApiName);
+
+            expect(actualRecipeValue.split('\n')[0]).toBe(defaultRecipeValue);
+            expect(loadFieldInRecipe(fieldApiName, actualRecipeValue)).toBe(defaultRecipeValue);
+
+        });
+
+        test('a record type with no values for the field adds no lines', () => {
+
+            const recordTypeWithoutField: Record<string, RecordTypeWrapper> = {
+                ThreeRecType: { DeveloperName: 'ThreeRecType', PicklistFieldSectionsToPicklistDetail: { Other__c: ['x'] } }
+            };
+
+            expect(snowfakeryService.buildPicklistRecipeValueByXMLFieldDetail(['a','b'], recordTypeWithoutField, 'Picklist__c'))
+                .toBe(snowfakeryService.buildPicklistRecipeValueByXMLFieldDetail(['a','b'], {}, 'Picklist__c'));
+            expect(snowfakeryService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['a','b'], recordTypeWithoutField, 'MultiPicklist__c'))
+                .toBe(snowfakeryService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['a','b'], {}, 'MultiPicklist__c'));
+
+        });
+
+        test.each([
+            ['picklist', 'buildPicklistRecipeValueByXMLFieldDetail'],
+            ['multi-select picklist', 'buildMultiSelectPicklistRecipeValueByXMLFieldDetail']
+        ] as const)('a %s variant escapes a quote, & and # exactly as the default does, and the recipe still loads', (unusedDescription, builderName) => {
+
+            const specialValues = ["Rock 'n' Roll", 'A&B', 'C#'];
+            const recordTypeWithSpecialValues: Record<string, RecordTypeWrapper> = {
+                SpecialRecType: { DeveloperName: 'SpecialRecType', PicklistFieldSectionsToPicklistDetail: { Special__c: specialValues } }
+            };
+
+            const defaultRecipeValue = snowfakeryService[builderName](specialValues, {}, 'Special__c');
+            const actualRecipeValue = snowfakeryService[builderName](specialValues, recordTypeWithSpecialValues, 'Special__c');
+
+            expect(actualRecipeValue.split('\n')[2]).toBe(`                    # ${defaultRecipeValue}`);
+            expect(loadFieldInRecipe('Special__c', actualRecipeValue)).toBe(defaultRecipeValue);
 
         });
 

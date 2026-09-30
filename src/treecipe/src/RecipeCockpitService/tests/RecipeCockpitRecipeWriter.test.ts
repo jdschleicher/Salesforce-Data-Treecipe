@@ -12,14 +12,12 @@ import { RecipeCockpitRecipeWriter, RecipeWriterResult, IRecipeWriterEdit, Recip
 
 /*
     The fixtures are Generate Treecipe's own output for the DirectoryProcessingService mock
-    metadata, one per backend, with two edits:
+    metadata, one per backend, with one edit: the snowfakery Account's Description is a "|" block
+    scalar. Snowfakery writes every value inline, and a recipe a person has edited is exactly what
+    the writer is for.
 
-    - MultiPicklist__c and Picklist__c are left out of both. With record types, the generators write
-      a value and then "### TODO" lines at a deeper indent under it, and a comment ends a plain
-      scalar, so js-yaml refuses those two fields as generated. That is a generator defect outside
-      this slice; the writer would carry the lines as opaque continuations either way.
-    - The snowfakery Account's Description is a "|" block scalar. Snowfakery writes every value
-      inline, and a recipe a person has edited is exactly what the writer is for.
+    Picklist__c and MultiPicklist__c carry record-type variants as commented lines under their
+    "### TODO"s -- continuation lines the writer carries as opaque, like any other.
 */
 const RECIPE_WRITER_MOCKS_PATH = path.join(__dirname, 'mocks', 'recipeWriter');
 
@@ -196,6 +194,7 @@ describe('RecipeCockpitRecipeWriter', () => {
             expect(recipeText).toMatch(/^ {6}if:$/m);
             expect(recipeText).toMatch(/^ {4}RecordTypeId: ### TODO: -- RecordType Options -- /m);
             expect(recipeText).toMatch(/^ {20}### TODO: -- RecordType Options -- /m);
+            expect(recipeText).toMatch(/^ {4}Picklist__c: .*\n {20}### TODO: -- RecordType Options -- .*\n {20}# \$\{\{/m);
             expect(recipeText).toMatch(/^ {4}BillingStreet: /m);
             expect(recipeText).toMatch(/^ {4}Geolocation__Latitude__s: /m);
             expect(recipeText).toMatch(/^ {4}[A-Za-z_]+: \|$/m);

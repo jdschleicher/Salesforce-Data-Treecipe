@@ -232,9 +232,19 @@
                     ### TODO: -- RecordType Options -- OneRecType -- "plant" is not an available value for DependentPicklist__c for record type OneRecType
                     ### TODO: -- RecordType Options -- TwoRecType -- GlobalSuperDependent__c is not an available field for record type TwoRecType
     GlobalValuePicklist__c: ### TODO: This picklist field needs manually updated with either a standard value set list or global value set
+    MultiPicklist__c: ${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c
+                    # ${{ (';').join((fake.random_sample(elements=('chorizo', 'pork', 'steak', 'tofu')))) }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c
+                    # ${{ (';').join((fake.random_sample(elements=('chicken', 'egg', 'fish', 'tofu')))) }}
     Number__c: ${{fake.random_int(min=0, max=999999999999999999)}}
     Percent__c: ${{fake.pydecimal(left_digits=9999999999999999, right_digits=2, positive=True)}}
     Phone__c: ${{fake.phone_number()}}
+    Picklist__c: ${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}
+                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                    # ${{ random_choice('cle', 'eastlake') }}
+                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                    # ${{ random_choice('cle', 'willoughby') }}
     PlanetGlobalValuePicklist__c: ### TODO: This picklist field needs manually updated with either a standard value set list or global value set
     RichTextAreaHtml__c: ${{fake.text(max_nb_chars=131072)}}
     SuperDependent__c: 
