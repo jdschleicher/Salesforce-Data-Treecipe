@@ -82,9 +82,15 @@ export class PythonTestHarness {
             return test.skip;
         }
 
-        const failingTestBody = PythonTestHarness.buildFailingTestBody(PythonTestHarness.findMissingModules(moduleNames));
-        const failingTest = (testName: string) => test(testName, failingTestBody);
-        const failingTestEach = (table: ReadonlyArray<unknown>) => (testName: string) => test.each(table as unknown[][])(testName, failingTestBody);
+        return PythonTestHarness.buildFailingStandIn(PythonTestHarness.buildFailingTestBody(PythonTestHarness.findMissingModules(moduleNames)));
+
+    }
+
+    // THE REGISTRAR IS A PARAMETER SO A TEST CAN CALL THE STAND-IN WITHOUT REGISTERING A TEST INSIDE A TEST
+    static buildFailingStandIn(failingTestBody: () => never, registerTest: jest.It = test): jest.It {
+
+        const failingTest = (testName: string) => registerTest(testName, failingTestBody);
+        const failingTestEach = (table: ReadonlyArray<unknown>) => (testName: string) => registerTest.each(table as unknown[][])(testName, failingTestBody);
         return Object.assign(failingTest, { each: failingTestEach }) as unknown as jest.It;
 
     }

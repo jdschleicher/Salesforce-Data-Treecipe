@@ -19,7 +19,7 @@ All of them now go through one gate, `PythonTestHarness.testRequiringModules('ya
 - **`PythonTestHarness`** is a static class. It holds the probe, the gate and the Python runners (`runPython`, `loadWithPyYaml`, `renderWithSnowfakeryJinja`) that `HostilePicklistValues.ts` used to export as loose functions; that file now holds only payload data.
 - `CI` counts as set for any non-empty value except `false`.
 
-**Tests.** `PythonTestHarness.test.ts` stubs the probe with `jest.spyOn(childProcess, 'execFileSync')` and sets `CI` explicitly. It covers every row of the table, a missing `python3`, the gate's return value in each mode, and the message naming only the missing module. It was also run for real with a `python3` shim on `PATH` that refuses the import:
+**Tests.** `PythonTestHarness.test.ts` stubs the probe with `jest.spyOn(childProcess, 'execFileSync')` and sets `CI` explicitly. It covers every row of the table, a missing `python3`, the gate's return value in each mode, the stand-in registering the same name (and the same `.each` table) with the failing body, and the message naming only the missing module. It was also run for real with a `python3` shim on `PATH` that refuses the import:
 - the #154 suite reports **2 failed, 4 passed** with `CI=true`, and **2 skipped, 4 passed** without it;
 - the Jinja-gated snowfakery suite fails all 27 `.each` rows by name.
 

@@ -108,6 +108,37 @@ describe('PythonTestHarness', () => {
 
     });
 
+    describe('buildFailingStandIn', () => {
+
+        const failingTestBody = PythonTestHarness.buildFailingTestBody(['yaml']);
+
+        test('registers a test under the SAME name, whose body is the failing one', () => {
+
+            const registerTest = jest.fn();
+
+            PythonTestHarness.buildFailingStandIn(failingTestBody, registerTest as unknown as jest.It)('every recipe file loads with PyYAML', () => undefined);
+
+            expect(registerTest).toHaveBeenCalledTimes(1);
+            expect(registerTest).toHaveBeenCalledWith('every recipe file loads with PyYAML', failingTestBody);
+
+        });
+
+        test('registers .each rows under the same table and name template, whose body is the failing one', () => {
+
+            const registerEachRow = jest.fn();
+            const registerTest = Object.assign(jest.fn(), { each: jest.fn(() => registerEachRow) });
+            const table = [['LF', 'a\nb'], ['CR', 'a\rb']];
+
+            PythonTestHarness.buildFailingStandIn(failingTestBody, registerTest as unknown as jest.It).each(table)('a value with %s renders in Jinja', () => undefined);
+
+            expect(registerTest.each).toHaveBeenCalledWith(table);
+            expect(registerEachRow).toHaveBeenCalledWith('a value with %s renders in Jinja', failingTestBody);
+            expect(registerTest).not.toHaveBeenCalled();
+
+        });
+
+    });
+
     describe('buildFailingTestBody', () => {
 
         test('throws naming only the missing module and how to install it', () => {
