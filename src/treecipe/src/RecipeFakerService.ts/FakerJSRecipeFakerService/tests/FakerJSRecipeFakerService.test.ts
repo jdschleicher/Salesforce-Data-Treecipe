@@ -1,6 +1,15 @@
 import { faker } from "@faker-js/faker";
+import * as yaml from 'js-yaml';
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
+import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { FakerJSRecipeFakerService } from "../FakerJSRecipeFakerService";
+
+// A FIELD'S RECIPE VALUE ONLY HAS TO BE VALID YAML WHERE RecipeService PUTS IT: AFTER "Field: " UNDER AN OBJECT'S fields BLOCK
+function loadFieldInRecipe(fieldApiName: string, recipeValue: string): unknown {
+    const recipeYaml = `- object: Example_Everything__c\n  fields:\n    ${fieldApiName}: ${recipeValue}\n`;
+    const parsedRecipe = yaml.load(recipeYaml) as Array<{ fields: Record<string, unknown> }>;
+    return parsedRecipe[0].fields[fieldApiName];
+}
 
 describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
@@ -242,6 +251,88 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
                                                                         fakeFieldApiName);
 
             expect(actualFakerValue).toBe(expectedRecipeValue);
+        });
+
+    });
+
+    /*
+        With record types, each record type's expression used to follow its TODO as a bare line
+        indented under the field's value, which neither js-yaml nor PyYAML accepts -- one such field
+        made the whole recipe file unloadable. Each variant is now a COMMENTED line under its TODO.
+    */
+    describe('record-type picklist variants', () => {
+
+        const recordTypeWrapperMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
+
+        test('a picklist with record types keeps its default as the value and writes each record type\'s expression as a commented line', () => {
+
+            const actualRecipeValue = fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(
+                ['cle','eastlake','madison','mentor','wickliffe','willoughby'],
+                recordTypeWrapperMap,
+                'Picklist__c'
+            );
+
+            expect(actualRecipeValue).toBe([
+                '${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}',
+                '                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c',
+                '                    # ${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}',
+                '                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c',
+                '                    # ${{ faker.helpers.arrayElement([`cle`,`willoughby`]) }}'
+            ].join('\n'));
+
+            expect(loadFieldInRecipe('Picklist__c', actualRecipeValue)).toBe('${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}');
+
+        });
+
+        test('a multi-select picklist with record types keeps its default as the value and writes each record type\'s expression as a commented line', () => {
+
+            const actualRecipeValue = fakerJSRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(
+                ['chicken','chorizo','egg','fish','pork','steak','tofu'],
+                recordTypeWrapperMap,
+                'MultiPicklist__c'
+            );
+
+            expect(actualRecipeValue).toBe([
+                "${{ (faker.helpers.arrayElements([`chicken`,`chorizo`,`egg`,`fish`,`pork`,`steak`,`tofu`])).join(';') }}",
+                '                    ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c',
+                "                    # ${{ (faker.helpers.arrayElements([`chorizo`,`pork`,`steak`,`tofu`])).join(';') }}",
+                '                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c',
+                "                    # ${{ (faker.helpers.arrayElements([`chicken`,`egg`,`fish`,`tofu`])).join(';') }}"
+            ].join('\n'));
+
+            expect(loadFieldInRecipe('MultiPicklist__c', actualRecipeValue)).toBe("${{ (faker.helpers.arrayElements([`chicken`,`chorizo`,`egg`,`fish`,`pork`,`steak`,`tofu`])).join(';') }}");
+
+        });
+
+        test('a record type with no values for the field adds no lines', () => {
+
+            const recordTypeWithoutField: Record<string, RecordTypeWrapper> = {
+                ThreeRecType: { DeveloperName: 'ThreeRecType', PicklistFieldSectionsToPicklistDetail: { Other__c: ['x'] } }
+            };
+
+            expect(fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(['a','b'], recordTypeWithoutField, 'Picklist__c'))
+                .toBe('${{ faker.helpers.arrayElement([`a`,`b`]) }}');
+            expect(fakerJSRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['a','b'], recordTypeWithoutField, 'MultiPicklist__c'))
+                .toBe("${{ (faker.helpers.arrayElements([`a`,`b`])).join(';') }}");
+
+        });
+
+        test.each([
+            ['picklist', 'buildPicklistRecipeValueByXMLFieldDetail'],
+            ['multi-select picklist', 'buildMultiSelectPicklistRecipeValueByXMLFieldDetail']
+        ] as const)('a %s variant escapes a quote, & and a # with no space before it exactly as the default does, and the recipe still loads', (unusedDescription, builderName) => {
+
+            const specialValues = ["Rock 'n' Roll", 'A&B', 'C#'];
+            const recordTypeWithSpecialValues: Record<string, RecordTypeWrapper> = {
+                SpecialRecType: { DeveloperName: 'SpecialRecType', PicklistFieldSectionsToPicklistDetail: { Special__c: specialValues } }
+            };
+
+            const defaultRecipeValue = fakerJSRecipeFakerService[builderName](specialValues, {}, 'Special__c');
+            const actualRecipeValue = fakerJSRecipeFakerService[builderName](specialValues, recordTypeWithSpecialValues, 'Special__c');
+
+            expect(actualRecipeValue.split('\n')[2]).toBe(`                    # ${defaultRecipeValue}`);
+            expect(loadFieldInRecipe('Special__c', actualRecipeValue)).toBe(defaultRecipeValue);
+
         });
 
     });
