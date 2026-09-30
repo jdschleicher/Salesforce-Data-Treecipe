@@ -8,6 +8,8 @@ import * as yaml from 'js-yaml';
 
 import { faker } from '@faker-js/faker';
 import { ProcessedYamlWrapper } from '../../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
+import { FakerJSRecipeFakerService } from '../../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
+import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 
 
 // the below mock is required to prevent missing vscode module error when FakerJSRecipeProcessor references service layers that have vscode as a required library
@@ -782,5 +784,82 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     });
 
+
+});
+
+/*
+    #155. The generator writes a dependent picklist's controlling value as an ESCAPED single-quoted
+    string, because the value is untrusted. The processor must read that literal back to exactly
+    the value, or the right choice is never selected at run time.
+*/
+describe('FakerJSRecipeProcessor reads an escaped when: condition', () => {
+
+    const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+    const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+    const everyPicklistValue: Array<[string, string]> = [
+        ...HOSTILE_PICKLIST_VALUES,
+        ...ORDINARY_PICKLIST_VALUES.map((ordinaryValue): [string, string] => [ordinaryValue, ordinaryValue])
+    ];
+
+    const loadGeneratedDependentPicklist = (controllingValueToDependentValues: Record<string, string[]>): unknown => {
+        const recipeValue = fakerJSRecipeFakerService.buildDependentPicklistRecipeFakerValue(controllingValueToDependentValues, {}, 'Controlling__c', 'Dependent__c');
+        const loadedRecipe = yaml.load(`- object: Example__c\n  fields:\n    Dependent__c: ${recipeValue}\n`) as Array<{ fields: Record<string, unknown> }>;
+        return loadedRecipe[0].fields['Dependent__c'];
+    };
+
+    test.each(everyPicklistValue)('selects the choice written for %p, and no other', (unusedDescription, picklistValue) => {
+
+        const loadedDependentPicklist = loadGeneratedDependentPicklist({
+            'a decoy that sorts first': ['decoy'],
+            [picklistValue]: ['selected'],
+            [`${picklistValue} `]: ['decoy that differs by a space']
+        });
+
+        const selectedValue = fakerJSRecipeProcessor.evaluateDependentPicklistFakerJSExpression(loadedDependentPicklist, { 'Controlling__c': picklistValue }, 'Dependent__c');
+
+        expect(selectedValue).toBe('selected');
+
+    });
+
+    describe('parseWhenCondition', () => {
+
+        test('reads the field and the unescaped value of a single- or double-quoted literal', () => {
+
+            expect(fakerJSRecipeProcessor.parseWhenCondition("${{ Genre__c == 'Rock \\'n\\' Roll' }}"))
+                .toEqual({ controllingFieldApiName: 'Genre__c', controllingValue: "Rock 'n' Roll" });
+            expect(fakerJSRecipeProcessor.parseWhenCondition('${{ Industry == "Technology" }}'))
+                .toEqual({ controllingFieldApiName: 'Industry', controllingValue: 'Technology' });
+            expect(fakerJSRecipeProcessor.parseWhenCondition("${{ F == 'a\\}\\}b\\x20\\u2028\\r\\n\\\\' }}"))
+                .toEqual({ controllingFieldApiName: 'F', controllingValue: 'a}}b \u2028\r\n\\' });
+
+        });
+
+        test('falls back to the original reading for a condition that is not one quoted literal', () => {
+
+            expect(fakerJSRecipeProcessor.parseWhenCondition('${{ Industry == Technology }}'))
+                .toEqual({ controllingFieldApiName: 'Industry', controllingValue: 'Technology' });
+
+        });
+
+        test('answers null for anything that is not a condition', () => {
+
+            expect(fakerJSRecipeProcessor.parseWhenCondition('no condition here')).toBeNull();
+            expect(fakerJSRecipeProcessor.parseWhenCondition(undefined)).toBeNull();
+            expect(fakerJSRecipeProcessor.parseWhenCondition({ when: 'x' })).toBeNull();
+
+        });
+
+    });
+
+    describe('unescapeJavaScriptStringLiteralContent', () => {
+
+        test('inverts what the generator escapes, and reads an unknown escape as its character, as JavaScript does', () => {
+
+            expect(FakerJSRecipeProcessor.unescapeJavaScriptStringLiteralContent('\\`\\\'\\"\\$\\{\\}\\t\\b\\f\\v\\0\\q\\u{1F600}'))
+                .toBe('`\'"${}\t\b\f\v\0q\u{1F600}');
+
+        });
+
+    });
 
 });

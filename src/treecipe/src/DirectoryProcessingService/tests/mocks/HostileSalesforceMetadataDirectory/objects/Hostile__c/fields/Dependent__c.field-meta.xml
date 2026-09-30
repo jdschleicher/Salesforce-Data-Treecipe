@@ -1,0 +1,398 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Dependent__c</fullName>
+    <label>Dependent</label>
+    <required>false</required>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>Controlling__c</controllingField>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>x&apos; or True or &apos;</fullName>
+                <default>false</default>
+                <label>x&apos; or True or &apos;</label>
+            </value>
+            <value>
+                <fullName>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</fullName>
+                <default>false</default>
+                <label>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</label>
+            </value>
+            <value>
+                <fullName>${globalThis.__treecipeInjectedByPicklistValue=true}</fullName>
+                <default>false</default>
+                <label>${globalThis.__treecipeInjectedByPicklistValue=true}</label>
+            </value>
+            <value>
+                <fullName>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>a}}b</fullName>
+                <default>false</default>
+                <label>a}}b</label>
+            </value>
+            <value>
+                <fullName>trailing\</fullName>
+                <default>false</default>
+                <label>trailing\</label>
+            </value>
+            <value>
+                <fullName>Type: A #1</fullName>
+                <default>false</default>
+                <label>Type: A #1</label>
+            </value>
+            <value>
+                <fullName>Rock &apos;n&apos; Roll</fullName>
+                <default>false</default>
+                <label>Rock &apos;n&apos; Roll</label>
+            </value>
+            <value>
+                <fullName>A&amp;B</fullName>
+                <default>false</default>
+                <label>A&amp;B</label>
+            </value>
+            <value>
+                <fullName>C#</fullName>
+                <default>false</default>
+                <label>C#</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>x&apos; or True or &apos;</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>${globalThis.__treecipeInjectedByPicklistValue=true}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>a}}b</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>trailing\</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>Type: A #1</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>Rock &apos;n&apos; Roll</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>A&amp;B</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>C#</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

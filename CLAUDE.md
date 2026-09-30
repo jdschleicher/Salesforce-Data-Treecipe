@@ -132,9 +132,13 @@ src/
     │   │   ├── FakerJSRecipeFakerService.ts # faker-js YAML recipe generation per field type
     │   │   ├── ProcessedYamlWrapper.ts
     │   │   └── tests/
-    │   └── SnowfakeryRecipeFakerService/
-    │       ├── SnowfakeryRecipeFakerService.ts # Snowfakery YAML recipe generation per field type
+    │   ├── SnowfakeryRecipeFakerService/
+    │   │   ├── SnowfakeryRecipeFakerService.ts # Snowfakery YAML recipe generation per field type
+    │   │   └── tests/
+    │   └── RecipeYamlScalar/
+    │       ├── RecipeYamlScalar.ts          # The YAML half of writing an untrusted picklist value: line breaks either parser sees, plain-vs-quoted list items
     │       └── tests/
+    │           └── mocks/                   # HostilePicklistValues: the shared payload list, and the PyYAML / Jinja runners
     ├── PicklistDependencyCheckService/
     │   ├── PicklistDependencyCheckService.ts # Deploys and runs the generated picklist dependency tests against an org
     │   └── tests/
@@ -205,6 +209,7 @@ User runs command (Cmd+Shift+P)
 
 - **`RecipeFakerService.ts` is a directory** — it contains both faker implementations as subfolders; this naming is intentional and must not be changed
 - **Apex written into a user's project is `SDT`-prefixed** — every class in `apexPicklistDependencyFramework/SDTPicklistDependencyFramework/` (the framework source shipped in the .vsix and scaffolded into the user's package directory), and every class the generator emits, starts with `SDT` so it cannot collide with the user's own Apex. Keep new Apex consistent with this
+- **Every picklist value reaches a recipe through its backend's escaper or `buildDependentPicklistChoiceItem`, never raw** — values come from metadata a repository author controls, and there are six sinks per backend: the default and record-type expressions, a dependent picklist's `when:` and its choices, a record type's dependent choices, and the TODO naming a controlling value. The expression escaper is per LANGUAGE (`escapePicklistValueForJavaScriptString(value, quote)` for faker-js, `escapePicklistOptionForJinjaStringLiteral` for snowfakery); the YAML half is shared in `RecipeYamlScalar`, because PyYAML ends a line at U+0085, U+2028 and U+2029 where js-yaml does not, and a value is only inert if NEITHER parser sees a break. A dependent choice is a YAML item rather than an expression, so it stays plain when safe and is quoted otherwise, and in snowfakery it is also a Jinja literal, because snowfakery renders any item containing `${` even when it is quoted. `FakerJSRecipeProcessor.parseWhenCondition` is the inverse of the faker-js `when:` escaping; change the two together. `buildRecipeWithEveryPicklistSink` and `DirectoryProcessor.hostilePicklistValues.test.ts` hold every sink to the same payload list, so a new sink that skips the escaper fails there
 - **Both faker backends must stay in sync** — whenever a new field type handler is added to `FakerJSRecipeFakerService`, add the equivalent to `SnowfakeryRecipeFakerService`
 - **Numeric/currency precision** — `<precision>` (total digits) and `<scale>` (decimal places) from XML drive `max` and `dec` parameters; `left_digits = precision - scale`
 - **Picklist handling** — special characters (`&`, `'`, etc.) in picklist values must be escaped before embedding in faker expressions

@@ -3,6 +3,20 @@ import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { SnowfakeryRecipeFakerService } from "../SnowfakeryRecipeFakerService";
 import * as yaml from 'js-yaml';
+import {
+    ANY_YAML_LINE_BREAK,
+    CONTROLLING_FIELD_API_NAME,
+    DEPENDENT_FIELD_API_NAME,
+    HOSTILE_PICKLIST_VALUES,
+    LoadedRecipeWithEveryPicklistSink,
+    MULTI_PICKLIST_FIELD_API_NAME,
+    ORDINARY_PICKLIST_VALUES,
+    OTHER_PICKLIST_VALUE,
+    buildRecipeWithEveryPicklistSink,
+    isPythonModuleAvailable,
+    loadWithPyYaml,
+    renderWithSnowfakeryJinja
+} from "../../RecipeYamlScalar/tests/mocks/HostilePicklistValues";
 
 // A FIELD'S RECIPE VALUE ONLY HAS TO BE VALID YAML WHERE RecipeService PUTS IT: AFTER "Field: " UNDER AN OBJECT'S fields BLOCK
 function loadFieldInRecipe(fieldApiName: string, recipeValue: string): unknown {
@@ -697,6 +711,138 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
             expect(geolocationComponentToRecipeValue['Longitude']).toContain('fake.longitude');
             expect(geolocationComponentToRecipeValue['Latitude']).not.toContain('random_int');
             expect(geolocationComponentToRecipeValue['Longitude']).not.toContain('random_int');
+
+        });
+
+    });
+
+});
+
+/*
+    #155. Picklist values come from metadata in whatever repository the user opened. Every site that
+    writes one into a recipe -- default and record-type expressions, a dependent picklist's when:
+    condition and its choices, a record type's dependent choices, and the TODO naming a controlling
+    value -- is exercised at once by buildRecipeWithEveryPicklistSink, so a site that embeds a value
+    without escaping it fails here whichever site it is.
+*/
+describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () => {
+
+    const snowfakeryRecipeFakerService = new SnowfakeryRecipeFakerService();
+    const isPyYamlAvailable = isPythonModuleAvailable('yaml');
+    const isJinjaAvailable = isPythonModuleAvailable('jinja2');
+
+    const loadRecipeFields = (picklistValue: string) =>
+        (yaml.load(buildRecipeWithEveryPicklistSink(snowfakeryRecipeFakerService, picklistValue)) as LoadedRecipeWithEveryPicklistSink)[0].fields;
+
+    test.each(HOSTILE_PICKLIST_VALUES)('a value with %s adds no line to the recipe, as either YAML parser counts lines', (unusedDescription, hostileValue) => {
+
+        const ordinaryRecipe = buildRecipeWithEveryPicklistSink(snowfakeryRecipeFakerService, 'ordinary');
+        const hostileRecipe = buildRecipeWithEveryPicklistSink(snowfakeryRecipeFakerService, hostileValue);
+
+        expect(hostileRecipe.split(ANY_YAML_LINE_BREAK)).toHaveLength(ordinaryRecipe.split(ANY_YAML_LINE_BREAK).length);
+
+    });
+
+    test.each(HOSTILE_PICKLIST_VALUES)('a value with %s loads in js-yaml as one value in every sink, and declares no other field', (unusedDescription, hostileValue) => {
+
+        const loadedFields = loadRecipeFields(hostileValue);
+
+        expect(Object.keys(loadedFields)).toEqual([CONTROLLING_FIELD_API_NAME, DEPENDENT_FIELD_API_NAME, MULTI_PICKLIST_FIELD_API_NAME]);
+        expect(loadedFields[DEPENDENT_FIELD_API_NAME].if).toHaveLength(1);
+        expect(loadedFields[DEPENDENT_FIELD_API_NAME].if[0].choice.pick.random_choice).toHaveLength(3);
+
+    });
+
+    (isPyYamlAvailable ? test : test.skip)('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
+
+        const hostileRecipes = HOSTILE_PICKLIST_VALUES.map(([, hostileValue]) => buildRecipeWithEveryPicklistSink(snowfakeryRecipeFakerService, hostileValue));
+
+        expect(loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
+
+    });
+
+    /*
+        What snowfakery DOES with the loaded values: every string is rendered by Jinja. The stand-ins
+        for random_choice and random_sample take the first option, so each sink must render to
+        exactly the value -- and a when: condition must be true for the value and false otherwise,
+        which an apostrophe breaking out of the literal ("x' or True or '") would make always true.
+    */
+    (isJinjaAvailable ? test.each(HOSTILE_PICKLIST_VALUES) : test.skip.each(HOSTILE_PICKLIST_VALUES))('a value with %s renders in Jinja to exactly itself in every sink', (unusedDescription, hostileValue) => {
+
+        const loadedFields = loadRecipeFields(hostileValue);
+        const dependentChoice = loadedFields[DEPENDENT_FIELD_API_NAME].if[0].choice;
+
+        const renderResults = renderWithSnowfakeryJinja([
+            { template: loadedFields[CONTROLLING_FIELD_API_NAME] as string },
+            { template: loadedFields[MULTI_PICKLIST_FIELD_API_NAME] as string },
+            { template: dependentChoice.when, context: { [CONTROLLING_FIELD_API_NAME]: hostileValue } },
+            { template: dependentChoice.when, context: { [CONTROLLING_FIELD_API_NAME]: 'a value no payload is' } },
+            ...dependentChoice.pick.random_choice.map(choiceItem => ({ template: choiceItem as string }))
+        ]);
+
+        expect(renderResults).toEqual([
+            { rendered: hostileValue },
+            { rendered: hostileValue },
+            { rendered: 'True' },
+            { rendered: 'False' },
+            { rendered: hostileValue },
+            { rendered: OTHER_PICKLIST_VALUE },
+            { rendered: hostileValue }
+        ]);
+
+    });
+
+    test('an ordinary value is written exactly as before', () => {
+
+        const ordinaryRecipeValue = snowfakeryRecipeFakerService.buildDependentPicklistRecipeFakerValue({ "Rock 'n' Roll": ORDINARY_PICKLIST_VALUES }, {}, 'Genre__c', 'Band__c');
+
+        expect(ordinaryRecipeValue).toBe([
+            '',
+            '      if:',
+            '        - choice:',
+            "            when: ${{ Genre__c == 'Rock \\'n\\' Roll' }}",
+            '            pick:',
+            '                random_choice:',
+            "                    - Rock 'n' Roll",
+            '                    - A&B',
+            '                    - C#',
+            '                    - Some Value',
+            '                    - Ohio_City'
+        ].join('\n'));
+        expect(snowfakeryRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(ORDINARY_PICKLIST_VALUES, {}, 'Genre__c'))
+            .toBe("${{ random_choice('Rock \\'n\\' Roll', 'A&B', 'C#', 'Some Value', 'Ohio_City') }}");
+
+    });
+
+    describe('escapePicklistOptionForJinjaStringLiteral', () => {
+
+        test.each([
+            ['a colon-space and a space-hash', 'Type: A #1', 'Type:\\x20A\\x20#1'],
+            ['a CRLF, kept exactly', 'a\r\nb', 'a\\r\\nb'],
+            ['a next line', 'a\u0085b', 'a\\u0085b'],
+            ['a line separator', 'a\u2028b', 'a\\u2028b'],
+            ['a paragraph separator', 'a\u2029b', 'a\\u2029b']
+        ])('escapes %s', (unusedDescription, picklistValue, expectedEscapedValue) => {
+
+            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(picklistValue)).toBe(expectedEscapedValue);
+
+        });
+
+    });
+
+    describe('buildDependentPicklistChoiceItem', () => {
+
+        test('writes an ordinary value plain', () => {
+
+            ORDINARY_PICKLIST_VALUES.forEach(ordinaryValue => {
+                expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem(ordinaryValue)).toBe(ordinaryValue);
+            });
+
+        });
+
+        test('writes anything else as a quoted Jinja string literal, because snowfakery renders a quoted item too', () => {
+
+            expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem('${{ x }}')).toBe('"${{ \'${{ x }}\' }}"');
 
         });
 

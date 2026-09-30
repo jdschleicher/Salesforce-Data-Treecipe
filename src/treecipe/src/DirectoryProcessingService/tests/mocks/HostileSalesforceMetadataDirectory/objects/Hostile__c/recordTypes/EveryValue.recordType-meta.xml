@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>EveryValue</fullName>
+    <active>true</active>
+    <label>EveryValue</label>
+    <picklistValues>
+        <picklist>Controlling__c</picklist>
+        <values>
+            <fullName>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>x&apos; or True or &apos;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${globalThis.__treecipeInjectedByPicklistValue=true}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a}}b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>trailing\</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Type: A #1</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Rock &apos;n&apos; Roll</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>A&amp;B</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>C#</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Dependent__c</picklist>
+        <values>
+            <fullName>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>x&apos; or True or &apos;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${globalThis.__treecipeInjectedByPicklistValue=true}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a}}b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>trailing\</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Type: A #1</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Rock &apos;n&apos; Roll</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>A&amp;B</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>C#</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Multi__c</picklist>
+        <values>
+            <fullName>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>x&apos; or True or &apos;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${globalThis.__treecipeInjectedByPicklistValue=true}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a}}b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>trailing\</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Type: A #1</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Rock &apos;n&apos; Roll</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>A&amp;B</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>C#</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Global__c</picklist>
+        <values>
+            <fullName>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>x&apos; or True or &apos;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${globalThis.__treecipeInjectedByPicklistValue=true}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>a}}b</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>trailing\</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Type: A #1</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Rock &apos;n&apos; Roll</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>A&amp;B</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>C#</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+</RecordType>

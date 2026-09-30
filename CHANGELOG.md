@@ -1,5 +1,39 @@
 # Change Log
 
+## [3.29.2] - Every picklist value is written into a recipe as inert data (security)
+
+Closes [#155](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/155), from the security review of 3.29.1.
+
+Picklist values come from field XML and global value set XML in whatever repository is open, so a metadata author controls them. Some reached the generated recipe **with no escaping at all**: a dependent picklist's choices (`- value` under `random_choice:`), a record type's dependent choices, and the controlling value in `when: ${{ Field == '...' }}`. The escaping the other sinks had missed three line breaks that PyYAML recognises and js-yaml does not: U+0085, U+2028 and U+2029. XML character references (`&#10;`, `&#x2028;`) decode into real breaks, so a value that reads as one line in the source could still carry one. So a value could:
+
+- add a live field to the recipe after a line break. In faker-js, Run Faker by Recipe evaluates a field's `${{ }}` with `new Function` in the extension host. In snowfakery, U+2028 did this even in the default expression.
+- close the `when:` string with `'` and put its own Jinja in the condition (snowfakery).
+
+Now, in **both backends**, every picklist value reaches the recipe through one of two paths, and neither can change the recipe's structure or run anything:
+
+- **Expressions** go through the backend's escaper: `escapePicklistValueForJavaScriptString(value, quote)` for faker-js (backticks for `arrayElement(s)`, apostrophes for `when:`) and `escapePicklistOptionForJinjaStringLiteral` for snowfakery. Each also escapes line breaks and other non-printables as `\n`, `\r` or `\uXXXX`, `}` for faker-js (the processor ends an expression at the first `}}`), and `: ` and ` #` (as `\x20`), which end a plain YAML scalar or start a comment on the same line.
+- **Dependent choices** are YAML list items rather than expressions. An ordinary value is still written plain. Anything else is written as a double-quoted YAML scalar. In snowfakery it is also wrapped as a Jinja string literal (`"${{ '...' }}"`), because snowfakery renders any item containing `${`, quoted or not.
+- The `### TODO` naming a controlling value a record type lacks escapes the value's line breaks, so the value stays inside the comment.
+
+The shared YAML part is `RecipeYamlScalar`. Escaping is exact, not lossy: a CRLF is now kept as `\r\n` where it used to become `\n`, and every expression evaluates to exactly the value.
+
+**`FakerJSRecipeProcessor` reads the `when:` literal properly.** It used to cut the condition at the first `}}` and strip every quote from the value, so `Rock 'n' Roll` matched nothing. It now reads a single- or double-quoted literal up to its closing quote and unescapes it (`parseWhenCondition`). A condition in any other shape falls back to the old reading.
+
+**Unchanged.** Recipes generated from the existing mock metadata are byte-identical in both backends. The one change in ordinary output: a controlling value containing an apostrophe is now escaped in `when:` (`'Rock \'n\' Roll'`). That condition was broken before, in both backends.
+
+**Tests.**
+- Each backend builds one object that reaches every picklist-value sink, with 13 hostile values: each line break followed by an injected field line, plus an apostrophe breakout, a backtick breakout, `${...}`, `${{ ... }}`, `}}`, a trailing backslash, and `: `/` #`. For each value, the tests assert:
+  - the recipe has no extra line under either parser's rules;
+  - js-yaml and PyYAML load it identically with no undeclared field;
+  - faker-js evaluates every expression to exactly the value;
+  - snowfakery's values render in real Jinja to exactly the value, and the `when:` is true only for its own value.
+- A new pipeline suite, `DirectoryProcessor.hostilePicklistValues.test.ts`, runs Generate Treecipe with each backend over `HostileSalesforceMetadataDirectory`. That fixture is a picklist, dependent picklist, multi-select, global value set and two record types, with every payload written as XML character references. Every file loads in both parsers with only declared fields. Run Faker by Recipe then generates 200 faker-js records from it, and a marker the payloads would set is never set.
+- Reverting the two services fails 65 of the new backend tests. Reverting them together with the processor fails 9 of the 10 pipeline tests; the tenth only checks that the fixture decodes.
+
+PyYAML and Jinja checks run where `python3` has `yaml` and `jinja2`, and are skipped otherwise.
+
+Recipes generated before this release are not rewritten; regenerating fixes them.
+
 ## [3.29.1] - Recipes with record-type picklists load again
 
 Closes [#153](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/153), found while building the fixtures for 3.29.0.

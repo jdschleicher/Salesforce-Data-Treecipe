@@ -2,6 +2,7 @@
 
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
+import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 
 export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
@@ -77,10 +78,11 @@ export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
             // get initial list of all available picklist values before record type sections
             picklistValuesAvailableForChoice.forEach( value => {
 
+                const choiceItem = SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem(value);
                 if (randomChoicesBreakdown) {
-                    randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${value}`;
+                    randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${choiceItem}`;
                 } else {
-                    randomChoicesBreakdown = `- ${value}`;
+                    randomChoicesBreakdown = `- ${choiceItem}`;
                 }
 
             });   
@@ -98,7 +100,7 @@ export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
             let dependentPicklistRandomChoiceRecipe = 
 `${this.generateTabs(2)}- choice:
-${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${controllingValueKey}' }}
+${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(controllingValueKey)}' }}
 ${this.generateTabs(3)}pick:
 ${this.generateTabs(4)}random_choice:
 ${this.generateTabs(5)}${randomChoicesBreakdown}`;
@@ -126,26 +128,50 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     /*
-        A picklist option is UNTRUSTED text -- it comes from field metadata or a global value set in
-        whatever repository the user opened -- and it is embedded inside a SINGLE-QUOTED Jinja2 string
-        literal that the snowfakery CLI evaluates. Unescaped, a value containing an apostrophe closes
-        the literal and everything after it is evaluated as an expression rather than read as data.
+        A picklist value is UNTRUSTED text -- it comes from field metadata or a global value set in
+        whatever repository the user opened. EVERY site that writes one into an expression goes
+        through here -- random_choice(...), random_sample(elements=(...)), a dependent picklist's
+        when: condition, and a dependent choice that cannot be written as a plain YAML item -- and
+        each of them is a SINGLE-QUOTED Jinja2 string literal that the snowfakery CLI evaluates.
+        Unescaped, an apostrophe closes the literal and the rest is evaluated as an expression.
 
         This is deliberately NOT shared with the FakerJS escaper: that one targets a JavaScript
-        template literal, where the dangerous characters are the backtick and ${. The two backends
-        embed into different languages, so one escaper covering both would under-escape each.
+        string, where the backtick and ${ are the dangerous characters. The two backends embed into
+        different languages, so one escaper covering both would under-escape each.
 
         Escaped, in this order:
-          \  first, or the escapes added below would themselves be re-escaped
+          \   first, or the escapes added below would themselves be re-escaped
           '   ends the Jinja2 string literal
-          newlines, which would otherwise break the generated recipe's YAML structure
+          ": " and " #", which end a plain YAML scalar or begin a comment on the same line
+          line breaks and other non-printables, INCLUDING U+0085, U+2028 and U+2029, which PyYAML
+              reads as line breaks (RecipeYamlScalar); Jinja reads every escape back with Python's
+              unicode-escape, so the literal evaluates to exactly the value
     */
     static escapePicklistOptionForJinjaStringLiteral(picklistOption: string): string {
 
-        return String(picklistOption)
+        const escapedPicklistOption = String(picklistOption)
             .replace(/\\/g, '\\\\')
             .replace(/'/g, "\\'")
-            .replace(/\r\n|\r|\n/g, '\\n');
+            .replace(/: /g, ':\\x20')
+            .replace(/ #/g, '\\x20#');
+
+        return RecipeYamlScalar.escapeNonPrintableCharacters(escapedPicklistOption);
+
+    }
+
+    /*
+        A dependent picklist's choices are YAML list items, and snowfakery evaluates ANY item that
+        contains "${" as a template -- quoting it in YAML does not stop that. So an item that cannot
+        be written plain is written as a Jinja string literal expression, which evaluates to exactly
+        the value, and that expression is then quoted for YAML. An ordinary value stays plain.
+    */
+    static buildDependentPicklistChoiceItem(picklistValue: string): string {
+
+        const value = String(picklistValue);
+        if ( RecipeYamlScalar.isSafeAsPlainScalar(value) ) {
+            return value;
+        }
+        return RecipeYamlScalar.toDoubleQuotedScalar(`\${{ '${SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(value)}' }}`);
 
     }
 
@@ -197,7 +223,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 
             const availableRecordTypePicklistValuesForControllingField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[controllingFieldApiName];
 
-            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
+            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${RecipeYamlScalar.escapeForComment(controllingValue)}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
 
             if ( !availableRecordTypePicklistValuesForControllingField || !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
   
@@ -229,12 +255,13 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
                 }
 
                 picklistValuesForDependentField.forEach( recordTypeAvailablePicklistValue => {
-    
+
+                    const choiceItem = SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem(recordTypeAvailablePicklistValue);
                     if (recordTypeChoicesBreakdown) {
-                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;
+                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${choiceItem}`;
                     } else {
                         const recordTypeTodoVerbiage = `### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- ${recordTypeApiNameKey}`;
-                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;                                
+                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${choiceItem}`;                                
                     }
     
                 });

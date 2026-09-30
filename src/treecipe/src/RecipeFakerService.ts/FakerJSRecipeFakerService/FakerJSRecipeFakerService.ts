@@ -1,5 +1,6 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
+import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 
 export class FakerJSRecipeFakerService implements IRecipeFakerService {
 
@@ -29,10 +30,11 @@ export class FakerJSRecipeFakerService implements IRecipeFakerService {
             // get initial list of all available picklist values before record type sections
             picklistValuesAvailableForChoice.forEach( value => {
 
+                const choiceItem = FakerJSRecipeFakerService.buildDependentPicklistChoiceItem(value);
                 if (randomChoicesBreakdown) {
-                    randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${value}`;
+                    randomChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${choiceItem}`;
                 } else {
-                    randomChoicesBreakdown = `- ${value}`;
+                    randomChoicesBreakdown = `- ${choiceItem}`;
                 }
 
             });   
@@ -50,7 +52,7 @@ export class FakerJSRecipeFakerService implements IRecipeFakerService {
 
             let dependentPicklistRandomChoiceRecipe = 
 `${this.generateTabs(2)}- choice:
-${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${controllingValueKey}' ${this.closingRecipeSyntax}
+${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(controllingValueKey, "'")}' ${this.closingRecipeSyntax}
 ${this.generateTabs(3)}pick:
 ${this.generateTabs(4)}random_choice:
 ${this.generateTabs(5)}${randomChoicesBreakdown}`;
@@ -90,7 +92,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
             const availableRecordTypePicklistValuesForControllingField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[controllingFieldApiName];
 
-            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${controllingValue}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
+            const noPicklistValuesForRecordTypeVerbiage = `${newLineBreak}${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- "${RecipeYamlScalar.escapeForComment(controllingValue)}" is not an available value for ${controllingFieldApiName} for record type ${recordTypeApiNameKey}`;
 
             if ( !availableRecordTypePicklistValuesForControllingField || !availableRecordTypePicklistValuesForControllingField.includes(controllingValue) ) {
 
@@ -123,11 +125,12 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
                 picklistValuesForDependentField.forEach( recordTypeAvailablePicklistValue => {
 
+                    const choiceItem = FakerJSRecipeFakerService.buildDependentPicklistChoiceItem(recordTypeAvailablePicklistValue);
                     if (recordTypeChoicesBreakdown) {
-                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;
+                        recordTypeChoicesBreakdown += `${newLineBreak}${this.generateTabs(5)}- ${choiceItem}`;
                     } else {
                         const recordTypeTodoVerbiage = `### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- ${recordTypeApiNameKey}`;
-                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${recordTypeAvailablePicklistValue}`;                                
+                        recordTypeChoicesBreakdown = `${newLineBreak}${this.generateTabs(5)}${recordTypeTodoVerbiage}${newLineBreak}${this.generateTabs(5)}- ${choiceItem}`;                                
                     }
 
                 });
@@ -248,35 +251,52 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     /*
-        A picklist option is UNTRUSTED text -- it comes from field metadata or a global value set in
-        whatever repository the user opened -- and it is embedded inside a JavaScript template
-        literal that FakerJSRecipeProcessor later hands to new Function(). Unescaped, a value
-        containing a backtick closes the literal and everything after it is executed as code rather
-        than read as data.
+        A picklist value is UNTRUSTED text -- it comes from field metadata or a global value set in
+        whatever repository the user opened. EVERY site that writes one into an expression goes
+        through here: the arrayElement(s) lists (in backticks, which FakerJSRecipeProcessor hands to
+        new Function()) and a dependent picklist's when: condition (in single quotes, which the
+        processor parses and unescapes itself).
 
         Escaped, in this order:
-          \  first, or the escapes added below would themselves be re-escaped
-          `   ends the template literal
-          ${  opens an interpolation, which evaluates arbitrary expressions without needing a backtick
-          newlines, which would otherwise break the generated recipe's YAML structure
+          \   first, or the escapes added below would themselves be re-escaped
+          the enclosing quote, which would end the string
+          ${  opens an interpolation in a template literal, evaluating anything without a backtick
+          }   the processor finds an expression's end at the first }}, wherever it is
+          ": " and " #", which end a plain YAML scalar or begin a comment on the same line
+          line breaks and other non-printables, as either YAML parser sees them (RecipeYamlScalar)
 
-        Escaping, not stripping: a value legitimately containing these characters must still generate
-        that exact value.
+        Escaping, not stripping: the string evaluates (or unescapes) to exactly the value, and a value
+        with none of these characters is written unchanged.
     */
-    static escapePicklistOptionForTemplateLiteral(picklistOption: string): string {
+    static escapePicklistValueForJavaScriptString(picklistValue: string, enclosingQuote: '`' | "'"): string {
 
-        return String(picklistOption)
+        const escapedPicklistValue = String(picklistValue)
             .replace(/\\/g, '\\\\')
-            .replace(/`/g, '\\`')
+            .split(enclosingQuote).join(`\\${enclosingQuote}`)
             .replace(/\$\{/g, '\\${')
-            .replace(/\r\n|\r|\n/g, '\\n');
+            .replace(/\}/g, '\\}')
+            .replace(/: /g, ':\\x20')
+            .replace(/ #/g, '\\x20#');
+
+        return RecipeYamlScalar.escapeNonPrintableCharacters(escapedPicklistValue);
+
+    }
+
+    /*
+        A dependent picklist's choices are YAML list items, not expressions: the processor picks one
+        and writes it as it loaded. So only the YAML has to hold, and an ordinary value stays plain.
+    */
+    static buildDependentPicklistChoiceItem(picklistValue: string): string {
+
+        const value = String(picklistValue);
+        return RecipeYamlScalar.isSafeAsPlainScalar(value) ? value : RecipeYamlScalar.toDoubleQuotedScalar(value);
 
     }
 
     buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
 
         const joinedChoices = availablePicklistChoices
-            .map(option => `\`${FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral(option)}\``)
+            .map(option => `\`${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(option, '`')}\``)
             .join(',');
         const fakerjsChoicesSyntax = `faker.helpers.arrayElement([${joinedChoices}])`;
 
@@ -287,7 +307,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(availablePicklistChoices: string[] ):string {
 
         const joinedChoices = availablePicklistChoices
-            .map(option => `\`${FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral(option)}\``)
+            .map(option => `\`${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(option, '`')}\``)
             .join(',');
         const fakerjsChoicesSyntax = `(faker.helpers.arrayElements([${joinedChoices}])).join(';')`;
 

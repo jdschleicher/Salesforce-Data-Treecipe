@@ -3,6 +3,20 @@ import * as yaml from 'js-yaml';
 import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper";
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { FakerJSRecipeFakerService } from "../FakerJSRecipeFakerService";
+import {
+    ANY_YAML_LINE_BREAK,
+    CONTROLLING_FIELD_API_NAME,
+    DEPENDENT_FIELD_API_NAME,
+    HOSTILE_PICKLIST_VALUES,
+    INJECTION_MARKER,
+    LoadedRecipeWithEveryPicklistSink,
+    MULTI_PICKLIST_FIELD_API_NAME,
+    ORDINARY_PICKLIST_VALUES,
+    OTHER_PICKLIST_VALUE,
+    buildRecipeWithEveryPicklistSink,
+    isPythonModuleAvailable,
+    loadWithPyYaml
+} from "../../RecipeYamlScalar/tests/mocks/HostilePicklistValues";
 
 // A FIELD'S RECIPE VALUE ONLY HAS TO BE VALID YAML WHERE RecipeService PUTS IT: AFTER "Field: " UNDER AN OBJECT'S fields BLOCK
 function loadFieldInRecipe(fieldApiName: string, recipeValue: string): unknown {
@@ -411,7 +425,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         FakerJSRecipeProcessor hands to new Function(). An unescaped backtick closes the literal and
         turns the rest of the value into executable code.
     */
-    describe('escapePicklistOptionForTemplateLiteral', () => {
+    describe('escapePicklistValueForJavaScriptString', () => {
 
         const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
 
@@ -446,15 +460,15 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
         test('given a value containing a backslash, escapes it first so it cannot re-escape the escaping', () => {
 
-            expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral('back\\slash')).toBe('back\\\\slash');
+            expect(FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString('back\\slash', '`')).toBe('back\\\\slash');
             // A TRAILING BACKSLASH WOULD OTHERWISE ESCAPE THE CLOSING BACKTICK
-            expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral('trailing\\')).toBe('trailing\\\\');
+            expect(FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString('trailing\\', '`')).toBe('trailing\\\\');
 
         });
 
         test('given a value containing a newline, escapes it so the recipe YAML structure survives', () => {
 
-            expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral('a\nb')).toBe('a\\nb');
+            expect(FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString('a\nb', '`')).toBe('a\\nb');
 
         });
 
@@ -462,7 +476,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 
             const ordinaryOptions = ['guardians', 'cavs', 'Ohio_City', 'Some Value'];
             ordinaryOptions.forEach(ordinaryOption => {
-                expect(FakerJSRecipeFakerService.escapePicklistOptionForTemplateLiteral(ordinaryOption)).toBe(ordinaryOption);
+                expect(FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(ordinaryOption, '`')).toBe(ordinaryOption);
             });
 
         });
@@ -606,6 +620,139 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
             expect(ootbObjectToFieldMappings['Event']['Location']).toBe(
                 '${{faker.location.streetAddress()}}, {{faker.location.city()}}, {{faker.location.state()}} {{faker.location.zipCode()}}'
             );
+
+        });
+
+    });
+
+});
+
+/*
+    #155. Picklist values come from metadata in whatever repository the user opened. Every site that
+    writes one into a recipe -- default and record-type expressions, a dependent picklist's when:
+    condition and its choices, a record type's dependent choices, and the TODO naming a controlling
+    value -- is exercised at once by buildRecipeWithEveryPicklistSink, so a site that embeds a value
+    without escaping it fails here whichever site it is.
+*/
+describe('FakerJSRecipeFakerService writes every picklist value inertly', () => {
+
+    const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+    const isPyYamlAvailable = isPythonModuleAvailable('yaml');
+
+    // FakerJSRecipeProcessor.regExpressionForSurroundingFakerJSSyntax: AN EXPRESSION ENDS AT THE FIRST }}
+    const evaluateFakerJSExpressions = (recipeValue: string): string => recipeValue.replace(/\${{(.*?)}}/g, (unusedMatch: string, fakerJSCode: string) => {
+        const firstElementFaker = { helpers: { arrayElement: (options: string[]) => options[0], arrayElements: (options: string[]) => options.slice(0, 1) } };
+        return new Function('faker', `return (${fakerJSCode.trim()})`)(firstElementFaker);
+    });
+
+    afterEach(() => {
+        delete (globalThis as Record<string, unknown>)[INJECTION_MARKER];
+    });
+
+    test.each(HOSTILE_PICKLIST_VALUES)('a value with %s adds no line to the recipe, as either YAML parser counts lines', (unusedDescription, hostileValue) => {
+
+        const ordinaryRecipe = buildRecipeWithEveryPicklistSink(fakerJSRecipeFakerService, 'ordinary');
+        const hostileRecipe = buildRecipeWithEveryPicklistSink(fakerJSRecipeFakerService, hostileValue);
+
+        expect(hostileRecipe.split(ANY_YAML_LINE_BREAK)).toHaveLength(ordinaryRecipe.split(ANY_YAML_LINE_BREAK).length);
+
+    });
+
+    test.each(HOSTILE_PICKLIST_VALUES)('a value with %s loads in js-yaml as one value in every sink, and declares no other field', (unusedDescription, hostileValue) => {
+
+        const loadedRecipe = yaml.load(buildRecipeWithEveryPicklistSink(fakerJSRecipeFakerService, hostileValue)) as LoadedRecipeWithEveryPicklistSink;
+        const loadedFields = loadedRecipe[0].fields;
+
+        expect(Object.keys(loadedFields)).toEqual([CONTROLLING_FIELD_API_NAME, DEPENDENT_FIELD_API_NAME, MULTI_PICKLIST_FIELD_API_NAME]);
+        expect(loadedFields[DEPENDENT_FIELD_API_NAME].if).toHaveLength(1);
+        // THE DEPENDENT CHOICES, THEN THE ONE RECORD TYPE THAT HAS THE VALUE; THE OTHER RECORD TYPE IS A COMMENT
+        expect(loadedFields[DEPENDENT_FIELD_API_NAME].if[0].choice.pick.random_choice).toEqual([hostileValue, OTHER_PICKLIST_VALUE, hostileValue]);
+
+    });
+
+    test.each(HOSTILE_PICKLIST_VALUES)('a value with %s evaluates to exactly itself and runs nothing', (unusedDescription, hostileValue) => {
+
+        const loadedFields = (yaml.load(buildRecipeWithEveryPicklistSink(fakerJSRecipeFakerService, hostileValue)) as LoadedRecipeWithEveryPicklistSink)[0].fields;
+
+        expect(evaluateFakerJSExpressions(loadedFields[CONTROLLING_FIELD_API_NAME] as string)).toBe(hostileValue);
+        expect(evaluateFakerJSExpressions(loadedFields[MULTI_PICKLIST_FIELD_API_NAME] as string)).toBe(hostileValue);
+        expect(globalThis).not.toHaveProperty(INJECTION_MARKER);
+
+    });
+
+    (isPyYamlAvailable ? test : test.skip)('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
+
+        const hostileRecipes = HOSTILE_PICKLIST_VALUES.map(([, hostileValue]) => buildRecipeWithEveryPicklistSink(fakerJSRecipeFakerService, hostileValue));
+
+        expect(loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
+
+    });
+
+    test('an ordinary value is written exactly as before', () => {
+
+        const ordinaryRecipeValue = fakerJSRecipeFakerService.buildDependentPicklistRecipeFakerValue({ "Rock 'n' Roll": ORDINARY_PICKLIST_VALUES }, {}, 'Genre__c', 'Band__c');
+
+        expect(ordinaryRecipeValue).toBe([
+            '',
+            '      if:',
+            '        - choice:',
+            "            when: ${{ Genre__c == 'Rock \\'n\\' Roll' }}",
+            '            pick:',
+            '                random_choice:',
+            "                    - Rock 'n' Roll",
+            '                    - A&B',
+            '                    - C#',
+            '                    - Some Value',
+            '                    - Ohio_City'
+        ].join('\n'));
+        expect(fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(ORDINARY_PICKLIST_VALUES, {}, 'Genre__c'))
+            .toBe("${{ faker.helpers.arrayElement([`Rock 'n' Roll`,`A&B`,`C#`,`Some Value`,`Ohio_City`]) }}");
+
+    });
+
+    describe('escapePicklistValueForJavaScriptString', () => {
+
+        test.each([
+            ['a backtick, inside backticks', 'a`b', '`', 'a\\`b'],
+            ['an apostrophe, inside apostrophes', "a'b", "'", "a\\'b"],
+            ['an apostrophe, inside backticks, which cannot close them', "a'b", '`', "a'b"],
+            ['an interpolation', '${x}', "'", '\\${x\\}'],
+            ['an expression closer', 'a}}b', '`', 'a\\}\\}b'],
+            ['a colon-space and a space-hash', 'Type: A #1', '`', 'Type:\\x20A\\x20#1'],
+            ['a CRLF, kept exactly', 'a\r\nb', '`', 'a\\r\\nb'],
+            ['a line separator', 'a\u2028b', '`', 'a\\u2028b']
+        ] as const)('escapes %s', (unusedDescription, picklistValue, enclosingQuote, expectedEscapedValue) => {
+
+            expect(FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(picklistValue, enclosingQuote)).toBe(expectedEscapedValue);
+
+        });
+
+        test.each(HOSTILE_PICKLIST_VALUES)('a value with %s round-trips through a string in either quote', (unusedDescription, hostileValue) => {
+
+            const backtickLiteral = `\`${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(hostileValue, '`')}\``;
+            const apostropheLiteral = `'${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(hostileValue, "'")}'`;
+
+            expect(new Function(`return ${backtickLiteral}`)()).toBe(hostileValue);
+            expect(new Function(`return ${apostropheLiteral}`)()).toBe(hostileValue);
+
+        });
+
+    });
+
+    describe('buildDependentPicklistChoiceItem', () => {
+
+        test('writes an ordinary value plain', () => {
+
+            ORDINARY_PICKLIST_VALUES.forEach(ordinaryValue => {
+                expect(FakerJSRecipeFakerService.buildDependentPicklistChoiceItem(ordinaryValue)).toBe(ordinaryValue);
+            });
+
+        });
+
+        test('quotes anything else, so the item loads as the value', () => {
+
+            expect(FakerJSRecipeFakerService.buildDependentPicklistChoiceItem('a: b')).toBe('"a: b"');
+            expect(yaml.load(`- ${FakerJSRecipeFakerService.buildDependentPicklistChoiceItem('a\u2028b')}`)).toEqual(['a\u2028b']);
 
         });
 
