@@ -54,8 +54,16 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 
-// snowfakery reads recipes with PyYAML, whose YAML 1.1 rules differ from js-yaml's; it is checked where the interpreter has it
-const PYYAML_CHECK = 'import sys, yaml; yaml.safe_load(sys.stdin.read())';
+// snowfakery reads recipes with PyYAML, whose YAML 1.1 rules differ from js-yaml's; it is checked where the interpreter has it.
+// ONE interpreter per backend reads every file (a JSON array on stdin) and prints the name of each it cannot load
+const PYYAML_CHECK = [
+    'import json, sys, yaml',
+    'for recipe_file in json.load(sys.stdin):',
+    '    try:',
+    '        yaml.safe_load(recipe_file["content"])',
+    '    except yaml.YAMLError as yaml_error:',
+    '        print(recipe_file["fileName"] + ": " + str(yaml_error).splitlines()[0])'
+].join('\n');
 const isPyYamlAvailable = (() => {
     try {
         childProcess.execFileSync('python3', ['-c', 'import yaml'], { stdio: 'ignore' });
@@ -82,18 +90,23 @@ describe.each([
     ['snowfakery', () => new SnowfakeryRecipeFakerService()]
 ] as const)('Generate Treecipe with the %s backend, over the mock metadata', (unusedBackend, createFakerService) => {
 
-    test('writes record-type variants for a picklist and a multi-select picklist, so the check below is about them', async () => {
+    // THE PIPELINE RUNS ONCE PER BACKEND; restoreMocks PUTS THE ConfigurationService SPIES BACK AFTER THE FIRST TEST, WHICH NOTHING LATER NEEDS
+    let recipeFiles: RecipeFileOutput[];
 
-        const recipeText = (await generateRecipeFiles(createFakerService)).map(recipeFile => recipeFile.content).join('\n');
+    beforeAll(async () => {
+        recipeFiles = await generateRecipeFiles(createFakerService);
+    });
+
+    test('writes record-type variants for a picklist and a multi-select picklist, so the checks below are about them', () => {
+
+        const recipeText = recipeFiles.map(recipeFile => recipeFile.content).join('\n');
 
         expect(recipeText).toMatch(/### TODO: -- RecordType Options -- \w+ -- Below is the faker recipe for the record type \w+ for the field Picklist__c\n {20}# \$\{\{/);
         expect(recipeText).toMatch(/### TODO: -- RecordType Options -- \w+ -- Below is the Multiselect faker recipe for the record type \w+ for the field MultiPicklist__c\n {20}# \$\{\{/);
 
     });
 
-    test('every recipe file it writes loads with js-yaml', async () => {
-
-        const recipeFiles = await generateRecipeFiles(createFakerService);
+    test('every recipe file it writes loads with js-yaml', () => {
 
         expect(recipeFiles.length).toBeGreaterThan(1);
         recipeFiles.forEach(recipeFile => {
@@ -102,13 +115,12 @@ describe.each([
 
     });
 
-    (isPyYamlAvailable ? test : test.skip)('every recipe file it writes loads with PyYAML', async () => {
+    (isPyYamlAvailable ? test : test.skip)('every recipe file it writes loads with PyYAML', () => {
 
-        const recipeFiles = await generateRecipeFiles(createFakerService);
+        const pyYamlInput = JSON.stringify(recipeFiles.map(recipeFile => ({ fileName: recipeFile.fileName, content: recipeFile.content })));
+        const unloadableRecipeFiles = childProcess.execFileSync('python3', ['-c', PYYAML_CHECK], { input: pyYamlInput, encoding: 'utf-8' });
 
-        recipeFiles.forEach(recipeFile => {
-            expect(() => childProcess.execFileSync('python3', ['-c', PYYAML_CHECK], { input: recipeFile.content, stdio: ['pipe', 'ignore', 'pipe'] })).not.toThrow();
-        });
+        expect(unloadableRecipeFiles).toBe('');
 
     });
 

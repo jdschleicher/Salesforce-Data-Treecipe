@@ -462,6 +462,42 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
         });
 
+        test('a picklist with record types writes each record type\'s expression as a commented line under its TODO', () => {
+
+            const actualRecipeValue = snowfakeryService.buildPicklistRecipeValueByXMLFieldDetail(
+                ['cle','eastlake','madison','mentor','wickliffe','willoughby'],
+                recordTypeWrapperMap,
+                'Picklist__c'
+            );
+
+            expect(actualRecipeValue).toBe([
+                "${{ random_choice('cle', 'eastlake', 'madison', 'mentor', 'wickliffe', 'willoughby') }}",
+                '                    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c',
+                "                    # ${{ random_choice('cle', 'eastlake') }}",
+                '                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c',
+                "                    # ${{ random_choice('cle', 'willoughby') }}"
+            ].join('\n'));
+
+        });
+
+        test('a multi-select picklist with record types writes each record type\'s expression as a commented line under its TODO', () => {
+
+            const actualRecipeValue = snowfakeryService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(
+                ['chicken','chorizo','egg','fish','pork','steak','tofu'],
+                recordTypeWrapperMap,
+                'MultiPicklist__c'
+            );
+
+            expect(actualRecipeValue).toBe([
+                "${{ (';').join((fake.random_sample(elements=('chicken', 'chorizo', 'egg', 'fish', 'pork', 'steak', 'tofu')))) }}",
+                '                    ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c',
+                "                    # ${{ (';').join((fake.random_sample(elements=('chorizo', 'pork', 'steak', 'tofu')))) }}",
+                '                    ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c',
+                "                    # ${{ (';').join((fake.random_sample(elements=('chicken', 'egg', 'fish', 'tofu')))) }}"
+            ].join('\n'));
+
+        });
+
         test('a record type with no values for the field adds no lines', () => {
 
             const recordTypeWithoutField: Record<string, RecordTypeWrapper> = {
@@ -478,7 +514,7 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
         test.each([
             ['picklist', 'buildPicklistRecipeValueByXMLFieldDetail'],
             ['multi-select picklist', 'buildMultiSelectPicklistRecipeValueByXMLFieldDetail']
-        ] as const)('a %s variant escapes a quote, & and # exactly as the default does, and the recipe still loads', (unusedDescription, builderName) => {
+        ] as const)('a %s variant escapes a quote, & and a # with no space before it exactly as the default does, and the recipe still loads', (unusedDescription, builderName) => {
 
             const specialValues = ["Rock 'n' Roll", 'A&B', 'C#'];
             const recordTypeWithSpecialValues: Record<string, RecordTypeWrapper> = {

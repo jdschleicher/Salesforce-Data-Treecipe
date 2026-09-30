@@ -320,7 +320,7 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
         test.each([
             ['picklist', 'buildPicklistRecipeValueByXMLFieldDetail'],
             ['multi-select picklist', 'buildMultiSelectPicklistRecipeValueByXMLFieldDetail']
-        ] as const)('a %s variant escapes a quote, & and # exactly as the default does, and the recipe still loads', (unusedDescription, builderName) => {
+        ] as const)('a %s variant escapes a quote, & and a # with no space before it exactly as the default does, and the recipe still loads', (unusedDescription, builderName) => {
 
             const specialValues = ["Rock 'n' Roll", 'A&B', 'C#'];
             const recordTypeWithSpecialValues: Record<string, RecordTypeWrapper> = {
