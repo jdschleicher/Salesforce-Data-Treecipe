@@ -687,7 +687,7 @@ describe('RecipeCockpitService', () => {
                 '- object: Account',
                 '  fields:',
                 '    Industry: x',
-                '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- removed',
+                '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 1 line -- removed',
                 '    # Rating: y',
                 '  # a note of the reader\'s own',
                 '    Phone: |',

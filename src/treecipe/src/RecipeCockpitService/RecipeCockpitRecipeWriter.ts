@@ -37,6 +37,7 @@ export type RecipeWriterRefusalReason =
     | 'commented-out-field-not-found'
     | 'duplicate-commented-out-field'
     | 'unsupported-field-layout'
+    | 'commented-out-field-altered'
     | 'property-not-found'
     | 'duplicate-property';
 
@@ -171,12 +172,14 @@ export class RecipeCockpitRecipeWriter {
 
     /*
         The field's own lines become "    # " followed by the line without its first four spaces,
-        under a marker that names the field. Every line of a field starts with four spaces (a field
-        line has exactly four, a continuation five or more) except an empty line inside it, which
-        becomes "    #". That encoding has one inverse, so restoreCommentedOutField gives back the
-        field byte for byte; a whitespace-only line of one to three spaces has no place in it, and
-        the field is refused rather than restored as something else. The lines sit at four spaces rather than deeper, because deeper lines
-        would read as the continuation of the field above them.
+        under a marker that names the field and HOW MANY lines follow it. Every line of a field
+        starts with four spaces (a field line has exactly four, a continuation five or more) except
+        an empty line inside it, which becomes "    #". That encoding has one inverse, so
+        restoreCommentedOutField gives back the field byte for byte; a whitespace-only line of one
+        to three spaces has no place in it, and the field is refused rather than restored as
+        something else. The count is what bounds the restore: without it, a comment of the reader's
+        own directly below would read as more of the field. The lines sit at four spaces rather
+        than deeper, because deeper lines would read as the continuation of the field above them.
     */
     static commentOutField(recipeText: string, objectApiName: string, fieldApiName: string, reason: string): RecipeWriterResult {
 
@@ -192,8 +195,10 @@ export class RecipeCockpitRecipeWriter {
             return this.refuse('unsupported-field-layout', `${objectApiName}.${fieldApiName} has a line of one to three spaces inside it, which commenting out could not give back exactly.`, objectApiName, fieldApiName);
         }
 
-        const singleLineReason = reason.replace(/\s+/g, ' ').trim();
-        const markerLine = `${COMMENTED_OUT_MARKER_PREFIX}${fieldApiName}${singleLineReason ? ` -- ${singleLineReason}` : ''}`;
+        // EVERY LINE BREAK PyYAML READS -- U+0085 IS NOT IN \s -- AND EVERY CONTROL CHARACTER, SO THE REASON CANNOT END THE COMMENT
+        const singleLineReason = reason.replace(/[\s\u0000-\u001f\u007f-\u009f]+/g, ' ').trim();
+        const lineCountText = `${fieldLines.length} ${fieldLines.length === 1 ? 'line' : 'lines'}`;
+        const markerLine = `${COMMENTED_OUT_MARKER_PREFIX}${fieldApiName} -- ${lineCountText}${singleLineReason ? ` -- ${singleLineReason}` : ''}`;
         const commentedLines = fieldLines.map(fieldLine => (
             fieldLine ? `${COMMENT_PREFIX} ${fieldLine.slice(FIELD_INDENT.length)}` : COMMENT_PREFIX
         ));
@@ -218,8 +223,7 @@ export class RecipeCockpitRecipeWriter {
             return this.refuse('field-already-exists', `${objectApiName} already has a ${fieldApiName} line, so the commented-out one is not restored over it.`, objectApiName, fieldApiName);
         }
 
-        // A MARKER WITH NOTHING UNDER IT WOULD "RESTORE" BY DELETING ITSELF
-        const markers = scannedObject.commentedOutFieldMarkers.filter(marker => marker.fieldApiName === fieldApiName && marker.endIndex > marker.startIndex + 1);
+        const markers = scannedObject.commentedOutFieldMarkers.filter(marker => marker.fieldApiName === fieldApiName);
 
         if ( markers.length === 0 ) {
             return this.refuse('commented-out-field-not-found', `${objectApiName} has no ${fieldApiName} commented out by the Recipe Cockpit.`, objectApiName, fieldApiName);
@@ -230,7 +234,11 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const [marker] = markers;
-        const restoredLines = recipeLines.lines.slice(marker.startIndex + 1, marker.endIndex).map(commentedLine => this.uncommentLine(commentedLine));
+        const restoredLines = this.readCommentedOutFieldLines(recipeLines.lines, marker);
+
+        if ( !restoredLines ) {
+            return this.refuse('commented-out-field-altered', `The lines under ${objectApiName}'s ${fieldApiName} marker are not the ones commenting it out wrote, so restoring them could not give the field back exactly.`, objectApiName, fieldApiName);
+        }
 
         return this.applySplice(recipeLines, marker, restoredLines, {
             operation: 'restore-commented-out-field',
@@ -327,12 +335,10 @@ export class RecipeCockpitRecipeWriter {
 
         let currentObject: IScannedObject | undefined;
         let currentField: IScannedField | undefined;
-        let currentMarker: IScannedField | undefined;
         let isInFieldsBlock = false;
 
         const closeCurrentField = () => {
             currentField = undefined;
-            currentMarker = undefined;
         };
 
         lines.forEach((recipeLine, lineIndex) => {
@@ -356,8 +362,6 @@ export class RecipeCockpitRecipeWriter {
             }
 
             if ( !currentObject || !recipeLine.trim() ) {
-                // commentOutField ENCODES A BLANK LINE, SO A RAW ONE IS NEVER INSIDE A MARKER'S SPAN
-                currentMarker = undefined;
                 return;
             }
 
@@ -380,7 +384,10 @@ export class RecipeCockpitRecipeWriter {
             }
 
             if ( isInFieldsBlock && FIELDS_BLOCK_COMMENT_PATTERN.test(recipeLine) ) {
-                this.scanFieldsBlockComment(recipeLine, lineIndex, currentObject, currentMarker, (nextMarker) => { currentMarker = nextMarker; });
+                const commentedOutFieldMarker = this.readCommentedOutFieldMarker(recipeLine, lineIndex);
+                if ( commentedOutFieldMarker ) {
+                    currentObject.commentedOutFieldMarkers.push(commentedOutFieldMarker);
+                }
                 currentField = undefined;
                 currentObject.lastFieldsBlockLineIndex = lineIndex;
                 return;
@@ -411,48 +418,55 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
-    private static scanFieldsBlockComment(
-        recipeLine: string,
-        lineIndex: number,
-        currentObject: IScannedObject,
-        currentMarker: IScannedField | undefined,
-        setCurrentMarker: (nextMarker: IScannedField | undefined) => void
-    ): void {
+    // THE SPAN IS THE MARKER AND THE LINE COUNT IT DECLARES, WHETHER OR NOT THOSE LINES ARE STILL THERE -- readCommentedOutFieldLines DECIDES THAT
+    private static readCommentedOutFieldMarker(recipeLine: string, lineIndex: number): IScannedField | undefined {
 
-        if ( recipeLine.startsWith(COMMENTED_OUT_MARKER_PREFIX) ) {
-            const markedFieldApiName = /^([A-Za-z][A-Za-z0-9_]*)(?: -- |$)/.exec(recipeLine.slice(COMMENTED_OUT_MARKER_PREFIX.length));
-            const nextMarker = markedFieldApiName
-                ? { fieldApiName: markedFieldApiName[1], startIndex: lineIndex, endIndex: lineIndex + 1 }
-                : undefined;
-            if ( nextMarker ) {
-                currentObject.commentedOutFieldMarkers.push(nextMarker);
-            }
-            setCurrentMarker(nextMarker);
-            return;
+        if ( !recipeLine.startsWith(COMMENTED_OUT_MARKER_PREFIX) ) {
+            return undefined;
         }
 
-        if ( !currentMarker || !this.isCommentedLine(recipeLine) ) {
-            setCurrentMarker(undefined);
-            return;
+        const markerMatch = /^([A-Za-z][A-Za-z0-9_]*) -- (\d{1,9}) lines?(?: -- |$)/.exec(recipeLine.slice(COMMENTED_OUT_MARKER_PREFIX.length));
+
+        return markerMatch
+            ? { fieldApiName: markerMatch[1], startIndex: lineIndex, endIndex: lineIndex + 1 + Number(markerMatch[2]) }
+            : undefined;
+
+    }
+
+    /*
+        The field's lines under a marker, uncommented -- or undefined unless they are exactly what
+        commentOutField writes: the declared number of commented lines, the first the field's own
+        line, the rest continuations or blank, and the last not blank.
+    */
+    private static readCommentedOutFieldLines(lines: string[], marker: IScannedField): string[] | undefined {
+
+        const commentedLines = lines.slice(marker.startIndex + 1, marker.endIndex);
+
+        if ( commentedLines.length === 0 || marker.endIndex > lines.length || !commentedLines.every(commentedLine => this.isCommentedLine(commentedLine)) ) {
+            return undefined;
         }
 
-        // THE FIRST LINE UNDER A MARKER IS THE FIELD'S OWN; AFTER IT, ONLY WHAT WAS A CONTINUATION OR A BLANK BELONGS TO IT
-        const uncommentedLine = this.uncommentLine(recipeLine);
-        const isFirstLine = currentMarker.endIndex === currentMarker.startIndex + 1;
-        const belongsToMarker = isFirstLine
-            ? new RegExp(`^ {4}${currentMarker.fieldApiName}:`).test(uncommentedLine)
-            : ( !uncommentedLine.trim() || CONTINUATION_LINE_PATTERN.test(uncommentedLine) );
+        const [fieldLine, ...continuationLines] = commentedLines.map(commentedLine => this.uncommentLine(commentedLine));
 
-        if ( !belongsToMarker ) {
-            if ( isFirstLine ) {
-                currentObject.commentedOutFieldMarkers.pop();
-            }
-            setCurrentMarker(undefined);
-            return;
+        if ( !fieldLine.startsWith(`${FIELD_INDENT}${marker.fieldApiName}:`) ) {
+            return undefined;
         }
 
-        currentMarker.endIndex = lineIndex + 1;
+        if ( !continuationLines.every(continuationLine => this.isBlankFieldLine(continuationLine) || CONTINUATION_LINE_PATTERN.test(continuationLine)) ) {
+            return undefined;
+        }
 
+        if ( continuationLines.length > 0 && !continuationLines[continuationLines.length - 1].trim() ) {
+            return undefined;
+        }
+
+        return [fieldLine, ...continuationLines];
+
+    }
+
+    // THE ONLY BLANK LINES commentOutField CAN GIVE BACK EXACTLY: EMPTY, OR WHITESPACE BEHIND AT LEAST THE FIELD INDENT
+    private static isBlankFieldLine(recipeLine: string): boolean {
+        return !recipeLine || ( recipeLine.startsWith(FIELD_INDENT) && !recipeLine.trim() );
     }
 
     private static isCommentedLine(recipeLine: string): boolean {
@@ -485,10 +499,7 @@ export class RecipeCockpitRecipeWriter {
             return this.refuse('duplicate-object', `The recipe has ${scannedObjects.length} "- object: ${objectApiName}" lines, so which to change cannot be told.`, objectApiName, fieldApiName);
         }
 
-        const [scannedObject] = scannedObjects;
-        scannedObject.commentedOutFieldMarkers.forEach(marker => this.dropTrailingEncodedBlankLines(recipeLines.lines, marker));
-
-        return { recipeLines: recipeLines, scannedObject: scannedObject };
+        return { recipeLines: recipeLines, scannedObject: scannedObjects[0] };
 
     }
 
@@ -519,13 +530,6 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
-    // A FIELD NEVER ENDS ON A BLANK LINE, SO AN ENCODED BLANK AT THE END OF A MARKER'S SPAN IS NOT THE FIELD'S
-    private static dropTrailingEncodedBlankLines(lines: string[], marker: IScannedField): void {
-        while ( marker.endIndex > marker.startIndex + 2 && !this.uncommentLine(lines[marker.endIndex - 1]).trim() ) {
-            marker.endIndex--;
-        }
-    }
-
     private static refuseUnlessOneFieldsBlock(scannedObject: IScannedObject, fieldApiName: string): { isApplied: false; refusal: IRecipeWriterRefusal } | undefined {
 
         if ( scannedObject.fieldsLineIndexes.length === 0 ) {
@@ -542,19 +546,22 @@ export class RecipeCockpitRecipeWriter {
 
     /*
         undefined when the value would not read back as this one field: every line after the first
-        must be a continuation (five spaces or more) or blank, and the last must not be blank, since
-        a trailing blank line is the gap between fields rather than part of one.
+        must be a continuation (five spaces or more) or a blank commentOutField can give back, and
+        the last must not be blank, since a trailing blank line is the gap between fields rather
+        than part of one. A bare CR and the Unicode line breaks are refused outright: PyYAML, which
+        snowfakery reads recipes with, breaks lines at U+0085, U+2028 and U+2029, so any of them
+        would start a line this writer never checked -- a new field, or a new object.
     */
     private static buildFieldLines(fieldApiName: string, valueText: string): string[] | undefined {
 
         const fieldLines = `${FIELD_INDENT}${fieldApiName}: ${valueText}`.split(/\r\n|\n/);
         const continuationLines = fieldLines.slice(1);
 
-        if ( fieldLines.some(fieldLine => fieldLine.includes('\r')) ) {
+        if ( fieldLines.some(fieldLine => /[\r\u0085\u2028\u2029]/.test(fieldLine)) ) {
             return undefined;
         }
 
-        if ( continuationLines.some(continuationLine => continuationLine.trim() && !CONTINUATION_LINE_PATTERN.test(continuationLine)) ) {
+        if ( !continuationLines.every(continuationLine => this.isBlankFieldLine(continuationLine) || CONTINUATION_LINE_PATTERN.test(continuationLine)) ) {
             return undefined;
         }
 

@@ -12,8 +12,8 @@ Each is addressed by object api name and field api name, and returns either `{ i
 
 - `insertField(text, object, field, valueText)` appends to the object's `fields:` block, after its last line (a field, a continuation or a comment).
 - `replaceFieldValue(text, object, field, valueText)` replaces the field line and every continuation line under it.
-- `commentOutField(text, object, field, reason)` rewrites the field's lines as `    # ` comments under a `    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- <field> -- <reason>` marker. It is reversible where deletion is not.
-- `restoreCommentedOutField(text, object, field)` is its inverse, and gives back the original text byte for byte.
+- `commentOutField(text, object, field, reason)` rewrites the field's lines as `    # ` comments under a `    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- <field> -- <n> lines -- <reason>` marker. It is reversible where deletion is not.
+- `restoreCommentedOutField(text, object, field)` is its inverse, and gives back the original text byte for byte. It restores exactly the number of lines the marker declares, and only if they are still what `commentOutField` wrote; otherwise it refuses (`commented-out-field-altered`).
 - `setObjectProperty(text, object, 'nickname' | 'count', value)` rewrites the one property line, the primitive slice 4 needs.
 
 `valueText` is what follows `Field: `, exactly as the faker services build it: one line, or a first line followed by lines indented five spaces or more. A value starting with a newline (the dependent-picklist `if:` block) leaves `Field: ` with its trailing space, as `RecipeService.appendFieldRecipeToObjectRecipe` writes it. The open question on the issue (should the marker carry a date or an org) is answered by `reason`: the caller writes what it knows, and slice 3 knows the org.
@@ -21,6 +21,14 @@ Each is addressed by object api name and field api name, and returns either `{ i
 ### Refusals
 
 A write never guesses. `parseRecipeSource` takes the first occurrence of an object or a field, which is the right rule for jumping to a line and the wrong one for changing it. The writer returns a typed refusal instead of changed text for: an unknown object or field, an object written twice, a field written twice, an object with no `fields:` block or with two, an `insertField` for a field that already exists, a property line missing or written twice, a value that would not read back as that one field (a second line under five spaces, a trailing blank line, a bare carriage return), a count that is not a whole number, a nickname that is not a name, and a field or object api name that is not one (so no value can smuggle a new `- object:` line in through its name). Restoring refuses a field that has been inserted again, one commented out twice, and a marker whose next line is not the field it names.
+
+### Found in review
+
+- **The marker carries its line count.** Without one, restore guessed where the field ended, and a comment of the reader's own directly below a commented-out field (`    #     keep this note`) was restored as a continuation of it: `Name: x` came back as `x keep this note`. Restore now reads exactly the declared lines and checks them.
+- **Unicode line breaks are refused in a value.** PyYAML, which snowfakery reads recipes with, breaks lines at U+0085, U+2028 and U+2029, so `x\u2028- object: Evil` added an object the cockpit's reader cannot see. `valueText` carrying any of them, or a bare CR, is `invalid-value`. `reason` has every line break and control character collapsed to a space.
+- **A value with a whitespace line of one to three spaces is refused**, because `commentOutField` could not give such a field back exactly: the writer used to accept a field it could not then remove.
+- **No regular expression is built at runtime.** The first line under a marker is matched with `startsWith`; a hand-crafted marker with a field name of ~200k characters made V8 throw `Regular expression too large` out of an operation on an unrelated field.
+- **Not done here:** every call re-splits and re-scans the whole file, so a batch of k edits is O(k·L) (measured: 100 edits on a 2.34 MB recipe, 5.8 s). A single edit is ~50 ms at 83,700 lines. A later slice that applies edits in bulk should add a one-scan batch entry point first.
 
 ### Why lines, not a YAML emitter
 

@@ -250,7 +250,8 @@ describe('RecipeCockpitRecipeWriter', () => {
 
                     const { recipeText: commentedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeText, objectApiName, fieldApiName, 'not in devhub'));
 
-                    expect(edit.insertedLines[0]).toBe(`${RecipeCockpitRecipeWriter.COMMENTED_OUT_MARKER_PREFIX}${fieldApiName} -- not in devhub`);
+                    const lineCount = edit.removedLines.length;
+                    expect(edit.insertedLines[0]).toBe(`${RecipeCockpitRecipeWriter.COMMENTED_OUT_MARKER_PREFIX}${fieldApiName} -- ${lineCount} ${lineCount === 1 ? 'line' : 'lines'} -- not in devhub`);
                     expect(edit.insertedLines).toHaveLength(edit.removedLines.length + 1);
                     edit.insertedLines.forEach(insertedLine => expect(insertedLine).toMatch(/^ {4}#/));
                     expectFidelity(recipeText, commentedRecipeText, edit);
@@ -407,6 +408,16 @@ describe('RecipeCockpitRecipeWriter', () => {
             ['a value whose second line is not a continuation', () => RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Account', 'Phone', 'x\n    Injected: y'), 'invalid-value'],
             ['a value that ends in a blank line', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Website', '|\n        x\n'), 'invalid-value'],
             ['a value carrying a bare carriage return', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Website', 'x\ry'), 'invalid-value'],
+            // PyYAML -- SNOWFAKERY'S READER -- BREAKS A LINE AT EACH OF THESE, WHICH WOULD START A LINE THE WRITER NEVER CHECKED
+            ['an insert whose value carries U+0085', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Website', 'x\u0085- object: Evil'), 'invalid-value'],
+            ['an insert whose value carries U+2028', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Website', 'x\u2028- object: Evil'), 'invalid-value'],
+            ['an insert whose value carries U+2029', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Website', 'x\u2029- object: Evil'), 'invalid-value'],
+            ['a replacement whose value carries U+0085', () => RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Account', 'Phone', 'x\u0085    Evil__c: 1'), 'invalid-value'],
+            ['a replacement whose value carries U+2028', () => RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Account', 'Phone', 'x\u2028    Evil__c: 1'), 'invalid-value'],
+            ['a replacement whose value carries U+2029', () => RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Account', 'Phone', 'x\u2029    Evil__c: 1'), 'invalid-value'],
+            // THE WRITER WOULD ACCEPT A FIELD commentOutField THEN COULD NOT REMOVE
+            ['a value with a line of one to three spaces inside it', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Website', 'a\n  \n     b'), 'invalid-value'],
+            ['a value with a tab-led line inside it', () => RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Account', 'Phone', 'a\n\t\n     b'), 'invalid-value'],
             ['a field api name that is not one', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Web site', 'x'), 'invalid-field-api-name'],
             ['an object api name that is not one', () => RecipeCockpitRecipeWriter.insertField(recipeText, 'Account\n- object: Evil', 'Website', 'x'), 'invalid-object-api-name'],
             ['a restore in an unknown object', () => RecipeCockpitRecipeWriter.restoreCommentedOutField(recipeText, 'Opportunity', 'Name'), 'object-not-found'],
@@ -457,7 +468,7 @@ describe('RecipeCockpitRecipeWriter', () => {
             expect(commentedRecipeText).toBe([
                 '- object: Account',
                 '  fields:',
-                '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Description -- removed from org',
+                '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Description -- 4 lines -- removed from org',
                 '    # Description: |',
                 '    #     first paragraph',
                 '    #',
@@ -490,6 +501,35 @@ describe('RecipeCockpitRecipeWriter', () => {
 
         });
 
+        test('a value with empty and indented blank lines inside it can be inserted, commented out and restored', () => {
+
+            const valueText = '|\n        a\n\n        \n        b';
+            const inserted = expectApplied(RecipeCockpitRecipeWriter.insertField(recipeText, 'Account', 'Website', valueText)).recipeText;
+            const commented = expectApplied(RecipeCockpitRecipeWriter.commentOutField(inserted, 'Account', 'Website', 'gone')).recipeText;
+
+            expect(expectApplied(RecipeCockpitRecipeWriter.restoreCommentedOutField(commented, 'Account', 'Website')).recipeText).toBe(inserted);
+
+        });
+
+        test('a reason cannot end the marker line, whatever line break or control character it carries', () => {
+
+            const { edit } = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeText, 'Account', 'Phone', 'a\u0085- object: Evil\u2028b\u2029c\rd\u0000e\u009ff'));
+
+            expect(edit.insertedLines[0]).toBe('    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Phone -- 1 line -- a - object: Evil b c d e f');
+
+        });
+
+        // THE REVIEW FINDING: WITHOUT A COUNT, A NOTE THAT READS AS A CONTINUATION WAS RESTORED AS PART OF THE FIELD
+        test('a comment of the reader\'s own directly below, shaped like a continuation, is not restored with the field', () => {
+
+            const recipeWithNote = recipeText.replace('    Phone: ${{fake.phone_number}}\n', '    Phone: ${{fake.phone_number}}\n    #     keep this note\n    #\n    #   a\n');
+
+            const commented = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeWithNote, 'Account', 'Phone', 'gone')).recipeText;
+
+            expect(expectApplied(RecipeCockpitRecipeWriter.restoreCommentedOutField(commented, 'Account', 'Phone')).recipeText).toBe(recipeWithNote);
+
+        });
+
         test('encoded blank lines directly after the marked lines are not restored with them', () => {
 
             const commentedRecipeText = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeText, 'Account', 'Phone', 'gone')).recipeText
@@ -505,7 +545,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             const { edit } = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeText, 'Account', 'Phone', '  '));
 
-            expect(edit.insertedLines[0]).toBe('    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Phone');
+            expect(edit.insertedLines[0]).toBe('    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Phone -- 1 line');
 
         });
 
@@ -517,21 +557,31 @@ describe('RecipeCockpitRecipeWriter', () => {
             const { edit } = expectApplied(RecipeCockpitRecipeWriter.restoreCommentedOutField(commentedRecipeText, 'Account', 'Phone'));
 
             expect(edit.insertedLines).toEqual(['    Phone: ${{fake.phone_number}}']);
-            expect(edit.removedLines).toEqual(['    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Phone -- gone', '    # Phone: ${{fake.phone_number}}']);
+            expect(edit.removedLines).toEqual(['    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Phone -- 1 line -- gone', '    # Phone: ${{fake.phone_number}}']);
 
         });
 
-        test('a marker whose next line is not the field it names is not restorable', () => {
+        test.each([
+            ['whose next line is not the field it names', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 1 line -- gone\n    # Phone: x\n'],
+            ['with nothing under it', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 1 line\n'],
+            ['declaring more lines than are commented', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 3 lines\n    # Rating: x\n    #     y\n'],
+            ['whose declared lines run past the end of the file', null],
+            ['whose declared lines end on a blank', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 2 lines\n    # Rating: |\n    #\n'],
+            ['whose declared lines include a line that is not a continuation', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 2 lines\n    # Rating: x\n    # Other: y\n'],
+            ['whose declared lines include a line that is not commented', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 2 lines\n    # Rating: |\n        y\n']
+        ])('a marker %s is refused as altered, and nothing is restored', (unusedDescription, markerBlock) => {
 
-            const handEditedRecipeText = recipeText.replace('    Phone:', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- gone\n    # Phone: x\n    Phone:');
+            const handEditedRecipeText = markerBlock === null
+                ? `${recipeText}    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- 5 lines\n    # Rating: x`
+                : recipeText.replace('    Phone:', `${markerBlock}    Phone:`);
 
-            expectRefused(RecipeCockpitRecipeWriter.restoreCommentedOutField(handEditedRecipeText, 'Account', 'Rating'), 'commented-out-field-not-found');
+            expectRefused(RecipeCockpitRecipeWriter.restoreCommentedOutField(handEditedRecipeText, 'Account', 'Rating'), 'commented-out-field-altered');
 
         });
 
-        test('a marker with nothing under it is not restorable', () => {
+        test('a marker without a line count is not one the writer wrote, so there is nothing to restore', () => {
 
-            const handEditedRecipeText = recipeText.replace('    Phone:', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating\n    Phone:');
+            const handEditedRecipeText = recipeText.replace('    Phone:', '    ### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- Rating -- gone\n    # Rating: x\n    Phone:');
 
             expectRefused(RecipeCockpitRecipeWriter.restoreCommentedOutField(handEditedRecipeText, 'Account', 'Rating'), 'commented-out-field-not-found');
 
