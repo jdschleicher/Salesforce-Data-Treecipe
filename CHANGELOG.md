@@ -1,5 +1,36 @@
 # Change Log
 
+## [3.29.5] - A field api name that is not a Salesforce api name is skipped, not written as a recipe key
+
+Closes [#120](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/120), surfaced by the security review of #119.
+
+A field's api name comes from the `<fullName>` in its workspace XML and was written straight into the recipe as a YAML **key** (`RecipeService.appendFieldRecipeToObjectRecipe`). A `<fullName>` carrying a line break could add a recipe line of its own, and **Run Faker by Recipe** with faker-js evaluates that line's `${{ … }}` with `new Function()`, which runs code in the extension host. For example, `A&#10;    Injected: ${{ … }}&#10;    Z` was written as three field lines.
+
+`appendFieldRecipeToObjectRecipe` now writes a field only when its api name is a Salesforce api name, meaning a letter followed by letters, digits and `_` (`RecipeService.isRecipeWritableFieldApiName`). Every recipe line goes through that method, including OOTB mapping entries, field files, the record type line and compound address and geolocation components, so the check sits in one place. For any other name it writes a single comment line in place of the field:
+
+```yaml
+    ### TODO -- FIELD SKIPPED -- api name "A\n    Injected: ${{ … }}\n    Z" is not a valid Salesforce api name ([A-Za-z][A-Za-z0-9_]*); fix the field's <fullName> and regenerate
+```
+
+- The name is escaped with `RecipeYamlScalar.escapeForComment`, so neither js-yaml nor PyYAML sees a line break in it (including U+0085, U+2028 and U+2029).
+- The field's recipe value is **dropped** along with the key, since that value can carry the same name.
+- Rejecting the name, rather than quoting it as a key, was the open question on #120. A quoted key would keep the recipe valid, but it would send the Collections API a field no org can have.
+- An empty `<fullName>` never reaches the recipe; `FieldInfo.create` already refuses it and stops generation, as before. At the writer itself, an empty, whitespace-only, `null` or `undefined` name gets the same TODO line.
+
+Every valid api name is written byte-identically to before, and every existing fixture test passes unchanged.
+
+**Tests.**
+- New fixture `HostileFieldApiNameSalesforceMetadataDirectory` holds one object with an ordinary field and fields whose `<fullName>` carries `\n`, `\r`, `\r\n`, U+2028, U+0085, a `: ` injection, a template literal, only whitespace, and a hostile `Location` name, whose two components inherit it.
+- `DirectoryProcessor.hostileFieldApiNames.test.ts` runs that fixture through the real pipeline with each backend. It checks that:
+  - the object loads with only the ordinary field;
+  - each skipped field is exactly one TODO line;
+  - no line names the injected field;
+  - every file loads identically in js-yaml and PyYAML;
+  - Run Faker by Recipe with faker-js evaluates nothing the names carry;
+  - the ordinary `MockSalesforceMetadataDirectory` skips no field.
+- Reverting the check fails 7 of its 9 tests.
+- `RecipeService.test.ts` covers the writer directly, for each hostile shape and for ordinary names (`Account__c`, `ns__Field__c`, `BillingStreet`, `Store_Location__Latitude__s`).
+
 ## [3.29.4] - A picklist value named like a JavaScript built-in is kept as data
 
 Closes [#160](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/160), found in the review of #159.

@@ -1,6 +1,7 @@
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
+import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
@@ -407,9 +408,34 @@ export class RecipeService {
 
     }
 
+    static readonly salesforceFieldApiNamePattern = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+    static isRecipeWritableFieldApiName(fieldApiName: string): boolean {
+
+        return typeof fieldApiName === 'string' && RecipeService.salesforceFieldApiNamePattern.test(fieldApiName);
+
+    }
+
+    /*
+        The api name is the one part of a recipe line written as a YAML KEY, and it comes from a
+        <fullName> the workspace controls: a line break in it starts a line of the attacker's choosing,
+        whose value faker-js evaluates with new Function() (#120). Salesforce api names are
+        [A-Za-z0-9_], so anything else is not a field an org can have -- the field is skipped with a
+        TODO naming it, and its recipe value is dropped with it, since that value may embed the same
+        name. The name in the comment is escaped so neither YAML parser sees a break in it.
+    */
+    buildSkippedFieldApiNameTodo(fieldApiName: string): string {
+
+        const escapedFieldApiName = RecipeYamlScalar.escapeForComment(String(fieldApiName ?? ''));
+        return `### TODO -- FIELD SKIPPED -- api name "${escapedFieldApiName}" is not a valid Salesforce api name ([A-Za-z][A-Za-z0-9_]*); fix the field's <fullName> and regenerate`;
+
+    }
+
     appendFieldRecipeToObjectRecipe(objectRecipe:string, fieldRecipe: string, fieldApiName: string): string {
 
-        const fieldPropertAndRecipeValue = `${fieldApiName}: ${fieldRecipe}`;
+        const fieldPropertAndRecipeValue = RecipeService.isRecipeWritableFieldApiName(fieldApiName)
+            ? `${fieldApiName}: ${fieldRecipe}`
+            : this.buildSkippedFieldApiNameTodo(fieldApiName);
         const updatedObjectRecipe =
 `${objectRecipe}
 ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;

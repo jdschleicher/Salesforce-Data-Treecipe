@@ -8,6 +8,10 @@ import { IPicklistValue } from "../../ObjectInfoWrapper/FieldInfo";
 import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordTypeService";
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
+import * as yaml from 'js-yaml';
+
+const hostileFieldApiNamesForValidator = (): string[] => ['A\nB', 'A\rB', 'A\u2028B', 'A: B', '${x}', 'a`b', '', '   ', '_Leading', '1Field', 'Account.Name'];
+
 // USED TO WRITE COMPARE FILES WHEN DEVELOPING TESTS
 // import * as fs from 'fs';
 
@@ -282,6 +286,82 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
             // fs.writeFileSync("appendFieldExpected.yaml", expectedUpdateRecipe, { encoding: 'utf8' });
 
             expect(secondUpdatedRecipe).toBe(expectedUpdateRecipe);
+        });
+
+        /*
+            #120. The api name is a YAML KEY, read from a <fullName> the workspace controls. Anything
+            that is not a Salesforce api name is written as one TODO comment line, never as a key.
+        */
+        const injectedLine = 'Injected__c: ${{ globalThis.__treecipeInjected = true }}';
+        const hostileFieldApiNames: Array<[string, string]> = [
+            ['a line feed', `A\n    ${injectedLine}\n    Z`],
+            ['a carriage return', `A\r    ${injectedLine}\r    Z`],
+            ['a carriage return and line feed', `A\r\n    ${injectedLine}\r\n    Z`],
+            ['a PyYAML-only line separator', `A\u2028    ${injectedLine}\u2029    Z`],
+            ['a PyYAML-only next line', `A\u0085    ${injectedLine}\u0085    Z`],
+            ['a colon', 'Name__c: ${{ globalThis.__treecipeInjected = true }}'],
+            ['a template interpolation', '${globalThis.__treecipeInjected = true}'],
+            ['a backtick', 'a`,globalThis.__treecipeInjected=true,`b'],
+            ['a leading digit', '1Field__c'],
+            ['a period', 'Account.Name'],
+            ['a hyphen', 'Some-Field__c'],
+            ['nothing', ''],
+            ['only whitespace', '   '],
+            ['surrounding whitespace', ' Name__c ']
+        ];
+
+        test.each(hostileFieldApiNames)('given an api name carrying %s, writes one TODO line naming it and drops the recipe value', (unusedDescription, hostileFieldApiName) => {
+
+            const initialMarkup = RecipeMockService.getFakeInitialObjectRecipeMarkup();
+            const fakeRecipeValue = '${{ fake.RecipeValueThatMustBeDropped }}';
+
+            const actualUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(initialMarkup, fakeRecipeValue, hostileFieldApiName);
+            const appendedText = actualUpdatedRecipe.slice(initialMarkup.length);
+
+            expect(actualUpdatedRecipe.startsWith(initialMarkup)).toBe(true);
+            expect(appendedText.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/)).toEqual(['', expect.stringMatching(/^ {4}### TODO -- FIELD SKIPPED -- api name ".*" is not a valid Salesforce api name/)]);
+            expect(appendedText).not.toContain(fakeRecipeValue);
+            expect(yaml.load(actualUpdatedRecipe)).toEqual(yaml.load(initialMarkup));
+
+        });
+
+        test('names the skipped api name in the TODO with its line breaks escaped, so a reader can find the field', () => {
+
+            const actualTodo = recipeServiceWithSnow.buildSkippedFieldApiNameTodo(`A\n\r\u2028\u0085Z`);
+
+            expect(actualTodo).toBe(`### TODO -- FIELD SKIPPED -- api name "A\\n\\r\\u2028\\u0085Z" is not a valid Salesforce api name ([A-Za-z][A-Za-z0-9_]*); fix the field's <fullName> and regenerate`);
+
+        });
+
+        test.each([undefined, null])('given a %s api name, writes the TODO rather than throwing', (missingFieldApiName) => {
+
+            const actualTodo = recipeServiceWithSnow.buildSkippedFieldApiNameTodo(missingFieldApiName);
+
+            expect(actualTodo).toContain('api name ""');
+
+        });
+
+        test.each(['Account__c', 'ns__Field__c', 'BillingStreet', 'RecordTypeId', 'Store_Location__Latitude__s', 'X1', 'a'])('given the ordinary api name %s, writes the line byte-identical to "name: value"', (ordinaryFieldApiName) => {
+
+            const initialMarkup = RecipeMockService.getFakeInitialObjectRecipeMarkup();
+            const fakeRecipeValue = '${{fake.superduperfakeFirstName}}';
+
+            const actualUpdatedRecipe = recipeServiceWithSnow.appendFieldRecipeToObjectRecipe(initialMarkup, fakeRecipeValue, ordinaryFieldApiName);
+
+            expect(actualUpdatedRecipe).toBe(`${initialMarkup}\n    ${ordinaryFieldApiName}: ${fakeRecipeValue}`);
+
+        });
+
+    });
+
+    describe('isRecipeWritableFieldApiName', () => {
+
+        test.each(['Account__c', 'ns__Field__c', 'BillingStreet', 'X1'])('accepts %s', (fieldApiName) => {
+            expect(RecipeService.isRecipeWritableFieldApiName(fieldApiName)).toBe(true);
+        });
+
+        test.each([...hostileFieldApiNamesForValidator(), undefined, null, 42])('refuses %p', (fieldApiName) => {
+            expect(RecipeService.isRecipeWritableFieldApiName(fieldApiName as string)).toBe(false);
         });
 
     });
