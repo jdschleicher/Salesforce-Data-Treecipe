@@ -1,5 +1,60 @@
 # Change Log
 
+## [3.29.2] - Every picklist value is written into a recipe as inert data (security)
+
+Closes [#155](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/155), from the security review of 3.29.1.
+
+Picklist values come from field XML and global value set XML in whatever repository is open, so a metadata author controls them. Some reached the generated recipe **with no escaping at all**: a dependent picklist's choices (`- value` under `random_choice:`), a record type's dependent choices, and the controlling value in `when: ${{ Field == '...' }}`. The escaping the other sinks had missed three line breaks that PyYAML recognises and js-yaml does not: U+0085, U+2028 and U+2029. XML character references (`&#10;`, `&#x2028;`) decode into real breaks, so a value that reads as one line in the source could still carry one. So a value could:
+
+- add a live field to the recipe after a line break. In faker-js, Run Faker by Recipe evaluates a field's `${{ }}` with `new Function` in the extension host. In snowfakery, U+2028 did this even in the default expression.
+- close the `when:` string with `'` and put its own Jinja in the condition (snowfakery).
+- be rendered by snowfakery as a template, if it was a dependent choice.
+
+Now, in **both backends**, every picklist value reaches the recipe through one of two paths, and neither can change the recipe's structure or run anything:
+
+- **Expressions** go through the backend's escaper: `escapePicklistValueForJavaScriptString(value, quote)` for faker-js (backticks for `arrayElement(s)`, apostrophes for `when:`) and `escapePicklistValueForJinjaStringLiteral` for snowfakery. Each also escapes:
+  - line breaks and other non-printables, as `\n`, `\r` or `\uXXXX`;
+  - `: ` and ` #` (as `\x20`), which end a plain YAML scalar or start a comment on the same line;
+  - for faker-js only, `}`, because the processor ends an expression at the first `}}`.
+- **Dependent choices** are YAML list items rather than expressions (`buildDependentPicklistChoiceItem`). An ordinary value is still written plain. A double-quoted YAML scalar is used instead for any of:
+  - a value that would change the structure;
+  - a value carrying a template delimiter;
+  - a value YAML would read as a boolean, null or number. A `Yes`/`No` dependent picklist used to come back as `True`/`False`, and `007` as `7`.
+- **snowfakery template delimiters.** In snowfakery, a choice carrying a template delimiter is also wrapped as a Jinja string literal (`"${{ '...' }}"`). snowfakery renders a string, quoted or not, in whichever Jinja environment its delimiters select, and its default mode (`snowfakery_version` 2) has **two**: `${{`/`${%`, and a legacy, unsandboxed `<<`/`<%` one. The first draft of this fix covered only `${`. Code review then showed a dependent value `<< cycler.__init__.__globals__.os.popen('…').read() >>` running a shell command under real snowfakery 4.2.1. Both families are covered now.
+- The `### TODO` naming a controlling value a record type lacks escapes the value's line breaks, so the value stays inside the comment.
+
+The shared YAML part is `RecipeYamlScalar`. Escaping is exact, not lossy: a CRLF is now kept as `\r\n` where it used to become `\n`, and every expression evaluates to exactly the value.
+
+**`FakerJSRecipeProcessor` reads the `when:` literal properly.** It used to cut the condition at the first `}}` and strip every quote from the value, so `Rock 'n' Roll` matched nothing. It now reads a single- or double-quoted literal up to its closing quote and unescapes it (`parseWhenCondition`). A code point escape past U+10FFFF is left as written rather than throwing. A condition in any other shape falls back to the old reading, whose regex is now built once.
+
+**Unchanged.** Recipes generated from the existing mock metadata are byte-identical in both backends. The one change in ordinary output: a controlling value containing an apostrophe is now escaped in `when:` (`'Rock \'n\' Roll'`). That condition was broken before, in both backends.
+
+**Tests.**
+- Each backend builds one object that reaches every place a picklist value can go, with 27 hostile values:
+  - each of the six line breaks, followed by an injected field line;
+  - an apostrophe breakout, a backtick breakout, `${...}`, `${{ ... }}`, `}}`, a trailing backslash, and `: `/` #`;
+  - a template in each of snowfakery's syntaxes (`${{ 7*7 }}`, `<< 7*7 >>`, `<% if true %>X<% endif %>`);
+  - eleven values YAML would read as a non-string (`Yes`, `No`, `on`, `true`, `null`, `~`, `007`, `1e3`, `0x1F`, `2024-01-01`, `.inf`).
+
+  For each value, the tests assert:
+  - the recipe has no extra line under either parser's rules;
+  - js-yaml and PyYAML load it identically with no undeclared field;
+  - faker-js evaluates every expression to exactly the value;
+  - snowfakery's values render in Jinja to exactly the value, and the `when:` is true only for its own value. The Jinja harness copies snowfakery's own compiler selection across both of its environments.
+- A new pipeline suite, `DirectoryProcessor.hostilePicklistValues.test.ts`, runs Generate Treecipe with each backend over `HostileSalesforceMetadataDirectory`. That fixture is a picklist, dependent picklist, multi-select, global value set and two record types carrying every payload, with line breaks written as XML character references.
+  - Every file loads in both parsers with only declared fields.
+  - Run Faker by Recipe generates 200 faker-js records from it, and a marker the payloads would set is never set.
+  - Every dependent choice in the snowfakery recipe renders to exactly a declared value.
+- Checked once by hand against the real snowfakery 4.2.1 CLI: 60 records from the hostile recipe carry only declared fields, every template payload comes back literal, and `Yes`, `No` and `007` come back as strings.
+- **The tests fail against the fix removed.**
+  - Against the first draft's services, 65 of the backend tests fail, and 9 of the pipeline tests fail when the processor is reverted too.
+  - Dropping the `<<`/`<%` rule fails 3 tests. Dropping the non-string rule fails 18.
+- **CI now installs pinned PyYAML and Jinja2**, so these checks run there. Outside CI they are skipped when the modules are missing; in CI a missing module fails the run.
+
+**Not changed, and to be filed separately:** a controlling value named like an `Object.prototype` member (`constructor`, `toString`) breaks generation in `RecipeService`, because the value is looked up with `in` on an object literal. It is hostile metadata of the same kind, but not an escaping sink.
+
+Recipes generated before this release are not rewritten; regenerating fixes them.
+
 ## [3.29.1] - Recipes with record-type picklists load again
 
 Closes [#153](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/153), found while building the fixtures for 3.29.0.

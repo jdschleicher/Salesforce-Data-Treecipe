@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Multi__c</fullName>
+    <label>Multi</label>
+    <required>false</required>
+    <type>MultiselectPicklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>x&apos; or True or &apos;</fullName>
+                <default>false</default>
+                <label>x&apos; or True or &apos;</label>
+            </value>
+            <value>
+                <fullName>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</fullName>
+                <default>false</default>
+                <label>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</label>
+            </value>
+            <value>
+                <fullName>${globalThis.__treecipeInjectedByPicklistValue=true}</fullName>
+                <default>false</default>
+                <label>${globalThis.__treecipeInjectedByPicklistValue=true}</label>
+            </value>
+            <value>
+                <fullName>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</fullName>
+                <default>false</default>
+                <label>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</label>
+            </value>
+            <value>
+                <fullName>a}}b</fullName>
+                <default>false</default>
+                <label>a}}b</label>
+            </value>
+            <value>
+                <fullName>trailing\</fullName>
+                <default>false</default>
+                <label>trailing\</label>
+            </value>
+            <value>
+                <fullName>Type: A #1</fullName>
+                <default>false</default>
+                <label>Type: A #1</label>
+            </value>
+            <value>
+                <fullName>${{ 7*7 }}</fullName>
+                <default>false</default>
+                <label>${{ 7*7 }}</label>
+            </value>
+            <value>
+                <fullName>&lt;&lt; 7*7 &gt;&gt;</fullName>
+                <default>false</default>
+                <label>&lt;&lt; 7*7 &gt;&gt;</label>
+            </value>
+            <value>
+                <fullName>&lt;% if true %&gt;X&lt;% endif %&gt;</fullName>
+                <default>false</default>
+                <label>&lt;% if true %&gt;X&lt;% endif %&gt;</label>
+            </value>
+            <value>
+                <fullName>Yes</fullName>
+                <default>false</default>
+                <label>Yes</label>
+            </value>
+            <value>
+                <fullName>No</fullName>
+                <default>false</default>
+                <label>No</label>
+            </value>
+            <value>
+                <fullName>on</fullName>
+                <default>false</default>
+                <label>on</label>
+            </value>
+            <value>
+                <fullName>true</fullName>
+                <default>false</default>
+                <label>true</label>
+            </value>
+            <value>
+                <fullName>null</fullName>
+                <default>false</default>
+                <label>null</label>
+            </value>
+            <value>
+                <fullName>~</fullName>
+                <default>false</default>
+                <label>~</label>
+            </value>
+            <value>
+                <fullName>007</fullName>
+                <default>false</default>
+                <label>007</label>
+            </value>
+            <value>
+                <fullName>1e3</fullName>
+                <default>false</default>
+                <label>1e3</label>
+            </value>
+            <value>
+                <fullName>0x1F</fullName>
+                <default>false</default>
+                <label>0x1F</label>
+            </value>
+            <value>
+                <fullName>2024-01-01</fullName>
+                <default>false</default>
+                <label>2024-01-01</label>
+            </value>
+            <value>
+                <fullName>.inf</fullName>
+                <default>false</default>
+                <label>.inf</label>
+            </value>
+            <value>
+                <fullName>Rock &apos;n&apos; Roll</fullName>
+                <default>false</default>
+                <label>Rock &apos;n&apos; Roll</label>
+            </value>
+            <value>
+                <fullName>A&amp;B</fullName>
+                <default>false</default>
+                <label>A&amp;B</label>
+            </value>
+            <value>
+                <fullName>C#</fullName>
+                <default>false</default>
+                <label>C#</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+    <visibleLines>4</visibleLines>
+</CustomField>

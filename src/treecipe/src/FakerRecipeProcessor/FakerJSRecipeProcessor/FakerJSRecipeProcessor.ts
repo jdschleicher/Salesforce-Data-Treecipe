@@ -394,14 +394,12 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             throw new Error('No choices available in the YAML data');
         }
     
-        const fieldApiNameInWhenConditionRegex = this.buildWhenConditionRegexMatchForControllingField();
-       
-        const controllingFieldPicklsitMatch = whenIndicatorInYamlExpression.match(fieldApiNameInWhenConditionRegex);
-        if ( !controllingFieldPicklsitMatch ) {
+        const firstWhenCondition = this.parseWhenCondition(whenIndicatorInYamlExpression);
+        if ( !firstWhenCondition ) {
             throw new Error('Incorrect format for dependent picklist faker value. Should match the following pattern: \"${{ PicklistApiName__c == \'picklistValue\' }}\"');
         }
     
-        let expectedExistingControllingFieldApiNameForDependentPicklist = controllingFieldPicklsitMatch[1];
+        let expectedExistingControllingFieldApiNameForDependentPicklist = firstWhenCondition.controllingFieldApiName;
         if (!fieldApiNameByFakerJSEvaluations || !fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist]) {
             throw new Error(`Field "${expectedExistingControllingFieldApiNameForDependentPicklist}" not found in existing field evaluations`);
         }
@@ -409,19 +407,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const controllingFieldPicklistValue = fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist];
         const matchingControllingFieldGeneratedValueSection = choices.find(item => {
 
-            const controllingFieldWhencondition = item.choice.when;
-            const controllingFIeldWhenConditionMatches = controllingFieldWhencondition.match(fieldApiNameInWhenConditionRegex);
-
-            const controllingPicklistValueMatchIndex = 2;
-            const controllingFieldValue = controllingFIeldWhenConditionMatches[controllingPicklistValueMatchIndex];
-            
-            // Remove surrounding quotes from the value for comparison
-            const trimmedValue = controllingFieldValue.trim();
-            const expectedQuotesAroundPicklistWhenSelection = /['"]/g; 
-            const cleanValue = trimmedValue.replace(expectedQuotesAroundPicklistWhenSelection, '');
-
-            const availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue = (cleanValue === controllingFieldPicklistValue);
-            return availableDependentPicklistChoiceDetailsBasedOnControllingFieldValue;
+            const whenCondition = this.parseWhenCondition(item.choice.when);
+            return whenCondition !== null && whenCondition.controllingValue === controllingFieldPicklistValue;
 
         });
         
@@ -440,6 +427,67 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         }
 
         return evaluatedPicklistDependencyOptions;
+
+    }
+
+    /*
+        The generator writes the controlling value as a single-quoted string ESCAPED for JavaScript
+        (FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString), because the value is
+        untrusted and may carry a quote, "}}" or a line break. So it is read as a string literal --
+        up to its unescaped closing quote -- and unescaped, never cut at the first "}}" or stripped
+        of every quote, which made a value like Rock 'n' Roll match nothing.
+
+        A condition that is not one quoted literal falls back to the original reading, so a recipe
+        written by hand in the older shape still works.
+    */
+    parseWhenCondition(whenCondition: unknown): { controllingFieldApiName: string, controllingValue: string } | null {
+
+        if ( typeof whenCondition !== 'string' ) {
+            return null;
+        }
+
+        const quotedLiteralMatch = whenCondition.match(FakerJSRecipeProcessor.whenConditionWithQuotedLiteralRegex);
+        if ( quotedLiteralMatch ) {
+            const [, controllingFieldApiName, , escapedControllingValue] = quotedLiteralMatch;
+            return {
+                controllingFieldApiName: controllingFieldApiName,
+                controllingValue: FakerJSRecipeProcessor.unescapeJavaScriptStringLiteralContent(escapedControllingValue)
+            };
+        }
+
+        const legacyMatch = whenCondition.match(FakerJSRecipeProcessor.legacyWhenConditionRegex);
+        if ( !legacyMatch ) {
+            return null;
+        }
+
+        const expectedQuotesAroundPicklistWhenSelection = /['"]/g;
+        return {
+            controllingFieldApiName: legacyMatch[1],
+            controllingValue: legacyMatch[2].trim().replace(expectedQuotesAroundPicklistWhenSelection, '')
+        };
+
+    }
+
+    static legacyWhenConditionRegex = FakerJSRecipeProcessor.prototype.buildWhenConditionRegexMatchForControllingField();
+
+    static whenConditionWithQuotedLiteralRegex = /^\s*\$\{\{\s*(\S+?)\s*==\s*(['"])((?:\\[\s\S]|(?!\2)[^\\])*)\2\s*\}\}\s*$/;
+
+    static unescapeJavaScriptStringLiteralContent(escapedContent: string): string {
+
+        return escapedContent.replace(/\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g, (fullEscape: string, escapeBody: string) => {
+
+            if ( escapeBody.startsWith('u{') ) {
+                const codePoint = parseInt(escapeBody.slice(2, -1), 16);
+                return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : fullEscape;
+            }
+            if ( escapeBody.length > 1 ) {
+                return String.fromCharCode(parseInt(escapeBody.slice(1), 16));
+            }
+
+            const singleCharacterEscapes: Record<string, string> = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', '0': '\0' };
+            return singleCharacterEscapes[escapeBody] ?? escapeBody;
+
+        });
 
     }
 
