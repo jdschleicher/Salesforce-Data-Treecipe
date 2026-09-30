@@ -1,5 +1,30 @@
 # Change Log
 
+## [3.29.3] - In CI, a recipe check that cannot run fails instead of skipping
+
+Closes [#158](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/158). Test harness only; nothing a user sees changes.
+
+The tests that read generated recipes the way snowfakery does need `python3` with PyYAML (its YAML parser) or Jinja2 (its template engine). Neither is a dependency of this extension, so on a machine without them those tests **skip**. That is right for a laptop and wrong for CI. A skip is green, and `checkJestTestCoverage.ps1` does not count skips, so a runner image that stopped shipping PyYAML would switch off every snowfakery-side check without anyone being told. These are the checks that caught U+2028 in #155 and `<<…>>` in #159.
+
+All of them now go through one gate, `PythonTestHarness.testRequiringModules('yaml' | 'jinja2')`:
+
+| Module importable? | `CI` set? | Test |
+|---|---|---|
+| yes | either | runs |
+| no | no | skipped, as before |
+| no | yes | **fails**: `python3 cannot import yaml, and CI is set, so this check fails rather than skipping. Install it with: python3 -m pip install PyYAML Jinja2` |
+
+- **It fails the test, not the suite.** 3.29.2's gate threw while the suite was being collected, so a missing module in CI took down every js-yaml check in the same file with it. The stand-in registers the same test names, `.each` rows included, so the report says which checks did not run.
+- **`DirectoryProcessor.generatedRecipeYaml.test.ts`** (#154), the suite #158 named, used its own probe that always skipped. It uses the gate now.
+- **`PythonTestHarness`** is a static class. It holds the probe, the gate and the Python runners (`runPython`, `loadWithPyYaml`, `renderWithSnowfakeryJinja`) that `HostilePicklistValues.ts` used to export as loose functions; that file now holds only payload data.
+- `CI` counts as set for any non-empty value except `false`.
+
+**Tests.** `PythonTestHarness.test.ts` stubs the probe with `jest.spyOn(childProcess, 'execFileSync')` and sets `CI` explicitly. It covers every row of the table, a missing `python3`, the gate's return value in each mode, and the message naming only the missing module. It was also run for real with a `python3` shim on `PATH` that refuses the import:
+- the #154 suite reports **2 failed, 4 passed** with `CI=true`, and **2 skipped, 4 passed** without it;
+- the Jinja-gated snowfakery suite fails all 27 `.each` rows by name.
+
+No workflow change and no new dependency: CI has installed pinned PyYAML and Jinja2 since 3.29.2.
+
 ## [3.29.2] - Every picklist value is written into a recipe as inert data (security)
 
 Closes [#155](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/155), from the security review of 3.29.1.

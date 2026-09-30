@@ -5,12 +5,10 @@ import {
     HOSTILE_PICKLIST_VALUES,
     LINE_BREAK_BY_NAME,
     NON_STRING_SCALAR_PAYLOADS,
-    ORDINARY_PICKLIST_VALUES,
-    isPythonModuleAvailable,
-    loadWithPyYaml
+    ORDINARY_PICKLIST_VALUES
 } from './mocks/HostilePicklistValues';
 
-const isPyYamlAvailable = isPythonModuleAvailable('yaml');
+import { PythonTestHarness } from './mocks/PythonTestHarness';
 
 describe('RecipeYamlScalar', () => {
 
@@ -87,9 +85,9 @@ describe('RecipeYamlScalar', () => {
 
         });
 
-        (isPyYamlAvailable ? test : test.skip)('PyYAML loads it back as exactly the value', () => {
+        PythonTestHarness.testRequiringModules('yaml')('PyYAML loads it back as exactly the value', () => {
 
-            const loadedLists = loadWithPyYaml(everyValue.map(value => `- ${RecipeYamlScalar.toDoubleQuotedScalar(value)}`));
+            const loadedLists = PythonTestHarness.loadWithPyYaml(everyValue.map(value => `- ${RecipeYamlScalar.toDoubleQuotedScalar(value)}`));
 
             expect(loadedLists).toEqual(everyValue.map(value => [value]));
 

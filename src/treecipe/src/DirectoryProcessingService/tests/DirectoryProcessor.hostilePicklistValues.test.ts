@@ -59,21 +59,16 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import {
     HOSTILE_PICKLIST_VALUES,
     INJECTED_FIELD_API_NAME,
-    INJECTION_MARKER,
-    isPythonModuleAvailable,
-    loadWithPyYaml,
-    renderWithSnowfakeryJinja
+    INJECTION_MARKER
 } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 
+import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 const HOSTILE_METADATA_PATH = path.join(__dirname, 'mocks', 'HostileSalesforceMetadataDirectory');
 const HOSTILE_OBJECTS_PATH = path.join(HOSTILE_METADATA_PATH, 'objects');
 
 // THE FIXTURE CARRIES EVERY HOSTILE VALUE, THEN THREE ORDINARY ONES -- THE ONLY CONTROLLING VALUES ONE RECORD TYPE MAKES AVAILABLE
 const FIXTURE_PICKLIST_VALUES = [...HOSTILE_PICKLIST_VALUES.map(([, hostileValue]) => hostileValue), "Rock 'n' Roll", 'A&B', 'C#'];
 const DECLARED_FIELD_API_NAMES = ['Controlling__c', 'Dependent__c', 'Global__c', 'Multi__c', 'RecordTypeId'];
-
-const isPyYamlAvailable = isPythonModuleAvailable('yaml');
-const isJinjaAvailable = isPythonModuleAvailable('jinja2');
 
 type LoadedRecipeEntry = { object?: string, fields?: Record<string, unknown> };
 
@@ -136,11 +131,11 @@ describe.each([
 
     });
 
-    (isPyYamlAvailable ? test : test.skip)('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
+    PythonTestHarness.testRequiringModules('yaml')('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
 
         const recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
 
-        expect(loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+        expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
 
     });
 
@@ -163,7 +158,7 @@ describe.each([
 */
 describe('Run Faker by Recipe with snowfakery over the hostile recipe', () => {
 
-    (isJinjaAvailable ? test : test.skip)('renders every dependent choice to exactly a declared value', async () => {
+    PythonTestHarness.testRequiringModules('jinja2')('renders every dependent choice to exactly a declared value', async () => {
 
         const recipeFiles = await generateRecipeFiles(() => new SnowfakeryRecipeFakerService());
         const hostileEntry = recipeFiles
@@ -172,7 +167,7 @@ describe('Run Faker by Recipe with snowfakery over the hostile recipe', () => {
         const dependentChoices = (hostileEntry.fields['Dependent__c'] as { if: Array<{ choice: { pick: { random_choice: string[] } } }> }).if;
         const everyChoiceItem = dependentChoices.flatMap(dependentChoice => dependentChoice.choice.pick.random_choice);
 
-        const renderResults = renderWithSnowfakeryJinja(everyChoiceItem.map(choiceItem => ({ template: choiceItem })));
+        const renderResults = PythonTestHarness.renderWithSnowfakeryJinja(everyChoiceItem.map(choiceItem => ({ template: choiceItem })));
 
         expect(dependentChoices).toHaveLength(FIXTURE_PICKLIST_VALUES.length);
         renderResults.forEach(renderResult => {
