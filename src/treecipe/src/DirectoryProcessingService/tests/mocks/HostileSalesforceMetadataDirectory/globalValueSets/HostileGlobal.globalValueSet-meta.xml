@@ -66,6 +66,76 @@
         <label>Type: A #1</label>
     </customValue>
     <customValue>
+        <fullName>${{ 7*7 }}</fullName>
+        <default>false</default>
+        <label>${{ 7*7 }}</label>
+    </customValue>
+    <customValue>
+        <fullName>&lt;&lt; 7*7 &gt;&gt;</fullName>
+        <default>false</default>
+        <label>&lt;&lt; 7*7 &gt;&gt;</label>
+    </customValue>
+    <customValue>
+        <fullName>&lt;% if true %&gt;X&lt;% endif %&gt;</fullName>
+        <default>false</default>
+        <label>&lt;% if true %&gt;X&lt;% endif %&gt;</label>
+    </customValue>
+    <customValue>
+        <fullName>Yes</fullName>
+        <default>false</default>
+        <label>Yes</label>
+    </customValue>
+    <customValue>
+        <fullName>No</fullName>
+        <default>false</default>
+        <label>No</label>
+    </customValue>
+    <customValue>
+        <fullName>on</fullName>
+        <default>false</default>
+        <label>on</label>
+    </customValue>
+    <customValue>
+        <fullName>true</fullName>
+        <default>false</default>
+        <label>true</label>
+    </customValue>
+    <customValue>
+        <fullName>null</fullName>
+        <default>false</default>
+        <label>null</label>
+    </customValue>
+    <customValue>
+        <fullName>~</fullName>
+        <default>false</default>
+        <label>~</label>
+    </customValue>
+    <customValue>
+        <fullName>007</fullName>
+        <default>false</default>
+        <label>007</label>
+    </customValue>
+    <customValue>
+        <fullName>1e3</fullName>
+        <default>false</default>
+        <label>1e3</label>
+    </customValue>
+    <customValue>
+        <fullName>0x1F</fullName>
+        <default>false</default>
+        <label>0x1F</label>
+    </customValue>
+    <customValue>
+        <fullName>2024-01-01</fullName>
+        <default>false</default>
+        <label>2024-01-01</label>
+    </customValue>
+    <customValue>
+        <fullName>.inf</fullName>
+        <default>false</default>
+        <label>.inf</label>
+    </customValue>
+    <customValue>
         <fullName>Rock &apos;n&apos; Roll</fullName>
         <default>false</default>
         <label>Rock &apos;n&apos; Roll</label>

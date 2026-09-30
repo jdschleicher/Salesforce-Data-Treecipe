@@ -100,7 +100,7 @@ export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
             let dependentPicklistRandomChoiceRecipe = 
 `${this.generateTabs(2)}- choice:
-${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(controllingValueKey)}' }}
+${this.generateTabs(3)}when: ${this.openingRecipeSyntax} ${controllingField} == '${SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(controllingValueKey)}' }}
 ${this.generateTabs(3)}pick:
 ${this.generateTabs(4)}random_choice:
 ${this.generateTabs(5)}${randomChoicesBreakdown}`;
@@ -147,7 +147,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
               reads as line breaks (RecipeYamlScalar); Jinja reads every escape back with Python's
               unicode-escape, so the literal evaluates to exactly the value
     */
-    static escapePicklistOptionForJinjaStringLiteral(picklistOption: string): string {
+    static escapePicklistValueForJinjaStringLiteral(picklistOption: string): string {
 
         const escapedPicklistOption = String(picklistOption)
             .replace(/\\/g, '\\\\')
@@ -160,10 +160,19 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     /*
-        A dependent picklist's choices are YAML list items, and snowfakery evaluates ANY item that
-        contains "${" as a template -- quoting it in YAML does not stop that. So an item that cannot
-        be written plain is written as a Jinja string literal expression, which evaluates to exactly
-        the value, and that expression is then quoted for YAML. An ordinary value stays plain.
+        snowfakery compiles a string as a template when it contains the start delimiter of one of its
+        Jinja environments (JinjaTemplateEvaluatorFactory.compiler_for_string): "${{" / "${%", and in
+        its default snowfakery_version 2 also the legacy "<<" / "<%" -- an environment that is not
+        sandboxed. "${" stands in for the first two, wider on purpose.
+    */
+    static readonly templateStartSequences = ['${', '<<', '<%'];
+
+    /*
+        A dependent picklist's choices are YAML list items, and snowfakery renders any item carrying a
+        template delimiter -- quoting it in YAML does not stop that. Such an item is written as a Jinja
+        string literal expression, which evaluates to exactly the value (the "${{" environment is the
+        one chosen, as it is checked first), and that expression is then quoted for YAML. Any other
+        value that cannot be plain is only quoted, and an ordinary value stays plain.
     */
     static buildDependentPicklistChoiceItem(picklistValue: string): string {
 
@@ -171,7 +180,10 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         if ( RecipeYamlScalar.isSafeAsPlainScalar(value) ) {
             return value;
         }
-        return RecipeYamlScalar.toDoubleQuotedScalar(`\${{ '${SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(value)}' }}`);
+        if ( !SnowfakeryRecipeFakerService.templateStartSequences.some(sequence => value.includes(sequence)) ) {
+            return RecipeYamlScalar.toDoubleQuotedScalar(value);
+        }
+        return RecipeYamlScalar.toDoubleQuotedScalar(`\${{ '${SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(value)}' }}`);
 
     }
 
@@ -182,7 +194,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     static buildEscapedCommaJoinedPicklistChoices(availablePicklistChoices: string[]): string {
 
         return availablePicklistChoices
-            .map(picklistOption => SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(picklistOption))
+            .map(picklistOption => SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(picklistOption))
             .join("', '");
 
     }

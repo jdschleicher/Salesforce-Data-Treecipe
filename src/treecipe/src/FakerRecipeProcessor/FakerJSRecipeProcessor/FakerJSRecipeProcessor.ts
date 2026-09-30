@@ -455,7 +455,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             };
         }
 
-        const legacyMatch = whenCondition.match(this.buildWhenConditionRegexMatchForControllingField());
+        const legacyMatch = whenCondition.match(FakerJSRecipeProcessor.legacyWhenConditionRegex);
         if ( !legacyMatch ) {
             return null;
         }
@@ -468,6 +468,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
+    static legacyWhenConditionRegex = FakerJSRecipeProcessor.prototype.buildWhenConditionRegexMatchForControllingField();
+
     static whenConditionWithQuotedLiteralRegex = /^\s*\$\{\{\s*(\S+?)\s*==\s*(['"])((?:\\[\s\S]|(?!\2)[^\\])*)\2\s*\}\}\s*$/;
 
     static unescapeJavaScriptStringLiteralContent(escapedContent: string): string {
@@ -475,7 +477,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         return escapedContent.replace(/\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g, (fullEscape: string, escapeBody: string) => {
 
             if ( escapeBody.startsWith('u{') ) {
-                return String.fromCodePoint(parseInt(escapeBody.slice(2, -1), 16));
+                const codePoint = parseInt(escapeBody.slice(2, -1), 16);
+                return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : fullEscape;
             }
             if ( escapeBody.length > 1 ) {
                 return String.fromCharCode(parseInt(escapeBody.slice(1), 16));

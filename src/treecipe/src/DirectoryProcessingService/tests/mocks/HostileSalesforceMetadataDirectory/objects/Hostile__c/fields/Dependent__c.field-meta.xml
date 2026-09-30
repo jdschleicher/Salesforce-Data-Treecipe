@@ -75,6 +75,76 @@
                 <label>Type: A #1</label>
             </value>
             <value>
+                <fullName>${{ 7*7 }}</fullName>
+                <default>false</default>
+                <label>${{ 7*7 }}</label>
+            </value>
+            <value>
+                <fullName>&lt;&lt; 7*7 &gt;&gt;</fullName>
+                <default>false</default>
+                <label>&lt;&lt; 7*7 &gt;&gt;</label>
+            </value>
+            <value>
+                <fullName>&lt;% if true %&gt;X&lt;% endif %&gt;</fullName>
+                <default>false</default>
+                <label>&lt;% if true %&gt;X&lt;% endif %&gt;</label>
+            </value>
+            <value>
+                <fullName>Yes</fullName>
+                <default>false</default>
+                <label>Yes</label>
+            </value>
+            <value>
+                <fullName>No</fullName>
+                <default>false</default>
+                <label>No</label>
+            </value>
+            <value>
+                <fullName>on</fullName>
+                <default>false</default>
+                <label>on</label>
+            </value>
+            <value>
+                <fullName>true</fullName>
+                <default>false</default>
+                <label>true</label>
+            </value>
+            <value>
+                <fullName>null</fullName>
+                <default>false</default>
+                <label>null</label>
+            </value>
+            <value>
+                <fullName>~</fullName>
+                <default>false</default>
+                <label>~</label>
+            </value>
+            <value>
+                <fullName>007</fullName>
+                <default>false</default>
+                <label>007</label>
+            </value>
+            <value>
+                <fullName>1e3</fullName>
+                <default>false</default>
+                <label>1e3</label>
+            </value>
+            <value>
+                <fullName>0x1F</fullName>
+                <default>false</default>
+                <label>0x1F</label>
+            </value>
+            <value>
+                <fullName>2024-01-01</fullName>
+                <default>false</default>
+                <label>2024-01-01</label>
+            </value>
+            <value>
+                <fullName>.inf</fullName>
+                <default>false</default>
+                <label>.inf</label>
+            </value>
+            <value>
                 <fullName>Rock &apos;n&apos; Roll</fullName>
                 <default>false</default>
                 <label>Rock &apos;n&apos; Roll</label>
@@ -104,6 +174,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -123,6 +207,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -142,6 +240,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -161,6 +273,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -180,6 +306,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -199,6 +339,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -218,6 +372,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -237,6 +405,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -256,6 +438,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -275,6 +471,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -294,6 +504,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -313,6 +537,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -332,6 +570,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -351,6 +603,482 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>${{ 7*7 }}</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>&lt;&lt; 7*7 &gt;&gt;</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>&lt;% if true %&gt;X&lt;% endif %&gt;</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>Yes</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>No</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>on</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>true</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>null</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>~</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>007</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>1e3</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>0x1F</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>2024-01-01</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
+            <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
+            <controllingFieldValue>A&amp;B</controllingFieldValue>
+            <controllingFieldValue>C#</controllingFieldValue>
+            <valueName>.inf</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>before&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#13;&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x85;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2028;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>before&#x2029;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>x&apos; or True or &apos;</controllingFieldValue>
+            <controllingFieldValue>a`,globalThis.__treecipeInjectedByPicklistValue=true,`b</controllingFieldValue>
+            <controllingFieldValue>${globalThis.__treecipeInjectedByPicklistValue=true}</controllingFieldValue>
+            <controllingFieldValue>${{ globalThis.__treecipeInjectedByPicklistValue = true }}</controllingFieldValue>
+            <controllingFieldValue>a}}b</controllingFieldValue>
+            <controllingFieldValue>trailing\</controllingFieldValue>
+            <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -370,6 +1098,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>
@@ -389,6 +1131,20 @@
             <controllingFieldValue>a}}b</controllingFieldValue>
             <controllingFieldValue>trailing\</controllingFieldValue>
             <controllingFieldValue>Type: A #1</controllingFieldValue>
+            <controllingFieldValue>${{ 7*7 }}</controllingFieldValue>
+            <controllingFieldValue>&lt;&lt; 7*7 &gt;&gt;</controllingFieldValue>
+            <controllingFieldValue>&lt;% if true %&gt;X&lt;% endif %&gt;</controllingFieldValue>
+            <controllingFieldValue>Yes</controllingFieldValue>
+            <controllingFieldValue>No</controllingFieldValue>
+            <controllingFieldValue>on</controllingFieldValue>
+            <controllingFieldValue>true</controllingFieldValue>
+            <controllingFieldValue>null</controllingFieldValue>
+            <controllingFieldValue>~</controllingFieldValue>
+            <controllingFieldValue>007</controllingFieldValue>
+            <controllingFieldValue>1e3</controllingFieldValue>
+            <controllingFieldValue>0x1F</controllingFieldValue>
+            <controllingFieldValue>2024-01-01</controllingFieldValue>
+            <controllingFieldValue>.inf</controllingFieldValue>
             <controllingFieldValue>Rock &apos;n&apos; Roll</controllingFieldValue>
             <controllingFieldValue>A&amp;B</controllingFieldValue>
             <controllingFieldValue>C#</controllingFieldValue>

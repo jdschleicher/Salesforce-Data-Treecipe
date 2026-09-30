@@ -61,7 +61,8 @@ import {
     INJECTED_FIELD_API_NAME,
     INJECTION_MARKER,
     isPythonModuleAvailable,
-    loadWithPyYaml
+    loadWithPyYaml,
+    renderWithSnowfakeryJinja
 } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 
 const HOSTILE_METADATA_PATH = path.join(__dirname, 'mocks', 'HostileSalesforceMetadataDirectory');
@@ -72,6 +73,7 @@ const FIXTURE_PICKLIST_VALUES = [...HOSTILE_PICKLIST_VALUES.map(([, hostileValue
 const DECLARED_FIELD_API_NAMES = ['Controlling__c', 'Dependent__c', 'Global__c', 'Multi__c', 'RecordTypeId'];
 
 const isPyYamlAvailable = isPythonModuleAvailable('yaml');
+const isJinjaAvailable = isPythonModuleAvailable('jinja2');
 
 type LoadedRecipeEntry = { object?: string, fields?: Record<string, unknown> };
 
@@ -149,6 +151,34 @@ describe.each([
                 expect(recipeLine).not.toMatch(new RegExp(`^\\s*${INJECTED_FIELD_API_NAME}:`));
             });
         });
+
+    });
+
+});
+
+/*
+    snowfakery renders every dependent choice it picks, in whichever of its Jinja environments the
+    item's delimiters select -- including the legacy "<<" / "<%" one. Rendered that way, each choice
+    the real pipeline wrote must come back as exactly a value the metadata declared.
+*/
+describe('Run Faker by Recipe with snowfakery over the hostile recipe', () => {
+
+    (isJinjaAvailable ? test : test.skip)('renders every dependent choice to exactly a declared value', async () => {
+
+        const recipeFiles = await generateRecipeFiles(() => new SnowfakeryRecipeFakerService());
+        const hostileEntry = recipeFiles
+            .flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedRecipeEntry[])
+            .find(recipeEntry => recipeEntry.object === 'Hostile__c');
+        const dependentChoices = (hostileEntry.fields['Dependent__c'] as { if: Array<{ choice: { pick: { random_choice: string[] } } }> }).if;
+        const everyChoiceItem = dependentChoices.flatMap(dependentChoice => dependentChoice.choice.pick.random_choice);
+
+        const renderResults = renderWithSnowfakeryJinja(everyChoiceItem.map(choiceItem => ({ template: choiceItem })));
+
+        expect(dependentChoices).toHaveLength(FIXTURE_PICKLIST_VALUES.length);
+        renderResults.forEach(renderResult => {
+            expect(FIXTURE_PICKLIST_VALUES).toContain(renderResult.rendered);
+        });
+        expect(new Set(renderResults.map(renderResult => renderResult.rendered))).toEqual(new Set(FIXTURE_PICKLIST_VALUES));
 
     });
 

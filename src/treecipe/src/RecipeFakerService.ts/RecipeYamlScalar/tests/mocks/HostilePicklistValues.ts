@@ -36,22 +36,47 @@ export const QUOTE_PAYLOADS: Array<[string, string]> = [
     ['an expression opener', `\${{ globalThis.${INJECTION_MARKER} = true }}`],
     ['an expression closer', 'a}}b'],
     ['a trailing backslash', 'trailing\\'],
-    ['a colon-space and a space-hash', 'Type: A #1']
+    ['a colon-space and a space-hash', 'Type: A #1'],
+    // WHAT snowfakery WOULD RENDER, IN EACH OF ITS TEMPLATE SYNTAXES: RENDERED, THESE READ 49 AND X
+    ['a snowfakery expression', '${{ 7*7 }}'],
+    ['a legacy snowfakery expression', '<< 7*7 >>'],
+    ['a legacy snowfakery block', '<% if true %>X<% endif %>']
 ];
 
-export const HOSTILE_PICKLIST_VALUES: Array<[string, string]> = [...LINE_BREAK_PAYLOADS, ...QUOTE_PAYLOADS];
+// PLAIN, EACH OF THESE LOADS AS A BOOLEAN, NULL OR NUMBER IN AT LEAST ONE OF THE TWO YAML PARSERS
+export const NON_STRING_SCALAR_PAYLOADS: Array<[string, string]> = [
+    ['a YAML 1.1 boolean', 'Yes'],
+    ['a YAML 1.1 boolean', 'No'],
+    ['a YAML 1.1 boolean', 'on'],
+    ['a boolean', 'true'],
+    ['a null', 'null'],
+    ['a null', '~'],
+    ['an octal-looking number', '007'],
+    ['a float', '1e3'],
+    ['a hex number', '0x1F'],
+    ['a date', '2024-01-01'],
+    ['an infinity', '.inf']
+];
+
+
+export const HOSTILE_PICKLIST_VALUES: Array<[string, string]> = [...LINE_BREAK_PAYLOADS, ...QUOTE_PAYLOADS, ...NON_STRING_SCALAR_PAYLOADS];
 
 export const ORDINARY_PICKLIST_VALUES = ["Rock 'n' Roll", 'A&B', 'C#', 'Some Value', 'Ohio_City'];
 
 /*
     snowfakery reads recipes with PyYAML and evaluates ${{ }} with Jinja. Neither is a dependency of
-    this extension, so a check that needs them runs where python3 has them and is skipped otherwise.
+    this extension, so a check that needs them is skipped where python3 lacks them -- except in CI,
+    which installs both, where a missing module FAILS: a check that silently stops running is the
+    one that lets U+2028 back in.
 */
 export const isPythonModuleAvailable = (moduleName: string): boolean => {
     try {
         childProcess.execFileSync('python3', ['-c', `import ${moduleName}`], { stdio: 'ignore' });
         return true;
     } catch {
+        if ( process.env.CI === 'true' ) {
+            throw new Error(`python3 cannot import ${moduleName}; CI installs it so the recipe escaping checks run rather than skip`);
+        }
         return false;
     }
 };
@@ -68,21 +93,36 @@ export const loadWithPyYaml = (yamlTexts: string[]): unknown[] => runPython([
 ].join('\n'), yamlTexts) as unknown[];
 
 /*
-    The delimiters snowfakery configures its Jinja environment with. Each template is rendered with
-    the given context; a render that raises is reported as { error } rather than failing the batch.
+    A copy of snowfakery's JinjaTemplateEvaluatorFactory in its DEFAULT mode (snowfakery_version 2):
+    two environments, "${{" / "${%" and the legacy "<<" / "<%", and a string is compiled by the first
+    whose start delimiter it contains -- or not compiled at all, and returned as it is. The legacy one
+    is why a value with no "${" in it can still be a template. Each item is rendered with the given
+    context; a render that raises is reported as { error } rather than failing the batch.
 */
 export const renderWithSnowfakeryJinja = (templates: Array<{ template: string, context?: Record<string, unknown> }>): Array<{ rendered?: string, error?: string }> => runPython([
     'import json, sys, jinja2',
-    'environment = jinja2.Environment(variable_start_string="${{", variable_end_string="}}", block_start_string="${%", block_end_string="%}", comment_start_string="${#", comment_end_string="#}")',
+    'compilers = [',
+    '    jinja2.Environment(block_start_string="${%", block_end_string="%}", variable_start_string="${{", variable_end_string="}}"),',
+    '    jinja2.Environment(block_start_string="<%", block_end_string="%>", variable_start_string="<<", variable_end_string=">>"),',
+    ']',
     // DETERMINISTIC STAND-INS FOR snowfakery'S random_choice AND faker'S random_sample: THE FIRST OPTION, SO A TEST CAN SAY WHICH VALUE IT GETS
     'class DeterministicFake:',
     '    def random_sample(self, elements):',
     '        return list(elements)[:1]',
-    'environment.globals.update(random_choice=lambda *options: options[0], fake=DeterministicFake())',
+    'for compiler in compilers:',
+    '    compiler.globals.update(random_choice=lambda *options: options[0], fake=DeterministicFake())',
+    'def compiler_for_string(definition):',
+    '    for compiler in compilers:',
+    '        for start_string in (compiler.block_start_string, compiler.variable_start_string):',
+    '            if start_string in definition:',
+    '                return compiler',
+    '    return None',
     'results = []',
     'for item in json.load(sys.stdin):',
     '    try:',
-    '        results.append({"rendered": environment.from_string(item["template"]).render(**(item.get("context") or {}))})',
+    '        compiler = compiler_for_string(item["template"])',
+    '        rendered = compiler.from_string(item["template"]).render(**(item.get("context") or {})) if compiler else item["template"]',
+    '        results.append({"rendered": rendered})',
     '    except Exception as render_error:',
     '        results.append({"error": str(render_error)})',
     'print(json.dumps(results))'

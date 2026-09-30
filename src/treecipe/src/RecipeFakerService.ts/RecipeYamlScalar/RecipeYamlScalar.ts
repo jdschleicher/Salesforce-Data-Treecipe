@@ -34,10 +34,28 @@ export class RecipeYamlScalar {
 
     }
 
+    static readonly nonPrintableCharacterTest = new RegExp(RecipeYamlScalar.nonPrintableCharacterPattern.source);
+
+    /*
+        What a PLAIN scalar must not contain. ": " and " #" end it early; the rest are the template
+        delimiters snowfakery renders in a plain string: "${{" and "${%", and -- in its default
+        snowfakery_version 2 -- a second, legacy Jinja environment's "<<" and "<%". "${", "{{" and "{%"
+        are wider than any delimiter on purpose.
+    */
+    static readonly plainScalarUnsafeSequences = [': ', ' #', '${', '{{', '{%', '<<', '<%'];
+
+    /*
+        A plain scalar YAML reads as something other than a string: a boolean, null or number under
+        YAML 1.1 (PyYAML, snowfakery) or 1.2 (js-yaml, faker-js). A "Yes" / "No" dependent picklist
+        would otherwise come back as True / False, and "007" as 7. Anything starting like a number is
+        included, which also covers timestamps, octal, hex and sexagesimal.
+    */
+    static readonly nonStringPlainScalarPattern = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL|~|=|[-+]?\.?[0-9].*|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$/;
+
     /*
         Conservative on purpose: anything this rejects is quoted, which costs only looks. A value it
-        wrongly accepted could change the recipe's structure, or -- where it carries "${" -- be read
-        by snowfakery as a template.
+        wrongly accepted could change the recipe's structure, come back as a different type, or be
+        read by snowfakery as a template.
     */
     static isSafeAsPlainScalar(value: string): boolean {
 
@@ -47,12 +65,13 @@ export class RecipeYamlScalar {
         if ( RecipeYamlScalar.yamlIndicatorFirstCharacters.includes(value[0]) ) {
             return false;
         }
-        if ( new RegExp(RecipeYamlScalar.nonPrintableCharacterPattern.source).test(value) ) {
+        if ( RecipeYamlScalar.nonPrintableCharacterTest.test(value) ) {
             return false;
         }
-
-        const structuralSequences = [': ', ' #', '${', '{{', '{%'];
-        if ( structuralSequences.some(sequence => value.includes(sequence)) || value.endsWith(':') ) {
+        if ( RecipeYamlScalar.nonStringPlainScalarPattern.test(value) ) {
+            return false;
+        }
+        if ( RecipeYamlScalar.plainScalarUnsafeSequences.some(sequence => value.includes(sequence)) || value.endsWith(':') ) {
             return false;
         }
 

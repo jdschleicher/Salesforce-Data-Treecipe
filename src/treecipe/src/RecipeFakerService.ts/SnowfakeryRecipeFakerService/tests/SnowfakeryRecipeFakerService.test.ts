@@ -578,18 +578,18 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
         rather than the backtick -- which is why this escaper is separate from the FakerJS one rather
         than shared.
     */
-    describe('escapePicklistOptionForJinjaStringLiteral', () => {
+    describe('escapePicklistValueForJinjaStringLiteral', () => {
 
         test('given a value containing an apostrophe, escapes it so it cannot close the Jinja literal', () => {
 
-            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral("O'Brien")).toBe("O\\'Brien");
+            expect(SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral("O'Brien")).toBe("O\\'Brien");
 
         });
 
         test('given a breakout attempt, the injected expression is neutralised', () => {
 
             const breakoutAttempt = "a', 'x') ~ INJECTED ~ random_choice('b";
-            const escapedOption = SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(breakoutAttempt);
+            const escapedOption = SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(breakoutAttempt);
 
             // EVERY APOSTROPHE IS ESCAPED, SO NONE OF IT CAN LEAVE THE LITERAL
             expect(escapedOption).not.toMatch(/[^\\]'/);
@@ -598,14 +598,14 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
         test('given a value containing a backslash, escapes it first so it cannot re-escape the escaping', () => {
 
-            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral('back\\slash')).toBe('back\\\\slash');
-            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral("trailing\\")).toBe("trailing\\\\");
+            expect(SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral('back\\slash')).toBe('back\\\\slash');
+            expect(SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral("trailing\\")).toBe("trailing\\\\");
 
         });
 
         test('given a value containing a newline, escapes it so the recipe YAML structure survives', () => {
 
-            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral('a\nb')).toBe('a\\nb');
+            expect(SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral('a\nb')).toBe('a\\nb');
 
         });
 
@@ -613,7 +613,7 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 
             const ordinaryOptions = ['guardians', 'cavs', 'Ohio_City', 'Some Value'];
             ordinaryOptions.forEach(ordinaryOption => {
-                expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(ordinaryOption)).toBe(ordinaryOption);
+                expect(SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(ordinaryOption)).toBe(ordinaryOption);
             });
 
         });
@@ -814,7 +814,7 @@ describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () 
 
     });
 
-    describe('escapePicklistOptionForJinjaStringLiteral', () => {
+    describe('escapePicklistValueForJinjaStringLiteral', () => {
 
         test.each([
             ['a colon-space and a space-hash', 'Type: A #1', 'Type:\\x20A\\x20#1'],
@@ -824,7 +824,7 @@ describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () 
             ['a paragraph separator', 'a\u2029b', 'a\\u2029b']
         ])('escapes %s', (unusedDescription, picklistValue, expectedEscapedValue) => {
 
-            expect(SnowfakeryRecipeFakerService.escapePicklistOptionForJinjaStringLiteral(picklistValue)).toBe(expectedEscapedValue);
+            expect(SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(picklistValue)).toBe(expectedEscapedValue);
 
         });
 
@@ -843,6 +843,15 @@ describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () 
         test('writes anything else as a quoted Jinja string literal, because snowfakery renders a quoted item too', () => {
 
             expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem('${{ x }}')).toBe('"${{ \'${{ x }}\' }}"');
+            expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem('<< x >>')).toBe('"${{ \'<< x >>\' }}"');
+            expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem('<% x %>')).toBe('"${{ \'<% x %>\' }}"');
+
+        });
+
+        test('only quotes a value that carries no template delimiter, since snowfakery renders nothing in it', () => {
+
+            expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem('Yes')).toBe('"Yes"');
+            expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem('a: b')).toBe('"a: b"');
 
         });
 

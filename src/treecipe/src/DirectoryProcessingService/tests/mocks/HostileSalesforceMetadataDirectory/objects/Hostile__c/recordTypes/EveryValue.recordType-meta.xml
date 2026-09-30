@@ -58,6 +58,62 @@
             <default>false</default>
         </values>
         <values>
+            <fullName>${{ 7*7 }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;&lt; 7*7 &gt;&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;% if true %&gt;X&lt;% endif %&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Yes</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>No</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>on</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>true</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>null</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>~</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>007</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>1e3</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>0x1F</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>2024-01-01</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>.inf</fullName>
+            <default>false</default>
+        </values>
+        <values>
             <fullName>Rock &apos;n&apos; Roll</fullName>
             <default>false</default>
         </values>
@@ -122,6 +178,62 @@
         </values>
         <values>
             <fullName>Type: A #1</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${{ 7*7 }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;&lt; 7*7 &gt;&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;% if true %&gt;X&lt;% endif %&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Yes</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>No</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>on</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>true</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>null</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>~</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>007</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>1e3</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>0x1F</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>2024-01-01</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>.inf</fullName>
             <default>false</default>
         </values>
         <values>
@@ -192,6 +304,62 @@
             <default>false</default>
         </values>
         <values>
+            <fullName>${{ 7*7 }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;&lt; 7*7 &gt;&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;% if true %&gt;X&lt;% endif %&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Yes</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>No</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>on</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>true</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>null</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>~</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>007</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>1e3</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>0x1F</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>2024-01-01</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>.inf</fullName>
+            <default>false</default>
+        </values>
+        <values>
             <fullName>Rock &apos;n&apos; Roll</fullName>
             <default>false</default>
         </values>
@@ -256,6 +424,62 @@
         </values>
         <values>
             <fullName>Type: A #1</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>${{ 7*7 }}</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;&lt; 7*7 &gt;&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>&lt;% if true %&gt;X&lt;% endif %&gt;</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Yes</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>No</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>on</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>true</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>null</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>~</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>007</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>1e3</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>0x1F</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>2024-01-01</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>.inf</fullName>
             <default>false</default>
         </values>
         <values>

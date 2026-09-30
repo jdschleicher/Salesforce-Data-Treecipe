@@ -860,6 +860,14 @@ describe('FakerJSRecipeProcessor reads an escaped when: condition', () => {
 
         });
 
+        test('leaves a code point escape past U+10FFFF as written rather than throwing', () => {
+
+            expect(FakerJSRecipeProcessor.unescapeJavaScriptStringLiteralContent('a\\u{FFFFFFF}b')).toBe('a\\u{FFFFFFF}b');
+            expect(fakerJSRecipeProcessor.parseWhenCondition("${{ F == 'a\\u{FFFFFFF}' }}"))
+                .toEqual({ controllingFieldApiName: 'F', controllingValue: 'a\\u{FFFFFFF}' });
+
+        });
+
     });
 
 });

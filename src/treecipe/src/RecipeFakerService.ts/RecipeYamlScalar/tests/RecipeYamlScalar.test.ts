@@ -4,6 +4,7 @@ import {
     ANY_YAML_LINE_BREAK,
     HOSTILE_PICKLIST_VALUES,
     LINE_BREAK_BY_NAME,
+    NON_STRING_SCALAR_PAYLOADS,
     ORDINARY_PICKLIST_VALUES,
     isPythonModuleAvailable,
     loadWithPyYaml
@@ -59,6 +60,9 @@ describe('RecipeYamlScalar', () => {
             ['a trailing colon', 'a:'],
             ['a snowfakery template', '${{ x }}'],
             ['a Jinja block', '{% x %}'],
+            ["snowfakery's legacy expression", '<< x >>'],
+            ["snowfakery's legacy block", '<% x %>'],
+            ...NON_STRING_SCALAR_PAYLOADS,
             ['a tab', 'a\tb'],
             ...HOSTILE_PICKLIST_VALUES.filter(([, hostileValue]) => ANY_YAML_LINE_BREAK.test(hostileValue))
         ])('rejects a value with %s', (unusedDescription, unsafeValue) => {

@@ -64,6 +64,18 @@ jobs:
     - name: Lint
       run: npm run lint
 
+    # snowfakery reads a recipe with PyYAML and renders it with Jinja2, and the picklist escaping
+    # tests (#155) check generated recipes against both. They skip where python3 lacks either
+    # module, and FAIL where CI is set, so the check cannot silently stop running here. Pinned for
+    # the same reason every other install in this job is.
+    - name: Use Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install PyYAML and Jinja2 for the recipe escaping tests
+      run: python3 -m pip install --only-binary=:all: PyYAML==6.0.2 Jinja2==3.1.6 MarkupSafe==3.0.2
+
     - name: Run Jest tests
       run: xvfb-run -a npm run jest-test-summary
 
