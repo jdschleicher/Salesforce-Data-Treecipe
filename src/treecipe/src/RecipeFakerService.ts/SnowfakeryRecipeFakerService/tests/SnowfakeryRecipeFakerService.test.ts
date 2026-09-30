@@ -12,11 +12,10 @@ import {
     MULTI_PICKLIST_FIELD_API_NAME,
     ORDINARY_PICKLIST_VALUES,
     OTHER_PICKLIST_VALUE,
-    buildRecipeWithEveryPicklistSink,
-    isPythonModuleAvailable,
-    loadWithPyYaml,
-    renderWithSnowfakeryJinja
+    buildRecipeWithEveryPicklistSink
 } from "../../RecipeYamlScalar/tests/mocks/HostilePicklistValues";
+
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 // A FIELD'S RECIPE VALUE ONLY HAS TO BE VALID YAML WHERE RecipeService PUTS IT: AFTER "Field: " UNDER AN OBJECT'S fields BLOCK
 function loadFieldInRecipe(fieldApiName: string, recipeValue: string): unknown {
@@ -728,8 +727,6 @@ describe('SnowfakeryRecipeFakerService Shared Intstance Tests', () => {
 describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () => {
 
     const snowfakeryRecipeFakerService = new SnowfakeryRecipeFakerService();
-    const isPyYamlAvailable = isPythonModuleAvailable('yaml');
-    const isJinjaAvailable = isPythonModuleAvailable('jinja2');
 
     const loadRecipeFields = (picklistValue: string) =>
         (yaml.load(buildRecipeWithEveryPicklistSink(snowfakeryRecipeFakerService, picklistValue)) as LoadedRecipeWithEveryPicklistSink)[0].fields;
@@ -753,11 +750,11 @@ describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () 
 
     });
 
-    (isPyYamlAvailable ? test : test.skip)('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
+    PythonTestHarness.testRequiringModules('yaml')('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
 
         const hostileRecipes = HOSTILE_PICKLIST_VALUES.map(([, hostileValue]) => buildRecipeWithEveryPicklistSink(snowfakeryRecipeFakerService, hostileValue));
 
-        expect(loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
+        expect(PythonTestHarness.loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
 
     });
 
@@ -767,12 +764,12 @@ describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () 
         exactly the value -- and a when: condition must be true for the value and false otherwise,
         which an apostrophe breaking out of the literal ("x' or True or '") would make always true.
     */
-    (isJinjaAvailable ? test.each(HOSTILE_PICKLIST_VALUES) : test.skip.each(HOSTILE_PICKLIST_VALUES))('a value with %s renders in Jinja to exactly itself in every sink', (unusedDescription, hostileValue) => {
+    PythonTestHarness.testRequiringModules('jinja2').each(HOSTILE_PICKLIST_VALUES)('a value with %s renders in Jinja to exactly itself in every sink', (unusedDescription, hostileValue) => {
 
         const loadedFields = loadRecipeFields(hostileValue);
         const dependentChoice = loadedFields[DEPENDENT_FIELD_API_NAME].if[0].choice;
 
-        const renderResults = renderWithSnowfakeryJinja([
+        const renderResults = PythonTestHarness.renderWithSnowfakeryJinja([
             { template: loadedFields[CONTROLLING_FIELD_API_NAME] as string },
             { template: loadedFields[MULTI_PICKLIST_FIELD_API_NAME] as string },
             { template: dependentChoice.when, context: { [CONTROLLING_FIELD_API_NAME]: hostileValue } },

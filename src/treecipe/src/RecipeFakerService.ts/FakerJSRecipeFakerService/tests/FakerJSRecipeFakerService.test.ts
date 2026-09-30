@@ -13,10 +13,10 @@ import {
     MULTI_PICKLIST_FIELD_API_NAME,
     ORDINARY_PICKLIST_VALUES,
     OTHER_PICKLIST_VALUE,
-    buildRecipeWithEveryPicklistSink,
-    isPythonModuleAvailable,
-    loadWithPyYaml
+    buildRecipeWithEveryPicklistSink
 } from "../../RecipeYamlScalar/tests/mocks/HostilePicklistValues";
+
+import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 // A FIELD'S RECIPE VALUE ONLY HAS TO BE VALID YAML WHERE RecipeService PUTS IT: AFTER "Field: " UNDER AN OBJECT'S fields BLOCK
 function loadFieldInRecipe(fieldApiName: string, recipeValue: string): unknown {
@@ -637,7 +637,6 @@ describe('FakerJSRecipeFakerService Shared Intstance Tests', () => {
 describe('FakerJSRecipeFakerService writes every picklist value inertly', () => {
 
     const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
-    const isPyYamlAvailable = isPythonModuleAvailable('yaml');
 
     // FakerJSRecipeProcessor.regExpressionForSurroundingFakerJSSyntax: AN EXPRESSION ENDS AT THE FIRST }}
     const evaluateFakerJSExpressions = (recipeValue: string): string => recipeValue.replace(/\${{(.*?)}}/g, (unusedMatch: string, fakerJSCode: string) => {
@@ -680,11 +679,11 @@ describe('FakerJSRecipeFakerService writes every picklist value inertly', () => 
 
     });
 
-    (isPyYamlAvailable ? test : test.skip)('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
+    PythonTestHarness.testRequiringModules('yaml')('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
 
         const hostileRecipes = HOSTILE_PICKLIST_VALUES.map(([, hostileValue]) => buildRecipeWithEveryPicklistSink(fakerJSRecipeFakerService, hostileValue));
 
-        expect(loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
+        expect(PythonTestHarness.loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
 
     });
 

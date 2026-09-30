@@ -137,8 +137,8 @@ src/
     │   │   └── tests/
     │   └── RecipeYamlScalar/
     │       ├── RecipeYamlScalar.ts          # The YAML half of writing an untrusted picklist value: line breaks either parser sees, plain-vs-quoted list items
-    │       └── tests/
-    │           └── mocks/                   # HostilePicklistValues: the shared payload list, and the PyYAML / Jinja runners
+    │       └── tests/                   # PythonTestHarness.test.ts pins the gate below
+    │           └── mocks/                   # HostilePicklistValues: the shared payload list. PythonTestHarness: the PyYAML / Jinja runners and the gate every such check goes through — runs where python3 has the module, skips without CI, FAILS in CI (#158)
     ├── PicklistDependencyCheckService/
     │   ├── PicklistDependencyCheckService.ts # Deploys and runs the generated picklist dependency tests against an org
     │   └── tests/

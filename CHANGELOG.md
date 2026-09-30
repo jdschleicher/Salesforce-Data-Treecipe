@@ -1,5 +1,42 @@
 # Change Log
 
+## [3.29.3] - CI runs again, and a recipe check that cannot run fails instead of skipping
+
+Closes [#158](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/158). Test harness only; nothing a user sees changes.
+
+The tests that read generated recipes the way snowfakery does need `python3` with PyYAML (its YAML parser) or Jinja2 (its template engine). Neither is a dependency of this extension, so on a machine without them those tests **skip**. That is right for a laptop and wrong for CI. A skip is green, and `checkJestTestCoverage.ps1` does not count skips, so a runner image that stopped shipping PyYAML would switch off every snowfakery-side check without anyone being told. These are the checks that caught U+2028 in #155 and `<<…>>` in #159.
+
+All of them now go through one gate, `PythonTestHarness.testRequiringModules('yaml' | 'jinja2')`:
+
+| Module importable? | `CI` set? | Test |
+|---|---|---|
+| yes | either | runs |
+| no | no | skipped, as before |
+| no | yes | **fails**: `python3 cannot import yaml, and CI is set, so this check fails rather than skipping. Install it with: python3 -m pip install PyYAML Jinja2` |
+
+- **It fails the test, not the suite.** 3.29.2's gate threw while the suite was being collected, so a missing module in CI took down every js-yaml check in the same file with it. The stand-in registers the same test names, `.each` rows included, so the report says which checks did not run.
+- **`DirectoryProcessor.generatedRecipeYaml.test.ts`** (#154), the suite #158 named, used its own probe that always skipped. It uses the gate now.
+- **`PythonTestHarness`** is a static class. It holds the probe, the gate and the Python runners (`runPython`, `loadWithPyYaml`, `renderWithSnowfakeryJinja`) that `HostilePicklistValues.ts` used to export as loose functions; that file now holds only payload data.
+- `CI` counts as set for any non-empty value except `false`.
+- **The gate returns `GatedTest`, not `jest.It`.** It allows a call (with an optional timeout) and `.each` over an array table, and nothing else, because those are the only forms the CI stand-in implements. `.only`, `.concurrent` and a tagged-template `.each` off the gate are now **compile errors**. Before, they type-checked and would have crashed the whole file while it was being collected, in exactly the CI run the stand-in exists for.
+- **Each module is probed once per gate**, including when the gate fails, and once per file where a `describe.each` runs the same gated test for both backends.
+
+**Tests.** `PythonTestHarness.test.ts` stubs the probe with `jest.spyOn(childProcess, 'execFileSync')` and sets `CI` explicitly. It covers every row of the table, a missing `python3`, the gate's return value in each mode, the stand-in registering the same name (and the same `.each` table) with the failing body and any timeout, a single probe per module when the gate fails, and the message naming only the missing module. It was also run for real with a `python3` shim on `PATH` that refuses the import:
+- the #154 suite reports **2 failed, 4 passed** with `CI=true`, and **2 skipped, 4 passed** without it;
+- the Jinja-gated snowfakery suite fails all 27 `.each` rows by name.
+
+No new dependency.
+
+### CI has not run since 3.29.2, and now it does
+
+3.29.2 added a step to `build.yaml` that installs PyYAML and Jinja2, written as the plain scalar `run: python3 -m pip install --only-binary=:all: PyYAML==…`. The `: ` inside it is a YAML mapping indicator, which is the same defect class 3.29.2 fixed for picklist values. GitHub could not parse the workflow at all. It reports that as a run with **no jobs**, concluded `failure` the moment it starts, with no log and no failing step. So:
+- every push since that commit failed, including `main` after #159 merged;
+- no pull request run started, which leaves a required check at "Expected — Waiting for status to be reported".
+
+The step is now a block scalar (`run: |`), which runs exactly the same command. This is a workflow change, which #158 ruled out, but it repairs the workflow rather than changing what CI does.
+
+A new guard, `.github/workflowScripts/tests/workflowFiles.test.js`, loads every workflow file with js-yaml and checks it has triggers, jobs, and steps that each run a command or use an action. Against the broken `build.yaml` it fails with `bad indentation of a mapping entry (77:53)`, the position GitHub rejected. An unparseable workflow now fails `npm run jest-test` locally, instead of failing silently on GitHub.
+
 ## [3.29.2] - Every picklist value is written into a recipe as inert data (security)
 
 Closes [#155](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/155), from the security review of 3.29.1.
