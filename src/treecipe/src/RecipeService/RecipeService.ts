@@ -280,7 +280,8 @@ export class RecipeService {
     */
     static buildControllingValueToPicklistOptions(xmlFieldDetail: XMLFieldDetail): Record<string, string[]> {
 
-        let controllingValueToPicklistOptions:Record<string, string[]> = {};
+        // NULL PROTOTYPED: THE KEYS ARE PICKLIST VALUES, AND "constructor" OR "__proto__" AS A KEY OTHERWISE READS OR REPLACES AN INHERITED MEMBER
+        let controllingValueToPicklistOptions:Record<string, string[]> = Object.create(null);
 
         if ( !(xmlFieldDetail.picklistValues) ) {
             return controllingValueToPicklistOptions;
@@ -293,7 +294,7 @@ export class RecipeService {
             }
             picklistOption.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection.forEach((controllingValue) => {
 
-                if ( controllingValue in controllingValueToPicklistOptions ) {
+                if ( Object.prototype.hasOwnProperty.call(controllingValueToPicklistOptions, controllingValue) ) {
                     controllingValueToPicklistOptions[controllingValue].push(picklistOption.picklistOptionApiName);
                 } else {
                     controllingValueToPicklistOptions[controllingValue] = [ picklistOption.picklistOptionApiName ];

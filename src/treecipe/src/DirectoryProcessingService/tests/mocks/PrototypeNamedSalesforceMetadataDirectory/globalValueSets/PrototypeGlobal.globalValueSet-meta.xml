@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customValue>
+        <fullName>constructor</fullName>
+        <default>false</default>
+        <label>constructor</label>
+    </customValue>
+    <customValue>
+        <fullName>toString</fullName>
+        <default>false</default>
+        <label>toString</label>
+    </customValue>
+    <customValue>
+        <fullName>valueOf</fullName>
+        <default>false</default>
+        <label>valueOf</label>
+    </customValue>
+    <customValue>
+        <fullName>hasOwnProperty</fullName>
+        <default>false</default>
+        <label>hasOwnProperty</label>
+    </customValue>
+    <customValue>
+        <fullName>__proto__</fullName>
+        <default>false</default>
+        <label>__proto__</label>
+    </customValue>
+    <customValue>
+        <fullName>Ordinary</fullName>
+        <default>false</default>
+        <label>Ordinary</label>
+    </customValue>
+    <masterLabel>PrototypeGlobal</masterLabel>
+    <sorted>false</sorted>
+</GlobalValueSet>

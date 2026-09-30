@@ -669,3 +669,31 @@ describe('isSalesforceRecordTypeMetadataFile', () => {
     });
 
 });
+
+/*
+    #160. The dependent values key a map, and a {} map read "toString" back as the inherited
+    function -- which is not iterable -- and replaced its prototype on "__proto__".
+*/
+describe('extractPicklistDetailsFromValueSettings', () => {
+
+    test.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])('given the dependent value %s in two valueSettings blocks, returns it once with both controlling values', (prototypeMemberName) => {
+
+        const picklistDetails = XmlFileProcessor.extractPicklistDetailsFromValueSettings({
+            valueSettings: [
+                { controllingFieldValue: ['first'], valueName: [prototypeMemberName] },
+                { controllingFieldValue: ['first', 'second'], valueName: [prototypeMemberName] },
+                { controllingFieldValue: ['second'], valueName: ['Ordinary'] }
+            ]
+        });
+
+        expect(picklistDetails.map(picklistDetail => [
+            picklistDetail.picklistOptionApiName,
+            picklistDetail.controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection
+        ])).toEqual([
+            [prototypeMemberName, ['first', 'second']],
+            ['Ordinary', ['second']]
+        ]);
+
+    });
+
+});
