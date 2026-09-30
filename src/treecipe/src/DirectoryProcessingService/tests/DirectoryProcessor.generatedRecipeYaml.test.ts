@@ -53,6 +53,7 @@ import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRe
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 
 // snowfakery reads recipes with PyYAML, whose YAML 1.1 rules differ from js-yaml's; it is checked where the interpreter has it.
@@ -77,6 +78,9 @@ async function generateRecipeFiles(createFakerService: () => IRecipeFakerService
     return new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper);
 
 }
+
+// ONE PROBE FOR THE FILE, NOT ONE PER BACKEND describe.each RUNS
+const testRequiringPyYaml = PythonTestHarness.testRequiringModules('yaml');
 
 describe.each([
     ['faker-js', () => new FakerJSRecipeFakerService()],
@@ -108,7 +112,7 @@ describe.each([
 
     });
 
-    PythonTestHarness.testRequiringModules('yaml')('every recipe file it writes loads with PyYAML', () => {
+    testRequiringPyYaml('every recipe file it writes loads with PyYAML', () => {
 
         const pyYamlInput = JSON.stringify(recipeFiles.map(recipeFile => ({ fileName: recipeFile.fileName, content: recipeFile.content })));
         const unloadableRecipeFiles = childProcess.execFileSync('python3', ['-c', PYYAML_CHECK], { input: pyYamlInput, encoding: 'utf-8' });

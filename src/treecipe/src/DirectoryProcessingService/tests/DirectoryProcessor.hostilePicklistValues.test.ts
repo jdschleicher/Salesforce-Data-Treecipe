@@ -63,6 +63,7 @@ import {
 } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+
 const HOSTILE_METADATA_PATH = path.join(__dirname, 'mocks', 'HostileSalesforceMetadataDirectory');
 const HOSTILE_OBJECTS_PATH = path.join(HOSTILE_METADATA_PATH, 'objects');
 
@@ -96,6 +97,9 @@ describe('the hostile metadata fixture', () => {
     });
 
 });
+
+// ONE PROBE FOR THE FILE, NOT ONE PER BACKEND describe.each RUNS
+const testRequiringPyYaml = PythonTestHarness.testRequiringModules('yaml');
 
 describe.each([
     ['faker-js', () => new FakerJSRecipeFakerService()],
@@ -131,7 +135,7 @@ describe.each([
 
     });
 
-    PythonTestHarness.testRequiringModules('yaml')('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
+    testRequiringPyYaml('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
 
         const recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
 

@@ -5,6 +5,17 @@ export type PythonTestMode = 'run' | 'skip' | 'fail';
 export type SnowfakeryJinjaRenderResult = { rendered?: string, error?: string };
 
 /*
+    The forms of `test` a gated check may use: a call, and `.each` over an ARRAY table. Narrower than
+    jest.It on purpose -- the CI stand-in implements only these, so `.only`, `.concurrent` or a
+    tagged-template `.each` off the gate must not compile. Type-checked, they would have crashed the
+    whole file while collecting in exactly the CI run the stand-in exists for.
+*/
+export type GatedTest = {
+    (testName: string, testBody: jest.ProvidesCallback, timeout?: number): void;
+    each(table: ReadonlyArray<ReadonlyArray<unknown>>): (testName: string, testBody: (...rowValues: any[]) => any, timeout?: number) => void;
+};
+
+/*
     The recipe checks that need python3 -- PyYAML, snowfakery's parser, and Jinja, its template
     engine. Neither is a dependency of this extension, so a check that needs one runs where python3
     has it and is skipped where it does not -- EXCEPT in CI, where a missing module FAILS the test
@@ -44,7 +55,13 @@ export class PythonTestHarness {
 
     static selectTestMode(moduleNames: string[]): PythonTestMode {
 
-        if ( PythonTestHarness.findMissingModules(moduleNames).length === 0 ) {
+        return PythonTestHarness.selectTestModeByMissingModules(PythonTestHarness.findMissingModules(moduleNames));
+
+    }
+
+    static selectTestModeByMissingModules(missingModuleNames: string[]): PythonTestMode {
+
+        if ( missingModuleNames.length === 0 ) {
             return 'run';
         }
         return PythonTestHarness.isRunningInCI() ? 'fail' : 'skip';
@@ -72,9 +89,10 @@ export class PythonTestHarness {
         themselves, or -- in CI with a module missing -- a stand-in that registers the SAME test names,
         `.each` included, with a body that fails naming what to install.
     */
-    static testRequiringModules(...moduleNames: string[]): jest.It {
+    static testRequiringModules(...moduleNames: string[]): GatedTest {
 
-        const testMode = PythonTestHarness.selectTestMode(moduleNames);
+        const missingModuleNames = PythonTestHarness.findMissingModules(moduleNames);
+        const testMode = PythonTestHarness.selectTestModeByMissingModules(missingModuleNames);
         if ( testMode === 'run' ) {
             return test;
         }
@@ -82,16 +100,17 @@ export class PythonTestHarness {
             return test.skip;
         }
 
-        return PythonTestHarness.buildFailingStandIn(PythonTestHarness.buildFailingTestBody(PythonTestHarness.findMissingModules(moduleNames)));
+        return PythonTestHarness.buildFailingStandIn(PythonTestHarness.buildFailingTestBody(missingModuleNames));
 
     }
 
     // THE REGISTRAR IS A PARAMETER SO A TEST CAN CALL THE STAND-IN WITHOUT REGISTERING A TEST INSIDE A TEST
-    static buildFailingStandIn(failingTestBody: () => never, registerTest: jest.It = test): jest.It {
+    static buildFailingStandIn(failingTestBody: () => never, registerTest: GatedTest = test): GatedTest {
 
-        const failingTest = (testName: string) => registerTest(testName, failingTestBody);
-        const failingTestEach = (table: ReadonlyArray<unknown>) => (testName: string) => registerTest.each(table as unknown[][])(testName, failingTestBody);
-        return Object.assign(failingTest, { each: failingTestEach }) as unknown as jest.It;
+        const failingTest = (testName: string, unusedTestBody: jest.ProvidesCallback, timeout?: number) => registerTest(testName, failingTestBody, timeout);
+        const failingTestEach = (table: ReadonlyArray<ReadonlyArray<unknown>>) =>
+            (testName: string, unusedTestBody: (...rowValues: unknown[]) => unknown, timeout?: number) => registerTest.each(table)(testName, failingTestBody, timeout);
+        return Object.assign(failingTest, { each: failingTestEach });
 
     }
 

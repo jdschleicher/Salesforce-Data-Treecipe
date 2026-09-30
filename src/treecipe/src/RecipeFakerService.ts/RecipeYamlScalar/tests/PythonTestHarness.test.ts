@@ -1,5 +1,5 @@
 import * as childProcess from 'child_process';
-import { PythonTestHarness } from './mocks/PythonTestHarness';
+import { GatedTest, PythonTestHarness } from './mocks/PythonTestHarness';
 
 /*
     #158. The gate every PyYAML / Jinja check goes through. The probe is stubbed, so these run the
@@ -116,10 +116,10 @@ describe('PythonTestHarness', () => {
 
             const registerTest = jest.fn();
 
-            PythonTestHarness.buildFailingStandIn(failingTestBody, registerTest as unknown as jest.It)('every recipe file loads with PyYAML', () => undefined);
+            PythonTestHarness.buildFailingStandIn(failingTestBody, registerTest as unknown as GatedTest)('every recipe file loads with PyYAML', () => undefined);
 
             expect(registerTest).toHaveBeenCalledTimes(1);
-            expect(registerTest).toHaveBeenCalledWith('every recipe file loads with PyYAML', failingTestBody);
+            expect(registerTest).toHaveBeenCalledWith('every recipe file loads with PyYAML', failingTestBody, undefined);
 
         });
 
@@ -129,13 +129,34 @@ describe('PythonTestHarness', () => {
             const registerTest = Object.assign(jest.fn(), { each: jest.fn(() => registerEachRow) });
             const table = [['LF', 'a\nb'], ['CR', 'a\rb']];
 
-            PythonTestHarness.buildFailingStandIn(failingTestBody, registerTest as unknown as jest.It).each(table)('a value with %s renders in Jinja', () => undefined);
+            PythonTestHarness.buildFailingStandIn(failingTestBody, registerTest as unknown as GatedTest).each(table)('a value with %s renders in Jinja', () => undefined);
 
             expect(registerTest.each).toHaveBeenCalledWith(table);
-            expect(registerEachRow).toHaveBeenCalledWith('a value with %s renders in Jinja', failingTestBody);
+            expect(registerEachRow).toHaveBeenCalledWith('a value with %s renders in Jinja', failingTestBody, undefined);
             expect(registerTest).not.toHaveBeenCalled();
 
         });
+
+    });
+
+    test('passes a timeout through, since a gated check may need one', () => {
+
+        const registerTest = jest.fn();
+
+        PythonTestHarness.buildFailingStandIn(PythonTestHarness.buildFailingTestBody(['yaml']), registerTest as unknown as GatedTest)('slow check', () => undefined, 30000);
+
+        expect(registerTest).toHaveBeenCalledWith('slow check', expect.any(Function), 30000);
+
+    });
+
+    test('probes each module once per gate, even when the gate fails', () => {
+
+        const execFileSyncSpy = stubImportableModules([]);
+        process.env.CI = 'true';
+
+        PythonTestHarness.testRequiringModules('yaml', 'jinja2');
+
+        expect(execFileSyncSpy).toHaveBeenCalledTimes(2);
 
     });
 
