@@ -79,6 +79,20 @@ async function generateRecipeFiles(createFakerService: () => IRecipeFakerService
 
 }
 
+type LoadedObjectRecipe = { object: string, fields: Record<string, unknown> | null };
+
+function collectRecordTypeIdsByObject(loadedRecipes: unknown[]): Record<string, unknown[]> {
+
+    const recordTypeIdsByObject: Record<string, unknown[]> = {};
+    (loadedRecipes as LoadedObjectRecipe[][]).flat().forEach(objectRecipe => {
+        if ( objectRecipe.fields && 'RecordTypeId' in objectRecipe.fields ) {
+            (recordTypeIdsByObject[objectRecipe.object] ??= []).push(objectRecipe.fields.RecordTypeId);
+        }
+    });
+    return recordTypeIdsByObject;
+
+}
+
 // ONE PROBE FOR THE FILE, NOT ONE PER BACKEND describe.each RUNS
 const testRequiringPyYaml = PythonTestHarness.testRequiringModules('yaml');
 
@@ -100,6 +114,36 @@ describe.each([
 
         expect(recipeText).toMatch(/### TODO: -- RecordType Options -- \w+ -- Below is the faker recipe for the record type \w+ for the field Picklist__c\n {20}# \$\{\{/);
         expect(recipeText).toMatch(/### TODO: -- RecordType Options -- \w+ -- Below is the Multiselect faker recipe for the record type \w+ for the field MultiPicklist__c\n {20}# \$\{\{/);
+
+    });
+
+    test('writes RecordTypeId as the first record type, with the other commented under its TODO', () => {
+
+        const recipeText = recipeFiles.map(recipeFile => recipeFile.content).join('\n');
+
+        expect(recipeText).toContain([
+            '    RecordTypeId: Example_Everything__c.OneRecType',
+            '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
+            '                    # Example_Everything__c.TwoRecType\n'
+        ].join('\n'));
+
+    });
+
+    test('js-yaml loads every RecordTypeId it writes as exactly one developer name', () => {
+
+        expect(collectRecordTypeIdsByObject(recipeFiles.map(recipeFile => yaml.load(recipeFile.content)))).toEqual({
+            Example_Everything__c: ['Example_Everything__c.OneRecType']
+        });
+
+    });
+
+    testRequiringPyYaml('PyYAML loads every RecordTypeId it writes as exactly one developer name', () => {
+
+        const pyYamlLoadedRecipes = PythonTestHarness.loadWithPyYaml(recipeFiles.map(recipeFile => recipeFile.content));
+
+        expect(collectRecordTypeIdsByObject(pyYamlLoadedRecipes)).toEqual({
+            Example_Everything__c: ['Example_Everything__c.OneRecType']
+        });
 
     });
 

@@ -246,9 +246,9 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
 
         test('given Accont OOTB object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
 
-            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
-                    Account.OneRecType
-                    Account.TwoRecType`;
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: Account.OneRecType
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # Account.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
             const actualRecipeInitiation = recipeServiceWithFakerJS.initiateRecipeByObjectName(
@@ -273,9 +273,9 @@ describe('FakerJSRecipeService IRecipeService Implementation Shared Intstance Te
   count: 1
   fields:`;
 
-            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
-                    ${customFakeObjectName}.OneRecType
-                    ${customFakeObjectName}.TwoRecType`;
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: ${customFakeObjectName}.OneRecType
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # ${customFakeObjectName}.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
             const actualRecipeInitiation = recipeServiceWithFakerJS.initiateRecipeByObjectName(

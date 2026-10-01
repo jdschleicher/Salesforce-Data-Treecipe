@@ -98,9 +98,9 @@
   nickname: Example_Everything__c_NickName
   count: 1
   fields:
-    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
-                    Example_Everything__c.OneRecType
-                    Example_Everything__c.TwoRecType
+    RecordTypeId: Example_Everything__c.OneRecType
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # Example_Everything__c.TwoRecType
     AccountLookup__c: ### TODO -- REFERENCE ID REQUIRED
     Checkbox__c: ${{ (random_choice("true", "false")).lower() }}
     Currency__c: ${{fake.pydecimal(left_digits=16, right_digits=2, positive=True)}}

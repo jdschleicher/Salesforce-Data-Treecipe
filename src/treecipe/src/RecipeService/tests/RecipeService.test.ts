@@ -10,6 +10,10 @@ import { MockRecordTypeService } from "../../RecordTypeService/tests/MockRecordT
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 
 import * as yaml from 'js-yaml';
+import { PythonTestHarness } from "../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness";
+
+// ONE PROBE FOR THE FILE, NOT ONE PER BACKEND describe.each RUNS
+const testRequiringPyYaml = PythonTestHarness.testRequiringModules('yaml');
 
 const hostileFieldApiNamesForValidator = (): string[] => ['A\nB', 'A\rB', 'A\u2028B', 'A: B', '${x}', 'a`b', '', '   ', '_Leading', '1Field', 'Account.Name'];
 
@@ -195,9 +199,9 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
 
         test('given Accont OOTB object api name and expected mocked recordtype map, the expected initiation recipe properties are returned in a string with an appended RecordTypeId field', () => {
 
-            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
-                    Account.OneRecType
-                    Account.TwoRecType`;
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: Account.OneRecType
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # Account.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
             const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
@@ -222,9 +226,9 @@ describe('SnowfakeryRecipeService IRecipeService Implementation Shared Intstance
   count: 1
   fields:`;
 
-            const expectedRecordTypeMarkup = `\n    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
-                    ${customFakeObjectName}.OneRecType
-                    ${customFakeObjectName}.TwoRecType`;
+            const expectedRecordTypeMarkup = `\n    RecordTypeId: ${customFakeObjectName}.OneRecType
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # ${customFakeObjectName}.TwoRecType`;
 
             const expectedMockedRecordTypeToPicklistFieldsToAvailablePicklistValuesMap = MockRecordTypeService.getMultipleRecordTypeToFieldToRecordTypeWrapperMap();
             const actualRecipeInitiation = recipeServiceWithSnow.initiateRecipeByObjectName(
@@ -829,9 +833,9 @@ describe.each([
             const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
             const recipeLines = actualRecipe.split(everyLineBreak);
 
-            expect(recipeLines.filter(recipeLine => recipeLine.includes('Thing__c.'))).toEqual([`${' '.repeat(20)}Thing__c.Valid`]);
+            expect(recipeLines.filter(recipeLine => recipeLine.includes('Thing__c.'))).toEqual(['    RecordTypeId: Thing__c.Valid']);
             expect(recipeLines.filter(recipeLine => /^ {4}### TODO -- RECORD TYPE SKIPPED -- developer name ".*" is not a valid Salesforce api name/.test(recipeLine))).toHaveLength(1);
-            expect(Object.keys((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields)).toEqual(['RecordTypeId']);
+            expect((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields).toEqual({ RecordTypeId: 'Thing__c.Valid' });
 
         });
 
@@ -856,9 +860,51 @@ describe.each([
   nickname: Thing__c_NickName
   count: 1
   fields:
-    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
-                    Thing__c.First
-                    Thing__c.Second`);
+    RecordTypeId: Thing__c.First
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # Thing__c.Second`);
+
+        });
+
+        test('given one record type, the value is that developer name with no TODO and no commented line', () => {
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', { Only: buildRecordTypeWrapper('Only') }, {});
+
+            expect(actualRecipe).toBe(`\n- object: Thing__c
+  nickname: Thing__c_NickName
+  count: 1
+  fields:
+    RecordTypeId: Thing__c.Only`);
+
+        });
+
+        test('given several record types, js-yaml loads RecordTypeId as exactly the first developer name', () => {
+
+            const recordTypeMap = { First: buildRecordTypeWrapper('First'), Second: buildRecordTypeWrapper('Second'), Third: buildRecordTypeWrapper('Third') };
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
+
+            expect(actualRecipe.split('\n').slice(-3)).toEqual([
+                `${' '.repeat(20)}### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`,
+                `${' '.repeat(20)}# Thing__c.Second`,
+                `${' '.repeat(20)}# Thing__c.Third`
+            ]);
+            expect((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields).toEqual({ RecordTypeId: 'Thing__c.First' });
+
+        });
+
+        testRequiringPyYaml('given several record types, PyYAML loads RecordTypeId as exactly the first developer name', () => {
+
+            const recordTypeMap = { First: buildRecordTypeWrapper('First'), Second: buildRecordTypeWrapper('Second'), Third: buildRecordTypeWrapper('Third') };
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
+
+            expect(PythonTestHarness.loadWithPyYaml([actualRecipe])).toEqual([[{
+                object: 'Thing__c',
+                nickname: 'Thing__c_NickName',
+                count: 1,
+                fields: { RecordTypeId: 'Thing__c.First' }
+            }]]);
 
         });
 
