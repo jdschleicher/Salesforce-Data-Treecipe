@@ -1,4 +1,5 @@
 import { RecordTypeService } from "../../RecordTypeService/RecordTypeService";
+import { RecipeService } from "../../RecipeService/RecipeService";
 
 import { MockRecordTypeService } from "./MockRecordTypeService";
 import { MockCollectionsApiService } from "../../CollectionsApiService/tests/mocks/MockCollectionsApiService";
@@ -109,6 +110,11 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
         };
 
+        afterEach(() => {
+            delete recordTypeXMLDetailByFileName['Duplicate_1.recordType-meta.xml'];
+            delete recordTypeXMLDetailByFileName['Duplicate_2.recordType-meta.xml'];
+        });
+
         const fileTypeEnum = 1;
         const sortedFileTuples: [string, number][] = Object.keys(recordTypeXMLDetailByFileName).sort().map(fileName => [fileName, fileTypeEnum]);
 
@@ -157,9 +163,6 @@ describe('RecordTypeService Shared Instance Tests', () => {
             expect(forwardResult).toEqual(reversedResult);
             expect(forwardResult.Duplicate.PicklistFieldSectionsToPicklistDetail).toEqual({ Second__c: ['Two'] });
 
-            delete recordTypeXMLDetailByFileName['Duplicate_1.recordType-meta.xml'];
-            delete recordTypeXMLDetailByFileName['Duplicate_2.recordType-meta.xml'];
-
         });
 
         test('still ignores a file that is not XML', async () => {
@@ -168,6 +171,18 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
             expect(Object.keys(result)).toEqual(['Gamma']);
             expect(RecordTypeService.getRecordTypeDetailFromRecordTypeFile).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given a record type named __proto__, keeps it as an own key for the api-name partition to refuse, and leaves the map prototype alone', async () => {
+
+            recordTypeXMLDetailByFileName['Duplicate_1.recordType-meta.xml'] = buildRecordTypeXMLDetail('__proto__', 'true');
+
+            const result = await loadWithListing([['Duplicate_1.recordType-meta.xml', fileTypeEnum], ['Gamma.recordType-meta.xml', fileTypeEnum]]);
+
+            expect(Object.keys(result)).toEqual(['Gamma', '__proto__']);
+            expect(Object.getPrototypeOf(result)).toBeNull();
+            expect(RecipeService.partitionRecordTypesByWritableDeveloperName(result).skippedRecordTypeDeveloperNames).toEqual(['__proto__']);
 
         });
 
@@ -189,7 +204,9 @@ describe('RecordTypeService Shared Instance Tests', () => {
             ['a boolean true', { active: [true] }, true],
             ['no <active> tag', {}, true],
             ['an empty <active> tag', { active: [''] }, true],
-            ['no detail at all', undefined, true]
+            ['no detail at all', undefined, true],
+            ['nested markup', { active: [{ nested: ['false'] }] }, true],
+            ['nested markup with a toString child, which String() would throw on', { active: [{ toString: ['x'] }] }, true]
         ])('given %s, returns %p', (unusedDescription, recordTypeXMLDetail, expectedActive) => {
 
             expect(RecordTypeService.isActiveByXMLDetail(recordTypeXMLDetail)).toBe(expectedActive);

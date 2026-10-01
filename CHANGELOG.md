@@ -12,7 +12,8 @@ Closes [#166](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/16
   - the dependent picklist record-type sections.
 
   Two files that declare the same developer name are tie-broken by file name, so which one wins doesn't depend on the listing either.
-- **The default `RecordTypeId` is the first *active* record type** in that order. Inserting with an inactive one fails. `RecordTypeWrapper` gains `Active`, read from `<active>`: only an explicit `false` is inactive, and a missing tag counts as active. An inactive record type is still listed as a commented option under the TODO, and its picklist variants are still written as before. If none is active, the first is used.
+- **The loaded map has no prototype** (`Object.create(null)`). A record type named `__proto__` used to replace the map's prototype and disappear without a word. It is now an own key, which the api-name partition refuses with its `SKIPPED` TODO, like any other invalid name.
+- **The default `RecordTypeId` is the first *active* record type** in that order. Inserting with an inactive one fails. `RecordTypeWrapper` gains `Active`, read from `<active>`: only an explicit `false` is inactive, and a missing tag counts as active. The value is type-checked rather than passed to `String()`: nested markup that carries a `<toString>` child makes `String()` throw, which would have aborted the whole walk. Found in review. An inactive record type is still listed as a commented option under the TODO, and its picklist variants are still written as before. If none is active, the first is used.
 - A non-XML file in `recordTypes/` is still ignored, and an empty or missing `recordTypes/` still writes no `RecordTypeId` line. The mock `OneRecType`/`TwoRecType` were already in this order, so no fixture changed.
 
 **Tests.**

@@ -186,7 +186,7 @@ describe.each([
 
         const isActiveByXMLDetail = RecordTypeService.isActiveByXMLDetail.bind(RecordTypeService);
         jest.spyOn(RecordTypeService, 'isActiveByXMLDetail').mockImplementation((recordTypeXMLDetail) =>
-            recordTypeXMLDetail.fullName[0] === 'OneRecType' ? false : isActiveByXMLDetail(recordTypeXMLDetail)
+            (recordTypeXMLDetail as { fullName: string[] }).fullName[0] === 'OneRecType' ? false : isActiveByXMLDetail(recordTypeXMLDetail)
         );
 
         const inactiveFirstRecipeFiles = await generateRecipeFiles(createFakerService);

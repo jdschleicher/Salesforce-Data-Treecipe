@@ -41,7 +41,8 @@ export class RecordTypeService {
         || this.compareByCodeUnit(first.fileName, second.fileName)
       );
 
-      const recordTypeDeveloperNameToRecordTypeWrapper: Record<string, RecordTypeWrapper> = {};
+      // NO PROTOTYPE: A record type named __proto__ is then a key the api-name partition refuses with a TODO, rather than silently replacing the map's prototype
+      const recordTypeDeveloperNameToRecordTypeWrapper: Record<string, RecordTypeWrapper> = Object.create(null);
       loadedRecordTypes.forEach(({ recordTypeApiName, recordTypeWrapper }) => {
         recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
       });
@@ -108,11 +109,18 @@ export class RecordTypeService {
 
   }
 
-  // ONLY AN EXPLICIT <active>false</active> IS INACTIVE; A MISSING TAG COUNTS AS ACTIVE
-  static isActiveByXMLDetail(recordTypeXMLDetail: any): boolean {
+  /*
+    Only an explicit <active>false</active> is inactive; a missing tag counts as active. The value is
+    type-checked rather than String()-ed: nested markup parses to an object, and one carrying a
+    <toString> child makes String() throw, which would abort the whole walk.
+  */
+  static isActiveByXMLDetail(recordTypeXMLDetail: { active?: unknown[] } | undefined): boolean {
 
-    const activeValue = recordTypeXMLDetail?.active?.[0];
-    return String(activeValue ?? '').trim().toLowerCase() !== 'false';
+    const activeValue: unknown = recordTypeXMLDetail?.active?.[0];
+    if ( typeof activeValue === 'boolean' ) {
+      return activeValue;
+    }
+    return !( typeof activeValue === 'string' && activeValue.trim().toLowerCase() === 'false' );
 
   }
 

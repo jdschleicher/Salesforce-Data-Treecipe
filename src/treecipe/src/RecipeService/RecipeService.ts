@@ -430,7 +430,7 @@ export class RecipeService {
         inactive record type fails, so the default is the first ACTIVE one; with none active, the
         first is still written rather than no RecordTypeId at all.
     */
-    static selectDefaultRecordTypeApiName(recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+    static selectDefaultRecordTypeApiName(recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string | undefined {
 
         const recordTypeApiNames = Object.keys(recordTypeApiToRecordTypeWrapperMap);
         const firstActiveRecordTypeApiName = recordTypeApiNames.find(recordTypeApiName => recordTypeApiToRecordTypeWrapperMap[recordTypeApiName].Active !== false);
