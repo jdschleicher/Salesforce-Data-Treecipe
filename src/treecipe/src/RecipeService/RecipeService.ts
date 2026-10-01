@@ -6,6 +6,7 @@ import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import { ICompoundComponentRecipe } from "./ICompoundComponentRecipe";
+import { SalesforceApiName } from "./SalesforceApiName";
 
 export class RecipeService {
 
@@ -423,11 +424,11 @@ export class RecipeService {
 
     }
 
-    static readonly salesforceFieldApiNamePattern = /^[A-Za-z][A-Za-z0-9_]*$/;
+    static readonly salesforceFieldApiNamePattern = SalesforceApiName.pattern;
 
     static isRecipeWritableFieldApiName(fieldApiName: string): boolean {
 
-        return typeof fieldApiName === 'string' && RecipeService.salesforceFieldApiNamePattern.test(fieldApiName);
+        return SalesforceApiName.isApiName(fieldApiName);
 
     }
 

@@ -403,3 +403,65 @@ describe('SOQLTemplateService', () => {
 
 
 });
+
+describe('SOQLTemplateService leaves out a name that is not a Salesforce api name (#164)', () => {
+
+    const HOSTILE_LINE = 'Evil\nDELETE FROM Account';
+
+    it('writes no query for a record type the recipe refuses, and still writes the valid one', () => {
+        const wrapper = buildMockWrapper({
+            Account: {
+                fields: [{ name: 'Name', label: 'Name', type: 'Text' }],
+                recordTypes: {
+                    Customer: { DeveloperName: 'Customer', PicklistFieldSectionsToPicklistDetail: {} },
+                    [HOSTILE_LINE]: { DeveloperName: HOSTILE_LINE, PicklistFieldSectionsToPicklistDetail: {} },
+                },
+            },
+        });
+        const result = SOQLTemplateService.buildRecordTypeFilteredQueries('Account', wrapper.ObjectToObjectInfoMap['Account']);
+        expect(result).toHaveLength(1);
+        expect(result[0]).toContain("'Customer'");
+        expect(result.join('\n')).not.toContain('DELETE');
+    });
+
+    it('writes no record type query when every record type is refused', () => {
+        const wrapper = buildMockWrapper({
+            Account: {
+                fields: [{ name: 'Name', label: 'Name', type: 'Text' }],
+                recordTypes: { [HOSTILE_LINE]: { DeveloperName: HOSTILE_LINE, PicklistFieldSectionsToPicklistDetail: {} } },
+            },
+        });
+        expect(SOQLTemplateService.buildRecordTypeFilteredQueries('Account', wrapper.ObjectToObjectInfoMap['Account'])).toEqual([]);
+    });
+
+    it('leaves a refused field out of every query and the SOSL template', () => {
+        const wrapper = buildMockWrapper({
+            Account: {
+                fields: [
+                    { name: 'Name', label: 'Name', type: 'Text' },
+                    { name: HOSTILE_LINE, label: 'Evil', type: 'Text' },
+                ],
+                recordTypes: { Customer: { DeveloperName: 'Customer', PicklistFieldSectionsToPicklistDetail: {} } },
+            },
+        });
+        const markdown = SOQLTemplateService.generateSOQLTemplateMarkdown(wrapper, '2026-10-01');
+        expect(markdown).toContain('Name');
+        expect(markdown).not.toContain('DELETE');
+    });
+
+    it('writes no child-to-parent query for a lookup whose referenceTo is refused', () => {
+        const wrapper = buildMockWrapper({
+            Contact: { fields: [
+                { name: 'FirstName', label: 'First Name', type: 'Text' },
+                { name: 'Evil__c', label: 'Evil', type: 'Lookup', referenceTo: HOSTILE_LINE },
+                { name: 'AccountId', label: 'Account', type: 'Lookup', referenceTo: 'Account' },
+            ]},
+        });
+        const result = SOQLTemplateService.buildChildToParentQueries('Contact', wrapper.ObjectToObjectInfoMap['Contact'], wrapper);
+        expect(result).toHaveLength(1);
+        expect(result[0]).toContain('to Account via AccountId');
+        expect(result.join('\n')).not.toContain('DELETE');
+    });
+
+});
+

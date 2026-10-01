@@ -1,5 +1,6 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { RecipeService } from '../RecipeService/RecipeService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
@@ -176,7 +177,10 @@ export class DirectoryProcessor {
   
             let parentObjectdirectoryPathUri = directoryPathUri.fsPath;
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
-            objectInfoWrapper.addKeyToObjectInfoMap(objectName);
+            if ( !objectInfoWrapper.addKeyToObjectInfoMap(objectName) ) {
+              // A DIRECTORY NAME THAT IS NOT AN API NAME IS NOT AN OBJECT -- processAllObjectsAndRelationships WARNS ABOUT IT ONCE THE WALK ENDS (#164)
+              continue;
+            }
   
             const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
             const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
@@ -386,6 +390,8 @@ export class DirectoryProcessor {
     const objectInfoWrapper = new ObjectInfoWrapper(); 
     
     await this.processDirectory(directoryPathUri, objectInfoWrapper);
+
+    this.warnOfSkippedObjectApiNames(objectInfoWrapper);
   
     objectInfoWrapper.RelationshipTrees = this.relationshipService.buildRelationshipTrees(objectInfoWrapper);
 
@@ -394,6 +400,39 @@ export class DirectoryProcessor {
     objectInfoWrapper.RecipeFiles = recipeFiles;
       
     return objectInfoWrapper;
+
+  }
+
+  static readonly maximumSkippedObjectApiNamesInWarning = 20;
+
+  /*
+    A notification is not plain text: VS Code renders "[label](command:...)" in one as a link that
+    runs the command, and a refused name is text the repository chose. Brackets and parentheses are
+    escaped along with line breaks, so no name can form a link.
+  */
+  static escapeForNotification(name: string): string {
+
+    return RecipeYamlScalar.escapeForComment(String(name ?? ''))
+      .replace(/[[\]()]/g, (character: string) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
+  }
+
+  warnOfSkippedObjectApiNames(objectInfoWrapper: ObjectInfoWrapper): void {
+
+    const skippedObjectApiNames = objectInfoWrapper.SkippedObjectApiNames ?? [];
+    if ( skippedObjectApiNames.length === 0 ) {
+      return;
+    }
+
+    const maximumNames = DirectoryProcessor.maximumSkippedObjectApiNamesInWarning;
+    const quotedObjectApiNames = skippedObjectApiNames
+      .slice(0, maximumNames)
+      .map(skippedObjectApiName => `"${DirectoryProcessor.escapeForNotification(skippedObjectApiName)}"`)
+      .join(', ');
+    const unlistedNamesNote = skippedObjectApiNames.length > maximumNames
+      ? ` and ${skippedObjectApiNames.length - maximumNames} more`
+      : '';
+    vscode.window.showWarningMessage(`Treecipe skipped ${skippedObjectApiNames.length} object name(s) that are not valid Salesforce api names (letters, digits and underscores, starting with a letter): ${quotedObjectApiNames}${unlistedNamesNote}. No recipe is written for an object directory with such a name, and no relationship is recorded for a referenceTo or relationship mapping naming one; rename it and regenerate.`);
 
   }
 
