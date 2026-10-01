@@ -1,6 +1,7 @@
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
+import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 
 const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hiearchy'];
 
@@ -58,7 +59,7 @@ export class MermaidService {
             lines.push(`    ${sanitizedName} {`);
             lines.push(`        id Id`);
 
-            const nonRelationshipFields = (objectInfo.Fields ?? []).filter(
+            const nonRelationshipFields = this.getWritableFields(objectInfo).filter(
                 f => !LOOKUP_FIELD_TYPES.includes(f.type)
             );
             for (const field of nonRelationshipFields) {
@@ -73,7 +74,7 @@ export class MermaidService {
 
         for (const objectName of objectNames) {
             const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
-            for (const field of (objectInfo.Fields ?? [])) {
+            for (const field of this.getWritableFields(objectInfo)) {
 
                 if (!LOOKUP_FIELD_TYPES.includes(field.type)) { continue; }
 
@@ -89,6 +90,17 @@ export class MermaidService {
         }
 
         return lines.join('\n');
+
+    }
+
+    /*
+        A field the recipe refuses (#120) is left out of the diagram too: its name is written into the
+        mermaid block, and a line break and a fence in it would end the block and write markdown of
+        its author's choosing (#164).
+    */
+    static getWritableFields(objectInfo: ObjectInfo): FieldInfo[] {
+
+        return (objectInfo.Fields ?? []).filter(f => SalesforceApiName.isApiName(f.fieldName));
 
     }
 

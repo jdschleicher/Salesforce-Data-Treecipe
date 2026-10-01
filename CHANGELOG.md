@@ -17,26 +17,32 @@ On Linux and macOS a directory name can carry a line break, so a cloned reposito
 
 - **A directory** whose name is not an api name (`[A-Za-z][A-Za-z0-9_]*`) is skipped, and nothing is written for it.
 - **A lookup** whose parent is not an api name records no relationship. The field itself is still written, with the same `### TODO -- REFERENCE ID REQUIRED` value it already had.
-- **Every refused name** is listed once in a single warning after the walk, escaped with `RecipeYamlScalar.escapeForComment`. It is also recorded in `ObjectInfoWrapper.SkippedObjectApiNames`. That property is present only when something was refused, so an ordinary run serializes exactly as before.
+- **Every refused name** is listed once in a single warning after the walk, through `DirectoryProcessor.escapeForNotification`. It is also recorded in `ObjectInfoWrapper.SkippedObjectApiNames`. That property is present only when something was refused, so an ordinary run serializes exactly as before.
+  - A VS Code notification is not plain text: it turns `[label](command:…)` into a link that runs the command. Review found that a directory named like that produced a live link in the first draft of this warning, so a click could type into the user's terminal.
+  - `escapeForNotification` now escapes `[`, `]`, `(` and `)` as `\uXXXX`, along with the line breaks `RecipeYamlScalar.escapeForComment` already handled, so no name can form a link.
+  - The warning lists at most 20 names and counts the rest.
 - **The rule is `SalesforceApiName`**, a new class that imports nothing, because `ObjectInfoWrapper`, `SOQLTemplateService` and `MermaidService` run without vscode and `RecipeService` does not. `RecipeService.isRecipeWritableFieldApiName` now delegates to it, so field, record type, controlling field and object names all follow one definition.
 - **The map no longer reads inherited members.** `addKeyToObjectInfoMap` checked membership with `in`, so an object named `constructor` or `toString` was never added. It now uses an own-key check.
 
 **Also bundled from the issue: SOQL templates.** `SOQLTemplateService` now leaves out of every query and the SOSL template anything the recipe refuses: a record type developer name, a field api name, or a lookup's `<referenceTo>`. The template is a file to read rather than run, but each of these could write a misleading query line.
 
+**Also found in review: the Mermaid ERD.** `MermaidService` wrote every field name into the ` ```mermaid ` block, including names #120 refuses. A line break and a fence in one ended the block and wrote markdown of the name's choosing. Refused fields are now left out of the diagram's attributes and relationship labels.
+
 Ordinary names are written byte-identically, and every existing fixture test passes unchanged. **Not covered, left on #164:** an object whose fields are all skipped is still written as `fields:` followed only by comments. Snowfakery 4.x rejects that file. An object with no fields already produced the same output before this change.
 
 **Tests.**
-- New `DirectoryProcessor.hostileObjectNames.test.ts` builds its fixture at run time, because a file name with a line break cannot be checked out on every platform git supports. The fixture has directories named with `\n`, `\r` and U+2028 followed by an injected object, beside `Account` and `ns__Thing__c`, and `ns__Thing__c` has a lookup whose `<referenceTo>` carries the same payload. With each backend, the test checks that:
+- New `DirectoryProcessor.hostileObjectNames.test.ts` builds its fixture at run time, because a file name with a line break cannot be checked out on every platform git supports. The fixture has directories named with `\n`, `\r` and U+2028 followed by an injected object, and one named as a command link, beside `Account` and `ns__Thing__c`, and `ns__Thing__c` has a lookup whose `<referenceTo>` carries the same payload. With each backend, the test checks that:
   - only the ordinary objects reach the map, the relationship trees and the recipe files;
   - no recipe line names the injected object or field;
-  - one warning names all four refused names, escaped;
+  - one warning names all five refused names, escaped;
   - js-yaml and PyYAML load every file identically;
   - each ordinary object's recipe, and each recipe file, is byte-identical to a run without the hostile names.
 
   Running faker-js over the files evaluates nothing the names carry. The tests are skipped on Windows, where such a directory cannot exist.
 - `ObjectInfoWrapper.test.ts` covers refused names (line breaks, `../`, a space, a leading digit, an empty name, a non-string), accepted names including `constructor`, recording a name once, and the unchanged serialization.
 - `RelationshipService.test.ts` covers a lookup to a refused parent, which records no relationship, adds no object and writes no comment naming it, and checks that an ordinary parent is recorded as before.
-- `SOQLTemplateService.test.ts` covers a refused record type, field and `<referenceTo>`.
+- `SOQLTemplateService.test.ts` covers a refused record type, field and `<referenceTo>`. `MermaidService.test.ts` covers a refused field, which leaves the fence count at two.
+- The end-to-end fixture also has a directory named `[Regenerate now](command:workbench.action.terminal.sendSequence?…)`, and the test asserts the warning contains no link. Unit tests cover `escapeForNotification` (a command link, a link split by a line break, a nested link) and the 20-name cap. Undoing either review fix fails 6 tests.
 - Loosening `SalesforceApiName` to accept any non-empty string fails 27 of the new tests.
 
 ## [3.29.6] - An unedited recipe for an object with record types inserts again

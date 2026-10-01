@@ -403,6 +403,20 @@ export class DirectoryProcessor {
 
   }
 
+  static readonly maximumSkippedObjectApiNamesInWarning = 20;
+
+  /*
+    A notification is not plain text: VS Code renders "[label](command:...)" in one as a link that
+    runs the command, and a refused name is text the repository chose. Brackets and parentheses are
+    escaped along with line breaks, so no name can form a link.
+  */
+  static escapeForNotification(name: string): string {
+
+    return RecipeYamlScalar.escapeForComment(String(name ?? ''))
+      .replace(/[[\]()]/g, (character: string) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
+  }
+
   warnOfSkippedObjectApiNames(objectInfoWrapper: ObjectInfoWrapper): void {
 
     const skippedObjectApiNames = objectInfoWrapper.SkippedObjectApiNames ?? [];
@@ -410,10 +424,15 @@ export class DirectoryProcessor {
       return;
     }
 
+    const maximumNames = DirectoryProcessor.maximumSkippedObjectApiNamesInWarning;
     const quotedObjectApiNames = skippedObjectApiNames
-      .map(skippedObjectApiName => `"${RecipeYamlScalar.escapeForComment(String(skippedObjectApiName ?? ''))}"`)
+      .slice(0, maximumNames)
+      .map(skippedObjectApiName => `"${DirectoryProcessor.escapeForNotification(skippedObjectApiName)}"`)
       .join(', ');
-    vscode.window.showWarningMessage(`Treecipe skipped ${skippedObjectApiNames.length} object name(s) that are not valid Salesforce api names ([A-Za-z][A-Za-z0-9_]*): ${quotedObjectApiNames}. No recipe is written for an object directory with such a name, and no relationship is recorded for a <referenceTo> or relationship mapping naming one; rename it and regenerate.`);
+    const unlistedNamesNote = skippedObjectApiNames.length > maximumNames
+      ? ` and ${skippedObjectApiNames.length - maximumNames} more`
+      : '';
+    vscode.window.showWarningMessage(`Treecipe skipped ${skippedObjectApiNames.length} object name(s) that are not valid Salesforce api names (letters, digits and underscores, starting with a letter): ${quotedObjectApiNames}${unlistedNamesNote}. No recipe is written for an object directory with such a name, and no relationship is recorded for a referenceTo or relationship mapping naming one; rename it and regenerate.`);
 
   }
 

@@ -217,3 +217,27 @@ describe('MermaidService', () => {
     });
 
 });
+
+describe('MermaidService leaves out a field name that is not a Salesforce api name (#164)', () => {
+
+    const HOSTILE_FIELD_NAME = 'Evil\n```\n# Injected heading';
+
+    it('writes neither an entity attribute nor a relationship label for a refused field, and keeps the valid ones', () => {
+        const wrapper = buildMockWrapper({
+            Account: { fields: [{ name: 'Name', label: 'Name', type: 'Text' }] },
+            Contact: { fields: [
+                { name: 'FirstName', label: 'First Name', type: 'Text' },
+                { name: HOSTILE_FIELD_NAME, label: 'Evil', type: 'Text' },
+                { name: `${HOSTILE_FIELD_NAME}Lookup`, label: 'Evil Lookup', type: 'Lookup', referenceTo: 'Account' },
+                { name: 'AccountId', label: 'Account', type: 'Lookup', referenceTo: 'Account' },
+            ]},
+        });
+        const markdown = MermaidService.generateMermaidMarkdown(wrapper, '2026-10-01');
+        expect(markdown).toContain('FirstName');
+        expect(markdown).toContain(': "AccountId"');
+        expect(markdown).not.toContain('Injected heading');
+        expect(markdown.match(/```/g)).toHaveLength(2);
+    });
+
+});
+

