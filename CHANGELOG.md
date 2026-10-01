@@ -17,7 +17,7 @@ Closes [#167](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/16
 - **An unmatched value is left as it is**, and one warning per file names each object and its unmatched developer names, so Salesforce's rejection has an obvious cause. The names come from workspace files, so they go through `DirectoryProcessor.escapeForNotification` and cannot form a notification link; at most 20 are listed per object and the rest are counted.
 - **A value with no dot**, such as an Id typed into the recipe, passes through without a warning.
 - **The signature still takes and returns a JSON string**, so the lookup reference swap that follows it is unchanged. A file with nothing to resolve is returned exactly as read; one with a resolved Id is re-serialized with the same two-space indent the generator writes.
-- An empty file, records with no `RecordTypeId` and an empty org result still pass through unchanged.
+- An empty file, records with no `RecordTypeId` and an empty org result still pass through unchanged. An empty org result now also warns about any `RecordTypeId` it could not resolve.
 
 ## [3.29.7] - An object name that is not a Salesforce api name can no longer write recipe lines
 

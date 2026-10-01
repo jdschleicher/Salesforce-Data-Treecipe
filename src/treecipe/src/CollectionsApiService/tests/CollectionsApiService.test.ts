@@ -578,7 +578,7 @@ describe('Shared tests for CollectionsApiService', () => {
 
     describe('updateCollectionApiJsonContentWithOrgRecordTypeIds', () => {
 
-        function buildCollectionsApiJson(records: Array<Record<string, unknown>>): string {
+        function buildCollectionsApiJson(records: Array<Record<string, unknown> | null>): string {
             return JSON.stringify({ allOrNone: true, records }, null, 2);
         }
 
@@ -752,6 +752,7 @@ describe('Shared tests for CollectionsApiService', () => {
         test('passes a record with no object type, or a RecordTypeId that is not text, through unchanged', () => {
 
             const collectionsApiJson = buildCollectionsApiJson([
+                null,
                 { RecordTypeId: 'Account.Business' },
                 buildRecord('Account', { RecordTypeId: null }),
             ]);
@@ -782,6 +783,7 @@ describe('Shared tests for CollectionsApiService', () => {
             ]);
 
             expect(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, { records: [] })).toBe(collectionsApiJson);
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toContain('Account: "Standard"');
 
         });
 

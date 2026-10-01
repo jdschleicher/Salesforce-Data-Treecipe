@@ -467,19 +467,19 @@ export class CollectionsApiService {
         other field value that happened to contain the text (#167).
     */
     static updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson: string,
-                                                                recordTypeDetailFromTargetOrg: any,
+                                                                recordTypeDetailFromTargetOrg: unknown,
                                                                 collectionsApiFileName?: string): string {
 
         const orgRecordTypeIdByObjectQualifiedName = this.buildOrgRecordTypeIdByObjectQualifiedName(recordTypeDetailFromTargetOrg);
 
-        let collectionsApiDetail: any;
+        let collectionsApiDetail: unknown;
         try {
             collectionsApiDetail = JSON.parse(collectionsApiJson);
         } catch {
             return collectionsApiJson;
         }
 
-        const records = collectionsApiDetail?.records;
+        const records = (collectionsApiDetail as { records?: unknown } | null)?.records;
         if ( !Array.isArray(records) ) {
             return collectionsApiJson;
         }
@@ -487,11 +487,13 @@ export class CollectionsApiService {
         const unmatchedDeveloperNamesByObject: Map<string, Set<string>> = new Map();
         let isAnyRecordTypeIdResolved = false;
 
-        for ( const record of records ) {
+        for ( const recordCandidate of records ) {
 
-            if ( record === null || typeof record !== 'object' || !Object.prototype.hasOwnProperty.call(record, 'RecordTypeId') ) {
+            if ( recordCandidate === null || typeof recordCandidate !== 'object' || !Object.prototype.hasOwnProperty.call(recordCandidate, 'RecordTypeId') ) {
                 continue;
             }
+
+            const record = recordCandidate as { RecordTypeId: unknown; attributes?: { type?: unknown } };
 
             const recordTypeId = record.RecordTypeId;
             const objectApiName = record.attributes?.type;
@@ -532,10 +534,11 @@ export class CollectionsApiService {
 
     }
 
-    static buildOrgRecordTypeIdByObjectQualifiedName(recordTypeDetailFromTargetOrg: any): Map<string, string> {
+    static buildOrgRecordTypeIdByObjectQualifiedName(recordTypeDetailFromTargetOrg: unknown): Map<string, string> {
 
         const orgRecordTypeIdByObjectQualifiedName: Map<string, string> = new Map();
-        const orgRecordTypes = Array.isArray(recordTypeDetailFromTargetOrg?.records) ? recordTypeDetailFromTargetOrg.records : [];
+        const orgRecordTypeRows = (recordTypeDetailFromTargetOrg as { records?: unknown } | null)?.records;
+        const orgRecordTypes: Array<{ SobjectType?: unknown; DeveloperName?: unknown; Id?: unknown } | null> = Array.isArray(orgRecordTypeRows) ? orgRecordTypeRows : [];
 
         for ( const recordTypeInfo of orgRecordTypes ) {
 
