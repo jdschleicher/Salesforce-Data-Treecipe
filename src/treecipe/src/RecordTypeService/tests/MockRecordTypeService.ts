@@ -204,12 +204,14 @@ export class MockRecordTypeService {
         
         const oneRecordTypeWrapper:RecordTypeWrapper = {
             DeveloperName: "OneRecType",
+            Active: true,
             PicklistFieldSectionsToPicklistDetail: this.getOneRecTypeFieldToPicklistValuesMap(),
             RecordTypeId: ''
         };
 
         const twoRecordTypeWrapper:RecordTypeWrapper = {
             DeveloperName: "TwoRecType",
+            Active: true,
             PicklistFieldSectionsToPicklistDetail: this.getTwoRecTypeFieldToPicklistValuesMap(),
             RecordTypeId: ''
         };
@@ -344,6 +346,7 @@ export class MockRecordTypeService {
 
         const fakeRecordTypeWrapper:RecordTypeWrapper = {
             DeveloperName: "OneRecType",
+            Active: true,
             PicklistFieldSectionsToPicklistDetail: this.getOneRecTypeFieldToPicklistValuesMap(),
             RecordTypeId: ''
         };
@@ -356,6 +359,7 @@ export class MockRecordTypeService {
 
         const fakeRecordTypeWrapper:RecordTypeWrapper = {
             DeveloperName: "NoPicklistOneRecType",
+            Active: true,
             PicklistFieldSectionsToPicklistDetail: {},
             RecordTypeId: ''
         };

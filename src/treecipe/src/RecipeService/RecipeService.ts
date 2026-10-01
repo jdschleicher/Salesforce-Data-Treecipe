@@ -384,7 +384,8 @@ export class RecipeService {
                 The others are commented lines, as with record-type picklist variants (#153) -- a bare line
                 indented under the value is folded into it by YAML.
             */
-            const [ selectedRecordTypeApiName, ...otherRecordTypeApiNames ] = recordTypeApiNames;
+            const selectedRecordTypeApiName = RecipeService.selectDefaultRecordTypeApiName(recordTypeApiToRecordTypeWrapperMap);
+            const otherRecordTypeApiNames = recordTypeApiNames.filter(recordTypeApiName => recordTypeApiName !== selectedRecordTypeApiName);
             let recordTypeIdRecipeValue = `${objectName}.${selectedRecordTypeApiName}`;
 
             if ( otherRecordTypeApiNames.length > 0 ) {
@@ -421,6 +422,19 @@ export class RecipeService {
         }
 
         return objectRecipeMarkup;
+
+    }
+
+    /*
+        The map arrives in RecordTypeService's fixed developer-name order (#166). Inserting with an
+        inactive record type fails, so the default is the first ACTIVE one; with none active, the
+        first is still written rather than no RecordTypeId at all.
+    */
+    static selectDefaultRecordTypeApiName(recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+
+        const recordTypeApiNames = Object.keys(recordTypeApiToRecordTypeWrapperMap);
+        const firstActiveRecordTypeApiName = recordTypeApiNames.find(recordTypeApiName => recordTypeApiToRecordTypeWrapperMap[recordTypeApiName].Active !== false);
+        return firstActiveRecordTypeApiName ?? recordTypeApiNames[0];
 
     }
 

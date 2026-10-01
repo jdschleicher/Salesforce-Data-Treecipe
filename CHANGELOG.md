@@ -1,5 +1,28 @@
 # Change Log
 
+## [3.29.9] - The default RecordTypeId no longer depends on directory listing order, and is an active record type
+
+Closes [#166](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/166), found by the code review of #165.
+
+`RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper` built its map in the order `vscode.workspace.fs.readDirectory` listed `recordTypes/`. That is the file system's order, which is not sorted on every platform (ext4 is one example). Since #157 the first entry is the `RecordTypeId` an unedited recipe inserts, so the same metadata could insert a different record type, and produce a noisy diff, on another machine or in CI. The same order also laid out the record-type sections in both backends.
+
+- **Record types are sorted once, where they are loaded**, by developer name compared by UTF-16 code unit (`<`). `localeCompare` is not used because its result depends on the machine's locale. Every consumer reads the map in that order, with no sort of its own:
+  - the `RecordTypeId` value and its commented options;
+  - the picklist and multi-select record-type variants;
+  - the dependent picklist record-type sections.
+
+  Two files that declare the same developer name are tie-broken by file name, so which one wins doesn't depend on the listing either.
+- **The default `RecordTypeId` is the first *active* record type** in that order. Inserting with an inactive one fails. `RecordTypeWrapper` gains `Active`, read from `<active>`: only an explicit `false` is inactive, and a missing tag counts as active. An inactive record type is still listed as a commented option under the TODO, and its picklist variants are still written as before. If none is active, the first is used.
+- A non-XML file in `recordTypes/` is still ignored, and an empty or missing `recordTypes/` still writes no `RecordTypeId` line. The mock `OneRecType`/`TwoRecType` were already in this order, so no fixture changed.
+
+**Tests.**
+- `RecordTypeService` loads a listing in sorted, reversed and arbitrary order and gets the same map. The developer names chosen differ between code-unit order and locale order. Further cases cover the duplicate-name tie-break, a non-XML file, an empty directory and every form of `<active>`.
+- `RecipeService` covers default selection: an inactive `Alpha` sorts first, so `Beta` is chosen and `Alpha` stays a commented option. With none active, the first is still written.
+- `DirectoryProcessor.generatedRecipeYaml.test.ts`, with each backend:
+  - generates from a sorted and a reversed `recordTypes/` listing and gets byte-identical recipe files;
+  - checks that the record-type sections follow developer name order;
+  - with `OneRecType` marked inactive, checks that `RecordTypeId` is `TwoRecType`.
+
 ## [3.29.8] - A record type Id is resolved only in RecordTypeId, and only by an exact match for its own object
 
 Closes [#167](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/167), found by the reviews of #165.

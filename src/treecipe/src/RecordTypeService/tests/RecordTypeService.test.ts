@@ -81,6 +81,123 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
     });
 
+    describe('getRecordTypeToApiFieldToRecordTypeWrapper order (#166)', () => {
+
+        const buildRecordTypeXMLDetail = (developerName: string, active?: string) => ({
+            fullName: [developerName],
+            ...( active === undefined ? {} : { active: [active] } ),
+            label: [developerName]
+        });
+
+        const recordTypeXMLDetailByFileName: Record<string, any> = {
+            'Gamma.recordType-meta.xml': buildRecordTypeXMLDetail('Gamma', 'true'),
+            'alpha.recordType-meta.xml': buildRecordTypeXMLDetail('alpha', 'true'),
+            'Beta.recordType-meta.xml': buildRecordTypeXMLDetail('Beta', 'false'),
+            'Zulu.recordType-meta.xml': buildRecordTypeXMLDetail('Zulu'),
+            'A_b.recordType-meta.xml': buildRecordTypeXMLDetail('A_b', 'true'),
+            'AB.recordType-meta.xml': buildRecordTypeXMLDetail('AB', 'true')
+        };
+        // CODE UNIT ORDER: UPPERCASE BEFORE "_" BEFORE LOWERCASE, WHICH localeCompare WOULD NOT GIVE
+        const expectedDeveloperNameOrder = ['AB', 'A_b', 'Beta', 'Gamma', 'Zulu', 'alpha'];
+
+        const loadWithListing = async (fileTuples: [string, number][]) => {
+
+            jest.spyOn(RecordTypeService, 'getExpectedRecordTypesPathByFieldsDirectoryPath').mockReturnValue('/mock/path/to/recordTypes');
+            jest.spyOn(RecordTypeService, 'getRecordTypeTuplesFromExpectedRecordTypesDirectory').mockResolvedValue(fileTuples);
+            jest.spyOn(RecordTypeService, 'getRecordTypeDetailFromRecordTypeFile').mockImplementation(async (fileName: string) => recordTypeXMLDetailByFileName[fileName]);
+            return RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper('/mock/path/to/fields');
+
+        };
+
+        const fileTypeEnum = 1;
+        const sortedFileTuples: [string, number][] = Object.keys(recordTypeXMLDetailByFileName).sort().map(fileName => [fileName, fileTypeEnum]);
+
+        test('given the listing in any order, returns record types by developer name in code unit order', async () => {
+
+            const sortedResult = await loadWithListing(sortedFileTuples);
+            const reversedResult = await loadWithListing([...sortedFileTuples].reverse());
+            const unsortedResult = await loadWithListing(Object.keys(recordTypeXMLDetailByFileName).map(fileName => [fileName, fileTypeEnum]));
+
+            expect(Object.keys(sortedResult)).toEqual(expectedDeveloperNameOrder);
+            expect(Object.keys(reversedResult)).toEqual(expectedDeveloperNameOrder);
+            expect(Object.keys(unsortedResult)).toEqual(expectedDeveloperNameOrder);
+            expect(reversedResult).toEqual(sortedResult);
+
+        });
+
+        test('never compares with localeCompare', async () => {
+
+            const localeCompareSpy = jest.spyOn(String.prototype, 'localeCompare');
+
+            await loadWithListing([...sortedFileTuples].reverse());
+
+            expect(localeCompareSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('reads Active from <active>, counting a missing tag as active', async () => {
+
+            const result = await loadWithListing(sortedFileTuples);
+
+            expect(Object.fromEntries(Object.entries(result).map(([developerName, wrapper]) => [developerName, wrapper.Active]))).toEqual({
+                AB: true, A_b: true, Beta: false, Gamma: true, Zulu: true, alpha: true
+            });
+
+        });
+
+        test('given two files with one developer name, the same file wins whatever the listing order', async () => {
+
+            recordTypeXMLDetailByFileName['Duplicate_1.recordType-meta.xml'] = { ...buildRecordTypeXMLDetail('Duplicate', 'false'), picklistValues: [{ picklist: ['First__c'], values: [{ fullName: ['One'] }] }] };
+            recordTypeXMLDetailByFileName['Duplicate_2.recordType-meta.xml'] = { ...buildRecordTypeXMLDetail('Duplicate', 'true'), picklistValues: [{ picklist: ['Second__c'], values: [{ fullName: ['Two'] }] }] };
+            const duplicateTuples: [string, number][] = [['Duplicate_1.recordType-meta.xml', fileTypeEnum], ['Duplicate_2.recordType-meta.xml', fileTypeEnum]];
+
+            const forwardResult = await loadWithListing(duplicateTuples);
+            const reversedResult = await loadWithListing([...duplicateTuples].reverse());
+
+            expect(forwardResult).toEqual(reversedResult);
+            expect(forwardResult.Duplicate.PicklistFieldSectionsToPicklistDetail).toEqual({ Second__c: ['Two'] });
+
+            delete recordTypeXMLDetailByFileName['Duplicate_1.recordType-meta.xml'];
+            delete recordTypeXMLDetailByFileName['Duplicate_2.recordType-meta.xml'];
+
+        });
+
+        test('still ignores a file that is not XML', async () => {
+
+            const result = await loadWithListing([['README.md', fileTypeEnum], ['Gamma.recordType-meta.xml', fileTypeEnum], ['nested', 2]]);
+
+            expect(Object.keys(result)).toEqual(['Gamma']);
+            expect(RecordTypeService.getRecordTypeDetailFromRecordTypeFile).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given an empty or missing recordTypes directory, returns an empty map', async () => {
+
+            expect(await loadWithListing([])).toEqual({});
+
+        });
+
+    });
+
+    describe('isActiveByXMLDetail', () => {
+
+        test.each([
+            ['"true"', { active: ['true'] }, true],
+            ['"false"', { active: ['false'] }, false],
+            ['" FALSE " with whitespace', { active: [' FALSE '] }, false],
+            ['a boolean false', { active: [false] }, false],
+            ['a boolean true', { active: [true] }, true],
+            ['no <active> tag', {}, true],
+            ['an empty <active> tag', { active: [''] }, true],
+            ['no detail at all', undefined, true]
+        ])('given %s, returns %p', (unusedDescription, recordTypeXMLDetail, expectedActive) => {
+
+            expect(RecordTypeService.isActiveByXMLDetail(recordTypeXMLDetail)).toBe(expectedActive);
+
+        });
+
+    });
+
     describe('getRecordTypeIdsByConnection', () => {
 
         test('given mocked Connection instance and mocked query funtcion, should query record type IDs for given object API names', async () => {   
