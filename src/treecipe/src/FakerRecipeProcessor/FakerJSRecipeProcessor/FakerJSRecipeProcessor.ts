@@ -357,7 +357,9 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         let evaluatedYamlPropertyValue = null;
         const dependentPicklistKeyIndicator = "if";
-        if ( (typeof providedYamlPropertyValue !== 'string') 
+        // A COMMENT-ONLY FIELD (A "### TODO" VALUE) LOADS AS null, AND "in" THROWS ON null AND ON NUMBERS
+        if ( (typeof providedYamlPropertyValue === 'object')
+                && (providedYamlPropertyValue !== null)
                 && (dependentPicklistKeyIndicator in providedYamlPropertyValue) 
                 && Object.keys(providedYamlPropertyValue).length === 1 ) {
     

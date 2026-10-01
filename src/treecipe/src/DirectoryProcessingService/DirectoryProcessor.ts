@@ -194,9 +194,10 @@ export class DirectoryProcessor {
             }
 
          
+            const { writableRecordTypeApiToRecordTypeWrapperMap } = RecipeService.partitionRecordTypesByWritableDeveloperName(recordTypeApiToRecordTypeWrapperMap);
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, 
                                                                               objectName, 
-                                                                              recordTypeApiToRecordTypeWrapperMap,
+                                                                              writableRecordTypeApiToRecordTypeWrapperMap,
                                                                               salesforceOOTBFakerMappings
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;

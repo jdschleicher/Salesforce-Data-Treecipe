@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Evil&#10;    Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}&#10;    Z</fullName>
+    <active>true</active>
+    <label>LineBreak</label>
+    <picklistValues>
+        <picklist>RecordTypePicklist__c</picklist>
+        <values>
+            <fullName>P</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+</RecordType>

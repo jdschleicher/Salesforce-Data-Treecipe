@@ -1,6 +1,7 @@
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
+import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
@@ -312,6 +313,10 @@ export class RecipeService {
 
         const controllingField = xmlFieldDetail.controllingField;
 
+        if ( !RecipeService.isRecipeWritableFieldApiName(controllingField) ) {
+            return ` ${this.buildInvalidApiNameTodo('DEPENDENT PICKLIST SKIPPED -- controlling field', controllingField, `fix the <controllingField> of "${RecipeYamlScalar.escapeForComment(String(xmlFieldDetail.apiName ?? ''))}" and regenerate`)}`;
+        }
+
         if ( !(xmlFieldDetail.picklistValues) ) {
             return '';
         }
@@ -366,7 +371,10 @@ export class RecipeService {
   count: 1
   fields:`;
 
-        if ( recordTypeApiToRecordTypeWrapperMap !== undefined && Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
+        const { writableRecordTypeApiToRecordTypeWrapperMap, skippedRecordTypeDeveloperNames } = RecipeService.partitionRecordTypesByWritableDeveloperName(recordTypeApiToRecordTypeWrapperMap);
+        recordTypeApiToRecordTypeWrapperMap = writableRecordTypeApiToRecordTypeWrapperMap;
+
+        if ( Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
 
             let recordTypeDeveloperNamesToSelect:string = '';
             const recordTypeDeveloperNameTodoVerbiage = `### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`;
@@ -391,6 +399,10 @@ export class RecipeService {
     
         }
 
+        skippedRecordTypeDeveloperNames.forEach((skippedRecordTypeDeveloperName) => {
+            objectRecipeMarkup += `\n${this.generateTabs(1)}${this.buildInvalidApiNameTodo('RECORD TYPE SKIPPED -- developer name', skippedRecordTypeDeveloperName, "fix the record type's <fullName> and regenerate")}`;
+        });
+
         if ( salesforceOOTBFakerMappings[objectName] ) {
 
             Object.entries(salesforceOOTBFakerMappings[objectName]).forEach(([ootbFieldApiName, expectedOOTBFieldRecipe]) => {
@@ -407,9 +419,68 @@ export class RecipeService {
 
     }
 
+    static readonly salesforceFieldApiNamePattern = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+    static isRecipeWritableFieldApiName(fieldApiName: string): boolean {
+
+        return typeof fieldApiName === 'string' && RecipeService.salesforceFieldApiNamePattern.test(fieldApiName);
+
+    }
+
+    /*
+        The api name is the one part of a recipe line written as a YAML KEY, and it comes from a
+        <fullName> the workspace controls: a line break in it starts a line of the attacker's choosing,
+        whose value faker-js evaluates with new Function() (#120). Salesforce api names are
+        [A-Za-z0-9_], so anything else is not a field an org can have -- the field is skipped with a
+        TODO naming it, and its recipe value is dropped with it, since that value may embed the same
+        name. The name in the comment is escaped so neither YAML parser sees a break in it.
+    */
+    buildSkippedFieldApiNameTodo(fieldApiName: string): string {
+
+        return this.buildInvalidApiNameTodo('FIELD SKIPPED -- api name', fieldApiName, "fix the field's <fullName> and regenerate");
+
+    }
+
+    buildInvalidApiNameTodo(skippedSubject: string, invalidApiName: string, remedy: string): string {
+
+        const escapedApiName = RecipeYamlScalar.escapeForComment(String(invalidApiName ?? ''));
+        return `### TODO -- ${skippedSubject} "${escapedApiName}" is not a valid Salesforce api name ([A-Za-z][A-Za-z0-9_]*); ${remedy}`;
+
+    }
+
+    /*
+        A record type's developer name is written into recipe VALUES -- the RecordTypeId options and
+        every record-type TODO and commented variant in both backends -- not only into comments, so
+        the api-name rule applies to it as it does to a field key. Partitioning the map once, where it
+        is loaded, keeps an invalid name away from all of those sinks rather than guarding each.
+    */
+    static partitionRecordTypesByWritableDeveloperName(recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): {
+        writableRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+        skippedRecordTypeDeveloperNames: string[]
+    } {
+
+        const writableRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper> = {};
+        const skippedRecordTypeDeveloperNames: string[] = [];
+
+        Object.entries(recordTypeApiToRecordTypeWrapperMap ?? {}).forEach(([recordTypeDeveloperName, recordTypeWrapper]) => {
+
+            if ( RecipeService.isRecipeWritableFieldApiName(recordTypeDeveloperName) ) {
+                writableRecordTypeApiToRecordTypeWrapperMap[recordTypeDeveloperName] = recordTypeWrapper;
+            } else {
+                skippedRecordTypeDeveloperNames.push(recordTypeDeveloperName);
+            }
+
+        });
+
+        return { writableRecordTypeApiToRecordTypeWrapperMap, skippedRecordTypeDeveloperNames };
+
+    }
+
     appendFieldRecipeToObjectRecipe(objectRecipe:string, fieldRecipe: string, fieldApiName: string): string {
 
-        const fieldPropertAndRecipeValue = `${fieldApiName}: ${fieldRecipe}`;
+        const fieldPropertAndRecipeValue = RecipeService.isRecipeWritableFieldApiName(fieldApiName)
+            ? `${fieldApiName}: ${fieldRecipe}`
+            : this.buildSkippedFieldApiNameTodo(fieldApiName);
         const updatedObjectRecipe =
 `${objectRecipe}
 ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;

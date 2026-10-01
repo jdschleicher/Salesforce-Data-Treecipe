@@ -1,5 +1,54 @@
 # Change Log
 
+## [3.29.5] - A metadata name that is not a Salesforce api name can no longer write recipe lines
+
+Closes [#120](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/120), surfaced by the security review of #119. The review of this change (#163) found two more names with the same flaw, and they are fixed here too.
+
+Three names from workspace XML were written into generated recipes with no check:
+
+| Name | Came from | Written into |
+|---|---|---|
+| Field api name | the field's `<fullName>` | the recipe line's YAML **key** |
+| Record type developer name | the record type's `<fullName>` | the `RecordTypeId` options and every record-type line in both backends |
+| Controlling field | a dependent picklist's `<controllingField>` | the dependent picklist's `when: ${{ … }}` expression |
+
+If one of these names carried a line break, it could add a recipe line of its own. **Run Faker by Recipe** with faker-js evaluates that line's `${{ … }}` with `new Function()`, which runs code in the extension host. For example, a `<fullName>` of `A&#10;    Injected: ${{ … }}&#10;    Z` was written as three field lines. The record type case was reproduced as code execution in review.
+
+Each name is now written only when it is a Salesforce api name, meaning a letter followed by letters, digits and `_` (`RecipeService.isRecipeWritableFieldApiName`). Any other name is written as a single comment line instead:
+
+```yaml
+    ### TODO -- FIELD SKIPPED -- api name "A\n    Injected: ${{ … }}\n    Z" is not a valid Salesforce api name ([A-Za-z][A-Za-z0-9_]*); fix the field's <fullName> and regenerate
+    ### TODO -- RECORD TYPE SKIPPED -- developer name "Evil\n    …" is not a valid Salesforce api name ([A-Za-z][A-Za-z0-9_]*); fix the record type's <fullName> and regenerate
+    Dependent__c:  ### TODO -- DEPENDENT PICKLIST SKIPPED -- controlling field "Controlling__c\n    …" is not a valid Salesforce api name ([A-Za-z][A-Za-z0-9_]*); fix the <controllingField> of "Dependent__c" and regenerate
+```
+
+- **Field api names** are checked in `appendFieldRecipeToObjectRecipe`, the one method that writes every recipe key: OOTB mapping entries, field files, the record type line, and compound address and geolocation components. The field's value is dropped along with the key, because a value can carry the same name.
+- **Record type developer names** are split once, by `RecipeService.partitionRecordTypesByWritableDeveloperName`, where the record types are loaded. `initiateRecipeByObjectName` lists only the valid ones under `RecordTypeId` and writes a TODO for each invalid one. `DirectoryProcessor` passes only the valid ones to field generation, which covers every record-type line in both backends. If no record type is valid, no `RecordTypeId` line is written.
+- **Controlling fields** are checked in `getDependentPicklistRecipeFakerValue` before either backend is called. The dependent field keeps its key, and its value becomes the comment, which loads as `null`, as the existing TODO for a dependent picklist with no dependency settings already does.
+- Every name in a TODO is escaped with `RecipeYamlScalar.escapeForComment`, so neither js-yaml nor PyYAML sees a line break in it (including U+0085, U+2028 and U+2029).
+- Rejecting a name, rather than quoting it, was the open question on #120. A quoted key keeps the recipe valid, but it names a field no org can have.
+- An empty `<fullName>` never reaches the recipe. `FieldInfo.create` already refuses it and stops generation, as before. At the writer, an empty, whitespace-only, `null` or `undefined` name gets the TODO line.
+
+**Run Faker by Recipe with faker-js no longer throws on a field whose value is only a comment.** A field like that, such as `Dependent__c:  ### TODO …`, loads as `null`. `FakerJSRecipeProcessor.handleNonFakerJSExpressionSyntaxValueScenarios` checked it with `'if' in value`, which throws on `null` and on numbers. That had already failed the whole run for the TODO written for a dependent picklist with no dependency settings. It now checks for a non-null object first, so `null`, numbers and booleans pass through unchanged.
+
+Valid names are written byte-identically to before, and every existing fixture test passes unchanged. **Not covered, tracked as a follow-up:** object names, which come from directory names and are written into `- object:` and `nickname:`, and the record type names written into SOQL templates.
+
+**Tests.**
+- New fixture `HostileFieldApiNameSalesforceMetadataDirectory` holds one object with:
+  - fields whose `<fullName>` carries `\n`, `\r`, `\r\n`, U+2028, U+0085, a `: ` injection, a template literal, only whitespace, and a hostile `Location` name (whose two components inherit it);
+  - a dependent picklist whose `<controllingField>` carries a line break, and another whose `<controllingField>` is an expression;
+  - two record types whose `<fullName>` carries a line break (`\n` and U+2028);
+  - an ordinary field, controlling picklist, record-type-scoped picklist and record type, so the valid path runs beside the refused one.
+- `DirectoryProcessor.hostileFieldApiNames.test.ts` runs that fixture through the real pipeline with each backend. It checks that:
+  - the object loads with only the declared valid fields, and both refused dependents are `null`;
+  - each skipped field, record type and dependent picklist is exactly one TODO line;
+  - no line names the injected field;
+  - every file loads identically in js-yaml and PyYAML;
+  - Run Faker by Recipe with faker-js evaluates nothing the names carry;
+  - the ordinary `MockSalesforceMetadataDirectory` skips nothing.
+- Removing any one of the three guards fails these tests: the controlling-field check, record types in the recipe header, or record types passed to field generation.
+- `RecipeService.test.ts` covers each guard directly, in both backends, including a byte-identical check for ordinary names and record types. `FakerJSRecipeProcessor.test.ts` covers `null`, number and boolean field values.
+
 ## [3.29.4] - A picklist value named like a JavaScript built-in is kept as data
 
 Closes [#160](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/160), found in the review of #159.

@@ -226,6 +226,20 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
           
         });
 
+        // A FIELD WHOSE RECIPE VALUE IS ONLY A "### TODO" COMMENT LOADS AS null; "in" THREW ON IT, AND ON A NUMBER
+        test.each([null, 42, true])('passes a non-string, non-object value %p through unchanged', async (providedYamlPropertyValue) => {
+
+            const result = await fakerJSRecipeProcessor.evaluateProvidedYamlPropertyValue(
+                providedYamlPropertyValue,
+                {},
+                'Dependent__c',
+                null
+            );
+
+            expect(result).toBe(providedYamlPropertyValue);
+
+        });
+
     });
 
     describe('prepareFakerDateSyntax', () => {
