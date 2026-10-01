@@ -374,29 +374,33 @@ export class RecipeService {
         const { writableRecordTypeApiToRecordTypeWrapperMap, skippedRecordTypeDeveloperNames } = RecipeService.partitionRecordTypesByWritableDeveloperName(recordTypeApiToRecordTypeWrapperMap);
         recordTypeApiToRecordTypeWrapperMap = writableRecordTypeApiToRecordTypeWrapperMap;
 
-        if ( Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
+        const recordTypeApiNames = Object.keys(recordTypeApiToRecordTypeWrapperMap);
+        if ( recordTypeApiNames.length > 0 ) {
 
-            let recordTypeDeveloperNamesToSelect:string = '';
-            const recordTypeDeveloperNameTodoVerbiage = `### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`;
-            const newLineBreak = "\n";
-            Object.entries(recordTypeApiToRecordTypeWrapperMap).forEach(([recordTypeApiNameKey, recordTypeWrapper]) => {
-                    
-                if ( recordTypeDeveloperNamesToSelect.trim() === '' ) {
-                    // check to see if recordTypeDeveloperNamesToSelect has been given an initial value to properly handle recipe spacing
-                    recordTypeDeveloperNamesToSelect = `${recordTypeDeveloperNameTodoVerbiage}`;
+            /*
+                The value is ONE developer name: CollectionsApiService swaps each "Object.DeveloperName" for
+                its org Id, so a value naming every record type became several Ids in one RecordTypeId (#157).
+                The others are commented lines, as with record-type picklist variants (#153) -- a bare line
+                indented under the value is folded into it by YAML.
+            */
+            const [ selectedRecordTypeApiName, ...otherRecordTypeApiNames ] = recordTypeApiNames;
+            let recordTypeIdRecipeValue = `${objectName}.${selectedRecordTypeApiName}`;
 
-                } 
+            if ( otherRecordTypeApiNames.length > 0 ) {
 
-                recordTypeDeveloperNamesToSelect += `${newLineBreak}${this.generateTabs(5)}${objectName}.${recordTypeApiNameKey}`;
-    
-            });
+                recordTypeIdRecipeValue += `\n${this.generateTabs(5)}### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`;
+                otherRecordTypeApiNames.forEach((recordTypeApiName) => {
+                    recordTypeIdRecipeValue += `\n${this.generateTabs(5)}# ${objectName}.${recordTypeApiName}`;
+                });
+
+            }
 
             objectRecipeMarkup = this.appendFieldRecipeToObjectRecipe(
                 objectRecipeMarkup,
-                recordTypeDeveloperNamesToSelect,
+                recordTypeIdRecipeValue,
                 "RecordTypeId"
             );
-    
+
         }
 
         skippedRecordTypeDeveloperNames.forEach((skippedRecordTypeDeveloperName) => {

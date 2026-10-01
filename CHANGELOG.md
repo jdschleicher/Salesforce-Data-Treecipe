@@ -1,5 +1,39 @@
 # Change Log
 
+## [3.29.6] - An unedited recipe for an object with record types inserts again
+
+Closes [#157](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/157), found while scoping #153.
+
+Generate Treecipe wrote `RecordTypeId` as a TODO followed by every record type on its own line:
+
+```yaml
+    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name ...
+                    Example_Everything__c.OneRecType
+                    Example_Everything__c.TwoRecType
+```
+
+YAML folds those lines into one value, `Example_Everything__c.OneRecType Example_Everything__c.TwoRecType`. **Insert Data Set by Directory** then replaced each developer name with its org Id, so the insert sent two Ids in one `RecordTypeId`, and Salesforce rejected it. A recipe nobody had edited could not be inserted.
+
+The value is now the **first** record type, in the order generation already used. Each other record type is a commented line under the same TODO, the shape #153 gave record-type picklist variants:
+
+```yaml
+    RecordTypeId: Example_Everything__c.OneRecType
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name ...
+                    # Example_Everything__c.TwoRecType
+```
+
+- **To pick another record type**, swap its commented line in as the value.
+- **With one record type**, the value is that record type, with no TODO and no commented line: there is nothing to choose.
+- **With no record types**, there is still no `RecordTypeId` line.
+- The line is written by `RecipeService.initiateRecipeByObjectName`, which both backends share, so it is identical in both.
+
+**Tests.**
+- `RecipeService.test.ts` pins the new output for one and several record types, with both backends, and loads it with js-yaml and with PyYAML.
+- `DirectoryProcessor.generatedRecipeYaml.test.ts` runs the real pipeline with each backend, pins the lines, and asserts that js-yaml and PyYAML both load every `RecordTypeId` as exactly `Example_Everything__c.OneRecType`.
+- New `CollectionsApiService.generatedRecordTypeId.test.ts` takes a generated recipe through faker output to the Collections API JSON and `updateCollectionApiJsonContentWithOrgRecordTypeIds`, and asserts that the insert carries exactly one org Id. faker-js runs the recipe for real. snowfakery is not installed, so its output is built from what PyYAML, snowfakery's reader, loads.
+- The Recipe Cockpit's recipe-writer fixtures are regenerated, and the faker-js one is byte-identical to the pipeline's output. A new test shows the cockpit's reader lists `RecordTypeId` with the chosen record type as its value.
+- Reverting the fix fails 30 of the new and updated tests.
+
 ## [3.29.5] - A metadata name that is not a Salesforce api name can no longer write recipe lines
 
 Closes [#120](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/120), surfaced by the security review of #119. The review of this change (#163) found two more names with the same flaw, and they are fixed here too.

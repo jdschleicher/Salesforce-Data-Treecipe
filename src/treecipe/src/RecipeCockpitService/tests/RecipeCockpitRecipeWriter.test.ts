@@ -186,13 +186,28 @@ describe('RecipeCockpitRecipeWriter', () => {
 
     describe('the fixtures', () => {
 
+        // THE VALUE IS ONE DEVELOPER NAME (#157), SO THE READER'S FIRST LINE IS THE RECORD TYPE THE RECIPE INSERTS
+        test.each(RECIPE_FIXTURES)('the cockpit reader lists the %s fixture\'s RecordTypeId with the chosen record type as its value', (unusedBackend, fileName) => {
+
+            const recipeLines = readFixture(fileName).split('\n');
+            const recordTypeIdEntry = RecipeCockpitService.parseRecipeSource(recipeLines.join('\n')).get('Example_Everything__c').fieldEntries.get('RecordTypeId');
+
+            expect(recipeLines[recordTypeIdEntry.lineNumber - 1]).toBe('    RecordTypeId: Example_Everything__c.OneRecType');
+            expect(recordTypeIdEntry.valueText.split('\n')).toEqual([
+                'Example_Everything__c.OneRecType',
+                '### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
+                '# Example_Everything__c.TwoRecType'
+            ]);
+
+        });
+
         test.each(RECIPE_FIXTURES)('the %s fixture carries every construct the writer has to leave alone, and loads as YAML', (unusedBackend, fileName) => {
 
             const recipeText = readFixture(fileName);
 
             expect(recipeText).toMatch(/^# Relationship Tree: /m);
             expect(recipeText).toMatch(/^ {6}if:$/m);
-            expect(recipeText).toMatch(/^ {4}RecordTypeId: ### TODO: -- RecordType Options -- /m);
+            expect(recipeText).toMatch(/^ {4}RecordTypeId: Example_Everything__c\.OneRecType\n {20}### TODO: -- RecordType Options -- From below, .*\n {20}# Example_Everything__c\.TwoRecType$/m);
             expect(recipeText).toMatch(/^ {20}### TODO: -- RecordType Options -- /m);
             expect(recipeText).toMatch(/^ {4}Picklist__c: .*\n {20}### TODO: -- RecordType Options -- .*\n {20}# \$\{\{/m);
             expect(recipeText).toMatch(/^ {4}BillingStreet: /m);
@@ -340,14 +355,14 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             const recipeText = readFixture(fileName);
 
-            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Example_Everything__c', 'RecordTypeId', 'Example_Everything__c.OneRecType'));
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Example_Everything__c', 'RecordTypeId', 'Example_Everything__c.TwoRecType'));
 
             expect(edit.removedLines).toEqual([
-                '    RecordTypeId: ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
-                '                    Example_Everything__c.OneRecType',
-                '                    Example_Everything__c.TwoRecType'
+                '    RecordTypeId: Example_Everything__c.OneRecType',
+                '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
+                '                    # Example_Everything__c.TwoRecType'
             ]);
-            expect(edit.insertedLines).toEqual(['    RecordTypeId: Example_Everything__c.OneRecType']);
+            expect(edit.insertedLines).toEqual(['    RecordTypeId: Example_Everything__c.TwoRecType']);
             expect(patchedRecipeText).toContain('### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION');
 
         });
