@@ -211,7 +211,7 @@ describe('Run Faker by Recipe with faker-js over hostile field api names', () =>
 
         const hostileRecipeFile = findHostileRecipeFile(await generateRecipeFiles(() => new FakerJSRecipeFakerService()));
         const recipeFilePath = path.join(recipeDirectoryPath, hostileRecipeFile.fileName);
-        // THE RECORD TYPE LINE IS A TODO THE USER RESOLVES BY HAND BEFORE A RUN; IT IS RESOLVED TO THE ONE VALID RECORD TYPE, AS A USER WOULD
+        // THE RECORD TYPE LINE IS SET TO THE ONE VALID RECORD TYPE, AS A USER CHOOSING ONE WOULD -- THE GENERATED DEFAULT IS ALREADY ONE DEVELOPER NAME (#157)
         const runnableRecipeText = hostileRecipeFile.content.replace(/^( {4}RecordTypeId: ).*$/m, '$1Valid');
         fs.writeFileSync(recipeFilePath, runnableRecipeText);
 

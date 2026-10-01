@@ -207,8 +207,8 @@ describe('Run Faker by Recipe with faker-js over the hostile recipe', () => {
         const recipeFilePath = path.join(recipeDirectoryPath, hostileRecipeFile.fileName);
         /*
             MANY RECORDS, SO THE RANDOM PICKS REACH EVERY CONTROLLING VALUE'S when: CONDITION. And the
-            record type line is a TODO the user resolves by hand before a run; it is resolved here to
-            one of the fixture's record types, as a user would.
+            record type line, which defaults to the first record type, is set to EveryValue, as a user
+            choosing a record type would.
         */
         const runnableRecipeText = hostileRecipeFile.content
             .replace(/^(- object: Hostile__c\n(?: {2}\S.*\n)*?) {2}count: 1\n/m, '$1  count: 200\n')
