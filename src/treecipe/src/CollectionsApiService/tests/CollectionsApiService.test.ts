@@ -20,6 +20,7 @@ jest.mock('vscode', () => ({
     },
     window: {
         showErrorMessage: jest.fn(),
+        showWarningMessage: jest.fn(),
         showQuickPick: jest.fn(),
         showInputBox: jest.fn()
     },
@@ -576,9 +577,36 @@ describe('Shared tests for CollectionsApiService', () => {
     });
 
     describe('updateCollectionApiJsonContentWithOrgRecordTypeIds', () => {
-        
-        test('should replace record type identifiers with corresponding record type IDs', () => {
-            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"},{"RecordTypeId":"Contact.Special"}]}';
+
+        function buildCollectionsApiJson(records: Array<Record<string, unknown> | null>): string {
+            return JSON.stringify({ allOrNone: true, records }, null, 2);
+        }
+
+        function buildRecord(objectApiName: string, fields: Record<string, unknown>): Record<string, unknown> {
+            return { attributes: { type: objectApiName, referenceId: `${objectApiName}_Reference_1__nickname` }, ...fields };
+        }
+
+        function resolveRecords(collectionsApiJson: string, recordTypeDetailFromTargetOrg: unknown, collectionsApiFileName?: string): Array<Record<string, unknown>> {
+            return JSON.parse(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg, collectionsApiFileName)).records;
+        }
+
+        const businessRecordTypesReturnedShortestFirst = {
+            records: [
+                { SobjectType: 'Account', DeveloperName: 'Business', Id: '012BUSINESS' },
+                { SobjectType: 'Account', DeveloperName: 'Business_Customer', Id: '012BUSINESSCUSTOMER' },
+            ],
+        };
+
+        beforeEach(() => {
+            (vscode.window.showWarningMessage as jest.Mock).mockClear();
+        });
+
+        test('replaces each record\'s RecordTypeId with the org Id of its own object\'s record type', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.Standard' }),
+                buildRecord('Contact', { RecordTypeId: 'Contact.Special' }),
+            ]);
             const recordTypeDetailFromTargetOrg = {
                 records: [
                     { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
@@ -586,73 +614,226 @@ describe('Shared tests for CollectionsApiService', () => {
                 ],
             };
 
-            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+            expect(resolveRecords(collectionsApiJson, recordTypeDetailFromTargetOrg).map(record => record.RecordTypeId)).toEqual(['RTID001', 'RTID002']);
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 
-            expect(result).toBe('{"records":[{"RecordTypeId":"RTID001"},{"RecordTypeId":"RTID002"}]}');
-        
         });
 
-        test('should replace multiple occurrences of the same record type identifier', () => {
-           
-            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"},{"RecordTypeId":"Account.Standard"}]}';
-            const recordTypeDetailFromTargetOrg = {
-                records: [
-                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
-                ],
-            };
+        test('replaces every record that names the same record type', () => {
 
-            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.Standard' }),
+                buildRecord('Account', { RecordTypeId: 'Account.Standard' }),
+            ]);
+            const recordTypeDetailFromTargetOrg = { records: [ { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' } ] };
 
-            expect(result).toBe('{"records":[{"RecordTypeId":"RTID001"},{"RecordTypeId":"RTID001"}]}');
-        
+            expect(resolveRecords(collectionsApiJson, recordTypeDetailFromTargetOrg).map(record => record.RecordTypeId)).toEqual(['RTID001', 'RTID001']);
+
         });
 
-        test('should replace multiple occurrences of the same record type identifier', () => {
-            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"},{"RecordTypeId":"Account.Standard"}]}';
-            const recordTypeDetailFromTargetOrg = {
-                records: [
-                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
-                ],
-            };
-    
-            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
-    
-            expect(result).toBe('{"records":[{"RecordTypeId":"RTID001"},{"RecordTypeId":"RTID001"}]}');
+        test('gives a developer name that extends another its own Id, even when the shorter one is returned first', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.Business_Customer' }),
+                buildRecord('Account', { RecordTypeId: 'Account.Business' }),
+            ]);
+
+            expect(resolveRecords(collectionsApiJson, businessRecordTypesReturnedShortestFirst).map(record => record.RecordTypeId)).toEqual(['012BUSINESSCUSTOMER', '012BUSINESS']);
+
         });
-    
-        test('should not modify the JSON if no record type identifiers match', () => {
-            const collectionsApiJson = '{"records":[{"RecordTypeId":"Unknown.Type"}]}';
-            const recordTypeDetailFromTargetOrg = {
-                records: [
-                    { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
-                ],
-            };
-    
-            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
-    
+
+        test('leaves any other field whose value contains a record type identifier unchanged', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', {
+                    RecordTypeId: 'Account.Business',
+                    Description: 'Migrated from Account.Business last year',
+                    Name: 'Account.Business',
+                }),
+            ]);
+
+            const [ resolvedRecord ] = resolveRecords(collectionsApiJson, businessRecordTypesReturnedShortestFirst);
+
+            expect(resolvedRecord).toEqual({
+                attributes: { type: 'Account', referenceId: 'Account_Reference_1__nickname' },
+                RecordTypeId: '012BUSINESS',
+                Description: 'Migrated from Account.Business last year',
+                Name: 'Account.Business',
+            });
+
+        });
+
+        test('does not resolve a record type of another object, because matching is per object', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Contact.Special' }),
+            ]);
+            const recordTypeDetailFromTargetOrg = { records: [ { SobjectType: 'Contact', DeveloperName: 'Special', Id: 'RTID002' } ] };
+
+            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg, 'Account.json');
+
             expect(result).toBe(collectionsApiJson);
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toContain('Account: "Contact.Special"');
+
         });
-    
+
+        test('leaves an unmatched RecordTypeId as it is, and warns once per file naming each object and its unmatched developer names', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.Missing_One' }),
+                buildRecord('Account', { RecordTypeId: 'Account.Missing_One' }),
+                buildRecord('Account', { RecordTypeId: 'Account.Missing_Two' }),
+                buildRecord('Account', { RecordTypeId: 'Account.Business' }),
+                buildRecord('Contact', { RecordTypeId: 'Contact.Missing_Three' }),
+            ]);
+
+            const resolvedRecordTypeIds = resolveRecords(collectionsApiJson, businessRecordTypesReturnedShortestFirst, 'Account.json').map(record => record.RecordTypeId);
+
+            expect(resolvedRecordTypeIds).toEqual(['Account.Missing_One', 'Account.Missing_One', 'Account.Missing_Two', '012BUSINESS', 'Contact.Missing_Three']);
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+            const warning: string = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0];
+            expect(warning).toContain('in Account.json');
+            expect(warning).toContain('Account: "Missing_One", "Missing_Two"');
+            expect(warning).toContain('Contact: "Missing_Three"');
+
+        });
+
+        test('escapes an unmatched developer name in the warning, so it cannot form a notification link', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.[run](command:workbench.action.terminal.sendSequence)' }),
+            ]);
+
+            CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, businessRecordTypesReturnedShortestFirst);
+
+            const warning: string = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0];
+            expect(warning).not.toMatch(/[[\]()]/);
+
+        });
+
+        test('lists at most the maximum number of unmatched developer names per object and counts the rest', () => {
+
+            const maximumNames = CollectionsApiService.maximumUnmatchedRecordTypeNamesInWarning;
+            const collectionsApiJson = buildCollectionsApiJson(
+                Array.from({ length: maximumNames + 3 }, (_, index) => buildRecord('Account', { RecordTypeId: `Account.Missing_${index}` }))
+            );
+
+            CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, businessRecordTypesReturnedShortestFirst);
+
+            const warning: string = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0];
+            expect(warning).toContain(`"Missing_${maximumNames - 1}" and 3 more`);
+            expect(warning).not.toContain(`"Missing_${maximumNames}"`);
+
+        });
+
+        test('passes a RecordTypeId that is not an object-qualified name, such as an Id, through without a warning', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: '012000000000001AAA' }),
+            ]);
+
+            expect(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, businessRecordTypesReturnedShortestFirst)).toBe(collectionsApiJson);
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+        });
+
+        test('passes records with no RecordTypeId through unchanged', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { Name: 'Account.Business' }),
+            ]);
+
+            expect(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, businessRecordTypesReturnedShortestFirst)).toBe(collectionsApiJson);
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+        });
+
+        test('passes a record with no object type, or a RecordTypeId that is not text, through unchanged', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                null,
+                { RecordTypeId: 'Account.Business' },
+                buildRecord('Account', { RecordTypeId: null }),
+            ]);
+
+            expect(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, businessRecordTypesReturnedShortestFirst)).toBe(collectionsApiJson);
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+        });
+
+        test('passes JSON with no records array through unchanged', () => {
+
+            const collectionsApiJson = '{"allOrNone":true}';
+
+            expect(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, businessRecordTypesReturnedShortestFirst)).toBe(collectionsApiJson);
+
+        });
+
         test('should handle an empty JSON string gracefully', () => {
-            const collectionsApiJson = '';
+
+            expect(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds('', businessRecordTypesReturnedShortestFirst)).toBe('');
+
+        });
+
+        test('should handle an empty record type details object gracefully', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.Standard' }),
+            ]);
+
+            expect(CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, { records: [] })).toBe(collectionsApiJson);
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toContain('Account: "Standard"');
+
+        });
+
+        test('is applied by processAndInsertCollectionFile to the file it inserts, naming that file in the warning', async () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.Business_Customer', Description: 'Account.Business' }),
+                buildRecord('Account', { RecordTypeId: 'Account.Missing' }),
+            ]);
+            jest.spyOn(VSCodeWorkspaceService, 'getFileContentByPath').mockResolvedValue(collectionsApiJson);
+            const makeCollectionsApiCallSpy = jest.spyOn(CollectionsApiService, 'makeCollectionsApiCall').mockResolvedValue([
+                { success: true, id: '001A' },
+                { success: false, errors: [] },
+            ]);
+            jest.spyOn(CollectionsApiService, 'appendInsertAttemptsFileWithLatestSobjectResults').mockImplementation(() => undefined);
+
+            await CollectionsApiService.processAndInsertCollectionFile('/dataset/collectionsApi-Account.json',
+                                                                        businessRecordTypesReturnedShortestFirst,
+                                                                        {},
+                                                                        { instanceUrl: 'https://example.my.salesforce.com' },
+                                                                        false,
+                                                                        { SuccessResults: {}, FailureResults: {} },
+                                                                        '/dataset/results.json',
+                                                                        undefined);
+
+            const [ sentRecords ] = makeCollectionsApiCallSpy.mock.calls[0];
+            expect(sentRecords.records.map((record: Record<string, unknown>) => [record.RecordTypeId, record.Description])).toEqual([
+                ['012BUSINESSCUSTOMER', 'Account.Business'],
+                ['Account.Missing', undefined],
+            ]);
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toContain('in collectionsApi-Account.json');
+
+        });
+
+        test('ignores org record type rows that are missing a name or an Id', () => {
+
+            const collectionsApiJson = buildCollectionsApiJson([
+                buildRecord('Account', { RecordTypeId: 'Account.Standard' }),
+            ]);
             const recordTypeDetailFromTargetOrg = {
                 records: [
+                    null,
+                    { SobjectType: 'Account', DeveloperName: 'Standard' },
                     { SobjectType: 'Account', DeveloperName: 'Standard', Id: 'RTID001' },
                 ],
             };
-    
-            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
-    
-            expect(result).toBe('');
-        });
-    
-        test('should handle an empty record type details object gracefully', () => {
-            const collectionsApiJson = '{"records":[{"RecordTypeId":"Account.Standard"}]}';
-            const recordTypeDetailFromTargetOrg = { records: [] };
-    
-            const result = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
-    
-            expect(result).toBe(collectionsApiJson);
+
+            expect(resolveRecords(collectionsApiJson, recordTypeDetailFromTargetOrg).map(record => record.RecordTypeId)).toEqual(['RTID001']);
+
         });
 
     });
