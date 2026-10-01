@@ -166,17 +166,22 @@ describe.each([
             mockRecordTypesListing.arrange = (directoryEntries) => sortDirectoryEntries(directoryEntries).reverse();
             const recipeText = (await generateRecipeFiles(createFakerService)).map(recipeFile => recipeFile.content).join('\n');
 
-            const recordTypeSectionNames = [...recipeText.matchAll(/for the record type (\w+) for the field (\w+)/g)];
-            expect(recordTypeSectionNames.length).toBeGreaterThan(0);
-            const recordTypeNamesByField: Record<string, string[]> = {};
-            recordTypeSectionNames.forEach(([, recordTypeName, fieldApiName]) => {
-                (recordTypeNamesByField[fieldApiName] ??= []).push(recordTypeName);
+            /*
+                A field's record-type sections -- picklist and multi-select variants, and a dependent
+                picklist's per-record-type choices under each when: -- each name the record types once,
+                in map order, so within one field (or one when: block) the names must come out sorted.
+            */
+            const recordTypeNamesBySection = recipeText
+                .split(/\n(?= {4}\w+:| *when:)/)
+                .map(section => [...section.matchAll(/### TODO: -- RecordType Options -- (\w+) --/g)].map(([, recordTypeName]) => recordTypeName))
+                .map(recordTypeNames => recordTypeNames.filter((recordTypeName, index) => recordTypeName !== recordTypeNames[index - 1]))
+                .filter(recordTypeNames => recordTypeNames.length > 1);
+
+            expect(recordTypeNamesBySection.length).toBeGreaterThan(2);
+            recordTypeNamesBySection.forEach(recordTypeNames => {
+                expect(recordTypeNames).toEqual(['OneRecType', 'TwoRecType']);
             });
-            Object.values(recordTypeNamesByField).forEach(recordTypeNames => {
-                expect(recordTypeNames).toEqual([...recordTypeNames].sort());
-            });
-            expect(recordTypeNamesByField.Picklist__c).toEqual(['OneRecType', 'TwoRecType']);
-            expect(recordTypeNamesByField.MultiPicklist__c).toEqual(['OneRecType', 'TwoRecType']);
+            expect(recipeText).toMatch(/### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType[\s\S]*?### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType/);
 
         });
 
