@@ -418,9 +418,11 @@ export class RelationshipService {
                                           fieldName: string
                                         ): void {
 
-    // Ensure both parent and child have RelationshipDetail initialized
-    this.ensureRelationshipDetailExists(objectInfoWrapper, parentReferenceApiName);
-    this.ensureRelationshipDetailExists(objectInfoWrapper, childObjectName);
+    // A <referenceTo> OR A CONFIGURED MAPPING THAT IS NOT AN API NAME NEVER BECOMES AN OBJECT, SO THE LOOKUP RECORDS NO RELATIONSHIP (#164)
+    if ( !this.ensureRelationshipDetailExists(objectInfoWrapper, parentReferenceApiName)
+          || !this.ensureRelationshipDetailExists(objectInfoWrapper, childObjectName) ) {
+      return;
+    }
 
 
     // Add child reference to parent
@@ -444,18 +446,19 @@ export class RelationshipService {
 
   private ensureRelationshipDetailExists(objectInfoWrapper: ObjectInfoWrapper,
                                         objectName: string
-                                        ): void {
+                                        ): boolean {
 
-    if (!objectInfoWrapper.ObjectToObjectInfoMap[objectName]) {
+    if ( !objectInfoWrapper.addKeyToObjectInfoMap(objectName) ) {
+      return false;
+    }
 
-      objectInfoWrapper.addKeyToObjectInfoMap(objectName);
-      objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.buildNewRelationshipDetail(objectName);
-
-    } else if (!objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail) {
+    if (!objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail) {
 
       objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail = this.buildNewRelationshipDetail(objectName);
 
     }
+
+    return true;
 
   }
 

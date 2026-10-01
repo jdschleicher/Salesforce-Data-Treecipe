@@ -1207,3 +1207,49 @@ describe("Shared Relationship Service Tests", () => {
 
     });
 });
+
+describe('a lookup whose parent is not a Salesforce api name (#164)', () => {
+
+    test.each([
+        ['a line feed', 'Parent__c\n- object: Injected__c'],
+        ['a line separator', 'Parent__c\u2028- object: Injected__c'],
+        ['a path traversal', '../../Parent__c']
+    ])('given %s in the parent name, records no relationship and never adds the parent', (unusedDescription, hostileParentName) => {
+
+        const relationshipService = new RelationshipService();
+        const objectInfoWrapper = new ObjectInfoWrapper();
+        objectInfoWrapper.addKeyToObjectInfoMap('Child__c');
+        objectInfoWrapper.ObjectToObjectInfoMap['Child__c'].RelationshipDetail = relationshipService.buildNewRelationshipDetail('Child__c');
+        objectInfoWrapper.ObjectToObjectInfoMap['Child__c'].FullRecipe = '\n- object: Child__c\n  nickname: Child__c_NickName\n  count: 1\n  fields:';
+        const lookupFieldDetail = FieldInfo.create('Child__c', 'Parent__c', 'Parent', 'Lookup', null, null, hostileParentName, null);
+
+        relationshipService.buildBidirectionalChildAndParentRelationshipReferences(lookupFieldDetail, objectInfoWrapper, 'Child__c', hostileParentName);
+        relationshipService.processAllRelationships(objectInfoWrapper);
+        const recipeFiles = relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+
+        expect(Object.keys(objectInfoWrapper.ObjectToObjectInfoMap)).toEqual(['Child__c']);
+        expect(objectInfoWrapper.ObjectToObjectInfoMap['Child__c'].RelationshipDetail.parentObjectToFieldReferences).toEqual({});
+        expect(objectInfoWrapper.SkippedObjectApiNames).toEqual([hostileParentName]);
+        expect(recipeFiles).toHaveLength(1);
+        expect(recipeFiles[0].objects).toEqual(['Child__c']);
+        expect(recipeFiles[0].content).not.toContain('Injected__c');
+        expect(recipeFiles[0].content).not.toContain(hostileParentName);
+
+    });
+
+    test('given an ordinary parent name, the relationship is recorded as before', () => {
+
+        const relationshipService = new RelationshipService();
+        const objectInfoWrapper = new ObjectInfoWrapper();
+        objectInfoWrapper.addKeyToObjectInfoMap('Child__c');
+        const lookupFieldDetail = FieldInfo.create('Child__c', 'Parent__c', 'Parent', 'Lookup', null, null, 'ns__Parent__c', null);
+
+        relationshipService.buildBidirectionalChildAndParentRelationshipReferences(lookupFieldDetail, objectInfoWrapper, 'Child__c', 'ns__Parent__c');
+
+        expect(objectInfoWrapper.ObjectToObjectInfoMap['ns__Parent__c'].RelationshipDetail.childObjectToFieldReferences).toEqual({ Child__c: ['Parent__c'] });
+        expect(objectInfoWrapper.ObjectToObjectInfoMap['Child__c'].RelationshipDetail.parentObjectToFieldReferences).toEqual({ ns__Parent__c: ['Parent__c'] });
+        expect(objectInfoWrapper).not.toHaveProperty('SkippedObjectApiNames');
+
+    });
+
+});

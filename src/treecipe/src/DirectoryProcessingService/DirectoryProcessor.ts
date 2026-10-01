@@ -1,5 +1,6 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { RecipeService } from '../RecipeService/RecipeService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
@@ -176,7 +177,10 @@ export class DirectoryProcessor {
   
             let parentObjectdirectoryPathUri = directoryPathUri.fsPath;
             let objectName = this.getLastSegmentFromPath(parentObjectdirectoryPathUri);
-            objectInfoWrapper.addKeyToObjectInfoMap(objectName);
+            if ( !objectInfoWrapper.addKeyToObjectInfoMap(objectName) ) {
+              // A DIRECTORY NAME THAT IS NOT AN API NAME IS NOT AN OBJECT -- processAllObjectsAndRelationships WARNS ABOUT IT ONCE THE WALK ENDS (#164)
+              continue;
+            }
   
             const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
             const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
@@ -386,6 +390,8 @@ export class DirectoryProcessor {
     const objectInfoWrapper = new ObjectInfoWrapper(); 
     
     await this.processDirectory(directoryPathUri, objectInfoWrapper);
+
+    this.warnOfSkippedObjectApiNames(objectInfoWrapper);
   
     objectInfoWrapper.RelationshipTrees = this.relationshipService.buildRelationshipTrees(objectInfoWrapper);
 
@@ -394,6 +400,20 @@ export class DirectoryProcessor {
     objectInfoWrapper.RecipeFiles = recipeFiles;
       
     return objectInfoWrapper;
+
+  }
+
+  warnOfSkippedObjectApiNames(objectInfoWrapper: ObjectInfoWrapper): void {
+
+    const skippedObjectApiNames = objectInfoWrapper.SkippedObjectApiNames ?? [];
+    if ( skippedObjectApiNames.length === 0 ) {
+      return;
+    }
+
+    const quotedObjectApiNames = skippedObjectApiNames
+      .map(skippedObjectApiName => `"${RecipeYamlScalar.escapeForComment(String(skippedObjectApiName ?? ''))}"`)
+      .join(', ');
+    vscode.window.showWarningMessage(`Treecipe skipped ${skippedObjectApiNames.length} object name(s) that are not valid Salesforce api names ([A-Za-z][A-Za-z0-9_]*): ${quotedObjectApiNames}. No recipe is written for an object directory with such a name, and no relationship is recorded for a <referenceTo> or relationship mapping naming one; rename it and regenerate.`);
 
   }
 

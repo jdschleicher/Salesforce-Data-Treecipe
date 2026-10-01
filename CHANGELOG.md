@@ -1,5 +1,44 @@
 # Change Log
 
+## [3.29.7] - An object name that is not a Salesforce api name can no longer write recipe lines
+
+Closes [#164](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/164), the follow-up #120 left open.
+
+An object's name reached generated recipes with no check. It comes from two places the workspace controls:
+
+| Name | Came from | Written into |
+|---|---|---|
+| Object api name | the object's **directory name** | `- object:` and `nickname:`, the combined recipe's `# Level` and `# Object (Parents: … )` comments, and the generated folder and file names |
+| Lookup parent | a field's `<referenceTo>`, or a configured relationship mapping | the same comments and folder names, because the parent joins the relationship tree as an object |
+
+On Linux and macOS a directory name can carry a line break, so a cloned repository could add recipe lines of its choosing. **Run Faker by Recipe** with faker-js evaluates their `${{ … }}` with `new Function()`. A `<referenceTo>` needs no unusual directory at all, only an XML character reference such as `&#10;`, and could also carry `../` into the folder path. Like #120, this was found by reading the code and not reproduced.
+
+**The check is in one place**, `ObjectInfoWrapper.addKeyToObjectInfoMap`, the only way an object enters the map. Both routes go through it: the directory walk and a lookup's parent. Every writer reads its object names from that map, including `initiateRecipeByObjectName`, `RelationshipService`'s grouping and comments, the folder names, the SOQL and Mermaid templates, and the objects wrapper the Recipe Cockpit reads. So none of them ever sees a refused name.
+
+- **A directory** whose name is not an api name (`[A-Za-z][A-Za-z0-9_]*`) is skipped, and nothing is written for it.
+- **A lookup** whose parent is not an api name records no relationship. The field itself is still written, with the same `### TODO -- REFERENCE ID REQUIRED` value it already had.
+- **Every refused name** is listed once in a single warning after the walk, escaped with `RecipeYamlScalar.escapeForComment`. It is also recorded in `ObjectInfoWrapper.SkippedObjectApiNames`. That property is present only when something was refused, so an ordinary run serializes exactly as before.
+- **The rule is `SalesforceApiName`**, a new class that imports nothing, because `ObjectInfoWrapper`, `SOQLTemplateService` and `MermaidService` run without vscode and `RecipeService` does not. `RecipeService.isRecipeWritableFieldApiName` now delegates to it, so field, record type, controlling field and object names all follow one definition.
+- **The map no longer reads inherited members.** `addKeyToObjectInfoMap` checked membership with `in`, so an object named `constructor` or `toString` was never added. It now uses an own-key check.
+
+**Also bundled from the issue: SOQL templates.** `SOQLTemplateService` now leaves out of every query and the SOSL template anything the recipe refuses: a record type developer name, a field api name, or a lookup's `<referenceTo>`. The template is a file to read rather than run, but each of these could write a misleading query line.
+
+Ordinary names are written byte-identically, and every existing fixture test passes unchanged. **Not covered, left on #164:** an object whose fields are all skipped is still written as `fields:` followed only by comments. Snowfakery 4.x rejects that file. An object with no fields already produced the same output before this change.
+
+**Tests.**
+- New `DirectoryProcessor.hostileObjectNames.test.ts` builds its fixture at run time, because a file name with a line break cannot be checked out on every platform git supports. The fixture has directories named with `\n`, `\r` and U+2028 followed by an injected object, beside `Account` and `ns__Thing__c`, and `ns__Thing__c` has a lookup whose `<referenceTo>` carries the same payload. With each backend, the test checks that:
+  - only the ordinary objects reach the map, the relationship trees and the recipe files;
+  - no recipe line names the injected object or field;
+  - one warning names all four refused names, escaped;
+  - js-yaml and PyYAML load every file identically;
+  - each ordinary object's recipe, and each recipe file, is byte-identical to a run without the hostile names.
+
+  Running faker-js over the files evaluates nothing the names carry. The tests are skipped on Windows, where such a directory cannot exist.
+- `ObjectInfoWrapper.test.ts` covers refused names (line breaks, `../`, a space, a leading digit, an empty name, a non-string), accepted names including `constructor`, recording a name once, and the unchanged serialization.
+- `RelationshipService.test.ts` covers a lookup to a refused parent, which records no relationship, adds no object and writes no comment naming it, and checks that an ordinary parent is recorded as before.
+- `SOQLTemplateService.test.ts` covers a refused record type, field and `<referenceTo>`.
+- Loosening `SalesforceApiName` to accept any non-empty string fails 27 of the new tests.
+
 ## [3.29.6] - An unedited recipe for an object with record types inserts again
 
 Closes [#157](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/157), found while scoping #153.

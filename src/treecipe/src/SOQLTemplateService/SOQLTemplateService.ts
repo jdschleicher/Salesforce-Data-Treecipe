@@ -1,6 +1,7 @@
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
+import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hiearchy'];
 
 const TEXT_FIELD_TYPES = ['Text', 'TextArea', 'LongTextArea', 'Html', 'Email', 'Phone', 'Url'];
@@ -104,9 +105,20 @@ export class SOQLTemplateService {
 
     }
 
+    /*
+        The template is a file to read rather than run, but each name below comes from workspace XML,
+        and a line break in one writes a query line of its author's choosing. A field or record type
+        the recipe refuses (#120) is left out of the template too, so the two agree (#164).
+    */
+    static getWritableFields(objectInfo: ObjectInfo): FieldInfo[] {
+
+        return (objectInfo.Fields ?? []).filter(f => SalesforceApiName.isApiName(f.fieldName));
+
+    }
+
     static buildSelectAllQuery(objectName: string, objectInfo: ObjectInfo): string {
 
-        const fieldNames = (objectInfo.Fields ?? []).map(f => f.fieldName);
+        const fieldNames = this.getWritableFields(objectInfo).map(f => f.fieldName);
         const allFields = ['Id', ...fieldNames];
         return `SELECT ${allFields.join(',\n       ')}\nFROM ${objectName}`;
 
@@ -114,20 +126,20 @@ export class SOQLTemplateService {
 
     static buildChildToParentQueries(objectName: string, objectInfo: ObjectInfo, objectInfoWrapper: ObjectInfoWrapper): string[] {
 
-        const lookupFields = (objectInfo.Fields ?? []).filter(f => LOOKUP_FIELD_TYPES.includes(f.type));
+        const lookupFields = this.getWritableFields(objectInfo).filter(f => LOOKUP_FIELD_TYPES.includes(f.type));
         const queries: string[] = [];
 
         for (const field of lookupFields) {
 
             const parentName = field.referenceTo;
-            if (!parentName) { continue; }
+            if (!SalesforceApiName.isApiName(parentName)) { continue; }
 
             const relationshipName = this.getRelationshipNameFromField(field);
             const parentInfo = objectInfoWrapper.ObjectToObjectInfoMap[parentName];
 
             let parentFieldTraversals: string[] = [];
             if (parentInfo?.Fields) {
-                parentFieldTraversals = parentInfo.Fields
+                parentFieldTraversals = this.getWritableFields(parentInfo)
                     .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
                     .slice(0, 5)
                     .map(f => `${relationshipName}.${f.fieldName}`);
@@ -158,7 +170,7 @@ export class SOQLTemplateService {
             if (!(childObjectName in objectInfoWrapper.ObjectToObjectInfoMap)) { continue; }
 
             const childInfo = objectInfoWrapper.ObjectToObjectInfoMap[childObjectName];
-            const childFields = (childInfo?.Fields ?? [])
+            const childFields = (childInfo ? this.getWritableFields(childInfo) : [])
                 .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
                 .slice(0, 5)
                 .map(f => f.fieldName);
@@ -184,15 +196,16 @@ export class SOQLTemplateService {
 
     static buildRecordTypeFilteredQueries(objectName: string, objectInfo: ObjectInfo): string[] {
 
-        if (!objectInfo.RecordTypesMap || Object.keys(objectInfo.RecordTypesMap).length === 0) { return []; }
+        const writableDeveloperNames = Object.keys(objectInfo.RecordTypesMap ?? {}).filter(developerName => SalesforceApiName.isApiName(developerName));
+        if (writableDeveloperNames.length === 0) { return []; }
 
-        const fieldNames = (objectInfo.Fields ?? [])
+        const fieldNames = this.getWritableFields(objectInfo)
             .filter(f => !LOOKUP_FIELD_TYPES.includes(f.type))
             .map(f => f.fieldName);
 
         const selectFields = ['Id', ...fieldNames].join(',\n       ');
 
-        return Object.keys(objectInfo.RecordTypesMap).map(developerName =>
+        return writableDeveloperNames.map(developerName =>
             `-- Record Type: ${developerName}\n` +
             `SELECT ${selectFields}\n` +
             `FROM ${objectName}\n` +
@@ -203,7 +216,7 @@ export class SOQLTemplateService {
 
     static buildSOSLTemplate(objectName: string, objectInfo: ObjectInfo): string {
 
-        const textFields = (objectInfo.Fields ?? [])
+        const textFields = this.getWritableFields(objectInfo)
             .filter(f => TEXT_FIELD_TYPES.includes(f.type))
             .map(f => f.fieldName);
 
