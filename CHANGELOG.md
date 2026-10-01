@@ -1,5 +1,24 @@
 # Change Log
 
+## [3.29.8] - A record type Id is resolved only in RecordTypeId, and only by an exact match for its own object
+
+Closes [#167](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/167), found by the reviews of #165.
+
+**Insert Data Set by Directory** swapped each `Object.DeveloperName` for the org's record type Id with a `replaceAll` over the whole Collections API JSON. Since #157 made a single generated `RecordTypeId` the normal path, that swap was the next thing between an unedited recipe and a successful insert:
+
+| Problem | Example | Result |
+|---|---|---|
+| Prefix collision | the org returns `Business` before `Business_Customer` | `Account.Business_Customer` became `012…_Customer`, and the insert failed |
+| Over-matching | a Text field's sentence or a reference id containing `Account.Business` | that value was rewritten with an Id |
+| Silent miss | a `RecordTypeId` naming a record type the org does not have | sent as `Obj.Name`, rejected with an error that does not point at the cause |
+
+`CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds` now parses the JSON and, for each record, replaces `record.RecordTypeId` only when it **equals** `${record.attributes.type}.${DeveloperName}` for a record type the org returned for that object. No other property is touched, and `Contact.Special` on an `Account` record is not resolved with `Contact`'s Id.
+
+- **An unmatched value is left as it is**, and one warning per file names each object and its unmatched developer names, so Salesforce's rejection has an obvious cause. The names come from workspace files, so they go through `DirectoryProcessor.escapeForNotification` and cannot form a notification link; at most 20 are listed per object and the rest are counted.
+- **A value with no dot**, such as an Id typed into the recipe, passes through without a warning.
+- **The signature still takes and returns a JSON string**, so the lookup reference swap that follows it is unchanged. A file with nothing to resolve is returned exactly as read; one with a resolved Id is re-serialized with the same two-space indent the generator writes.
+- An empty file, records with no `RecordTypeId` and an empty org result still pass through unchanged.
+
 ## [3.29.7] - An object name that is not a Salesforce api name can no longer write recipe lines
 
 Closes [#164](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/164), the follow-up #120 left open.

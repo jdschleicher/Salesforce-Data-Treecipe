@@ -1,5 +1,6 @@
 import { Connection, SfError } from "@salesforce/core";
 import { ConfigurationService } from "../ConfigurationService/ConfigurationService";
+import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
 import { SalesforceOrgService } from "../SalesforceOrgService/SalesforceOrgService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 
@@ -202,7 +203,7 @@ export class CollectionsApiService {
                                                 token: vscode.CancellationToken): Promise<boolean> {
     
             let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
-            collectionsApiJson = this.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg);
+            collectionsApiJson = this.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg, path.basename(collectionsApiFilePath));
             collectionsApiJson = this.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
             const preparedCollectionsApiDetail = JSON.parse(collectionsApiJson);
 
@@ -457,21 +458,127 @@ export class CollectionsApiService {
 
     }
 
-    static updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson: string, recordTypeDetailFromTargetOrg: any): any {
-    
-        for ( const recordTypeInfo of recordTypeDetailFromTargetOrg.records ) {
+    static readonly maximumUnmatchedRecordTypeNamesInWarning = 20;
 
-            const objectName = recordTypeInfo.SobjectType;
-            const recordTypeDeveloperName = recordTypeInfo.DeveloperName;
-            const recordTypeIdForOrg = recordTypeInfo.Id;
+    /*
+        Only a record's own RecordTypeId is resolved, and only when it EQUALS "<its object>.<DeveloperName>"
+        for a record type the org returned for that object. A text replace over the whole JSON rewrote
+        "Account.Business_Customer" with Business's Id whenever Business came back first, and rewrote any
+        other field value that happened to contain the text (#167).
+    */
+    static updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson: string,
+                                                                recordTypeDetailFromTargetOrg: any,
+                                                                collectionsApiFileName?: string): string {
 
-            const recordTypeIdentifierToReplace = `${objectName}.${recordTypeDeveloperName}`;
-            collectionsApiJson = collectionsApiJson.replaceAll(recordTypeIdentifierToReplace, recordTypeIdForOrg);
+        const orgRecordTypeIdByObjectQualifiedName = this.buildOrgRecordTypeIdByObjectQualifiedName(recordTypeDetailFromTargetOrg);
+
+        let collectionsApiDetail: any;
+        try {
+            collectionsApiDetail = JSON.parse(collectionsApiJson);
+        } catch {
+            return collectionsApiJson;
+        }
+
+        const records = collectionsApiDetail?.records;
+        if ( !Array.isArray(records) ) {
+            return collectionsApiJson;
+        }
+
+        const unmatchedDeveloperNamesByObject: Map<string, Set<string>> = new Map();
+        let isAnyRecordTypeIdResolved = false;
+
+        for ( const record of records ) {
+
+            if ( record === null || typeof record !== 'object' || !Object.prototype.hasOwnProperty.call(record, 'RecordTypeId') ) {
+                continue;
+            }
+
+            const recordTypeId = record.RecordTypeId;
+            const objectApiName = record.attributes?.type;
+            if ( typeof recordTypeId !== 'string' || typeof objectApiName !== 'string' ) {
+                continue;
+            }
+
+            // a value with no dot is not "<object>.<DeveloperName>", such as an Id typed into the recipe
+            if ( !recordTypeId.includes('.') ) {
+                continue;
+            }
+
+            const objectQualifiedPrefix = `${objectApiName}.`;
+            const orgRecordTypeId = recordTypeId.startsWith(objectQualifiedPrefix)
+                ? orgRecordTypeIdByObjectQualifiedName.get(recordTypeId)
+                : undefined;
+            if ( orgRecordTypeId !== undefined ) {
+                record.RecordTypeId = orgRecordTypeId;
+                isAnyRecordTypeIdResolved = true;
+                continue;
+            }
+
+            if ( !unmatchedDeveloperNamesByObject.has(objectApiName) ) {
+                unmatchedDeveloperNamesByObject.set(objectApiName, new Set());
+            }
+            const unmatchedName = recordTypeId.startsWith(objectQualifiedPrefix)
+                ? recordTypeId.slice(objectQualifiedPrefix.length)
+                : recordTypeId;
+            unmatchedDeveloperNamesByObject.get(objectApiName).add(unmatchedName);
 
         }
 
-        return collectionsApiJson;
-    
+        this.warnOfUnmatchedRecordTypeDeveloperNames(unmatchedDeveloperNamesByObject, collectionsApiFileName);
+
+        return isAnyRecordTypeIdResolved
+            ? JSON.stringify(collectionsApiDetail, null, 2)
+            : collectionsApiJson;
+
+    }
+
+    static buildOrgRecordTypeIdByObjectQualifiedName(recordTypeDetailFromTargetOrg: any): Map<string, string> {
+
+        const orgRecordTypeIdByObjectQualifiedName: Map<string, string> = new Map();
+        const orgRecordTypes = Array.isArray(recordTypeDetailFromTargetOrg?.records) ? recordTypeDetailFromTargetOrg.records : [];
+
+        for ( const recordTypeInfo of orgRecordTypes ) {
+
+            const objectName = recordTypeInfo?.SobjectType;
+            const recordTypeDeveloperName = recordTypeInfo?.DeveloperName;
+            const recordTypeIdForOrg = recordTypeInfo?.Id;
+            if ( typeof objectName !== 'string' || typeof recordTypeDeveloperName !== 'string' || typeof recordTypeIdForOrg !== 'string' ) {
+                continue;
+            }
+
+            orgRecordTypeIdByObjectQualifiedName.set(`${objectName}.${recordTypeDeveloperName}`, recordTypeIdForOrg);
+
+        }
+
+        return orgRecordTypeIdByObjectQualifiedName;
+
+    }
+
+    static warnOfUnmatchedRecordTypeDeveloperNames(unmatchedDeveloperNamesByObject: Map<string, Set<string>>, collectionsApiFileName?: string): void {
+
+        if ( unmatchedDeveloperNamesByObject.size === 0 ) {
+            return;
+        }
+
+        const maximumNames = this.maximumUnmatchedRecordTypeNamesInWarning;
+        const unmatchedDescriptions = [...unmatchedDeveloperNamesByObject.entries()].map(([objectApiName, developerNames]) => {
+
+            const quotedDeveloperNames = [...developerNames]
+                .slice(0, maximumNames)
+                .map(developerName => `"${DirectoryProcessor.escapeForNotification(developerName)}"`)
+                .join(', ');
+            const unlistedNamesNote = developerNames.size > maximumNames
+                ? ` and ${developerNames.size - maximumNames} more`
+                : '';
+            return `${DirectoryProcessor.escapeForNotification(objectApiName)}: ${quotedDeveloperNames}${unlistedNamesNote}`;
+
+        });
+
+        const fileNote = collectionsApiFileName
+            ? ` in ${DirectoryProcessor.escapeForNotification(collectionsApiFileName)}`
+            : '';
+        vscode.window.showWarningMessage(`Treecipe found RecordTypeId values${fileNote} naming record types the target org does not have for their object, and sent them unchanged, so Salesforce will reject those records. ${unmatchedDescriptions.join('; ')}. Create the record type in the org, or change the RecordTypeId in the recipe to a developer name the org has.`);
+
     }
 
     static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
