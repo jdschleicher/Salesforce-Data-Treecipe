@@ -24,8 +24,9 @@ jest.mock('vscode', () => {
             fs: {
                 readDirectory: async (directoryUri: { fsPath: string }) => {
                     try {
-                        return realFs.readdirSync(directoryUri.fsPath, { withFileTypes: true })
+                        const directoryEntries = realFs.readdirSync(directoryUri.fsPath, { withFileTypes: true })
                             .map((entry: { name: string; isDirectory: () => boolean }) => [entry.name, entry.isDirectory() ? 2 : 1]);
+                        return mockRecordTypesListing.order(directoryUri.fsPath, directoryEntries);
                     } catch {
                         return [];
                     }
@@ -44,6 +45,17 @@ jest.mock('vscode', () => {
     };
 }, { virtual: true });
 
+type DirectoryEntry = [string, number];
+
+// readDirectory LISTS IN THE FILE SYSTEM'S ORDER; A TEST CAN FIX THE recordTypes/ LISTING TO SHOW THE RECIPE DOES NOT DEPEND ON IT (#166)
+const mockRecordTypesListing = {
+    arrange: (directoryEntries: DirectoryEntry[]): DirectoryEntry[] => directoryEntries,
+    order(directoryPath: string, directoryEntries: DirectoryEntry[]): DirectoryEntry[] {
+        return directoryPath.endsWith('recordTypes') ? this.arrange(directoryEntries) : directoryEntries;
+    }
+};
+const sortDirectoryEntries = (directoryEntries: DirectoryEntry[]) => [...directoryEntries].sort(([first], [second]) => ( first < second ? -1 : ( first > second ? 1 : 0 ) ));
+
 import * as vscode from 'vscode';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor } from '../DirectoryProcessor';
@@ -53,6 +65,7 @@ import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRe
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { RecordTypeService } from '../../RecordTypeService/RecordTypeService';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 
@@ -117,7 +130,7 @@ describe.each([
 
     });
 
-    test('writes RecordTypeId as the first record type, with the other commented under its TODO', () => {
+    test('writes RecordTypeId as the first active record type in developer name order, with the other commented under its TODO', () => {
 
         const recipeText = recipeFiles.map(recipeFile => recipeFile.content).join('\n');
 
@@ -126,6 +139,72 @@ describe.each([
             '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
             '                    # Example_Everything__c.TwoRecType\n'
         ].join('\n'));
+
+    });
+
+    describe('given recordTypes/ listed in a different order (#166)', () => {
+
+        afterEach(() => {
+            mockRecordTypesListing.arrange = (directoryEntries) => directoryEntries;
+        });
+
+        test('writes byte-identical recipe files from a sorted and a reversed listing', async () => {
+
+            mockRecordTypesListing.arrange = sortDirectoryEntries;
+            const sortedListingRecipeFiles = await generateRecipeFiles(createFakerService);
+
+            mockRecordTypesListing.arrange = (directoryEntries) => sortDirectoryEntries(directoryEntries).reverse();
+            const reversedListingRecipeFiles = await generateRecipeFiles(createFakerService);
+
+            expect(reversedListingRecipeFiles).toEqual(sortedListingRecipeFiles);
+            expect(reversedListingRecipeFiles).toEqual(recipeFiles);
+
+        });
+
+        test('lays out every record-type section in developer name order, from a reversed listing', async () => {
+
+            mockRecordTypesListing.arrange = (directoryEntries) => sortDirectoryEntries(directoryEntries).reverse();
+            const recipeText = (await generateRecipeFiles(createFakerService)).map(recipeFile => recipeFile.content).join('\n');
+
+            /*
+                A field's record-type sections -- picklist and multi-select variants, and a dependent
+                picklist's per-record-type choices under each when: -- each name the record types once,
+                in map order, so within one field (or one when: block) the names must come out sorted.
+            */
+            const recordTypeNamesBySection = recipeText
+                .split(/\n(?= {4}\w+:| *when:)/)
+                .map(section => [...section.matchAll(/### TODO: -- RecordType Options -- (\w+) --/g)].map(([, recordTypeName]) => recordTypeName))
+                .map(recordTypeNames => recordTypeNames.filter((recordTypeName, index) => recordTypeName !== recordTypeNames[index - 1]))
+                .filter(recordTypeNames => recordTypeNames.length > 1);
+
+            expect(recordTypeNamesBySection.length).toBeGreaterThan(2);
+            recordTypeNamesBySection.forEach(recordTypeNames => {
+                expect(recordTypeNames).toEqual(['OneRecType', 'TwoRecType']);
+            });
+            expect(recipeText).toMatch(/### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType[\s\S]*?### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType/);
+
+        });
+
+    });
+
+    test('given the first record type inactive, writes the first active one as RecordTypeId and keeps the inactive one as a commented option (#166)', async () => {
+
+        const isActiveByXMLDetail = RecordTypeService.isActiveByXMLDetail.bind(RecordTypeService);
+        jest.spyOn(RecordTypeService, 'isActiveByXMLDetail').mockImplementation((recordTypeXMLDetail) =>
+            (recordTypeXMLDetail as { fullName: string[] }).fullName[0] === 'OneRecType' ? false : isActiveByXMLDetail(recordTypeXMLDetail)
+        );
+
+        const inactiveFirstRecipeFiles = await generateRecipeFiles(createFakerService);
+        const recipeText = inactiveFirstRecipeFiles.map(recipeFile => recipeFile.content).join('\n');
+
+        expect(recipeText).toContain([
+            '    RecordTypeId: Example_Everything__c.TwoRecType',
+            '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
+            '                    # Example_Everything__c.OneRecType\n'
+        ].join('\n'));
+        expect(collectRecordTypeIdsByObject(inactiveFirstRecipeFiles.map(recipeFile => yaml.load(recipeFile.content)))).toEqual({
+            Example_Everything__c: ['Example_Everything__c.TwoRecType']
+        });
 
     });
 

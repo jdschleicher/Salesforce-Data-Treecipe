@@ -13,7 +13,7 @@ export class RecordTypeService {
 
       const expectedRecordTypesPath = this.getExpectedRecordTypesPathByFieldsDirectoryPath(associatedFieldsDirectoryPath);
       const recordTypeFileTuples = await this.getRecordTypeTuplesFromExpectedRecordTypesDirectory(expectedRecordTypesPath);
-      let recordTypeDeveloperNameToRecordTypeWrapper: Record<string, RecordTypeWrapper> = {};
+      const loadedRecordTypes: { recordTypeApiName: string, fileName: string, recordTypeWrapper: RecordTypeWrapper }[] = [];
 
       for (const [fileName, directoryItemTypeEnum] of recordTypeFileTuples) {
   
@@ -22,14 +22,42 @@ export class RecordTypeService {
           const recordTypeXMLObjectDetail:any = await this.getRecordTypeDetailFromRecordTypeFile(fileName, expectedRecordTypesPath);
           const recordTypeApiName = recordTypeXMLObjectDetail.fullName[0];
           const recordTypeWrapper = this.initiateRecordTypeWrapperByXMLDetail(recordTypeXMLObjectDetail, recordTypeApiName);
-          recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
+          loadedRecordTypes.push({ recordTypeApiName, fileName, recordTypeWrapper });
 
         }
   
       }
+
+      /*
+          readDirectory lists in the file system's order, which is not sorted on every platform, and
+          the first record type becomes the default RecordTypeId (#157) and leads every record-type
+          section in both backends -- so the order is fixed here, once, for every consumer (#166).
+          Code-unit comparison rather than localeCompare, whose result depends on the machine's
+          locale. A developer name two files share is tie-broken by file name, so which one wins
+          the map does not depend on the listing either.
+      */
+      loadedRecordTypes.sort((first, second) =>
+        this.compareByCodeUnit(String(first.recordTypeApiName), String(second.recordTypeApiName))
+        || this.compareByCodeUnit(first.fileName, second.fileName)
+      );
+
+      // NO PROTOTYPE: A record type named __proto__ is then a key the api-name partition refuses with a TODO, rather than silently replacing the map's prototype
+      const recordTypeDeveloperNameToRecordTypeWrapper: Record<string, RecordTypeWrapper> = Object.create(null);
+      loadedRecordTypes.forEach(({ recordTypeApiName, recordTypeWrapper }) => {
+        recordTypeDeveloperNameToRecordTypeWrapper[recordTypeApiName] = recordTypeWrapper;
+      });
       
       return recordTypeDeveloperNameToRecordTypeWrapper;
       
+  }
+
+  static compareByCodeUnit(first: string, second: string): number {
+
+    if ( first < second ) {
+      return -1;
+    }
+    return ( first > second ) ? 1 : 0;
+
   }
 
   static getExpectedRecordTypesPathByFieldsDirectoryPath(associatedFieldsDirectoryPath: string) {
@@ -64,6 +92,7 @@ export class RecordTypeService {
     let recordTypeWrapper = new RecordTypeWrapper();
     recordTypeWrapper.RecordTypeId = '';
     recordTypeWrapper.DeveloperName = recordTypeApiName;
+    recordTypeWrapper.Active = this.isActiveByXMLDetail(recordTypeXMLDetail);
 
     const associatedFieldApiToRecordTypePicklistValuesMap: Record<string, string[]> = {};
     const picklistValues = recordTypeXMLDetail.picklistValues;
@@ -77,6 +106,21 @@ export class RecordTypeService {
 
     recordTypeWrapper.PicklistFieldSectionsToPicklistDetail = associatedFieldApiToRecordTypePicklistValuesMap;
     return recordTypeWrapper;
+
+  }
+
+  /*
+    Only an explicit <active>false</active> is inactive; a missing tag counts as active. The value is
+    type-checked rather than String()-ed: nested markup parses to an object, and one carrying a
+    <toString> child makes String() throw, which would abort the whole walk.
+  */
+  static isActiveByXMLDetail(recordTypeXMLDetail: { active?: unknown[] } | undefined): boolean {
+
+    const activeValue: unknown = recordTypeXMLDetail?.active?.[0];
+    if ( typeof activeValue === 'boolean' ) {
+      return activeValue;
+    }
+    return !( typeof activeValue === 'string' && activeValue.trim().toLowerCase() === 'false' );
 
   }
 

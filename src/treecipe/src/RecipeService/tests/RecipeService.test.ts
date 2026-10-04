@@ -908,6 +908,62 @@ describe.each([
 
         });
 
+        test('given an inactive record type first, the value is the first active one and the inactive one is still a commented option (#166)', () => {
+
+            const recordTypeMap = {
+                Alpha: { ...buildRecordTypeWrapper('Alpha'), Active: false },
+                Beta: { ...buildRecordTypeWrapper('Beta'), Active: true },
+                Gamma: { ...buildRecordTypeWrapper('Gamma'), Active: true }
+            };
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
+
+            expect(actualRecipe).toBe(`\n- object: Thing__c
+  nickname: Thing__c_NickName
+  count: 1
+  fields:
+    RecordTypeId: Thing__c.Beta
+                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                    # Thing__c.Alpha
+                    # Thing__c.Gamma`);
+            expect((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields).toEqual({ RecordTypeId: 'Thing__c.Beta' });
+
+        });
+
+        test('given no active record type, the value is still the first one', () => {
+
+            const recordTypeMap = {
+                Alpha: { ...buildRecordTypeWrapper('Alpha'), Active: false },
+                Beta: { ...buildRecordTypeWrapper('Beta'), Active: false }
+            };
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
+
+            expect((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields).toEqual({ RecordTypeId: 'Thing__c.Alpha' });
+            expect(actualRecipe).toContain(`\n${' '.repeat(20)}# Thing__c.Beta`);
+
+        });
+
+    });
+
+    describe('selectDefaultRecordTypeApiName', () => {
+
+        test.each([
+            ['the first, when every one is active', { Alpha: true, Beta: true }, 'Alpha'],
+            ['the first active one, skipping an inactive first', { Alpha: false, Beta: true }, 'Beta'],
+            ['the first, when none is active', { Alpha: false, Beta: false }, 'Alpha'],
+            ['a wrapper with no Active flag as active', { Alpha: false, Beta: undefined }, 'Beta']
+        ] as Array<[string, Record<string, boolean | undefined>, string]>)('selects %s', (unusedDescription, activeByDeveloperName, expectedDeveloperName) => {
+
+            const recordTypeMap: Record<string, RecordTypeWrapper> = {};
+            Object.entries(activeByDeveloperName).forEach(([developerName, active]) => {
+                recordTypeMap[developerName] = { ...buildRecordTypeWrapper(developerName), Active: active };
+            });
+
+            expect(RecipeService.selectDefaultRecordTypeApiName(recordTypeMap)).toBe(expectedDeveloperName);
+
+        });
+
     });
 
     describe('partitionRecordTypesByWritableDeveloperName', () => {
