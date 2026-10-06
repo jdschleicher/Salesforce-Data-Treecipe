@@ -476,6 +476,7 @@ See below for troubleshooting when specific commands are not working:
   * Ensure "Initiate Configuration File" was successfully run
   * Ensure path in treecipe.config.json uses forward-slashes
   * Ensure "defaultFakerService" is set to "snowfakery"
+  * "Expected treecipe and config file missing" while `treecipe/treecipe.config.json` exists: the `salesforce-data-treecipe.treecipeConfigurationPath` setting names a file that is not there, usually because the project was moved or re-cloned, or `.vscode/settings.json` came from another machine. When the workspace config exists, the extension now switches to it, updates the setting and says so. If the dialog names that setting, delete it from `.vscode/settings.json` or re-run "Initiate Configuration File". A value in User settings is ignored
 
 * **Salesforce Treecipe: Initiate Configuration File - initiateTreecipeConfigurationSetup:**
 

@@ -101,4 +101,16 @@ export class RecipeYamlScalar {
 
     }
 
+    /*
+        A notification is not plain text: VS Code renders "[label](command:...)" in one as a link that
+        runs the command, and workspace text shown in one is text the repository chose. Brackets and
+        parentheses are escaped along with line breaks, so no value can form a link.
+    */
+    static escapeForNotification(value: string): string {
+
+        return RecipeYamlScalar.escapeForComment(String(value ?? ''))
+            .replace(/[[\]()]/g, (character: string) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
+    }
+
 }

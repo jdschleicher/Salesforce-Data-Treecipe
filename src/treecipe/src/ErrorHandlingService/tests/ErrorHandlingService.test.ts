@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ErrorHandlingService } from '../ErrorHandlingService';
+import { MissingTreecipeConfigurationError } from '../../ConfigurationService/ConfigurationService';
 import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
 import * as fs from 'fs';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -89,6 +90,64 @@ describe('ErrorHandlingService', () => {
             openExternalMock.mockRestore();
             jest.restoreAllMocks();
         
+        });
+
+
+        // #171: A STALE SETTING IS WHY A PRESENT CONFIG READS AS MISSING, SO THE DIALOG SAYS WHERE IT LOOKED
+        it('given a missing config resolved past a stale setting, names the setting in the dialog', async () => {
+
+            const staleSettingNotice = 'The "salesforce-data-treecipe.treecipeConfigurationPath" setting names "/old/location/treecipe/treecipe.config.json", which does not exist.';
+            const error = new MissingTreecipeConfigurationError(
+                `${ErrorHandlingService.expectedMissingConfigError} /workspace/treecipe/treecipe.config.json -- or unknown failure`,
+                staleSettingNotice
+            );
+
+            const showErrorMessageMock = vscode.window.showErrorMessage as jest.Mock;
+            showErrorMessageMock.mockClear();
+            showErrorMessageMock.mockResolvedValueOnce(undefined);
+
+            await ErrorHandlingService.handleMissingTreecipeConfigSetup(error, 'generateRecipeFromConfigurationDetail');
+
+            expect(showErrorMessageMock).toHaveBeenCalledWith(
+                `Expected treecipe and config file missing. ${staleSettingNotice}`,
+                'Run Treecipe Initiation Setup',
+                ErrorHandlingService.reportIssueButton
+            );
+
+        });
+
+        it('given a missing config with no stale setting, keeps the dialog text unchanged', async () => {
+
+            const error = new MissingTreecipeConfigurationError(
+                `${ErrorHandlingService.expectedMissingConfigError} /workspace/treecipe/treecipe.config.json -- or unknown failure`
+            );
+
+            const showErrorMessageMock = vscode.window.showErrorMessage as jest.Mock;
+            showErrorMessageMock.mockClear();
+            showErrorMessageMock.mockResolvedValueOnce(undefined);
+
+            await ErrorHandlingService.handleMissingTreecipeConfigSetup(error, 'generateRecipeFromConfigurationDetail');
+
+            expect(showErrorMessageMock).toHaveBeenCalledWith(
+                'Expected treecipe and config file missing',
+                'Run Treecipe Initiation Setup',
+                ErrorHandlingService.reportIssueButton
+            );
+
+        });
+
+        it('given the typed missing-config error, still routes to the missing-config flow', () => {
+
+            const handleMissingTreecipeConfigSetupSpy = jest.spyOn(ErrorHandlingService, 'handleMissingTreecipeConfigSetup')
+                .mockImplementation(() => undefined);
+
+            ErrorHandlingService.handleCapturedError(
+                new MissingTreecipeConfigurationError(`${ErrorHandlingService.expectedMissingConfigError} /workspace -- or unknown failure`, 'notice'),
+                'generateRecipeFromConfigurationDetail'
+            );
+
+            expect(handleMissingTreecipeConfigSetupSpy).toHaveBeenCalled();
+
         });
 
     });

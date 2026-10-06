@@ -2,9 +2,12 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
-import { ConfigurationService } from '../ConfigurationService';
+import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
+import { ConfigurationService, MissingTreecipeConfigurationError } from '../ConfigurationService';
 
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
@@ -19,6 +22,8 @@ jest.mock('vscode', () => ({
             }),
             // update RETURNS A THENABLE, AND VS CODE REJECTS IT WHEN THERE IS NO WORKSPACE TO WRITE TO
             update: jest.fn().mockResolvedValue(undefined),
+            // NO SETTING AT ANY SCOPE
+            inspect: jest.fn(() => undefined),
         })),
     },
     Uri: {
@@ -233,6 +238,381 @@ describe('Shared ConfigurationService Tests', () => {
 
             const actualTreecipeConfiguratoinDetail = ConfigurationService.getTreecipeConfigurationDetail();
             expect(actualTreecipeConfiguratoinDetail.dataFakerService).toBe("snowfakery");
+        });
+
+    });
+
+    /*
+        #171. The setting holds an absolute path saved the first time the config was found, so a moved
+        or re-cloned project -- or a .vscode/settings.json committed from another machine -- left it
+        naming a file that was not there, and every command reported the config missing while
+        treecipe/treecipe.config.json sat in the workspace. Real directories, so containment and the
+        symlink case are checked against a real file system rather than a mocked one.
+    */
+    describe('resolveTreecipeConfigurationFilePath', () => {
+
+        const settingName = 'salesforce-data-treecipe.treecipeConfigurationPath';
+
+        let sandboxDirectoryPath: string;
+        let workspaceRoot: string;
+        let workspaceConfigurationPath: string;
+        let outsideDirectoryPath: string;
+        let setExtensionConfigValueSpy: jest.SpyInstance;
+        let showWarningMessageSpy: jest.SpyInstance;
+
+        const writeConfigurationFile = (configurationFilePath: string, salesforceObjectsPath: string) => {
+            fs.mkdirSync(path.dirname(configurationFilePath), { recursive: true });
+            fs.writeFileSync(configurationFilePath, JSON.stringify({ salesforceObjectsPath, dataFakerService: 'faker-js' }));
+        };
+
+        // get() ANSWERS THE MERGED VALUE (default < User < workspace < folder), THE WAY VS CODE DOES
+        const useTreecipeConfigurationPathSetting = (inspectedSetting: Record<string, unknown> | undefined) => {
+            (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+                get: jest.fn(() => inspectedSetting?.workspaceFolderValue ?? inspectedSetting?.workspaceValue ?? inspectedSetting?.globalValue),
+                update: jest.fn().mockResolvedValue(undefined),
+                inspect: jest.fn(() => inspectedSetting)
+            });
+        };
+
+        beforeEach(() => {
+
+            sandboxDirectoryPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-config-path-')));
+            workspaceRoot = path.join(sandboxDirectoryPath, 'workspace');
+            outsideDirectoryPath = path.join(sandboxDirectoryPath, 'outside');
+            fs.mkdirSync(workspaceRoot);
+            fs.mkdirSync(outsideDirectoryPath);
+            workspaceConfigurationPath = path.join(workspaceRoot, 'treecipe', 'treecipe.config.json');
+
+            // SESSION STATE: WITHOUT THIS, A TEST REUSING A STALE VALUE WOULD PASS OR FAIL BY TEST ORDER
+            ConfigurationService['replacedStaleTreecipeConfigurationPaths'].clear();
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+            showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+        });
+
+        afterEach(() => {
+            fs.rmSync(sandboxDirectoryPath, { recursive: true, force: true });
+        });
+
+        test('given a stored path to a config file inside the workspace, uses it without a rewrite or a warning', () => {
+
+            const storedConfigurationPath = path.join(workspaceRoot, 'custom', 'treecipe.config.json');
+            writeConfigurationFile(storedConfigurationPath, './custom/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: storedConfigurationPath });
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution).toEqual({ configurationFilePath: storedConfigurationPath });
+            expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
+            expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+        });
+
+        // THE REPRODUCTION: THE PROJECT MOVED, AND THE SETTING STILL NAMES WHERE IT USED TO BE
+        test('given a stored path that does not exist and a workspace config, reads the workspace config', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            const staleConfigurationPath = path.join(outsideDirectoryPath, 'old-location', 'treecipe', 'treecipe.config.json');
+            useTreecipeConfigurationPathSetting({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') });
+
+            expect(ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration()).toBe('./force-app/main/default/objects/');
+
+            useTreecipeConfigurationPathSetting({ workspaceValue: staleConfigurationPath });
+            expect(ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration()).toBe('./force-app/main/default/objects/');
+
+        });
+
+        test('given a stored path that does not exist, rewrites the setting to the workspace config and says what it replaced', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            const staleConfigurationPath = path.join(workspaceRoot, 'moved-away', 'treecipe.config.json');
+            useTreecipeConfigurationPathSetting({ workspaceValue: staleConfigurationPath });
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution).toEqual({
+                configurationFilePath: workspaceConfigurationPath,
+                staleStoredPath: staleConfigurationPath,
+                staleReason: 'not-found'
+            });
+            expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('treecipeConfigurationPath', workspaceConfigurationPath);
+
+            const warning = String(showWarningMessageSpy.mock.calls[0][0]);
+            expect(warning).toContain(settingName);
+            expect(warning).toContain(staleConfigurationPath);
+            expect(warning).toContain('does not exist');
+            expect(warning).toContain(workspaceConfigurationPath);
+
+        });
+
+        test('given a stored path naming a directory, treats it as stale', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            const directoryPath = path.join(workspaceRoot, 'treecipe');
+            useTreecipeConfigurationPathSetting({ workspaceValue: directoryPath });
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution.configurationFilePath).toBe(workspaceConfigurationPath);
+            expect(resolution.staleReason).toBe('not-a-file');
+            expect(String(showWarningMessageSpy.mock.calls[0][0])).toContain('is not a file');
+
+        });
+
+        // A COMMITTED .vscode/settings.json CONTROLS THIS VALUE, SO IT IS REFUSED BEFORE ANYTHING READS IT
+        test('given a stored path outside the workspace, never reads it, even though the file exists', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            const outsideConfigurationPath = path.join(outsideDirectoryPath, 'treecipe.config.json');
+            writeConfigurationFile(outsideConfigurationPath, './outside/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: outsideConfigurationPath });
+            const readFileSyncSpy = jest.spyOn(fs, 'readFileSync');
+
+            const configurationDetail = ConfigurationService.getTreecipeConfigurationDetail();
+
+            expect(configurationDetail.salesforceObjectsPath).toBe('./force-app/main/default/objects/');
+            expect(readFileSyncSpy.mock.calls.map(call => String(call[0]))).not.toContain(outsideConfigurationPath);
+            expect(String(showWarningMessageSpy.mock.calls[0][0])).toContain('is outside this workspace');
+
+        });
+
+        test('given a stored path through a symlink inside the workspace that points outside it, refuses it', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            writeConfigurationFile(path.join(outsideDirectoryPath, 'treecipe.config.json'), './outside/objects/');
+            const symlinkPath = path.join(workspaceRoot, 'linked');
+            fs.symlinkSync(outsideDirectoryPath, symlinkPath, 'dir');
+            useTreecipeConfigurationPathSetting({ workspaceValue: path.join(symlinkPath, 'treecipe.config.json') });
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution.configurationFilePath).toBe(workspaceConfigurationPath);
+            expect(resolution.staleReason).toBe('outside-workspace');
+
+        });
+
+        // A USER-LEVEL VALUE APPLIES TO EVERY WINDOW, SO A PATH SAVED FOR ONE PROJECT WAS READ BY ALL OF THEM
+        test('given only a User-level value, ignores it and resolves the workspace default', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            const otherProjectConfigurationPath = path.join(outsideDirectoryPath, 'treecipe.config.json');
+            writeConfigurationFile(otherProjectConfigurationPath, './other-project/objects/');
+            useTreecipeConfigurationPathSetting({ globalValue: otherProjectConfigurationPath });
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution).toEqual({ configurationFilePath: workspaceConfigurationPath });
+            expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a workspace-folder value and a workspace value, the workspace-folder value wins', () => {
+
+            const folderConfigurationPath = path.join(workspaceRoot, 'folder', 'treecipe.config.json');
+            writeConfigurationFile(folderConfigurationPath, './folder/objects/');
+            useTreecipeConfigurationPathSetting({
+                workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json'),
+                workspaceFolderValue: folderConfigurationPath
+            });
+
+            expect(ConfigurationService.resolveTreecipeConfigurationFilePath().configurationFilePath).toBe(folderConfigurationPath);
+
+        });
+
+        test('given a relative stored path, resolves it against the workspace root', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: 'treecipe/treecipe.config.json' });
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution).toEqual({ configurationFilePath: workspaceConfigurationPath });
+
+        });
+
+        test.each([
+            ['an empty string', ''],
+            ['whitespace', '   '],
+            ['a number', 42],
+            ['an object', { path: '/somewhere' }]
+        ])('given a stored value that is %s, treats it as unset and saves the default', (_description, storedValue) => {
+
+            useTreecipeConfigurationPathSetting({ workspaceValue: storedValue });
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution).toEqual({ configurationFilePath: workspaceConfigurationPath });
+            expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('treecipeConfigurationPath', workspaceConfigurationPath);
+            expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a stale setting, getTreecipeConfigurationFilePath answers the path the resolver chose', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') });
+
+            expect(ConfigurationService.getTreecipeConfigurationFilePath()).toBe(workspaceConfigurationPath);
+
+        });
+
+        test('given no setting at all, resolves and saves the workspace default as before', () => {
+
+            useTreecipeConfigurationPathSetting(undefined);
+
+            const resolution = ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            expect(resolution).toEqual({ configurationFilePath: workspaceConfigurationPath });
+            expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('treecipeConfigurationPath', workspaceConfigurationPath);
+
+        });
+
+        test('given a stale setting and no workspace config, reports the stale value and leaves the setting alone', () => {
+
+            const staleConfigurationPath = path.join(workspaceRoot, 'moved-away', 'treecipe.config.json');
+            useTreecipeConfigurationPathSetting({ workspaceValue: staleConfigurationPath });
+
+            let thrownError: unknown;
+            try {
+                ConfigurationService.getTreecipeConfigurationDetail();
+            } catch (error) {
+                thrownError = error;
+            }
+
+            expect(thrownError).toBeInstanceOf(MissingTreecipeConfigurationError);
+            const missingConfigurationError = thrownError as MissingTreecipeConfigurationError;
+            // THE PREFIX ErrorHandlingService KEYS THE MISSING-CONFIG FLOW ON
+            expect(missingConfigurationError.message.startsWith('Missing treecipe configuration setup at expected path of:')).toBe(true);
+            expect(missingConfigurationError.message).toContain(workspaceConfigurationPath);
+            expect(missingConfigurationError.staleSettingNotice).toContain(settingName);
+            expect(missingConfigurationError.staleSettingNotice).toContain(staleConfigurationPath);
+            expect(missingConfigurationError.staleSettingNotice).toContain('does not exist');
+            expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
+            expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given no setting and no workspace config, the error carries no stale-setting notice', () => {
+
+            useTreecipeConfigurationPathSetting(undefined);
+
+            expect(() => ConfigurationService.getTreecipeConfigurationDetail()).toThrow(MissingTreecipeConfigurationError);
+            try {
+                ConfigurationService.getTreecipeConfigurationDetail();
+            } catch (error) {
+                expect((error as MissingTreecipeConfigurationError).staleSettingNotice).toBeUndefined();
+            }
+
+        });
+
+        // ONE COMMAND READS THE CONFIG SEVERAL TIMES BEFORE THE ASYNCHRONOUS REWRITE LANDS
+        test('given the same stale value on repeated reads, warns once', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') });
+
+            ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            ConfigurationService.getCustomRelationshipMappings();
+            ConfigurationService.getCustomCompoundAddressFields();
+
+            expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        // A FAILED REWRITE WARNS ON ITS OWN, SO REPEATING THE WRITE PER READ REPEATED THAT WARNING PER READ
+        test('given the same stale value on repeated reads, rewrites the setting once', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') });
+
+            ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            ConfigurationService.getCustomRelationshipMappings();
+            ConfigurationService.getCustomCompoundAddressFields();
+
+            expect(setExtensionConfigValueSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given the rewrite is rejected on every read, reports the failure once', async () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            setExtensionConfigValueSpy.mockRestore();
+            (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+                get: jest.fn(),
+                update: jest.fn().mockRejectedValue(new Error('Unable to write to Workspace Settings because no workspace is opened.')),
+                inspect: jest.fn(() => ({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') }))
+            });
+
+            ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            ConfigurationService.getCustomRelationshipMappings();
+            ConfigurationService.getCustomCompoundAddressFields();
+            await new Promise(resolve => setImmediate(resolve));
+
+            const saveFailureWarnings = showWarningMessageSpy.mock.calls.map(call => String(call[0])).filter(warning => warning.includes('could not be saved'));
+            expect(saveFailureWarnings).toHaveLength(1);
+
+        });
+
+        // uri.fsPath LOWER-CASES THE DRIVE; A HAND-WRITTEN SETTING USUALLY DOES NOT
+        test('given paths that differ only in drive letter case, compares them as the same drive', () => {
+
+            // path.resolve WOULD READ A WINDOWS PATH AS RELATIVE ON THIS RUNNER; THIS TEST IS ABOUT WHAT REACHES THE CHECK
+            jest.spyOn(path, 'resolve').mockImplementation((...pathSegments: string[]) => pathSegments[pathSegments.length - 1]);
+            const containmentSpy = jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockReturnValue(true);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => true } as fs.Stats);
+
+            ConfigurationService.getStaleTreecipeConfigurationPathReason('C:\\proj\\custom\\treecipe.config.json', 'c:\\proj');
+
+            const [comparedPath, comparedWorkspaceRoot] = containmentSpy.mock.calls[0];
+            expect(comparedPath).toBe('c:\\proj\\custom\\treecipe.config.json');
+            expect(comparedWorkspaceRoot).toBe('c:\\proj');
+
+        });
+
+        test.each([
+            ['C:\\proj\\treecipe.config.json', 'c:\\proj\\treecipe.config.json'],
+            ['d:\\proj', 'd:\\proj'],
+            ['/home/user/proj', '/home/user/proj'],
+            ['relative/C:/path', 'relative/C:/path']
+        ])('normalizeDriveLetterCase(%s) is %s', (filePath, expectedPath) => {
+
+            expect(ConfigurationService.normalizeDriveLetterCase(filePath)).toBe(expectedPath);
+
+        });
+
+        test('given the rewrite is rejected, still reads the workspace config without throwing', async () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            setExtensionConfigValueSpy.mockRestore();
+            (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+                get: jest.fn(),
+                update: jest.fn().mockRejectedValue(new Error('Unable to write to Workspace Settings because no workspace is opened.')),
+                inspect: jest.fn(() => ({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') }))
+            });
+
+            expect(ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration()).toBe('./force-app/main/default/objects/');
+            await new Promise(resolve => setImmediate(resolve));
+
+            const warnings = showWarningMessageSpy.mock.calls.map(call => String(call[0]));
+            expect(warnings.some(warning => warning.includes('could not be saved'))).toBe(true);
+
+        });
+
+        // A NOTIFICATION RENDERS [label](command:...) AS A LINK THAT RUNS THE COMMAND, AND THIS VALUE IS REPOSITORY TEXT
+        test('given a stale value shaped like a command link, the warning cannot render it as one', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: path.join(workspaceRoot, '[run](command:workbench.action.terminal.new)', 'treecipe.config.json') });
+
+            ConfigurationService.resolveTreecipeConfigurationFilePath();
+
+            const warning = String(showWarningMessageSpy.mock.calls[0][0]);
+            expect(warning).not.toContain('[run]');
+            expect(warning).not.toContain('(command:');
+
         });
 
     });

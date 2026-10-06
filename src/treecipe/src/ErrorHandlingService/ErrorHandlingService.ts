@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
+import { ConfigurationService, MissingTreecipeConfigurationError } from '../ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 export class ErrorHandlingService {
@@ -111,8 +111,10 @@ ${stackTrace}
     static handleMissingTreecipeConfigSetup(error, executedCommand) {
 
         const runInitiateTreecipeConfiguration = "Run Treecipe Initiation Setup";
+        const missingConfigurationMessage = "Expected treecipe and config file missing";
+        const staleSettingNotice = error instanceof MissingTreecipeConfigurationError ? error.staleSettingNotice : undefined;
         vscode.window.showErrorMessage(
-            "Expected treecipe and config file missing",
+            staleSettingNotice ? `${missingConfigurationMessage}. ${staleSettingNotice}` : missingConfigurationMessage,
             runInitiateTreecipeConfiguration,
             this.reportIssueButton
 

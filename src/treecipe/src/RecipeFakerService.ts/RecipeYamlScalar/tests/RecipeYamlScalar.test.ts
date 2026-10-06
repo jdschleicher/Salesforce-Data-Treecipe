@@ -115,4 +115,35 @@ describe('RecipeYamlScalar', () => {
 
     });
 
+    // A NOTIFICATION RENDERS [label](command:...) AS A LINK THAT RUNS THE COMMAND
+    describe('escapeForNotification', () => {
+
+        it('given text shaped like a command link, escapes it so no link can form', () => {
+
+            const escapedValue = RecipeYamlScalar.escapeForNotification('[run](command:workbench.action.terminal.new)');
+
+            expect(escapedValue).toBe('\\u005brun\\u005d\\u0028command:workbench.action.terminal.new\\u0029');
+
+        });
+
+        it('given a line break, escapes it as a comment would', () => {
+
+            expect(RecipeYamlScalar.escapeForNotification('first\nsecond')).not.toContain('\n');
+
+        });
+
+        it('given an ordinary path, leaves it unchanged', () => {
+
+            expect(RecipeYamlScalar.escapeForNotification('/workspace/treecipe/treecipe.config.json')).toBe('/workspace/treecipe/treecipe.config.json');
+
+        });
+
+        it('given no value, answers an empty string rather than "undefined"', () => {
+
+            expect(RecipeYamlScalar.escapeForNotification(undefined as unknown as string)).toBe('');
+
+        });
+
+    });
+
 });

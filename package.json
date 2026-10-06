@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "3.29.9",
+  "version": "3.29.10",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -83,7 +83,7 @@
           },
           "salesforce-data-treecipe.treecipeConfigurationPath": {
             "type": "string",
-            "description": "workspace path location of treecipe.config.json file"
+            "description": "Workspace path of treecipe.config.json. Saved automatically the first time the config is found. A value that is outside this workspace or no longer names a file is replaced with <workspace>/treecipe/treecipe.config.json when that file exists. Only workspace and workspace folder values are read; a User-level value is ignored."
           },
           "salesforce-data-treecipe.useSnowfakeryAsDefault": {
             "type": "boolean",
