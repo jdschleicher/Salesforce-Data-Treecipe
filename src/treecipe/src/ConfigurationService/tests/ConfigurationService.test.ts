@@ -2,6 +2,7 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { ConfigurationService, MissingTreecipeConfigurationError } from '../ConfigurationService';
 
 import * as fs from 'fs';
@@ -282,6 +283,9 @@ describe('Shared ConfigurationService Tests', () => {
             fs.mkdirSync(outsideDirectoryPath);
             workspaceConfigurationPath = path.join(workspaceRoot, 'treecipe', 'treecipe.config.json');
 
+            // SESSION STATE: WITHOUT THIS, A TEST REUSING A STALE VALUE WOULD PASS OR FAIL BY TEST ORDER
+            ConfigurationService['replacedStaleTreecipeConfigurationPaths'].clear();
+
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
             setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
             showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
@@ -514,6 +518,68 @@ describe('Shared ConfigurationService Tests', () => {
             ConfigurationService.getCustomCompoundAddressFields();
 
             expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        // A FAILED REWRITE WARNS ON ITS OWN, SO REPEATING THE WRITE PER READ REPEATED THAT WARNING PER READ
+        test('given the same stale value on repeated reads, rewrites the setting once', () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            useTreecipeConfigurationPathSetting({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') });
+
+            ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            ConfigurationService.getCustomRelationshipMappings();
+            ConfigurationService.getCustomCompoundAddressFields();
+
+            expect(setExtensionConfigValueSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given the rewrite is rejected on every read, reports the failure once', async () => {
+
+            writeConfigurationFile(workspaceConfigurationPath, './force-app/main/default/objects/');
+            setExtensionConfigValueSpy.mockRestore();
+            (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+                get: jest.fn(),
+                update: jest.fn().mockRejectedValue(new Error('Unable to write to Workspace Settings because no workspace is opened.')),
+                inspect: jest.fn(() => ({ workspaceValue: path.join(workspaceRoot, 'moved-away', 'treecipe.config.json') }))
+            });
+
+            ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
+            ConfigurationService.getCustomRelationshipMappings();
+            ConfigurationService.getCustomCompoundAddressFields();
+            await new Promise(resolve => setImmediate(resolve));
+
+            const saveFailureWarnings = showWarningMessageSpy.mock.calls.map(call => String(call[0])).filter(warning => warning.includes('could not be saved'));
+            expect(saveFailureWarnings).toHaveLength(1);
+
+        });
+
+        // uri.fsPath LOWER-CASES THE DRIVE; A HAND-WRITTEN SETTING USUALLY DOES NOT
+        test('given paths that differ only in drive letter case, compares them as the same drive', () => {
+
+            // path.resolve WOULD READ A WINDOWS PATH AS RELATIVE ON THIS RUNNER; THIS TEST IS ABOUT WHAT REACHES THE CHECK
+            jest.spyOn(path, 'resolve').mockImplementation((...pathSegments: string[]) => pathSegments[pathSegments.length - 1]);
+            const containmentSpy = jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockReturnValue(true);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => true } as fs.Stats);
+
+            ConfigurationService.getStaleTreecipeConfigurationPathReason('C:\\proj\\custom\\treecipe.config.json', 'c:\\proj');
+
+            const [comparedPath, comparedWorkspaceRoot] = containmentSpy.mock.calls[0];
+            expect(comparedPath).toBe('c:\\proj\\custom\\treecipe.config.json');
+            expect(comparedWorkspaceRoot).toBe('c:\\proj');
+
+        });
+
+        test.each([
+            ['C:\\proj\\treecipe.config.json', 'c:\\proj\\treecipe.config.json'],
+            ['d:\\proj', 'd:\\proj'],
+            ['/home/user/proj', '/home/user/proj'],
+            ['relative/C:/path', 'relative/C:/path']
+        ])('normalizeDriveLetterCase(%s) is %s', (filePath, expectedPath) => {
+
+            expect(ConfigurationService.normalizeDriveLetterCase(filePath)).toBe(expectedPath);
 
         });
 

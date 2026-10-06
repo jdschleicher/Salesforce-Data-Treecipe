@@ -54,7 +54,7 @@ export class ConfigurationService {
 
     private static readonly treecipeConfigurationPathKey = 'treecipeConfigurationPath';
 
-    private static readonly warnedStaleTreecipeConfigurationPaths = new Set<string>();
+    private static readonly replacedStaleTreecipeConfigurationPaths = new Set<string>();
 
     static getExtensionConfigValue<extensionKey extends keyof ExtensionConfig>(key: extensionKey): ExtensionConfig[extensionKey] {
         
@@ -209,8 +209,7 @@ export class ConfigurationService {
         }
 
         if ( fs.existsSync(defaultConfigurationPath) ) {
-            void this.setExtensionConfigValue(this.treecipeConfigurationPathKey, defaultConfigurationPath);
-            this.warnOnceOfReplacedTreecipeConfigurationPath(storedConfigurationPath, staleReason, defaultConfigurationPath);
+            this.replaceStaleTreecipeConfigurationPathOnce(storedConfigurationPath, staleReason, defaultConfigurationPath);
         }
 
         return {
@@ -234,7 +233,9 @@ export class ConfigurationService {
     static getStaleTreecipeConfigurationPathReason(resolvedConfigurationPath: string, workspaceRoot: string): StaleTreecipeConfigurationPathReason | undefined {
 
         if ( !workspaceRoot
-                || !SfdxProjectService.isPathContainedInWorkspace(resolvedConfigurationPath, path.resolve(workspaceRoot)) ) {
+                || !SfdxProjectService.isPathContainedInWorkspace(
+                        this.normalizeDriveLetterCase(resolvedConfigurationPath),
+                        this.normalizeDriveLetterCase(path.resolve(workspaceRoot))) ) {
             return 'outside-workspace';
         }
 
@@ -264,18 +265,35 @@ export class ConfigurationService {
     }
 
     /*
-        Once per stale value per session: one command reads the config several times, and each read
-        lands before the asynchronous rewrite does. A rewrite that fails keeps the value stale, which
-        would otherwise warn on every command.
+        VS Code hands the workspace root over as uri.fsPath, whose drive letter is LOWER case, while a
+        hand-written setting usually carries "C:". The containment check compares strings, so without
+        this a config inside the workspace read as outside it and was replaced -- #171 again, for a
+        valid custom path. Windows drive letters are case-insensitive; nothing else is touched.
     */
-    private static warnOnceOfReplacedTreecipeConfigurationPath(staleConfigurationPath: string,
-                                                                staleReason: StaleTreecipeConfigurationPathReason,
-                                                                defaultConfigurationPath: string): void {
+    static normalizeDriveLetterCase(filePath: string): string {
 
-        if ( this.warnedStaleTreecipeConfigurationPaths.has(staleConfigurationPath) ) {
+        return /^[A-Za-z]:/.test(filePath)
+            ? filePath.charAt(0).toLowerCase() + filePath.slice(1)
+            : filePath;
+
+    }
+
+    /*
+        The rewrite AND the warning, once per stale value per session: one command reads the config
+        several times, each read lands before the asynchronous rewrite does, and a rewrite that fails
+        keeps the value stale -- setExtensionConfigValue warns on its own failure, so repeating the
+        write would repeat that warning on every read.
+    */
+    private static replaceStaleTreecipeConfigurationPathOnce(staleConfigurationPath: string,
+                                                              staleReason: StaleTreecipeConfigurationPathReason,
+                                                              defaultConfigurationPath: string): void {
+
+        if ( this.replacedStaleTreecipeConfigurationPaths.has(staleConfigurationPath) ) {
             return;
         }
-        this.warnedStaleTreecipeConfigurationPaths.add(staleConfigurationPath);
+        this.replacedStaleTreecipeConfigurationPaths.add(staleConfigurationPath);
+
+        void this.setExtensionConfigValue(this.treecipeConfigurationPathKey, defaultConfigurationPath);
 
         const staleSettingNotice = this.buildStaleTreecipeConfigurationPathNotice(staleConfigurationPath, staleReason);
         const escapedDefaultConfigurationPath = RecipeYamlScalar.escapeForNotification(defaultConfigurationPath);
