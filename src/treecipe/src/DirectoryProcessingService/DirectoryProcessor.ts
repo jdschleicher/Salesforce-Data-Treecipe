@@ -405,15 +405,9 @@ export class DirectoryProcessor {
 
   static readonly maximumSkippedObjectApiNamesInWarning = 20;
 
-  /*
-    A notification is not plain text: VS Code renders "[label](command:...)" in one as a link that
-    runs the command, and a refused name is text the repository chose. Brackets and parentheses are
-    escaped along with line breaks, so no name can form a link.
-  */
   static escapeForNotification(name: string): string {
 
-    return RecipeYamlScalar.escapeForComment(String(name ?? ''))
-      .replace(/[[\]()]/g, (character: string) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+    return RecipeYamlScalar.escapeForNotification(name);
 
   }
 
