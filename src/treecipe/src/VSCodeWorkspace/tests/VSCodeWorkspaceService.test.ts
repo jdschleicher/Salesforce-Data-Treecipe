@@ -1684,6 +1684,47 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
         
         });
 
+        test('given folders for the same second already exist, creates the next free numbered folder', () => {
+
+            const mockWorkspaceRoot = '/mock/workspace';
+            const mockExpectedFolderPath = `${mockWorkspaceRoot}/treecipe/FakeDataSets`;
+            const mockFolderName = 'dataset-fakerjs-2024-11-25T16-24-15';
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(mockWorkspaceRoot);
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+            const existingFolderPaths = new Set([`${mockExpectedFolderPath}/${mockFolderName}`, `${mockExpectedFolderPath}/${mockFolderName}-2`]);
+            const mkdirSpy = jest.spyOn(fs, 'mkdirSync').mockImplementation((folderPath: fs.PathLike) => {
+                if ( existingFolderPaths.has(String(folderPath)) ) {
+                    throw Object.assign(new Error('EEXIST: file already exists'), { code: 'EEXIST' });
+                }
+                return undefined;
+            });
+
+            const result = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(mockFolderName);
+
+            expect(result).toBe(`${mockExpectedFolderPath}/${mockFolderName}-3`);
+            expect(mkdirSpy.mock.calls.map(mkdirCall => mkdirCall[0])).toEqual([
+                `${mockExpectedFolderPath}/${mockFolderName}`,
+                `${mockExpectedFolderPath}/${mockFolderName}-2`,
+                `${mockExpectedFolderPath}/${mockFolderName}-3`
+            ]);
+
+        });
+
+        test('given a failure other than an existing folder, throws it rather than trying another name', () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue('/mock/workspace');
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            const mkdirSpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(() => {
+                throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+            });
+
+            expect(() => VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName('dataset-2024-11-25T16-24-15')).toThrow('EACCES');
+            expect(mkdirSpy).toHaveBeenCalledTimes(1);
+
+        });
+
     });
 
     describe('createFakeDatasetsTimeStampedFolderName', () => {

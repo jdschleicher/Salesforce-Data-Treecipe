@@ -1,4 +1,6 @@
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 export interface GuardedCoreModule {
     moduleName: string;
@@ -154,6 +156,8 @@ export class CoreModuleIsolation {
             return alreadyCaptured;
         }
 
+        CoreModuleIsolation.loadLazyFsInternals();
+
         const coreModuleFunctionSnapshots = CoreModuleIsolation.captureFunctions(
             CoreModuleIsolation.getGuardedCoreModules()
         );
@@ -166,6 +170,23 @@ export class CoreModuleIsolation {
         });
 
         return coreModuleFunctionSnapshots;
+
+    }
+
+    /*
+        Restoring fs's own properties cannot reach a copy Node took of them. fs.rmSync, fs.rm and
+        fs.promises.rm load Node's internal rimraf on their FIRST call, and that module destructures
+        readdirSync, rmdirSync, lstatSync and the rest off fs at that moment. If a test has
+        readdirSync spied to answer [] when the first rmSync in a worker runs, every later recursive
+        rmSync in that worker -- production code and every later suite included -- reads each
+        directory as empty and fails ENOTEMPTY, long after the spy itself was restored. Calling it
+        once here, before any test, makes rimraf bind the pristine functions. The path does not
+        exist and force is set, so nothing is removed.
+    */
+    static loadLazyFsInternals(): void {
+
+        const absentPath = path.join(os.tmpdir(), `treecipe-load-fs-internals-${process.pid}-absent`);
+        fs.rmSync(absentPath, { recursive: true, force: true });
 
     }
 

@@ -606,10 +606,28 @@ export class VSCodeWorkspaceService {
             fs.mkdirSync(expectedFakeDataSetsFolerPath);
         }
 
-        const fullPathToUniqueTimeStampedFakeDataSetsFolder = `${expectedFakeDataSetsFolerPath}/${uniqueTimeStampedFakeDataSetsFolderName}`;
-        fs.mkdirSync(`${fullPathToUniqueTimeStampedFakeDataSetsFolder}`);
+        /*
+            Two runs in the same second used to throw EEXIST here. mkdirSync is the existence check, so
+            there is no window between testing a name and taking it: the first free of "<name>",
+            "<name>-2", "<name>-3"... is the one this call created.
+        */
+        for ( let collisionSuffix = 1; ; collisionSuffix++ ) {
 
-        return fullPathToUniqueTimeStampedFakeDataSetsFolder;
+            const candidateFolderName = ( collisionSuffix === 1 )
+                                            ? uniqueTimeStampedFakeDataSetsFolderName
+                                            : `${uniqueTimeStampedFakeDataSetsFolderName}-${collisionSuffix}`;
+            const fullPathToUniqueTimeStampedFakeDataSetsFolder = `${expectedFakeDataSetsFolerPath}/${candidateFolderName}`;
+
+            try {
+                fs.mkdirSync(fullPathToUniqueTimeStampedFakeDataSetsFolder);
+                return fullPathToUniqueTimeStampedFakeDataSetsFolder;
+            } catch (mkdirError) {
+                if ( (mkdirError as NodeJS.ErrnoException)?.code !== 'EEXIST' ) {
+                    throw mkdirError;
+                }
+            }
+
+        }
 
     }
 
