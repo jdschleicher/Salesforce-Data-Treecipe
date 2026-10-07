@@ -927,6 +927,153 @@ describe('Shared tests for CollectionsApiService', () => {
 
     });
     
+    describe('a record referencing another record in the same file is inserted after it (#188)', () => {
+
+        const accountRecord = (referenceIndex: number, nickname: string, fields: Record<string, unknown> = {}) => ({
+            attributes: { type: 'Account', referenceId: `Account_Reference_${referenceIndex}__${nickname}` },
+            Name: `Account ${nickname} ${referenceIndex}`,
+            ...fields
+        });
+
+        const recordNames = (insertRounds: any[][]) => insertRounds.map(insertRound => insertRound.map(record => record.Name));
+
+        test('a file with no same-file reference is one round, in its own order', () => {
+
+            const records = [accountRecord(1, 'Account_NickName'), accountRecord(2, 'Account_NickName', { ParentId: 'Other_NickName' })];
+
+            expect(CollectionsApiService.partitionRecordsIntoInsertRounds(records)).toEqual([records]);
+
+        });
+
+        test('child iterations wait for the parents they name, and each parent iteration may be named', () => {
+
+            const records = [
+                accountRecord(1, 'Account_NickName_1'),
+                accountRecord(1, 'Account_Account_NickName_1', { ParentId: 'Account_NickName_1' }),
+                accountRecord(2, 'Account_NickName_2'),
+                accountRecord(1, 'Account_Account_NickName_2', { ParentId: 'Account_NickName_2' })
+            ];
+
+            expect(recordNames(CollectionsApiService.partitionRecordsIntoInsertRounds(records))).toEqual([
+                ['Account Account_NickName_1 1', 'Account Account_NickName_2 2'],
+                ['Account Account_Account_NickName_1 1', 'Account Account_Account_NickName_2 1']
+            ]);
+
+        });
+
+        test('a chain takes one round per link, and a reference to a record\'s own nickname is not a wait', () => {
+
+            const records = [
+                accountRecord(1, 'Grandchild', { ParentId: 'Child' }),
+                accountRecord(1, 'Child', { ParentId: 'Top' }),
+                accountRecord(1, 'Top', { ParentId: 'Top' })
+            ];
+
+            expect(recordNames(CollectionsApiService.partitionRecordsIntoInsertRounds(records))).toEqual([
+                ['Account Top 1'], ['Account Child 1'], ['Account Grandchild 1']
+            ]);
+
+        });
+
+        test('records that can never be met (a cycle) go in one last round, as the whole file used to', () => {
+
+            const records = [
+                accountRecord(1, 'Top'),
+                accountRecord(1, 'Left', { ParentId: 'Right' }),
+                accountRecord(1, 'Right', { ParentId: 'Left' })
+            ];
+
+            expect(recordNames(CollectionsApiService.partitionRecordsIntoInsertRounds(records))).toEqual([
+                ['Account Top 1'], ['Account Left 1', 'Account Right 1']
+            ]);
+
+        });
+
+        test('many records sharing one nickname partition in linear time, as one round', () => {
+
+            // snowfakery GIVES EVERY RECORD OF AN OBJECT ONE NICKNAME; COPYING THE HOLDER LIST PER RECORD TOOK 19 s AT 50,000
+            const records = Array.from({ length: 50000 }, (_unused, recordIndex) => accountRecord(recordIndex + 1, 'Account_NickName', { OwnerId: 'User_NickName' }));
+
+            const startedAt = Date.now();
+            const insertRounds = CollectionsApiService.partitionRecordsIntoInsertRounds(records);
+
+            expect(Date.now() - startedAt).toBeLessThan(2000);
+            expect(insertRounds).toEqual([records]);
+
+        });
+
+        test('records with no records array, no reference id or no fields are passed through', () => {
+
+            expect(CollectionsApiService.partitionRecordsIntoInsertRounds(undefined)).toEqual([undefined]);
+            expect(CollectionsApiService.partitionRecordsIntoInsertRounds([])).toEqual([[]]);
+            expect(CollectionsApiService.partitionRecordsIntoInsertRounds([null, { Name: 'x' }, { attributes: {}, Name: 'y' }])).toEqual([[null, { Name: 'x' }, { attributes: {}, Name: 'y' }]]);
+
+        });
+
+        test('processAndInsertCollectionFile inserts each round and resolves a later round\'s lookups to the Ids the earlier rounds created', async () => {
+
+            const collectionsApiJson = JSON.stringify({
+                allOrNone: true,
+                records: [
+                    accountRecord(1, 'Account_NickName_1'),
+                    accountRecord(1, 'Account_Account_NickName_1', { ParentId: 'Account_NickName_1', Other__c: 'Other_NickName' }),
+                    accountRecord(2, 'Account_NickName_2'),
+                    accountRecord(1, 'Account_Account_NickName_2', { ParentId: 'Account_NickName_2' })
+                ]
+            });
+            jest.spyOn(VSCodeWorkspaceService, 'getFileContentByPath').mockResolvedValue(collectionsApiJson);
+            jest.spyOn(CollectionsApiService, 'appendInsertAttemptsFileWithLatestSobjectResults').mockImplementation(() => undefined);
+            const makeCollectionsApiCallSpy = jest.spyOn(CollectionsApiService, 'makeCollectionsApiCall')
+                .mockResolvedValueOnce([{ success: true, id: '001PARENT1' }, { success: true, id: '001PARENT2' }])
+                .mockResolvedValueOnce([{ success: true, id: '001CHILD1' }, { success: true, id: '001CHILD2' }]);
+            const referenceIdToOrgId: Record<string, string> = { 'Other__c_Reference_1__Other_NickName': 'a00OTHER' };
+
+            const isInserted = await CollectionsApiService.processAndInsertCollectionFile('/dataset/collectionsApi-Account.json',
+                                                                                            { records: [] },
+                                                                                            referenceIdToOrgId,
+                                                                                            { instanceUrl: 'https://example.my.salesforce.com' },
+                                                                                            true,
+                                                                                            { SuccessResults: {}, FailureResults: {} },
+                                                                                            '/dataset/results.json',
+                                                                                            undefined);
+
+            expect(isInserted).toBe(true);
+            expect(makeCollectionsApiCallSpy).toHaveBeenCalledTimes(2);
+            const [ firstRound, secondRound ] = makeCollectionsApiCallSpy.mock.calls.map(call => call[0].records);
+            expect(firstRound.map((record: any) => record.attributes.referenceId)).toEqual(['Account_Reference_1__Account_NickName_1', 'Account_Reference_2__Account_NickName_2']);
+            expect(secondRound.map((record: any) => [record.ParentId, record.Other__c])).toEqual([['001PARENT1', 'a00OTHER'], ['001PARENT2', undefined]]);
+            expect(makeCollectionsApiCallSpy.mock.calls[1][0].allOrNone).toBe(true);
+            expect(referenceIdToOrgId['Account_Reference_1__Account_Account_NickName_2']).toBe('001CHILD2');
+
+        });
+
+        test('an all-or-none failure in a round deletes what was saved and inserts no later round', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getFileContentByPath').mockResolvedValue(JSON.stringify({
+                allOrNone: true,
+                records: [accountRecord(1, 'Top'), accountRecord(1, 'Child', { ParentId: 'Top' })]
+            }));
+            jest.spyOn(CollectionsApiService, 'appendInsertAttemptsFileWithLatestSobjectResults').mockImplementation(() => undefined);
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+            const makeCollectionsApiCallSpy = jest.spyOn(CollectionsApiService, 'makeCollectionsApiCall').mockResolvedValue([{ success: false, errors: [] }]);
+
+            const isInserted = await CollectionsApiService.processAndInsertCollectionFile('/dataset/collectionsApi-Account.json',
+                                                                                            { records: [] },
+                                                                                            {},
+                                                                                            { instanceUrl: 'https://example.my.salesforce.com' },
+                                                                                            true,
+                                                                                            { SuccessResults: {}, FailureResults: {} },
+                                                                                            '/dataset/results.json',
+                                                                                            undefined);
+
+            expect(isInserted).toBe(false);
+            expect(makeCollectionsApiCallSpy).toHaveBeenCalledTimes(1);
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+    });
+
     describe('getDataSetChildDirectoriesNameToFilesMap', () => {
             
         test('should return correct mapping of directories to files', async () => {

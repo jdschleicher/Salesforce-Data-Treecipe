@@ -138,6 +138,11 @@ describe.each([
     // THE PIPELINE RUNS ONCE PER BACKEND; restoreMocks PUTS THE ConfigurationService SPIES BACK AFTER THE FIRST TEST, WHICH NOTHING LATER NEEDS
     let recipeFiles: RecipeFileOutput[];
 
+    // Example_Everything__c HAS A SELF-LOOKUP, SO faker-js WRITES IT TWICE: ITSELF AND ITS NESTED CHILD ITERATION (#188)
+    const isNestingBackend = createFakerService() instanceof FakerJSRecipeFakerService;
+    const exampleEverythingOccurrenceCount = isNestingBackend ? 2 : 1;
+    const oncePerExampleEverythingOccurrence = (recordTypeId: string) => Array(exampleEverythingOccurrenceCount).fill(recordTypeId);
+
     beforeAll(async () => {
         recipeFiles = await generateRecipeFiles(createFakerService);
     });
@@ -216,7 +221,7 @@ describe.each([
 
         expect(recipeText).toMatch(buildRecordTypeIdBlockPattern('TwoRecType', 'OneRecType'));
         expect(collectRecordTypeIdsByObject(inactiveFirstRecipeFiles.map(recipeFile => yaml.load(recipeFile.content)))).toEqual({
-            Example_Everything__c: ['Example_Everything__c.TwoRecType']
+            Example_Everything__c: oncePerExampleEverythingOccurrence('Example_Everything__c.TwoRecType')
         });
 
     });
@@ -224,7 +229,7 @@ describe.each([
     test('js-yaml loads every RecordTypeId it writes as exactly one developer name', () => {
 
         expect(collectRecordTypeIdsByObject(recipeFiles.map(recipeFile => yaml.load(recipeFile.content)))).toEqual({
-            Example_Everything__c: ['Example_Everything__c.OneRecType']
+            Example_Everything__c: oncePerExampleEverythingOccurrence('Example_Everything__c.OneRecType')
         });
 
     });
@@ -234,7 +239,7 @@ describe.each([
         const pyYamlLoadedRecipes = PythonTestHarness.loadWithPyYaml(recipeFiles.map(recipeFile => recipeFile.content));
 
         expect(collectRecordTypeIdsByObject(pyYamlLoadedRecipes)).toEqual({
-            Example_Everything__c: ['Example_Everything__c.OneRecType']
+            Example_Everything__c: oncePerExampleEverythingOccurrence('Example_Everything__c.OneRecType')
         });
 
     });
@@ -248,21 +253,23 @@ describe.each([
     test('every object loads with the same fields as the flat recipe, apart from the lookups nesting wired', async () => {
 
         const objectInfoWrapper = await processMockMetadata(createFakerService);
-        const loadObjectRecipesByName = (recipeContents: string[]): Map<string, LoadedObjectRecipe> => new Map(
-            flattenObjectRecipes(recipeContents.flatMap(recipeContent => yaml.load(recipeContent) as LoadedObjectRecipe[]))
-                .map(objectRecipe => [objectRecipe.object, objectRecipe])
-        );
+        const loadObjectRecipes = (recipeContents: string[]): LoadedObjectRecipe[] =>
+            flattenObjectRecipes(recipeContents.flatMap(recipeContent => yaml.load(recipeContent) as LoadedObjectRecipe[]));
 
-        const writtenObjectRecipes = loadObjectRecipesByName(objectInfoWrapper.RecipeFiles.map(recipeFile => recipeFile.content));
-        const flatObjectRecipes = loadObjectRecipesByName(new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, false).map(recipeFile => recipeFile.content));
+        // EVERY OCCURRENCE IS HELD TO ITS OBJECT'S FLAT RECIPE -- A SELF-LOOKUP'S NESTED ITERATION AS MUCH AS THE OBJECT ITSELF (#188)
+        const writtenObjectRecipes = loadObjectRecipes(objectInfoWrapper.RecipeFiles.map(recipeFile => recipeFile.content));
+        const flatObjectRecipes = new Map(loadObjectRecipes(new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, false).map(recipeFile => recipeFile.content))
+            .map(objectRecipe => [objectRecipe.object, objectRecipe]));
         const nicknames = new Set(Array.from(flatObjectRecipes.values()).map(objectRecipe => (objectRecipe as unknown as { nickname: string }).nickname));
 
-        expect(Array.from(writtenObjectRecipes.keys()).sort()).toEqual(Array.from(flatObjectRecipes.keys()).sort());
+        expect([...new Set(writtenObjectRecipes.map(objectRecipe => objectRecipe.object))].sort()).toEqual(Array.from(flatObjectRecipes.keys()).sort());
+        expect(writtenObjectRecipes.filter(objectRecipe => objectRecipe.object === 'Example_Everything__c')).toHaveLength(exampleEverythingOccurrenceCount);
 
         let wiredLookupCount = 0;
-        flatObjectRecipes.forEach((flatObjectRecipe, objectApiName) => {
-            const writtenFields = writtenObjectRecipes.get(objectApiName).fields ?? {};
-            const flatFields = flatObjectRecipe.fields ?? {};
+        writtenObjectRecipes.forEach(writtenObjectRecipe => {
+            const objectApiName = writtenObjectRecipe.object;
+            const writtenFields = writtenObjectRecipe.fields ?? {};
+            const flatFields = flatObjectRecipes.get(objectApiName).fields ?? {};
             expect(Object.keys(writtenFields)).toEqual(Object.keys(flatFields));
             Object.keys(flatFields).forEach(fieldApiName => {
                 if ( flatFields[fieldApiName] === null && nicknames.has(writtenFields[fieldApiName] as string) ) {
@@ -274,6 +281,18 @@ describe.each([
         });
 
         expect(wiredLookupCount > 0).toBe(objectInfoWrapper.RecipeFiles.some(recipeFile => recipeFile.content.includes('friends:')));
+
+    });
+
+    test('a self-lookup is a nested child iteration for faker-js, wired to the iteration above, and a TODO in a flat snowfakery recipe (#188)', () => {
+
+        const everythingRecipes = flattenObjectRecipes(recipeFiles.flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedObjectRecipe[]))
+            .filter(objectRecipe => objectRecipe.object === 'Example_Everything__c') as Array<LoadedObjectRecipe & { nickname: string }>;
+
+        expect(everythingRecipes.map(objectRecipe => [objectRecipe.nickname, objectRecipe.fields.Example_Everything_Lookup__c])).toEqual(isNestingBackend
+            ? [['Example_Everything__c_NickName', null], ['Example_Everything__c_child_NickName', 'Example_Everything__c_NickName']]
+            : [['Example_Everything__c_NickName', null]]);
+        expect(everythingRecipes[0].friends?.map(friend => friend.object) ?? []).toEqual(isNestingBackend ? ['Example_Everything__c'] : []);
 
     });
 

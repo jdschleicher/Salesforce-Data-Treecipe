@@ -941,6 +941,168 @@ describe('RecipeCockpitService', () => {
 
     });
 
+    describe('an object written twice, told apart by nickname (#188)', () => {
+
+        const selfLookupRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml'), 'utf-8');
+        const selfLookupLines = selfLookupRecipeText.split('\n');
+        const recipeFilePath = path.join('run', 'Account-thru-Contact', 'recipe.yml');
+
+        const buildField = (fieldApiName: string) => ({
+            fieldApiName: fieldApiName, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
+        });
+        const buildObject = (objectApiName: string, fieldApiNames: string[]) => ({
+            objectApiName: objectApiName, recipeFilePath: '', recipeFileName: '', fields: fieldApiNames.map(buildField)
+        });
+        const attachSelfLookupRecipe = () => RecipeCockpitService.attachRecipeSources(
+            [buildObject('Account', ['Name', 'ParentId']), buildObject('Contact', ['Name', 'AccountId'])],
+            [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }]
+        );
+
+        it('the reader keeps the first occurrence under the api name and the nested one as an iteration, with its own lines', () => {
+
+            const objectEntries = RecipeCockpitService.parseRecipeSource(selfLookupRecipeText);
+            const accountEntry = objectEntries.get('Account');
+
+            expect(Array.from(objectEntries.keys())).toEqual(['Account', 'Contact']);
+            expect(accountEntry.nickname).toBe('Account_NickName');
+            expect(selfLookupLines[accountEntry.fieldEntries.get('ParentId').lineNumber - 1]).toBe('    ParentId: ### TODO -- REFERENCE ID REQUIRED');
+            expect(accountEntry.iterations).toHaveLength(1);
+
+            const [iteration] = accountEntry.iterations;
+            expect([iteration.nickname, iteration.parentObjectApiName, iteration.parentNickname]).toEqual(['Account_child_NickName', 'Account', 'Account_NickName']);
+            expect(selfLookupLines[iteration.lineNumber - 1]).toBe('    - object: Account');
+            expect(selfLookupLines[iteration.lineNumber]).toBe('      nickname: Account_child_NickName');
+            expect(selfLookupLines[iteration.fieldEntries.get('ParentId').lineNumber - 1]).toBe('        ParentId: Account_NickName');
+            expect(iteration.fieldEntries.get('ParentId').valueText).toBe('Account_NickName');
+            expect(objectEntries.get('Contact').iterations).toBeUndefined();
+
+        });
+
+        it.each([
+            ['the occurrences share a nickname', (recipeText: string) => recipeText.replace('nickname: Account_child_NickName', 'nickname: Account_NickName')],
+            ['the later occurrence has no nickname', (recipeText: string) => recipeText.replace('      nickname: Account_child_NickName\n', '')],
+            ['the first occurrence has no nickname', (recipeText: string) => recipeText.replace('  nickname: Account_NickName\n', '')]
+        ])('given %s, the reader cannot tell them apart and the first occurrence wins, as before', (_caseName, editRecipe) => {
+
+            const accountEntry = RecipeCockpitService.parseRecipeSource(editRecipe(selfLookupRecipeText)).get('Account');
+
+            expect(accountEntry.iterations).toBeUndefined();
+            expect(selfLookupLines[accountEntry.lineNumber - 1]).toBe('- object: Account');
+
+        });
+
+        it('a nested occurrence whose parent has no nickname is kept, without naming one', () => {
+
+            const recipeText = [
+                '- object: Account',
+                '  nickname: Account_NickName',
+                '  fields:',
+                '    Name: x',
+                '- object: Holder__c',
+                '  fields:',
+                '    Name: x',
+                '  friends:',
+                '    - object: Account',
+                '      nickname: Account_Held_NickName',
+                '      fields:',
+                '        Name: y'
+            ].join('\n');
+
+            const [iteration] = RecipeCockpitService.parseRecipeSource(recipeText).get('Account').iterations;
+
+            expect(iteration).toEqual({ nickname: 'Account_Held_NickName', lineNumber: 9, parentObjectApiName: 'Holder__c', fieldEntries: new Map([['Name', { lineNumber: 12, valueText: 'y' }]]) });
+
+        });
+
+        it('an object written three times at the top level by hand keeps two iterations, naming no parent, in file order', () => {
+
+            const recipeText = ['First', 'Second', 'Third'].map(label => [
+                '- object: Account',
+                `  nickname: Account_${label}_NickName`,
+                '  fields:',
+                `    Name: ${label}`
+            ].join('\n')).join('\n');
+
+            const [accountObject] = RecipeCockpitService.attachRecipeSources([buildObject('Account', ['Name'])], [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(recipeText) }]);
+
+            expect(accountObject.nickname).toBe('Account_First_NickName');
+            expect(accountObject.iterations).toEqual([
+                { nickname: 'Account_Second_NickName', lineNumber: 5, fields: [{ fieldApiName: 'Name', lineNumber: 8, recipeValue: 'Second' }] },
+                { nickname: 'Account_Third_NickName', lineNumber: 9, fields: [{ fieldApiName: 'Name', lineNumber: 12, recipeValue: 'Third' }] }
+            ]);
+
+        });
+
+        it('the object view model carries its nickname and each iteration\'s lines and values; an object written once carries neither', () => {
+
+            const [accountObject, contactObject] = attachSelfLookupRecipe();
+
+            // indexOf THE LINE AFTER A LINE IS THAT LINE'S 1-BASED NUMBER
+            expect(accountObject.nickname).toBe('Account_NickName');
+            expect(accountObject.iterations).toEqual([{
+                nickname: 'Account_child_NickName',
+                lineNumber: selfLookupLines.indexOf('      nickname: Account_child_NickName'),
+                parentObjectApiName: 'Account',
+                parentNickname: 'Account_NickName',
+                fields: [
+                    { fieldApiName: 'Name', lineNumber: selfLookupLines.indexOf('        ParentId: Account_NickName'), recipeValue: '${{ faker.company.name() }}' },
+                    { fieldApiName: 'ParentId', lineNumber: selfLookupLines.indexOf('        ParentId: Account_NickName') + 1, recipeValue: 'Account_NickName' }
+                ]
+            }]);
+            expect(contactObject).not.toHaveProperty('nickname');
+            expect(contactObject).not.toHaveProperty('iterations');
+
+        });
+
+        it('a card lists each iteration right after its object, and counts the object\'s fields once', () => {
+
+            const objects = attachSelfLookupRecipe();
+            const parentLookupsByObjectApiName = new Map([
+                ['Account', [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }]],
+                ['Contact', [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]]
+            ]);
+
+            const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(
+                { recipeTrees: [{ objectApiNames: ['Account', 'Contact'] }], parentLookupsByObjectApiName: parentLookupsByObjectApiName }, objects, [], 'run'
+            );
+
+            expect(treeBuild.trees[0].objects).toEqual([
+                { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }] },
+                { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }], iterationNickname: 'Account_child_NickName' },
+                { objectApiName: 'Contact', parentLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] }
+            ]);
+            expect(treeBuild.trees[0].fieldCount).toBe(4);
+
+            const fallbackBuild = RecipeCockpitService.buildRecipeTreeViewModels(
+                { recipeTrees: [], parentLookupsByObjectApiName: new Map() }, objects, [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }], 'run'
+            );
+            expect(fallbackBuild.trees[0].objects.map(treeObject => [treeObject.objectApiName, treeObject.iterationNickname])).toEqual([
+                ['Account', undefined], ['Account', 'Account_child_NickName'], ['Contact', undefined]
+            ]);
+
+        });
+
+        it('the open allow-list names every iteration line, and the router opens one', () => {
+
+            const objects = attachSelfLookupRecipe();
+            const iteration = objects[0].iterations[0];
+            const recipe = { runs: [], selectedRunFolderName: '', objects: objects, trees: [], notices: [], emptyStateMessage: '' };
+            const openableSourceKeys = RecipeCockpitService.collectOpenableSourceKeys(recipe);
+
+            expect(openableSourceKeys).toEqual(expect.arrayContaining([
+                RecipeCockpitService.buildOpenSourceKey(recipeFilePath, iteration.lineNumber),
+                ...iteration.fields.map(iterationField => RecipeCockpitService.buildOpenSourceKey(recipeFilePath, iterationField.lineNumber))
+            ]));
+
+            const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
+            panelState.openableSourceKeys = new Set(openableSourceKeys);
+            expect(RecipeCockpitService.routePanelMessage({ command: 'openSource', filePath: recipeFilePath, lineNumber: iteration.fields[1].lineNumber }, panelState))
+                .toEqual({ kind: 'openSource', filePath: recipeFilePath, lineNumber: iteration.fields[1].lineNumber });
+
+        });
+
+    });
+
     describe('buildDisplayExpression', () => {
 
         it.each([
@@ -1564,7 +1726,8 @@ describe('RecipeCockpitService', () => {
 
                 expect(objectApiNamesInFileOrder).toContain('MasterDetailMadness__c');
                 expect(treeBuild.trees).toHaveLength(1);
-                expect(treeBuild.trees[0].objects.map(treeObject => treeObject.objectApiName)).toEqual(objectApiNamesInFileOrder);
+                // AN OBJECT WRITTEN TWICE (Example_Everything__c's SELF-LOOKUP ITERATION, #188) IS LISTED AGAIN ONLY THROUGH ITS iterations, WHICH THESE BARE OBJECTS DO NOT CARRY
+                expect(treeBuild.trees[0].objects.map(treeObject => treeObject.objectApiName)).toEqual([...new Set(objectApiNamesInFileOrder)]);
 
             });
 
@@ -2087,6 +2250,100 @@ describe('RecipeCockpitService', () => {
             expect(openSourceMessage).toEqual({ command: 'openSource', filePath: recipe.objects[0].recipeFilePath, lineNumber: 12 });
             // THE SAME ALLOW-LIST AS THE CLASSIC LIST: THE TREE OFFERS NOTHING THE MODEL DID NOT NAME
             expect(RecipeCockpitService.collectOpenableSourceKeys(recipe)).toContain(RecipeCockpitService.buildOpenSourceKey(openSourceMessage.filePath, openSourceMessage.lineNumber));
+
+        });
+
+        it('draws a self-lookup\'s nested iteration as its own object, opening its own lines, and counts the object once (#188)', () => {
+
+            const selfLookupRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml'), 'utf-8');
+            const selfLookupLines = selfLookupRecipeText.split('\n');
+            const recipeFilePath = path.join(TREE_WORKSPACE_ROOT, 'recipe.yml');
+            const buildObject = (objectApiName: string, fieldApiNames: string[]) => ({
+                objectApiName: objectApiName,
+                recipeFilePath: '',
+                recipeFileName: '',
+                fields: fieldApiNames.map(fieldApiName => ({ fieldApiName: fieldApiName, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }))
+            });
+            const objects = RecipeCockpitService.attachRecipeSources(
+                [buildObject('Account', ['Name', 'ParentId']), buildObject('Contact', ['Name', 'AccountId'])],
+                [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }]
+            );
+            const { trees } = RecipeCockpitService.buildRecipeTreeViewModels({
+                recipeTrees: [{ objectApiNames: ['Account', 'Contact'] }],
+                parentLookupsByObjectApiName: new Map([['Account', [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }]]])
+            }, objects, [], TREE_WORKSPACE_ROOT);
+
+            const { panel, recipe: treeRecipe } = renderTreeRecipe();
+            const recipe = { ...treeRecipe, objects: objects, trees: trees };
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+
+            const [treeCard] = treeCardsOf(panel);
+            expect(textOf(panel, treeCard, 'treeCount')).toEqual(['2 objects · 4 fields']);
+
+            expandTree(panel, treeCard);
+            expect(textOf(panel, treeCard, 'treeObjectName')).toEqual(['Account', 'Account', 'Contact']);
+            expect(textOf(panel, treeCard, 'treeIteration')).toEqual(['Account_NickName', 'Account_child_NickName · nested under Account_NickName']);
+
+            const [, iterationElement] = panel.findAll(treeCard, 'treeObject');
+            panel.findAll(iterationElement, 'treeObjectName')[0].dispatch('click');
+            expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'openSource', filePath: recipeFilePath, lineNumber: objects[0].iterations[0].lineNumber });
+            expect(selfLookupLines[objects[0].iterations[0].lineNumber]).toBe('      nickname: Account_child_NickName');
+
+            expandTreeObject(panel, iterationElement);
+            panel.findAll(treeFieldNamed(panel, iterationElement, 'ParentId'), 'treeFieldSource')[0].dispatch('click');
+            const openSourceMessage = panel.postedHostMessages[panel.postedHostMessages.length - 1];
+            expect(selfLookupLines[openSourceMessage.lineNumber - 1]).toBe('        ParentId: Account_NickName');
+            expect(RecipeCockpitService.collectOpenableSourceKeys(recipe)).toContain(RecipeCockpitService.buildOpenSourceKey(openSourceMessage.filePath, openSourceMessage.lineNumber));
+
+            const [accountElement] = panel.findAll(treeCard, 'treeObject');
+            expandTreeObject(panel, accountElement);
+            panel.findAll(treeFieldNamed(panel, accountElement, 'ParentId'), 'treeFieldSource')[0].dispatch('click');
+            expect(selfLookupLines[panel.postedHostMessages[panel.postedHostMessages.length - 1].lineNumber - 1]).toBe('    ParentId: ### TODO -- REFERENCE ID REQUIRED');
+
+        });
+
+        it('a search for an iteration\'s nickname finds it, and an iteration naming no nickname the object holds is not drawn (#188)', () => {
+
+            const selfLookupRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml'), 'utf-8');
+            const recipeFilePath = path.join(TREE_WORKSPACE_ROOT, 'recipe.yml');
+            const [accountObject] = RecipeCockpitService.attachRecipeSources(
+                [{ objectApiName: 'Account', recipeFilePath: '', recipeFileName: '', fields: [] }],
+                [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }]
+            );
+            accountObject.iterations[0].fields.push({ fieldApiName: 'Iteration_Only__c', lineNumber: 99, recipeValue: 'branch' });
+            // A SECOND TOP-LEVEL OCCURRENCE, AS A HAND EDIT WRITES ONE, NAMES NO PARENT AND IS NOT LABELLED NESTED
+            accountObject.iterations.push({ nickname: 'Account_Second_NickName', lineNumber: 1, fields: [] });
+
+            const { panel, recipe: treeRecipe } = renderTreeRecipe();
+            panel.postToPanel({ command: 'recipeData', renderSequence: 2, recipe: { ...treeRecipe, objects: [accountObject], trees: [{
+                treeKey: 'tree', title: 'Relationship Tree 1', folderName: 'tree', fieldCount: 0,
+                objects: [
+                    { objectApiName: 'Account', parentLookups: [] },
+                    { objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' },
+                    { objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_Second_NickName' },
+                    { objectApiName: 'Account', parentLookups: [], iterationNickname: 'Not_An_Iteration' }
+                ]
+            }] } });
+
+            const [treeCard] = treeCardsOf(panel);
+            expandTree(panel, treeCard);
+            expect(textOf(panel, treeCard, 'treeObjectName')).toEqual(['Account', 'Account', 'Account']);
+            expect(textOf(panel, treeCard, 'treeIteration')).toEqual(['Account_NickName', 'Account_child_NickName · nested under Account_NickName', 'Account_Second_NickName']);
+
+            const [, iterationElement] = panel.findAll(treeCard, 'treeObject');
+            expandTreeObject(panel, iterationElement);
+            // A FIELD ONLY THE ITERATION WRITES IS A ROW OF ITS OWN, READ FROM THE RECIPE FILE
+            expect(textOf(panel, iterationElement, 'treeFieldName')).toEqual(['Name', 'ParentId', 'Iteration_Only__c']);
+            expect(textOf(panel, treeFieldNamed(panel, iterationElement, 'Iteration_Only__c'), 'recipeFileOnly')).toEqual(['read from the recipe file']);
+
+            panel.typeIntoFilter('branch');
+            expect(panel.isHidden(treeFieldNamed(panel, iterationElement, 'Iteration_Only__c'))).toBe(false);
+            expect(panel.isHidden(treeFieldNamed(panel, iterationElement, 'Name'))).toBe(true);
+
+            panel.typeIntoFilter('account_child');
+            const [accountElement] = panel.findAll(treeCard, 'treeObject');
+            expect(textOf(panel, iterationElement, 'treeObjectCount')).toEqual(['3 fields']);
+            expect(textOf(panel, accountElement, 'treeObjectCount')).toEqual(['no matching fields']);
 
         });
 

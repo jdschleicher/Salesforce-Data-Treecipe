@@ -45,10 +45,34 @@ function readFixture(fileName: string): string {
     return fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, fileName), 'utf-8');
 }
 
+/*
+    Every occurrence of every object the reader reports, in file-entry order. An object written
+    twice -- the nested child iteration a self-lookup adds (#188) -- is addressed by NICKNAME, both
+    occurrences, since the writer refuses its api name alone; an object written once by api name
+    only, as it always was. occurrenceKey is the api name and the occurrence's position, so it
+    survives a nickname rename.
+*/
+type ObjectOccurrence = { occurrenceKey: string; objectApiName: string; objectNickname?: string; objectEntry: { lineNumber: number; fieldEntries: Map<string, { lineNumber: number; valueText: string }> } };
+
+function collectObjectOccurrences(recipeText: string): ObjectOccurrence[] {
+    const occurrences: ObjectOccurrence[] = [];
+    RecipeCockpitService.parseRecipeSource(recipeText).forEach((objectEntry, objectApiName) => {
+        occurrences.push({ occurrenceKey: `${objectApiName}#0`, objectApiName: objectApiName, objectNickname: objectEntry.iterations ? objectEntry.nickname : undefined, objectEntry: objectEntry });
+        ( objectEntry.iterations ?? [] ).forEach((iteration, iterationIndex) => {
+            occurrences.push({ occurrenceKey: `${objectApiName}#${iterationIndex + 1}`, objectApiName: objectApiName, objectNickname: iteration.nickname, objectEntry: iteration });
+        });
+    });
+    return occurrences;
+}
+
+function findOccurrence(occurrences: ObjectOccurrence[], objectApiName: string, objectNickname?: string): ObjectOccurrence {
+    return occurrences.find(occurrence => occurrence.objectApiName === objectApiName && occurrence.objectNickname === objectNickname);
+}
+
 // THE OBJECT'S FIELD COLUMN, READ FROM ITS HEADER LINE RATHER THAN FROM THE WRITER UNDER TEST
-function fieldIndentOf(recipeText: string, objectApiName: string): string {
-    const headerMatch = new RegExp(`^( *)- object: ${objectApiName}\\r?$`, 'm').exec(recipeText);
-    return ' '.repeat(headerMatch[1].length + 4);
+function fieldIndentOf(recipeText: string, objectApiName: string, objectNickname?: string): string {
+    const headerLine = recipeText.split(/\r?\n/)[findOccurrence(collectObjectOccurrences(recipeText), objectApiName, objectNickname).objectEntry.lineNumber - 1];
+    return ' '.repeat(/^ */.exec(headerLine)[0].length + 4);
 }
 
 function toVariant(recipeText: string, lineEnding: string, hasFinalNewline: boolean): string {
@@ -122,36 +146,39 @@ type FieldExpectation = { isAbsent: true } | { isAbsent: false; valueText: strin
     field as intended, and every other field with the same value and the same line content --
     wherever the edit moved that line to.
 */
-function expectRoundTrip(recipeText: string, patchedRecipeText: string, objectApiName: string, fieldApiName: string | undefined, fieldExpectation?: FieldExpectation): void {
+function expectRoundTrip(recipeText: string, patchedRecipeText: string, objectApiName: string, fieldApiName: string | undefined, fieldExpectation?: FieldExpectation, objectNickname?: string): void {
 
-    const originalEntries = RecipeCockpitService.parseRecipeSource(recipeText);
-    const patchedEntries = RecipeCockpitService.parseRecipeSource(patchedRecipeText);
+    const originalOccurrences = collectObjectOccurrences(recipeText);
+    const patchedOccurrences = collectObjectOccurrences(patchedRecipeText);
     const originalLines = recipeText.split(/\r?\n/);
     const patchedLines = patchedRecipeText.split(/\r?\n/);
+    const targetOccurrenceKey = findOccurrence(originalOccurrences, objectApiName, objectNickname).occurrenceKey;
 
-    expect(Array.from(patchedEntries.keys())).toEqual(Array.from(originalEntries.keys()));
+    expect(patchedOccurrences.map(occurrence => occurrence.occurrenceKey)).toEqual(originalOccurrences.map(occurrence => occurrence.occurrenceKey));
 
     // EACH OTHER LINE AS "WHERE IT IS: WHAT IT SAYS", SO A MOVED LINE STILL MATCHES AND A CHANGED ONE DOES NOT
-    const describeLines = (entries: typeof originalEntries, lines: string[]): string[] => {
+    const describeLines = (occurrences: ObjectOccurrence[], lines: string[]): string[] => {
         const describedLines: string[] = [];
-        entries.forEach((objectEntry, entryObjectApiName) => {
-            describedLines.push(`${entryObjectApiName}: ${lines[objectEntry.lineNumber - 1]}`);
+        occurrences.forEach(({ occurrenceKey, objectEntry }) => {
+            describedLines.push(`${occurrenceKey}: ${lines[objectEntry.lineNumber - 1]}`);
             objectEntry.fieldEntries.forEach((fieldEntry, entryFieldApiName) => {
-                if ( entryObjectApiName !== objectApiName || entryFieldApiName !== fieldApiName ) {
-                    describedLines.push(`${entryObjectApiName}.${entryFieldApiName}: ${lines[fieldEntry.lineNumber - 1]} => ${fieldEntry.valueText}`);
+                if ( occurrenceKey !== targetOccurrenceKey || entryFieldApiName !== fieldApiName ) {
+                    describedLines.push(`${occurrenceKey}.${entryFieldApiName}: ${lines[fieldEntry.lineNumber - 1]} => ${fieldEntry.valueText}`);
                 }
             });
         });
         return describedLines;
     };
 
-    expect(describeLines(patchedEntries, patchedLines).join('\n')).toBe(describeLines(originalEntries, originalLines).join('\n'));
+    expect(describeLines(patchedOccurrences, patchedLines).join('\n')).toBe(describeLines(originalOccurrences, originalLines).join('\n'));
 
     if ( fieldApiName === undefined || fieldExpectation === undefined ) {
         return;
     }
 
-    const targetFieldEntry = patchedEntries.get(objectApiName).fieldEntries.get(fieldApiName);
+    const originalFieldEntries = originalOccurrences.find(occurrence => occurrence.occurrenceKey === targetOccurrenceKey).objectEntry.fieldEntries;
+    const patchedFieldEntries = patchedOccurrences.find(occurrence => occurrence.occurrenceKey === targetOccurrenceKey).objectEntry.fieldEntries;
+    const targetFieldEntry = patchedFieldEntries.get(fieldApiName);
 
     if ( !('valueText' in fieldExpectation) ) {
         expect(targetFieldEntry).toBeUndefined();
@@ -160,15 +187,16 @@ function expectRoundTrip(recipeText: string, patchedRecipeText: string, objectAp
 
     expect(targetFieldEntry.valueText).toBe(fieldExpectation.valueText);
 
-    const otherFieldCount = Array.from(originalEntries.get(objectApiName).fieldEntries.keys()).filter(originalFieldApiName => originalFieldApiName !== fieldApiName).length;
-    expect(patchedEntries.get(objectApiName).fieldEntries.size).toBe(otherFieldCount + 1);
+    const otherFieldCount = Array.from(originalFieldEntries.keys()).filter(originalFieldApiName => originalFieldApiName !== fieldApiName).length;
+    expect(patchedFieldEntries.size).toBe(otherFieldCount + 1);
 
 }
 
-function collectFieldAddresses(recipeText: string): Array<[string, string]> {
-    const fieldAddresses: Array<[string, string]> = [];
-    RecipeCockpitService.parseRecipeSource(recipeText).forEach((objectEntry, objectApiName) => {
-        objectEntry.fieldEntries.forEach((unusedFieldEntry, fieldApiName) => fieldAddresses.push([objectApiName, fieldApiName]));
+// [object, field, nickname] -- THE NICKNAME ONLY FOR AN OBJECT WRITTEN MORE THAN ONCE
+function collectFieldAddresses(recipeText: string): Array<[string, string, string | undefined]> {
+    const fieldAddresses: Array<[string, string, string | undefined]> = [];
+    collectObjectOccurrences(recipeText).forEach(({ objectApiName, objectNickname, objectEntry }) => {
+        objectEntry.fieldEntries.forEach((unusedFieldEntry, fieldApiName) => fieldAddresses.push([objectApiName, fieldApiName, objectNickname]));
     });
     return fieldAddresses;
 }
@@ -241,7 +269,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             const recipeText = toVariant(readFixture(fileName), lineEnding, hasFinalNewline);
             const fieldAddresses = collectFieldAddresses(recipeText);
-            const objectApiNames = Array.from(RecipeCockpitService.parseRecipeSource(recipeText).keys());
+            const objectOccurrences = collectObjectOccurrences(recipeText);
 
             test('the variant reads the same objects and fields as the fixture', () => {
 
@@ -252,19 +280,20 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             test('replaceFieldValue changes only each field\'s own lines, and the reader sees the new value', () => {
 
-                fieldAddresses.forEach(([objectApiName, fieldApiName]) => {
+                fieldAddresses.forEach(([objectApiName, fieldApiName, objectNickname]) => {
 
                     [
                         [SINGLE_LINE_VALUE, SINGLE_LINE_VALUE],
                         [BLOCK_SCALAR_VALUE, '${{fake.word}}']
                     ].forEach(([valueText, expectedDisplayValue]) => {
 
-                        const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, valueText));
+                        const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, valueText, objectNickname));
 
                         expect(edit).toMatchObject({ operation: 'replace-field-value', objectApiName: objectApiName, fieldApiName: fieldApiName });
-                        expect(edit.removedLines[0]).toStartWith(`${fieldIndentOf(recipeText, objectApiName)}${fieldApiName}:`);
+                        expect(edit.objectNickname).toBe(objectNickname);
+                        expect(edit.removedLines[0]).toStartWith(`${fieldIndentOf(recipeText, objectApiName, objectNickname)}${fieldApiName}:`);
                         expectFidelity(recipeText, patchedRecipeText, edit);
-                        expectRoundTrip(recipeText, patchedRecipeText, objectApiName, fieldApiName, { isAbsent: false, valueText: expectedDisplayValue });
+                        expectRoundTrip(recipeText, patchedRecipeText, objectApiName, fieldApiName, { isAbsent: false, valueText: expectedDisplayValue }, objectNickname);
 
                     });
 
@@ -274,19 +303,19 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             test('commentOutField leaves the reader without the field and everything else as it was, and restoring gives back the original text', () => {
 
-                fieldAddresses.forEach(([objectApiName, fieldApiName]) => {
+                fieldAddresses.forEach(([objectApiName, fieldApiName, objectNickname]) => {
 
-                    const { recipeText: commentedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeText, objectApiName, fieldApiName, 'not in devhub'));
+                    const { recipeText: commentedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeText, objectApiName, fieldApiName, 'not in devhub', objectNickname));
 
                     const lineCount = edit.removedLines.length;
-                    const fieldIndent = fieldIndentOf(recipeText, objectApiName);
+                    const fieldIndent = fieldIndentOf(recipeText, objectApiName, objectNickname);
                     expect(edit.insertedLines[0]).toBe(`${fieldIndent}${RecipeCockpitRecipeWriter.COMMENTED_OUT_MARKER_PREFIX.trimStart()}${fieldApiName} -- ${lineCount} ${lineCount === 1 ? 'line' : 'lines'} -- not in devhub`);
                     expect(edit.insertedLines).toHaveLength(edit.removedLines.length + 1);
                     edit.insertedLines.forEach(insertedLine => expect(insertedLine).toStartWith(`${fieldIndent}#`));
                     expectFidelity(recipeText, commentedRecipeText, edit);
-                    expectRoundTrip(recipeText, commentedRecipeText, objectApiName, fieldApiName, { isAbsent: true });
+                    expectRoundTrip(recipeText, commentedRecipeText, objectApiName, fieldApiName, { isAbsent: true }, objectNickname);
 
-                    const { recipeText: restoredRecipeText, edit: restoreEdit } = expectApplied(RecipeCockpitRecipeWriter.restoreCommentedOutField(commentedRecipeText, objectApiName, fieldApiName));
+                    const { recipeText: restoredRecipeText, edit: restoreEdit } = expectApplied(RecipeCockpitRecipeWriter.restoreCommentedOutField(commentedRecipeText, objectApiName, fieldApiName, objectNickname));
 
                     expect(restoreEdit.insertedLines).toEqual(edit.removedLines);
                     expect(restoredRecipeText).toBe(recipeText);
@@ -297,19 +326,19 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             test('insertField appends to each object\'s fields block and changes nothing else', () => {
 
-                objectApiNames.forEach(objectApiName => {
+                objectOccurrences.forEach(({ objectApiName, objectNickname }) => {
 
-                    const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(recipeText, objectApiName, 'Cockpit_Inserted__c', DEPENDENT_PICKLIST_VALUE));
+                    const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(recipeText, objectApiName, 'Cockpit_Inserted__c', DEPENDENT_PICKLIST_VALUE, objectNickname));
 
                     expect(edit.removedLines).toEqual([]);
-                    expect(edit.insertedLines[0]).toBe(`${fieldIndentOf(recipeText, objectApiName)}Cockpit_Inserted__c: `);
+                    expect(edit.insertedLines[0]).toBe(`${fieldIndentOf(recipeText, objectApiName, objectNickname)}Cockpit_Inserted__c: `);
                     expectFidelity(recipeText, patchedRecipeText, edit);
                     expectRoundTrip(recipeText, patchedRecipeText, objectApiName, 'Cockpit_Inserted__c', {
                         isAbsent: false,
                         valueText: "if:\n  - choice:\n      when: ${{ Industry == 'Retail' }}\n      pick: Shop"
-                    });
+                    }, objectNickname);
 
-                    const lastFieldApiName = Array.from(RecipeCockpitService.parseRecipeSource(patchedRecipeText).get(objectApiName).fieldEntries.keys()).pop();
+                    const lastFieldApiName = Array.from(findOccurrence(collectObjectOccurrences(patchedRecipeText), objectApiName, objectNickname).objectEntry.fieldEntries.keys()).pop();
                     expect(lastFieldApiName).toBe('Cockpit_Inserted__c');
 
                 });
@@ -318,17 +347,18 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             test('setObjectProperty rewrites only the nickname or count line', () => {
 
-                objectApiNames.forEach(objectApiName => {
+                objectOccurrences.forEach(({ objectApiName, objectNickname, occurrenceKey }) => {
 
-                    const propertyIndent = fieldIndentOf(recipeText, objectApiName).slice(2);
-                    ([['nickname', `${objectApiName}_Renamed`, `${propertyIndent}nickname: ${objectApiName}_Renamed`], ['count', 25, `${propertyIndent}count: 25`]] as const).forEach(([propertyName, value, expectedLine]) => {
+                    const propertyIndent = fieldIndentOf(recipeText, objectApiName, objectNickname).slice(2);
+                    const renamedNickname = `${occurrenceKey.replace('#', '_')}_Renamed`;
+                    ([['nickname', renamedNickname, `${propertyIndent}nickname: ${renamedNickname}`], ['count', 25, `${propertyIndent}count: 25`]] as const).forEach(([propertyName, value, expectedLine]) => {
 
-                        const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.setObjectProperty(recipeText, objectApiName, propertyName, value));
+                        const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.setObjectProperty(recipeText, objectApiName, propertyName, value, objectNickname));
 
                         expect(edit).toMatchObject({ operation: 'set-object-property', objectApiName: objectApiName, propertyName: propertyName, insertedLines: [expectedLine] });
                         expect(edit.removedLines).toHaveLength(1);
                         expectFidelity(recipeText, patchedRecipeText, edit);
-                        expectRoundTrip(recipeText, patchedRecipeText, objectApiName, undefined);
+                        expectRoundTrip(recipeText, patchedRecipeText, objectApiName, undefined, undefined, objectNickname);
 
                     });
 
@@ -343,24 +373,24 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             const recipeText = readFixture(fileName);
 
-            collectFieldAddresses(recipeText).forEach(([objectApiName, fieldApiName]) => {
+            collectFieldAddresses(recipeText).forEach(([objectApiName, fieldApiName, objectNickname]) => {
 
                 [
-                    RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, SINGLE_LINE_VALUE),
-                    RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, BLOCK_SCALAR_VALUE),
-                    RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, DEPENDENT_PICKLIST_VALUE),
-                    RecipeCockpitRecipeWriter.commentOutField(recipeText, objectApiName, fieldApiName, 'removed from org')
+                    RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, SINGLE_LINE_VALUE, objectNickname),
+                    RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, BLOCK_SCALAR_VALUE, objectNickname),
+                    RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, DEPENDENT_PICKLIST_VALUE, objectNickname),
+                    RecipeCockpitRecipeWriter.commentOutField(recipeText, objectApiName, fieldApiName, 'removed from org', objectNickname)
                 ].forEach(result => expect(() => yaml.load(expectApplied(result).recipeText)).not.toThrow());
 
             });
 
-            Array.from(RecipeCockpitService.parseRecipeSource(recipeText).keys()).forEach(objectApiName => {
+            collectObjectOccurrences(recipeText).forEach(({ objectApiName, objectNickname }) => {
 
                 [
-                    RecipeCockpitRecipeWriter.insertField(recipeText, objectApiName, 'Cockpit_Inserted__c', SINGLE_LINE_VALUE),
-                    RecipeCockpitRecipeWriter.insertField(recipeText, objectApiName, 'Cockpit_Inserted__c', DEPENDENT_PICKLIST_VALUE),
-                    RecipeCockpitRecipeWriter.setObjectProperty(recipeText, objectApiName, 'count', 3),
-                    RecipeCockpitRecipeWriter.setObjectProperty(recipeText, objectApiName, 'nickname', 'Renamed')
+                    RecipeCockpitRecipeWriter.insertField(recipeText, objectApiName, 'Cockpit_Inserted__c', SINGLE_LINE_VALUE, objectNickname),
+                    RecipeCockpitRecipeWriter.insertField(recipeText, objectApiName, 'Cockpit_Inserted__c', DEPENDENT_PICKLIST_VALUE, objectNickname),
+                    RecipeCockpitRecipeWriter.setObjectProperty(recipeText, objectApiName, 'count', 3, objectNickname),
+                    RecipeCockpitRecipeWriter.setObjectProperty(recipeText, objectApiName, 'nickname', 'Renamed', objectNickname)
                 ].forEach(result => expect(() => yaml.load(expectApplied(result).recipeText)).not.toThrow());
 
             });
@@ -371,8 +401,10 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             const recipeText = readFixture(fileName);
 
-            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Example_Everything__c', 'RecordTypeId', 'Example_Everything__c.TwoRecType'));
-            const fieldIndent = fieldIndentOf(recipeText, 'Example_Everything__c');
+            // THE FIRST OCCURRENCE -- BY NICKNAME WHERE A SELF-LOOKUP WROTE THE OBJECT TWICE (#188)
+            const { objectNickname } = collectObjectOccurrences(recipeText).find(occurrence => occurrence.objectApiName === 'Example_Everything__c');
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Example_Everything__c', 'RecordTypeId', 'Example_Everything__c.TwoRecType', objectNickname));
+            const fieldIndent = fieldIndentOf(recipeText, 'Example_Everything__c', objectNickname);
 
             expect(edit.removedLines).toEqual([
                 `${fieldIndent}RecordTypeId: Example_Everything__c.OneRecType`,
@@ -756,15 +788,17 @@ describe('RecipeCockpitRecipeWriter', () => {
             const headerObjectApiNames = [...nestedRecipeText.matchAll(/^ *- object: (\S+)$/gm)].map(([, objectApiName]) => objectApiName);
 
             expect(nestedRecipeText).toMatch(/^ {8}- object: /m);
-            expect(Array.from(nestedEntries.keys())).toEqual(headerObjectApiNames);
-            nestedEntries.forEach((objectEntry, objectApiName) => {
+            expect(Array.from(nestedEntries.keys())).toEqual([...new Set(headerObjectApiNames)]);
+            // EVERY HEADER IS AN OCCURRENCE: Example_Everything__c's SELF-LOOKUP WRITES IT TWICE, TOLD APART BY NICKNAME (#188)
+            expect(collectObjectOccurrences(nestedRecipeText).map(occurrence => occurrence.objectApiName).sort()).toEqual([...headerObjectApiNames].sort());
+            collectObjectOccurrences(nestedRecipeText).forEach(({ objectApiName, objectNickname, objectEntry }) => {
                 expect(nestedLines[objectEntry.lineNumber - 1].trim()).toBe(`- object: ${objectApiName}`);
                 objectEntry.fieldEntries.forEach((fieldEntry, fieldApiName) => {
-                    expect(nestedLines[fieldEntry.lineNumber - 1]).toStartWith(`${fieldIndentOf(nestedRecipeText, objectApiName)}${fieldApiName}:`);
+                    expect(nestedLines[fieldEntry.lineNumber - 1]).toStartWith(`${fieldIndentOf(nestedRecipeText, objectApiName, objectNickname)}${fieldApiName}:`);
                 });
             });
 
-            const sortedAddresses = (recipeText: string) => collectFieldAddresses(recipeText).map(address => address.join('.')).sort();
+            const sortedAddresses = (recipeText: string) => [...new Set(collectFieldAddresses(recipeText).map(([objectApiName, fieldApiName]) => `${objectApiName}.${fieldApiName}`))].sort();
             expect(sortedAddresses(nestedRecipeText)).toEqual(sortedAddresses(readFixture('recipe-fakerjs--RelationshipTree_1.yml')));
 
         });
@@ -804,6 +838,142 @@ describe('RecipeCockpitRecipeWriter', () => {
         test('a value that would not keep the layout at the top level is refused for a friend too', () => {
 
             expectRefused(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'Contact', 'Cockpit_Inserted__c', 'first\n  second'), 'invalid-value');
+
+        });
+
+    });
+
+    describe('an object written twice, told apart by nickname (#188)', () => {
+
+        const selfLookupRecipeText = readFixture('recipe-fakerjs-selfLookup--RelationshipTree_1.yml');
+        const selfLookupLines = selfLookupRecipeText.split('\n');
+        const CHILD_NICKNAME = 'Account_child_NickName';
+
+        type LoadedEntry = { object: string; nickname: string; count: number; fields: Record<string, unknown>; friends?: LoadedEntry[] };
+        const loadEntries = (recipeText: string) => yaml.load(recipeText) as LoadedEntry[];
+        const refusalOf = (result: RecipeWriterResult) => ( 'refusal' in result ? result.refusal : undefined );
+
+        test('the scan records each occurrence\'s nickname and the object whose friends: block holds it', () => {
+
+            const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(selfLookupLines);
+
+            expect(scannedObjects.map(scannedObject => [scannedObject.objectApiName, scannedObject.nicknames, scannedObject.parentHeaderIndex])).toEqual([
+                ['Account', ['Account_NickName'], undefined],
+                ['Contact', ['Contact_NickName'], scannedObjects[0].headerIndex],
+                ['Account', [CHILD_NICKNAME], scannedObjects[0].headerIndex]
+            ]);
+
+        });
+
+        test.each([
+            ['replaceFieldValue', (nickname?: string) => RecipeCockpitRecipeWriter.replaceFieldValue(selfLookupRecipeText, 'Account', 'ParentId', 'x', nickname)],
+            ['insertField', (nickname?: string) => RecipeCockpitRecipeWriter.insertField(selfLookupRecipeText, 'Account', 'Cockpit_Inserted__c', 'x', nickname)],
+            ['commentOutField', (nickname?: string) => RecipeCockpitRecipeWriter.commentOutField(selfLookupRecipeText, 'Account', 'ParentId', '', nickname)],
+            ['restoreCommentedOutField', (nickname?: string) => RecipeCockpitRecipeWriter.restoreCommentedOutField(selfLookupRecipeText, 'Account', 'ParentId', nickname)],
+            ['setObjectProperty', (nickname?: string) => RecipeCockpitRecipeWriter.setObjectProperty(selfLookupRecipeText, 'Account', 'count', 3, nickname)]
+        ])('%s refuses the api name alone, an unknown nickname and a malformed one', (_operationName, applyOperation) => {
+
+            expectRefused(applyOperation(), 'duplicate-object');
+            expectRefused(applyOperation('Missing_NickName'), 'object-not-found');
+            expectRefused(applyOperation('not a nickname'), 'invalid-object-nickname');
+
+            const unknownNicknameResult = applyOperation('Missing_NickName');
+            expect(refusalOf(unknownNicknameResult)).toMatchObject({ objectApiName: 'Account', objectNickname: 'Missing_NickName' });
+
+        });
+
+        test('replaceFieldValue changes the nested iteration\'s line only, and the edit names the occurrence', () => {
+
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(selfLookupRecipeText, 'Account', 'ParentId', 'Some_Other_NickName', CHILD_NICKNAME));
+
+            expect(edit).toMatchObject({ operation: 'replace-field-value', objectApiName: 'Account', objectNickname: CHILD_NICKNAME, fieldApiName: 'ParentId' });
+            expect(edit.removedLines).toEqual(['        ParentId: Account_NickName']);
+            expect(selfLookupLines[edit.startLineNumber - 1]).toBe('        ParentId: Account_NickName');
+            expectFidelity(selfLookupRecipeText, patchedRecipeText, edit);
+
+            const [topEntry] = loadEntries(patchedRecipeText);
+            expect(topEntry.fields.ParentId).toBeNull();
+            expect(topEntry.friends[1].fields.ParentId).toBe('Some_Other_NickName');
+
+        });
+
+        test('the top occurrence is picked by its own nickname', () => {
+
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(selfLookupRecipeText, 'Account', 'Cockpit_Inserted__c', 'x', 'Account_NickName'));
+
+            expect(edit.insertedLines).toEqual(['    Cockpit_Inserted__c: x']);
+            const [topEntry] = loadEntries(patchedRecipeText);
+            expect(topEntry.fields.Cockpit_Inserted__c).toBe('x');
+            expect(topEntry.friends[1].fields).not.toHaveProperty('Cockpit_Inserted__c');
+
+        });
+
+        test('commenting out the nested iteration\'s field restores byte for byte, and leaves the top one\'s alone', () => {
+
+            const { recipeText: commentedRecipeText } = expectApplied(RecipeCockpitRecipeWriter.commentOutField(selfLookupRecipeText, 'Account', 'ParentId', 'no parent', CHILD_NICKNAME));
+
+            expect(loadEntries(commentedRecipeText)[0].friends[1].fields).not.toHaveProperty('ParentId');
+            expect(loadEntries(commentedRecipeText)[0].fields).toHaveProperty('ParentId');
+            expectRefused(RecipeCockpitRecipeWriter.restoreCommentedOutField(commentedRecipeText, 'Account', 'ParentId', 'Account_NickName'), 'field-already-exists');
+
+            const { recipeText: restoredRecipeText } = expectApplied(RecipeCockpitRecipeWriter.restoreCommentedOutField(commentedRecipeText, 'Account', 'ParentId', CHILD_NICKNAME));
+            expect(restoredRecipeText).toBe(selfLookupRecipeText);
+
+        });
+
+        test('setObjectProperty sets the nested iteration\'s count, and renaming it keeps it addressable by the new nickname only', () => {
+
+            const { recipeText: countedRecipeText } = expectApplied(RecipeCockpitRecipeWriter.setObjectProperty(selfLookupRecipeText, 'Account', 'count', 4, CHILD_NICKNAME));
+            expect(loadEntries(countedRecipeText)[0].count).toBe(1);
+            expect(loadEntries(countedRecipeText)[0].friends[1].count).toBe(4);
+
+            const { recipeText: renamedRecipeText } = expectApplied(RecipeCockpitRecipeWriter.setObjectProperty(selfLookupRecipeText, 'Account', 'nickname', 'Account_Branch_NickName', CHILD_NICKNAME));
+            expectRefused(RecipeCockpitRecipeWriter.setObjectProperty(renamedRecipeText, 'Account', 'count', 2, CHILD_NICKNAME), 'object-not-found');
+            expectApplied(RecipeCockpitRecipeWriter.setObjectProperty(renamedRecipeText, 'Account', 'count', 2, 'Account_Branch_NickName'));
+
+        });
+
+        test('a nickname two occurrences share is refused, and an object written once still needs none', () => {
+
+            const sharedNicknameRecipeText = selfLookupRecipeText.replace(`nickname: ${CHILD_NICKNAME}`, 'nickname: Account_NickName');
+
+            expectRefused(RecipeCockpitRecipeWriter.replaceFieldValue(sharedNicknameRecipeText, 'Account', 'ParentId', 'x', 'Account_NickName'), 'duplicate-object');
+            const sharedResult = RecipeCockpitRecipeWriter.replaceFieldValue(sharedNicknameRecipeText, 'Account', 'ParentId', 'x', 'Account_NickName');
+            expect(refusalOf(sharedResult).message).toContain('with the nickname Account_NickName');
+
+            expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(selfLookupRecipeText, 'Contact', 'AccountId', 'x'));
+            expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(selfLookupRecipeText, 'Contact', 'AccountId', 'x', 'Contact_NickName'));
+
+        });
+
+        test('a comment after a nickname is not part of it, so the occurrence is still addressed by its nickname', () => {
+
+            const commentedRecipeText = selfLookupRecipeText.replace(`nickname: ${CHILD_NICKNAME}`, `nickname: ${CHILD_NICKNAME}   # the branch office`);
+
+            expect(RecipeCockpitRecipeWriter.scanRecipeObjects(commentedRecipeText.split('\n'))[2].nicknames).toEqual([CHILD_NICKNAME]);
+            expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(commentedRecipeText, 'Account', 'ParentId', 'x', CHILD_NICKNAME));
+
+        });
+
+        test('a property refusal names the occurrence', () => {
+
+            const invalidCountResult = RecipeCockpitRecipeWriter.setObjectProperty(selfLookupRecipeText, 'Account', 'count', -1, CHILD_NICKNAME);
+            const missingPropertyResult = RecipeCockpitRecipeWriter.setObjectProperty(selfLookupRecipeText.replace('      count: 1\n      fields:\n        Name: ${{ faker.company.name() }}\n        ParentId', '      fields:\n        Name: ${{ faker.company.name() }}\n        ParentId'), 'Account', 'count', 2, CHILD_NICKNAME);
+
+            expect(refusalOf(invalidCountResult)).toMatchObject({ reason: 'invalid-value', objectNickname: CHILD_NICKNAME, message: `The count for Account (${CHILD_NICKNAME}) must be a whole number of zero or more.` });
+            expect(refusalOf(missingPropertyResult)).toMatchObject({ reason: 'property-not-found', objectNickname: CHILD_NICKNAME, message: `Account (${CHILD_NICKNAME}) has no "count:" line to set.` });
+
+        });
+
+        test('a refusal after the occurrence is found names the occurrence', () => {
+
+            const missingFieldResult = RecipeCockpitRecipeWriter.replaceFieldValue(selfLookupRecipeText, 'Account', 'Missing__c', 'x', CHILD_NICKNAME);
+
+            expectRefused(missingFieldResult, 'field-not-found');
+            expect(refusalOf(missingFieldResult)).toMatchObject({
+                objectNickname: CHILD_NICKNAME,
+                message: `Account (${CHILD_NICKNAME}) has no Missing__c line in its fields.`
+            });
 
         });
 

@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as yaml from 'js-yaml';
 
 import { RelationshipService } from '../RelationshipService';
@@ -208,22 +210,6 @@ describe('RelationshipService nests child objects under friends: for faker-js re
 
     });
 
-    test('a self-lookup is not nested and keeps its TODO, so each object is still written once (#188)', () => {
-
-        const [recipeContent] = generateRecipeContents([
-            { objectApiName: 'Account', lookups: { ParentId: 'Account' } },
-            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
-        ], true);
-
-        const recipeEntries = yaml.load(recipeContent) as LoadedRecipeEntry[];
-
-        expect(recipeEntries.map(recipeEntry => recipeEntry.object)).toEqual(['Account']);
-        expect(recipeEntries[0].fields.ParentId).toBeNull();
-        expect(recipeEntries[0].friends.map(friend => friend.object)).toEqual(['Contact']);
-        expect(recipeContent.match(/- object: Account$/gm)).toHaveLength(1);
-
-    });
-
     test('a lookup target with no recipe of its own is not nested under, and the child stays top level', () => {
 
         const [recipeContent] = generateRecipeContents([
@@ -337,6 +323,215 @@ describe('RelationshipService nests child objects under friends: for faker-js re
             ['Name', 'Account__c'],
             ['Name', 'Account__c', 'Other__c']
         ]);
+
+    });
+
+});
+
+describe('a self-lookup adds one nested child iteration of the same object (#188)', () => {
+
+    test('the iteration is the object\'s last friend, with its own nickname and its self-lookup wired to the iteration above', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Account', lookups: { ParentId: 'Account' } }
+        ], true);
+
+        expect(recipeContent).toBe([
+            '# Relationship Tree: RelationshipTree_1',
+            '# Child objects are nested under their parent\'s friends: block -- a friend\'s count is records PER parent record',
+            '',
+            '# Account (Parents: Account | Children: Account)',
+            '- object: Account',
+            '  nickname: Account_NickName',
+            '  count: 1',
+            '  fields:',
+            '    Name: ${{ faker.company.name() }}',
+            `    ParentId: ${RelationshipService.referenceIdRequiredTodo}`,
+            '  friends:',
+            '    # Account (Child iteration of the Account above, through ParentId)',
+            '    - object: Account',
+            '      nickname: Account_child_NickName',
+            '      count: 1',
+            '      fields:',
+            '        Name: ${{ faker.company.name() }}',
+            '        ParentId: Account_NickName',
+            '',
+            ''
+        ].join('\n'));
+
+    });
+
+    test('the iteration comes after the object\'s other friends and carries none of them, so nothing recurses', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Account', lookups: { ParentId: 'Account' } },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
+        ], true);
+
+        const recipeEntries = yaml.load(recipeContent) as LoadedRecipeEntry[];
+
+        expect(recipeEntries.map(recipeEntry => recipeEntry.object)).toEqual(['Account']);
+        expect(recipeEntries[0].fields.ParentId).toBeNull();
+        expect(recipeEntries[0].friends.map(friend => [friend.object, friend.nickname])).toEqual([
+            ['Contact', 'Contact_NickName'],
+            ['Account', 'Account_child_NickName']
+        ]);
+        expect(recipeEntries[0].friends[0].fields.AccountId).toBe('Account_NickName');
+        expect(recipeEntries[0].friends[1].fields.ParentId).toBe('Account_NickName');
+        expect(recipeEntries[0].friends[1].friends).toBeUndefined();
+        expect(recipeContent.match(/- object: Account$/gm)).toHaveLength(2);
+
+    });
+
+    test('every self-lookup field of the iteration holds the parent iteration\'s nickname', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Case', lookups: { ParentId: 'Case', MasterRecordId: 'Case' } }
+        ], true);
+
+        const iterationEntry = (yaml.load(recipeContent) as LoadedRecipeEntry[])[0].friends[0];
+
+        expect(recipeContent).toContain('    # Case (Child iteration of the Case above, through ParentId, MasterRecordId)');
+        expect(iterationEntry.nickname).toBe('Case_child_NickName');
+        expect(iterationEntry.fields).toEqual({ Name: '${{ faker.company.name() }}', ParentId: 'Case_NickName', MasterRecordId: 'Case_NickName' });
+
+    });
+
+    test('a nested object with a self-lookup gets its iteration at its own depth, wired to it and to its ancestors', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Account' },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account', ReportsToId: 'Contact' } }
+        ], true);
+
+        const contactEntry = (yaml.load(recipeContent) as LoadedRecipeEntry[])[0].friends[0];
+
+        expect(contactEntry.fields.ReportsToId).toBeNull();
+        expect(contactEntry.friends.map(friend => [friend.object, friend.nickname, friend.fields.AccountId, friend.fields.ReportsToId])).toEqual([
+            ['Contact', 'Contact_child_NickName', 'Account_NickName', 'Contact_NickName']
+        ]);
+        expect(recipeContent).toContain('        # Contact (Child iteration of the Contact above, through ReportsToId)\n        - object: Contact\n          nickname: Contact_child_NickName');
+
+    });
+
+    test('a self-lookup filled in by hand is left as it is in both iterations', () => {
+
+        const objectInfoWrapper = buildObjectInfoWrapper([{ objectApiName: 'Account', lookups: { ParentId: 'Account' } }]);
+        objectInfoWrapper.ObjectToObjectInfoMap['Account'].FullRecipe = objectInfoWrapper.ObjectToObjectInfoMap['Account'].FullRecipe
+            .replace(`ParentId: ${RelationshipService.referenceIdRequiredTodo}`, 'ParentId: ParentAccount_FilledByHand');
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, true);
+        const recipeEntries = yaml.load(recipeFile.content) as LoadedRecipeEntry[];
+
+        expect([recipeEntries[0].fields.ParentId, recipeEntries[0].friends[0].fields.ParentId]).toEqual(['ParentAccount_FilledByHand', 'ParentAccount_FilledByHand']);
+
+    });
+
+    test('snowfakery recipes are unchanged: flat, one entry per object, the self-lookup a TODO', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Account', lookups: { ParentId: 'Account' } },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
+        ], false);
+
+        expect(recipeContent).not.toContain('friends:');
+        expect(recipeContent).not.toContain('_child_NickName');
+        expect(recipeContent.match(/^- object: Account$/gm)).toHaveLength(1);
+        expect(recipeContent).toContain(`    ParentId: ${RelationshipService.referenceIdRequiredTodo}`);
+
+    });
+
+    test('end to end with count > 1: each child iteration resolves to its own parent Account once inserted', async () => {
+
+        const [generatedRecipeContent] = generateRecipeContents([
+            { objectApiName: 'Account', lookups: { ParentId: 'Account' } },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
+        ], true);
+        // THREE TOP ACCOUNTS, TWO CHILD ACCOUNTS PER ACCOUNT
+        const recipeContent = generatedRecipeContent
+            .replace(/^(  count:) 1$/m, '$1 3')
+            .replace(/^(      nickname: Account_child_NickName\n      count:) 1$/m, '$1 2');
+
+        const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+        let processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };
+        for ( const recipeEntry of yaml.load(recipeContent) as LoadedRecipeEntry[] ) {
+            processedYamlWrapper = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(recipeEntry.object, recipeEntry, processedYamlWrapper);
+        }
+
+        const fakerJson = JSON.stringify(Object.values(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml).flat());
+        const collectionsByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
+
+        let referenceIdToOrgId: Record<string, string> = {};
+        const insertedRecordsByObject: Record<string, Record<string, unknown>[]> = {};
+        let insertedRecordCount = 0;
+
+        ['Account', 'Contact'].forEach(objectApiName => {
+            insertedRecordsByObject[objectApiName] = [];
+            const resolvedFileRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify(collectionsByObject.get(objectApiName)), referenceIdToOrgId)).records;
+            CollectionsApiService.partitionRecordsIntoInsertRounds(resolvedFileRecords).forEach(insertRound => {
+                const resolvedRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify({ records: insertRound }), referenceIdToOrgId)).records;
+                const fakeInsertResults = resolvedRecords.map(() => ({ id: `ID${insertedRecordCount++}`, success: true }));
+                referenceIdToOrgId = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(referenceIdToOrgId, fakeInsertResults, resolvedRecords);
+                resolvedRecords.forEach((resolvedRecord, recordIndex) => insertedRecordsByObject[objectApiName].push({ ...resolvedRecord, Id: fakeInsertResults[recordIndex].id }));
+            });
+        });
+
+        const accounts = insertedRecordsByObject['Account'];
+        const topAccounts = accounts.filter(account => account.ParentId === null);
+        const childAccounts = accounts.filter(account => account.ParentId !== null);
+        const topAccountIds = topAccounts.map(account => account.Id);
+
+        expect(accounts).toHaveLength(9);
+        expect(topAccountIds).toEqual(['ID0', 'ID1', 'ID2']);
+        expect(childAccounts.map(account => account.ParentId)).toEqual(['ID0', 'ID0', 'ID1', 'ID1', 'ID2', 'ID2']);
+        expect(insertedRecordsByObject['Contact'].map(contact => contact.AccountId)).toEqual(['ID0', 'ID1', 'ID2']);
+
+    });
+
+    test('the Recipe Cockpit writer fixture for a self-lookup is this generator\'s output', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Account', lookups: { ParentId: 'Account' } },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
+        ], true);
+
+        expect(recipeContent).toBe(fs.readFileSync(path.join(__dirname, '../../RecipeCockpitService/tests/mocks/recipeWriter/recipe-fakerjs-selfLookup--RelationshipTree_1.yml'), 'utf-8'));
+
+    });
+
+    test('a self-lookup name that is not an api name never reaches the recipe, and alone adds no iteration (#120)', () => {
+
+        const hostileFieldName = 'ParentId\n    - object: Pwned__c\n      fields:\n        Injected__c: ${{ globalThis.pwned = true }}\n    #';
+        const withHostileSelfLookup = (objectSpecifications: ObjectSpecification[]) => {
+            const objectInfoWrapper = buildObjectInfoWrapper(objectSpecifications);
+            const parentObjectToFieldReferences = objectInfoWrapper.ObjectToObjectInfoMap['Account'].RelationshipDetail.parentObjectToFieldReferences;
+            parentObjectToFieldReferences['Account'] = [...(parentObjectToFieldReferences['Account'] ?? []), hostileFieldName];
+            return new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, true)[0].content;
+        };
+
+        const onlyHostileRecipe = withHostileSelfLookup([{ objectApiName: 'Account' }]);
+        expect(onlyHostileRecipe).not.toContain('Pwned__c');
+        expect(onlyHostileRecipe).not.toContain('_child_NickName');
+        expect(RelationshipService.getWritableSelfLookupFieldNames('Missing__c', buildObjectInfoWrapper([{ objectApiName: 'Account' }]))).toEqual([]);
+
+        const mixedRecipe = withHostileSelfLookup([{ objectApiName: 'Account', lookups: { ParentId: 'Account' } }]);
+        expect(mixedRecipe).not.toContain('Pwned__c');
+        expect(mixedRecipe).toContain('    # Account (Child iteration of the Account above, through ParentId)\n');
+        expect((yaml.load(mixedRecipe) as LoadedRecipeEntry[])[0].friends.map(friend => friend.object)).toEqual(['Account']);
+
+    });
+
+    test('hasSelfLookup is true only for an object with a lookup field to its own type', () => {
+
+        const objectInfoWrapper = buildObjectInfoWrapper([
+            { objectApiName: 'Account', lookups: { ParentId: 'Account' } },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
+        ]);
+
+        expect(RelationshipService.hasSelfLookup('Account', objectInfoWrapper)).toBe(true);
+        expect(RelationshipService.hasSelfLookup('Contact', objectInfoWrapper)).toBe(false);
+        expect(RelationshipService.hasSelfLookup('Missing__c', objectInfoWrapper)).toBe(false);
+        expect(RelationshipService.buildSelfLookupIterationNickname('Account')).toBe('Account_child_NickName');
 
     });
 

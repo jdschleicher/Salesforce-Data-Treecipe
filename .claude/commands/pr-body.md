@@ -33,6 +33,9 @@ Match each comment's first line against known skill headings. Use the **most rec
 | `## ✅ Criteria Check` | Criteria Check | ✅ |
 | `## 📦 Deploy Check` | Deploy Check | 📦 |
 | `## 📋 Contract Test` | Contract Test | 📋 |
+| `## 🔒 Security Review` | Security Review | 🔒 |
+| `## 📊 PR Diagrams` | PR Diagrams | 📊 |
+| `## Review findings addressed in` | (resolution, not a row: see Step 3) | |
 
 ---
 
@@ -48,6 +51,12 @@ For each matched comment, scan the body for verdict keywords:
 | `NO-GO` | ❌ NO-GO |
 | `FAIL` | ❌ FAIL |
 | (no match) | -- Posted |
+
+**A REQUEST CHANGES / FAIL / NO-GO report that has since been addressed shows as resolved, never as still failing.** Look for a later comment that starts with `## Review findings addressed in <sha>` (the comment posted after pushing fixes). If one exists, was posted after the report, and covers that report's findings, show the row as:
+
+`✅ RESOLVED in <sha> (was ❌ REQUEST CHANGES) — [View](#issuecomment-REPORT) · [Resolution](#issuecomment-RESOLUTION)`
+
+A report re-run on the new head replaces both. Its own verdict wins, because it is the most recent comment for that skill.
 
 ---
 

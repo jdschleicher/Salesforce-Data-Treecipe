@@ -19,7 +19,9 @@
     Unlike the reader, the writer never takes the first occurrence. First-wins is the right rule for
     jumping to a line and the wrong one for changing it: an object written twice, a field written
     twice or a second "fields:" block is REFUSED, because either copy could be the one the reader
-    meant.
+    meant. The one way to name an occurrence is its NICKNAME: every operation takes an optional
+    objectNickname, which is how the nested child iteration a self-lookup adds (#188) is edited
+    apart from the object above it.
 */
 
 export type RecipeWriterOperation = 'insert-field' | 'replace-field-value' | 'comment-out-field' | 'restore-commented-out-field' | 'set-object-property';
@@ -28,6 +30,7 @@ export type RecipeObjectProperty = 'nickname' | 'count';
 
 export type RecipeWriterRefusalReason =
     | 'invalid-object-api-name'
+    | 'invalid-object-nickname'
     | 'invalid-field-api-name'
     | 'invalid-value'
     | 'object-not-found'
@@ -48,6 +51,7 @@ export interface IRecipeWriterRefusal {
     reason: RecipeWriterRefusalReason;
     message: string;
     objectApiName: string;
+    objectNickname?: string;
     fieldApiName?: string;
     propertyName?: RecipeObjectProperty;
 }
@@ -60,6 +64,7 @@ export interface IRecipeWriterRefusal {
 export interface IRecipeWriterEdit {
     operation: RecipeWriterOperation;
     objectApiName: string;
+    objectNickname?: string;
     fieldApiName?: string;
     propertyName?: RecipeObjectProperty;
     startLineNumber: number;
@@ -92,6 +97,10 @@ export interface IScannedObject {
     // THE COLUMN OF "- object:" -- 0 AT THE TOP, FOUR MORE FOR EACH friends: LEVEL
     objectIndent: number;
     headerIndex: number;
+    // THE headerIndex OF THE OBJECT WHOSE friends: BLOCK THIS ONE IS IN; ABSENT AT THE TOP LEVEL
+    parentHeaderIndex?: number;
+    // THE VALUE OF EVERY "nickname:" LINE, IN ORDER -- WHAT TELLS TWO OCCURRENCES OF ONE OBJECT APART (#188)
+    nicknames: string[];
     fieldsLineIndexes: number[];
     fields: IScannedField[];
     // THE LAST NON-BLANK LINE OF THE FIELDS BLOCK -- A FIELD, A CONTINUATION OR A COMMENT -- WHICH IS WHERE AN INSERT GOES AFTER
@@ -172,26 +181,28 @@ export class RecipeCockpitRecipeWriter {
         written for a TOP-LEVEL object; for a friend, every continuation line is moved to the
         friend's depth, as RelationshipService moves the whole recipe when it nests one (#46).
     */
-    static insertField(recipeText: string, objectApiName: string, fieldApiName: string, valueText: string): RecipeWriterResult {
+    static insertField(recipeText: string, objectApiName: string, fieldApiName: string, valueText: string, objectNickname?: string): RecipeWriterResult {
 
-        const located = this.locateObject(recipeText, objectApiName, fieldApiName);
+        const objectLabel = this.describeObject(objectApiName, objectNickname);
+
+        const located = this.locateObject(recipeText, objectApiName, fieldApiName, objectNickname);
         if ( 'refusal' in located ) {
             return located;
         }
         const { recipeLines, scannedObject } = located;
 
-        const fieldsBlockRefusal = this.refuseUnlessOneFieldsBlock(scannedObject, fieldApiName);
+        const fieldsBlockRefusal = this.refuseUnlessOneFieldsBlock(scannedObject, fieldApiName, objectNickname);
         if ( fieldsBlockRefusal ) {
             return fieldsBlockRefusal;
         }
 
         if ( scannedObject.fields.some(scannedField => scannedField.fieldApiName === fieldApiName) ) {
-            return this.refuse('field-already-exists', `${objectApiName} already has a ${fieldApiName} line, so it is not inserted again.`, objectApiName, fieldApiName);
+            return this.refuse('field-already-exists', `${objectLabel} already has a ${fieldApiName} line, so it is not inserted again.`, objectApiName, fieldApiName, objectNickname);
         }
 
         const fieldLines = this.buildFieldLines(fieldApiName, valueText, this.getObjectLayout(scannedObject.objectIndent));
         if ( !fieldLines ) {
-            return this.refuseInvalidValue(objectApiName, fieldApiName);
+            return this.refuseInvalidValue(objectApiName, fieldApiName, objectNickname);
         }
 
         const insertAfterIndex = scannedObject.lastFieldsBlockLineIndex;
@@ -199,26 +210,30 @@ export class RecipeCockpitRecipeWriter {
         return this.applySplice(recipeLines, { startIndex: insertAfterIndex + 1, endIndex: insertAfterIndex + 1 }, fieldLines, {
             operation: 'insert-field',
             objectApiName: objectApiName,
+            ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
             fieldApiName: fieldApiName
         });
 
     }
 
-    static replaceFieldValue(recipeText: string, objectApiName: string, fieldApiName: string, valueText: string): RecipeWriterResult {
+    static replaceFieldValue(recipeText: string, objectApiName: string, fieldApiName: string, valueText: string, objectNickname?: string): RecipeWriterResult {
 
-        const located = this.locateField(recipeText, objectApiName, fieldApiName);
+        const objectLabel = this.describeObject(objectApiName, objectNickname);
+
+        const located = this.locateField(recipeText, objectApiName, fieldApiName, objectNickname);
         if ( 'refusal' in located ) {
             return located;
         }
 
         const fieldLines = this.buildFieldLines(fieldApiName, valueText, located.layout);
         if ( !fieldLines ) {
-            return this.refuseInvalidValue(objectApiName, fieldApiName);
+            return this.refuseInvalidValue(objectApiName, fieldApiName, objectNickname);
         }
 
         return this.applySplice(located.recipeLines, located.scannedField, fieldLines, {
             operation: 'replace-field-value',
             objectApiName: objectApiName,
+            ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
             fieldApiName: fieldApiName
         });
 
@@ -235,9 +250,11 @@ export class RecipeCockpitRecipeWriter {
         own directly below would read as more of the field. The lines sit at four spaces rather
         than deeper, because deeper lines would read as the continuation of the field above them.
     */
-    static commentOutField(recipeText: string, objectApiName: string, fieldApiName: string, reason: string): RecipeWriterResult {
+    static commentOutField(recipeText: string, objectApiName: string, fieldApiName: string, reason: string, objectNickname?: string): RecipeWriterResult {
 
-        const located = this.locateField(recipeText, objectApiName, fieldApiName);
+        const objectLabel = this.describeObject(objectApiName, objectNickname);
+
+        const located = this.locateField(recipeText, objectApiName, fieldApiName, objectNickname);
         if ( 'refusal' in located ) {
             return located;
         }
@@ -246,7 +263,7 @@ export class RecipeCockpitRecipeWriter {
         const fieldLines = recipeLines.lines.slice(scannedField.startIndex, scannedField.endIndex);
 
         if ( fieldLines.some(fieldLine => fieldLine && !fieldLine.startsWith(layout.fieldIndent)) ) {
-            return this.refuse('unsupported-field-layout', `${objectApiName}.${fieldApiName} has a line of one to three spaces inside it, which commenting out could not give back exactly.`, objectApiName, fieldApiName);
+            return this.refuse('unsupported-field-layout', `${objectLabel}.${fieldApiName} has a line of one to three spaces inside it, which commenting out could not give back exactly.`, objectApiName, fieldApiName, objectNickname);
         }
 
         // EVERY LINE BREAK PyYAML READS -- U+0085 IS NOT IN \s -- AND EVERY CONTROL CHARACTER, SO THE REASON CANNOT END THE COMMENT
@@ -260,51 +277,57 @@ export class RecipeCockpitRecipeWriter {
         return this.applySplice(recipeLines, scannedField, [markerLine, ...commentedLines], {
             operation: 'comment-out-field',
             objectApiName: objectApiName,
+            ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
             fieldApiName: fieldApiName
         });
 
     }
 
-    static restoreCommentedOutField(recipeText: string, objectApiName: string, fieldApiName: string): RecipeWriterResult {
+    static restoreCommentedOutField(recipeText: string, objectApiName: string, fieldApiName: string, objectNickname?: string): RecipeWriterResult {
 
-        const located = this.locateObject(recipeText, objectApiName, fieldApiName);
+        const objectLabel = this.describeObject(objectApiName, objectNickname);
+
+        const located = this.locateObject(recipeText, objectApiName, fieldApiName, objectNickname);
         if ( 'refusal' in located ) {
             return located;
         }
         const { recipeLines, scannedObject } = located;
 
         if ( scannedObject.fields.some(scannedField => scannedField.fieldApiName === fieldApiName) ) {
-            return this.refuse('field-already-exists', `${objectApiName} already has a ${fieldApiName} line, so the commented-out one is not restored over it.`, objectApiName, fieldApiName);
+            return this.refuse('field-already-exists', `${objectLabel} already has a ${fieldApiName} line, so the commented-out one is not restored over it.`, objectApiName, fieldApiName, objectNickname);
         }
 
         const markers = scannedObject.commentedOutFieldMarkers.filter(marker => marker.fieldApiName === fieldApiName);
 
         if ( markers.length === 0 ) {
-            return this.refuse('commented-out-field-not-found', `${objectApiName} has no ${fieldApiName} commented out by the Recipe Cockpit.`, objectApiName, fieldApiName);
+            return this.refuse('commented-out-field-not-found', `${objectLabel} has no ${fieldApiName} commented out by the Recipe Cockpit.`, objectApiName, fieldApiName, objectNickname);
         }
 
         if ( markers.length > 1 ) {
-            return this.refuse('duplicate-commented-out-field', `${objectApiName} has ${fieldApiName} commented out more than once, so which to restore cannot be told.`, objectApiName, fieldApiName);
+            return this.refuse('duplicate-commented-out-field', `${objectLabel} has ${fieldApiName} commented out more than once, so which to restore cannot be told.`, objectApiName, fieldApiName, objectNickname);
         }
 
         const [marker] = markers;
         const restoredLines = this.readCommentedOutFieldLines(recipeLines.lines, marker, this.getObjectLayout(scannedObject.objectIndent));
 
         if ( !restoredLines ) {
-            return this.refuse('commented-out-field-altered', `The lines under ${objectApiName}'s ${fieldApiName} marker are not the ones commenting it out wrote, so restoring them could not give the field back exactly.`, objectApiName, fieldApiName);
+            return this.refuse('commented-out-field-altered', `The lines under ${objectLabel}'s ${fieldApiName} marker are not the ones commenting it out wrote, so restoring them could not give the field back exactly.`, objectApiName, fieldApiName, objectNickname);
         }
 
         return this.applySplice(recipeLines, marker, restoredLines, {
             operation: 'restore-commented-out-field',
             objectApiName: objectApiName,
+            ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
             fieldApiName: fieldApiName
         });
 
     }
 
-    static setObjectProperty(recipeText: string, objectApiName: string, propertyName: RecipeObjectProperty, value: string | number): RecipeWriterResult {
+    static setObjectProperty(recipeText: string, objectApiName: string, propertyName: RecipeObjectProperty, value: string | number, objectNickname?: string): RecipeWriterResult {
 
-        const located = this.locateObject(recipeText, objectApiName);
+        const objectLabel = this.describeObject(objectApiName, objectNickname);
+
+        const located = this.locateObject(recipeText, objectApiName, undefined, objectNickname);
         if ( 'refusal' in located ) {
             return located;
         }
@@ -317,9 +340,10 @@ export class RecipeCockpitRecipeWriter {
                 refusal: {
                     reason: 'invalid-value',
                     message: propertyName === 'count'
-                        ? `The count for ${objectApiName} must be a whole number of zero or more.`
-                        : `The nickname for ${objectApiName} must be a name of letters, digits and underscores, starting with a letter.`,
+                        ? `The count for ${objectLabel} must be a whole number of zero or more.`
+                        : `The nickname for ${objectLabel} must be a name of letters, digits and underscores, starting with a letter.`,
                     objectApiName: objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
                     propertyName: propertyName
                 }
             };
@@ -333,9 +357,10 @@ export class RecipeCockpitRecipeWriter {
                 refusal: {
                     reason: propertyLineIndexes.length === 0 ? 'property-not-found' : 'duplicate-property',
                     message: propertyLineIndexes.length === 0
-                        ? `${objectApiName} has no "${propertyName}:" line to set.`
-                        : `${objectApiName} has more than one "${propertyName}:" line, so which to set cannot be told.`,
+                        ? `${objectLabel} has no "${propertyName}:" line to set.`
+                        : `${objectLabel} has more than one "${propertyName}:" line, so which to set cannot be told.`,
                     objectApiName: objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
                     propertyName: propertyName
                 }
             };
@@ -346,6 +371,7 @@ export class RecipeCockpitRecipeWriter {
         return this.applySplice(recipeLines, { startIndex: propertyLineIndex, endIndex: propertyLineIndex + 1 }, [`${this.getObjectLayout(scannedObject.objectIndent).propertyIndent}${propertyName}: ${propertyValueText}`], {
             operation: 'set-object-property',
             objectApiName: objectApiName,
+            ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
             propertyName: propertyName
         });
 
@@ -414,6 +440,8 @@ export class RecipeCockpitRecipeWriter {
                     objectApiName: objectHeaderMatch[2],
                     objectIndent: objectIndent,
                     headerIndex: lineIndex,
+                    ...( isFriendHeader ? { parentHeaderIndex: openObjects[parentDepth].scannedObject.headerIndex } : {} ),
+                    nicknames: [],
                     fieldsLineIndexes: [],
                     fields: [],
                     lastFieldsBlockLineIndex: -1,
@@ -493,6 +521,10 @@ export class RecipeCockpitRecipeWriter {
             const propertyMatch = layout.propertyLinePattern.exec(recipeLine);
             if ( propertyMatch ) {
                 scannedObject.propertyLineIndexes[propertyMatch[1] as RecipeObjectProperty].push(lineIndex);
+                if ( propertyMatch[1] === 'nickname' ) {
+                    // A YAML COMMENT AFTER THE VALUE IS NOT PART OF THE NICKNAME, OR THE OCCURRENCE COULD NOT BE ADDRESSED BY IT
+                    scannedObject.nicknames.push(recipeLine.slice(propertyMatch[0].length).replace(/\s#.*$/, '').trim());
+                }
             }
 
         });
@@ -560,67 +592,94 @@ export class RecipeCockpitRecipeWriter {
         return commentedLine === layout.commentPrefix ? '' : `${layout.fieldIndent}${commentedLine.slice(layout.commentPrefix.length + 1)}`;
     }
 
-    private static locateObject(recipeText: string, objectApiName: string, fieldApiName?: string):
+    /*
+        An object written more than once -- a self-lookup's nested iteration (#188), or a file edited
+        by hand -- is picked out by its nickname. Without one, or with one that more than one
+        occurrence carries, it is refused rather than guessed.
+    */
+    private static locateObject(recipeText: string, objectApiName: string, fieldApiName?: string, objectNickname?: string):
         { recipeLines: IRecipeLines; scannedObject: IScannedObject } | { isApplied: false; refusal: IRecipeWriterRefusal } {
 
         if ( !API_NAME_PATTERN.test(objectApiName) ) {
-            return this.refuse('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName, fieldApiName);
+            return this.refuse('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName, fieldApiName, objectNickname);
+        }
+
+        if ( objectNickname !== undefined && !API_NAME_PATTERN.test(objectNickname) ) {
+            return this.refuse('invalid-object-nickname', `"${objectNickname}" is not a nickname.`, objectApiName, fieldApiName, objectNickname);
         }
 
         if ( fieldApiName !== undefined && !API_NAME_PATTERN.test(fieldApiName) ) {
-            return this.refuse('invalid-field-api-name', `"${fieldApiName}" is not a field api name.`, objectApiName, fieldApiName);
+            return this.refuse('invalid-field-api-name', `"${fieldApiName}" is not a field api name.`, objectApiName, fieldApiName, objectNickname);
         }
 
         const recipeLines = this.splitRecipeLines(recipeText);
-        const scannedObjects = this.scanRecipeObjects(recipeLines.lines).filter(scannedObject => scannedObject.objectApiName === objectApiName);
+        const scannedObjects = this.scanRecipeObjects(recipeLines.lines)
+            .filter(scannedObject => scannedObject.objectApiName === objectApiName
+                                        && ( objectNickname === undefined || scannedObject.nicknames.includes(objectNickname) ));
 
         if ( scannedObjects.length === 0 ) {
-            return this.refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" line.`, objectApiName, fieldApiName);
+            return this.refuse('object-not-found',
+                objectNickname === undefined
+                    ? `The recipe has no "- object: ${objectApiName}" line.`
+                    : `The recipe has no "- object: ${objectApiName}" with the nickname ${objectNickname}.`,
+                objectApiName, fieldApiName, objectNickname);
         }
 
         if ( scannedObjects.length > 1 ) {
-            return this.refuse('duplicate-object', `The recipe has ${scannedObjects.length} "- object: ${objectApiName}" lines, so which to change cannot be told.`, objectApiName, fieldApiName);
+            return this.refuse('duplicate-object',
+                objectNickname === undefined
+                    ? `The recipe has ${scannedObjects.length} "- object: ${objectApiName}" lines, so which to change cannot be told without a nickname.`
+                    : `The recipe has ${scannedObjects.length} "- object: ${objectApiName}" lines with the nickname ${objectNickname}, so which to change cannot be told.`,
+                objectApiName, fieldApiName, objectNickname);
         }
 
         return { recipeLines: recipeLines, scannedObject: scannedObjects[0] };
 
     }
 
-    private static locateField(recipeText: string, objectApiName: string, fieldApiName: string):
+    private static locateField(recipeText: string, objectApiName: string, fieldApiName: string, objectNickname?: string):
         { recipeLines: IRecipeLines; scannedField: IScannedField; layout: IRecipeObjectLayout } | { isApplied: false; refusal: IRecipeWriterRefusal } {
 
-        const located = this.locateObject(recipeText, objectApiName, fieldApiName);
+        const located = this.locateObject(recipeText, objectApiName, fieldApiName, objectNickname);
         if ( 'refusal' in located ) {
             return located;
         }
 
-        const fieldsBlockRefusal = this.refuseUnlessOneFieldsBlock(located.scannedObject, fieldApiName);
+        const fieldsBlockRefusal = this.refuseUnlessOneFieldsBlock(located.scannedObject, fieldApiName, objectNickname);
         if ( fieldsBlockRefusal ) {
             return fieldsBlockRefusal;
         }
 
+        const objectLabel = this.describeObject(objectApiName, objectNickname);
         const scannedFields = located.scannedObject.fields.filter(scannedField => scannedField.fieldApiName === fieldApiName);
 
         if ( scannedFields.length === 0 ) {
-            return this.refuse('field-not-found', `${objectApiName} has no ${fieldApiName} line in its fields.`, objectApiName, fieldApiName);
+            return this.refuse('field-not-found', `${objectLabel} has no ${fieldApiName} line in its fields.`, objectApiName, fieldApiName, objectNickname);
         }
 
         if ( scannedFields.length > 1 ) {
-            return this.refuse('duplicate-field', `${objectApiName} has ${fieldApiName} more than once, so which to change cannot be told.`, objectApiName, fieldApiName);
+            return this.refuse('duplicate-field', `${objectLabel} has ${fieldApiName} more than once, so which to change cannot be told.`, objectApiName, fieldApiName, objectNickname);
         }
 
         return { recipeLines: located.recipeLines, scannedField: scannedFields[0], layout: this.getObjectLayout(located.scannedObject.objectIndent) };
 
     }
 
-    private static refuseUnlessOneFieldsBlock(scannedObject: IScannedObject, fieldApiName: string): { isApplied: false; refusal: IRecipeWriterRefusal } | undefined {
+    // "Account" -- OR "Account (Account_child_NickName)" WHEN THE CALLER PICKED ONE OCCURRENCE BY NICKNAME
+    private static describeObject(objectApiName: string, objectNickname?: string): string {
+        return objectNickname === undefined ? objectApiName : `${objectApiName} (${objectNickname})`;
+    }
+
+    private static refuseUnlessOneFieldsBlock(scannedObject: IScannedObject, fieldApiName: string, objectNickname?: string): { isApplied: false; refusal: IRecipeWriterRefusal } | undefined {
+
+        const objectLabel = this.describeObject(scannedObject.objectApiName, objectNickname);
 
         if ( scannedObject.fieldsLineIndexes.length === 0 ) {
-            return this.refuse('fields-block-not-found', `${scannedObject.objectApiName} has no "  fields:" line.`, scannedObject.objectApiName, fieldApiName);
+            return this.refuse('fields-block-not-found', `${objectLabel} has no "  fields:" line.`, scannedObject.objectApiName, fieldApiName, objectNickname);
         }
 
         if ( scannedObject.fieldsLineIndexes.length > 1 ) {
-            return this.refuse('duplicate-fields-block', `${scannedObject.objectApiName} has more than one "  fields:" line, so which to change cannot be told.`, scannedObject.objectApiName, fieldApiName);
+            return this.refuse('duplicate-fields-block', `${objectLabel} has more than one "  fields:" line, so which to change cannot be told.`, scannedObject.objectApiName, fieldApiName, objectNickname);
         }
 
         return undefined;
@@ -717,22 +776,24 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
-    private static refuseInvalidValue(objectApiName: string, fieldApiName: string): { isApplied: false; refusal: IRecipeWriterRefusal } {
+    private static refuseInvalidValue(objectApiName: string, fieldApiName: string, objectNickname?: string): { isApplied: false; refusal: IRecipeWriterRefusal } {
         return this.refuse(
             'invalid-value',
-            `The value for ${objectApiName}.${fieldApiName} does not keep the recipe layout: every line after the first must be indented five spaces or more, and the last must not be blank.`,
+            `The value for ${this.describeObject(objectApiName, objectNickname)}.${fieldApiName} does not keep the recipe layout: every line after the first must be indented five spaces or more, and the last must not be blank.`,
             objectApiName,
-            fieldApiName
+            fieldApiName,
+            objectNickname
         );
     }
 
-    private static refuse(reason: RecipeWriterRefusalReason, message: string, objectApiName: string, fieldApiName?: string): { isApplied: false; refusal: IRecipeWriterRefusal } {
+    private static refuse(reason: RecipeWriterRefusalReason, message: string, objectApiName: string, fieldApiName?: string, objectNickname?: string): { isApplied: false; refusal: IRecipeWriterRefusal } {
         return {
             isApplied: false,
             refusal: {
                 reason: reason,
                 message: message,
                 objectApiName: objectApiName,
+                ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
                 ...( fieldApiName !== undefined ? { fieldApiName: fieldApiName } : {} )
             }
         };

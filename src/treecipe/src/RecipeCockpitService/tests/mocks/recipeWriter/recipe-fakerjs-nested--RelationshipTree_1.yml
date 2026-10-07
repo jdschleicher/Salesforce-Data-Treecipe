@@ -310,6 +310,226 @@
                     ${{faker.location.latitude({ min: -90, max: 90 })}}
         Geolocation__Longitude__s: |
                     ${{faker.location.longitude({ min: -180, max: 180 })}}
+      friends:
+        # Example_Everything__c (Child iteration of the Example_Everything__c above, through Example_Everything_Lookup__c)
+        - object: Example_Everything__c
+          nickname: Example_Everything__c_child_NickName
+          count: 1
+          fields:
+            RecordTypeId: Example_Everything__c.OneRecType
+                            ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection
+                            # Example_Everything__c.TwoRecType
+            AccountLookup__c: Account_NickName
+            Checkbox__c: ${{ faker.datatype.boolean() }}
+            Currency__c: |
+                    ${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}
+            DateOne__c: |
+                        ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+            DateTimeOne__c: |
+                        ${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
+            DateTimeTwo__c: |
+                        ${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
+            DateTime__c: |
+                        ${{ faker.date.between({ from: new Date('2023-01-01T00:00:00Z'), to: new Date() }).toISOString() }}
+            DateTwo__c: |
+                        ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+            Date__c: |
+                        ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+            DependentPicklist__c: 
+              if:
+                - choice:
+                    when: ${{ Picklist__c == 'cle' }}
+                    pick:
+                        random_choice:
+                            - tree
+                            - weed
+                            - mulch
+                            - rocks
+                            ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
+                            - mulch
+                            - rocks
+                            - tree
+                            - weed
+                            ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
+                            - mulch
+                            - plant
+                            - rocks
+                            - tree
+                - choice:
+                    when: ${{ Picklist__c == 'eastlake' }}
+                    pick:
+                        random_choice:
+                            - tree
+                            - weed
+                            - mulch
+                            ### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- OneRecType
+                            - mulch
+                            - rocks
+                            - tree
+                            - weed
+                            ### TODO: -- RecordType Options -- TwoRecType -- "eastlake" is not an available value for Picklist__c for record type TwoRecType
+                - choice:
+                    when: ${{ Picklist__c == 'madison' }}
+                    pick:
+                        random_choice:
+                            - tree
+                            - plant
+                            - weed
+                            ### TODO: -- RecordType Options -- OneRecType -- "madison" is not an available value for Picklist__c for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- "madison" is not an available value for Picklist__c for record type TwoRecType
+                - choice:
+                    when: ${{ Picklist__c == 'willoughby' }}
+                    pick:
+                        random_choice:
+                            - tree
+                            - weed
+                            - mulch
+                            ### TODO: -- RecordType Options -- OneRecType -- "willoughby" is not an available value for Picklist__c for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- SELECT THIS SECTION OF OPTIONS IF USING RECORD TYPE -- TwoRecType
+                            - mulch
+                            - plant
+                            - rocks
+                            - tree
+                - choice:
+                    when: ${{ Picklist__c == 'mentor' }}
+                    pick:
+                        random_choice:
+                            - plant
+                            - weed
+                            ### TODO: -- RecordType Options -- OneRecType -- "mentor" is not an available value for Picklist__c for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- "mentor" is not an available value for Picklist__c for record type TwoRecType
+                - choice:
+                    when: ${{ Picklist__c == 'wickliffe' }}
+                    pick:
+                        random_choice:
+                            - weed
+                            - rocks
+                            ### TODO: -- RecordType Options -- OneRecType -- "wickliffe" is not an available value for Picklist__c for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- "wickliffe" is not an available value for Picklist__c for record type TwoRecType
+            Email__c: ${{ faker.internet.email() }}
+            Example_Everything_Lookup__c: Example_Everything__c_NickName
+            Formula__c: |
+                    ${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}
+            GlobalSuperDependent__c: 
+              if:
+                - choice:
+                    when: ${{ DependentPicklist__c == 'tree' }}
+                    pick:
+                        random_choice:
+                            - earth
+                            - planet
+                            - mars
+                            - venus
+                            ### TODO: -- RecordType Options -- OneRecType -- GlobalSuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- GlobalSuperDependent__c is not an available field for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'weed' }}
+                    pick:
+                        random_choice:
+                            - earth
+                            - planet
+                            - world
+                            ### TODO: -- RecordType Options -- OneRecType -- GlobalSuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- "weed" is not an available value for DependentPicklist__c for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'rocks' }}
+                    pick:
+                        random_choice:
+                            - earth
+                            - neptune
+                            - saturn
+                            ### TODO: -- RecordType Options -- OneRecType -- GlobalSuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- GlobalSuperDependent__c is not an available field for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'mulch' }}
+                    pick:
+                        random_choice:
+                            - planet
+                            - mars
+                            - venus
+                            ### TODO: -- RecordType Options -- OneRecType -- GlobalSuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- GlobalSuperDependent__c is not an available field for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'plant' }}
+                    pick:
+                        random_choice:
+                            - neptune
+                            - saturn
+                            ### TODO: -- RecordType Options -- OneRecType -- "plant" is not an available value for DependentPicklist__c for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- GlobalSuperDependent__c is not an available field for record type TwoRecType
+            GlobalValuePicklist__c: ### TODO: This picklist field needs manually updated with either a standard value set list or global value set
+            MultiPicklist__c: ${{ (faker.helpers.arrayElements([`chicken`,`chorizo`,`egg`,`fish`,`pork`,`steak`,`tofu`])).join(';') }}
+                            ### TODO: -- RecordType Options -- OneRecType -- Below is the Multiselect faker recipe for the record type OneRecType for the field MultiPicklist__c
+                            # ${{ (faker.helpers.arrayElements([`chorizo`,`pork`,`steak`,`tofu`])).join(';') }}
+                            ### TODO: -- RecordType Options -- TwoRecType -- Below is the Multiselect faker recipe for the record type TwoRecType for the field MultiPicklist__c
+                            # ${{ (faker.helpers.arrayElements([`chicken`,`egg`,`fish`,`tofu`])).join(';') }}
+            Number__c: |
+                    ${{ faker.number.int({min: 0, max: 999999999999999999}) }}
+            Percent__c: |
+                    ${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}
+            Phone__c: |
+                        ${{ faker.phone.number({style:'national'}) }}
+            Picklist__c: ${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}
+                            ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                            # ${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}
+                            ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                            # ${{ faker.helpers.arrayElement([`cle`,`willoughby`]) }}
+            PlanetGlobalValuePicklist__c: ### TODO: This picklist field needs manually updated with either a standard value set list or global value set
+            RichTextAreaHtml__c: ${{ faker.lorem.text(131072).substring(0, 131072) }}
+            SuperDependent__c: 
+              if:
+                - choice:
+                    when: ${{ DependentPicklist__c == 'weed' }}
+                    pick:
+                        random_choice:
+                            - ranch
+                            ### TODO: -- RecordType Options -- OneRecType -- SuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- "weed" is not an available value for DependentPicklist__c for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'rocks' }}
+                    pick:
+                        random_choice:
+                            - ranch
+                            - blue cheese
+                            ### TODO: -- RecordType Options -- OneRecType -- SuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- SuperDependent__c is not an available field for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'tree' }}
+                    pick:
+                        random_choice:
+                            - blue cheese
+                            - french
+                            - balsamic
+                            - caeser
+                            ### TODO: -- RecordType Options -- OneRecType -- SuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- SuperDependent__c is not an available field for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'plant' }}
+                    pick:
+                        random_choice:
+                            - french
+                            - balsamic
+                            ### TODO: -- RecordType Options -- OneRecType -- "plant" is not an available value for DependentPicklist__c for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- SuperDependent__c is not an available field for record type TwoRecType
+                - choice:
+                    when: ${{ DependentPicklist__c == 'mulch' }}
+                    pick:
+                        random_choice:
+                            - french
+                            - balsamic
+                            - caeser
+                            ### TODO: -- RecordType Options -- OneRecType -- SuperDependent__c is not an available field for record type OneRecType
+                            ### TODO: -- RecordType Options -- TwoRecType -- SuperDependent__c is not an available field for record type TwoRecType
+            TextAreaRich__c: ${{ faker.lorem.text(32768).substring(0, 32768) }}
+            Text_Area_Long__c: ${{ faker.lorem.text(131072).substring(0, 131072) }}
+            Text__c: ${{ faker.lorem.text(255).substring(0, 255) }}
+            Time__c: |
+                        ${{ faker.date.between({ from: new Date('1970-01-01T00:00:00Z'), to: new Date('1970-01-01T23:59:59Z') }).toISOString().split('T')[1] }}
+            Url__c: ${{ faker.internet.url() }}
+            Geolocation__Latitude__s: |
+                        ${{faker.location.latitude({ min: -90, max: 90 })}}
+            Geolocation__Longitude__s: |
+                        ${{faker.location.longitude({ min: -180, max: 180 })}}
     # Opportunity (Parents: Account)
     - object: Opportunity
       nickname: Opportunity_NickName
