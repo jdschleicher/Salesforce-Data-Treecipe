@@ -1,5 +1,50 @@
 # Change Log
 
+## [3.36.0] - The Recipe Cockpit's Data-by-Org view counts each tree's records in an org
+
+Closes [#179](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/179), slice 6 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+There was no way to see, from the recipe's point of view, how much data an org holds for each object in each relationship tree.
+
+- **A Data-by-Org view joins the view switch:** Recipe Trees · Data-by-Org · Classic list. It is the only place in the redesigned views that picks an org; the Classic list's **Compare with an org…** is unchanged. The find box is hidden in this view, since it lists no fields to find.
+- **Org dropdown** (a native `<select>`):
+  - Its options are the CLI's authorized orgs from `SalesforceOrgService`, labelled by alias, or by username when there is no alias.
+  - The host posts LABELS only. The panel posts back the chosen option's **index into the list the host posted** (`selectDataOrg {orgIndex}`), never a name, and the host refuses anything that is not an integer index into that list. The username never reaches the panel.
+  - With no authorized orgs it shows the existing "no authorized orgs" message.
+- **On choosing an org** the host connects by username and queries `SELECT IsSandbox, OrganizationType FROM Organization`. The label reads **Sandbox**, or **Production · \<OrganizationType\>** (a Developer Edition is Production). A failed query reads **type unknown**, and the counts still load.
+- **The choice is remembered per workspace** in `context.workspaceState`, keyed by username.
+  - Reopening the cockpit preselects it, but contacts no org until the Data-by-Org view is opened. Listing the orgs reads only the CLI's local authorizations.
+  - An org no longer authorized is dropped silently, and forgotten.
+- **Counts:**
+  - Every tree is listed in Recipe Trees order. Its header shows the object count and the total records in the org (`3 objects · 4,500 records in the org`, with `· 2 not counted` when some could not be).
+  - Expanding a tree lists its objects in insert order with `SELECT COUNT() FROM <Object>` counts: a number, `not in org`, `no access` or `could not count`, with the reason on hover.
+  - A later occurrence of an object (#188's child iteration) is the same object in the org, and is counted once.
+  - Counts are posted as they arrive, ten at a time, with an `n of m` progress line.
+- **New `SalesforceOrgService.countRecords`:**
+  - checks each name with `isUsableObjectApiName` before any query, so `Account; DELETE` is refused and never reaches SOQL
+  - runs 5 queries at a time
+  - caches successes per username and object for the session, never failures
+  - reports each object as `count`, `notInOrg` (`INVALID_TYPE`), `noAccess` (`INSUFFICIENT_ACCESS…`) or `failed`
+  - `queryOrganizationType`, `normalizeOrganizationResult` and `buildOrgTypeLabel` are the org type; an answer not typed as expected is undefined, never a guess either way
+- **A failed connection** is reported once for the whole org, not per object, and every row then reads `could not count`.
+- **⟳** clears the selected org's cached counts and counts again.
+- **Stale answers are dropped.** Each selection carries a `requestSequence`, and every count and selection message carries the model's `renderSequence`.
+  - The host stops counting, and posts nothing more, for a selection the reader has replaced or a model that is no longer on screen. Choosing another org mid-count discards the first org's answers.
+  - The panel drops a message for an older selection or an older model.
+  - A new model empties the countable objects until its `rendered`, like every other allow-list. The panel asks again for the new model when Data-by-Org is on screen.
+- **Read-only.** Nothing writes to an org.
+
+**Tests.**
+- **`SalesforceOrgService`:** `countRecords` and its cache (per username, per object, failures never cached, clearing one org or one object), the five-at-a-time limit, refusal of non-api names before any connection, a failed connection, cancellation, and the org-type query and its labels.
+- **`RecipeCockpitDataByOrg.test.ts`** (new):
+  - index-only routing, refusing a username, an alias, a string, an out-of-range, negative or fractional index, and a selection before the draw is confirmed
+  - workspaceState persistence: remembered on select, preselected on reopen with no org contacted until asked, and an unauthorized org dropped without a warning
+  - sandbox, Developer Edition and type-unknown labels; notInOrg; a failed connection reported once
+  - stale-answer dropping: another org mid-count, and a new model mid-count; ⟳ re-counting
+  - panel rendering: the view switch, tree and object order, the select's labels and posted index, counts and totals, uncountable objects, older selections and models dropped, a failed connection, ⟳, and labels written as text
+- **`RecipeCockpitPanelHarness.ts`:** the fake-DOM harness that runs the real panel script, moved out of `RecipeCockpitService.test.ts` so both suites share it.
+- **`ExtensionCommandService`:** the cockpit is handed the extension's `workspaceState`.
+
 ## [3.35.0] - A self-lookup adds a nested child iteration of the same object
 
 Closes [#188](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/188), a follow-up to [#46](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/46) under [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

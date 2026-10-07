@@ -95,7 +95,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	const openRecipeCockpit = vscode.commands.registerCommand("treecipe.openRecipeCockpit", () => {
 
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.openRecipeCockpit();
+		// WHERE DATA-BY-ORG REMEMBERS THE ORG IT LAST COUNTED IN, PER WORKSPACE
+		extensionCommandService.openRecipeCockpit(context.workspaceState);
 
 	});
 

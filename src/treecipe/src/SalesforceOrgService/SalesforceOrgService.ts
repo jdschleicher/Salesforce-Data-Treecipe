@@ -87,6 +87,50 @@ export interface IOrgDescribeRequestOptions {
     isCancellationRequested?: () => boolean;
 }
 
+/*
+    One object's record count in an org. "notInOrg" is INVALID_TYPE -- the org has no such object,
+    or the user cannot see it at all -- and "noAccess" an INSUFFICIENT_ACCESS answer; anything else
+    the query threw is "failed" with its message. recordCount is set only on "count".
+*/
+export type OrgRecordCountStatus = 'count' | 'notInOrg' | 'noAccess' | 'failed';
+
+export interface IOrgRecordCountOutcome {
+    objectApiName: string;
+    status: OrgRecordCountStatus;
+    recordCount?: number;
+    failureMessage?: string;
+    wasCached: boolean;
+}
+
+export interface IOrgRecordCountRequestResult {
+    outcomes: IOrgRecordCountOutcome[];
+    wasCancelled: boolean;
+}
+
+// THE ONE METHOD OF A CONNECTION THE COUNT AND ORGANIZATION QUERIES CALL
+export interface IOrgQuerySource {
+    query(soql: string): Promise<unknown>;
+}
+
+export interface IOrgRecordCountRequestOptions {
+    onObjectCounted?: (countOutcome: IOrgRecordCountOutcome, completedCount: number, requestedCount: number) => void;
+    isCancellationRequested?: () => boolean;
+}
+
+/*
+    The org's Organization row, as far as the cockpit reads it. A query that failed, or an answer
+    that does not carry both values typed as expected, is undefined -- never "not a sandbox" or
+    "a sandbox" by default, so whatever needs to know fails closed.
+*/
+export interface IOrgTypeDetail {
+    isSandbox: boolean;
+    organizationType: string;
+}
+
+export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
+
+export const ORG_ORGANIZATION_QUERY = 'SELECT IsSandbox, OrganizationType FROM Organization';
+
 export class SalesforceOrgService {
 
     /*
@@ -105,6 +149,206 @@ export class SalesforceOrgService {
 
     }
 
+    // KEYED LIKE THE DESCRIBE CACHE, BY USERNAME AND OBJECT, AND LIKE IT HOLDING ONLY SUCCESSES
+    private static recordCountCache = new Map<string, number>();
+
+    /*
+        With a username, only that org's counts -- what the cockpit's ⟳ asks for; with an object
+        name too, only that one count, which is what a Create that just inserted records needs.
+    */
+    static clearRecordCountCache(orgUsername?: string, objectApiName?: string) {
+
+        if ( orgUsername === undefined ) {
+            this.recordCountCache.clear();
+            return;
+        }
+
+        if ( objectApiName !== undefined ) {
+            this.recordCountCache.delete(this.buildDescribeCacheKey(orgUsername, objectApiName));
+            return;
+        }
+
+        const usernamePrefix = `${orgUsername}\n`;
+        [...this.recordCountCache.keys()]
+            .filter(cacheKey => cacheKey.startsWith(usernamePrefix))
+            .forEach(cacheKey => this.recordCountCache.delete(cacheKey));
+
+    }
+
+    static getCachedRecordCount(orgUsername: string, objectApiName: string): number | undefined {
+
+        return this.recordCountCache.get(this.buildDescribeCacheKey(orgUsername, objectApiName));
+
+    }
+
+    /*
+        SELECT COUNT() for each requested object, five at a time, answering from the session cache
+        where it can -- the same shape as describeObjects, for the same reasons. A name that is not
+        an api name is refused before any query: it is interpolated into SOQL, where "Account; DELETE"
+        would otherwise be sent. A connection failure throws, because it is an answer about the org;
+        a query failure is that object's outcome.
+    */
+    static async countRecords(orgUsername: string,
+                                objectApiNames: string[],
+                                querySourceFactory: () => Promise<IOrgQuerySource>,
+                                requestOptions: IOrgRecordCountRequestOptions = {}): Promise<IOrgRecordCountRequestResult> {
+
+        const requestedObjectApiNames = [...new Set(objectApiNames)];
+        const requestedCount = requestedObjectApiNames.length;
+        const outcomesByObjectApiName = new Map<string, IOrgRecordCountOutcome>();
+        let completedCount = 0;
+
+        const recordOutcome = (countOutcome: IOrgRecordCountOutcome) => {
+            outcomesByObjectApiName.set(countOutcome.objectApiName, countOutcome);
+            completedCount++;
+            requestOptions.onObjectCounted?.(countOutcome, completedCount, requestedCount);
+        };
+
+        const uncachedObjectApiNames = requestedObjectApiNames.filter(objectApiName => {
+
+            if ( !this.isUsableObjectApiName(objectApiName) ) {
+                recordOutcome({ objectApiName: objectApiName, status: 'failed', failureMessage: ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE, wasCached: false });
+                return false;
+            }
+
+            const cachedRecordCount = this.getCachedRecordCount(orgUsername, objectApiName);
+
+            if ( cachedRecordCount !== undefined ) {
+                recordOutcome({ objectApiName: objectApiName, status: 'count', recordCount: cachedRecordCount, wasCached: true });
+            }
+
+            return cachedRecordCount === undefined;
+
+        });
+
+        const isCancellationRequested = () => !!requestOptions.isCancellationRequested?.();
+
+        if ( uncachedObjectApiNames.length > 0 && !isCancellationRequested() ) {
+
+            const querySource = await querySourceFactory();
+            const pendingObjectApiNames = [...uncachedObjectApiNames];
+
+            const countUntilDrained = async (): Promise<void> => {
+
+                let objectApiName = pendingObjectApiNames.shift();
+
+                while ( objectApiName !== undefined && !isCancellationRequested() ) {
+
+                    try {
+
+                        const recordCount = this.readTotalSize(await querySource.query(`SELECT COUNT() FROM ${objectApiName}`));
+                        this.recordCountCache.set(this.buildDescribeCacheKey(orgUsername, objectApiName), recordCount);
+                        recordOutcome({ objectApiName: objectApiName, status: 'count', recordCount: recordCount, wasCached: false });
+
+                    } catch (queryError) {
+
+                        recordOutcome({ objectApiName: objectApiName, ...this.classifyCountFailure(queryError), wasCached: false });
+
+                    }
+
+                    objectApiName = pendingObjectApiNames.shift();
+
+                }
+
+            };
+
+            await Promise.all(Array.from(
+                { length: Math.min(ORG_DESCRIBE_CONCURRENCY, uncachedObjectApiNames.length) },
+                () => countUntilDrained()
+            ));
+
+        }
+
+        let wasCancelled = false;
+
+        const outcomes = requestedObjectApiNames.map(objectApiName => {
+
+            const countOutcome = outcomesByObjectApiName.get(objectApiName);
+
+            if ( countOutcome ) {
+                return countOutcome;
+            }
+
+            wasCancelled = true;
+
+            return { objectApiName: objectApiName, status: 'failed' as const, failureMessage: ORG_DESCRIBE_CANCELLED_MESSAGE, wasCached: false };
+
+        });
+
+        return { outcomes: outcomes, wasCancelled: wasCancelled };
+
+    }
+
+    // A COUNT() QUERY ANSWERS IN totalSize; ANYTHING ELSE IS NOT A COUNT AND THROWS, WHICH countRecords RECORDS AS "failed"
+    static readTotalSize(queryResult: unknown): number {
+
+        const totalSize = this.asRecord(queryResult)?.totalSize;
+
+        if ( typeof totalSize !== 'number' || !Number.isInteger(totalSize) || totalSize < 0 ) {
+            throw new Error('The count query returned no record count.');
+        }
+
+        return totalSize;
+
+    }
+
+    static classifyCountFailure(queryError: unknown): { status: OrgRecordCountStatus; failureMessage: string } {
+
+        const errorCode = ( queryError as { errorCode?: unknown; name?: unknown } | undefined )?.errorCode
+                            ?? ( queryError as { name?: unknown } | undefined )?.name;
+        const failureMessage = this.describeFailure(queryError);
+        const codeText = typeof errorCode === 'string' ? errorCode : '';
+
+        if ( codeText === 'INVALID_TYPE' || failureMessage.startsWith('INVALID_TYPE') ) {
+            return { status: 'notInOrg', failureMessage: failureMessage };
+        }
+
+        if ( codeText.startsWith('INSUFFICIENT_ACCESS') || failureMessage.startsWith('INSUFFICIENT_ACCESS') ) {
+            return { status: 'noAccess', failureMessage: failureMessage };
+        }
+
+        return { status: 'failed', failureMessage: failureMessage };
+
+    }
+
+    /*
+        The org's IsSandbox and OrganizationType, or undefined when the query failed or answered
+        with anything else. Never throws: an org whose type cannot be read is still an org whose
+        records can be counted, and the caller labels it "type unknown".
+    */
+    static async queryOrganizationType(querySource: IOrgQuerySource): Promise<IOrgTypeDetail | undefined> {
+
+        try {
+            return this.normalizeOrganizationResult(await querySource.query(ORG_ORGANIZATION_QUERY));
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    static normalizeOrganizationResult(queryResult: unknown): IOrgTypeDetail | undefined {
+
+        const queryRecords = this.asRecord(queryResult)?.records;
+        const organizationRecord = Array.isArray(queryRecords) && queryRecords.length === 1 ? this.asRecord(queryRecords[0]) : undefined;
+
+        if ( typeof organizationRecord?.IsSandbox !== 'boolean' || typeof organizationRecord.OrganizationType !== 'string' ) {
+            return undefined;
+        }
+
+        return { isSandbox: organizationRecord.IsSandbox, organizationType: organizationRecord.OrganizationType };
+
+    }
+
+    static buildOrgTypeLabel(orgTypeDetail: IOrgTypeDetail | undefined): string {
+
+        if ( !orgTypeDetail ) {
+            return ORG_TYPE_UNKNOWN_LABEL;
+        }
+
+        return orgTypeDetail.isSandbox ? 'Sandbox' : `Production · ${orgTypeDetail.organizationType || 'type unknown'}`;
+
+    }
+
     /*
         The one place a Treecipe command turns an alias or username into a connection. The insert
         path (CollectionsApiService) and the cockpit's describe path both come through here, so how
@@ -115,6 +359,13 @@ export class SalesforceOrgService {
         const authorizedOrg = await Org.create({ aliasOrUsername: aliasOrUsername });
 
         return authorizedOrg.getConnection();
+
+    }
+
+    // A jsforce Query IS A THENABLE RATHER THAN A Promise, SO IT IS SETTLED INTO ONE HERE
+    static toQuerySource(connection: Pick<Connection, 'query'>): IOrgQuerySource {
+
+        return { query: async (soql: string) => await connection.query(soql) };
 
     }
 
