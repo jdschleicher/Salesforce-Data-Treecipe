@@ -820,6 +820,40 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     });
 
+    describe('a nested iteration of the same object under a self-lookup (#188)', () => {
+
+        test('each child Account\'s ParentId resolves to the parent iteration it was generated under, with a nickname of its own', async () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const entry = {
+                object: 'Account',
+                nickname: 'Account_NickName',
+                count: 2,
+                fields: { Name: 'Top Corp', ParentId: null },
+                friends: [
+                    { object: 'Account', nickname: 'Account_child_NickName', count: 2, fields: { Name: 'Child Corp', ParentId: 'Account_NickName' } }
+                ]
+            };
+
+            const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem('Account', entry, processedYamlWrapper);
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account'].map(account => [account.fields.Name, account.nickname, account.fields.ParentId])).toEqual([
+                ['Top Corp', 'Account_NickName_1', null],
+                ['Child Corp', 'Account_Account_NickName_1', 'Account_NickName_1'],
+                ['Child Corp', 'Account_Account_NickName_1', 'Account_NickName_1'],
+                ['Top Corp', 'Account_NickName_2', null],
+                ['Child Corp', 'Account_Account_NickName_2', 'Account_NickName_2'],
+                ['Child Corp', 'Account_Account_NickName_2', 'Account_NickName_2']
+            ]);
+
+        });
+
+    });
+
     describe('buildRecipeDataStructureSummary', () => {
 
         test('flat recipe with no friends produces correct totals', () => {

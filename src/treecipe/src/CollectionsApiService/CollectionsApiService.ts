@@ -208,25 +208,38 @@ export class CollectionsApiService {
             const preparedCollectionsApiDetail = JSON.parse(collectionsApiJson);
 
             const objectNameForFile = this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath);
-            const collectionsApiSobjectResult = await this.makeCollectionsApiCall(preparedCollectionsApiDetail, 
-                                                                            aliasAuthenticationConnection,
-                                                                            allOrNoneSelection,
-                                                                            objectNameForFile);
-                
-            allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, 
-                                                                                                    collectionsApiSobjectResult, 
-                                                                                                    objectNameForFile, 
-                                                                                                    aliasAuthenticationConnection);
+            const insertRounds = this.partitionRecordsIntoInsertRounds(preparedCollectionsApiDetail.records);
 
-            this.appendInsertAttemptsFileWithLatestSobjectResults(allCollectionApiFilesSobjectResults, fullPathToResultsFile);
+            for ( let insertRoundIndex = 0; insertRoundIndex < insertRounds.length; insertRoundIndex++ ) {
 
-            // IF ALLORNONE ARGUMENT SET TO --TRUE-- AND ANY OBJECT KEYS ARE FOUND IN FAILURE RESULTS, DELETE PREVIOUS SAVED RECORDS
-            if ( allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0 ) {
-                await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
-                return false;
+                // A LATER ROUND'S LOOKUPS NAME RECORDS OF THIS FILE, WHICH ONLY THE ROUNDS BEFORE IT GAVE AN ID
+                const insertRoundDetail = insertRoundIndex === 0
+                    ? { ...preparedCollectionsApiDetail, records: insertRounds[insertRoundIndex] }
+                    : JSON.parse(this.updateLookupReferencesInCollectionApiJson(JSON.stringify({ ...preparedCollectionsApiDetail, records: insertRounds[insertRoundIndex] }),
+                                                                                objectReferenceIdToOrgCreatedRecordIdMap));
+
+                const collectionsApiSobjectResult = await this.makeCollectionsApiCall(insertRoundDetail, 
+                                                                                aliasAuthenticationConnection,
+                                                                                allOrNoneSelection,
+                                                                                objectNameForFile);
+                    
+                allCollectionApiFilesSobjectResults = this.updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults, 
+                                                                                                        collectionsApiSobjectResult, 
+                                                                                                        objectNameForFile, 
+                                                                                                        aliasAuthenticationConnection);
+
+                this.appendInsertAttemptsFileWithLatestSobjectResults(allCollectionApiFilesSobjectResults, fullPathToResultsFile);
+
+                // IF ALLORNONE ARGUMENT SET TO --TRUE-- AND ANY OBJECT KEYS ARE FOUND IN FAILURE RESULTS, DELETE PREVIOUS SAVED RECORDS
+                if ( allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0 ) {
+                    await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                    return false;
+                }
+
+                objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, insertRoundDetail.records);
+
             }
 
-            objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, preparedCollectionsApiDetail.records);
             return true;
 
     
@@ -584,16 +597,90 @@ export class CollectionsApiService {
 
     }
 
-    static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
+    // THE NICKNAME A REFERENCE ID ENDS IN -- "Account_Reference_1__Account_NickName" GIVES "Account_NickName"
+    static readNicknameFromReferenceId(referenceId: string): string | undefined {
 
         const referenceRegexMatch = /(Reference_\d+__)/;
+        const splitReferenceIdentifiers = referenceId.split(referenceRegexMatch).filter(Boolean);
+        const nicknameLookupReferenceMatchIndex = 2;
+        return splitReferenceIdentifiers[nicknameLookupReferenceMatchIndex];
+
+    }
+
+    /*
+        One file's records in the order they can be inserted. A record whose field IS the nickname of
+        another record in the SAME file -- a child Account's ParentId naming the Account above it
+        (#188) -- cannot be resolved until that record has an Id, and every record of a file used to
+        go in one request, so it was sent with the nickname text as its lookup. Each round holds the
+        records whose same-file references name a nickname some earlier round inserted; a file with
+        none is one round, exactly the request it always was. References that can never be met (a
+        cycle) are inserted together in a last round, as they were before, and Salesforce reports them.
+    */
+    static partitionRecordsIntoInsertRounds(records: any): any[][] {
+
+        if ( !Array.isArray(records) || records.length === 0 ) {
+            return [records];
+        }
+
+        const nicknames = records.map(record => {
+            const referenceId = record?.attributes?.referenceId;
+            return typeof referenceId === 'string' ? this.readNicknameFromReferenceId(referenceId) : undefined;
+        });
+
+        const recordIndexesByNickname = new Map<string, number[]>();
+        nicknames.forEach((nickname, recordIndex) => {
+            if ( nickname ) {
+                recordIndexesByNickname.set(nickname, [...(recordIndexesByNickname.get(nickname) ?? []), recordIndex]);
+            }
+        });
+
+        const referencedNicknamesByRecordIndex = records.map((record, recordIndex) => {
+            const referencedNicknames = new Set<string>();
+            if ( record && typeof record === 'object' ) {
+                Object.entries(record).forEach(([fieldName, fieldValue]) => {
+                    const isSameFileReference = fieldName !== 'attributes'
+                                                    && typeof fieldValue === 'string'
+                                                    && (recordIndexesByNickname.get(fieldValue) ?? []).some(holderIndex => holderIndex !== recordIndex);
+                    if ( isSameFileReference ) {
+                        referencedNicknames.add(fieldValue as string);
+                    }
+                });
+            }
+            return referencedNicknames;
+        });
+
+        const insertedNicknames = new Set<string>();
+        let remainingRecordIndexes = records.map((_record, recordIndex) => recordIndex);
+        const insertRounds: any[][] = [];
+
+        while ( remainingRecordIndexes.length > 0 ) {
+
+            const readyRecordIndexes = remainingRecordIndexes.filter(recordIndex => (
+                [...referencedNicknamesByRecordIndex[recordIndex]].every(referencedNickname => insertedNicknames.has(referencedNickname))
+            ));
+            const roundRecordIndexes = readyRecordIndexes.length > 0 ? readyRecordIndexes : remainingRecordIndexes;
+            const roundRecordIndexSet = new Set(roundRecordIndexes);
+
+            insertRounds.push(roundRecordIndexes.map(recordIndex => records[recordIndex]));
+            roundRecordIndexes.forEach(recordIndex => {
+                if ( nicknames[recordIndex] ) {
+                    insertedNicknames.add(nicknames[recordIndex]);
+                }
+            });
+            remainingRecordIndexes = remainingRecordIndexes.filter(recordIndex => !roundRecordIndexSet.has(recordIndex));
+
+        }
+
+        return insertRounds;
+
+    }
+
+    static updateLookupReferencesInCollectionApiJson(collectionsApiJson: string, objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string>) {
 
         const nicknameToOrgIdEntries: { nicknameValue: string; orgRecordId: string }[] = [];
 
         for (const [referenceIdKey, orgRecordId] of Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
-            const splitReferenceIdentifiers = referenceIdKey.split(referenceRegexMatch).filter(Boolean);
-            const nicknameLookupReferenceMatchIndex = 2;
-            const nicknameValue = splitReferenceIdentifiers[nicknameLookupReferenceMatchIndex];
+            const nicknameValue = this.readNicknameFromReferenceId(referenceIdKey);
             if (nicknameValue) {
                 nicknameToOrgIdEntries.push({ nicknameValue, orgRecordId });
             }

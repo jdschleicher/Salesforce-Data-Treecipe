@@ -1,5 +1,70 @@
 # Change Log
 
+## [3.35.0] - A self-lookup adds a nested child iteration of the same object
+
+Closes [#188](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/188), a follow-up to [#46](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/46) under [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+#46 left a self-lookup (`Account.ParentId → Account`) as `### TODO -- REFERENCE ID REQUIRED`, so every parent/child hierarchy of one object (parent accounts, manager users, parent cases) still had to be written by hand.
+
+- **faker-js recipes add one nested child iteration for each object with a self-lookup.**
+  - It is written last in the object's `friends:` block, under a comment naming the self-lookup fields, with the nickname `<Object>_child_NickName`.
+  - Every self-lookup field of the child iteration holds the parent iteration's nickname. If an object has more than one self-lookup field (`ParentId`, `MasterRecordId`), all of them point at the same parent. The top iteration keeps its TODO.
+  - Its other lookups to ancestors are wired as they are for any friend. The object counts as its own ancestor, so #46's `wireAncestorLookups` wires the self-lookup with no code of its own.
+  - **Only one level, and no other friends.** The child iteration carries none of the object's `friends:` children, so nothing recurses. Adding them one by one from the cockpit is a separate issue.
+  - A self-lookup filled in by a mapping or by hand is left as it is, in both iterations.
+  - A tree whose only relationship is a self-lookup is now written through the nested combiner.
+  - `RelationshipService.hasSelfLookup` and `buildSelfLookupIterationNickname` are the two rules.
+- **Run Faker by Recipe needed no change.** #46's ancestor-nickname map already points each child iteration's `ParentId` at the parent record it is generated under, for every parent iteration when `count > 1`. Each child also gets a generated nickname of its own (`Account_Account_NickName_<n>`).
+- **Insert Data Set by Directory inserts a file in rounds.**
+  - A child Account and its parent are in the same `collectionsApi-Account.json`, and every record of a file used to go in one request. So the child was sent with the parent's nickname as its `ParentId`, and Salesforce rejected it.
+  - `CollectionsApiService.partitionRecordsIntoInsertRounds` orders a file's records into rounds. A record whose field is the nickname of another record in the same file waits until a round inserts that record. A later round's lookups are resolved against the Ids the earlier rounds created.
+  - A file with no such reference is one round: exactly the request it always was.
+  - References that can never be met (a cycle) are sent together in a last round, as before.
+  - An all-or-none failure in any round deletes what was saved and stops before the next round.
+  - `readNicknameFromReferenceId` is the one rule for reading a nickname out of a reference id, shared with `updateLookupReferencesInCollectionApiJson`.
+- **The Recipe Cockpit tells two occurrences of one object apart by nickname.**
+  - `scanRecipeObjects` records each object's `nickname:` values (`nicknames`) and the header line of the object whose `friends:` block holds it (`parentHeaderIndex`).
+  - **Reader:** `parseRecipeSource` still keys by api name and still reads the first occurrence there. A later occurrence becomes an `iterations` entry on it, with its own header and field lines and its parent's name and nickname, but only when the two can be told apart: each has a nickname no other occurrence of the object carries. Otherwise the first wins, as before.
+  - **Model:** an object written twice carries its `nickname` and its `iterations`, and only their line numbers and values are posted. An object written once is posted exactly as before.
+  - **Structure tab:** the card lists the child iteration right after its object (`Account_child_NickName · nested under Account_NickName`). An object a hand edit wrote twice at the top level is listed by its nickname alone, not as nested. Its `↗ yml` and header links open the nested occurrence's lines, and the open allow-list names each of them.
+    - The card's object and field counts count the object once.
+    - The find box matches an iteration by its nickname, and its rows by their own values.
+    - A field only the iteration writes is drawn as read from the recipe file.
+  - The Classic list is unchanged: one row per object.
+  - **Writer:** every operation takes an optional `objectNickname`, and the refusal or edit names it.
+    - With the nickname it changes only that occurrence.
+    - Without it, an object written twice is still refused as `duplicate-object`, now saying a nickname is needed.
+    - A nickname no occurrence carries is `object-not-found`; one that two carry is `duplicate-object`; a malformed one is the new `invalid-object-nickname`.
+- **Snowfakery recipes are unchanged:** still flat, one entry per object, self-lookups still TODO.
+
+**Tests.**
+- **`RelationshipService.nestedFriends.test.ts`** replaces "a self-lookup keeps its TODO" with:
+  - the exact output for a lone self-lookup object
+  - the iteration after other friends, with no friends of its own
+  - several self-lookup fields
+  - a nested object with a self-lookup (its ancestors wired too)
+  - a hand-filled self-lookup
+  - snowfakery unchanged
+  - the cockpit writer fixture held to this generator's output
+  - an end-to-end run: generate, count 3 Accounts with 2 child Accounts each, run the faker-js processor, convert to Collections API files, then simulate the inserts in rounds. Every child Account's `ParentId` is its own parent's Id.
+- **`DirectoryProcessor.generatedRecipeYaml.test.ts`:** the mock metadata's `Example_Everything__c` has a self-lookup. Over the real pipeline, faker-js now writes it twice, with the iteration's lookup wired, and snowfakery once. Every occurrence, not only the last loaded, is held to its object's flat recipe. RecordTypeId is one developer name per occurrence. `recipe-fakerjs-nested--RelationshipTree_1.yml` is regenerated from this output.
+- **`FakerJSRecipeProcessor`:** a same-object friend resolves to the parent iteration it was generated under, for each of two parent iterations.
+- **`CollectionsApiService`:** rounds for no same-file reference, parent and child iterations, a chain, a reference to a record's own nickname, a cycle, malformed records, and `processAndInsertCollectionFile` resolving a later round to the earlier round's Ids and stopping on an all-or-none failure.
+- **`RecipeCockpitRecipeWriter`** (new fixture `recipe-fakerjs-selfLookup--RelationshipTree_1.yml`):
+  - each of the five operations refuses the api name alone, an unknown nickname and a malformed one
+  - replace, insert, comment out and restore (byte for byte), count and rename each work by nickname
+  - a shared nickname is refused
+  - a field or property refusal names the occurrence
+  - the full per-field suite (replace, comment out and restore, insert, set nickname and count, in all four line-ending variants) now addresses each occurrence by nickname, so the regenerated nested fixture's Example_Everything__c iteration goes through it too
+- **`RecipeCockpitService`:**
+  - the reader's iteration
+  - three cases where the occurrences cannot be told apart
+  - a parent with no nickname
+  - an object written three times at the top level
+  - the object view model
+  - card order and field count, from `RecipeFiles` and from the fallback
+  - the open allow-list and router
+  - the panel: both occurrences drawn, each link opening its own line, counts not doubled, a find-box match on an iteration's nickname and values, and an iteration the object does not hold left undrawn
 ## [3.34.0] - Run Faker from a Recipe Cockpit tree card
 
 Closes [#178](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/178), slice 5 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

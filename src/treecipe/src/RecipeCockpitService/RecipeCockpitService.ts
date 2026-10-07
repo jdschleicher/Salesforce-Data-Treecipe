@@ -13,7 +13,7 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
-import { RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import { IScannedObject, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
@@ -251,6 +251,30 @@ export interface IRecipeCockpitObjectViewModel {
     recipeFileName: string;
     lineNumber?: number;
     fields: IRecipeCockpitFieldViewModel[];
+    // SET ONLY ON AN OBJECT WITH iterations, WHERE THE NICKNAME IS WHAT TELLS ITS OCCURRENCES APART
+    nickname?: string;
+    iterations?: IRecipeCockpitObjectIterationViewModel[];
+}
+
+// ONE FIELD OF A LATER OCCURRENCE: ONLY ITS LINE AND VALUE -- ITS TYPE AND LABEL ARE THE OBJECT'S OWN FIELD'S
+export interface IRecipeCockpitObjectIterationFieldViewModel {
+    fieldApiName: string;
+    lineNumber: number;
+    recipeValue: string;
+}
+
+/*
+    A later occurrence of an object in its recipe file, such as the nested child iteration a
+    self-lookup adds (#188). It is told apart by its NICKNAME, never its api name, so its header and
+    every field link open the occurrence the reader chose. parentObjectApiName and parentNickname
+    name the object whose friends: block holds it.
+*/
+export interface IRecipeCockpitObjectIterationViewModel {
+    nickname: string;
+    lineNumber: number;
+    parentObjectApiName?: string;
+    parentNickname?: string;
+    fields: IRecipeCockpitObjectIterationFieldViewModel[];
 }
 
 // ONE LOOKUP TYING AN OBJECT TO A PARENT IN ITS OWN TREE; A SELF-LOOKUP NAMES ITS OWN OBJECT AS THE PARENT
@@ -266,6 +290,8 @@ export interface IRecipeCockpitParentLookupViewModel {
 export interface IRecipeCockpitTreeObjectViewModel {
     objectApiName: string;
     parentLookups: IRecipeCockpitParentLookupViewModel[];
+    // SET ON THE ENTRY FOR ONE OF THE OBJECT'S iterations, WHICH THE PANEL FINDS BY THIS NICKNAME
+    iterationNickname?: string;
 }
 
 /*
@@ -331,6 +357,16 @@ export interface IRecipeSourceFieldEntry {
 
 export interface IRecipeSourceObjectEntry {
     lineNumber: number;
+    nickname?: string;
+    fieldEntries: Map<string, IRecipeSourceFieldEntry>;
+    iterations?: IRecipeSourceObjectIterationEntry[];
+}
+
+export interface IRecipeSourceObjectIterationEntry {
+    nickname: string;
+    lineNumber: number;
+    parentObjectApiName?: string;
+    parentNickname?: string;
     fieldEntries: Map<string, IRecipeSourceFieldEntry>;
 }
 
@@ -2091,6 +2127,11 @@ export class RecipeCockpitService {
                 }
             });
 
+            ( objectViewModel.iterations ?? [] ).forEach(iteration => {
+                openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, iteration.lineNumber));
+                iteration.fields.forEach(iterationField => openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, iterationField.lineNumber)));
+            });
+
         });
 
         return openableSourceKeys;
@@ -2629,12 +2670,16 @@ export class RecipeCockpitService {
 
                 claimedObjectApiNames.add(objectApiName);
 
-                treeObjects.push({
-                    objectApiName: objectApiName,
-                    parentLookups: treeSource.hasLookups
-                        ? ( normalizedObjectsWrapper.parentLookupsByObjectApiName.get(objectApiName) ?? [] )
-                            .filter(parentLookup => treeObjectApiNameSet.has(parentLookup.parentObjectApiName))
-                        : []
+                const parentLookups = treeSource.hasLookups
+                    ? ( normalizedObjectsWrapper.parentLookupsByObjectApiName.get(objectApiName) ?? [] )
+                        .filter(parentLookup => treeObjectApiNameSet.has(parentLookup.parentObjectApiName))
+                    : [];
+
+                treeObjects.push({ objectApiName: objectApiName, parentLookups: parentLookups });
+
+                // EACH LATER OCCURRENCE IS LISTED RIGHT AFTER ITS OBJECT, SO THE CARD READS "Account, then the Account nested under it" (#188)
+                ( objectsByApiName.get(objectApiName).iterations ?? [] ).forEach(iteration => {
+                    treeObjects.push({ objectApiName: objectApiName, parentLookups: parentLookups, iterationNickname: iteration.nickname });
                 });
 
             });
@@ -2685,7 +2730,10 @@ export class RecipeCockpitService {
             title: title,
             folderName: folderName,
             objects: treeObjects,
-            fieldCount: treeObjects.reduce((fieldCount, treeObject) => fieldCount + objectsByApiName.get(treeObject.objectApiName).fields.length, 0)
+            // AN OBJECT'S FIELDS ONCE, HOWEVER MANY OCCURRENCES OF IT THE CARD LISTS
+            fieldCount: treeObjects
+                .filter(treeObject => treeObject.iterationNickname === undefined)
+                .reduce((fieldCount, treeObject) => fieldCount + objectsByApiName.get(treeObject.objectApiName).fields.length, 0)
         };
 
     }
@@ -2829,43 +2877,89 @@ export class RecipeCockpitService {
         line at exactly four spaces, and every column four spaces deeper for each "friends:" level a
         faker-js recipe nests a child object under (#46). Anything deeper than a field is its
         continuation (a block scalar, a choice-if, a commented TODO). The first occurrence wins, for
-        an object and for a field, which is the line a reader jumping to it expects.
+        an object and for a field, which is the line a reader jumping to it expects. An object
+        written again -- the nested child iteration a self-lookup adds (#188) -- is a second entry
+        only when NICKNAMES tell the two apart: then it is kept on the first as an iteration, with
+        its own lines, and the map stays keyed by api name for everything that asks about an object.
     */
     static parseRecipeSource(recipeContent: string): Map<string, IRecipeSourceObjectEntry> {
 
         const objectEntries = new Map<string, IRecipeSourceObjectEntry>();
         const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeContent);
+        const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(lines);
+        const scannedObjectsByHeaderIndex = new Map(scannedObjects.map(scannedObject => [scannedObject.headerIndex, scannedObject]));
 
-        RecipeCockpitRecipeWriter.scanRecipeObjects(lines).forEach(scannedObject => {
+        // "<object>\n<nickname>" -> HOW MANY OCCURRENCES OF THAT OBJECT CARRY THAT NICKNAME
+        const occurrenceCountsByNicknameKey = new Map<string, number>();
+        scannedObjects.forEach(scannedObject => scannedObject.nicknames.forEach(nickname => {
+            const nicknameKey = `${scannedObject.objectApiName}\n${nickname}`;
+            occurrenceCountsByNicknameKey.set(nicknameKey, (occurrenceCountsByNicknameKey.get(nicknameKey) ?? 0) + 1);
+        }));
+        const readDistinctNickname = (scannedObject: IScannedObject): string | undefined => (
+            scannedObject.nicknames.length === 1 && occurrenceCountsByNicknameKey.get(`${scannedObject.objectApiName}\n${scannedObject.nicknames[0]}`) === 1
+                ? scannedObject.nicknames[0]
+                : undefined
+        );
 
-            if ( objectEntries.has(scannedObject.objectApiName) ) {
+        scannedObjects.forEach(scannedObject => {
+
+            const firstObjectEntry = objectEntries.get(scannedObject.objectApiName);
+
+            if ( !firstObjectEntry ) {
+                const nickname = scannedObject.nicknames.length === 1 ? scannedObject.nicknames[0] : undefined;
+                objectEntries.set(scannedObject.objectApiName, {
+                    lineNumber: scannedObject.headerIndex + 1,
+                    ...( nickname !== undefined ? { nickname: nickname } : {} ),
+                    fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines)
+                });
                 return;
             }
 
-            const { fieldIndent } = RecipeCockpitRecipeWriter.getObjectLayout(scannedObject.objectIndent);
-            const fieldEntries = new Map<string, IRecipeSourceFieldEntry>();
+            // A LATER OCCURRENCE IS KEPT ONLY WHEN IT AND THE FIRST EACH CARRY A NICKNAME NO OTHER OCCURRENCE DOES; ANY OTHER IS LEFT TO THE FIRST, AS BEFORE (#188)
+            const nickname = readDistinctNickname(scannedObject);
+            const firstScannedObject = scannedObjectsByHeaderIndex.get(firstObjectEntry.lineNumber - 1);
+            if ( nickname === undefined || readDistinctNickname(firstScannedObject) === undefined ) {
+                return;
+            }
 
-            scannedObject.fields.forEach(scannedField => {
-
-                if ( fieldEntries.has(scannedField.fieldApiName) ) {
-                    return;
-                }
-
-                const firstLineValue = lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1);
-                const continuationLines = lines.slice(scannedField.startIndex + 1, scannedField.endIndex);
-
-                fieldEntries.set(scannedField.fieldApiName, {
-                    lineNumber: scannedField.startIndex + 1,
-                    valueText: this.buildDisplayExpression([firstLineValue, ...continuationLines])
-                });
-
-            });
-
-            objectEntries.set(scannedObject.objectApiName, { lineNumber: scannedObject.headerIndex + 1, fieldEntries: fieldEntries });
+            const parentScannedObject = scannedObjectsByHeaderIndex.get(scannedObject.parentHeaderIndex);
+            firstObjectEntry.iterations = [...(firstObjectEntry.iterations ?? []), {
+                nickname: nickname,
+                lineNumber: scannedObject.headerIndex + 1,
+                ...( parentScannedObject ? { parentObjectApiName: parentScannedObject.objectApiName } : {} ),
+                ...( parentScannedObject?.nicknames.length === 1 ? { parentNickname: parentScannedObject.nicknames[0] } : {} ),
+                fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines)
+            }];
 
         });
 
         return objectEntries;
+
+    }
+
+    // THE FIRST OCCURRENCE OF EACH FIELD WINS, WHICH IS THE LINE A READER JUMPING TO IT EXPECTS
+    private static readRecipeSourceFieldEntries(scannedObject: IScannedObject, lines: string[]): Map<string, IRecipeSourceFieldEntry> {
+
+        const { fieldIndent } = RecipeCockpitRecipeWriter.getObjectLayout(scannedObject.objectIndent);
+        const fieldEntries = new Map<string, IRecipeSourceFieldEntry>();
+
+        scannedObject.fields.forEach(scannedField => {
+
+            if ( fieldEntries.has(scannedField.fieldApiName) ) {
+                return;
+            }
+
+            const firstLineValue = lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1);
+            const continuationLines = lines.slice(scannedField.startIndex + 1, scannedField.endIndex);
+
+            fieldEntries.set(scannedField.fieldApiName, {
+                lineNumber: scannedField.startIndex + 1,
+                valueText: this.buildDisplayExpression([firstLineValue, ...continuationLines])
+            });
+
+        });
+
+        return fieldEntries;
 
     }
 
@@ -2926,7 +3020,21 @@ export class RecipeCockpitService {
                 recipeFilePath: recipeSourceFile.filePath,
                 recipeFileName: path.basename(recipeSourceFile.filePath),
                 lineNumber: objectEntry.lineNumber,
-                fields: [...locatedFields, ...unlocatedFields]
+                fields: [...locatedFields, ...unlocatedFields],
+                ...( objectEntry.iterations ? {
+                    nickname: objectEntry.nickname,
+                    iterations: objectEntry.iterations.map(iteration => ({
+                        nickname: iteration.nickname,
+                        lineNumber: iteration.lineNumber,
+                        ...( iteration.parentObjectApiName !== undefined ? { parentObjectApiName: iteration.parentObjectApiName } : {} ),
+                        ...( iteration.parentNickname !== undefined ? { parentNickname: iteration.parentNickname } : {} ),
+                        fields: Array.from(iteration.fieldEntries, ([fieldApiName, fieldEntry]) => ({
+                            fieldApiName: fieldApiName,
+                            lineNumber: fieldEntry.lineNumber,
+                            recipeValue: fieldEntry.valueText
+                        }))
+                    }))
+                } : {} )
             };
 
         });
@@ -3906,7 +4014,8 @@ ${this.buildPaletteCustomProperties()}
         const treeObjectState = {
             treeObject: treeObject,
             object: object,
-            objectSearchText: object.objectApiName.toLowerCase(),
+            isIteration: !!object.iteration,
+            objectSearchText: [object.objectApiName, object.nickname || ''].join(' ').toLowerCase(),
             fieldStates: object.fields.map(buildTreeFieldState),
             matchingFieldCount: object.fields.length,
             isBodyBuilt: false,
@@ -3931,6 +4040,13 @@ ${this.buildPaletteCustomProperties()}
         const parentLookupText = formatParentLookups(treeObject);
         if (parentLookupText) {
             objectHeaderElement.appendChild(createElement('span', 'treeLookups muted', parentLookupText));
+        }
+
+        if (object.iteration) {
+            const parentName = object.iteration.parentNickname || object.iteration.parentObjectApiName;
+            objectHeaderElement.appendChild(createElement('span', 'treeIteration muted', object.nickname + (parentName ? ' · nested under ' + parentName : '')));
+        } else if (object.nickname) {
+            objectHeaderElement.appendChild(createElement('span', 'treeIteration muted', object.nickname));
         }
 
         objectHeaderElement.appendChild(treeObjectState.countElement);
@@ -4328,6 +4444,64 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        One later occurrence of an object, drawn as an object of its own (#188): the object's field
+        rows, each at the occurrence's line and with its value, and the occurrence's own header line.
+        A field only the occurrence writes is listed after them, as read from the recipe file.
+    */
+    function buildIterationObject(object, iterationNickname) {
+
+        const iteration = (object.iterations || []).find(function (candidate) { return candidate.nickname === iterationNickname; });
+        if (!iteration) { return null; }
+
+        const iterationFieldsByApiName = Object.create(null);
+        iteration.fields.forEach(function (iterationField) { iterationFieldsByApiName[iterationField.fieldApiName] = iterationField; });
+
+        const objectFieldApiNames = Object.create(null);
+        const fields = object.fields.map(function (field) {
+            objectFieldApiNames[field.fieldApiName] = true;
+            const iterationField = iterationFieldsByApiName[field.fieldApiName];
+            return Object.assign({}, field, {
+                lineNumber: iterationField ? iterationField.lineNumber : undefined,
+                recipeValue: iterationField ? iterationField.recipeValue : field.recipeValue
+            });
+        });
+
+        iteration.fields.forEach(function (iterationField) {
+            if (objectFieldApiNames[iterationField.fieldApiName]) { return; }
+            fields.push({
+                fieldApiName: iterationField.fieldApiName,
+                fieldLabel: '',
+                fieldType: '',
+                fieldTypeWithSize: '',
+                recipeValue: iterationField.recipeValue,
+                controllingField: '',
+                isOnlyInRecipeFile: true,
+                lineNumber: iterationField.lineNumber
+            });
+        });
+
+        return {
+            objectApiName: object.objectApiName,
+            recipeFilePath: object.recipeFilePath,
+            recipeFileName: object.recipeFileName,
+            lineNumber: iteration.lineNumber,
+            nickname: iteration.nickname,
+            iteration: iteration,
+            fields: fields
+        };
+
+    }
+
+    function resolveTreeObject(treeObject, objectsByApiName) {
+
+        if (!Object.prototype.hasOwnProperty.call(objectsByApiName, treeObject.objectApiName)) { return null; }
+
+        const object = objectsByApiName[treeObject.objectApiName];
+        return treeObject.iterationNickname === undefined ? object : buildIterationObject(object, treeObject.iterationNickname);
+
+    }
+
     function renderTree(tree, objectsByApiName) {
 
         const treeElement = createElement('div', 'treeCard');
@@ -4338,8 +4512,9 @@ ${this.buildPaletteCustomProperties()}
         const treeState = {
             tree: tree,
             objectStates: tree.objects
-                .filter(function (treeObject) { return Object.prototype.hasOwnProperty.call(objectsByApiName, treeObject.objectApiName); })
-                .map(function (treeObject) { return buildTreeObjectState(treeObject, objectsByApiName[treeObject.objectApiName]); }),
+                .map(function (treeObject) { return { treeObject: treeObject, object: resolveTreeObject(treeObject, objectsByApiName) }; })
+                .filter(function (resolved) { return resolved.object !== null; })
+                .map(function (resolved) { return buildTreeObjectState(resolved.treeObject, resolved.object); }),
             isBodyBuilt: false,
             isExpanded: false,
             isExpandedByReader: false,
@@ -4350,7 +4525,9 @@ ${this.buildPaletteCustomProperties()}
             matchElement: createElement('span', 'treeMatch muted hidden')
         };
 
-        const treeFieldCount = treeState.objectStates.reduce(function (fieldCount, treeObjectState) { return fieldCount + treeObjectState.fieldStates.length; }, 0);
+        // AN OBJECT AND ITS FIELDS ARE COUNTED ONCE, HOWEVER MANY OCCURRENCES OF IT THE CARD DRAWS
+        const objectStatesCounted = treeState.objectStates.filter(function (treeObjectState) { return !treeObjectState.isIteration; });
+        const treeFieldCount = objectStatesCounted.reduce(function (fieldCount, treeObjectState) { return fieldCount + treeObjectState.fieldStates.length; }, 0);
 
         toggleElement.setAttribute('aria-expanded', 'false');
         toggleElement.setAttribute('aria-label', 'Show or hide ' + tree.title);
@@ -4374,7 +4551,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         treeHeaderElement.appendChild(createElement('span', 'treeCount muted',
-            pluralize(treeState.objectStates.length, 'object', 'objects') + ' · ' + pluralize(treeFieldCount, 'field', 'fields')));
+            pluralize(objectStatesCounted.length, 'object', 'objects') + ' · ' + pluralize(treeFieldCount, 'field', 'fields')));
         treeHeaderElement.appendChild(treeState.matchElement);
         treeHeaderElement.appendChild(scopeElement);
 
