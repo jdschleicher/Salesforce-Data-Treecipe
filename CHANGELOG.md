@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.29.11] - The Recipe Cockpit owns a single light colour palette, and no longer follows the VS Code colour theme
+
+Closes [#174](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/174), slice 1 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+The cockpit read every colour from the VS Code theme (34 `--vscode-*` reads in its stylesheet). Under a dark theme it rendered as a flat black page with no visual hierarchy, and it changed with whatever theme the editor used. **It now looks the same under every theme, Dark+ and Light+ included.** Fonts still follow the editor's font settings. No behaviour changes.
+
+- **One palette, one source.** `RECIPE_COCKPIT_PALETTE` in `RecipeCockpitService.ts` is a typed compile-time constant of fourteen colours, written into the stylesheet as `--sdt-*` custom properties on `:root` (`--sdt-page`, `--sdt-surface`, `--sdt-border`, `--sdt-header`, `--sdt-text`, `--sdt-muted`, `--sdt-accent`, `--sdt-on-accent`, `--sdt-row-hover`, `--sdt-chip-bg`, `--sdt-chip-text`, `--sdt-added`, `--sdt-removed`, `--sdt-changed`). `buildWebviewShellHtml` still takes only a nonce, and `buildContentSecurityPolicy` is unchanged.
+- **No theme colour is read.** The only `--vscode-*` reads left are `--vscode-font-family`, `--vscode-editor-font-family` and `--vscode-font-size`. `html, body` get an explicit background and text colour, `color-scheme: light` makes native `<select>` and `<input>` popups render light, and scrollbars are styled from the palette.
+- **Existing controls are restyled.** Each object is a card (surface on page, 1px border, 8px radius, soft shadow) with a header band. Rows highlight on hover, and keyboard focus shows an accent ring. The filter input and the run and status-filter dropdowns sit on the surface colour. Compare with an org and Regenerate recipe use the accent with on-accent text. The source links and ▸ toggles use the accent. The load and org status banners and notices are bordered surface strips. A field's type is a chip. The diff badges move from `gitDecoration-*` and `errorForeground` to `--sdt-added`, `--sdt-removed` and `--sdt-changed`.
+
+**Tests.** `RecipeCockpitService.test.ts` pins the palette values and their `:root` declarations, fails on any `var(--sdt-…)` read the palette does not define, and fails on any `var(--vscode-…)` read other than the three font variables (shown by injecting `var(--vscode-editor-background)`). A contrast test computes the WCAG 2.x ratio for all 26 text/background pairs the stylesheet draws and requires at least 4.5:1. Putting `muted` back to `#6B7280` fails it and names `muted on page`, `muted on header` and `muted on rowHover`. Every existing cockpit test passes unmodified.
+
 ## [3.29.10] - A stale `treecipeConfigurationPath` setting no longer makes a present config read as missing
 
 Closes [#171](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/171).

@@ -24,6 +24,36 @@ export const RECIPE_COCKPIT_PANEL_TITLE = 'Recipe Cockpit';
 // WHAT THE PANEL SHOWS BEFORE THE HOST HAS ANSWERED, SO A HANDSHAKE THAT NEVER COMPLETES IS VISIBLE RATHER THAN BLANK
 export const RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT = 'Connecting to the Treecipe extension host…';
 
+export type RecipeCockpitPaletteToken =
+    | 'page' | 'surface' | 'border' | 'header'
+    | 'text' | 'muted' | 'accent' | 'onAccent'
+    | 'rowHover' | 'chipBg' | 'chipText'
+    | 'added' | 'removed' | 'changed';
+
+/*
+    The cockpit's ONE palette, and the only source of a colour in its stylesheet. The cockpit used
+    to read every colour from the VS Code theme, which under a dark theme drew a flat black page
+    with no hierarchy; it now looks the same whatever theme the editor uses. Every text/background
+    pair the stylesheet draws is held to WCAG 4.5:1 by a test, so a value changed here is measured
+    rather than eyeballed.
+*/
+export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, string>> = Object.freeze({
+    page: '#F4F6F9',
+    surface: '#FFFFFF',
+    border: '#DDE3EA',
+    header: '#EEF3FB',
+    text: '#1F2937',
+    muted: '#5B6472',
+    accent: '#2563EB',
+    onAccent: '#FFFFFF',
+    rowHover: '#F1F5FF',
+    chipBg: '#EEF2FF',
+    chipText: '#3730A3',
+    added: '#15803D',
+    removed: '#B91C1C',
+    changed: '#B45309'
+});
+
 export const RECIPE_COCKPIT_LOAD_PHASES = {
     findingRuns: 'Finding generated recipe runs…',
     readingRun: 'Reading the generated recipe run…'
@@ -1811,6 +1841,20 @@ export class RecipeCockpitService {
 
     }
 
+    static buildPaletteCustomPropertyName(paletteToken: RecipeCockpitPaletteToken): string {
+
+        return '--sdt-' + paletteToken.replace(/[A-Z]/g, upperCaseLetter => '-' + upperCaseLetter.toLowerCase());
+
+    }
+
+    static buildPaletteCustomProperties(): string {
+
+        return (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[])
+            .map(paletteToken => `        ${this.buildPaletteCustomPropertyName(paletteToken)}: ${RECIPE_COCKPIT_PALETTE[paletteToken]};`)
+            .join('\n');
+
+    }
+
     /*
         The cockpit's document, as a string carrying NO value this extension does not author.
 
@@ -1834,65 +1878,99 @@ export class RecipeCockpitService {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${RECIPE_COCKPIT_PANEL_TITLE}</title>
 <style nonce="${nonce}">
+    :root {
+${this.buildPaletteCustomProperties()}
+        color-scheme: light;
+    }
+    html, body {
+        color: var(--sdt-text);
+        background-color: var(--sdt-page);
+        scrollbar-color: var(--sdt-border) var(--sdt-page);
+    }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background-color: var(--sdt-page); }
+    ::-webkit-scrollbar-thumb {
+        background-color: var(--sdt-border);
+        border: 2px solid var(--sdt-page);
+        border-radius: 5px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background-color: var(--sdt-muted); }
     body {
         font-family: var(--vscode-font-family);
         font-size: var(--vscode-font-size);
-        color: var(--vscode-foreground);
-        background-color: var(--vscode-editor-background);
         padding: 0 1rem 2rem 1rem;
     }
     h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
     .hidden { display: none !important; }
-    .muted { color: var(--vscode-descriptionForeground); }
+    .muted { color: var(--sdt-muted); }
+    :focus-visible { outline: 2px solid var(--sdt-accent); outline-offset: 1px; }
     .loadStatus {
-        border-left: 3px solid var(--vscode-panel-border);
+        border-left: 3px solid var(--sdt-accent);
         padding: 0.4rem 0.6rem;
         margin: 0.75rem 0;
-        color: var(--vscode-descriptionForeground);
+        color: var(--sdt-muted);
+        background-color: var(--sdt-surface);
+        border-radius: 4px;
     }
-    .loadStatus.failed { border-left-color: var(--vscode-errorForeground); color: var(--vscode-errorForeground); }
+    .loadStatus.failed { border-left-color: var(--sdt-removed); color: var(--sdt-removed); }
     .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0.25rem 0; }
+    .toolbar input, .toolbar select {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
     .toolbar input {
         flex: 1 1 16rem;
         min-width: 0;
         padding: 0.3rem 0.5rem;
-        color: var(--vscode-input-foreground);
-        background-color: var(--vscode-input-background);
-        border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     }
-    .toolbar select {
-        padding: 0.3rem;
-        color: var(--vscode-dropdown-foreground);
-        background-color: var(--vscode-dropdown-background);
-        border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
-    }
-    .toolbar button {
+    .toolbar input::placeholder { color: var(--sdt-muted); opacity: 1; }
+    .toolbar select { padding: 0.3rem; }
+    .toolbar button, .regenerate button {
         padding: 0.3rem 0.6rem;
-        color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-        background-color: var(--vscode-button-secondaryBackground, transparent);
-        border: 1px solid var(--vscode-panel-border);
+        color: var(--sdt-on-accent);
+        background-color: var(--sdt-accent);
+        border: 1px solid var(--sdt-accent);
+        border-radius: 4px;
         cursor: pointer;
     }
+    .toolbar button:disabled, .regenerate button:disabled { opacity: 0.6; cursor: default; }
     .matchCount { margin-bottom: 0.75rem; }
     .orgStatus {
-        border-left: 3px solid var(--vscode-panel-border);
+        border-left: 3px solid var(--sdt-accent);
         padding: 0.3rem 0.6rem;
         margin: 0.4rem 0 0.75rem 0;
+        background-color: var(--sdt-surface);
+        border-radius: 4px;
     }
-    .orgStatus.failed { border-left-color: var(--vscode-errorForeground); }
-    .orgDescribeFailure { color: var(--vscode-descriptionForeground); }
+    .orgStatus.failed { border-left-color: var(--sdt-removed); }
+    .orgDescribeFailure { color: var(--sdt-muted); }
     .notice {
-        border-left: 3px solid var(--vscode-editorWarning-foreground);
+        border-left: 3px solid var(--sdt-changed);
         padding: 0.3rem 0.6rem;
         margin: 0.4rem 0;
+        background-color: var(--sdt-surface);
+        border-radius: 4px;
     }
     .emptyState {
-        border: 1px dashed var(--vscode-panel-border);
+        border: 1px dashed var(--sdt-border);
+        background-color: var(--sdt-surface);
+        border-radius: 8px;
         padding: 0.6rem 0.8rem;
         margin-top: 0.75rem;
     }
-    .object { border-top: 1px solid var(--vscode-panel-border); padding: 0.3rem 0; }
+    .object {
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
+        margin: 0.5rem 0;
+        overflow: hidden;
+    }
     .objectHeader, .fieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .objectHeader { padding: 0.4rem 0.6rem; background-color: var(--sdt-header); }
+    .objectHeader:hover, .field:hover { background-color: var(--sdt-row-hover); }
     .objectName { font-weight: 600; }
     .toggle, .sourceLink {
         background: none;
@@ -1902,20 +1980,22 @@ export class RecipeCockpitService {
         color: inherit;
         cursor: pointer;
     }
-    .sourceLink { color: var(--vscode-textLink-foreground); text-align: left; }
+    .toggle { color: var(--sdt-accent); border-radius: 4px; }
+    .toggle:focus-visible, .sourceLink:focus-visible { outline-offset: -1px; }
+    .sourceLink { color: var(--sdt-accent); text-align: left; }
     .sourceLink:hover { text-decoration: underline; }
-    .objectBody { padding: 0.25rem 0 0.25rem 1.5rem; }
-    .field { padding: 0.25rem 0; }
+    .objectBody { padding: 0.25rem 0 0.25rem 0; border-top: 1px solid var(--sdt-border); }
+    .field { padding: 0.3rem 0.6rem 0.3rem 2.1rem; }
+    .fieldHeader .fieldType {
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
     .orgProgress { margin: 0.4rem 0; }
     .diffSummary { margin-top: 0.2rem; }
     .regenerate { margin-top: 0.4rem; }
-    .regenerate button {
-        padding: 0.25rem 0.6rem;
-        color: var(--vscode-button-foreground);
-        background-color: var(--vscode-button-background);
-        border: none;
-        cursor: pointer;
-    }
     .regenerateNote { margin-top: 0.25rem; }
     .diffBadge {
         font-size: 0.85em;
@@ -1923,18 +2003,18 @@ export class RecipeCockpitService {
         border: 1px solid currentColor;
         border-radius: 0.6rem;
     }
-    .diff-new-in-org { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-foreground)); }
-    .diff-removed-from-org { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-errorForeground)); }
-    .diff-type-changed { color: var(--vscode-editorWarning-foreground, var(--vscode-foreground)); }
-    .diff-picklist-changed { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-foreground)); }
-    .diff-unchanged { color: var(--vscode-descriptionForeground); }
-    .diffDetail { margin: 0.15rem 0 0 0; color: var(--vscode-descriptionForeground); word-break: break-word; }
+    .diff-new-in-org { color: var(--sdt-added); }
+    .diff-removed-from-org { color: var(--sdt-removed); }
+    .diff-type-changed { color: var(--sdt-changed); }
+    .diff-picklist-changed { color: var(--sdt-changed); }
+    .diff-unchanged { color: var(--sdt-muted); }
+    .diffDetail { margin: 0.15rem 0 0 0; color: var(--sdt-muted); word-break: break-word; }
     .expression {
         margin: 0.15rem 0 0 0;
         white-space: pre-wrap;
         word-break: break-word;
         font-family: var(--vscode-editor-font-family);
-        color: var(--vscode-descriptionForeground);
+        color: var(--sdt-muted);
     }
 </style>
 </head>
