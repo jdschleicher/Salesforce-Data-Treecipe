@@ -105,6 +105,24 @@ describe('DatasetSourceService', () => {
 
         });
 
+        test('given a name shaped like a command link on a refused path, the error names no part of the path', () => {
+
+            const commandLinkFileName = '[Fix recipe](command:workbench.action.terminal.sendSequence?%7B%22text%22%3A%22x%22%7D).yml';
+            const recipeFilePath = path.join(mockGeneratedRecipesPath, 'recipe-x', 'a..b', commandLinkFileName);
+
+            let thrownMessage = '';
+            try {
+                DatasetSourceService.resolveRecipeSourceNames(mockGeneratedRecipesPath, recipeFilePath);
+            } catch (thrownError) {
+                thrownMessage = (thrownError as Error).message;
+            }
+
+            expect(thrownMessage).toContain('is not inside the GeneratedRecipes folder');
+            expect(thrownMessage).not.toContain('command:');
+            expect(thrownMessage).not.toContain('a..b');
+
+        });
+
     });
 
     describe('countRecordsByObject', () => {
@@ -122,6 +140,16 @@ describe('DatasetSourceService', () => {
                 Contact: 3,
                 Case: 0
             });
+
+        });
+
+        test('given an object named __proto__, keeps its count as an own key', () => {
+
+            const recordCountsByObject = DatasetSourceService.countRecordsByObject(new Map([['__proto__', { records: [{}, {}] }]]));
+
+            expect(Object.prototype.hasOwnProperty.call(recordCountsByObject, '__proto__')).toBeTrue();
+            expect(recordCountsByObject['__proto__']).toBe(2);
+            expect(JSON.parse(JSON.stringify(recordCountsByObject))).toEqual(JSON.parse('{"__proto__":2}'));
 
         });
 

@@ -173,14 +173,6 @@ export class ExtensionCommandService {
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
             fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeFilePathNameQuickPickItem.label}`);
 
-            const datasetSource = DatasetSourceService.buildDatasetSource(
-                recipeSourceNames,
-                ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' ? 'faker-js' : 'snowfakery',
-                new Date().toISOString(),
-                DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords)
-            );
-            DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
-
             /* 
                 The below lines get the timestamped parent recipe folder 
                 in order to traverse through and get all other artifacts files to use in
@@ -206,6 +198,15 @@ export class ExtensionCommandService {
                     throw new Error('Selected directory doesnt have an expected OriginalTreecipeWrapper file');
                 }
             }
+
+            // LAST, so a run that failed above leaves no source file claiming a complete data set
+            const datasetSource = DatasetSourceService.buildDatasetSource(
+                recipeSourceNames,
+                ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' ? 'faker-js' : 'snowfakery',
+                new Date().toISOString(),
+                DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords)
+            );
+            DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
        
 
         } catch(error) {

@@ -1849,6 +1849,21 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test('given a run folder with no objects wrapper, writes no datasetSource.json for the failed data set', async () => {
+
+            const [fakerJsCase] = backendCases;
+            arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+            fs.unlinkSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', fakerJsCase.runFolderName, `treecipeObjectsWrapper-${runTimestamp}.json`));
+
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+
+            expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.any(Error), 'runFakerGenerationByRecipeFile');
+            const [datasetFolderName] = readDatasetFolderNames();
+            expect(fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets', datasetFolderName, 'BaseArtifactFiles')))
+                .not.toContain('datasetSource.json');
+
+        });
+
         test('given the data summary is dismissed, writes no data set', async () => {
 
             const [fakerJsCase] = backendCases;
