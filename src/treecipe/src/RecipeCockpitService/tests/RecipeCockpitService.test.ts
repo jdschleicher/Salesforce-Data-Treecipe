@@ -31,7 +31,9 @@ import {
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
     RECIPE_COCKPIT_REGENERATE_ACTION_LABEL,
     RECIPE_COCKPIT_REGENERATE_NOTE,
-    RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN
+    RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN,
+    RECIPE_COCKPIT_PALETTE,
+    RecipeCockpitPaletteToken
 } from '../RecipeCockpitService';
 import { INormalizedOrgField, INormalizedOrgObjectDescribe } from '../../SalesforceOrgService/SalesforceOrgService';
 import { SalesforceOrgService, ORG_DESCRIBE_CANCELLED_MESSAGE } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -204,6 +206,160 @@ describe('RecipeCockpitService', () => {
             expect(actualShellHtml).toContain(`<title>${RECIPE_COCKPIT_PANEL_TITLE}</title>`);
             expect(actualShellHtml).toContain(`<div id="loadStatus" class="loadStatus">${RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT}</div>`);
             expect(actualShellHtml).toContain('<div id="cockpitBody"></div>');
+
+        });
+
+    });
+
+    describe('the cockpit palette', () => {
+
+        const FONT_VARIABLES_FOLLOWING_THE_EDITOR = ['--vscode-font-family', '--vscode-editor-font-family', '--vscode-font-size'];
+
+        const TEXT_TOKENS: RecipeCockpitPaletteToken[] = ['text', 'muted', 'accent', 'added', 'removed', 'changed'];
+        const BACKGROUND_TOKENS: RecipeCockpitPaletteToken[] = ['page', 'surface', 'header', 'rowHover'];
+
+        const TEXT_ON_BACKGROUND_PAIRS: [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken][] = [
+            ...TEXT_TOKENS.flatMap(textToken => BACKGROUND_TOKENS.map(backgroundToken =>
+                [textToken, backgroundToken] as [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken])),
+            ['chipText', 'chipBg'],
+            ['onAccent', 'accent']
+        ];
+
+        const MINIMUM_TEXT_CONTRAST_RATIO = 4.5;
+
+        // WCAG 2.x RELATIVE LUMINANCE OF AN sRGB #RRGGBB COLOUR
+        const relativeLuminanceOf = (hexColour: string): number => {
+            const [red, green, blue] = [1, 3, 5]
+                .map(offset => parseInt(hexColour.substring(offset, offset + 2), 16) / 255)
+                .map(channel => channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4));
+            return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+        };
+
+        const contrastRatioOf = (firstHexColour: string, secondHexColour: string): number => {
+            const [lighter, darker] = [relativeLuminanceOf(firstHexColour), relativeLuminanceOf(secondHexColour)].sort((a, b) => b - a);
+            return (lighter + 0.05) / (darker + 0.05);
+        };
+
+        const findContrastFailures = (palette: Readonly<Record<RecipeCockpitPaletteToken, string>>): string[] =>
+            TEXT_ON_BACKGROUND_PAIRS
+                .map(([textToken, backgroundToken]) => ({ textToken, backgroundToken, ratio: contrastRatioOf(palette[textToken], palette[backgroundToken]) }))
+                .filter(pair => pair.ratio < MINIMUM_TEXT_CONTRAST_RATIO)
+                .map(pair => `${pair.textToken} on ${pair.backgroundToken} (${pair.ratio.toFixed(2)}:1)`);
+
+        const styleSheetOf = (shellHtml: string): string =>
+            shellHtml.substring(shellHtml.indexOf('<style nonce="testNonce">'), shellHtml.indexOf('</style>'));
+
+        const findThemeColourReads = (shellHtml: string): string[] =>
+            (shellHtml.match(/var\(--vscode-[A-Za-z0-9-]+/g) ?? [])
+                .map(variableRead => variableRead.substring('var('.length))
+                .filter(variableName => !FONT_VARIABLES_FOLLOWING_THE_EDITOR.includes(variableName));
+
+        it('defines every palette token as an --sdt- custom property on :root, valued from RECIPE_COCKPIT_PALETTE', () => {
+
+            const rootBlock = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce')).match(/:root \{[^}]*\}/)?.[0] ?? '';
+
+            expect(RECIPE_COCKPIT_PALETTE).toEqual({
+                page: '#F4F6F9', surface: '#FFFFFF', border: '#DDE3EA', header: '#EEF3FB',
+                text: '#1F2937', muted: '#5B6472', accent: '#2563EB', onAccent: '#FFFFFF',
+                rowHover: '#F1F5FF', chipBg: '#EEF2FF', chipText: '#3730A3',
+                added: '#15803D', removed: '#B91C1C', changed: '#B45309'
+            });
+            expect(rootBlock).toContain('--sdt-page: #F4F6F9;');
+            expect(rootBlock).toContain('--sdt-on-accent: #FFFFFF;');
+            expect(rootBlock).toContain('--sdt-row-hover: #F1F5FF;');
+            expect(rootBlock).toContain('--sdt-chip-bg: #EEF2FF;');
+            expect(rootBlock).toContain('--sdt-chip-text: #3730A3;');
+            (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[]).forEach(paletteToken => {
+                expect(rootBlock).toContain(`${RecipeCockpitService.buildPaletteCustomPropertyName(paletteToken)}: ${RECIPE_COCKPIT_PALETTE[paletteToken]};`);
+            });
+
+        });
+
+        // A TYPO IN A var() READ FALLS BACK TO THE INHERITED VALUE SILENTLY, SO EVERY READ IS CHECKED AGAINST WHAT IS DEFINED
+        it('reads no --sdt- property the palette does not define', () => {
+
+            const definedPropertyNames = (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[])
+                .map(paletteToken => RecipeCockpitService.buildPaletteCustomPropertyName(paletteToken));
+            const readPropertyNames = (styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce')).match(/var\(--sdt-[a-z-]+/g) ?? [])
+                .map(variableRead => variableRead.substring('var('.length));
+
+            expect(readPropertyNames).not.toBeEmpty();
+            readPropertyNames.forEach(readPropertyName => expect(definedPropertyNames).toContain(readPropertyName));
+
+        });
+
+        it('reads no VS Code theme colour, only the three editor font variables', () => {
+
+            const actualShellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+
+            expect(findThemeColourReads(actualShellHtml)).toEqual([]);
+            FONT_VARIABLES_FOLLOWING_THE_EDITOR.forEach(fontVariable => expect(actualShellHtml).toContain(`var(${fontVariable})`));
+
+        });
+
+        it('fails the theme check when a VS Code colour variable is read', () => {
+
+            const shellHtmlReadingTheTheme = RecipeCockpitService.buildWebviewShellHtml('testNonce')
+                .replace('</style>', '    .object { background-color: var(--vscode-editor-background); }\n</style>');
+
+            expect(findThemeColourReads(shellHtmlReadingTheTheme)).toEqual(['--vscode-editor-background']);
+
+        });
+
+        it('styles the page, native controls and scrollbars from the palette rather than the theme', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+
+            expect(styleSheet).toContain('color-scheme: light;');
+            expect(styleSheet).toMatch(/html, body \{[^}]*color: var\(--sdt-text\);[^}]*background-color: var\(--sdt-page\);/);
+            expect(styleSheet).toMatch(/::-webkit-scrollbar-thumb \{[^}]*var\(--sdt-border\)/);
+            expect(styleSheet).toContain('scrollbar-color: var(--sdt-border) var(--sdt-page);');
+
+        });
+
+        it('draws each object as a card, highlights rows and rings keyboard focus in the accent', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const objectRule = styleSheet.match(/\.object \{[^}]*\}/)?.[0] ?? '';
+
+            expect(objectRule).toContain('background-color: var(--sdt-surface);');
+            expect(objectRule).toContain('border: 1px solid var(--sdt-border);');
+            expect(objectRule).toContain('border-radius: 8px;');
+            expect(objectRule).toContain('box-shadow:');
+            expect(styleSheet).toMatch(/\.field:hover \{ background-color: var\(--sdt-row-hover\); \}/);
+            expect(styleSheet).toContain(':focus-visible { outline: 2px solid var(--sdt-accent);');
+
+        });
+
+        it('restyles the buttons with the accent and the diff badges with the added, removed and changed tokens', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+
+            expect(styleSheet).toMatch(/\.toolbar button, \.regenerate button \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            expect(styleSheet).toContain('.diff-new-in-org { color: var(--sdt-added); }');
+            expect(styleSheet).toContain('.diff-removed-from-org { color: var(--sdt-removed); }');
+            expect(styleSheet).toContain('.diff-type-changed { color: var(--sdt-changed); }');
+            expect(styleSheet).toContain('.diff-picklist-changed { color: var(--sdt-changed); }');
+            expect(styleSheet).toContain('.sourceLink { color: var(--sdt-accent);');
+
+        });
+
+        it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
+
+            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(26);
+            expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
+
+        });
+
+        it('names the pair that drops below the minimum when a palette value is changed', () => {
+
+            const paletteWithTheOldMuted = { ...RECIPE_COCKPIT_PALETTE, muted: '#6B7280' };
+
+            expect(findContrastFailures(paletteWithTheOldMuted)).toEqual([
+                'muted on page (4.47:1)',
+                'muted on header (4.34:1)',
+                'muted on rowHover (4.43:1)'
+            ]);
 
         });
 
