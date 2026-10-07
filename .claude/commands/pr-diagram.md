@@ -109,6 +109,30 @@ List all changed `.ts` files and their corresponding test files. Flag any change
 
 ---
 
+## Step 1b — Validate every diagram before posting (REQUIRED)
+
+GitHub shows a parse error instead of a diagram when a block is malformed, and this has shipped broken more than once. Render each block locally first; never post an unrendered diagram.
+
+```bash
+# One-time setup in a scratch directory (no Chromium download — use the pre-installed one)
+mkdir -p "$SCRATCH/mmdc" && cd "$SCRATCH/mmdc" && npm init -y >/dev/null \
+  && PUPPETEER_SKIP_DOWNLOAD=1 npm i --ignore-scripts @mermaid-js/mermaid-cli@11.4.2
+echo '{"executablePath":"/opt/pw-browsers/chromium-1194/chrome-linux/chrome","args":["--no-sandbox"]}' > "$SCRATCH/pp.json"
+
+# Each diagram in its own .mmd file (the block's contents, without the ``` fences)
+"$SCRATCH/mmdc/node_modules/.bin/mmdc" -p "$SCRATCH/pp.json" -i before.mmd -o before.png -b white
+```
+
+A `Lexical error` or `Parse error` means the block is broken: fix it and render again. Then look at the PNG. A diagram can parse and still be unreadable, for example a `direction TB` subgraph inside a `graph LR` that renders as one tiny row.
+
+Rules that have broken diagrams before:
+- A `click` URL is a plain double-quoted string: `click RS "https://github.com/..."`. **Never** wrap it in backticks (`"``https://...``"`) or angle brackets; either is a lexical error.
+- Write labels in plain text. Do not use HTML entities (`&lt;`, `&gt;`, `&amp;`): write `Object_child_NickName`, not `&lt;Object&gt;_child_NickName`. `<br/>` is the only markup allowed.
+- Quote every label that contains `(`, `)`, `:`, `,` or `/`: `RS["RelationshipService<br/>(self-lookup)"]`.
+- Write the comment body with real line breaks. A body built through a JSON or shell string must not turn the fences into escaped text.
+
+---
+
 ## Step 2 — Post to PR
 
 Check if a PR exists:
@@ -159,5 +183,6 @@ WARN — <service>.ts changed but no test file change detected
 ## Notes
 
 - Use `style` directives to visually distinguish changed nodes (green `#d4edda` fill)
-- Always include `click` directives so reviewers can navigate directly to the changed files on GitHub
+- Always include `click` directives so reviewers can navigate directly to the changed files on GitHub, written as plain quoted URLs (see Step 1b)
+- Never post a diagram that has not been rendered with `mmdc` (Step 1b)
 - If the PR only touches tests and not service files, generate a simpler "tests updated" diagram instead of a pipeline flow
