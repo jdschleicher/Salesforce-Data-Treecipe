@@ -9,6 +9,7 @@ import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProce
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { DatasetSourceService } from "../DatasetSourceService/DatasetSourceService";
+import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
@@ -2113,14 +2114,44 @@ export class ExtensionCommandService {
 
     }
 
-    async insertDataSetBySelectedDirectory() {
+    /*
+        preselectedDataSetDirectoryPath is how the Recipe Cockpit's Insert… hands over the folder the
+        reader chose there; the palette passes nothing and still gets the folder picker. The command
+        is registered by id, so anything can execute it with an argument: a pre-selected folder is
+        used only when it is an existing directory inside the workspace, and refused with a warning
+        otherwise rather than falling back to the picker the caller meant to skip.
+    */
+    async insertDataSetBySelectedDirectory(preselectedDataSetDirectoryPath?: string) {
 
         try {
 
-            const selectedDataSetDirectoryToInsert:vscode.QuickPickItem = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
-            
-            if (!selectedDataSetDirectoryToInsert) {
-                return;
+            let selectedDataSetFullDirectoryPath: string;
+
+            if ( preselectedDataSetDirectoryPath !== undefined ) {
+
+                const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+                const isUsableDataSetDirectory = typeof preselectedDataSetDirectoryPath === 'string'
+                                                    && !!workspaceRoot
+                                                    && SfdxProjectService.isExistingDirectory(preselectedDataSetDirectoryPath)
+                                                    && SfdxProjectService.isPathContainedInWorkspace(path.resolve(preselectedDataSetDirectoryPath), path.resolve(workspaceRoot));
+
+                if ( !isUsableDataSetDirectory ) {
+                    VSCodeWorkspaceService.showWarningMessage('The data set folder to insert is not a folder in this workspace, so nothing was inserted.');
+                    return;
+                }
+
+                selectedDataSetFullDirectoryPath = preselectedDataSetDirectoryPath;
+
+            } else {
+
+                const selectedDataSetDirectoryToInsert:vscode.QuickPickItem = await CollectionsApiService.promptForDataSetObjectsPathVSCodeQuickItems();
+
+                if (!selectedDataSetDirectoryToInsert) {
+                    return;
+                }
+
+                selectedDataSetFullDirectoryPath = selectedDataSetDirectoryToInsert.detail;
+
             }
 
             const targetOrgAlias = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
@@ -2135,7 +2166,6 @@ export class ExtensionCommandService {
             
             const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
 
-            const selectedDataSetFullDirectoryPath = selectedDataSetDirectoryToInsert.detail;
             const datasetChildFoldersToFilesMap = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(selectedDataSetFullDirectoryPath);
             
             const treecipeObjectWrapperDetail = await CollectionsApiService.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);

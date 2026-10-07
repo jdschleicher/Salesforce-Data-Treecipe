@@ -7,6 +7,7 @@ expect.extend(matchers);
 
 import {
     DatasetSourceService,
+    DATASET_COLLECTIONS_API_FOLDER_NAME,
     DATASET_SOURCE_FILE_NAME,
     IDatasetSource,
     IKnownRecipeRun
@@ -317,6 +318,15 @@ describe('DatasetSourceService', () => {
 
         });
 
+        test('given a run folder that is gone, still names the recorded tree as a hint, which a linked or unsafe result never carries', () => {
+
+            expect(readFixture('dataset-fakerjs-2026-09-09T00-00-00').treeFolderNameHint).toBe(readFixture('dataset-fakerjs-2026-09-09T00-00-00').datasetSource?.recipeTreeFolderName);
+            expect(readFixture('dataset-fakerjs-2026-09-09T00-00-00').treeFolderNameHint).toBeString();
+            expect(readFixture('dataset-fakerjs-2026-09-02T10-00-00')).not.toHaveProperty('treeFolderNameHint');
+            expect(readFixture('dataset-fakerjs-2026-09-07T00-00-00')).not.toHaveProperty('treeFolderNameHint');
+
+        });
+
         test('given a tree folder the named run does not have, is unknown', () => {
 
             const knownRecipeRuns: IKnownRecipeRun[] = [{ runFolderName: fakerJsRunFolderName, treeFolderNames: ['Other-ONLY'] }];
@@ -491,6 +501,47 @@ describe('DatasetSourceService', () => {
 
             });
 
+            test('given copies naming a run no longer on disk or another run, keeps the copied tree name as a hint', () => {
+
+                writeBaseArtifact('originalRecipe-recipe--Case-ONLY-2026-09-04T11-22-07.yml');
+                writeBaseArtifact('originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-04T11-22-07.json');
+
+                expect(DatasetSourceService.readDatasetSource(temporaryDatasetPath, [])).toMatchObject({ status: 'unknown', treeFolderNameHint: 'Case-ONLY' });
+
+                writeBaseArtifact('originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-01T08-00-00.json');
+                fs.rmSync(path.join(temporaryDatasetPath, 'BaseArtifactFiles', 'originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-04T11-22-07.json'));
+
+                expect(DatasetSourceService.readDatasetSource(temporaryDatasetPath, knownRecipeRuns)).toMatchObject({ status: 'unknown', treeFolderNameHint: 'Case-ONLY' });
+
+            });
+
+            test('given a copied tree name that is not a plain folder name, carries no hint', () => {
+
+                writeBaseArtifact('originalRecipe-recipe--a..b-2026-09-04T11-22-07.yml');
+                writeBaseArtifact('originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-04T11-22-07.json');
+
+                const readResult = DatasetSourceService.readDatasetSource(temporaryDatasetPath, []);
+
+                expect(readResult.status).toBe('unknown');
+                expect(readResult).not.toHaveProperty('treeFolderNameHint');
+
+            });
+
+            test('given a recorded run that is gone and no tree, carries no hint', () => {
+
+                fs.mkdirSync(path.join(temporaryDatasetPath, 'BaseArtifactFiles'), { recursive: true });
+                DatasetSourceService.writeDatasetSourceFile(path.join(temporaryDatasetPath, 'BaseArtifactFiles'), DatasetSourceService.buildDatasetSource(
+                    { recipeRunFolderName: 'recipe-2026-01-01T00-00-00', recipeTreeFolderName: null, recipeFileName: 'recipe.yml' },
+                    'snowfakery', '2026-01-02T00:00:00.000Z', {}
+                ));
+
+                const readResult = DatasetSourceService.readDatasetSource(temporaryDatasetPath, knownRecipeRuns);
+
+                expect(readResult.status).toBe('unknown');
+                expect(readResult).not.toHaveProperty('treeFolderNameHint');
+
+            });
+
             test('given copy names that carry no timestamp, is unknown', () => {
 
                 writeBaseArtifact('originalRecipe-hand-written.yml');
@@ -506,6 +557,70 @@ describe('DatasetSourceService', () => {
 
                 expect(DatasetSourceService.readDatasetSource(temporaryDatasetPath, knownRecipeRuns).status).toBe('unreadable');
 
+            });
+
+        });
+
+    });
+
+    describe('countLegacyRecordsByObject', () => {
+
+        let temporaryDatasetPath: string;
+
+        const writeCollectionsApiFile = (fileName: string, fileContent: string) => {
+            fs.mkdirSync(path.join(temporaryDatasetPath, DATASET_COLLECTIONS_API_FOLDER_NAME), { recursive: true });
+            fs.writeFileSync(path.join(temporaryDatasetPath, DATASET_COLLECTIONS_API_FOLDER_NAME, fileName), fileContent);
+        };
+
+        beforeEach(() => {
+            temporaryDatasetPath = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-counts-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(temporaryDatasetPath, { recursive: true, force: true });
+        });
+
+        test('counts each Collections API file\'s records under the object its name carries', () => {
+
+            writeCollectionsApiFile('collectionsApi-Account.json', JSON.stringify({ allOrNone: true, records: [{}, {}] }));
+            writeCollectionsApiFile('collectionsApi-Contact.json', JSON.stringify({ allOrNone: true, records: [] }));
+            writeCollectionsApiFile('notes.txt', 'not a Collections API file');
+
+            expect(DatasetSourceService.countLegacyRecordsByObject(temporaryDatasetPath)).toEqual({
+                recordCountsByObject: { Account: 2, Contact: 0 },
+                unreadableFileNames: []
+            });
+
+        });
+
+        test('lists a file that is not JSON, or has no records array, rather than counting it as zero', () => {
+
+            writeCollectionsApiFile('collectionsApi-Lead.json', '{ not json');
+            writeCollectionsApiFile('collectionsApi-Case.json', JSON.stringify({ records: 'many' }));
+
+            expect(DatasetSourceService.countLegacyRecordsByObject(temporaryDatasetPath)).toEqual({
+                recordCountsByObject: {},
+                unreadableFileNames: ['collectionsApi-Case.json', 'collectionsApi-Lead.json']
+            });
+
+        });
+
+        test('keeps an object named __proto__ as a count rather than a prototype', () => {
+
+            writeCollectionsApiFile('collectionsApi-__proto__.json', JSON.stringify({ records: [{}] }));
+
+            const { recordCountsByObject } = DatasetSourceService.countLegacyRecordsByObject(temporaryDatasetPath);
+
+            expect(Object.keys(recordCountsByObject)).toEqual(['__proto__']);
+            expect(recordCountsByObject['__proto__']).toBe(1);
+
+        });
+
+        test('given no Collections API folder, counts nothing and does not throw', () => {
+
+            expect(DatasetSourceService.countLegacyRecordsByObject(path.join(temporaryDatasetPath, 'missing'))).toEqual({
+                recordCountsByObject: {},
+                unreadableFileNames: []
             });
 
         });

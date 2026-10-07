@@ -7,6 +7,11 @@ export const DATASET_SOURCE_SCHEMA_VERSION = 1;
 
 const BASE_ARTIFACT_FILES_FOLDER_NAME = 'BaseArtifactFiles';
 
+// ConfigurationService.getDatasetFilesForCollectionsApiFolderName, repeated so this service keeps importing only fs and path
+export const DATASET_COLLECTIONS_API_FOLDER_NAME = 'DatasetFilesForCollectionsApi';
+
+const COLLECTIONS_API_FILE_NAME_PATTERN = /^collectionsApi-(.+)\.json$/;
+
 const ORIGINAL_RECIPE_FILE_PREFIX = 'originalRecipe-';
 
 const ORIGINAL_WRAPPER_FILE_PREFIX = 'originalTreecipeWrapper-treecipeObjectsWrapper-';
@@ -63,6 +68,17 @@ export interface IDatasetSourceReadResult {
     recipeTreeFolderName: string | null;
     datasetSource?: IDatasetSource;
     reason: string;
+    /*
+        Set only on an "unknown" result whose source still names a tree folder -- a run folder that
+        is gone, or legacy copies that disagree on the run. The tree is a plain name either way, so
+        a reader can still place the data set under that tree with its version unknown.
+    */
+    treeFolderNameHint?: string;
+}
+
+export interface ILegacyRecordCountResult {
+    recordCountsByObject: Record<string, number>;
+    unreadableFileNames: string[];
 }
 
 export interface IDatasetFolderNameDetail {
@@ -300,12 +316,17 @@ export class DatasetSourceService {
     private static matchRecordedNames(datasetSource: IDatasetSource, knownRecipeRuns: IKnownRecipeRun[]): IDatasetSourceReadResult {
 
         const { recipeRunFolderName, recipeTreeFolderName, recipeFileName } = datasetSource;
-        const unknownResult = (reason: string) => ({ ...this.buildReadResult('unknown', 'recorded', reason), datasetSource });
 
         const recordedNames = [recipeFileName, recipeRunFolderName, recipeTreeFolderName].filter(recordedName => recordedName !== null);
         if ( !recordedNames.every(recordedName => this.isSafeFolderOrFileName(recordedName)) ) {
-            return unknownResult('A recorded name is not a plain folder or file name.');
+            return { ...this.buildReadResult('unknown', 'recorded', 'A recorded name is not a plain folder or file name.'), datasetSource };
         }
+
+        const unknownResult = (reason: string) => ({
+            ...this.buildReadResult('unknown', 'recorded', reason),
+            datasetSource,
+            ...( recipeTreeFolderName !== null ? { treeFolderNameHint: recipeTreeFolderName } : {} )
+        });
 
         if ( recipeRunFolderName === null ) {
             return recipeTreeFolderName === null
@@ -375,19 +396,24 @@ export class DatasetSourceService {
         const [, wrapperTimestamp] = wrapperMatch;
         const [, recipePrefix, recipeTreeFolderName, recipeTimestamp] = recipeMatch;
 
+        const unknownTreeResult = (reason: string) => ({
+            ...unknownResult(reason),
+            ...( this.isSafeFolderOrFileName(recipeTreeFolderName) ? { treeFolderNameHint: recipeTreeFolderName } : {} )
+        });
+
         if ( wrapperTimestamp !== recipeTimestamp ) {
-            return unknownResult('The recipe copy and the wrapper copy name different runs.');
+            return unknownTreeResult('The recipe copy and the wrapper copy name different runs.');
         }
 
         const recipeRunFolderName = `${recipePrefix}-${wrapperTimestamp}`;
         const matchingRun = knownRecipeRuns.find(knownRun => knownRun.runFolderName === recipeRunFolderName);
 
         if ( !matchingRun ) {
-            return unknownResult(`No recipe run folder named "${recipeRunFolderName}" was found.`);
+            return unknownTreeResult(`No recipe run folder named "${recipeRunFolderName}" was found.`);
         }
 
         if ( !this.isSafeFolderOrFileName(recipeTreeFolderName) || !matchingRun.treeFolderNames.includes(recipeTreeFolderName) ) {
-            return unknownResult(`The recipe run "${recipeRunFolderName}" has no tree folder named "${recipeTreeFolderName}".`);
+            return unknownTreeResult(`The recipe run "${recipeRunFolderName}" has no tree folder named "${recipeTreeFolderName}".`);
         }
 
         return {
@@ -397,6 +423,46 @@ export class DatasetSourceService {
             recipeTreeFolderName: recipeTreeFolderName,
             reason: 'Inferred from the recipe and wrapper copies.'
         };
+
+    }
+
+    /*
+        A data set's record counts read from the Collections API files it holds, for one written
+        before datasetSource.json recorded them. One file per object, named for it; a file that is
+        not JSON with a records array is listed rather than counted as zero, because zero is a
+        count. Never throws, like readDatasetSource.
+    */
+    static countLegacyRecordsByObject(datasetFolderPath: string): ILegacyRecordCountResult {
+
+        const collectionsApiFolderPath = path.join(datasetFolderPath, DATASET_COLLECTIONS_API_FOLDER_NAME);
+        const recordCountsByObject: Record<string, number> = Object.create(null);
+        const unreadableFileNames: string[] = [];
+
+        this.readDirectoryEntries(collectionsApiFolderPath)
+            .filter(collectionsApiEntry => collectionsApiEntry.isFile())
+            .map(collectionsApiEntry => collectionsApiEntry.name)
+            .sort()
+            .forEach(collectionsApiFileName => {
+
+                const fileNameMatch = COLLECTIONS_API_FILE_NAME_PATTERN.exec(collectionsApiFileName);
+                if ( !fileNameMatch ) {
+                    return;
+                }
+
+                try {
+                    const parsedContent = JSON.parse(fs.readFileSync(path.join(collectionsApiFolderPath, collectionsApiFileName), 'utf8'));
+                    if ( !Array.isArray(parsedContent?.records) ) {
+                        unreadableFileNames.push(collectionsApiFileName);
+                        return;
+                    }
+                    recordCountsByObject[fileNameMatch[1]] = parsedContent.records.length;
+                } catch {
+                    unreadableFileNames.push(collectionsApiFileName);
+                }
+
+            });
+
+        return { recordCountsByObject, unreadableFileNames };
 
     }
 

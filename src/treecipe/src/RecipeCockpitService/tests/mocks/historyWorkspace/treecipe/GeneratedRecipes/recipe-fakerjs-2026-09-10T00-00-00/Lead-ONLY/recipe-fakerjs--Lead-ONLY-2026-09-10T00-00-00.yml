@@ -1,0 +1,5 @@
+- object: Lead
+  nickname: Lead_NickName
+  count: 1
+  fields:
+    Company: ${{ faker.company.name() }}

@@ -3600,4 +3600,89 @@ describe('ExtensionCommandService', () => {
 
     });
 
+
+    describe('insertDataSetBySelectedDirectory', () => {
+
+        let temporaryWorkspaceRoot: string;
+        let datasetFolderPath: string;
+        let promptSpy: jest.SpyInstance;
+        let getOrgSpy: jest.SpyInstance;
+        let allOrNoneSpy: jest.SpyInstance;
+        let showWarningMessageSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+
+            temporaryWorkspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'insert-dataset-'));
+            datasetFolderPath = path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', 'dataset-2026-09-21T00-00-00');
+            fs.mkdirSync(datasetFolderPath, { recursive: true });
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(temporaryWorkspaceRoot);
+            promptSpy = jest.spyOn(CollectionsApiService, 'promptForDataSetObjectsPathVSCodeQuickItems').mockResolvedValue(undefined);
+            // THE ORG PROMPT IS WHERE EACH PATH STOPS, SO WHAT REACHES IT IS WHAT THE REST OF THE INSERT WOULD USE
+            getOrgSpy = jest.spyOn(CollectionsApiService, 'getExpectedSalesforceOrgToInsertAgainst').mockResolvedValue(undefined);
+            allOrNoneSpy = jest.spyOn(CollectionsApiService, 'promptForAllOrNoneInsertDecision');
+            showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+        });
+
+        afterEach(() => {
+            fs.rmSync(temporaryWorkspaceRoot, { recursive: true, force: true });
+        });
+
+        it('given no folder, still shows the folder picker', async () => {
+
+            await new ExtensionCommandService().insertDataSetBySelectedDirectory();
+
+            expect(promptSpy).toHaveBeenCalledTimes(1);
+            expect(getOrgSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('given a data set folder in the workspace, skips the picker and goes on to the unchanged org prompt', async () => {
+
+            await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+            expect(promptSpy).not.toHaveBeenCalled();
+            expect(getOrgSpy).toHaveBeenCalledTimes(1);
+            expect(allOrNoneSpy).not.toHaveBeenCalled();
+            expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('given an org, asks the unchanged AllOrNone question and reads the pre-selected folder', async () => {
+
+            getOrgSpy.mockResolvedValue('devhub');
+            allOrNoneSpy.mockResolvedValue(true);
+            jest.spyOn(CollectionsApiService, 'getConnectionFromAlias').mockResolvedValue({} as any);
+            const childFoldersSpy = jest.spyOn(CollectionsApiService, 'getDataSetChildDirectoriesNameToFilesMap').mockRejectedValue(new Error('stop here'));
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+            expect(allOrNoneSpy).toHaveBeenCalledTimes(1);
+            expect(childFoldersSpy).toHaveBeenCalledWith(datasetFolderPath);
+
+        });
+
+        it('given a folder that is gone, or outside the workspace, refuses rather than inserting or falling back to the picker', async () => {
+
+            const outsideFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-dataset-'));
+
+            try {
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(path.join(datasetFolderPath, 'missing'));
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(outsideFolderPath);
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(`${datasetFolderPath}/../../../..`);
+
+            } finally {
+                fs.rmSync(outsideFolderPath, { recursive: true, force: true });
+            }
+
+            expect(showWarningMessageSpy).toHaveBeenCalledTimes(3);
+            expect(promptSpy).not.toHaveBeenCalled();
+            expect(getOrgSpy).not.toHaveBeenCalled();
+
+        });
+
+    });
 });
