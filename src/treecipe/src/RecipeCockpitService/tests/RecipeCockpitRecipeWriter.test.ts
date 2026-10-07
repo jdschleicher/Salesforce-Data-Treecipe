@@ -946,6 +946,15 @@ describe('RecipeCockpitRecipeWriter', () => {
 
         });
 
+        test('a comment after a nickname is not part of it, so the occurrence is still addressed by its nickname', () => {
+
+            const commentedRecipeText = selfLookupRecipeText.replace(`nickname: ${CHILD_NICKNAME}`, `nickname: ${CHILD_NICKNAME}   # the branch office`);
+
+            expect(RecipeCockpitRecipeWriter.scanRecipeObjects(commentedRecipeText.split('\n'))[2].nicknames).toEqual([CHILD_NICKNAME]);
+            expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(commentedRecipeText, 'Account', 'ParentId', 'x', CHILD_NICKNAME));
+
+        });
+
         test('a property refusal names the occurrence', () => {
 
             const invalidCountResult = RecipeCockpitRecipeWriter.setObjectProperty(selfLookupRecipeText, 'Account', 'count', -1, CHILD_NICKNAME);

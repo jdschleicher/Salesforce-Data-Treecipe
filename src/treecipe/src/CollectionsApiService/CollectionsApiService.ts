@@ -209,6 +209,8 @@ export class CollectionsApiService {
 
             const objectNameForFile = this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath);
             const insertRounds = this.partitionRecordsIntoInsertRounds(preparedCollectionsApiDetail.records);
+            // THE IDS THIS FILE'S OWN ROUNDS CREATED -- EVERY EARLIER FILE'S REFERENCE WAS ALREADY RESOLVED ABOVE, SO A LATER ROUND IS MATCHED AGAINST THESE ALONE
+            const referenceIdToOrgIdCreatedByThisFile: Record<string, string> = {};
 
             for ( let insertRoundIndex = 0; insertRoundIndex < insertRounds.length; insertRoundIndex++ ) {
 
@@ -216,7 +218,7 @@ export class CollectionsApiService {
                 const insertRoundDetail = insertRoundIndex === 0
                     ? { ...preparedCollectionsApiDetail, records: insertRounds[insertRoundIndex] }
                     : JSON.parse(this.updateLookupReferencesInCollectionApiJson(JSON.stringify({ ...preparedCollectionsApiDetail, records: insertRounds[insertRoundIndex] }),
-                                                                                objectReferenceIdToOrgCreatedRecordIdMap));
+                                                                                referenceIdToOrgIdCreatedByThisFile));
 
                 const collectionsApiSobjectResult = await this.makeCollectionsApiCall(insertRoundDetail, 
                                                                                 aliasAuthenticationConnection,
@@ -237,6 +239,7 @@ export class CollectionsApiService {
                 }
 
                 objectReferenceIdToOrgCreatedRecordIdMap = this.updateReferenceIdMapWithCreatedRecords(objectReferenceIdToOrgCreatedRecordIdMap, collectionsApiSobjectResult, insertRoundDetail.records);
+                this.updateReferenceIdMapWithCreatedRecords(referenceIdToOrgIdCreatedByThisFile, collectionsApiSobjectResult, insertRoundDetail.records);
 
             }
 
@@ -616,42 +619,50 @@ export class CollectionsApiService {
         none is one round, exactly the request it always was. References that can never be met (a
         cycle) are inserted together in a last round, as they were before, and Salesforce reports them.
     */
-    static partitionRecordsIntoInsertRounds(records: any): any[][] {
+    static partitionRecordsIntoInsertRounds(records: unknown): unknown[][] {
 
         if ( !Array.isArray(records) || records.length === 0 ) {
-            return [records];
+            return [records as unknown[]];
         }
 
+        const readFieldEntries = (record: unknown): Array<[string, unknown]> => ( record && typeof record === 'object' ? Object.entries(record) : [] );
         const nicknames = records.map(record => {
-            const referenceId = record?.attributes?.referenceId;
+            const attributes = readFieldEntries(record).find(([fieldName]) => fieldName === 'attributes')?.[1];
+            const referenceId = readFieldEntries(attributes).find(([attributeName]) => attributeName === 'referenceId')?.[1];
             return typeof referenceId === 'string' ? this.readNicknameFromReferenceId(referenceId) : undefined;
         });
 
         const recordIndexesByNickname = new Map<string, number[]>();
         nicknames.forEach((nickname, recordIndex) => {
-            if ( nickname ) {
-                recordIndexesByNickname.set(nickname, [...(recordIndexesByNickname.get(nickname) ?? []), recordIndex]);
+            if ( !nickname ) {
+                return;
+            }
+            const holderIndexes = recordIndexesByNickname.get(nickname);
+            if ( holderIndexes ) {
+                holderIndexes.push(recordIndex);
+            } else {
+                recordIndexesByNickname.set(nickname, [recordIndex]);
             }
         });
 
+        // A NICKNAME HELD BY SEVERAL RECORDS IS A REFERENCE FROM ANY OF THEM, SO ONLY ITS FIRST TWO HOLDERS ARE NEEDED TO TELL "ANOTHER RECORD" FROM "ITSELF"
         const referencedNicknamesByRecordIndex = records.map((record, recordIndex) => {
             const referencedNicknames = new Set<string>();
-            if ( record && typeof record === 'object' ) {
-                Object.entries(record).forEach(([fieldName, fieldValue]) => {
-                    const isSameFileReference = fieldName !== 'attributes'
-                                                    && typeof fieldValue === 'string'
-                                                    && (recordIndexesByNickname.get(fieldValue) ?? []).some(holderIndex => holderIndex !== recordIndex);
-                    if ( isSameFileReference ) {
-                        referencedNicknames.add(fieldValue as string);
-                    }
-                });
-            }
+            readFieldEntries(record).forEach(([fieldName, fieldValue]) => {
+                if ( fieldName === 'attributes' || typeof fieldValue !== 'string' ) {
+                    return;
+                }
+                const holderIndexes = recordIndexesByNickname.get(fieldValue);
+                if ( holderIndexes && ( holderIndexes[0] !== recordIndex || holderIndexes.length > 1 ) ) {
+                    referencedNicknames.add(fieldValue);
+                }
+            });
             return referencedNicknames;
         });
 
         const insertedNicknames = new Set<string>();
         let remainingRecordIndexes = records.map((_record, recordIndex) => recordIndex);
-        const insertRounds: any[][] = [];
+        const insertRounds: unknown[][] = [];
 
         while ( remainingRecordIndexes.length > 0 ) {
 

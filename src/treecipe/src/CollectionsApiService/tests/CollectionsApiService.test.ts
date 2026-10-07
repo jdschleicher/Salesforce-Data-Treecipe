@@ -989,6 +989,19 @@ describe('Shared tests for CollectionsApiService', () => {
 
         });
 
+        test('many records sharing one nickname partition in linear time, as one round', () => {
+
+            // snowfakery GIVES EVERY RECORD OF AN OBJECT ONE NICKNAME; COPYING THE HOLDER LIST PER RECORD TOOK 19 s AT 50,000
+            const records = Array.from({ length: 50000 }, (_unused, recordIndex) => accountRecord(recordIndex + 1, 'Account_NickName', { OwnerId: 'User_NickName' }));
+
+            const startedAt = Date.now();
+            const insertRounds = CollectionsApiService.partitionRecordsIntoInsertRounds(records);
+
+            expect(Date.now() - startedAt).toBeLessThan(2000);
+            expect(insertRounds).toEqual([records]);
+
+        });
+
         test('records with no records array, no reference id or no fields are passed through', () => {
 
             expect(CollectionsApiService.partitionRecordsIntoInsertRounds(undefined)).toEqual([undefined]);

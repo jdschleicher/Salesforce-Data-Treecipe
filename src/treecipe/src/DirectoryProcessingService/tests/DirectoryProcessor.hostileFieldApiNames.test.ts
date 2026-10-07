@@ -78,7 +78,9 @@ const EXPECTED_HOSTILE_FIELD_NAMES = [
     INJECTED_LINE,
     `a\`\${globalThis.${INJECTION_MARKER}=true}\`b`,
     '   ',
-    `Geo\n    ${INJECTED_LINE}\n    Geo__c`
+    `Geo\n    ${INJECTED_LINE}\n    Geo__c`,
+    // A SELF-LOOKUP: ITS NAME ALSO REACHED THE COMMENT NAMING A NESTED CHILD ITERATION (#188), WHERE IT WROTE A WHOLE OBJECT
+    `SelfLookup\n    - object: Pwned__c\n      fields:\n        ${INJECTED_LINE}\n    #`
 ];
 // LOCATION EXPANDS TO TWO COMPONENTS, EACH CARRYING THE HOSTILE NAME
 const EXPECTED_SKIPPED_FIELD_COUNT = EXPECTED_HOSTILE_FIELD_NAMES.length + 1;

@@ -1,6 +1,7 @@
 import { FieldInfo } from "../ObjectInfoWrapper/FieldInfo";
 import { ObjectInfo } from "../ObjectInfoWrapper/ObjectInfo";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
+import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
 
 export class RelationshipService {
 
@@ -477,7 +478,7 @@ export class RelationshipService {
       ]);
 
       if ( selfLookupObjectNames.has(objectName) ) {
-        const selfLookupFieldNames = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences[objectName];
+        const selfLookupFieldNames = RelationshipService.getWritableSelfLookupFieldNames(objectName, objectInfoWrapper);
         friendLines.push(
           `${friendIndentation}# ${objectName} (Child iteration of the ${objectName} above, through ${selfLookupFieldNames.join(', ')})`,
           ...renderObject(objectName, depth + 1, friendAncestorObjectNames, true)
@@ -507,11 +508,24 @@ export class RelationshipService {
   }
 
   static hasSelfLookup(objectName: string, objectInfoWrapper: ObjectInfoWrapper): boolean {
+    return RelationshipService.getWritableSelfLookupFieldNames(objectName, objectInfoWrapper).length > 0;
+  }
+
+  /*
+    A RelationshipDetail records a lookup's field name as the XML gave it, including one the api-name
+    rule refused -- the recipe writes that field as a SKIPPED TODO, but the relationship is still
+    recorded. The child-iteration comment writes these names into the recipe, so only api names
+    reach it, and a self-lookup whose every name was refused adds no iteration: there would be no
+    lookup line to wire, only a second, unlinked copy of the object (#120, #188).
+  */
+  static getWritableSelfLookupFieldNames(objectName: string, objectInfoWrapper: ObjectInfoWrapper): string[] {
 
     const parentObjectToFieldReferences = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail?.parentObjectToFieldReferences;
-    return !!parentObjectToFieldReferences
-            && Object.prototype.hasOwnProperty.call(parentObjectToFieldReferences, objectName)
-            && parentObjectToFieldReferences[objectName].length > 0;
+    if ( !parentObjectToFieldReferences || !Object.prototype.hasOwnProperty.call(parentObjectToFieldReferences, objectName) ) {
+      return [];
+    }
+
+    return parentObjectToFieldReferences[objectName].filter(fieldName => SalesforceApiName.isApiName(fieldName));
 
   }
 

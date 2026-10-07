@@ -522,7 +522,8 @@ export class RecipeCockpitRecipeWriter {
             if ( propertyMatch ) {
                 scannedObject.propertyLineIndexes[propertyMatch[1] as RecipeObjectProperty].push(lineIndex);
                 if ( propertyMatch[1] === 'nickname' ) {
-                    scannedObject.nicknames.push(recipeLine.slice(propertyMatch[0].length).trim());
+                    // A YAML COMMENT AFTER THE VALUE IS NOT PART OF THE NICKNAME, OR THE OCCURRENCE COULD NOT BE ADDRESSED BY IT
+                    scannedObject.nicknames.push(recipeLine.slice(propertyMatch[0].length).replace(/\s#.*$/, '').trim());
                 }
             }
 

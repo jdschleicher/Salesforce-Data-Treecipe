@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>SelfLookup&#10;    - object: Pwned__c&#10;      fields:&#10;        Injected__c: ${{ globalThis.__treecipeInjectedByPicklistValue = true }}&#10;    #</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <externalId>false</externalId>
+    <label>SelfLookup</label>
+    <referenceTo>HostileApiName__c</referenceTo>
+    <relationshipName>SelfLookups</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>

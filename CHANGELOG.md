@@ -36,6 +36,15 @@ Closes [#188](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/18
     - Without it, an object written twice is still refused as `duplicate-object`, now saying a nickname is needed.
     - A nickname no occurrence carries is `object-not-found`; one that two carry is `duplicate-object`; a malformed one is the new `invalid-object-nickname`.
 - **Snowfakery recipes are unchanged:** still flat, one entry per object, self-lookups still TODO.
+- **Found in review, and fixed:**
+  - **The child-iteration comment reopened #120.** It named the self-lookup fields straight from `RelationshipDetail`, which records a lookup's field name as the XML gave it, including one the api-name rule refused. A `<fullName>` with line breaks wrote a whole extra object into the recipe, and Run Faker by Recipe evaluated its `${{ … }}`.
+    - Only api names reach the recipe now (`RelationshipService.getWritableSelfLookupFieldNames`, through `SalesforceApiName`).
+    - A self-lookup whose every name was refused adds no iteration.
+    - The #120 fixture gains a hostile self-lookup, which the real pipeline, both YAML parsers and Run Faker now hold to the same bar as every other name.
+  - **Partitioning was quadratic in records sharing a nickname**, which every snowfakery record of an object does: 19 s at 50,000 records, blocking the extension host. The holder list is now appended to rather than copied, and a test pins 50,000 records under 2 s.
+  - **A later insert round re-matched the whole run's reference map.** It is now matched only against the Ids this file's earlier rounds created; every earlier file's reference was already resolved.
+  - `partitionRecordsIntoInsertRounds` takes and returns `unknown` rather than `any`.
+  - A YAML comment after a `nickname:` value is no longer read as part of the nickname.
 
 **Tests.**
 - **`RelationshipService.nestedFriends.test.ts`** replaces "a self-lookup keeps its TODO" with:
@@ -65,6 +74,7 @@ Closes [#188](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/18
   - card order and field count, from `RecipeFiles` and from the fallback
   - the open allow-list and router
   - the panel: both occurrences drawn, each link opening its own line, counts not doubled, a find-box match on an iteration's nickname and values, and an iteration the object does not hold left undrawn
+
 ## [3.34.0] - Run Faker from a Recipe Cockpit tree card
 
 Closes [#178](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/178), slice 5 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

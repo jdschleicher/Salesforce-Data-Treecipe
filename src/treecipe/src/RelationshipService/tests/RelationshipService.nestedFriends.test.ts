@@ -499,6 +499,28 @@ describe('a self-lookup adds one nested child iteration of the same object (#188
 
     });
 
+    test('a self-lookup name that is not an api name never reaches the recipe, and alone adds no iteration (#120)', () => {
+
+        const hostileFieldName = 'ParentId\n    - object: Pwned__c\n      fields:\n        Injected__c: ${{ globalThis.pwned = true }}\n    #';
+        const withHostileSelfLookup = (objectSpecifications: ObjectSpecification[]) => {
+            const objectInfoWrapper = buildObjectInfoWrapper(objectSpecifications);
+            const parentObjectToFieldReferences = objectInfoWrapper.ObjectToObjectInfoMap['Account'].RelationshipDetail.parentObjectToFieldReferences;
+            parentObjectToFieldReferences['Account'] = [...(parentObjectToFieldReferences['Account'] ?? []), hostileFieldName];
+            return new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, true)[0].content;
+        };
+
+        const onlyHostileRecipe = withHostileSelfLookup([{ objectApiName: 'Account' }]);
+        expect(onlyHostileRecipe).not.toContain('Pwned__c');
+        expect(onlyHostileRecipe).not.toContain('_child_NickName');
+        expect(RelationshipService.getWritableSelfLookupFieldNames('Missing__c', buildObjectInfoWrapper([{ objectApiName: 'Account' }]))).toEqual([]);
+
+        const mixedRecipe = withHostileSelfLookup([{ objectApiName: 'Account', lookups: { ParentId: 'Account' } }]);
+        expect(mixedRecipe).not.toContain('Pwned__c');
+        expect(mixedRecipe).toContain('    # Account (Child iteration of the Account above, through ParentId)\n');
+        expect((yaml.load(mixedRecipe) as LoadedRecipeEntry[])[0].friends.map(friend => friend.object)).toEqual(['Account']);
+
+    });
+
     test('hasSelfLookup is true only for an object with a lookup field to its own type', () => {
 
         const objectInfoWrapper = buildObjectInfoWrapper([
