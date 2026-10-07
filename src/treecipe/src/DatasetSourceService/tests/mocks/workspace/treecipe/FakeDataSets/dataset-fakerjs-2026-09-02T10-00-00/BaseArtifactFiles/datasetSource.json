@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "origin": "runFaker",
+  "recipeRunFolderName": "recipe-fakerjs-2026-09-01T08-00-00",
+  "recipeTreeFolderName": "Account-thru-Contact",
+  "recipeFileName": "recipe-fakerjs--Account-thru-Contact-2026-09-01T08-00-00.yml",
+  "fakerService": "faker-js",
+  "generatedAt": "2026-09-02T10:00:00.000Z",
+  "recordCountsByObject": {
+    "Account": 1,
+    "Contact": 3
+  }
+}

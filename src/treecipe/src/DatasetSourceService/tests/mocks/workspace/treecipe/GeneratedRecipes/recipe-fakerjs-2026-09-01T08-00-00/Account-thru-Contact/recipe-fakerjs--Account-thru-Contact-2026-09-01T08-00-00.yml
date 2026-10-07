@@ -1,0 +1,5 @@
+- object: Account
+  nickname: Account_1
+  count: 1
+  fields:
+    Name: Acme
