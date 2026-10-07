@@ -3315,7 +3315,8 @@ describe('RecipeCockpitService', () => {
                     return RecipeCockpitService.readTreeFieldCount(
                         RecipeCockpitService.readRunFieldCounts(path.join(runFolderPath, objectsWrapperFileName), HISTORY_WORKSPACE_ROOT),
                         treeFolderName,
-                        path.join(runFolderPath, treeFolderName)
+                        path.join(runFolderPath, treeFolderName),
+                        HISTORY_WORKSPACE_ROOT
                     );
                 };
 
@@ -3343,11 +3344,14 @@ describe('RecipeCockpitService', () => {
                     const leadTreeFolderPath = path.join(HISTORY_GENERATED_RECIPES_PATH, 'recipe-2026-09-01T00-00-00', 'Lead-ONLY');
                     const runFieldCounts = { fieldCountsByObjectApiName: new Map([['Lead', 3]]), fieldCountsByTreeFolderName: new Map<string, number>(), hasTreeData: false };
                     // AN OBJECT THE TREE'S RECIPE CARRIES AND THE WRAPPER DOES NOT ADDS NO FIELDS, RATHER THAN MAKING THE COUNT NaN
-                    expect(RecipeCockpitService.readTreeFieldCount({ ...runFieldCounts, fieldCountsByObjectApiName: new Map() }, 'Lead-ONLY', leadTreeFolderPath)).toBe(0);
+                    expect(RecipeCockpitService.readTreeFieldCount({ ...runFieldCounts, fieldCountsByObjectApiName: new Map() }, 'Lead-ONLY', leadTreeFolderPath, HISTORY_WORKSPACE_ROOT)).toBe(0);
+
+                    // THE TREE'S RECIPE IS READ ONLY WHILE IT IS INSIDE THE WORKSPACE IT IS READ FOR
+                    expect(RecipeCockpitService.readTreeFieldCount(runFieldCounts, 'Lead-ONLY', leadTreeFolderPath, temporaryWorkspaceRoot)).toBeUndefined();
 
                     jest.spyOn(fs, 'readFileSync').mockImplementation(() => { throw new Error('EACCES'); });
 
-                    expect(RecipeCockpitService.readTreeFieldCount(runFieldCounts, 'Lead-ONLY', leadTreeFolderPath)).toBeUndefined();
+                    expect(RecipeCockpitService.readTreeFieldCount(runFieldCounts, 'Lead-ONLY', leadTreeFolderPath, HISTORY_WORKSPACE_ROOT)).toBeUndefined();
 
                 } finally {
                     jest.restoreAllMocks();
@@ -3639,7 +3643,26 @@ describe('RecipeCockpitService', () => {
 
                 expect(textOf(panel, leadCard, 'treeDatasetDate')).toEqual(['2026-09-21 00:00:00 UTC', '2026-09-15 00:00:00 UTC', '2026-09-02 00:00:00 UTC']);
                 expect(textOf(panel, leadCard, 'treeDatasetVersion')).toEqual(['current version', 'version unknown', 'version of 2026-09-01 00:00:00 UTC']);
-                expect(textOf(panel, leadCard, 'treeDatasetCounts')).toEqual(['Lead: 5 records', 'Lead: 7 records', 'Loading record counts…']);
+                expect(textOf(panel, leadCard, 'treeDatasetCounts')).toEqual(['Lead: 5 records', 'Lead: 7 records', '']);
+
+            });
+
+            it('reads a legacy data set\'s counts on the Fake Sets tab only when the reader asks for them', () => {
+
+                const { panel } = renderHistoryRecipe(3);
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+
+                expect(postedNamed(panel, 'loadDatasetRecordCounts')).toEqual([]);
+                expect(textOf(panel, leadCard, 'treeDatasetCountsLoad')).toEqual(['Show record counts']);
+
+                panel.findAll(leadCard, 'treeDatasetCountsLoad')[0].dispatch('click');
+
+                expect(postedNamed(panel, 'loadDatasetRecordCounts')).toEqual([{ command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00' }]);
+                expect(textOf(panel, leadCard, 'treeDatasetCounts')[2]).toBe('Loading record counts…');
+
+                panel.postToPanel({ command: 'datasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00', recordCounts: [{ objectApiName: 'Lead', recordCount: 3 }], failureMessage: '', renderSequence: 3 });
+
+                expect(textOf(panel, leadCard, 'treeDatasetCounts')[2]).toBe('Lead: 3 records');
 
             });
 
@@ -3661,6 +3684,7 @@ describe('RecipeCockpitService', () => {
 
                 const { panel } = renderHistoryRecipe(5);
                 const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                panel.findAll(leadCard, 'treeDatasetCountsLoad')[0].dispatch('click');
                 clickNamed(panel, leadCard, 'treeTab', 'Previous Versions');
                 panel.findAll(leadCard, 'treeVersionToggle')[2].dispatch('click');
 
@@ -4794,10 +4818,18 @@ describe('RecipeCockpitService', () => {
 
             it('posts each version\'s summary from its wrapper, with the change against the current version and an unreadable wrapper unavailable', async () => {
 
-                await openRenderedHistoryCockpit();
+                await openRenderedHistoryCockpit(copyHistoryWorkspace());
                 await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
 
-                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'versionSummaries')).toEqual([{
+                const postedSummaries = postedPanelMessages.filter(hostMessage => hostMessage.command === 'versionSummaries');
+
+                // THE CURRENT RUN IS ANSWERED AT ONCE FROM THE LOAD, AND EVERY OTHER WRAPPER IS POSTED AS IT IS READ, ONE PER POST
+                expect(postedSummaries.map(versionSummaries => versionSummaries.summaries.map((summary: any) => summary.runFolderName))).toEqual([
+                    [HISTORY_CURRENT_RUN],
+                    [HISTORY_CURRENT_RUN, FAKER_JS_LEAD_RUN],
+                    [HISTORY_CURRENT_RUN, FAKER_JS_LEAD_RUN, OLDEST_LEAD_RUN]
+                ]);
+                expect(postedSummaries.at(-1)).toEqual({
                     command: 'versionSummaries',
                     treeKey: LEAD_TREE_KEY,
                     summaries: [
@@ -4806,7 +4838,57 @@ describe('RecipeCockpitService', () => {
                         { runFolderName: OLDEST_LEAD_RUN, isSummaryAvailable: true, fieldCount: 3, changeText: '+1 field' }
                     ],
                     renderSequence: lastRenderSequence()
-                }]);
+                });
+
+            });
+
+            it('reads each wrapper once, the current run\'s never, and none again after a reload of the same run', async () => {
+
+                const temporaryWorkspaceRoot = copyHistoryWorkspace();
+                const readFileSync = fs.readFileSync;
+                const readWrapperPaths: string[] = [];
+                jest.spyOn(fs, 'readFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, options?: any) => {
+                    if ( String(filePath).includes('treecipeObjectsWrapper-') ) {
+                        readWrapperPaths.push(path.basename(String(filePath)));
+                    }
+                    return readFileSync(filePath, options);
+                }) as typeof fs.readFileSync);
+
+                await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
+                expect(readWrapperPaths).toEqual(['treecipeObjectsWrapper-2026-09-20T10-00-00.json']);
+
+                await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
+                expect(readWrapperPaths.slice(1).sort()).toEqual(['treecipeObjectsWrapper-2026-09-01T00-00-00.json', 'treecipeObjectsWrapper-2026-09-10T00-00-00.json']);
+
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: HISTORY_CURRENT_RUN });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                readWrapperPaths.length = 0;
+                postedPanelMessages.length = 0;
+
+                await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
+
+                expect(readWrapperPaths).toEqual([]);
+                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'versionSummaries')).toHaveLength(1);
+
+                // A WRAPPER GONE SINCE IT WAS CACHED IS NOT CACHED ANY MORE, AND A RUN WITH NO WRAPPER NEVER IS
+                const oldestWrapperFilePath = path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', OLDEST_LEAD_RUN, 'treecipeObjectsWrapper-2026-09-01T00-00-00.json');
+                expect(RecipeCockpitService.isRunFieldCountCached(oldestWrapperFilePath)).toBe(true);
+                fs.rmSync(oldestWrapperFilePath);
+                expect(RecipeCockpitService.isRunFieldCountCached(oldestWrapperFilePath)).toBe(false);
+                expect(RecipeCockpitService.isRunFieldCountCached('')).toBe(false);
+
+            });
+
+            it('stops reading wrappers once the panel it was asked from is closed', async () => {
+
+                await openRenderedHistoryCockpit(copyHistoryWorkspace());
+                postedPanelMessages.length = 0;
+
+                const summariesRequest = receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
+                registeredDisposeHandler();
+                await summariesRequest;
+
+                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'versionSummaries')).toHaveLength(1);
 
             });
 
@@ -4884,6 +4966,12 @@ describe('RecipeCockpitService', () => {
                 expect(reloadedRecipeData.recipe.selectedRunFolderName).toBe(HISTORY_CURRENT_RUN);
                 expect(reloadedLeadTree.history.datasets.map((dataset: any) => dataset.datasetFolderName)).not.toContain(RECORDED_DATASET);
 
+                // A FOCUS IS FOR THE ONE DRAW AFTER THE RELOAD -- A REVEAL LATER MUST NOT RE-OPEN A CARD THE READER HAS CLOSED SINCE
+                postedPanelMessages.length = 0;
+                await receivedMessageHandler({ command: 'ready' });
+
+                expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData')).not.toHaveProperty('focusTree');
+
             });
 
             it('given a data set deleted after the draw, refuses to open it and drops a focus that names no history tab', async () => {
@@ -4914,6 +5002,57 @@ describe('RecipeCockpitService', () => {
                 expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'datasetRecordCounts')).toEqual([
                     expect.objectContaining({ recordCounts: [], failureMessage: 'This data set is no longer in the workspace.' })
                 ]);
+
+            });
+
+            it('given a legacy data set whose every Collections API file reads, reports no failure', async () => {
+
+                const temporaryWorkspaceRoot = copyHistoryWorkspace();
+                fs.rmSync(path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', LEGACY_DATASET, 'DatasetFilesForCollectionsApi', 'collectionsApi-Broken.json'));
+
+                await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
+                await receivedMessageHandler({ command: 'loadDatasetRecordCounts', datasetFolderName: LEGACY_DATASET });
+
+                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'datasetRecordCounts')).toEqual([
+                    expect.objectContaining({ recordCounts: [{ objectApiName: 'Lead', recordCount: 3 }], failureMessage: '' })
+                ]);
+
+            });
+
+            it('given a legacy data set whose Collections API folder resolves outside the workspace, does not count it', async () => {
+
+                const temporaryWorkspaceRoot = copyHistoryWorkspace();
+                const outsideFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-cockpit-outside-'));
+                temporaryWorkspaceRoots.push(outsideFolderPath);
+                const collectionsApiFolderPath = path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', LEGACY_DATASET, 'DatasetFilesForCollectionsApi');
+                fs.writeFileSync(path.join(outsideFolderPath, 'collectionsApi-Secret.json'), JSON.stringify({ records: [{}] }));
+                fs.rmSync(collectionsApiFolderPath, { recursive: true });
+                fs.symlinkSync(outsideFolderPath, collectionsApiFolderPath, 'dir');
+
+                await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
+                await receivedMessageHandler({ command: 'loadDatasetRecordCounts', datasetFolderName: LEGACY_DATASET });
+
+                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'datasetRecordCounts')).toEqual([
+                    expect.objectContaining({ recordCounts: [], failureMessage: expect.stringContaining('resolves outside the workspace') })
+                ]);
+
+            });
+
+            it('escapes a recipe file name in the warning, so a name shaped like a link cannot run a command', async () => {
+
+                const temporaryWorkspaceRoot = copyHistoryWorkspace();
+                const leadTreeFolderPath = path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', OLDEST_LEAD_RUN, 'Lead-ONLY');
+                const linkShapedRecipeFilePath = path.join(leadTreeFolderPath, '[Fix](command:workbench.action.quit).yml');
+                fs.renameSync(path.join(leadTreeFolderPath, 'recipe--Lead-ONLY-2026-09-01T00-00-00.yml'), linkShapedRecipeFilePath);
+
+                await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
+                fs.rmSync(linkShapedRecipeFilePath);
+                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: OLDEST_LEAD_RUN });
+
+                const warningText = showWarningMessageSpy.mock.calls[0][0];
+
+                expect(warningText).not.toContain('[Fix](command:');
+                expect(warningText).toContain('\\u005bFix\\u005d\\u0028command:workbench.action.quit\\u0029.yml');
 
             });
 

@@ -45,6 +45,19 @@ You could not see how a tree's recipe changed across Generate Treecipe runs, or 
   - A search that opens a card's rows switches that card back to Structure.
   - The ungrouped card, and a fallback card for a recipe file with no tree folder, have no history and draw only the Structure tab.
   - Every name read from disk is written with `textContent`, and the panel's name-keyed maps have no prototype.
+- **Found in review, and fixed:**
+  - **Opening Previous Versions parsed every run's wrapper in one synchronous pass.** At 370 MB per wrapper, 10 runs blocked the extension host on about 3.7 GB. Now:
+    - Only the field counts are kept, in a cache keyed by the wrapper's path, size and modification time. The cache outlives a model, so a reload, run switch or regeneration re-reads only a wrapper that changed.
+    - The current run's counts come from the load, which already parsed that wrapper.
+    - Every other wrapper is read after a yield and posted on its own. Each post is cumulative and names only the runs it knows, so the rows fill in as wrappers are read.
+    - Closing the panel stops the walk.
+  - **Previous Fake Sets read every legacy data set's Collections API files as soon as the tab opened.** A legacy row on that tab now has a **Show record counts** button. Expanding a version is still its own request.
+  - **`focusTree` was stored with the model, so every reveal replayed it** and re-opened a card the reader had closed. It now rides only on the post that follows the reload.
+  - **A recipe file name was shown in a warning unescaped.** A name shaped like `[label](command:…)` would have rendered as a link that runs a command. The new warnings and the two older `openSource` warnings now go through `RecipeYamlScalar.escapeForNotification`.
+  - **Two containment gaps.**
+    - The tree recipe read by the fallback field count now passes workspace containment when it is used.
+    - A data set whose `DatasetFilesForCollectionsApi` folder resolves outside the workspace is no longer counted.
+  - Not changed: a double click on `Insert…` starts two inserts, each with its own org prompt, the same as running the palette command twice.
 - New pure-ish module `RecipeCockpitService/RecipeCockpitTreeHistory.ts`: discovery, grouping, ordering, summaries and change wording, with fs only for directory listings. `DatasetSourceService` still imports only `fs` and `path`, and repeats the `DatasetFilesForCollectionsApi` folder name; a cockpit test holds it equal to `ConfigurationService`'s.
 
 **Tests.**

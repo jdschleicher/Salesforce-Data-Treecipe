@@ -15,7 +15,8 @@ import {
 } from './RecipeCockpitMetadataDiff';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
-import { DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
+import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import {
     IRecipeCockpitDatasetRecordCountViewModel,
     IRecipeCockpitTreeHistoryTargets,
@@ -564,7 +565,6 @@ export interface IRecipeCockpitPanelState {
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
-    treeFieldCountsByRunFolderName: Map<string, IRecipeCockpitRunFieldCounts | undefined>;
     isOrgDescribeInFlight: boolean;
     isRegenerateInFlight: boolean;
     reportedFailureDescriptions: Set<string>;
@@ -670,7 +670,6 @@ export class RecipeCockpitService {
             treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets(),
             pendingTreeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
-            treeFieldCountsByRunFolderName: new Map(),
             isOrgDescribeInFlight: false,
             isRegenerateInFlight: false,
             reportedFailureDescriptions: new Set()
@@ -848,16 +847,14 @@ export class RecipeCockpitService {
         const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             command: 'recipeData',
             recipe: recipeViewModel,
-            renderSequence: ++this.recipeCockpitRenderSequence,
-            ...( focusTree && recipeViewModel.trees.some(tree => tree.treeKey === focusTree.treeKey) ? { focusTree: focusTree } : {} )
+            renderSequence: ++this.recipeCockpitRenderSequence
         };
+        const isFocusOnScreen = !!focusTree && recipeViewModel.trees.some(tree => tree.treeKey === focusTree.treeKey);
 
         panelState.recipeDataMessage = recipeDataMessage;
         panelState.recipePicklistValuesByObjectApiName = loadedRecipe.recipePicklistValuesByObjectApiName;
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
-        // A NEW MODEL MAY BE A NEW RUN ON DISK -- A SUMMARY CACHED FOR THE LAST ONE COULD DESCRIBE A WRAPPER SINCE REWRITTEN
-        panelState.treeFieldCountsByRunFolderName = new Map();
         panelState.loadFailedMessage = undefined;
         // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
         panelState.orgDescribeMessage = undefined;
@@ -880,7 +877,11 @@ export class RecipeCockpitService {
         */
         panelState.describableObjectApiNames = new Set();
 
-        this.postToPanel(cockpitPanel, recipeDataMessage);
+        /*
+            The focus rides on the POSTED copy only. The stored message is what every reveal replays,
+            and a focus replayed on each one would re-open a card the reader has since closed.
+        */
+        this.postToPanel(cockpitPanel, isFocusOnScreen ? { ...recipeDataMessage, focusTree: focusTree } : recipeDataMessage);
 
     }
 
@@ -985,12 +986,12 @@ export class RecipeCockpitService {
                     allow-list only says the model named this path, not where it resolves now.
                 */
                 if ( !SfdxProjectService.isPathContainedInWorkspace(path.resolve(panelAction.filePath), path.resolve(panelState.workspaceRoot)) ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${panelAction.filePath}" now resolves outside this workspace, so it was not opened. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(panelAction.filePath)}" now resolves outside this workspace, so it was not opened. Re-open the Recipe Cockpit to load the runs currently on disk.`);
                     return;
                 }
 
                 if ( !fs.existsSync(panelAction.filePath) ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${panelAction.filePath}" no longer exists. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(panelAction.filePath)}" no longer exists. Re-open the Recipe Cockpit to load the runs currently on disk.`);
                     return;
                 }
 
@@ -1019,7 +1020,7 @@ export class RecipeCockpitService {
 
             case 'loadVersionSummaries':
 
-                this.postVersionSummaries(cockpitPanel, panelState, panelAction.treeKey, panelAction.summarySource, panelAction.renderSequence);
+                await this.postVersionSummaries(cockpitPanel, panelState, panelAction.treeKey, panelAction.summarySource, panelAction.renderSequence);
                 return;
 
             case 'loadDatasetRecordCounts':
@@ -1033,7 +1034,7 @@ export class RecipeCockpitService {
                     .find(recipeFilePath => !this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot));
 
                 if ( unusableRecipeFilePath !== undefined ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${path.basename(unusableRecipeFilePath)}" no longer exists in this workspace, so the versions were not compared. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(unusableRecipeFilePath))}" no longer exists in this workspace, so the versions were not compared. Re-open the Recipe Cockpit to load the runs currently on disk.`);
                     return;
                 }
 
@@ -1091,7 +1092,7 @@ export class RecipeCockpitService {
                                                         datasetFolderName: string,
                                                         focusTree?: IRecipeCockpitTreeFocus) {
 
-        VSCodeWorkspaceService.showWarningMessage(`The data set "${datasetFolderName}" no longer exists in this workspace. The Recipe Cockpit has reloaded its data sets.`);
+        VSCodeWorkspaceService.showWarningMessage(`The data set "${RecipeYamlScalar.escapeForNotification(datasetFolderName)}" no longer exists in this workspace. The Recipe Cockpit has reloaded its data sets.`);
 
         // ONLY A RENDERED MODEL'S HISTORY OFFERS A DATA SET, SO THERE IS ALWAYS A RUN ON SCREEN TO RELOAD
         const selectedRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
@@ -1103,36 +1104,58 @@ export class RecipeCockpitService {
     }
 
     /*
-        Synchronous from the route to the post, so the model it was asked from is still the one on
-        screen; the panel re-checks renderSequence all the same, as it does for picklist values.
+        Each run's summary, posted as it is known. A wrapper can be hundreds of megabytes and a tree
+        can have many runs, so the runs already in the field-count cache (the current one always is
+        -- the load put it there) are posted at once, and every other wrapper is read after a yield
+        and posted on its own: the extension host is never held for more than one wrapper, and the
+        rows fill in as they are read. Each post is cumulative and names only the runs it knows, so
+        a row still loading is never drawn as "unavailable". A reader who moved to another model
+        stops the walk, since its answer would be drawn over nothing.
     */
-    private static postVersionSummaries(cockpitPanel: vscode.WebviewPanel,
-                                            panelState: IRecipeCockpitPanelState,
-                                            treeKey: string,
-                                            summarySource: IRecipeCockpitTreeSummarySource,
-                                            renderSequence: number) {
+    private static async postVersionSummaries(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                treeKey: string,
+                                                summarySource: IRecipeCockpitTreeSummarySource,
+                                                renderSequence: number) {
 
         const fieldCountsByRunFolderName = new Map<string, number | undefined>();
+        const isModelStillOnScreen = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage.renderSequence === renderSequence;
 
-        summarySource.runs.forEach(summaryRun => {
+        const readTreeFieldCountOfRun = (summaryRun: IRecipeCockpitTreeSummarySource['runs'][number]) => fieldCountsByRunFolderName.set(
+            summaryRun.runFolderName,
+            this.readTreeFieldCount(this.readRunFieldCounts(summaryRun.objectsWrapperFilePath, panelState.workspaceRoot), summarySource.treeFolderName, summaryRun.treeFolderPath, panelState.workspaceRoot)
+        );
 
-            if ( !panelState.treeFieldCountsByRunFolderName.has(summaryRun.runFolderName) ) {
-                panelState.treeFieldCountsByRunFolderName.set(summaryRun.runFolderName, this.readRunFieldCounts(summaryRun.objectsWrapperFilePath, panelState.workspaceRoot));
-            }
-
-            fieldCountsByRunFolderName.set(
-                summaryRun.runFolderName,
-                this.readTreeFieldCount(panelState.treeFieldCountsByRunFolderName.get(summaryRun.runFolderName), summarySource.treeFolderName, summaryRun.treeFolderPath)
-            );
-
-        });
-
-        this.postToPanel(cockpitPanel, {
+        const postKnownSummaries = () => this.postToPanel(cockpitPanel, {
             command: 'versionSummaries',
             treeKey: treeKey,
-            summaries: RecipeCockpitTreeHistory.buildVersionSummaries(summarySource, fieldCountsByRunFolderName),
+            summaries: RecipeCockpitTreeHistory.buildVersionSummaries(summarySource, fieldCountsByRunFolderName)
+                .filter(versionSummary => fieldCountsByRunFolderName.has(versionSummary.runFolderName)),
             renderSequence: renderSequence
         });
+
+        const uncachedRuns = summarySource.runs.filter(summaryRun => !this.isRunFieldCountCached(summaryRun.objectsWrapperFilePath));
+
+        summarySource.runs.filter(summaryRun => !uncachedRuns.includes(summaryRun)).forEach(readTreeFieldCountOfRun);
+
+        if ( fieldCountsByRunFolderName.size > 0 ) {
+            postKnownSummaries();
+        }
+
+        for ( const summaryRun of uncachedRuns ) {
+
+            await this.yieldToExtensionHost();
+
+            if ( !isModelStillOnScreen() ) {
+                return;
+            }
+
+            readTreeFieldCountOfRun(summaryRun);
+            postKnownSummaries();
+
+        }
 
     }
 
@@ -1143,12 +1166,18 @@ export class RecipeCockpitService {
                                             renderSequence: number) {
 
         const isUsable = this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot);
-        const legacyRecordCounts = isUsable
+        // THE SUBFOLDER IS READ TOO, AND A SYMLINK THERE WOULD READ FILES OUTSIDE THE WORKSPACE THE FOLDER'S OWN CHECK APPROVED
+        const collectionsApiFolderPath = path.join(datasetFolderPath, DATASET_COLLECTIONS_API_FOLDER_NAME);
+        const isCollectionsApiFolderContained = !fs.existsSync(collectionsApiFolderPath)
+                                                || this.isUsableWorkspacePath(collectionsApiFolderPath, panelState.workspaceRoot);
+        const legacyRecordCounts = isUsable && isCollectionsApiFolderContained
             ? DatasetSourceService.countLegacyRecordsByObject(datasetFolderPath)
             : { recordCountsByObject: Object.create(null), unreadableFileNames: [] };
 
         const failureMessage = !isUsable
             ? 'This data set is no longer in the workspace.'
+            : !isCollectionsApiFolderContained
+                ? 'This data set\'s Collections API folder resolves outside the workspace, so its records were not counted.'
             : legacyRecordCounts.unreadableFileNames.length > 0
                 ? `Could not count the records in ${legacyRecordCounts.unreadableFileNames.join(', ')}.`
                 : '';
@@ -1164,6 +1193,49 @@ export class RecipeCockpitService {
     }
 
     /*
+        What each wrapper's field counts were, keyed by the wrapper's resolved path and valid only
+        while its size and modification time are unchanged. It outlives a model on purpose: a run
+        is never rewritten once Generate Treecipe has moved on, so a reload, a run switch or a
+        regeneration re-reads only the wrapper that actually changed. An entry is a few numbers per
+        object, not the wrapper. An unreadable wrapper is cached as undefined for the same reason a
+        readable one is cached -- re-parsing a 370 MB file to fail again is the cost being avoided.
+    */
+    private static runFieldCountCache = new Map<string, { modifiedAtMs: number; sizeInBytes: number; runFieldCounts: IRecipeCockpitRunFieldCounts | undefined }>();
+
+    private static readWrapperFileStamp(objectsWrapperFilePath: string): { modifiedAtMs: number; sizeInBytes: number } | undefined {
+
+        try {
+            const wrapperFileStat = fs.statSync(objectsWrapperFilePath);
+            return { modifiedAtMs: wrapperFileStat.mtimeMs, sizeInBytes: wrapperFileStat.size };
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    static isRunFieldCountCached(objectsWrapperFilePath: string): boolean {
+
+        const cachedEntry = objectsWrapperFilePath ? this.runFieldCountCache.get(path.resolve(objectsWrapperFilePath)) : undefined;
+        const wrapperFileStamp = cachedEntry ? this.readWrapperFileStamp(objectsWrapperFilePath) : undefined;
+
+        return !!wrapperFileStamp
+                && wrapperFileStamp.modifiedAtMs === cachedEntry.modifiedAtMs
+                && wrapperFileStamp.sizeInBytes === cachedEntry.sizeInBytes;
+
+    }
+
+    // THE LOAD HAS ALREADY PARSED THE RUN ON SCREEN, SO ITS COUNTS ARE KEPT RATHER THAN READ AGAIN WHEN A VERSIONS TAB OPENS
+    static cacheRunFieldCounts(objectsWrapperFilePath: string, normalizedObjectsWrapper: IRecipeCockpitNormalizedObjectsWrapper) {
+
+        const wrapperFileStamp = this.readWrapperFileStamp(objectsWrapperFilePath);
+
+        if ( wrapperFileStamp ) {
+            this.runFieldCountCache.set(path.resolve(objectsWrapperFilePath), { ...wrapperFileStamp, runFieldCounts: this.buildRunFieldCounts(normalizedObjectsWrapper) });
+        }
+
+    }
+
+    /*
         One run's wrapper as field counts, or undefined when it cannot be read -- which the row
         draws as "summary unavailable", still diffable. The path was contained when the model was
         built and is checked again here, since a wrapper is only opened now.
@@ -1174,19 +1246,29 @@ export class RecipeCockpitService {
             return undefined;
         }
 
-        let parsedObjectsWrapper: unknown;
+        if ( this.isRunFieldCountCached(objectsWrapperFilePath) ) {
+            return this.runFieldCountCache.get(path.resolve(objectsWrapperFilePath)).runFieldCounts;
+        }
+
+        const wrapperFileStamp = this.readWrapperFileStamp(objectsWrapperFilePath);
+        let runFieldCounts: IRecipeCockpitRunFieldCounts | undefined;
 
         try {
-            parsedObjectsWrapper = JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8'));
+            const normalizedObjectsWrapper = this.normalizeObjectsWrapper(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')));
+            runFieldCounts = normalizedObjectsWrapper.isObjectsWrapper ? this.buildRunFieldCounts(normalizedObjectsWrapper) : undefined;
         } catch {
-            return undefined;
+            runFieldCounts = undefined;
         }
 
-        const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
-
-        if ( !normalizedObjectsWrapper.isObjectsWrapper ) {
-            return undefined;
+        if ( wrapperFileStamp ) {
+            this.runFieldCountCache.set(path.resolve(objectsWrapperFilePath), { ...wrapperFileStamp, runFieldCounts: runFieldCounts });
         }
+
+        return runFieldCounts;
+
+    }
+
+    static buildRunFieldCounts(normalizedObjectsWrapper: IRecipeCockpitNormalizedObjectsWrapper): IRecipeCockpitRunFieldCounts {
 
         const fieldCountsByObjectApiName = new Map(normalizedObjectsWrapper.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel.fields.length]));
         const fieldCountsByTreeFolderName = new Map<string, number>();
@@ -1211,7 +1293,10 @@ export class RecipeCockpitService {
         tree folder's recipe file instead -- the objects it carries -- the same fallback the cards
         use. A wrapper that lists trees and not this one makes no claim about it.
     */
-    static readTreeFieldCount(runFieldCounts: IRecipeCockpitRunFieldCounts | undefined, treeFolderName: string, treeFolderPath: string): number | undefined {
+    static readTreeFieldCount(runFieldCounts: IRecipeCockpitRunFieldCounts | undefined,
+                                treeFolderName: string,
+                                treeFolderPath: string,
+                                workspaceRoot: string): number | undefined {
 
         if ( !runFieldCounts ) {
             return undefined;
@@ -1223,7 +1308,7 @@ export class RecipeCockpitService {
 
         const treeRecipeFilePath = RecipeCockpitTreeHistory.findTreeRecipeFilePath(treeFolderPath);
 
-        if ( !treeRecipeFilePath ) {
+        if ( !treeRecipeFilePath || !this.isUsableWorkspacePath(treeRecipeFilePath, workspaceRoot) ) {
             return undefined;
         }
 
@@ -2017,6 +2102,9 @@ export class RecipeCockpitService {
         }
 
         const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
+        if ( normalizedObjectsWrapper.isObjectsWrapper ) {
+            this.cacheRunFieldCounts(selectedRun.objectsWrapperFilePath, normalizedObjectsWrapper);
+        }
         const recipeSourceRead = this.readRecipeSourceFiles(selectedRun.runFolderPath, workspaceRoot);
 
         /*
@@ -3937,10 +4025,20 @@ ${this.buildPaletteCustomProperties()}
         datasetElement.appendChild(datasetHeaderElement);
         datasetElement.appendChild(countsElement);
 
+        /*
+            A legacy data set's counts are read from its Collections API files, which hold every
+            record, so they are read when the reader asks: expanding a version is that ask, and on
+            the Fake Sets tab -- which lists every data set at once -- the row's own button is.
+        */
         if (dataset.recordCounts) {
             countsElement.textContent = formatRecordCounts(dataset.recordCounts);
-        } else {
+        } else if (tabName === 'versions') {
             requestDatasetRecordCounts(dataset.datasetFolderName, countsElement);
+        } else {
+            const loadCountsElement = createElement('button', 'historyAction treeDatasetCountsLoad', 'Show record counts');
+            loadCountsElement.setAttribute('title', 'Count the records in the Collections API files of this data set');
+            loadCountsElement.addEventListener('click', function () { requestDatasetRecordCounts(dataset.datasetFolderName, countsElement); });
+            countsElement.appendChild(loadCountsElement);
         }
 
         return datasetElement;
