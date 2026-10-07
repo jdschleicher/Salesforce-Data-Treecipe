@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import { CoreModuleIsolation } from '../CoreModuleIsolation';
@@ -148,6 +149,32 @@ describe('CoreModuleIsolation', () => {
             ]);
 
             expect(Object.keys(capturedSnapshots[0].functionsByName)).toEqual(['doSomething']);
+
+        });
+
+    });
+
+    describe('loadLazyFsInternals', () => {
+
+        /*
+            The worker's setup already called it, so a spy that is active on the next first call of
+            rmSync must not be what Node's rimraf binds. Without that call, the rmSync below loads
+            rimraf with readdirSync answering [] and the recursive remove after the restore fails
+            ENOTEMPTY.
+        */
+        test('given readdirSync spied during an rmSync, a recursive rmSync after the restore still empties a directory', () => {
+
+            const temporaryDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'lazy-fs-internals-'));
+            fs.mkdirSync(path.join(temporaryDirectoryPath, 'nested'));
+            fs.writeFileSync(path.join(temporaryDirectoryPath, 'nested', 'file.txt'), '');
+
+            const readdirSpy = jest.spyOn(fs, 'readdirSync').mockReturnValue([] as any);
+            fs.rmSync(path.join(temporaryDirectoryPath, 'absent'), { recursive: true, force: true });
+            readdirSpy.mockRestore();
+
+            fs.rmSync(temporaryDirectoryPath, { recursive: true, force: true });
+
+            expect(fs.existsSync(temporaryDirectoryPath)).toBe(false);
 
         });
 

@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
 import * as matchers from 'jest-extended';
 expect.extend(matchers);
@@ -80,6 +81,10 @@ import {
 } from "../../RecipeCockpitService/RecipeCockpitService";
 import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
+import { FakerJSRecipeProcessor } from "../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
+import { SnowfakeryRecipeProcessor } from "../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor";
+import { CollectionsApiService } from "../../CollectionsApiService/CollectionsApiService";
+import { DatasetSourceService } from "../../DatasetSourceService/DatasetSourceService";
 
 /*
     A complete IFrameworkScaffoldResult with every outcome empty, overridden per test.
@@ -1681,6 +1686,195 @@ describe('ExtensionCommandService', () => {
 
             expect(globalValueSetsAtTheMomentTheWalkBegan).toBeTruthy();
             expect(globalValueSetsAtTheMomentTheWalkBegan['SDT_Region_Values']).toEqual(['Region_West']);
+
+        });
+
+    });
+
+    describe('runFakerGenerationByRecipeFile', () => {
+
+        const runTimestamp = '2026-09-01T08-00-00';
+
+        /*
+            Each backend's processor output, shaped as that processor emits it, so the record counts
+            in datasetSource.json come through the REAL transform rather than a stub of it.
+        */
+        const backendCases = [
+            {
+                fakerService: 'faker-js',
+                processorPrototype: FakerJSRecipeProcessor.prototype,
+                runFolderName: `recipe-fakerjs-${runTimestamp}`,
+                recipeFileName: `recipe-fakerjs--Account-thru-Contact-${runTimestamp}.yml`,
+                datasetFolderPrefix: 'dataset-fakerjs-',
+                fakerOutput: JSON.stringify([
+                    { object: 'Account', id: 1, nickname: 'Account_1', fields: { Name: 'Acme' } },
+                    { object: 'Contact', id: 1, nickname: 'Contact_1', fields: { LastName: 'One' } },
+                    { object: 'Contact', id: 2, nickname: 'Contact_2', fields: { LastName: 'Two' } }
+                ])
+            },
+            {
+                fakerService: 'snowfakery',
+                processorPrototype: SnowfakeryRecipeProcessor.prototype,
+                runFolderName: `recipe-${runTimestamp}`,
+                recipeFileName: `recipe--Account-thru-Contact-${runTimestamp}.yml`,
+                datasetFolderPrefix: 'dataset-',
+                fakerOutput: JSON.stringify([
+                    { _table: 'Account', id: 1, nickname: 'Account_1', Name: 'Acme' },
+                    { _table: 'Contact', id: 1, nickname: 'Contact_1', LastName: 'One' },
+                    { _table: 'Contact', id: 2, nickname: 'Contact_2', LastName: 'Two' }
+                ])
+            }
+        ];
+
+        let workspaceRoot: string;
+        let extensionCommandService: ExtensionCommandService;
+
+        const writeWorkspaceFile = (relativeFilePath: string, fileContent: string) => {
+            const fullFilePath = path.join(workspaceRoot, relativeFilePath);
+            fs.mkdirSync(path.dirname(fullFilePath), { recursive: true });
+            fs.writeFileSync(fullFilePath, fileContent);
+            return fullFilePath;
+        };
+
+        const arrangeRun = (backendCase: typeof backendCases[number], recipeRelativeFolderPath: string) => {
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue(backendCase.fakerService);
+            jest.spyOn(backendCase.processorPrototype, 'generateFakeDataBySelectedRecipeFile').mockResolvedValue(backendCase.fakerOutput);
+
+            writeWorkspaceFile(`treecipe/GeneratedRecipes/${backendCase.runFolderName}/treecipeObjectsWrapper-${runTimestamp}.json`, '{}');
+            const recipeFilePath = writeWorkspaceFile(`${recipeRelativeFolderPath}/${backendCase.recipeFileName}`, '- object: Account\n  nickname: Account_1\n  count: 1\n  fields:\n    Name: Acme\n');
+
+            jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateQuickItemsForFileSelection')
+                .mockResolvedValue({ label: backendCase.recipeFileName, detail: recipeFilePath });
+
+        };
+
+        const readDatasetFolderNames = () => fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets')).sort();
+
+        const readWrittenDatasetSource = (datasetFolderName: string) => JSON.parse(fs.readFileSync(
+            path.join(workspaceRoot, 'treecipe', 'FakeDataSets', datasetFolderName, 'BaseArtifactFiles', 'datasetSource.json'),
+            'utf8'
+        ));
+
+        beforeEach(() => {
+
+            workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'run-faker-'));
+            extensionCommandService = new ExtensionCommandService();
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValue('Generate Data' as any);
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            // ITS WRITE IS ASYNCHRONOUS AND WOULD LAND AFTER THE TEMPORARY WORKSPACE IS REMOVED
+            jest.spyOn(CollectionsApiService, 'createCollectionsApiFile').mockImplementation(() => undefined);
+
+        });
+
+        afterEach(() => {
+            fs.rmSync(workspaceRoot, { recursive: true, force: true });
+        });
+
+        test.each(backendCases)('given $fakerService, writes datasetSource.json with the run, tree and record counts', async (backendCase) => {
+
+            arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
+
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+
+            expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+
+            const [datasetFolderName] = readDatasetFolderNames();
+            expect(datasetFolderName.startsWith(backendCase.datasetFolderPrefix)).toBeTrue();
+
+            const writtenDatasetSource = readWrittenDatasetSource(datasetFolderName);
+            expect(writtenDatasetSource).toEqual({
+                schemaVersion: 1,
+                origin: 'runFaker',
+                recipeRunFolderName: backendCase.runFolderName,
+                recipeTreeFolderName: 'Account-thru-Contact',
+                recipeFileName: backendCase.recipeFileName,
+                fakerService: backendCase.fakerService,
+                generatedAt: expect.any(String),
+                recordCountsByObject: { Account: 1, Contact: 2 }
+            });
+            expect(new Date(writtenDatasetSource.generatedAt).toISOString()).toBe(writtenDatasetSource.generatedAt);
+
+            const datasetFolderPath = path.join(workspaceRoot, 'treecipe', 'FakeDataSets', datasetFolderName);
+            expect(fs.readdirSync(path.join(datasetFolderPath, 'BaseArtifactFiles')).sort()).toEqual([
+                'datasetSource.json',
+                `originalRecipe-${backendCase.recipeFileName}`,
+                `originalTreecipeWrapper-treecipeObjectsWrapper-${runTimestamp}.json`
+            ]);
+
+            // THE READER LINKS WHAT THE WRITER WROTE
+            const knownRecipeRuns = DatasetSourceService.findKnownRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes'));
+            expect(DatasetSourceService.readDatasetSource(datasetFolderPath, knownRecipeRuns)).toMatchObject({
+                status: 'linked',
+                basis: 'recorded',
+                recipeRunFolderName: backendCase.runFolderName,
+                recipeTreeFolderName: 'Account-thru-Contact'
+            });
+
+        });
+
+        test.each(backendCases)('given $fakerService and a recipe directly under GeneratedRecipes, records no run or tree', async (backendCase) => {
+
+            arrangeRun(backendCase, 'treecipe/GeneratedRecipes');
+
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+
+            expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+
+            const writtenDatasetSource = readWrittenDatasetSource(readDatasetFolderNames()[0]);
+            expect(writtenDatasetSource.recipeRunFolderName).toBeNull();
+            expect(writtenDatasetSource.recipeTreeFolderName).toBeNull();
+            expect(writtenDatasetSource.recipeFileName).toBe(backendCase.recipeFileName);
+
+        });
+
+        test('given two runs in the same second, the second data set gets a -2 suffix instead of throwing', async () => {
+
+            const [fakerJsCase] = backendCases;
+            arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+            jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue('2026-09-02T10-00-00');
+
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+
+            expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+            expect(readDatasetFolderNames()).toEqual([
+                'dataset-fakerjs-2026-09-02T10-00-00',
+                'dataset-fakerjs-2026-09-02T10-00-00-2',
+                'dataset-fakerjs-2026-09-02T10-00-00-3'
+            ]);
+
+        });
+
+        test('given the data summary is dismissed, writes no data set', async () => {
+
+            const [fakerJsCase] = backendCases;
+            arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+            jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValue(undefined);
+
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
+            expect(FakerJSRecipeProcessor.prototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
+
+        });
+
+        test('given a recipe outside GeneratedRecipes, reports the error before generating any data', async () => {
+
+            const [fakerJsCase] = backendCases;
+            arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+            const outsideRecipeFilePath = writeWorkspaceFile('elsewhere/recipe.yml', '- object: Account\n');
+            jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateQuickItemsForFileSelection')
+                .mockResolvedValue({ label: 'recipe.yml', detail: outsideRecipeFilePath });
+
+            await extensionCommandService.runFakerGenerationByRecipeFile();
+
+            expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.any(Error), 'runFakerGenerationByRecipeFile');
+            expect(FakerJSRecipeProcessor.prototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
 
         });
 

@@ -181,6 +181,8 @@ This command [prompts the user to select an existing recipe(Treecipe) file](http
 
 With the selection made, the snowfakery CLI will execute against the yaml file and produce json structured, production-like data which is then converted for usage with Salesforce [Collection Api](https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_composite_sobjects_collections_create.htm)
 
+Each run writes a new `treecipe/FakeDataSets/dataset-<timestamp>` folder (`dataset-fakerjs-<timestamp>` with faker-js). If a folder for that second already exists, the next one gets a `-2` suffix, then `-3`, and so on. Its `BaseArtifactFiles` holds a copy of the recipe, a copy of the run's objects wrapper, and `datasetSource.json`, which names the recipe run folder, tree folder and recipe file the data came from, the faker service, when it was generated, and how many records each object got.
+
 #### Corresponding Video:
 
 [https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#run-snowfakery-by-existing-recipe-yaml-file)

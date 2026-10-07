@@ -8,6 +8,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
+import { DatasetSourceService } from "../DatasetSourceService/DatasetSourceService";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
@@ -142,6 +143,9 @@ export class ExtensionCommandService {
                 return;
             }
 
+            const generatedRecipesFolderFullPath = path.join(VSCodeWorkspaceService.getWorkspaceRoot(), expectedGeneratedRecipesFolderPath);
+            const recipeSourceNames = DatasetSourceService.resolveRecipeSourceNames(generatedRecipesFolderFullPath, recipeFullFileNamePath);
+
             let fakerRecipeProcessor:IFakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
 
             const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFullFileNamePath) as string;
@@ -168,6 +172,14 @@ export class ExtensionCommandService {
             const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
             fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeFilePathNameQuickPickItem.label}`);
+
+            const datasetSource = DatasetSourceService.buildDatasetSource(
+                recipeSourceNames,
+                ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' ? 'faker-js' : 'snowfakery',
+                new Date().toISOString(),
+                DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords)
+            );
+            DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
 
             /* 
                 The below lines get the timestamped parent recipe folder 

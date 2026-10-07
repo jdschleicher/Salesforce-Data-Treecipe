@@ -1,5 +1,29 @@
 # Change Log
 
+## [3.30.0] - Every fake data set records the recipe run and tree that produced it
+
+Closes [#176](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/176), slice 3 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Run Faker by Recipe wrote `treecipe/FakeDataSets/dataset[-fakerjs]-<ts>/` with copies of the recipe and wrapper, but nothing in it said which Generate Treecipe run or relationship tree it came from, so the Recipe Cockpit had no way to show the data each recipe version produced. Two runs in the same second also failed, because the second `mkdirSync` hit `EEXIST`.
+
+- **`BaseArtifactFiles/datasetSource.json`** is written on every run, with `schemaVersion: 1`, `origin: "runFaker"`, `recipeRunFolderName`, `recipeTreeFolderName`, `recipeFileName`, `fakerService`, `generatedAt` (ISO 8601) and `recordCountsByObject`. The counts come from the transformed Collections API records, so both backends write the same shape from their own processor output.
+- **Names, not paths.** The names are taken from the recipe's position under `GeneratedRecipes/`. A recipe directly under it writes `null` for the run and tree; a recipe in a run folder with no tree folder writes a `null` tree. Every name is checked to contain no `/`, `\` or `..`. A recipe outside `GeneratedRecipes/` is reported as an error before any data is generated, rather than recording a name that is really a path.
+- **Same-second runs.** The data set folder is created by trying `<name>`, then `<name>-2`, `<name>-3` and so on. `mkdirSync` is the existence check, so nothing can take a name between the check and the create. Any error other than `EEXIST` is still thrown.
+- **New `DatasetSourceService/`**, which imports only `fs` and `path` (a test fails if it imports anything else). `readDatasetSource` never throws and returns:
+  - `linked` for a type-checked file whose names match a run and tree folder on disk (`findKnownRecipeRuns`), or that records `null` for both;
+  - `unknown` when a name is not a plain name (`"../../etc"`) or matches nothing on disk;
+  - `unreadable` for malformed JSON, a failed type check, or a file that cannot be read;
+  - for an **older data set** with no `datasetSource.json`, a link inferred from the copies' names: the run timestamp from `originalTreecipeWrapper-treecipeObjectsWrapper-<ts>.json` and the tree from `originalRecipe-<prefix>--<tree>-<ts>.yml`, with the recipe prefix choosing between the faker-js and snowfakery run of the same second. Zero or two copies of either, timestamps that disagree, or a run or tree no longer on disk read as `unknown`. A data set with neither copy is `absent`.
+  - `parseDatasetFolderName` and `findDatasets` accept the `-<n>` suffix. A `__proto__` object in the record counts is kept as an own key.
+- Run Faker's prompts, its modal and the files it already wrote are unchanged. **Insert Data Set by Directory** picks the wrapper copy by its prefix, so it ignores the new file; a test now lists `datasetSource.json` first to hold it to that.
+- **Test harness: Node's lazily loaded rimraf is now loaded at worker start.** `fs.rmSync`, `fs.rm` and `fs.promises.rm` load Node's internal rimraf on their first call, and it copies `readdirSync` and the other functions it uses off `fs` at that moment. A test in `ExtensionCommandService.test.ts` had `readdirSync` spied to return `[]` when the first `rmSync` in the worker ran, so every later recursive `rmSync` in that worker, production code and other suites included, read each directory as empty and failed with `ENOTEMPTY`. `CoreModuleIsolation` cannot restore a copy it does not own, so `captureFunctionsOncePerWorker` now calls `loadLazyFsInternals` first, an `rmSync` of a path that does not exist. Found when the new temporary-workspace tests failed in the full file and passed alone.
+
+**Tests.**
+- `DatasetSourceService.test.ts`, with a fixture workspace of two runs (faker-js and snowfakery) and data sets in each format: recorded faker-js and snowfakery sources, a `-2` suffixed folder, a `null` run, `"../../etc"`, malformed JSON, a run no longer on disk, a linkable legacy data set, a legacy one with two wrapper copies, one with only a recipe copy, and one with no base artifacts. It also covers every refused field in the type check, legacy cases built in a temporary folder, folder name parsing, and a write-then-read round trip for each backend.
+- `ExtensionCommandService.test.ts` runs the command against a real temporary workspace for each backend, through the real processor transform. It checks the written file, the `BaseArtifactFiles` listing, that the reader links what the writer wrote, the `null` run case, three runs in one second giving `-2` and `-3`, a dismissed modal writing nothing, and a recipe outside `GeneratedRecipes` failing before generation.
+- `VSCodeWorkspaceService.test.ts` covers the next free suffix and a non-`EEXIST` failure. With the old folder creation in place, the suffix tests fail.
+- `CoreModuleIsolation.test.ts` loads rimraf under a `readdirSync` spy and then removes a non-empty directory. Without the preload, it and the seven Run Faker tests fail.
+
 ## [3.29.10] - A stale `treecipeConfigurationPath` setting no longer makes a present config read as missing
 
 Closes [#171](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/171).

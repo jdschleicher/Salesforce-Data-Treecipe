@@ -356,6 +356,25 @@ describe('Shared tests for CollectionsApiService', () => {
         
         });
 
+        test('given a datasetSource.json listed before the wrapper copy, still reads the wrapper copy', async() => {
+
+            const fakeJsonTreecipeObjectInfoWrapper = MockCollectionsApiService.getFakeTreecipeObjectInfoWrapperJson();
+            const getFileContentSpy = jest.spyOn(VSCodeWorkspaceService, 'getFileContentByPath').mockReturnValue(Promise.resolve(fakeJsonTreecipeObjectInfoWrapper));
+
+            const datasetChildFoldersToFilesMap = {
+                "BaseArtifactFiles": [
+                    "/dataset/BaseArtifactFiles/datasetSource.json",
+                    "/dataset/BaseArtifactFiles/originalRecipe-recipe--Account-ONLY-2026-09-01T08-00-00.yml",
+                    "/dataset/BaseArtifactFiles/originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-01T08-00-00.json"
+                ]
+            };
+            await CollectionsApiService.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
+
+            expect(getFileContentSpy).toHaveBeenCalledTimes(1);
+            expect(getFileContentSpy).toHaveBeenCalledWith("/dataset/BaseArtifactFiles/originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-01T08-00-00.json");
+
+        });
+
     });
 
     describe('updateReferenceIdMapWithCreatedRecords', () => {
