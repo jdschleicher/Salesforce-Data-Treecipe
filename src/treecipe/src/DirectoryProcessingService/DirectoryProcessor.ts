@@ -350,6 +350,8 @@ export class DirectoryProcessor {
       fieldXMLDetail.referenceTo,
       recipeValue
     );  
+
+    FieldInfo.applyFieldSize(fieldInfo, fieldXMLDetail);
   
     return fieldInfo;
 
@@ -466,19 +468,7 @@ export class DirectoryProcessor {
       const recipeFilesToCreate = objectsInfoWrapper.RecipeFiles;
       for ( const recipeFile of recipeFilesToCreate ) {
 
-          let treecipeTopToBottomLevelName = '';
-
-          if (recipeFile.objects.length === 1) {
-              const onlyObjectInTreecipe = recipeFile.objects.at(0);
-              treecipeTopToBottomLevelName = `${onlyObjectInTreecipe}-ONLY`;
-
-          } else {
-            
-              const topLevelObjectInRecipe = recipeFile.objects.at(0);
-              const bottomLevelObjectRecipe = recipeFile.objects.at(-1);
-              treecipeTopToBottomLevelName = `${topLevelObjectInRecipe}-thru-${bottomLevelObjectRecipe}`;
-
-          }
+          const treecipeTopToBottomLevelName = RelationshipService.buildRecipeTreeFolderName(recipeFile.objects);
 
           const recipeFileName = `${recipePrefix}--${treecipeTopToBottomLevelName}-${isoDateTimestamp}.yml`;
 

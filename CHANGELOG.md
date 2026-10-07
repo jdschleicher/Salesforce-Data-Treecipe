@@ -1,5 +1,73 @@
 # Change Log
 
+## [3.31.0] - The Recipe Cockpit shows each relationship tree as a card with a Structure tab
+
+Closes [#175](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/175), slice 2 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+The cockpit listed every object in a run as one flat list. It didn't show which relationship tree an object belongs to, the order objects are inserted in, which lookup ties a child to its parent, a field's size, or a picklist's values. It now opens on **Recipe Trees**: one card per tree, showing its objects in insert order with their lookups, sized field types and picklist values.
+
+- **Two views.** **Recipe Trees** is the default. The flat list is still there as **Classic list** and behaves exactly as before, with Compare with an org, the diff badges, the status filter and Regenerate recipe. Those controls show only in the Classic list until slice 8. The chosen view is kept when another run is loaded.
+- **One collapsible card per tree**, in `RecipeFiles` order and collapsed at first:
+  - Title: "Relationship Tree N".
+  - Subtitle: the folder the tree was written to (`Account-thru-OtherChildObject__c`, `Lead-ONLY`).
+  - Header counts: `N objects · M fields`.
+
+  A card is identified by its folder name, not by N. Generate Treecipe and the cockpit now name that folder with one shared rule, `RelationshipService.buildRecipeTreeFolderName`. A card's tab strip has one tab, **Structure**; slice 4 adds the other two.
+- **Structure tab.**
+  - Objects appear in insert order. A lookup target with no recipe of its own (for example `User`) is not listed, as in the Classic list.
+  - Each object shows the lookups tying it to a parent in the same tree, from `RelationshipDetail.parentObjectToFieldReferences`, e.g. `(AccountId → Account)`. A self-lookup shows as `(ParentId)`.
+  - Field rows show the type with its size: `Text(50)`, `Currency(18,2)`, `Percent(5,2)`, and `Number(18,0)` for a precision with no scale. Other fields show the bare type.
+  - `↗ yml` opens the recipe at the field's line.
+  - A dependent picklist says `controlled by <field>`.
+- **Generate Treecipe records `length`, `precision` and `scale`** on each `FieldInfo` in the objects wrapper, only when the field XML has them. A field without them serializes exactly as before. A run from before this change shows bare types, and nothing else differs.
+- **Picklist and multi-select picklist rows expand to their values.** Each record type's values are grouped under a `Record type: <DeveloperName>` heading, in the `RecordTypesMap` order (#166 sorted it at load). A picklist with no values says "no values".
+- **Picklist values are posted to the panel for display, one row at a time.** The issue set 60 MB at 120,000 fields as the line for loading values on expand instead, and posting them with the model measured 96.17 MB. So:
+  - A row carries only `isPicklist`.
+  - Expanding it posts `loadPicklistValues {objectApiName, fieldApiName}`. The message carries names, not a path.
+  - The host answers only for a picklist row of the model the panel has confirmed drawing. That set is a new pending → active allow-list, promoted on `rendered` and emptied on every reload, new model and failure to draw. An answer for an older model, or for a row that did not ask, draws nothing.
+  - Values are written with `textContent`.
+  - The diff's own copy of the values is unchanged and is never posted.
+- **Search filters across trees.**
+  - The find box is shared with the Classic list.
+  - A tree with no match stays on screen, collapsed and labelled "no matches".
+  - The 🔍 on a tree header limits the search to that tree. A line says which tree is being searched, with a button to search every tree again. Other trees show "not searched" and keep whatever the reader had open.
+  - Auto-expand spends one `RECIPE_COCKPIT_AUTO_EXPAND_*` budget across all trees, and opens a card only for an object it opens.
+  - Picklist values are not searched, because the panel doesn't have them until a row is opened.
+- **Unhappy paths.**
+  - A wrapper with no or an empty `RecipeFiles` renders one card per recipe `.yml` in the run. Its objects are in file order with no lookups, and a notice says the tree data is missing.
+  - An object no tree lists gets a "Not in a relationship tree" card, so it is never missing from the view.
+  - A hand-edited wrapper that repeats a folder still gets two distinct cards.
+- **Found in review, and fixed:**
+  - **A keystroke filtered both views.** Each view's auto-expand builds rows, so a keystroke built up to 4,000 rows, half of them in the hidden view. It now filters only the view on screen, and the other view is filtered when the reader switches to it.
+  - **Each field's search text was built twice.** The two views now share one lowercased search text per field. Each view also matches against the type it draws, so `text(50)` matches in Recipe Trees and not in the Classic list.
+  - **An object named `__proto__` vanished from its card.** The panel's object index is now `Object.create(null)`.
+  - **The 🔍 scope miscounted with an empty find box.** It now counts only the scoped tree.
+  - **Rows sharing a key were not all answered.** When a hand-edited wrapper repeats a picklist field, every row that asked now gets the values, not only the last.
+  - **Picklist values were read twice per field.** The diff's copy and the display copy now share one array.
+- Open-source keys are allow-listed as before (pending → active on `rendered`). The tree's `↗ yml` and object links use the same keys as the Classic list.
+
+### Measured
+
+Run through the real `loadRecipeRunByRuns`, with a third of the fields being 50-value picklists, 100 fields per object and 10 objects per tree:
+
+| Fields | Wrapper | Load | Posted with the model | Posted on expand (this release) | Before this release |
+|---|---|---|---|---|---|
+| 12,000 | 37.38 MB | 287 ms | 9.62 MB | 5.99 MB | 5.55 MB |
+| 120,000 | 373.95 MB | 5.4 s | 96.17 MB | 59.94 MB | 55.47 MB |
+
+One expanded row's answer is 1,054 bytes. Most of what is still posted is the faker expressions, which list all 50 values of each picklist. This release adds the type with size, the picklist marker and the trees: 0.44 MB at 12,000 fields and 4.47 MB at 120,000. These numbers are higher than 3.25.0's because those picklists had 15 values, not 50.
+
+**Tests.**
+- `RecipeCockpitService.test.ts`:
+  - covers `formatFieldTypeWithSize` for every case above;
+  - covers the tree model, built from a new fixture workspace with two tree folders and an older run with no `RecipeFiles`: order, folder keys, lookups and self-lookups, sizes, record-type values, the legacy fallback, an empty `RecipeFiles`, an unclaimed object and a repeated folder;
+  - covers the `loadPicklistValues` route: refused before `rendered`, for a non-picklist row, an unknown object, wrong types and a smuggled separator;
+  - runs the real panel script through `runPanelScript` for the default view and the switch, collapsed cards and their counts, the Structure tab, lookups, sized types, `↗ yml` against the allow-list, picklist expansion answered through the real router, stale and unasked answers, `textContent` only, search, scope, clearing and both auto-expand limits.
+- An end-to-end test drives the host executor through a fake webview.
+- `DirectoryProcessor.test.ts` checks that sizes are recorded only when the XML has them.
+- `RelationshipService.test.ts` covers the folder-name rule.
+- Expectations that pinned the old shape were updated: the field model, `trees: []`, the missing-tree-data notice on a run with no `RecipeFiles`, and the "values stay host-side" assertions this slice replaces.
+
 ## [3.30.0] - Every fake data set records the recipe run and tree that produced it
 
 Closes [#176](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/176), slice 3 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

@@ -1,0 +1,33 @@
+# Relationship Tree: RelationshipTree_1
+# Objects must be processed in this order for proper lookup resolution
+
+# Level 0 - Account
+# Account (Parents: Account, User | Children: Contact)
+
+- object: Account
+  nickname: Account_NickName
+  count: 1
+  fields:
+    Name: ${{fake.Company}}
+    Legacy_Code__c: ${{fake.Word}}
+    Annual_Budget__c: ${{ random_number(min=0, max=9999999999999999) }}
+    Rating__c: ${{ random_choice('Hot','Warm','Cold') }}
+    Sub_Rating__c:
+        if:
+            - choice:
+                when: ${{ Rating__c == 'Hot' }}
+                pick: Very Hot
+    Regions__c: ### TODO -- NO PICKLIST VALUES
+    ParentId: ### TODO -- REFERENCE ID REQUIRED
+    OwnerId: ### TODO -- REFERENCE ID REQUIRED
+
+# Level 1 - Contact
+# Contact (Parents: Account | Children: OtherChildObject__c)
+
+- object: Contact
+  nickname: Contact_NickName
+  count: 1
+  fields:
+    LastName: ${{fake.LastName}}
+    AccountId: ### TODO -- REFERENCE ID REQUIRED
+

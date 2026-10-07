@@ -13,6 +13,8 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
+import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
+import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -112,6 +114,15 @@ export const RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT = 25;
 */
 export const RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET = 2000;
 
+// THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
+export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
+
+export const RECIPE_COCKPIT_TREE_TITLE_PREFIX = 'Relationship Tree';
+
+export const RECIPE_COCKPIT_UNGROUPED_TREE_TITLE = 'Not in a relationship tree';
+
+export const RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE = 'This run\'s objects wrapper has no relationship tree data, so each recipe file is shown as its own card, with its objects in file order and no lookups. Run "Generate Treecipe" again to see the run\'s relationship trees.';
+
 const RUN_FOLDER_TIMESTAMP_PATTERN = /-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/;
 
 const FAKER_JS_RUN_FOLDER_PREFIX = 'recipe-fakerjs-';
@@ -172,15 +183,40 @@ export interface IRecipeCockpitRunViewModel {
     become a FieldInfo, so a view built from the wrapper alone would answer "Account has no Name"
     to a reader who can see Name in the file.
 */
+/*
+    fieldTypeWithSize is what the Structure tab draws ("Text(50)", "Number(16,2)"); fieldType stays
+    the bare type, which is what the Classic list draws and what the diff compares.
+
+    isPicklist is set ONLY on a picklist or multi-select picklist row, and is all the model says
+    about its values: the values are posted when the reader expands the row (loadPicklistValues).
+    Posting them with the model measured 96.17 MB at 120,000 fields with 50 values per picklist,
+    past the 60 MB the issue set as the line for loading them on expand instead.
+*/
 export interface IRecipeCockpitFieldViewModel {
     fieldApiName: string;
     fieldLabel: string;
     fieldType: string;
+    fieldTypeWithSize: string;
     recipeValue: string;
     controllingField: string;
     isOnlyInRecipeFile: boolean;
     lineNumber?: number;
+    isPicklist?: boolean;
 }
+
+export interface IRecipeCockpitRecordTypePicklistValuesViewModel {
+    recordTypeDeveloperName: string;
+    picklistValues: string[];
+}
+
+// WHAT ONE PICKLIST ROW SHOWS WHEN EXPANDED: ITS ACTIVE VALUES, THEN ONE GROUP PER RECORD TYPE THAT ASSIGNS IT VALUES
+export interface IRecipeCockpitPicklistDisplayValues {
+    picklistValues: string[];
+    recordTypePicklistValues: IRecipeCockpitRecordTypePicklistValuesViewModel[];
+}
+
+export type RecipeCockpitPicklistDisplayValuesByObjectApiName = Map<string, Map<string, IRecipeCockpitPicklistDisplayValues>>;
+
 
 /*
     recipeFilePath is the one path the panel is handed, and it is carried once per OBJECT rather
@@ -195,10 +231,39 @@ export interface IRecipeCockpitObjectViewModel {
     fields: IRecipeCockpitFieldViewModel[];
 }
 
+// ONE LOOKUP TYING AN OBJECT TO A PARENT IN ITS OWN TREE; A SELF-LOOKUP NAMES ITS OWN OBJECT AS THE PARENT
+export interface IRecipeCockpitParentLookupViewModel {
+    fieldApiName: string;
+    parentObjectApiName: string;
+}
+
+/*
+    An object as a tree lists it. Its fields are not repeated here: the panel finds them by name in
+    the recipe's objects, so the Structure tab and the Classic list draw one posted field model.
+*/
+export interface IRecipeCockpitTreeObjectViewModel {
+    objectApiName: string;
+    parentLookups: IRecipeCockpitParentLookupViewModel[];
+}
+
+/*
+    One relationship tree card. treeKey is the FOLDER the tree's recipe was written to, not its
+    position: a position renumbers when another tree is added, and a key that moved would expand,
+    scope or search a different card than the reader chose.
+*/
+export interface IRecipeCockpitTreeViewModel {
+    treeKey: string;
+    title: string;
+    folderName: string;
+    objects: IRecipeCockpitTreeObjectViewModel[];
+    fieldCount: number;
+}
+
 export interface IRecipeCockpitRecipeViewModel {
     runs: IRecipeCockpitRunViewModel[];
     selectedRunFolderName: string;
     objects: IRecipeCockpitObjectViewModel[];
+    trees: IRecipeCockpitTreeViewModel[];
     notices: string[];
     emptyStateMessage: string;
 }
@@ -216,6 +281,14 @@ export interface IRecipeCockpitNormalizedObjectsWrapper {
     isObjectsWrapper: boolean;
     fieldlessObjectApiNames: Set<string>;
     picklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
+    picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
+    recipeTrees: IRecipeCockpitWrapperTree[];
+    parentLookupsByObjectApiName: Map<string, IRecipeCockpitParentLookupViewModel[]>;
+}
+
+// ONE RecipeFiles ENTRY, AS IT WAS WRITTEN: EVERY OBJECT IT LISTS, IN INSERT ORDER, LOOKUP TARGETS INCLUDED
+export interface IRecipeCockpitWrapperTree {
+    objectApiNames: string[];
 }
 
 export interface IRecipeSourceFieldEntry {
@@ -248,6 +321,8 @@ export interface IRecipeCockpitPanelMessage {
     runFolderName?: unknown;
     phase?: unknown;
     renderSequence?: unknown;
+    objectApiName?: unknown;
+    fieldApiName?: unknown;
     message?: unknown;
     stack?: unknown;
 }
@@ -337,16 +412,29 @@ export interface IRecipeCockpitOrgProgressMessage {
     renderSequence: number;
 }
 
+// ONE PICKLIST ROW'S VALUES, ANSWERING THE PANEL'S loadPicklistValues FOR THE MODEL renderSequence NAMES
+export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPicklistDisplayValues {
+    command: 'picklistValues';
+    objectApiName: string;
+    fieldApiName: string;
+    renderSequence: number;
+}
+
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitOrgDescribeMessage
-                                        | IRecipeCockpitOrgProgressMessage;
+                                        | IRecipeCockpitOrgProgressMessage
+                                        | IRecipeCockpitPicklistValuesMessage;
 
-// THE LOADER'S WHOLE ANSWER: WHAT IS POSTED, AND THE PICKLIST VALUES THAT STAY ON THE HOST FOR THE DIFF
+/*
+    The loader's whole answer: what is posted, the picklist values that stay on the host for the
+    diff, and the picklist values the panel asks for one row at a time.
+*/
 export interface IRecipeCockpitLoadedRecipe {
     recipeViewModel: IRecipeCockpitRecipeViewModel;
     recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
+    picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
 }
 
 /*
@@ -360,7 +448,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'selectOrg' }
-    | { kind: 'regenerateRecipe' };
+    | { kind: 'regenerateRecipe' }
+    | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -377,7 +466,9 @@ export type RecipeCockpitPanelAction =
     or describing, so two quick picks cannot race to post two answers.
 
     recipePicklistValuesByObjectApiName belongs to recipeDataMessage and is replaced with it: it is
-    the diff's recipe side for picklists, and it is never posted.
+    the diff's recipe side for picklists, and it is never posted. picklistDisplayValuesByObjectApiName
+    is replaced with it too, and is posted one row at a time, only for a row the rendered model
+    marked as a picklist (the loadable picklist keys, another pending/active pair).
 */
 export interface IRecipeCockpitPanelState {
     workspaceRoot: string;
@@ -385,15 +476,18 @@ export interface IRecipeCockpitPanelState {
     loadPhaseMessage: string;
     recipeDataMessage?: IRecipeCockpitRecipeDataMessage;
     recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
+    picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
     loadFailedMessage?: IRecipeCockpitLoadFailedMessage;
     orgDescribeMessage?: IRecipeCockpitOrgDescribeMessage;
     orgProgressMessage?: IRecipeCockpitOrgProgressMessage;
     pendingOpenableSourceKeys: Set<string>;
     pendingSelectableRunFolderNames: Set<string>;
     pendingDescribableObjectApiNames: Set<string>;
+    pendingLoadablePicklistKeys: Set<string>;
     openableSourceKeys: Set<string>;
     selectableRunFolderNames: Set<string>;
     describableObjectApiNames: Set<string>;
+    loadablePicklistKeys: Set<string>;
     isOrgDescribeInFlight: boolean;
     isRegenerateInFlight: boolean;
     reportedFailureDescriptions: Set<string>;
@@ -433,12 +527,15 @@ export class RecipeCockpitService {
             isPanelReady: false,
             loadPhaseMessage: '',
             recipePicklistValuesByObjectApiName: new Map(),
+            picklistDisplayValuesByObjectApiName: new Map(),
             pendingOpenableSourceKeys: new Set(),
             pendingSelectableRunFolderNames: new Set(),
             pendingDescribableObjectApiNames: new Set(),
+            pendingLoadablePicklistKeys: new Set(),
             openableSourceKeys: new Set(),
             selectableRunFolderNames: new Set(),
             describableObjectApiNames: new Set(),
+            loadablePicklistKeys: new Set(),
             isOrgDescribeInFlight: false,
             isRegenerateInFlight: false,
             reportedFailureDescriptions: new Set()
@@ -620,6 +717,7 @@ export class RecipeCockpitService {
 
         panelState.recipeDataMessage = recipeDataMessage;
         panelState.recipePicklistValuesByObjectApiName = loadedRecipe.recipePicklistValuesByObjectApiName;
+        panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.loadFailedMessage = undefined;
         // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
         panelState.orgDescribeMessage = undefined;
@@ -629,6 +727,9 @@ export class RecipeCockpitService {
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
         panelState.pendingDescribableObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
+        panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
+        // THE SAME REASON AS THE DESCRIBABLE SET: AN ANSWER IS TAGGED WITH THE CURRENT renderSequence, SO THE OLD MODEL'S KEYS MUST NOT ANSWER FOR IT
+        panelState.loadablePicklistKeys = new Set();
         /*
             Emptied rather than left on the previous model until the new one's "rendered": a describe
             reads its objects from here but tags its answer with the CURRENT model's renderSequence,
@@ -700,6 +801,7 @@ export class RecipeCockpitService {
                 panelState.openableSourceKeys = new Set();
                 panelState.selectableRunFolderNames = new Set();
                 panelState.describableObjectApiNames = new Set();
+                panelState.loadablePicklistKeys = new Set();
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
                 return;
 
@@ -708,6 +810,7 @@ export class RecipeCockpitService {
                 panelState.openableSourceKeys = panelState.pendingOpenableSourceKeys;
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
                 panelState.describableObjectApiNames = panelState.pendingDescribableObjectApiNames;
+                panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
                 return;
 
             case 'reportRenderFailure': {
@@ -719,6 +822,7 @@ export class RecipeCockpitService {
                     panelState.openableSourceKeys = new Set();
                     panelState.selectableRunFolderNames = new Set();
                     panelState.describableObjectApiNames = new Set();
+                    panelState.loadablePicklistKeys = new Set();
                 }
 
                 const renderFailureError = new Error(`The Recipe Cockpit panel could not render the recipe: ${panelAction.failureDescription}`);
@@ -761,6 +865,11 @@ export class RecipeCockpitService {
             case 'regenerateRecipe':
 
                 await this.regenerateRecipe(cockpitPanel, panelState);
+                return;
+
+            case 'postPicklistValues':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
         }
@@ -1173,6 +1282,40 @@ export class RecipeCockpitService {
 
                 return { kind: 'regenerateRecipe' };
 
+            /*
+                Names, not a path, and answered only for a row the CONFIRMED-drawn model marked as a
+                picklist: the key has to be in the active set, which the panel's "rendered" fills
+                and every reload empties.
+            */
+            case 'loadPicklistValues': {
+
+                const { objectApiName, fieldApiName } = panelMessage;
+
+                if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string' || !panelState.recipeDataMessage ) {
+                    return undefined;
+                }
+
+                if ( !panelState.loadablePicklistKeys.has(this.buildPicklistKey(objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const picklistDisplayValues = panelState.picklistDisplayValuesByObjectApiName.get(objectApiName)?.get(fieldApiName)
+                    ?? { picklistValues: [], recordTypePicklistValues: [] };
+
+                return {
+                    kind: 'postPicklistValues',
+                    hostMessage: {
+                        command: 'picklistValues',
+                        objectApiName: objectApiName,
+                        fieldApiName: fieldApiName,
+                        picklistValues: picklistDisplayValues.picklistValues,
+                        recordTypePicklistValues: picklistDisplayValues.recordTypePicklistValues,
+                        renderSequence: panelState.recipeDataMessage.renderSequence
+                    }
+                };
+
+            }
+
             case 'selectRun': {
 
                 const { runFolderName } = panelMessage;
@@ -1225,6 +1368,21 @@ export class RecipeCockpitService {
     static buildOpenSourceKey(filePath: string, lineNumber: number): string {
 
         return `${filePath}\n${lineNumber}`;
+
+    }
+
+    static buildPicklistKey(objectApiName: string, fieldApiName: string): string {
+
+        return `${objectApiName}\n${fieldApiName}`;
+
+    }
+
+    // EVERY ROW THE RENDERED MODEL MARKS AS A PICKLIST, AND NOTHING ELSE
+    static collectLoadablePicklistKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
+
+        return recipeViewModel.objects.flatMap(objectViewModel => objectViewModel.fields
+            .filter(fieldViewModel => fieldViewModel.isPicklist)
+            .map(fieldViewModel => this.buildPicklistKey(objectViewModel.objectApiName, fieldViewModel.fieldApiName)));
 
     }
 
@@ -1366,8 +1524,9 @@ export class RecipeCockpitService {
 
         if ( recipeRuns.length === 0 ) {
             return {
-                recipeViewModel: { runs: [], selectedRunFolderName: '', objects: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE },
-                recipePicklistValuesByObjectApiName: new Map()
+                recipeViewModel: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE },
+                recipePicklistValuesByObjectApiName: new Map(),
+                picklistDisplayValuesByObjectApiName: new Map()
             };
         }
 
@@ -1378,6 +1537,7 @@ export class RecipeCockpitService {
             runs: runViewModels,
             selectedRunFolderName: selectedRun.runFolderName,
             objects: [],
+            trees: [],
             notices: [],
             emptyStateMessage: ''
         };
@@ -1388,7 +1548,7 @@ export class RecipeCockpitService {
             parsedObjectsWrapper = JSON.parse(fs.readFileSync(selectedRun.objectsWrapperFilePath, 'utf-8'));
         } catch (readError) {
             recipeViewModel.emptyStateMessage = `The objects wrapper "${path.basename(selectedRun.objectsWrapperFilePath)}" for this run could not be read: ${readError?.message ?? readError}. Choose another run, or run "Generate Treecipe" again.`;
-            return { recipeViewModel: recipeViewModel, recipePicklistValuesByObjectApiName: new Map() };
+            return { recipeViewModel: recipeViewModel, recipePicklistValuesByObjectApiName: new Map(), picklistDisplayValuesByObjectApiName: new Map() };
         }
 
         const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
@@ -1403,11 +1563,20 @@ export class RecipeCockpitService {
             .filter(objectViewModel => !normalizedObjectsWrapper.fieldlessObjectApiNames.has(objectViewModel.objectApiName)
                                         || !!objectViewModel.recipeFilePath);
 
+        const recipeTreeBuild = this.buildRecipeTreeViewModels(
+            normalizedObjectsWrapper,
+            recipeViewModel.objects,
+            recipeSourceRead.recipeSourceFiles,
+            selectedRun.runFolderPath
+        );
+
+        recipeViewModel.trees = recipeTreeBuild.trees;
+
         const missingRunNotices = requestedRunFolderName && !requestedRun
             ? [`The run "${requestedRunFolderName}" is no longer on disk, so the latest run is shown instead.`]
             : [];
 
-        recipeViewModel.notices = [...missingRunNotices, ...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices];
+        recipeViewModel.notices = [...missingRunNotices, ...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices, ...recipeTreeBuild.notices];
 
         if ( recipeViewModel.objects.length === 0 ) {
             recipeViewModel.emptyStateMessage = normalizedObjectsWrapper.isObjectsWrapper
@@ -1415,7 +1584,11 @@ export class RecipeCockpitService {
                 : `"${path.basename(selectedRun.objectsWrapperFilePath)}" is not a Treecipe objects wrapper. Choose another run, or run "Generate Treecipe" again.`;
         }
 
-        return { recipeViewModel: recipeViewModel, recipePicklistValuesByObjectApiName: normalizedObjectsWrapper.picklistValuesByObjectApiName };
+        return {
+            recipeViewModel: recipeViewModel,
+            recipePicklistValuesByObjectApiName: normalizedObjectsWrapper.picklistValuesByObjectApiName,
+            picklistDisplayValuesByObjectApiName: normalizedObjectsWrapper.picklistDisplayValuesByObjectApiName
+        };
 
     }
 
@@ -1436,19 +1609,31 @@ export class RecipeCockpitService {
         const objectToObjectInfoMap = this.asRecord(objectsWrapperRecord?.ObjectToObjectInfoMap);
 
         if ( !objectToObjectInfoMap ) {
-            return { objects: [], notices: [], isObjectsWrapper: false, fieldlessObjectApiNames: new Set(), picklistValuesByObjectApiName: new Map() };
+            return {
+                objects: [],
+                notices: [],
+                isObjectsWrapper: false,
+                fieldlessObjectApiNames: new Set(),
+                picklistValuesByObjectApiName: new Map(),
+                picklistDisplayValuesByObjectApiName: new Map(),
+                recipeTrees: [],
+                parentLookupsByObjectApiName: new Map()
+            };
         }
 
         const recipeObjectApiNames: string[] = [];
+        const recipeTrees: IRecipeCockpitWrapperTree[] = [];
         const recipeFiles = objectsWrapperRecord.RecipeFiles;
 
         if ( Array.isArray(recipeFiles) ) {
             recipeFiles.forEach(recipeFile => {
                 const recipeFileObjects = this.asRecord(recipeFile)?.objects;
                 if ( Array.isArray(recipeFileObjects) ) {
-                    recipeFileObjects
-                        .filter((objectApiName): objectApiName is string => typeof objectApiName === 'string')
-                        .forEach(objectApiName => recipeObjectApiNames.push(objectApiName));
+                    const treeObjectApiNames = recipeFileObjects.filter((objectApiName): objectApiName is string => typeof objectApiName === 'string' && !!objectApiName);
+                    treeObjectApiNames.forEach(objectApiName => recipeObjectApiNames.push(objectApiName));
+                    if ( treeObjectApiNames.length > 0 ) {
+                        recipeTrees.push({ objectApiNames: treeObjectApiNames });
+                    }
                 }
             });
         }
@@ -1464,11 +1649,17 @@ export class RecipeCockpitService {
         const objects: IRecipeCockpitObjectViewModel[] = [];
         const fieldlessObjectApiNames = new Set<string>();
         const picklistValuesByObjectApiName = new Map<string, Map<string, string[]>>();
+        const picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName = new Map();
+        const parentLookupsByObjectApiName = new Map<string, IRecipeCockpitParentLookupViewModel[]>();
         let unreadableFieldCount = 0;
 
         orderedObjectApiNames.forEach(objectApiName => {
 
-            const wrapperFields = this.asRecord(objectToObjectInfoMap[objectApiName])?.Fields;
+            const wrapperObjectRecord = this.asRecord(objectToObjectInfoMap[objectApiName]);
+            const wrapperFields = wrapperObjectRecord?.Fields;
+            const recordTypePicklistSections = this.readRecordTypePicklistSections(wrapperObjectRecord?.RecordTypesMap);
+
+            parentLookupsByObjectApiName.set(objectApiName, this.readParentLookups(wrapperObjectRecord?.RelationshipDetail));
 
             if ( !Array.isArray(wrapperFields) ) {
 
@@ -1500,21 +1691,51 @@ export class RecipeCockpitService {
                     values would report every unlisted org value as added, so neither makes a claim.
                 */
                 const isDependentPicklist = !!this.asString(wrapperFieldRecord.controllingField);
+                // READ ONCE AND SHARED BY THE DIFF'S COPY AND THE DISPLAY COPY -- NEITHER IS EVER MUTATED
+                const activePicklistValues = Array.isArray(wrapperFieldRecord.picklistValues)
+                    ? this.readActivePicklistValues(wrapperFieldRecord.picklistValues)
+                    : undefined;
 
-                if ( Array.isArray(wrapperFieldRecord.picklistValues) && !isDependentPicklist ) {
+                if ( activePicklistValues && !isDependentPicklist ) {
                     const picklistValuesByFieldApiName = picklistValuesByObjectApiName.get(objectApiName) ?? new Map<string, string[]>();
-                    picklistValuesByFieldApiName.set(fieldApiName, this.readActivePicklistValues(wrapperFieldRecord.picklistValues));
+                    picklistValuesByFieldApiName.set(fieldApiName, activePicklistValues);
                     picklistValuesByObjectApiName.set(objectApiName, picklistValuesByFieldApiName);
                 }
 
-                fields.push({
+                const fieldType = this.asString(wrapperFieldRecord.type);
+                const fieldViewModel: IRecipeCockpitFieldViewModel = {
                     fieldApiName: fieldApiName,
                     fieldLabel: this.asString(wrapperFieldRecord.fieldLabel),
-                    fieldType: this.asString(wrapperFieldRecord.type),
+                    fieldType: fieldType,
+                    fieldTypeWithSize: this.formatFieldTypeWithSize(fieldType, {
+                        length: this.asFieldSize(wrapperFieldRecord.length),
+                        precision: this.asFieldSize(wrapperFieldRecord.precision),
+                        scale: this.asFieldSize(wrapperFieldRecord.scale)
+                    }),
                     recipeValue: this.buildDisplayExpression(this.asString(wrapperFieldRecord.recipeValue).split('\n')),
                     controllingField: this.asString(wrapperFieldRecord.controllingField),
                     isOnlyInRecipeFile: false
-                });
+                };
+
+                if ( RECIPE_COCKPIT_PICKLIST_FIELD_TYPES.includes(fieldType) ) {
+
+                    fieldViewModel.isPicklist = true;
+
+                    const picklistDisplayValuesByFieldApiName = picklistDisplayValuesByObjectApiName.get(objectApiName) ?? new Map<string, IRecipeCockpitPicklistDisplayValues>();
+                    picklistDisplayValuesByFieldApiName.set(fieldApiName, {
+                        picklistValues: activePicklistValues ?? [],
+                        recordTypePicklistValues: recordTypePicklistSections
+                            .filter(recordTypeSection => Object.prototype.hasOwnProperty.call(recordTypeSection.picklistValuesByFieldApiName, fieldApiName))
+                            .map(recordTypeSection => ({
+                                recordTypeDeveloperName: recordTypeSection.recordTypeDeveloperName,
+                                picklistValues: recordTypeSection.picklistValuesByFieldApiName[fieldApiName]
+                            }))
+                    });
+                    picklistDisplayValuesByObjectApiName.set(objectApiName, picklistDisplayValuesByFieldApiName);
+
+                }
+
+                fields.push(fieldViewModel);
 
             });
 
@@ -1526,7 +1747,228 @@ export class RecipeCockpitService {
             ? [`${unreadableFieldCount} field ${unreadableFieldCount === 1 ? 'entry' : 'entries'} in the objects wrapper had no field api name and ${unreadableFieldCount === 1 ? 'is' : 'are'} not shown.`]
             : [];
 
-        return { objects: objects, notices: notices, isObjectsWrapper: true, fieldlessObjectApiNames: fieldlessObjectApiNames, picklistValuesByObjectApiName: picklistValuesByObjectApiName };
+        return {
+            objects: objects,
+            notices: notices,
+            isObjectsWrapper: true,
+            fieldlessObjectApiNames: fieldlessObjectApiNames,
+            picklistValuesByObjectApiName: picklistValuesByObjectApiName,
+            picklistDisplayValuesByObjectApiName: picklistDisplayValuesByObjectApiName,
+            recipeTrees: recipeTrees,
+            parentLookupsByObjectApiName: parentLookupsByObjectApiName
+        };
+
+    }
+
+    /*
+        A field's type as the Structure tab draws it: "Number(16,2)" from precision and scale,
+        "Text(50)" from length, the bare type otherwise. A precision with no scale is a scale of 0,
+        which is what Salesforce gives such a field. A run from before sizes were recorded has
+        neither, so it draws the bare type.
+    */
+    static formatFieldTypeWithSize(fieldType: string, fieldSize: IFieldSize): string {
+
+        if ( !fieldType ) {
+            return '';
+        }
+
+        if ( fieldSize.precision !== undefined ) {
+            return `${fieldType}(${fieldSize.precision},${fieldSize.scale ?? 0})`;
+        }
+
+        if ( fieldSize.length !== undefined ) {
+            return `${fieldType}(${fieldSize.length})`;
+        }
+
+        return fieldType;
+
+    }
+
+    private static asFieldSize(candidateValue: unknown): number | undefined {
+
+        return typeof candidateValue === 'number' && Number.isInteger(candidateValue) && candidateValue >= 0
+            ? candidateValue
+            : undefined;
+
+    }
+
+    /*
+        RelationshipDetail.parentObjectToFieldReferences as one entry per lookup field, in the
+        order the wrapper lists them. Anything not a string is dropped: the file is on disk.
+    */
+    static readParentLookups(relationshipDetail: unknown): IRecipeCockpitParentLookupViewModel[] {
+
+        const parentObjectToFieldReferences = this.asRecord(this.asRecord(relationshipDetail)?.parentObjectToFieldReferences);
+        const parentLookups: IRecipeCockpitParentLookupViewModel[] = [];
+
+        if ( !parentObjectToFieldReferences ) {
+            return parentLookups;
+        }
+
+        Object.keys(parentObjectToFieldReferences).forEach(parentObjectApiName => {
+
+            const fieldApiNames = parentObjectToFieldReferences[parentObjectApiName];
+
+            if ( !Array.isArray(fieldApiNames) ) {
+                return;
+            }
+
+            fieldApiNames
+                .filter((fieldApiName): fieldApiName is string => typeof fieldApiName === 'string' && !!fieldApiName)
+                .forEach(fieldApiName => parentLookups.push({ fieldApiName: fieldApiName, parentObjectApiName: parentObjectApiName }));
+
+        });
+
+        return parentLookups;
+
+    }
+
+    /*
+        RecordTypesMap as the per-field values each record type assigns, in the map's own order --
+        RecordTypeService sorts it by developer name once where it is loaded (#166), so re-sorting
+        here would be a second order to keep in step.
+    */
+    static readRecordTypePicklistSections(recordTypesMap: unknown): Array<{ recordTypeDeveloperName: string; picklistValuesByFieldApiName: Record<string, string[]> }> {
+
+        const recordTypesRecord = this.asRecord(recordTypesMap);
+
+        if ( !recordTypesRecord ) {
+            return [];
+        }
+
+        return Object.keys(recordTypesRecord).map(recordTypeDeveloperName => {
+
+            const picklistSections = this.asRecord(this.asRecord(recordTypesRecord[recordTypeDeveloperName])?.PicklistFieldSectionsToPicklistDetail) ?? {};
+            // KEYED BY FIELD API NAME FROM A FILE ON DISK, SO NO PROTOTYPE A NAME LIKE "constructor" COULD READ BACK
+            const picklistValuesByFieldApiName: Record<string, string[]> = Object.create(null);
+
+            Object.keys(picklistSections).forEach(fieldApiName => {
+                const sectionValues = picklistSections[fieldApiName];
+                if ( Array.isArray(sectionValues) ) {
+                    picklistValuesByFieldApiName[fieldApiName] = sectionValues.filter((sectionValue): sectionValue is string => typeof sectionValue === 'string');
+                }
+            });
+
+            return { recordTypeDeveloperName: recordTypeDeveloperName, picklistValuesByFieldApiName: picklistValuesByFieldApiName };
+
+        });
+
+    }
+
+    /*
+        One card per relationship tree, in RecipeFiles order, each listing the objects the recipe
+        carries in insert order with the lookups tying each to a parent in the SAME tree.
+
+        A card is keyed by the folder Generate Treecipe wrote the tree to, which it names by the
+        tree's first and last object -- lookup targets with no recipe of their own included, so the
+        name is taken from the tree's whole object list, before the objects the panel does not list
+        are dropped. A wrapper with no RecipeFiles (a run from before they were written, or one
+        edited by hand) falls back to one card per recipe file, its objects in file order, with no
+        lookups and a notice saying why. An object no card claimed still gets one, because a view
+        that left it out would say it is not in the recipe.
+    */
+    static buildRecipeTreeViewModels(normalizedObjectsWrapper: Pick<IRecipeCockpitNormalizedObjectsWrapper, 'recipeTrees' | 'parentLookupsByObjectApiName'>,
+                                        objects: IRecipeCockpitObjectViewModel[],
+                                        recipeSourceFiles: IRecipeSourceFile[],
+                                        runFolderPath: string): { trees: IRecipeCockpitTreeViewModel[]; notices: string[] } {
+
+        const objectsByApiName = new Map(objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
+        const claimedObjectApiNames = new Set<string>();
+        const usedTreeKeys = new Set<string>();
+        const trees: IRecipeCockpitTreeViewModel[] = [];
+        const notices: string[] = [];
+
+        const hasTreeData = normalizedObjectsWrapper.recipeTrees.length > 0;
+
+        const treeSources: Array<{ folderName: string; objectApiNames: string[]; hasLookups: boolean }> = hasTreeData
+            ? normalizedObjectsWrapper.recipeTrees.map(recipeTree => ({
+                folderName: RelationshipService.buildRecipeTreeFolderName(recipeTree.objectApiNames),
+                objectApiNames: recipeTree.objectApiNames,
+                hasLookups: true
+            }))
+            : recipeSourceFiles.map(recipeSourceFile => ({
+                folderName: path.resolve(path.dirname(recipeSourceFile.filePath)) === path.resolve(runFolderPath)
+                    ? path.basename(recipeSourceFile.filePath)
+                    : path.basename(path.dirname(recipeSourceFile.filePath)),
+                objectApiNames: [...recipeSourceFile.objectEntries.keys()],
+                hasLookups: false
+            }));
+
+        if ( !hasTreeData && objects.length > 0 ) {
+            notices.push(RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE);
+        }
+
+        treeSources.forEach((treeSource, treeIndex) => {
+
+            const treeObjectApiNameSet = new Set(treeSource.objectApiNames);
+            const treeObjects: IRecipeCockpitTreeObjectViewModel[] = [];
+
+            treeSource.objectApiNames.forEach(objectApiName => {
+
+                if ( !objectsByApiName.has(objectApiName) || claimedObjectApiNames.has(objectApiName) ) {
+                    return;
+                }
+
+                claimedObjectApiNames.add(objectApiName);
+
+                treeObjects.push({
+                    objectApiName: objectApiName,
+                    parentLookups: treeSource.hasLookups
+                        ? ( normalizedObjectsWrapper.parentLookupsByObjectApiName.get(objectApiName) ?? [] )
+                            .filter(parentLookup => treeObjectApiNameSet.has(parentLookup.parentObjectApiName))
+                        : []
+                });
+
+            });
+
+            trees.push(this.buildTreeViewModel(
+                this.claimTreeKey(treeSource.folderName, treeIndex, usedTreeKeys),
+                `${RECIPE_COCKPIT_TREE_TITLE_PREFIX} ${treeIndex + 1}`,
+                treeSource.folderName,
+                treeObjects,
+                objectsByApiName
+            ));
+
+        });
+
+        const unclaimedObjects = objects.filter(objectViewModel => !claimedObjectApiNames.has(objectViewModel.objectApiName));
+
+        if ( unclaimedObjects.length > 0 ) {
+            trees.push(this.buildTreeViewModel(
+                this.claimTreeKey('', trees.length, usedTreeKeys),
+                RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
+                '',
+                unclaimedObjects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] })),
+                objectsByApiName
+            ));
+        }
+
+        return { trees: trees, notices: notices };
+
+    }
+
+    // THE FOLDER NAME, UNLESS A HAND-EDITED WRAPPER REPEATS ONE -- TWO CARDS SHARING A KEY WOULD SCOPE A SEARCH TO BOTH
+    private static claimTreeKey(folderName: string, treeIndex: number, usedTreeKeys: Set<string>): string {
+
+        const treeKey = usedTreeKeys.has(folderName) ? `${folderName}#${treeIndex + 1}` : folderName;
+        usedTreeKeys.add(treeKey);
+        return treeKey;
+
+    }
+
+    private static buildTreeViewModel(treeKey: string,
+                                        title: string,
+                                        folderName: string,
+                                        treeObjects: IRecipeCockpitTreeObjectViewModel[],
+                                        objectsByApiName: Map<string, IRecipeCockpitObjectViewModel>): IRecipeCockpitTreeViewModel {
+
+        return {
+            treeKey: treeKey,
+            title: title,
+            folderName: folderName,
+            objects: treeObjects,
+            fieldCount: treeObjects.reduce((fieldCount, treeObject) => fieldCount + objectsByApiName.get(treeObject.objectApiName).fields.length, 0)
+        };
 
     }
 
@@ -1792,6 +2234,7 @@ export class RecipeCockpitService {
                     fieldApiName: fieldApiName,
                     fieldLabel: '',
                     fieldType: '',
+                    fieldTypeWithSize: '',
                     recipeValue: fieldEntry.valueText,
                     controllingField: '',
                     isOnlyInRecipeFile: true,
@@ -2009,6 +2452,65 @@ ${this.buildPaletteCustomProperties()}
     .diff-picklist-changed { color: var(--sdt-changed); }
     .diff-unchanged { color: var(--sdt-muted); }
     .diffDetail { margin: 0.15rem 0 0 0; color: var(--sdt-muted); word-break: break-word; }
+    .toolbar .viewButton {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border-color: var(--sdt-border);
+    }
+    .toolbar .viewButton.selected {
+        color: var(--sdt-on-accent);
+        background-color: var(--sdt-accent);
+        border-color: var(--sdt-accent);
+    }
+    .classicControls { display: contents; }
+    .treeScopeStatus {
+        border-left: 3px solid var(--sdt-accent);
+        padding: 0.3rem 0.6rem;
+        margin: 0.4rem 0;
+        background-color: var(--sdt-surface);
+        border-radius: 4px;
+    }
+    .treeCard {
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
+        margin: 0.6rem 0;
+        overflow: hidden;
+    }
+    .treeHeader, .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeHeader { padding: 0.5rem 0.6rem; background-color: var(--sdt-header); }
+    .treeTitle { font-weight: 600; }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeScopeClear, .treeTab {
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        color: var(--sdt-accent);
+        cursor: pointer;
+        border-radius: 4px;
+    }
+    .treeScope { margin-left: auto; padding: 0 0.3rem; }
+    .treeScope.selected { outline: 1px solid var(--sdt-accent); }
+    .treeBody { border-top: 1px solid var(--sdt-border); }
+    .treeTabs { display: flex; gap: 0.75rem; padding: 0.3rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
+    .treeTab { color: var(--sdt-muted); padding: 0.2rem 0; border-bottom: 2px solid transparent; }
+    .treeTab.selected { color: var(--sdt-text); border-bottom-color: var(--sdt-accent); font-weight: 600; }
+    .treeObjectHeader { padding: 0.35rem 0.6rem; }
+    .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
+    .treeObjectName { font-weight: 600; }
+    .treeObjectBody { padding-bottom: 0.25rem; }
+    .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .treeFieldHeader .fieldType {
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .picklistValues { margin: 0.2rem 0 0 1.4rem; }
+    .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
+    .picklistValue { padding-left: 0.6rem; word-break: break-word; }
     .expression {
         margin: 0.15rem 0 0 0;
         white-space: pre-wrap;
@@ -2037,6 +2539,16 @@ ${this.buildPaletteCustomProperties()}
     const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
 
     let objectStates = [];
+    // WHICH VIEW IS ON SCREEN OUTLIVES A MODEL, SO SWITCHING RUNS DOES NOT THROW THE READER BACK TO THE DEFAULT
+    let viewMode = 'trees';
+    let treeStates = [];
+    let treeScopeKey = null;
+    let treesViewElement = null;
+    let classicViewElement = null;
+    let classicControlsElement = null;
+    let treeMatchCountElement = null;
+    let treeScopeStatusElement = null;
+    let viewButtonStates = [];
     let filterQuery = '';
     let statusFilter = 'all';
     let matchCountElement = null;
@@ -2246,7 +2758,7 @@ ${this.buildPaletteCustomProperties()}
             let objectMatchingFieldCount = 0;
 
             objectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = (isObjectNameMatch || fieldState.searchText.indexOf(filterQuery) !== -1) && isStatusMatch(fieldState);
+                fieldState.isMatch = (isObjectNameMatch || isFieldTextMatch(fieldState)) && isStatusMatch(fieldState);
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 applyFieldVisibility(fieldState);
             });
@@ -2306,6 +2818,13 @@ ${this.buildPaletteCustomProperties()}
 
         if (hasObjects) {
 
+            [['trees', 'Recipe Trees'], ['classic', 'Classic list']].forEach(function (viewOption) {
+                const viewButtonElement = createElement('button', 'viewButton', viewOption[1]);
+                viewButtonElement.addEventListener('click', function () { setViewMode(viewOption[0]); });
+                viewButtonStates.push({ viewMode: viewOption[0], element: viewButtonElement });
+                toolbarElement.appendChild(viewButtonElement);
+            });
+
             const filterInputElement = createElement('input', 'filterInput');
             filterInputElement.setAttribute('type', 'search');
             filterInputElement.setAttribute('placeholder', 'Filter objects, fields and faker expressions');
@@ -2313,7 +2832,7 @@ ${this.buildPaletteCustomProperties()}
             filterInputElement.value = filterQuery;
             filterInputElement.addEventListener('input', function () {
                 filterQuery = String(filterInputElement.value || '').trim().toLowerCase();
-                applyFilter();
+                applyFiltersForView();
             });
             toolbarElement.appendChild(filterInputElement);
 
@@ -2339,6 +2858,10 @@ ${this.buildPaletteCustomProperties()}
 
         }
 
+        // THE COMPARISON'S CONTROLS BELONG TO THE CLASSIC LIST, AND ARE ON SCREEN ONLY WITH IT
+        classicControlsElement = createElement('span', 'classicControls');
+        toolbarElement.appendChild(classicControlsElement);
+
         // SHOWN ONCE A COMPARISON IS DRAWN -- BEFORE THAT NO ROW HAS A STATUS TO FILTER BY
         if (hasObjects) {
 
@@ -2358,7 +2881,7 @@ ${this.buildPaletteCustomProperties()}
                 statusFilter = String(statusFilterElement.value || 'all');
                 applyFilter();
             });
-            toolbarElement.appendChild(statusFilterElement);
+            classicControlsElement.appendChild(statusFilterElement);
 
         }
 
@@ -2369,28 +2892,52 @@ ${this.buildPaletteCustomProperties()}
             describeButtonElement.addEventListener('click', function () {
                 vscodeApi.postMessage({ command: 'selectOrg' });
             });
-            toolbarElement.appendChild(describeButtonElement);
+            classicControlsElement.appendChild(describeButtonElement);
         }
 
         cockpitBodyElement.appendChild(toolbarElement);
 
         if (hasObjects) {
             matchCountElement = createElement('div', 'matchCount muted');
-            cockpitBodyElement.appendChild(matchCountElement);
+            classicViewElement.appendChild(matchCountElement);
             orgProgressElement = createElement('div', 'orgProgress muted hidden');
-            cockpitBodyElement.appendChild(orgProgressElement);
+            classicViewElement.appendChild(orgProgressElement);
             orgStatusElement = createElement('div', 'orgStatus hidden');
-            cockpitBodyElement.appendChild(orgStatusElement);
+            classicViewElement.appendChild(orgStatusElement);
         }
 
+    }
+
+    /*
+        One lowercased haystack per FIELD, shared by the Classic list and the Structure tab: both
+        draw the same posted field, and the faker expression that dominates it would otherwise be
+        held in the webview twice. The type is matched separately, because each view draws its own
+        (the bare type, or the type with its size), and a match has to be on screen.
+    */
+    let fieldSearchTexts = new Map();
+
+    function searchTextOf(field) {
+
+        let fieldSearchText = fieldSearchTexts.get(field);
+
+        if (fieldSearchText === undefined) {
+            fieldSearchText = [field.fieldApiName, field.fieldLabel, field.controllingField, field.recipeValue].join('\\n').toLowerCase();
+            fieldSearchTexts.set(field, fieldSearchText);
+        }
+
+        return fieldSearchText;
+
+    }
+
+    function isFieldTextMatch(fieldState) {
+        return searchTextOf(fieldState.field).indexOf(filterQuery) !== -1 || fieldState.typeSearchText.indexOf(filterQuery) !== -1;
     }
 
     function buildFieldState(field, fieldDiff, diffStatus) {
 
         return {
             field: field,
-            // LOWERCASED ONCE HERE RATHER THAN ON EVERY KEYSTROKE
-            searchText: [field.fieldApiName, field.fieldLabel, field.fieldType, field.controllingField, field.recipeValue].join('\\n').toLowerCase(),
+            typeSearchText: String(field.fieldType || '').toLowerCase(),
             isMatch: true,
             rowElement: null,
             diff: fieldDiff,
@@ -2439,9 +2986,527 @@ ${this.buildPaletteCustomProperties()}
 
         objectElement.appendChild(objectHeaderElement);
         objectElement.appendChild(bodyElement);
-        cockpitBodyElement.appendChild(objectElement);
+        classicViewElement.appendChild(objectElement);
 
         objectStates.push(objectState);
+
+    }
+
+    /*
+        A keystroke filters the view on SCREEN. Each view's auto-expand builds rows, and building
+        them into the hidden view would double what a keystroke costs for rows nobody sees; the
+        hidden view is filtered when it is switched to. With an empty find box nothing is
+        auto-expanded, so both are brought back to what the reader had open, and their counts filled.
+    */
+    function applyFiltersForView() {
+
+        if (viewMode === 'classic' || !filterQuery) { applyFilter(); }
+        if (viewMode === 'trees' || !filterQuery) { applyTreeFilter(); }
+
+    }
+
+    function setViewMode(nextViewMode) {
+
+        const isSwitching = nextViewMode !== viewMode;
+        viewMode = nextViewMode === 'classic' ? 'classic' : 'trees';
+
+        if (isSwitching && filterQuery) {
+            if (viewMode === 'classic') { applyFilter(); } else { applyTreeFilter(); }
+        }
+
+        if (treesViewElement && classicViewElement && classicControlsElement) {
+            [[treesViewElement, viewMode === 'trees'], [classicViewElement, viewMode === 'classic'], [classicControlsElement, viewMode === 'classic']].forEach(function (viewPart) {
+                if (viewPart[1]) { viewPart[0].classList.remove('hidden'); } else { viewPart[0].classList.add('hidden'); }
+            });
+        }
+
+        viewButtonStates.forEach(function (viewButtonState) {
+            const isSelected = viewButtonState.viewMode === viewMode;
+            viewButtonState.element.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+            if (isSelected) { viewButtonState.element.classList.add('selected'); } else { viewButtonState.element.classList.remove('selected'); }
+        });
+
+    }
+
+    // ROWS WHOSE VALUES WERE ASKED FOR AND NOT YET ANSWERED, BY OBJECT AND FIELD -- KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
+    let pendingPicklistValueElements = Object.create(null);
+
+    // A SELF-LOOKUP NAMES ONLY ITS FIELD: "(ParentId)" SAYS WHAT "(ParentId → Account)" SAYS ON Account, WITHOUT THE REPEAT
+    function formatParentLookups(treeObject) {
+
+        if (!treeObject.parentLookups || treeObject.parentLookups.length === 0) { return ''; }
+
+        return '(' + treeObject.parentLookups.map(function (parentLookup) {
+            return parentLookup.parentObjectApiName === treeObject.objectApiName
+                ? parentLookup.fieldApiName
+                : parentLookup.fieldApiName + ' → ' + parentLookup.parentObjectApiName;
+        }).join(', ') + ')';
+
+    }
+
+    function buildTreeFieldState(field) {
+
+        return {
+            field: field,
+            typeSearchText: String(field.fieldTypeWithSize || field.fieldType || '').toLowerCase(),
+            isMatch: true,
+            rowElement: null
+        };
+
+    }
+
+    function appendPicklistValueList(containerElement, picklistValues) {
+
+        if (picklistValues.length === 0) {
+            containerElement.appendChild(createElement('div', 'picklistEmpty muted', 'no values'));
+            return;
+        }
+
+        picklistValues.forEach(function (picklistValue) {
+            containerElement.appendChild(createElement('div', 'picklistValue', picklistValue));
+        });
+
+    }
+
+    function buildPicklistKey(objectApiName, fieldApiName) {
+        return objectApiName + '\\n' + fieldApiName;
+    }
+
+    // ASKED FOR ON FIRST EXPAND, AND SAYS SO UNTIL THE HOST ANSWERS
+    function requestPicklistValues(objectApiName, fieldApiName, picklistValuesElement) {
+
+        picklistValuesElement.appendChild(createElement('div', 'picklistLoading muted', 'Loading values…'));
+        const picklistKey = buildPicklistKey(objectApiName, fieldApiName);
+
+        // A HAND-EDITED WRAPPER CAN REPEAT A FIELD, AND EVERY ROW THAT ASKED IS ANSWERED, NOT ONLY THE LAST
+        if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
+            pendingPicklistValueElements[picklistKey] = [];
+        }
+        pendingPicklistValueElements[picklistKey].push(picklistValuesElement);
+        vscodeApi.postMessage({ command: 'loadPicklistValues', objectApiName: objectApiName, fieldApiName: fieldApiName });
+
+    }
+
+    // DRAWN ONLY INTO A ROW OF THE MODEL ON SCREEN THAT ASKED FOR IT
+    function renderPicklistValues(picklistValuesMessage) {
+
+        if (picklistValuesMessage.renderSequence !== renderedSequence) { return; }
+
+        const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName);
+
+        if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) { return; }
+
+        const picklistValuesElements = pendingPicklistValueElements[picklistKey];
+        delete pendingPicklistValueElements[picklistKey];
+
+        picklistValuesElements.forEach(function (picklistValuesElement) {
+
+            picklistValuesElement.textContent = '';
+            appendPicklistValueList(picklistValuesElement, picklistValuesMessage.picklistValues);
+
+            picklistValuesMessage.recordTypePicklistValues.forEach(function (recordTypeSection) {
+                picklistValuesElement.appendChild(createElement('div', 'recordTypeHeading', 'Record type: ' + recordTypeSection.recordTypeDeveloperName));
+                appendPicklistValueList(picklistValuesElement, recordTypeSection.picklistValues);
+            });
+
+        });
+
+    }
+
+    function buildTreeFieldRow(treeObjectState, fieldState) {
+
+        const field = fieldState.field;
+        const fieldRowElement = createElement('div', 'treeField');
+        const fieldHeaderElement = createElement('div', 'treeFieldHeader');
+
+        if (field.isPicklist) {
+
+            const picklistToggleElement = createElement('button', 'picklistToggle', '▸');
+            let picklistValuesElement = null;
+
+            picklistToggleElement.setAttribute('aria-expanded', 'false');
+            picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
+            picklistToggleElement.addEventListener('click', function () {
+                const isExpanding = !picklistValuesElement || picklistValuesElement.classList.contains('hidden');
+                if (!picklistValuesElement) {
+                    picklistValuesElement = createElement('div', 'picklistValues');
+                    fieldRowElement.appendChild(picklistValuesElement);
+                    requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
+                }
+                if (isExpanding) { picklistValuesElement.classList.remove('hidden'); } else { picklistValuesElement.classList.add('hidden'); }
+                picklistToggleElement.textContent = isExpanding ? '▾' : '▸';
+                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+            });
+
+            fieldHeaderElement.appendChild(picklistToggleElement);
+
+        }
+
+        fieldHeaderElement.appendChild(createElement('span', 'treeFieldName', field.fieldApiName));
+
+        if (field.fieldTypeWithSize || field.fieldType) {
+            fieldHeaderElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
+        }
+
+        if (field.controllingField) {
+            fieldHeaderElement.appendChild(createElement('span', 'controllingField muted', 'controlled by ' + field.controllingField));
+        }
+
+        if (field.isOnlyInRecipeFile) {
+            fieldHeaderElement.appendChild(createElement('span', 'recipeFileOnly muted', 'read from the recipe file'));
+        }
+
+        if (treeObjectState.object.recipeFilePath && field.lineNumber) {
+            fieldHeaderElement.appendChild(buildSourceLink('treeFieldSource', '↗ yml', treeObjectState.object.recipeFilePath, field.lineNumber));
+        }
+
+        fieldRowElement.appendChild(fieldHeaderElement);
+
+        return fieldRowElement;
+
+    }
+
+    function applyTreeFieldVisibility(fieldState) {
+
+        if (!fieldState.rowElement) { return; }
+
+        if (fieldState.isMatch) {
+            fieldState.rowElement.classList.remove('hidden');
+        } else {
+            fieldState.rowElement.classList.add('hidden');
+        }
+
+    }
+
+    function setTreeObjectExpanded(treeObjectState, isExpanded) {
+
+        if (isExpanded && !treeObjectState.isBodyBuilt) {
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
+                applyTreeFieldVisibility(fieldState);
+                treeObjectState.bodyElement.appendChild(fieldState.rowElement);
+            });
+            treeObjectState.isBodyBuilt = true;
+        }
+
+        if (isExpanded) { treeObjectState.bodyElement.classList.remove('hidden'); } else { treeObjectState.bodyElement.classList.add('hidden'); }
+
+        treeObjectState.isExpanded = isExpanded;
+        treeObjectState.toggleElement.textContent = isExpanded ? '▾' : '▸';
+        treeObjectState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+
+    }
+
+    /*
+        An object's header is made with its tree, because the filter writes its count whether or
+        not the card is open; its ROWS wait for the object's own first expand.
+    */
+    function buildTreeObjectState(treeObject, object) {
+
+        const objectElement = createElement('div', 'treeObject');
+        const objectHeaderElement = createElement('div', 'treeObjectHeader');
+        const toggleElement = createElement('button', 'treeObjectToggle', '▸');
+
+        const treeObjectState = {
+            treeObject: treeObject,
+            object: object,
+            objectSearchText: object.objectApiName.toLowerCase(),
+            fieldStates: object.fields.map(buildTreeFieldState),
+            matchingFieldCount: object.fields.length,
+            isBodyBuilt: false,
+            isExpanded: false,
+            isExpandedByReader: false,
+            element: objectElement,
+            toggleElement: toggleElement,
+            bodyElement: createElement('div', 'treeObjectBody hidden'),
+            countElement: createElement('span', 'treeObjectCount muted')
+        };
+
+        toggleElement.setAttribute('aria-expanded', 'false');
+        toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
+        toggleElement.addEventListener('click', function () {
+            treeObjectState.isExpandedByReader = !treeObjectState.isExpanded;
+            setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader);
+        });
+
+        objectHeaderElement.appendChild(toggleElement);
+        objectHeaderElement.appendChild(buildSourceLink('treeObjectName', object.objectApiName, object.recipeFilePath, object.lineNumber));
+
+        const parentLookupText = formatParentLookups(treeObject);
+        if (parentLookupText) {
+            objectHeaderElement.appendChild(createElement('span', 'treeLookups muted', parentLookupText));
+        }
+
+        objectHeaderElement.appendChild(treeObjectState.countElement);
+
+        objectElement.appendChild(objectHeaderElement);
+        objectElement.appendChild(treeObjectState.bodyElement);
+
+        return treeObjectState;
+
+    }
+
+    // THE TAB STRIP AND THE STRUCTURE TAB'S OBJECTS, MADE ON THE CARD'S FIRST EXPAND
+    function ensureTreeBodyBuilt(treeState) {
+
+        if (treeState.isBodyBuilt) { return; }
+
+        const tabsElement = createElement('div', 'treeTabs');
+        const structureTabElement = createElement('button', 'treeTab selected', 'Structure');
+        const structureElement = createElement('div', 'treeStructure');
+
+        tabsElement.setAttribute('role', 'tablist');
+        structureTabElement.setAttribute('role', 'tab');
+        structureTabElement.setAttribute('aria-selected', 'true');
+        structureElement.setAttribute('role', 'tabpanel');
+        structureElement.setAttribute('aria-label', 'Structure');
+        tabsElement.appendChild(structureTabElement);
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            structureElement.appendChild(treeObjectState.element);
+        });
+
+        if (treeState.objectStates.length === 0) {
+            structureElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
+        }
+
+        treeState.bodyElement.appendChild(tabsElement);
+        treeState.bodyElement.appendChild(structureElement);
+        treeState.isBodyBuilt = true;
+
+    }
+
+    function setTreeExpanded(treeState, isExpanded) {
+
+        if (isExpanded) {
+            ensureTreeBodyBuilt(treeState);
+            treeState.bodyElement.classList.remove('hidden');
+        } else {
+            treeState.bodyElement.classList.add('hidden');
+        }
+
+        treeState.isExpanded = isExpanded;
+        treeState.toggleElement.textContent = isExpanded ? '▾' : '▸';
+        treeState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+
+    }
+
+    function setTreeScope(nextTreeScopeKey) {
+
+        treeScopeKey = nextTreeScopeKey;
+
+        let scopedTreeState = null;
+
+        treeStates.forEach(function (treeState) {
+            const isScoped = treeState.tree.treeKey === treeScopeKey;
+            if (isScoped) { scopedTreeState = treeState; }
+            treeState.scopeElement.setAttribute('aria-pressed', isScoped ? 'true' : 'false');
+            if (isScoped) { treeState.scopeElement.classList.add('selected'); } else { treeState.scopeElement.classList.remove('selected'); }
+        });
+
+        treeScopeStatusElement.textContent = '';
+
+        if (!scopedTreeState) {
+            treeScopeKey = null;
+            treeScopeStatusElement.classList.add('hidden');
+        } else {
+            const scopedTree = scopedTreeState.tree;
+            treeScopeStatusElement.appendChild(createElement('span', 'treeScopeText', 'Searching only ' + scopedTree.title + (scopedTree.folderName ? ' (' + scopedTree.folderName + ')' : '') + ' '));
+            const clearScopeElement = createElement('button', 'treeScopeClear', 'Search every tree');
+            clearScopeElement.addEventListener('click', function () { setTreeScope(null); });
+            treeScopeStatusElement.appendChild(clearScopeElement);
+            treeScopeStatusElement.classList.remove('hidden');
+        }
+
+        applyTreeFilter();
+
+    }
+
+    function renderTree(tree, objectsByApiName) {
+
+        const treeElement = createElement('div', 'treeCard');
+        const treeHeaderElement = createElement('div', 'treeHeader');
+        const toggleElement = createElement('button', 'treeToggle', '▸');
+        const scopeElement = createElement('button', 'treeScope', '🔍');
+
+        const treeState = {
+            tree: tree,
+            objectStates: tree.objects
+                .filter(function (treeObject) { return Object.prototype.hasOwnProperty.call(objectsByApiName, treeObject.objectApiName); })
+                .map(function (treeObject) { return buildTreeObjectState(treeObject, objectsByApiName[treeObject.objectApiName]); }),
+            isBodyBuilt: false,
+            isExpanded: false,
+            isExpandedByReader: false,
+            element: treeElement,
+            toggleElement: toggleElement,
+            scopeElement: scopeElement,
+            bodyElement: createElement('div', 'treeBody hidden'),
+            matchElement: createElement('span', 'treeMatch muted hidden')
+        };
+
+        const treeFieldCount = treeState.objectStates.reduce(function (fieldCount, treeObjectState) { return fieldCount + treeObjectState.fieldStates.length; }, 0);
+
+        toggleElement.setAttribute('aria-expanded', 'false');
+        toggleElement.setAttribute('aria-label', 'Show or hide ' + tree.title);
+        toggleElement.addEventListener('click', function () {
+            treeState.isExpandedByReader = !treeState.isExpanded;
+            setTreeExpanded(treeState, treeState.isExpandedByReader);
+        });
+
+        scopeElement.setAttribute('title', 'Search only this tree');
+        scopeElement.setAttribute('aria-label', 'Search only ' + tree.title);
+        scopeElement.setAttribute('aria-pressed', 'false');
+        scopeElement.addEventListener('click', function () {
+            setTreeScope(treeScopeKey === tree.treeKey ? null : tree.treeKey);
+        });
+
+        treeHeaderElement.appendChild(toggleElement);
+        treeHeaderElement.appendChild(createElement('span', 'treeTitle', tree.title));
+
+        if (tree.folderName) {
+            treeHeaderElement.appendChild(createElement('span', 'treeFolder muted', tree.folderName));
+        }
+
+        treeHeaderElement.appendChild(createElement('span', 'treeCount muted',
+            pluralize(treeState.objectStates.length, 'object', 'objects') + ' · ' + pluralize(treeFieldCount, 'field', 'fields')));
+        treeHeaderElement.appendChild(treeState.matchElement);
+        treeHeaderElement.appendChild(scopeElement);
+
+        treeElement.appendChild(treeHeaderElement);
+        treeElement.appendChild(treeState.bodyElement);
+        treesViewElement.appendChild(treeElement);
+
+        treeStates.push(treeState);
+
+    }
+
+    function renderTrees(recipe) {
+
+        // KEYED BY NAMES FROM THE WRAPPER ON DISK -- "__proto__" MUST BE A KEY, NOT A NEW PROTOTYPE
+        const objectsByApiName = Object.create(null);
+        recipe.objects.forEach(function (object) { objectsByApiName[object.objectApiName] = object; });
+
+        treeMatchCountElement = createElement('div', 'treeMatchCount muted');
+        treeScopeStatusElement = createElement('div', 'treeScopeStatus hidden');
+        treesViewElement.appendChild(treeMatchCountElement);
+        treesViewElement.appendChild(treeScopeStatusElement);
+
+        const trees = recipe.trees || [];
+
+        if (trees.length === 0) {
+            treesViewElement.appendChild(createElement('div', 'emptyState', 'This run has no relationship trees to show. Its objects are listed in the Classic list.'));
+            return;
+        }
+
+        trees.forEach(function (tree) { renderTree(tree, objectsByApiName); });
+
+    }
+
+    /*
+        The find box across every tree, or across the one the reader scoped it to with 🔍.
+
+        It narrows rows and never hides a CARD: a tree with no match stays on screen, collapsed and
+        labelled "no matches", for the same reason the Classic list keeps an object with none. A
+        card opens only for an object the filter opens, and objects open under the same
+        RECIPE_COCKPIT_AUTO_EXPAND_* limits as the Classic list, so a keystroke's cost is bounded by
+        what it expands, across every tree together.
+    */
+    function applyTreeFilter() {
+
+        if (!treeMatchCountElement) { return; }
+
+        const isFiltering = !!filterQuery;
+
+        let totalFieldCount = 0;
+        let matchingFieldCount = 0;
+        let searchedTreeCount = 0;
+        let matchingTreeCount = 0;
+        let autoExpandedObjectCount = 0;
+        let autoExpandedRowCount = 0;
+        let isAutoExpandBudgetSpent = false;
+
+        treeStates.forEach(function (treeState) {
+
+            const isSearched = treeScopeKey === null || treeState.tree.treeKey === treeScopeKey;
+            let treeMatchingFieldCount = 0;
+
+            treeState.objectStates.forEach(function (treeObjectState) {
+
+                const isObjectNameMatch = !isFiltering || !isSearched || treeObjectState.objectSearchText.indexOf(filterQuery) !== -1;
+                let objectMatchingFieldCount = 0;
+
+                treeObjectState.fieldStates.forEach(function (fieldState) {
+                    fieldState.isMatch = isObjectNameMatch || isFieldTextMatch(fieldState);
+                    if (fieldState.isMatch) { objectMatchingFieldCount++; }
+                    applyTreeFieldVisibility(fieldState);
+                });
+
+                const objectFieldCount = treeObjectState.fieldStates.length;
+                treeObjectState.matchingFieldCount = objectMatchingFieldCount;
+
+                if (isSearched) {
+                    totalFieldCount += objectFieldCount;
+                    matchingFieldCount += objectMatchingFieldCount;
+                    treeMatchingFieldCount += objectMatchingFieldCount;
+                }
+
+                if (!isFiltering || !isSearched || isObjectNameMatch) {
+                    treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
+                } else if (objectMatchingFieldCount > 0) {
+                    treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
+                } else {
+                    treeObjectState.countElement.textContent = 'no matching fields';
+                }
+
+            });
+
+            if (isSearched) { searchedTreeCount++; }
+            if (isSearched && treeMatchingFieldCount > 0) { matchingTreeCount++; }
+
+            // A CLEARED FILTER, OR A TREE OUTSIDE THE SCOPE, GIVES BACK WHAT THE READER HAD OPENED
+            if (!isFiltering || !isSearched) {
+                treeState.matchElement.textContent = isFiltering ? 'not searched' : '';
+                if (isFiltering) { treeState.matchElement.classList.remove('hidden'); } else { treeState.matchElement.classList.add('hidden'); }
+                setTreeExpanded(treeState, treeState.isExpandedByReader);
+                treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
+                return;
+            }
+
+            treeState.matchElement.textContent = treeMatchingFieldCount > 0 ? pluralize(treeMatchingFieldCount, 'matching field', 'matching fields') : 'no matches';
+            treeState.matchElement.classList.remove('hidden');
+
+            let isAnyObjectOpened = false;
+
+            treeState.objectStates.forEach(function (treeObjectState) {
+
+                if (treeObjectState.matchingFieldCount === 0 || isAutoExpandBudgetSpent) {
+                    setTreeObjectExpanded(treeObjectState, false);
+                    return;
+                }
+
+                const objectFieldCount = treeObjectState.fieldStates.length;
+                const fitsRowBudget = autoExpandedObjectCount === 0 || autoExpandedRowCount + objectFieldCount <= AUTO_EXPAND_ROW_BUDGET;
+
+                if (autoExpandedObjectCount >= AUTO_EXPAND_OBJECT_LIMIT || !fitsRowBudget) {
+                    isAutoExpandBudgetSpent = true;
+                    setTreeObjectExpanded(treeObjectState, false);
+                    return;
+                }
+
+                autoExpandedObjectCount++;
+                autoExpandedRowCount += objectFieldCount;
+                isAnyObjectOpened = true;
+                setTreeObjectExpanded(treeObjectState, true);
+
+            });
+
+            setTreeExpanded(treeState, isAnyObjectOpened);
+
+        });
+
+        treeMatchCountElement.textContent = isFiltering
+            ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') + ' · ' + matchingTreeCount + ' of ' + pluralize(searchedTreeCount, 'tree', 'trees')
+            : pluralize(totalFieldCount, 'field', 'fields') + ' · ' + pluralize(searchedTreeCount, 'tree', 'trees');
 
     }
 
@@ -2451,19 +3516,15 @@ ${this.buildPaletteCustomProperties()}
     */
     function renderPanel(recipe) {
 
-        cockpitBodyElement.textContent = '';
-        objectStates = [];
-        matchCountElement = null;
-        runSelectElement = null;
-        statusFilterElement = null;
-        orgStatusElement = null;
-        orgProgressElement = null;
-        renderedSequence = null;
+        resetPanelState();
         renderedRunFolderName = recipe.selectedRunFolderName;
         // A NEW MODEL HAS NO COMPARISON, SO A STATUS FILTER LEFT ON WOULD HIDE EVERY ROW OF IT
         statusFilter = 'all';
 
         const hasObjects = recipe.objects.length > 0;
+
+        classicViewElement = createElement('div', 'classicView');
+        treesViewElement = createElement('div', 'treesView');
 
         renderToolbar(recipe, hasObjects);
 
@@ -2476,9 +3537,38 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        recipe.objects.forEach(renderObject);
+        cockpitBodyElement.appendChild(treesViewElement);
+        cockpitBodyElement.appendChild(classicViewElement);
 
-        applyFilter();
+        recipe.objects.forEach(renderObject);
+        renderTrees(recipe);
+
+        setViewMode(viewMode);
+        applyFiltersForView();
+
+    }
+
+    // EVERYTHING ONE MODEL'S DRAW HELD, DROPPED BEFORE THE NEXT DRAW OR A FAILURE NOTICE REPLACES IT
+    function resetPanelState() {
+
+        cockpitBodyElement.textContent = '';
+        objectStates = [];
+        treeStates = [];
+        treeScopeKey = null;
+        treesViewElement = null;
+        classicViewElement = null;
+        classicControlsElement = null;
+        treeMatchCountElement = null;
+        treeScopeStatusElement = null;
+        viewButtonStates = [];
+        pendingPicklistValueElements = Object.create(null);
+        fieldSearchTexts = new Map();
+        matchCountElement = null;
+        runSelectElement = null;
+        statusFilterElement = null;
+        orgStatusElement = null;
+        orgProgressElement = null;
+        renderedSequence = null;
 
     }
 
@@ -2488,14 +3578,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function renderPanelFailure() {
 
-        cockpitBodyElement.textContent = '';
-        objectStates = [];
-        matchCountElement = null;
-        runSelectElement = null;
-        statusFilterElement = null;
-        orgStatusElement = null;
-        orgProgressElement = null;
-        renderedSequence = null;
+        resetPanelState();
         cockpitBodyElement.appendChild(createElement('div', 'emptyState', 'The Recipe Cockpit could not draw this recipe. The error has been reported; re-open the cockpit to try again.'));
 
     }
@@ -2753,6 +3836,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'orgProgress') {
             renderOrgProgress(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'picklistValues') {
+            renderPicklistValues(hostMessage);
             return;
         }
 
