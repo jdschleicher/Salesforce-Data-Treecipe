@@ -44,10 +44,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
-	const insertDataSetBySelectedDirectory = vscode.commands.registerCommand('treecipe.insertDataSetBySelectedDirectory', () => {
+	/*
+		The Recipe Cockpit's Insert… passes the data set folder to pre-select; the palette passes nothing
+		and gets the folder picker. Returned so executeCommand settles when the insert does.
+	*/
+	const insertDataSetBySelectedDirectory = vscode.commands.registerCommand('treecipe.insertDataSetBySelectedDirectory', (preselectedDataSetDirectoryPath?: unknown) => {
 
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.insertDataSetBySelectedDirectory();
+		return extensionCommandService.insertDataSetBySelectedDirectory(
+			typeof preselectedDataSetDirectoryPath === 'string' ? preselectedDataSetDirectoryPath : undefined
+		);
 
 	});
 

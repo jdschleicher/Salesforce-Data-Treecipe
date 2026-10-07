@@ -116,4 +116,24 @@ describe('activate', () => {
 
     });
 
+    // THE RECIPE COCKPIT'S Insert… HANDS OVER THE DATA SET FOLDER, AND WAITS FOR THE INSERT
+    it('passes a pre-selected folder to Insert Data Set by Directory and returns the insert, and passes nothing that is not a path', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const insert = Promise.resolve();
+        const insertSpy = jest.spyOn(ExtensionCommandService.prototype, 'insertDataSetBySelectedDirectory').mockReturnValue(insert);
+
+        await activate(buildExtensionContext() as never);
+
+        const [, insertDataSetHandler] = (vscode.commands.registerCommand as jest.Mock).mock.calls
+            .find(registerCall => registerCall[0] === 'treecipe.insertDataSetBySelectedDirectory');
+
+        expect(insertDataSetHandler('/workspace/treecipe/FakeDataSets/dataset-2026-09-21T00-00-00')).toBe(insert);
+        insertDataSetHandler();
+        insertDataSetHandler({ fsPath: '/elsewhere' });
+
+        expect(insertSpy.mock.calls).toEqual([['/workspace/treecipe/FakeDataSets/dataset-2026-09-21T00-00-00'], [undefined], [undefined]]);
+
+    });
+
 });

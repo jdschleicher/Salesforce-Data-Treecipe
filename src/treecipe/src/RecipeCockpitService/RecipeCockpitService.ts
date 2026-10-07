@@ -16,6 +16,16 @@ import {
 import { RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
+import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import {
+    IRecipeCockpitDatasetRecordCountViewModel,
+    IRecipeCockpitTreeHistoryTargets,
+    IRecipeCockpitTreeHistoryViewModel,
+    IRecipeCockpitTreeSummarySource,
+    IRecipeCockpitTreeVersionSummary,
+    RecipeCockpitTreeHistory
+} from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -121,6 +131,12 @@ export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist
 export const RECIPE_COCKPIT_TREE_TITLE_PREFIX = 'Relationship Tree';
 
 export const RECIPE_COCKPIT_UNGROUPED_TREE_TITLE = 'Not in a relationship tree';
+
+export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
+
+export const RECIPE_COCKPIT_TREE_TABS = ['structure', 'versions', 'datasets'] as const;
+
+export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
 export const RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE = 'This run\'s objects wrapper has no relationship tree data, so each recipe file is shown as its own card, with its objects in file order and no lookups. Run "Generate Treecipe" again to see the run\'s relationship trees.';
 
@@ -252,12 +268,18 @@ export interface IRecipeCockpitTreeObjectViewModel {
     position: a position renumbers when another tree is added, and a key that moved would expand,
     scope or search a different card than the reader chose.
 */
+/*
+    history is set only on a card whose folder is in the run on screen -- the one identity a tree
+    keeps across runs. The ungrouped card, and a recipe file with no tree folder, have none, and
+    the panel draws no history tabs for them.
+*/
 export interface IRecipeCockpitTreeViewModel {
     treeKey: string;
     title: string;
     folderName: string;
     objects: IRecipeCockpitTreeObjectViewModel[];
     fieldCount: number;
+    history?: IRecipeCockpitTreeHistoryViewModel;
 }
 
 export interface IRecipeCockpitRecipeViewModel {
@@ -324,6 +346,9 @@ export interface IRecipeCockpitPanelMessage {
     renderSequence?: unknown;
     objectApiName?: unknown;
     fieldApiName?: unknown;
+    treeKey?: unknown;
+    datasetFolderName?: unknown;
+    tab?: unknown;
     message?: unknown;
     stack?: unknown;
 }
@@ -339,10 +364,21 @@ export interface IRecipeCockpitLoadPhaseMessage {
     arriving after a newer load had posted would activate the NEWER model's targets while the older
     one's rows were on screen.
 */
+/*
+    focusTree is set only on a reload the host made because a data set the reader acted on was gone:
+    it re-opens the card and tab the reader was on, so "refreshed" does not mean "thrown back to a
+    collapsed list".
+*/
 export interface IRecipeCockpitRecipeDataMessage {
     command: 'recipeData';
     recipe: IRecipeCockpitRecipeViewModel;
     renderSequence: number;
+    focusTree?: IRecipeCockpitTreeFocus;
+}
+
+export interface IRecipeCockpitTreeFocus {
+    treeKey: string;
+    tab: RecipeCockpitTreeTab;
 }
 
 export interface IRecipeCockpitLoadFailedMessage {
@@ -421,12 +457,31 @@ export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPickl
     renderSequence: number;
 }
 
+// ONE TREE'S PREVIOUS VERSIONS, SUMMARIZED FROM EACH RUN'S WRAPPER WHEN THE TAB WAS FIRST OPENED
+export interface IRecipeCockpitVersionSummariesMessage {
+    command: 'versionSummaries';
+    treeKey: string;
+    summaries: IRecipeCockpitTreeVersionSummary[];
+    renderSequence: number;
+}
+
+// A LEGACY DATA SET'S RECORD COUNTS, READ FROM ITS COLLECTIONS API FILES WHEN IT WAS EXPANDED
+export interface IRecipeCockpitDatasetRecordCountsMessage {
+    command: 'datasetRecordCounts';
+    datasetFolderName: string;
+    recordCounts: IRecipeCockpitDatasetRecordCountViewModel[];
+    failureMessage: string;
+    renderSequence: number;
+}
+
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitOrgDescribeMessage
                                         | IRecipeCockpitOrgProgressMessage
-                                        | IRecipeCockpitPicklistValuesMessage;
+                                        | IRecipeCockpitPicklistValuesMessage
+                                        | IRecipeCockpitVersionSummariesMessage
+                                        | IRecipeCockpitDatasetRecordCountsMessage;
 
 /*
     The loader's whole answer: what is posted, the picklist values that stay on the host for the
@@ -436,6 +491,20 @@ export interface IRecipeCockpitLoadedRecipe {
     recipeViewModel: IRecipeCockpitRecipeViewModel;
     recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
     picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
+    treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
+}
+
+/*
+    The allow-lists of the history tabs, one per action, each a set of NAMES drawn from the
+    rendered model's tree histories. Summaries are keyed by tree, diffs by tree and run, and the
+    three data set actions by data set folder name.
+*/
+export interface IRecipeCockpitTreeHistoryAllowLists {
+    summaryTreeKeys: Set<string>;
+    diffKeys: Set<string>;
+    openableDatasetFolderNames: Set<string>;
+    insertableDatasetFolderNames: Set<string>;
+    countableDatasetFolderNames: Set<string>;
 }
 
 /*
@@ -450,7 +519,12 @@ export type RecipeCockpitPanelAction =
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'selectOrg' }
     | { kind: 'regenerateRecipe' }
-    | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage };
+    | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
+    | { kind: 'loadVersionSummaries'; treeKey: string; summarySource: IRecipeCockpitTreeSummarySource; renderSequence: number }
+    | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
+    | { kind: 'diffTreeVersion'; versionRecipeFilePath: string; currentRecipeFilePath: string; diffTitle: string }
+    | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
+    | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -489,9 +563,23 @@ export interface IRecipeCockpitPanelState {
     selectableRunFolderNames: Set<string>;
     describableObjectApiNames: Set<string>;
     loadablePicklistKeys: Set<string>;
+    treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
+    pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
+    treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     isOrgDescribeInFlight: boolean;
     isRegenerateInFlight: boolean;
     reportedFailureDescriptions: Set<string>;
+}
+
+/*
+    One run's wrapper, reduced to what a Previous Versions row needs: the fields per object, and
+    per tree folder when the wrapper lists its trees. Cached per run for the panel's model, since
+    every tree of a run is summarized from the same wrapper.
+*/
+export interface IRecipeCockpitRunFieldCounts {
+    fieldCountsByObjectApiName: Map<string, number>;
+    fieldCountsByTreeFolderName: Map<string, number>;
+    hasTreeData: boolean;
 }
 
 export class RecipeCockpitService {
@@ -521,6 +609,49 @@ export class RecipeCockpitService {
 
     private static recipeCockpitRenderSequence = 0;
 
+    static buildEmptyTreeHistoryAllowLists(): IRecipeCockpitTreeHistoryAllowLists {
+
+        return {
+            summaryTreeKeys: new Set(),
+            diffKeys: new Set(),
+            openableDatasetFolderNames: new Set(),
+            insertableDatasetFolderNames: new Set(),
+            countableDatasetFolderNames: new Set()
+        };
+
+    }
+
+    // EVERY HISTORY ACTION THE RENDERED MODEL OFFERS, BY NAME, AND NOTHING ELSE
+    static collectTreeHistoryAllowLists(recipeViewModel: IRecipeCockpitRecipeViewModel): IRecipeCockpitTreeHistoryAllowLists {
+
+        const treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+
+        recipeViewModel.trees.forEach(tree => {
+
+            if ( !tree.history ) {
+                return;
+            }
+
+            treeHistoryAllowLists.summaryTreeKeys.add(tree.treeKey);
+
+            tree.history.versions
+                .filter(version => version.isDiffable)
+                .forEach(version => treeHistoryAllowLists.diffKeys.add(RecipeCockpitTreeHistory.buildDiffKey(tree.treeKey, version.runFolderName)));
+
+            tree.history.datasets.forEach(dataset => {
+                treeHistoryAllowLists.openableDatasetFolderNames.add(dataset.datasetFolderName);
+                treeHistoryAllowLists.insertableDatasetFolderNames.add(dataset.datasetFolderName);
+                if ( dataset.recordCounts === null ) {
+                    treeHistoryAllowLists.countableDatasetFolderNames.add(dataset.datasetFolderName);
+                }
+            });
+
+        });
+
+        return treeHistoryAllowLists;
+
+    }
+
     static buildInitialPanelState(workspaceRoot: string): IRecipeCockpitPanelState {
 
         return {
@@ -537,6 +668,9 @@ export class RecipeCockpitService {
             selectableRunFolderNames: new Set(),
             describableObjectApiNames: new Set(),
             loadablePicklistKeys: new Set(),
+            treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets(),
+            pendingTreeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
+            treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             isOrgDescribeInFlight: false,
             isRegenerateInFlight: false,
             reportedFailureDescriptions: new Set()
@@ -608,7 +742,8 @@ export class RecipeCockpitService {
     */
     private static async loadRecipeIntoPanel(cockpitPanel: vscode.WebviewPanel,
                                                 workspaceRoot: string,
-                                                requestedRunFolderName?: string): Promise<void> {
+                                                requestedRunFolderName?: string,
+                                                focusTree?: IRecipeCockpitTreeFocus): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
 
@@ -639,7 +774,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, loadedRecipe);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree);
 
         } catch (loadError) {
 
@@ -706,7 +841,7 @@ export class RecipeCockpitService {
 
     }
 
-    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel, loadedRecipe: IRecipeCockpitLoadedRecipe) {
+    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel, loadedRecipe: IRecipeCockpitLoadedRecipe, focusTree?: IRecipeCockpitTreeFocus) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
@@ -715,10 +850,12 @@ export class RecipeCockpitService {
             recipe: recipeViewModel,
             renderSequence: ++this.recipeCockpitRenderSequence
         };
+        const isFocusOnScreen = !!focusTree && recipeViewModel.trees.some(tree => tree.treeKey === focusTree.treeKey);
 
         panelState.recipeDataMessage = recipeDataMessage;
         panelState.recipePicklistValuesByObjectApiName = loadedRecipe.recipePicklistValuesByObjectApiName;
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
+        panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.loadFailedMessage = undefined;
         // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
         panelState.orgDescribeMessage = undefined;
@@ -729,6 +866,8 @@ export class RecipeCockpitService {
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
         panelState.pendingDescribableObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
+        panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel);
+        panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
         // THE SAME REASON AS THE DESCRIBABLE SET: AN ANSWER IS TAGGED WITH THE CURRENT renderSequence, SO THE OLD MODEL'S KEYS MUST NOT ANSWER FOR IT
         panelState.loadablePicklistKeys = new Set();
         /*
@@ -739,7 +878,11 @@ export class RecipeCockpitService {
         */
         panelState.describableObjectApiNames = new Set();
 
-        this.postToPanel(cockpitPanel, recipeDataMessage);
+        /*
+            The focus rides on the POSTED copy only. The stored message is what every reveal replays,
+            and a focus replayed on each one would re-open a card the reader has since closed.
+        */
+        this.postToPanel(cockpitPanel, isFocusOnScreen ? { ...recipeDataMessage, focusTree: focusTree } : recipeDataMessage);
 
     }
 
@@ -803,6 +946,7 @@ export class RecipeCockpitService {
                 panelState.selectableRunFolderNames = new Set();
                 panelState.describableObjectApiNames = new Set();
                 panelState.loadablePicklistKeys = new Set();
+                panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
                 return;
 
@@ -812,6 +956,7 @@ export class RecipeCockpitService {
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
                 panelState.describableObjectApiNames = panelState.pendingDescribableObjectApiNames;
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
+                panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 return;
 
             case 'reportRenderFailure': {
@@ -824,6 +969,7 @@ export class RecipeCockpitService {
                     panelState.selectableRunFolderNames = new Set();
                     panelState.describableObjectApiNames = new Set();
                     panelState.loadablePicklistKeys = new Set();
+                    panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                 }
 
                 const renderFailureError = new Error(`The Recipe Cockpit panel could not render the recipe: ${panelAction.failureDescription}`);
@@ -841,12 +987,12 @@ export class RecipeCockpitService {
                     allow-list only says the model named this path, not where it resolves now.
                 */
                 if ( !SfdxProjectService.isPathContainedInWorkspace(path.resolve(panelAction.filePath), path.resolve(panelState.workspaceRoot)) ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${panelAction.filePath}" now resolves outside this workspace, so it was not opened. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(panelAction.filePath)}" now resolves outside this workspace, so it was not opened. Re-open the Recipe Cockpit to load the runs currently on disk.`);
                     return;
                 }
 
                 if ( !fs.existsSync(panelAction.filePath) ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${panelAction.filePath}" no longer exists. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(panelAction.filePath)}" no longer exists. Re-open the Recipe Cockpit to load the runs currently on disk.`);
                     return;
                 }
 
@@ -873,7 +1019,312 @@ export class RecipeCockpitService {
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
+            case 'loadVersionSummaries':
+
+                await this.postVersionSummaries(cockpitPanel, panelState, panelAction.treeKey, panelAction.summarySource, panelAction.renderSequence);
+                return;
+
+            case 'loadDatasetRecordCounts':
+
+                this.postDatasetRecordCounts(cockpitPanel, panelState, panelAction.datasetFolderName, panelAction.datasetFolderPath, panelAction.renderSequence);
+                return;
+
+            case 'diffTreeVersion': {
+
+                const unusableRecipeFilePath = [panelAction.versionRecipeFilePath, panelAction.currentRecipeFilePath]
+                    .find(recipeFilePath => !this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot));
+
+                if ( unusableRecipeFilePath !== undefined ) {
+                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(unusableRecipeFilePath))}" no longer exists in this workspace, so the versions were not compared. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+                    return;
+                }
+
+                await vscode.commands.executeCommand(
+                    'vscode.diff',
+                    vscode.Uri.file(panelAction.versionRecipeFilePath),
+                    vscode.Uri.file(panelAction.currentRecipeFilePath),
+                    panelAction.diffTitle
+                );
+                return;
+
+            }
+
+            case 'openDataset':
+            case 'insertDataset': {
+
+                if ( !this.isUsableWorkspacePath(panelAction.datasetFolderPath, panelState.workspaceRoot) ) {
+                    await this.refreshAfterMissingDataset(cockpitPanel, panelState, panelAction.datasetFolderName, panelAction.focusTree);
+                    return;
+                }
+
+                if ( panelAction.kind === 'openDataset' ) {
+                    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(panelAction.datasetFolderPath));
+                    return;
+                }
+
+                await vscode.commands.executeCommand(RECIPE_COCKPIT_INSERT_DATASET_COMMAND, panelAction.datasetFolderPath);
+                return;
+
+            }
+
         }
+
+    }
+
+    /*
+        Whether a path the model named can still be used: inside the workspace once symlinks are
+        resolved -- the allow-list says the model named it, not where it resolves NOW -- and still
+        on disk.
+    */
+    private static isUsableWorkspacePath(candidatePath: string, workspaceRoot: string): boolean {
+
+        return fs.existsSync(candidatePath)
+                && SfdxProjectService.isPathContainedInWorkspace(path.resolve(candidatePath), path.resolve(workspaceRoot));
+
+    }
+
+    /*
+        A data set deleted (or moved out of the workspace) after the model was drawn. The reader is
+        told, and the run on screen is reloaded, so the history it shows is what is on disk -- with
+        the card and tab they acted from re-opened.
+    */
+    private static async refreshAfterMissingDataset(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        datasetFolderName: string,
+                                                        focusTree?: IRecipeCockpitTreeFocus) {
+
+        VSCodeWorkspaceService.showWarningMessage(`The data set "${RecipeYamlScalar.escapeForNotification(datasetFolderName)}" no longer exists in this workspace. The Recipe Cockpit has reloaded its data sets.`);
+
+        // ONLY A RENDERED MODEL'S HISTORY OFFERS A DATA SET, SO THERE IS ALWAYS A RUN ON SCREEN TO RELOAD
+        const selectedRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
+
+        if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
+            await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, selectedRunFolderName, focusTree);
+        }
+
+    }
+
+    /*
+        Each run's summary, posted as it is known. A wrapper can be hundreds of megabytes and a tree
+        can have many runs, so the runs already in the field-count cache (the current one always is
+        -- the load put it there) are posted at once, and every other wrapper is read after a yield
+        and posted on its own: the extension host is never held for more than one wrapper, and the
+        rows fill in as they are read. Each post is cumulative and names only the runs it knows, so
+        a row still loading is never drawn as "unavailable". A reader who moved to another model
+        stops the walk, since its answer would be drawn over nothing.
+    */
+    private static async postVersionSummaries(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                treeKey: string,
+                                                summarySource: IRecipeCockpitTreeSummarySource,
+                                                renderSequence: number) {
+
+        const fieldCountsByRunFolderName = new Map<string, number | undefined>();
+        const isModelStillOnScreen = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage.renderSequence === renderSequence;
+
+        const readTreeFieldCountOfRun = (summaryRun: IRecipeCockpitTreeSummarySource['runs'][number]) => fieldCountsByRunFolderName.set(
+            summaryRun.runFolderName,
+            this.readTreeFieldCount(this.readRunFieldCounts(summaryRun.objectsWrapperFilePath, panelState.workspaceRoot), summarySource.treeFolderName, summaryRun.treeFolderPath, panelState.workspaceRoot)
+        );
+
+        const postKnownSummaries = () => this.postToPanel(cockpitPanel, {
+            command: 'versionSummaries',
+            treeKey: treeKey,
+            summaries: RecipeCockpitTreeHistory.buildVersionSummaries(summarySource, fieldCountsByRunFolderName)
+                .filter(versionSummary => fieldCountsByRunFolderName.has(versionSummary.runFolderName)),
+            renderSequence: renderSequence
+        });
+
+        const uncachedRuns = summarySource.runs.filter(summaryRun => !this.isRunFieldCountCached(summaryRun.objectsWrapperFilePath));
+
+        summarySource.runs.filter(summaryRun => !uncachedRuns.includes(summaryRun)).forEach(readTreeFieldCountOfRun);
+
+        if ( fieldCountsByRunFolderName.size > 0 ) {
+            postKnownSummaries();
+        }
+
+        for ( const summaryRun of uncachedRuns ) {
+
+            await this.yieldToExtensionHost();
+
+            if ( !isModelStillOnScreen() ) {
+                return;
+            }
+
+            readTreeFieldCountOfRun(summaryRun);
+            postKnownSummaries();
+
+        }
+
+    }
+
+    private static postDatasetRecordCounts(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            datasetFolderName: string,
+                                            datasetFolderPath: string,
+                                            renderSequence: number) {
+
+        const isUsable = this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot);
+        // THE SUBFOLDER IS READ TOO, AND A SYMLINK THERE WOULD READ FILES OUTSIDE THE WORKSPACE THE FOLDER'S OWN CHECK APPROVED
+        const collectionsApiFolderPath = path.join(datasetFolderPath, DATASET_COLLECTIONS_API_FOLDER_NAME);
+        const isCollectionsApiFolderContained = !fs.existsSync(collectionsApiFolderPath)
+                                                || this.isUsableWorkspacePath(collectionsApiFolderPath, panelState.workspaceRoot);
+        const legacyRecordCounts = isUsable && isCollectionsApiFolderContained
+            ? DatasetSourceService.countLegacyRecordsByObject(datasetFolderPath)
+            : { recordCountsByObject: Object.create(null), unreadableFileNames: [] };
+
+        const failureMessage = !isUsable
+            ? 'This data set is no longer in the workspace.'
+            : !isCollectionsApiFolderContained
+                ? 'This data set\'s Collections API folder resolves outside the workspace, so its records were not counted.'
+            : legacyRecordCounts.unreadableFileNames.length > 0
+                ? `Could not count the records in ${legacyRecordCounts.unreadableFileNames.join(', ')}.`
+                : '';
+
+        this.postToPanel(cockpitPanel, {
+            command: 'datasetRecordCounts',
+            datasetFolderName: datasetFolderName,
+            recordCounts: RecipeCockpitTreeHistory.toRecordCountViewModels(legacyRecordCounts.recordCountsByObject),
+            failureMessage: failureMessage,
+            renderSequence: renderSequence
+        });
+
+    }
+
+    /*
+        What each wrapper's field counts were, keyed by the wrapper's resolved path and valid only
+        while its size and modification time are unchanged. It outlives a model on purpose: a run
+        is never rewritten once Generate Treecipe has moved on, so a reload, a run switch or a
+        regeneration re-reads only the wrapper that actually changed. An entry is a few numbers per
+        object, not the wrapper. An unreadable wrapper is cached as undefined for the same reason a
+        readable one is cached -- re-parsing a 370 MB file to fail again is the cost being avoided.
+    */
+    private static runFieldCountCache = new Map<string, { modifiedAtMs: number; sizeInBytes: number; runFieldCounts: IRecipeCockpitRunFieldCounts | undefined }>();
+
+    private static readWrapperFileStamp(objectsWrapperFilePath: string): { modifiedAtMs: number; sizeInBytes: number } | undefined {
+
+        try {
+            const wrapperFileStat = fs.statSync(objectsWrapperFilePath);
+            return { modifiedAtMs: wrapperFileStat.mtimeMs, sizeInBytes: wrapperFileStat.size };
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    static isRunFieldCountCached(objectsWrapperFilePath: string): boolean {
+
+        const cachedEntry = objectsWrapperFilePath ? this.runFieldCountCache.get(path.resolve(objectsWrapperFilePath)) : undefined;
+        const wrapperFileStamp = cachedEntry ? this.readWrapperFileStamp(objectsWrapperFilePath) : undefined;
+
+        return !!wrapperFileStamp
+                && wrapperFileStamp.modifiedAtMs === cachedEntry.modifiedAtMs
+                && wrapperFileStamp.sizeInBytes === cachedEntry.sizeInBytes;
+
+    }
+
+    // THE LOAD HAS ALREADY PARSED THE RUN ON SCREEN, SO ITS COUNTS ARE KEPT RATHER THAN READ AGAIN WHEN A VERSIONS TAB OPENS
+    static cacheRunFieldCounts(objectsWrapperFilePath: string, normalizedObjectsWrapper: IRecipeCockpitNormalizedObjectsWrapper) {
+
+        const wrapperFileStamp = this.readWrapperFileStamp(objectsWrapperFilePath);
+
+        if ( wrapperFileStamp ) {
+            this.runFieldCountCache.set(path.resolve(objectsWrapperFilePath), { ...wrapperFileStamp, runFieldCounts: this.buildRunFieldCounts(normalizedObjectsWrapper) });
+        }
+
+    }
+
+    /*
+        One run's wrapper as field counts, or undefined when it cannot be read -- which the row
+        draws as "summary unavailable", still diffable. The path was contained when the model was
+        built and is checked again here, since a wrapper is only opened now.
+    */
+    static readRunFieldCounts(objectsWrapperFilePath: string, workspaceRoot: string): IRecipeCockpitRunFieldCounts | undefined {
+
+        if ( !objectsWrapperFilePath || !this.isUsableWorkspacePath(objectsWrapperFilePath, workspaceRoot) ) {
+            return undefined;
+        }
+
+        if ( this.isRunFieldCountCached(objectsWrapperFilePath) ) {
+            return this.runFieldCountCache.get(path.resolve(objectsWrapperFilePath)).runFieldCounts;
+        }
+
+        const wrapperFileStamp = this.readWrapperFileStamp(objectsWrapperFilePath);
+        let runFieldCounts: IRecipeCockpitRunFieldCounts | undefined;
+
+        try {
+            const normalizedObjectsWrapper = this.normalizeObjectsWrapper(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')));
+            runFieldCounts = normalizedObjectsWrapper.isObjectsWrapper ? this.buildRunFieldCounts(normalizedObjectsWrapper) : undefined;
+        } catch {
+            runFieldCounts = undefined;
+        }
+
+        if ( wrapperFileStamp ) {
+            this.runFieldCountCache.set(path.resolve(objectsWrapperFilePath), { ...wrapperFileStamp, runFieldCounts: runFieldCounts });
+        }
+
+        return runFieldCounts;
+
+    }
+
+    static buildRunFieldCounts(normalizedObjectsWrapper: IRecipeCockpitNormalizedObjectsWrapper): IRecipeCockpitRunFieldCounts {
+
+        const fieldCountsByObjectApiName = new Map(normalizedObjectsWrapper.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel.fields.length]));
+        const fieldCountsByTreeFolderName = new Map<string, number>();
+
+        normalizedObjectsWrapper.recipeTrees.forEach(recipeTree => {
+            const treeFolderName = RelationshipService.buildRecipeTreeFolderName(recipeTree.objectApiNames);
+            if ( !fieldCountsByTreeFolderName.has(treeFolderName) ) {
+                fieldCountsByTreeFolderName.set(treeFolderName, this.sumFieldCounts(recipeTree.objectApiNames, fieldCountsByObjectApiName));
+            }
+        });
+
+        return {
+            fieldCountsByObjectApiName: fieldCountsByObjectApiName,
+            fieldCountsByTreeFolderName: fieldCountsByTreeFolderName,
+            hasTreeData: normalizedObjectsWrapper.recipeTrees.length > 0
+        };
+
+    }
+
+    /*
+        The fields the wrapper gives one tree. A wrapper with no tree data is matched through the
+        tree folder's recipe file instead -- the objects it carries -- the same fallback the cards
+        use. A wrapper that lists trees and not this one makes no claim about it.
+    */
+    static readTreeFieldCount(runFieldCounts: IRecipeCockpitRunFieldCounts | undefined,
+                                treeFolderName: string,
+                                treeFolderPath: string,
+                                workspaceRoot: string): number | undefined {
+
+        if ( !runFieldCounts ) {
+            return undefined;
+        }
+
+        if ( runFieldCounts.hasTreeData ) {
+            return runFieldCounts.fieldCountsByTreeFolderName.get(treeFolderName);
+        }
+
+        const treeRecipeFilePath = RecipeCockpitTreeHistory.findTreeRecipeFilePath(treeFolderPath);
+
+        if ( !treeRecipeFilePath || !this.isUsableWorkspacePath(treeRecipeFilePath, workspaceRoot) ) {
+            return undefined;
+        }
+
+        try {
+            const recipeObjectApiNames = [...this.parseRecipeSource(fs.readFileSync(treeRecipeFilePath, 'utf-8')).keys()];
+            return this.sumFieldCounts(recipeObjectApiNames, runFieldCounts.fieldCountsByObjectApiName);
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    private static sumFieldCounts(objectApiNames: string[], fieldCountsByObjectApiName: Map<string, number>): number {
+
+        return [...new Set(objectApiNames)].reduce((fieldCount, objectApiName) => fieldCount + (fieldCountsByObjectApiName.get(objectApiName) ?? 0), 0);
 
     }
 
@@ -1329,9 +1780,102 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                The history tabs post NAMES -- a tree key, a run folder, a data set folder -- and each
+                is matched against its own allow-list drawn from the confirmed-drawn model, then
+                resolved through a map the HOST built. No path the panel could post is ever read.
+            */
+            case 'loadVersionSummaries': {
+
+                const { treeKey } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !panelState.recipeDataMessage || !panelState.treeHistoryAllowLists.summaryTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                const summarySource = panelState.treeHistoryTargets.summarySourcesByTreeKey.get(treeKey);
+
+                return summarySource
+                    ? { kind: 'loadVersionSummaries', treeKey: treeKey, summarySource: summarySource, renderSequence: panelState.recipeDataMessage.renderSequence }
+                    : undefined;
+
+            }
+
+            case 'loadDatasetRecordCounts': {
+
+                const { datasetFolderName } = panelMessage;
+
+                if ( typeof datasetFolderName !== 'string' || !panelState.recipeDataMessage || !panelState.treeHistoryAllowLists.countableDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                const datasetFolderPath = panelState.treeHistoryTargets.datasetFolderPathsByName.get(datasetFolderName);
+
+                return datasetFolderPath
+                    ? { kind: 'loadDatasetRecordCounts', datasetFolderName: datasetFolderName, datasetFolderPath: datasetFolderPath, renderSequence: panelState.recipeDataMessage.renderSequence }
+                    : undefined;
+
+            }
+
+            case 'diffTreeVersion': {
+
+                const { treeKey, runFolderName } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || typeof runFolderName !== 'string' ) {
+                    return undefined;
+                }
+
+                const diffKey = RecipeCockpitTreeHistory.buildDiffKey(treeKey, runFolderName);
+                const diffTarget = panelState.treeHistoryAllowLists.diffKeys.has(diffKey) ? panelState.treeHistoryTargets.diffTargetsByKey.get(diffKey) : undefined;
+
+                return diffTarget ? { kind: 'diffTreeVersion', ...diffTarget } : undefined;
+
+            }
+
+            case 'openDataset':
+            case 'insertDataset': {
+
+                const { datasetFolderName } = panelMessage;
+                const allowedDatasetFolderNames = panelMessage.command === 'openDataset'
+                    ? panelState.treeHistoryAllowLists.openableDatasetFolderNames
+                    : panelState.treeHistoryAllowLists.insertableDatasetFolderNames;
+
+                if ( typeof datasetFolderName !== 'string' || !allowedDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                const datasetFolderPath = panelState.treeHistoryTargets.datasetFolderPathsByName.get(datasetFolderName);
+
+                if ( !datasetFolderPath ) {
+                    return undefined;
+                }
+
+                const focusTree = this.readTreeFocus(panelMessage, panelState);
+
+                return {
+                    kind: panelMessage.command,
+                    datasetFolderName: datasetFolderName,
+                    datasetFolderPath: datasetFolderPath,
+                    ...( focusTree ? { focusTree: focusTree } : {} )
+                };
+
+            }
+
         }
 
         return undefined;
+
+    }
+
+    // WHERE THE READER ACTED FROM, KEPT ONLY IF IT NAMES A CARD OF THE MODEL ON SCREEN AND A HISTORY TAB
+    static readTreeFocus(panelMessage: IRecipeCockpitPanelMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitTreeFocus | undefined {
+
+        const { treeKey, tab } = panelMessage;
+        const isHistoryTab = tab === 'versions' || tab === 'datasets';
+        const isRenderedTree = typeof treeKey === 'string'
+                                && !!panelState.recipeDataMessage?.recipe.trees.some(tree => tree.treeKey === treeKey);
+
+        return isHistoryTab && isRenderedTree ? { treeKey: treeKey as string, tab: tab } : undefined;
 
     }
 
@@ -1527,7 +2071,8 @@ export class RecipeCockpitService {
             return {
                 recipeViewModel: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE },
                 recipePicklistValuesByObjectApiName: new Map(),
-                picklistDisplayValuesByObjectApiName: new Map()
+                picklistDisplayValuesByObjectApiName: new Map(),
+                treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets()
             };
         }
 
@@ -1549,10 +2094,18 @@ export class RecipeCockpitService {
             parsedObjectsWrapper = JSON.parse(fs.readFileSync(selectedRun.objectsWrapperFilePath, 'utf-8'));
         } catch (readError) {
             recipeViewModel.emptyStateMessage = `The objects wrapper "${path.basename(selectedRun.objectsWrapperFilePath)}" for this run could not be read: ${readError?.message ?? readError}. Choose another run, or run "Generate Treecipe" again.`;
-            return { recipeViewModel: recipeViewModel, recipePicklistValuesByObjectApiName: new Map(), picklistDisplayValuesByObjectApiName: new Map() };
+            return {
+                recipeViewModel: recipeViewModel,
+                recipePicklistValuesByObjectApiName: new Map(),
+                picklistDisplayValuesByObjectApiName: new Map(),
+                treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets()
+            };
         }
 
         const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
+        if ( normalizedObjectsWrapper.isObjectsWrapper ) {
+            this.cacheRunFieldCounts(selectedRun.objectsWrapperFilePath, normalizedObjectsWrapper);
+        }
         const recipeSourceRead = this.readRecipeSourceFiles(selectedRun.runFolderPath, workspaceRoot);
 
         /*
@@ -1573,11 +2126,31 @@ export class RecipeCockpitService {
 
         recipeViewModel.trees = recipeTreeBuild.trees;
 
+        const treeHistoryBuild = RecipeCockpitTreeHistory.buildTreeHistories(
+            path.dirname(selectedRun.runFolderPath),
+            path.join(workspaceRoot, ConfigurationService.getFakeDataSetsFolderPath()),
+            workspaceRoot,
+            selectedRun.runFolderName,
+            recipeViewModel.trees,
+            new Map(recipeRuns.map(recipeRun => [recipeRun.runFolderName, recipeRun.objectsWrapperFilePath]))
+        );
+
+        recipeViewModel.trees.forEach(tree => {
+            const treeHistory = treeHistoryBuild.historiesByTreeKey.get(tree.treeKey);
+            if ( treeHistory ) {
+                tree.history = treeHistory;
+            }
+        });
+
+        const unmatchedDatasetNotices = treeHistoryBuild.unmatchedDatasetCount > 0
+            ? [RecipeCockpitTreeHistory.buildUnmatchedDatasetsNotice(treeHistoryBuild.unmatchedDatasetCount)]
+            : [];
+
         const missingRunNotices = requestedRunFolderName && !requestedRun
             ? [`The run "${requestedRunFolderName}" is no longer on disk, so the latest run is shown instead.`]
             : [];
 
-        recipeViewModel.notices = [...missingRunNotices, ...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices, ...recipeTreeBuild.notices];
+        recipeViewModel.notices = [...missingRunNotices, ...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices, ...recipeTreeBuild.notices, ...unmatchedDatasetNotices];
 
         if ( recipeViewModel.objects.length === 0 ) {
             recipeViewModel.emptyStateMessage = normalizedObjectsWrapper.isObjectsWrapper
@@ -1588,7 +2161,8 @@ export class RecipeCockpitService {
         return {
             recipeViewModel: recipeViewModel,
             recipePicklistValuesByObjectApiName: normalizedObjectsWrapper.picklistValuesByObjectApiName,
-            picklistDisplayValuesByObjectApiName: normalizedObjectsWrapper.picklistDisplayValuesByObjectApiName
+            picklistDisplayValuesByObjectApiName: normalizedObjectsWrapper.picklistDisplayValuesByObjectApiName,
+            treeHistoryTargets: treeHistoryBuild.targets
         };
 
     }
@@ -2436,7 +3010,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeHeader { padding: 0.5rem 0.6rem; background-color: var(--sdt-header); }
     .treeTitle { font-weight: 600; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeScopeClear, .treeTab {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction {
         background: none;
         border: none;
         padding: 0;
@@ -2463,6 +3037,20 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-chip-bg);
         border-radius: 0.6rem;
     }
+    .treeVersionHeader, .treeDatasetHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeVersion, .treeDataset { padding: 0.3rem 0.6rem; }
+    .treeVersion:hover, .treeDataset:hover { background-color: var(--sdt-row-hover); }
+    .treeVersionDate, .treeDatasetDate { font-weight: 600; }
+    .treeVersionCurrent {
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
+    .treeVersionBody { padding-left: 1.4rem; }
+    .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
+    .historyAction { text-decoration: underline; }
     .picklistValues { margin: 0.2rem 0 0 1.4rem; }
     .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
     .picklistValue { padding-left: 0.6rem; word-break: break-word; }
@@ -2986,6 +3574,10 @@ ${this.buildPaletteCustomProperties()}
     // ROWS WHOSE VALUES WERE ASKED FOR AND NOT YET ANSWERED, BY OBJECT AND FIELD -- KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
     let pendingPicklistValueElements = Object.create(null);
 
+    // DATA SET COUNT ROWS WAITING ON THE HOST, AND THE ANSWERS ALREADY HAD -- KEYED BY FOLDER NAMES FROM DISK, SO NO PROTOTYPE
+    let pendingDatasetCountElements = Object.create(null);
+    let answeredDatasetCounts = Object.create(null);
+
     // A SELF-LOOKUP NAMES ONLY ITS FIELD: "(ParentId)" SAYS WHAT "(ParentId → Account)" SAYS ON Account, WITHOUT THE REPEAT
     function formatParentLookups(treeObject) {
 
@@ -3201,21 +3793,20 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // THE TAB STRIP AND THE STRUCTURE TAB'S OBJECTS, MADE ON THE CARD'S FIRST EXPAND
+    /*
+        The tab strip and the Structure tab's objects, made on the card's first expand. The history
+        tabs are drawn only for a card whose model carries a history, and their rows wait for the
+        tab's own first open -- that is also when Previous Versions asks for its summaries, which
+        the host reads from each run's wrapper.
+    */
     function ensureTreeBodyBuilt(treeState) {
 
         if (treeState.isBodyBuilt) { return; }
 
         const tabsElement = createElement('div', 'treeTabs');
-        const structureTabElement = createElement('button', 'treeTab selected', 'Structure');
         const structureElement = createElement('div', 'treeStructure');
 
         tabsElement.setAttribute('role', 'tablist');
-        structureTabElement.setAttribute('role', 'tab');
-        structureTabElement.setAttribute('aria-selected', 'true');
-        structureElement.setAttribute('role', 'tabpanel');
-        structureElement.setAttribute('aria-label', 'Structure');
-        tabsElement.appendChild(structureTabElement);
 
         treeState.objectStates.forEach(function (treeObjectState) {
             structureElement.appendChild(treeObjectState.element);
@@ -3225,9 +3816,320 @@ ${this.buildPaletteCustomProperties()}
             structureElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
         }
 
+        treeState.tabStates = [];
+        treeState.selectedTab = 'structure';
+        addTreeTab(treeState, tabsElement, 'structure', 'Structure', structureElement);
+
+        if (treeState.tree.history) {
+            addTreeTab(treeState, tabsElement, 'versions', 'Previous Versions', createElement('div', 'treeVersions hidden'));
+            addTreeTab(treeState, tabsElement, 'datasets', 'Previous Fake Sets', createElement('div', 'treeDatasets hidden'));
+        }
+
         treeState.bodyElement.appendChild(tabsElement);
-        treeState.bodyElement.appendChild(structureElement);
+        treeState.tabStates.forEach(function (tabState) { treeState.bodyElement.appendChild(tabState.panelElement); });
         treeState.isBodyBuilt = true;
+
+    }
+
+    function addTreeTab(treeState, tabsElement, tabName, tabLabel, panelElement) {
+
+        const isSelected = tabName === treeState.selectedTab;
+        const tabElement = createElement('button', isSelected ? 'treeTab selected' : 'treeTab', tabLabel);
+
+        tabElement.setAttribute('role', 'tab');
+        tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        panelElement.setAttribute('role', 'tabpanel');
+        panelElement.setAttribute('aria-label', tabLabel);
+        tabElement.addEventListener('click', function () { selectTreeTab(treeState, tabName); });
+
+        treeState.tabStates.push({ tabName: tabName, tabElement: tabElement, panelElement: panelElement, isBuilt: tabName === 'structure' });
+        tabsElement.appendChild(tabElement);
+
+    }
+
+    function selectTreeTab(treeState, tabName) {
+
+        ensureTreeBodyBuilt(treeState);
+
+        if (!treeState.tabStates.some(function (tabState) { return tabState.tabName === tabName; })) { return; }
+
+        treeState.selectedTab = tabName;
+
+        treeState.tabStates.forEach(function (tabState) {
+
+            const isSelected = tabState.tabName === tabName;
+
+            if (isSelected) {
+                tabState.tabElement.classList.add('selected');
+                tabState.panelElement.classList.remove('hidden');
+            } else {
+                tabState.tabElement.classList.remove('selected');
+                tabState.panelElement.classList.add('hidden');
+            }
+
+            tabState.tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+
+            if (isSelected && !tabState.isBuilt) {
+                tabState.isBuilt = true;
+                if (tabState.tabName === 'versions') { buildVersionsTab(treeState, tabState.panelElement); }
+                if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
+            }
+
+        });
+
+    }
+
+    function versionLabelOf(treeState, runFolderName) {
+
+        const version = runFolderName === null ? null : treeState.tree.history.versions.find(function (candidateVersion) {
+            return candidateVersion.runFolderName === runFolderName;
+        });
+
+        if (!version) { return 'version unknown'; }
+
+        return version.isCurrent ? 'current version' : 'version of ' + version.generatedAtLabel;
+
+    }
+
+    function formatRecordCounts(recordCounts) {
+
+        if (recordCounts.length === 0) { return 'no records'; }
+
+        return recordCounts.map(function (recordCount) {
+            return recordCount.objectApiName + ': ' + pluralize(recordCount.recordCount, 'record', 'records');
+        }).join(' · ');
+
+    }
+
+    function drawDatasetRecordCounts(countsElement, recordCountsMessage) {
+
+        const countsText = recordCountsMessage.recordCounts.length > 0 || !recordCountsMessage.failureMessage
+            ? formatRecordCounts(recordCountsMessage.recordCounts)
+            : '';
+
+        countsElement.textContent = [countsText, recordCountsMessage.failureMessage].filter(function (countsPart) { return !!countsPart; }).join(' · ');
+
+    }
+
+    // A DATA SET FROM BEFORE datasetSource.json HAS ITS COUNTS READ WHEN IT IS EXPANDED, ONCE PER MODEL
+    function requestDatasetRecordCounts(datasetFolderName, countsElement) {
+
+        if (Object.prototype.hasOwnProperty.call(answeredDatasetCounts, datasetFolderName)) {
+            drawDatasetRecordCounts(countsElement, answeredDatasetCounts[datasetFolderName]);
+            return;
+        }
+
+        countsElement.textContent = 'Loading record counts…';
+
+        if (Object.prototype.hasOwnProperty.call(pendingDatasetCountElements, datasetFolderName)) {
+            pendingDatasetCountElements[datasetFolderName].push(countsElement);
+            return;
+        }
+
+        pendingDatasetCountElements[datasetFolderName] = [countsElement];
+        vscodeApi.postMessage({ command: 'loadDatasetRecordCounts', datasetFolderName: datasetFolderName });
+
+    }
+
+    function renderDatasetRecordCounts(recordCountsMessage) {
+
+        if (recordCountsMessage.renderSequence !== renderedSequence) { return; }
+
+        const datasetFolderName = recordCountsMessage.datasetFolderName;
+        answeredDatasetCounts[datasetFolderName] = recordCountsMessage;
+
+        if (!Object.prototype.hasOwnProperty.call(pendingDatasetCountElements, datasetFolderName)) { return; }
+
+        const countsElements = pendingDatasetCountElements[datasetFolderName];
+        delete pendingDatasetCountElements[datasetFolderName];
+
+        countsElements.forEach(function (countsElement) { drawDatasetRecordCounts(countsElement, recordCountsMessage); });
+
+    }
+
+    function buildHistoryAction(className, labelText, titleText, hostMessage) {
+
+        const actionElement = createElement('button', 'historyAction ' + className, labelText);
+        actionElement.setAttribute('title', titleText);
+        actionElement.addEventListener('click', function () { vscodeApi.postMessage(hostMessage); });
+        return actionElement;
+
+    }
+
+    // ONE DATA SET: WHEN, WHICH VERSION (ON THE FAKE SETS TAB), ITS RECORD COUNTS, AND OPEN / INSERT BY FOLDER NAME
+    function buildDatasetRow(treeState, dataset, tabName) {
+
+        const datasetElement = createElement('div', 'treeDataset');
+        const datasetHeaderElement = createElement('div', 'treeDatasetHeader');
+        const countsElement = createElement('div', 'treeDatasetCounts muted');
+        const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: tabName };
+
+        datasetHeaderElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
+        datasetHeaderElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
+
+        if (tabName === 'datasets') {
+            datasetHeaderElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
+        }
+
+        datasetHeaderElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
+        datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
+            Object.assign({ command: 'openDataset' }, actionMessage)));
+        datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetInsert', 'Insert…', 'Insert this data set into an org with Insert Data Set by Directory',
+            Object.assign({ command: 'insertDataset' }, actionMessage)));
+
+        datasetElement.appendChild(datasetHeaderElement);
+        datasetElement.appendChild(countsElement);
+
+        /*
+            A legacy data set's counts are read from its Collections API files, which hold every
+            record, so they are read when the reader asks: expanding a version is that ask, and on
+            the Fake Sets tab -- which lists every data set at once -- the row's own button is.
+        */
+        if (dataset.recordCounts) {
+            countsElement.textContent = formatRecordCounts(dataset.recordCounts);
+        } else if (tabName === 'versions') {
+            requestDatasetRecordCounts(dataset.datasetFolderName, countsElement);
+        } else {
+            const loadCountsElement = createElement('button', 'historyAction treeDatasetCountsLoad', 'Show record counts');
+            loadCountsElement.setAttribute('title', 'Count the records in the Collections API files of this data set');
+            loadCountsElement.addEventListener('click', function () { requestDatasetRecordCounts(dataset.datasetFolderName, countsElement); });
+            countsElement.appendChild(loadCountsElement);
+        }
+
+        return datasetElement;
+
+    }
+
+    function buildDatasetsTab(treeState, panelElement) {
+
+        const datasets = treeState.tree.history.datasets;
+
+        if (datasets.length === 0) {
+            panelElement.appendChild(createElement('div', 'treeEmpty muted', 'No data sets were made from this tree.'));
+            return;
+        }
+
+        datasets.forEach(function (dataset) { panelElement.appendChild(buildDatasetRow(treeState, dataset, 'datasets')); });
+
+    }
+
+    function setVersionExpanded(treeState, versionState, isExpanded) {
+
+        if (isExpanded && !versionState.isBodyBuilt) {
+
+            const versionDatasets = treeState.tree.history.datasets.filter(function (dataset) { return dataset.runFolderName === versionState.version.runFolderName; });
+
+            if (versionDatasets.length === 0) {
+                versionState.bodyElement.appendChild(createElement('div', 'treeEmpty muted', 'No data sets were made from this version.'));
+            }
+
+            versionDatasets.forEach(function (dataset) { versionState.bodyElement.appendChild(buildDatasetRow(treeState, dataset, 'versions')); });
+            versionState.isBodyBuilt = true;
+
+        }
+
+        if (isExpanded) { versionState.bodyElement.classList.remove('hidden'); } else { versionState.bodyElement.classList.add('hidden'); }
+
+        versionState.toggleElement.textContent = isExpanded ? '▾' : '▸';
+        versionState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+        versionState.isExpanded = isExpanded;
+
+    }
+
+    function buildVersionRow(treeState, version) {
+
+        const versionElement = createElement('div', 'treeVersion');
+        const versionHeaderElement = createElement('div', 'treeVersionHeader');
+        const toggleElement = createElement('button', 'treeVersionToggle', '▸');
+
+        const versionState = {
+            version: version,
+            element: versionElement,
+            toggleElement: toggleElement,
+            bodyElement: createElement('div', 'treeVersionBody hidden'),
+            fieldsElement: createElement('span', 'treeVersionFields muted', 'Loading summary…'),
+            changeElement: createElement('span', 'treeVersionChange'),
+            isBodyBuilt: false,
+            isExpanded: false
+        };
+
+        toggleElement.setAttribute('aria-expanded', 'false');
+        toggleElement.setAttribute('aria-label', 'Show or hide the data sets made from the version of ' + version.generatedAtLabel);
+        toggleElement.addEventListener('click', function () { setVersionExpanded(treeState, versionState, !versionState.isExpanded); });
+
+        versionHeaderElement.appendChild(toggleElement);
+        versionHeaderElement.appendChild(createElement('span', 'treeVersionDate', version.generatedAtLabel));
+        versionHeaderElement.appendChild(createElement('span', 'treeVersionBackend muted', version.fakerService));
+        versionHeaderElement.appendChild(versionState.fieldsElement);
+        versionHeaderElement.appendChild(versionState.changeElement);
+
+        if (version.isBackendDifferent) {
+            versionHeaderElement.appendChild(createElement('span', 'treeVersionBackendChange', 'backend ≠'));
+        }
+
+        if (version.isCurrent) {
+            versionHeaderElement.appendChild(createElement('span', 'treeVersionCurrent', 'current'));
+        }
+
+        if (version.isDiffable) {
+            versionHeaderElement.appendChild(buildHistoryAction('treeVersionDiff', 'Diff', 'Compare the recipe of this version with the current one',
+                { command: 'diffTreeVersion', treeKey: treeState.tree.treeKey, runFolderName: version.runFolderName }));
+        }
+
+        versionElement.appendChild(versionHeaderElement);
+        versionElement.appendChild(versionState.bodyElement);
+
+        return versionState;
+
+    }
+
+    function buildVersionsTab(treeState, panelElement) {
+
+        // KEYED BY RUN FOLDER NAMES FROM DISK, SO NO PROTOTYPE
+        treeState.versionStatesByRunFolderName = Object.create(null);
+
+        treeState.tree.history.versions.forEach(function (version) {
+            const versionState = buildVersionRow(treeState, version);
+            treeState.versionStatesByRunFolderName[version.runFolderName] = versionState;
+            panelElement.appendChild(versionState.element);
+        });
+
+        vscodeApi.postMessage({ command: 'loadVersionSummaries', treeKey: treeState.tree.treeKey });
+
+    }
+
+    function renderVersionSummaries(versionSummariesMessage) {
+
+        if (versionSummariesMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === versionSummariesMessage.treeKey; });
+
+        if (!treeState || !treeState.versionStatesByRunFolderName) { return; }
+
+        versionSummariesMessage.summaries.forEach(function (versionSummary) {
+
+            if (!Object.prototype.hasOwnProperty.call(treeState.versionStatesByRunFolderName, versionSummary.runFolderName)) { return; }
+
+            const versionState = treeState.versionStatesByRunFolderName[versionSummary.runFolderName];
+            versionState.fieldsElement.textContent = versionSummary.isSummaryAvailable ? pluralize(versionSummary.fieldCount, 'field', 'fields') : 'summary unavailable';
+            versionState.changeElement.textContent = versionSummary.changeText;
+
+        });
+
+    }
+
+    // A RELOAD THE HOST MADE AFTER A DATA SET WENT MISSING RE-OPENS THE CARD AND TAB THE READER ACTED FROM
+    function applyTreeFocus(focusTree) {
+
+        if (!focusTree || viewMode !== 'trees') { return; }
+
+        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === focusTree.treeKey; });
+
+        if (!treeState) { return; }
+
+        treeState.isExpandedByReader = true;
+        setTreeExpanded(treeState, true);
+        selectTreeTab(treeState, focusTree.tab);
 
     }
 
@@ -3457,6 +4359,11 @@ ${this.buildPaletteCustomProperties()}
 
             setTreeExpanded(treeState, isAnyObjectOpened);
 
+            // THE ROWS A FILTER OPENED ARE ON THE STRUCTURE TAB, SO A CARD SHOWING A HISTORY TAB SWITCHES TO IT
+            if (isAnyObjectOpened && treeState.selectedTab && treeState.selectedTab !== 'structure') {
+                selectTreeTab(treeState, 'structure');
+            }
+
         });
 
         treeMatchCountElement.textContent = isFiltering
@@ -3517,6 +4424,8 @@ ${this.buildPaletteCustomProperties()}
         treeScopeStatusElement = null;
         viewButtonStates = [];
         pendingPicklistValueElements = Object.create(null);
+        pendingDatasetCountElements = Object.create(null);
+        answeredDatasetCounts = Object.create(null);
         fieldSearchTexts = new Map();
         matchCountElement = null;
         runSelectElement = null;
@@ -3560,15 +4469,13 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function renderPanelGuarded(recipe, renderSequence) {
+    function renderPanelGuarded(recipe, renderSequence, focusTree) {
 
         try {
 
             renderPanel(recipe);
             renderedSequence = renderSequence;
             vscodeApi.postMessage({ command: 'rendered', renderSequence: renderSequence });
-
-            return true;
 
         } catch (renderError) {
 
@@ -3578,6 +4485,15 @@ ${this.buildPaletteCustomProperties()}
             return false;
 
         }
+
+        // AFTER "rendered": A FOCUSED VERSIONS TAB ASKS FOR ITS SUMMARIES, WHICH THE HOST ANSWERS ONLY ONCE THE ACK HAS ACTIVATED THEM
+        try {
+            applyTreeFocus(focusTree);
+        } catch (focusError) {
+            postRenderFailure('runtime', focusError);
+        }
+
+        return true;
 
     }
 
@@ -3776,7 +4692,7 @@ ${this.buildPaletteCustomProperties()}
         if (hostMessage.command === 'recipeData') {
 
             // THE STATUS LINE IS LEFT ALONE WHEN THE RENDER FAILED -- CLEARING IT WOULD READ AS FINISHED
-            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence)) {
+            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence, hostMessage.focusTree)) {
                 setLoadStatus('', false);
             }
 
@@ -3796,6 +4712,16 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'picklistValues') {
             renderPicklistValues(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'versionSummaries') {
+            renderVersionSummaries(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'datasetRecordCounts') {
+            renderDatasetRecordCounts(hostMessage);
             return;
         }
 
