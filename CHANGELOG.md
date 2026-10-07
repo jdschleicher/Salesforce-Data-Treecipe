@@ -15,11 +15,13 @@ Generating data for one tree meant leaving the cockpit, running **Run Faker by R
   - The host looks the recipe file up in a host-only map built with the model (`runFakerRecipeFilePathsByTreeKey`).
   - A new pending/active allow-list (`runnableTreeKeys`) holds only what the confirmed-drawn model offered. It follows the same rules as the other history actions: promoted on `rendered`, emptied on `ready`, on a new post and on a failure to draw.
   - Only one run at a time is routed.
+  - A click the host refuses still gets an answer. The panel disables every button on the click, so without `runFakerState` they would stay disabled. This can happen when you click cards that a new run's model has replaced but not yet confirmed drawing.
+  - The reload after a run uses the run on screen when the run ends, so switching runs during generation is not undone.
   - A recipe file deleted after the draw gets a "no longer exists" warning, nothing runs, and the run is reloaded.
 - **Run Faker by Recipe takes an optional recipe path:** `runFakerGenerationByRecipeFile(recipeFilePath?: string)`.
   - Its registration returns the handler's promise, so the cockpit reloads when the data set is written.
   - Without a path, the palette command works exactly as before.
-  - With a path, it skips the picker but keeps the confirmation modal and the configured backend. It runs nothing and warns for any of these:
+  - With a path, it skips the picker but keeps the confirmation modal and the configured backend. The path it reads and hands to the backend is the resolved path the checks ran on. It runs nothing and warns for any of these:
     - a path that is not a `.yml` file
     - a path outside `GeneratedRecipes/`, or one that fails `isPathContainedInWorkspace`
     - a file that no longer exists

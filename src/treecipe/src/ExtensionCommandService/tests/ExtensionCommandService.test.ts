@@ -1948,6 +1948,19 @@ describe('ExtensionCommandService', () => {
 
             });
 
+            // THE CHECKS RUN ON THE RESOLVED PATH, SO THE RESOLVED PATH IS WHAT IS READ AND HANDED TO THE BACKEND
+            test('given a relative path, runs the resolved path the checks ran on', async () => {
+
+                const [fakerJsCase] = backendCases;
+                const recipeFilePath = arrangeRecipeFilePath(fakerJsCase);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(path.relative(process.cwd(), recipeFilePath));
+
+                expect(fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile).toHaveBeenCalledWith(recipeFilePath);
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+
+            });
+
             test('given no path, the palette still prompts with the picker', async () => {
 
                 const [fakerJsCase] = backendCases;

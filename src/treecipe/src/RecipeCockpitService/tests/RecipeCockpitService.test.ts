@@ -3634,24 +3634,38 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('answers nothing before the draw is confirmed, for a key the model did not offer, a payload of the wrong type, or while a run is in flight', () => {
+            /*
+                The panel disables every Run Faker on the click, so a refusal still answers: nothing
+                runs, and the buttons come back. Only a run already in flight goes unanswered -- its
+                own end re-enables them.
+            */
+            it('runs nothing before the draw is confirmed, for a key the model did not offer, or a payload of the wrong type, and says so', () => {
 
-                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, buildRunFakerPanelState(false))).toBeUndefined();
+                const notRunning = (treeKey: string) => ({ kind: 'postRunFakerState', hostMessage: { command: 'runFakerState', isRunning: false, treeKey: treeKey } });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, buildRunFakerPanelState(false))).toEqual(notRunning(LEAD_TREE_KEY));
 
                 const panelState = buildRunFakerPanelState();
 
-                [
+                expect([
                     { command: 'runFaker', treeKey: 'Opportunity-ONLY' },
                     { command: 'runFaker', treeKey: '__proto__' },
                     { command: 'runFaker', treeKey: [LEAD_TREE_KEY] },
                     { command: 'runFaker' }
-                ].forEach(panelMessage => expect(RecipeCockpitService.routePanelMessage(panelMessage, panelState)).toBeUndefined());
+                ].map(panelMessage => RecipeCockpitService.routePanelMessage(panelMessage, panelState)))
+                    .toEqual([notRunning('Opportunity-ONLY'), notRunning('__proto__'), notRunning(''), notRunning('')]);
 
+                const withoutTargets = buildRunFakerPanelState();
+                withoutTargets.treeHistoryTargets = RecipeCockpitTreeHistory.buildEmptyTargets();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, withoutTargets)).toEqual(notRunning(LEAD_TREE_KEY));
+
+            });
+
+            it('answers nothing while a run is in flight', () => {
+
+                const panelState = buildRunFakerPanelState();
                 panelState.runFakerStateMessage = { command: 'runFakerState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
-                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, panelState)).toBeUndefined();
 
-                panelState.runFakerStateMessage = undefined;
-                panelState.treeHistoryTargets = RecipeCockpitTreeHistory.buildEmptyTargets();
                 expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, panelState)).toBeUndefined();
 
             });
@@ -5385,6 +5399,40 @@ describe('RecipeCockpitService', () => {
                     await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
 
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([]);
+
+                });
+
+                // THE CLICK DISABLED EVERY BUTTON BEFORE IT WAS REFUSED -- WITHOUT AN ANSWER THEY STAY DISABLED
+                it('given a click on cards a new model replaced before it was drawn, runs nothing and gives the buttons back', async () => {
+
+                    await openRenderedHistoryCockpit();
+                    await receivedMessageHandler({ command: 'selectRun', runFolderName: 'recipe-2026-09-01T00-00-00' });
+                    postedPanelMessages.length = 0;
+
+                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([]);
+                    expect(postedPanelMessages).toEqual([{ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY }]);
+
+                });
+
+                it('reloads the run on screen when the run ends, not the one the click came from', async () => {
+
+                    const OTHER_RUN = 'recipe-2026-09-01T00-00-00';
+                    let finishRun: () => void;
+                    (vscode.commands.executeCommand as jest.Mock).mockImplementation((commandName: string) => (
+                        commandName === RECIPE_COCKPIT_RUN_FAKER_COMMAND ? new Promise<void>(resolveRun => { finishRun = resolveRun; }) : Promise.resolve()
+                    ));
+
+                    await openRenderedHistoryCockpit();
+                    const run = receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'selectRun', runFolderName: OTHER_RUN });
+                    postedPanelMessages.length = 0;
+
+                    finishRun();
+                    await run;
+
+                    expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData').recipe.selectedRunFolderName).toBe(OTHER_RUN);
 
                 });
 

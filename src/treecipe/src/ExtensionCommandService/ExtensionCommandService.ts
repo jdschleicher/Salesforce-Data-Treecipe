@@ -154,7 +154,8 @@ export class ExtensionCommandService {
                     return;
                 }
 
-                recipeFullFileNamePath = recipeFilePath;
+                // THE PATH THE CHECKS RAN ON, NOT THE STRING THE CALLER PASSED
+                recipeFullFileNamePath = path.resolve(recipeFilePath);
 
             }
 

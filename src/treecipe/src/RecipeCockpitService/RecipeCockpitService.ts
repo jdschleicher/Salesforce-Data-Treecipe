@@ -548,7 +548,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'diffTreeVersion'; versionRecipeFilePath: string; currentRecipeFilePath: string; diffTitle: string }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
-    | { kind: 'runFaker'; treeKey: string; recipeFilePath: string };
+    | { kind: 'runFaker'; treeKey: string; recipeFilePath: string }
+    | { kind: 'postRunFakerState'; hostMessage: IRecipeCockpitRunFakerStateMessage };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -1102,6 +1103,11 @@ export class RecipeCockpitService {
                 await this.runFakerForTree(cockpitPanel, panelState, panelAction.treeKey, panelAction.recipeFilePath);
                 return;
 
+            case 'postRunFakerState':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
         }
 
     }
@@ -1124,7 +1130,6 @@ export class RecipeCockpitService {
                                             recipeFilePath: string) {
 
         const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
-        const selectedRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
 
         panelState.runFakerStateMessage = { command: 'runFakerState', isRunning: true, treeKey: treeKey };
         this.postToPanel(cockpitPanel, panelState.runFakerStateMessage);
@@ -1145,8 +1150,9 @@ export class RecipeCockpitService {
                 VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" no longer exists in this workspace, so Run Faker did not run. The Recipe Cockpit has reloaded the run.`);
             }
 
+            // THE RUN ON SCREEN NOW, NOT AT THE CLICK -- THE READER CAN SWITCH RUNS WHILE GENERATION RUNS
             if ( isPanelStillCurrent() ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
             }
 
         } finally {
@@ -1963,16 +1969,30 @@ export class RecipeCockpitService {
 
                 const { treeKey } = panelMessage;
 
-                if ( typeof treeKey !== 'string'
-                        || !panelState.recipeDataMessage
-                        || panelState.runFakerStateMessage
-                        || !panelState.treeHistoryAllowLists.runnableTreeKeys.has(treeKey) ) {
+                // A RUN IN FLIGHT ALREADY HOLDS THE BUTTONS DISABLED, AND ITS OWN END RE-ENABLES THEM
+                if ( panelState.runFakerStateMessage ) {
                     return undefined;
                 }
 
-                const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+                const recipeFilePath = typeof treeKey === 'string'
+                                        && !!panelState.recipeDataMessage
+                                        && panelState.treeHistoryAllowLists.runnableTreeKeys.has(treeKey)
+                    ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey)
+                    : undefined;
 
-                return recipeFilePath ? { kind: 'runFaker', treeKey: treeKey, recipeFilePath: recipeFilePath } : undefined;
+                if ( recipeFilePath ) {
+                    return { kind: 'runFaker', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
+                }
+
+                /*
+                    The panel disabled every Run Faker on the click, before asking. A click on cards
+                    a new model has replaced but not yet confirmed drawing is refused here, and only
+                    a runFakerState gives the buttons back -- so a refusal still says nothing runs.
+                */
+                return {
+                    kind: 'postRunFakerState',
+                    hostMessage: { command: 'runFakerState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
+                };
 
             }
 
