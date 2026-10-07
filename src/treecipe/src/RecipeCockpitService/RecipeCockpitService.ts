@@ -13,6 +13,7 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
+import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -216,11 +217,6 @@ export interface IRecipeCockpitPicklistDisplayValues {
 
 export type RecipeCockpitPicklistDisplayValuesByObjectApiName = Map<string, Map<string, IRecipeCockpitPicklistDisplayValues>>;
 
-export interface IRecipeCockpitFieldSize {
-    length?: number;
-    precision?: number;
-    scale?: number;
-}
 
 /*
     recipeFilePath is the one path the panel is handed, and it is carried once per OBJECT rather
@@ -1695,10 +1691,14 @@ export class RecipeCockpitService {
                     values would report every unlisted org value as added, so neither makes a claim.
                 */
                 const isDependentPicklist = !!this.asString(wrapperFieldRecord.controllingField);
+                // READ ONCE AND SHARED BY THE DIFF'S COPY AND THE DISPLAY COPY -- NEITHER IS EVER MUTATED
+                const activePicklistValues = Array.isArray(wrapperFieldRecord.picklistValues)
+                    ? this.readActivePicklistValues(wrapperFieldRecord.picklistValues)
+                    : undefined;
 
-                if ( Array.isArray(wrapperFieldRecord.picklistValues) && !isDependentPicklist ) {
+                if ( activePicklistValues && !isDependentPicklist ) {
                     const picklistValuesByFieldApiName = picklistValuesByObjectApiName.get(objectApiName) ?? new Map<string, string[]>();
-                    picklistValuesByFieldApiName.set(fieldApiName, this.readActivePicklistValues(wrapperFieldRecord.picklistValues));
+                    picklistValuesByFieldApiName.set(fieldApiName, activePicklistValues);
                     picklistValuesByObjectApiName.set(objectApiName, picklistValuesByFieldApiName);
                 }
 
@@ -1723,9 +1723,7 @@ export class RecipeCockpitService {
 
                     const picklistDisplayValuesByFieldApiName = picklistDisplayValuesByObjectApiName.get(objectApiName) ?? new Map<string, IRecipeCockpitPicklistDisplayValues>();
                     picklistDisplayValuesByFieldApiName.set(fieldApiName, {
-                        picklistValues: Array.isArray(wrapperFieldRecord.picklistValues)
-                            ? this.readActivePicklistValues(wrapperFieldRecord.picklistValues)
-                            : [],
+                        picklistValues: activePicklistValues ?? [],
                         recordTypePicklistValues: recordTypePicklistSections
                             .filter(recordTypeSection => Object.prototype.hasOwnProperty.call(recordTypeSection.picklistValuesByFieldApiName, fieldApiName))
                             .map(recordTypeSection => ({
@@ -1768,7 +1766,7 @@ export class RecipeCockpitService {
         which is what Salesforce gives such a field. A run from before sizes were recorded has
         neither, so it draws the bare type.
     */
-    static formatFieldTypeWithSize(fieldType: string, fieldSize: IRecipeCockpitFieldSize): string {
+    static formatFieldTypeWithSize(fieldType: string, fieldSize: IFieldSize): string {
 
         if ( !fieldType ) {
             return '';
@@ -2760,7 +2758,7 @@ ${this.buildPaletteCustomProperties()}
             let objectMatchingFieldCount = 0;
 
             objectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = (isObjectNameMatch || fieldState.searchText.indexOf(filterQuery) !== -1) && isStatusMatch(fieldState);
+                fieldState.isMatch = (isObjectNameMatch || isFieldTextMatch(fieldState)) && isStatusMatch(fieldState);
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 applyFieldVisibility(fieldState);
             });
@@ -2834,8 +2832,7 @@ ${this.buildPaletteCustomProperties()}
             filterInputElement.value = filterQuery;
             filterInputElement.addEventListener('input', function () {
                 filterQuery = String(filterInputElement.value || '').trim().toLowerCase();
-                applyFilter();
-                applyTreeFilter();
+                applyFiltersForView();
             });
             toolbarElement.appendChild(filterInputElement);
 
@@ -2911,12 +2908,36 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        One lowercased haystack per FIELD, shared by the Classic list and the Structure tab: both
+        draw the same posted field, and the faker expression that dominates it would otherwise be
+        held in the webview twice. The type is matched separately, because each view draws its own
+        (the bare type, or the type with its size), and a match has to be on screen.
+    */
+    let fieldSearchTexts = new Map();
+
+    function searchTextOf(field) {
+
+        let fieldSearchText = fieldSearchTexts.get(field);
+
+        if (fieldSearchText === undefined) {
+            fieldSearchText = [field.fieldApiName, field.fieldLabel, field.controllingField, field.recipeValue].join('\\n').toLowerCase();
+            fieldSearchTexts.set(field, fieldSearchText);
+        }
+
+        return fieldSearchText;
+
+    }
+
+    function isFieldTextMatch(fieldState) {
+        return searchTextOf(fieldState.field).indexOf(filterQuery) !== -1 || fieldState.typeSearchText.indexOf(filterQuery) !== -1;
+    }
+
     function buildFieldState(field, fieldDiff, diffStatus) {
 
         return {
             field: field,
-            // LOWERCASED ONCE HERE RATHER THAN ON EVERY KEYSTROKE
-            searchText: [field.fieldApiName, field.fieldLabel, field.fieldType, field.controllingField, field.recipeValue].join('\\n').toLowerCase(),
+            typeSearchText: String(field.fieldType || '').toLowerCase(),
             isMatch: true,
             rowElement: null,
             diff: fieldDiff,
@@ -2971,9 +2992,27 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        A keystroke filters the view on SCREEN. Each view's auto-expand builds rows, and building
+        them into the hidden view would double what a keystroke costs for rows nobody sees; the
+        hidden view is filtered when it is switched to. With an empty find box nothing is
+        auto-expanded, so both are brought back to what the reader had open, and their counts filled.
+    */
+    function applyFiltersForView() {
+
+        if (viewMode === 'classic' || !filterQuery) { applyFilter(); }
+        if (viewMode === 'trees' || !filterQuery) { applyTreeFilter(); }
+
+    }
+
     function setViewMode(nextViewMode) {
 
+        const isSwitching = nextViewMode !== viewMode;
         viewMode = nextViewMode === 'classic' ? 'classic' : 'trees';
+
+        if (isSwitching && filterQuery) {
+            if (viewMode === 'classic') { applyFilter(); } else { applyTreeFilter(); }
+        }
 
         if (treesViewElement && classicViewElement && classicControlsElement) {
             [[treesViewElement, viewMode === 'trees'], [classicViewElement, viewMode === 'classic'], [classicControlsElement, viewMode === 'classic']].forEach(function (viewPart) {
@@ -3009,8 +3048,7 @@ ${this.buildPaletteCustomProperties()}
 
         return {
             field: field,
-            // LOWERCASED ONCE HERE RATHER THAN ON EVERY KEYSTROKE
-            searchText: [field.fieldApiName, field.fieldLabel, field.fieldTypeWithSize || field.fieldType, field.controllingField, field.recipeValue].join('\\n').toLowerCase(),
+            typeSearchText: String(field.fieldTypeWithSize || field.fieldType || '').toLowerCase(),
             isMatch: true,
             rowElement: null
         };
@@ -3038,7 +3076,13 @@ ${this.buildPaletteCustomProperties()}
     function requestPicklistValues(objectApiName, fieldApiName, picklistValuesElement) {
 
         picklistValuesElement.appendChild(createElement('div', 'picklistLoading muted', 'Loading values…'));
-        pendingPicklistValueElements[buildPicklistKey(objectApiName, fieldApiName)] = picklistValuesElement;
+        const picklistKey = buildPicklistKey(objectApiName, fieldApiName);
+
+        // A HAND-EDITED WRAPPER CAN REPEAT A FIELD, AND EVERY ROW THAT ASKED IS ANSWERED, NOT ONLY THE LAST
+        if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
+            pendingPicklistValueElements[picklistKey] = [];
+        }
+        pendingPicklistValueElements[picklistKey].push(picklistValuesElement);
         vscodeApi.postMessage({ command: 'loadPicklistValues', objectApiName: objectApiName, fieldApiName: fieldApiName });
 
     }
@@ -3052,15 +3096,19 @@ ${this.buildPaletteCustomProperties()}
 
         if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) { return; }
 
-        const picklistValuesElement = pendingPicklistValueElements[picklistKey];
+        const picklistValuesElements = pendingPicklistValueElements[picklistKey];
         delete pendingPicklistValueElements[picklistKey];
 
-        picklistValuesElement.textContent = '';
-        appendPicklistValueList(picklistValuesElement, picklistValuesMessage.picklistValues);
+        picklistValuesElements.forEach(function (picklistValuesElement) {
 
-        picklistValuesMessage.recordTypePicklistValues.forEach(function (recordTypeSection) {
-            picklistValuesElement.appendChild(createElement('div', 'recordTypeHeading', 'Record type: ' + recordTypeSection.recordTypeDeveloperName));
-            appendPicklistValueList(picklistValuesElement, recordTypeSection.picklistValues);
+            picklistValuesElement.textContent = '';
+            appendPicklistValueList(picklistValuesElement, picklistValuesMessage.picklistValues);
+
+            picklistValuesMessage.recordTypePicklistValues.forEach(function (recordTypeSection) {
+                picklistValuesElement.appendChild(createElement('div', 'recordTypeHeading', 'Record type: ' + recordTypeSection.recordTypeDeveloperName));
+                appendPicklistValueList(picklistValuesElement, recordTypeSection.picklistValues);
+            });
+
         });
 
     }
@@ -3334,7 +3382,8 @@ ${this.buildPaletteCustomProperties()}
 
     function renderTrees(recipe) {
 
-        const objectsByApiName = {};
+        // KEYED BY NAMES FROM THE WRAPPER ON DISK -- "__proto__" MUST BE A KEY, NOT A NEW PROTOTYPE
+        const objectsByApiName = Object.create(null);
         recipe.objects.forEach(function (object) { objectsByApiName[object.objectApiName] = object; });
 
         treeMatchCountElement = createElement('div', 'treeMatchCount muted');
@@ -3387,7 +3436,7 @@ ${this.buildPaletteCustomProperties()}
                 let objectMatchingFieldCount = 0;
 
                 treeObjectState.fieldStates.forEach(function (fieldState) {
-                    fieldState.isMatch = isObjectNameMatch || fieldState.searchText.indexOf(filterQuery) !== -1;
+                    fieldState.isMatch = isObjectNameMatch || isFieldTextMatch(fieldState);
                     if (fieldState.isMatch) { objectMatchingFieldCount++; }
                     applyTreeFieldVisibility(fieldState);
                 });
@@ -3457,7 +3506,7 @@ ${this.buildPaletteCustomProperties()}
 
         treeMatchCountElement.textContent = isFiltering
             ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') + ' · ' + matchingTreeCount + ' of ' + pluralize(searchedTreeCount, 'tree', 'trees')
-            : pluralize(totalFieldCount, 'field', 'fields') + ' · ' + pluralize(treeStates.length, 'tree', 'trees');
+            : pluralize(totalFieldCount, 'field', 'fields') + ' · ' + pluralize(searchedTreeCount, 'tree', 'trees');
 
     }
 
@@ -3494,9 +3543,8 @@ ${this.buildPaletteCustomProperties()}
         recipe.objects.forEach(renderObject);
         renderTrees(recipe);
 
-        applyFilter();
-        applyTreeFilter();
         setViewMode(viewMode);
+        applyFiltersForView();
 
     }
 
@@ -3514,6 +3562,7 @@ ${this.buildPaletteCustomProperties()}
         treeScopeStatusElement = null;
         viewButtonStates = [];
         pendingPicklistValueElements = Object.create(null);
+        fieldSearchTexts = new Map();
         matchCountElement = null;
         runSelectElement = null;
         statusFilterElement = null;

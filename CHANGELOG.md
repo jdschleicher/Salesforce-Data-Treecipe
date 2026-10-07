@@ -37,6 +37,13 @@ The cockpit listed every object in a run as one flat list. It didn't show which 
   - A wrapper with no or an empty `RecipeFiles` renders one card per recipe `.yml` in the run. Its objects are in file order with no lookups, and a notice says the tree data is missing.
   - An object no tree lists gets a "Not in a relationship tree" card, so it is never missing from the view.
   - A hand-edited wrapper that repeats a folder still gets two distinct cards.
+- **Found in review, and fixed:**
+  - **A keystroke filtered both views.** Each view's auto-expand builds rows, so a keystroke built up to 4,000 rows, half of them in the hidden view. It now filters only the view on screen, and the other view is filtered when the reader switches to it.
+  - **Each field's search text was built twice.** The two views now share one lowercased search text per field. Each view also matches against the type it draws, so `text(50)` matches in Recipe Trees and not in the Classic list.
+  - **An object named `__proto__` vanished from its card.** The panel's object index is now `Object.create(null)`.
+  - **The 🔍 scope miscounted with an empty find box.** It now counts only the scoped tree.
+  - **Rows sharing a key were not all answered.** When a hand-edited wrapper repeats a picklist field, every row that asked now gets the values, not only the last.
+  - **Picklist values were read twice per field.** The diff's copy and the display copy now share one array.
 - Open-source keys are allow-listed as before (pending → active on `rendered`). The tree's `↗ yml` and object links use the same keys as the Classic list.
 
 ### Measured

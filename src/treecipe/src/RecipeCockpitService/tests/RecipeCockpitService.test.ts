@@ -1897,6 +1897,8 @@ describe('RecipeCockpitService', () => {
                 filterInputElement.value = filterText;
                 filterInputElement.dispatch('input');
             },
+            // A KEYSTROKE FILTERS ONLY THE VIEW ON SCREEN, SO A TEST OF THE CLASSIC LIST'S FILTER SWITCHES TO IT FIRST, AS A READER WOULD
+            showClassicList: () => findAll(cockpitBodyElement, 'viewButton').find((element: any) => element.textContent === 'Classic list').dispatch('click'),
             postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
             raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent)
         };
@@ -2259,6 +2261,85 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        it('given an object named __proto__ in a hand-edited wrapper, still lists it in its card', () => {
+
+            const prototypeNamedObject = { objectApiName: '__proto__', recipeFilePath: '', recipeFileName: '', fields: [] as any[] };
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
+                objects: [prototypeNamedObject],
+                trees: [{ treeKey: '__proto__-ONLY', title: 'Relationship Tree 1', folderName: '__proto__-ONLY', fieldCount: 0, objects: [{ objectApiName: '__proto__', parentLookups: [] }] }]
+            }) });
+
+            const [treeCard] = treeCardsOf(panel);
+            expandTree(panel, treeCard);
+
+            expect(textOf(panel, treeCard, 'treeObjectName')).toEqual(['__proto__']);
+            expect(textOf(panel, treeCard, 'treeCount')).toEqual(['1 object · 0 fields']);
+
+        });
+
+        it('builds rows only in the view on screen, and filters the other when the reader switches to it', () => {
+
+            const { panel } = renderTreeRecipe();
+
+            panel.typeIntoFilter('rating');
+
+            expect(panel.findAll(viewOf(panel, 'treesView'), 'treeField').length).toBeGreaterThan(0);
+            expect(panel.findAll(viewOf(panel, 'classicView'), 'field')).toEqual([]);
+
+            panel.showClassicList();
+
+            expect(panel.findAll(viewOf(panel, 'classicView'), 'matchCount')[0].textContent).toBe('2 of 15 fields · 1 of 4 objects');
+            expect(panel.visibleFieldNamesOf(panel.objectElements()[0])).toEqual(['Rating__c', 'Sub_Rating__c']);
+
+        });
+
+        // WHAT IS SEARCHABLE IS WHAT IS ON SCREEN: THE SIZE IS DRAWN IN THE STRUCTURE TAB AND NOT IN THE CLASSIC LIST
+        it('matches a field by the type each view draws', () => {
+
+            const { panel } = renderTreeRecipe();
+
+            panel.typeIntoFilter('text(50)');
+            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('1 of 15 fields · 1 of 2 trees');
+
+            panel.showClassicList();
+            expect(panel.findAll(viewOf(panel, 'classicView'), 'matchCount')[0].textContent).toBe('0 of 15 fields · 0 of 4 objects');
+
+        });
+
+        it('given a 🔍 scope and an empty find box, counts the scoped tree only', () => {
+
+            const { panel } = renderTreeRecipe();
+
+            panel.findAll(treeCardsOf(panel)[0], 'treeScope')[0].dispatch('click');
+
+            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('13 fields · 1 tree');
+
+        });
+
+        it('answers every row that asked for the same picklist, not only the last', () => {
+
+            const { panel, recipe, loadedRecipe } = renderTreeRecipe();
+            const leadObject = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Lead');
+            const repeatedRecipe = { ...recipe, objects: recipe.objects.map(objectViewModel => objectViewModel === leadObject
+                ? { ...leadObject, fields: [...leadObject.fields, leadObject.fields.find(fieldViewModel => fieldViewModel.fieldApiName === 'Status')] }
+                : objectViewModel) };
+            panel.postToPanel({ command: 'recipeData', recipe: repeatedRecipe, renderSequence: 1 });
+
+            const [, leadTreeCard] = treeCardsOf(panel);
+            expandTree(panel, leadTreeCard);
+            const leadElement = treeObjectNamed(panel, leadTreeCard, 'Lead');
+            expandTreeObject(panel, leadElement);
+            panel.findAll(leadElement, 'picklistToggle').forEach((toggleElement: any) => toggleElement.dispatch('click'));
+
+            answerLastPicklistRequest(panel, loadedRecipe);
+
+            expect(panel.findAll(leadElement, 'picklistValues').map((element: any) => textOf(panel, element, 'picklistValue'))).toEqual([
+                ['Open', 'Closed'], ['Open', 'Closed']
+            ]);
+
+        });
+
         it('given a model with objects and no trees, says so in the trees view and keeps the Classic list', () => {
 
             const panel = runPanelScript();
@@ -2353,6 +2434,7 @@ describe('RecipeCockpitService', () => {
             const panel = renderFixtureRecipe();
             const [accountElement, contactElement] = panel.objectElements();
 
+            panel.showClassicList();
             panel.typeIntoFilter('industry');
 
             expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBe(false);
@@ -2372,6 +2454,7 @@ describe('RecipeCockpitService', () => {
             const panel = renderFixtureRecipe();
             const [, contactElement] = panel.objectElements();
 
+            panel.showClassicList();
             panel.typeIntoFilter('  CONTACT ');
 
             expect(panel.visibleFieldNamesOf(contactElement)).toEqual(['LastName', 'AccountId']);
@@ -2384,6 +2467,7 @@ describe('RecipeCockpitService', () => {
             const panel = renderFixtureRecipe();
             const [accountElement] = panel.objectElements();
 
+            panel.showClassicList();
             panel.typeIntoFilter('random_number');
 
             expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Number_of_Contacts__c']);
@@ -2396,6 +2480,7 @@ describe('RecipeCockpitService', () => {
             const [accountElement, contactElement] = panel.objectElements();
 
             panel.findAll(contactElement, 'toggle')[0].dispatch('click');
+            panel.showClassicList();
             panel.typeIntoFilter('industry');
             expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(true);
 
@@ -2421,6 +2506,7 @@ describe('RecipeCockpitService', () => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: buildRecipeViewModel({ objects: manyObjects }) });
 
+            panel.showClassicList();
             panel.typeIntoFilter('shared');
 
             const expandedObjectElements = panel.objectElements().filter(objectElement => !panel.isHidden(panel.objectBodyOf(objectElement)));
@@ -2451,6 +2537,7 @@ describe('RecipeCockpitService', () => {
                 buildWideObject('AlsoNarrow__c', 1)
             ] }) });
 
+            panel.showClassicList();
             panel.typeIntoFilter('shared');
 
             expect(panel.objectElements().map(objectElement => !panel.isHidden(panel.objectBodyOf(objectElement)))).toEqual([true, false, false]);
@@ -2885,6 +2972,7 @@ describe('RecipeCockpitService', () => {
             expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Legacy_Code__c']);
 
             chooseStatus(panel, 'unchanged');
+            panel.showClassicList();
             panel.typeIntoFilter('industry');
             expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Industry_Group__c']);
 
