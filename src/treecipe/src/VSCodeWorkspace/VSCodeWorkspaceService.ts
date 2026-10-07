@@ -6,6 +6,9 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
+// WHAT A FAKER-JS RUN FOLDER AND ITS RECIPE FILES ARE NAMED WITH, AND A SNOWFAKERY ONE IS NOT
+export const FAKER_JS_RECIPE_INDICATOR = 'recipe-fakerjs';
+
 
 /*
     The narrow port the directory walk reports through. Two plain functions and no vscode type, so
@@ -498,10 +501,37 @@ export class VSCodeWorkspaceService {
 
     }
 
+    /*
+        Which backend a recipe under GeneratedRecipes was generated for, by the rule the picker below
+        filters with: a faker-js recipe's file name carries "recipe-fakerjs" and so does its run
+        folder; a snowfakery recipe's name and folders carry it nowhere. A recipe whose name and
+        folders disagree is offered by the picker for neither backend, so it is undefined here.
+    */
+    static readRecipeFakerService(generatedRecipesFolderPath: string, recipeFilePath: string): 'faker-js' | 'snowfakery' | undefined {
+
+        const relativeRecipeFolderPath = path.relative(path.resolve(generatedRecipesFolderPath), path.dirname(path.resolve(recipeFilePath)));
+        const relativeFolderNames = relativeRecipeFolderPath === '' ? [] : relativeRecipeFolderPath.split(path.sep);
+
+        const isFakerJSFileName = path.basename(recipeFilePath).includes(FAKER_JS_RECIPE_INDICATOR);
+        const isUnderFakerJSFolder = relativeFolderNames.length === 0 || relativeFolderNames[0].includes(FAKER_JS_RECIPE_INDICATOR);
+        const isUnderSnowfakeryFolders = relativeFolderNames.every(folderName => !folderName.includes(FAKER_JS_RECIPE_INDICATOR));
+
+        if ( isFakerJSFileName && isUnderFakerJSFolder ) {
+            return 'faker-js';
+        }
+
+        if ( !isFakerJSFileName && isUnderSnowfakeryFolders ) {
+            return 'snowfakery';
+        }
+
+        return undefined;
+
+    }
+
     static async getAvailableRecipeFileQuickPickItemsByDirectory(recipeFileQuickPickItems: vscode.QuickPickItem[], folderPathToParse: string) {
 
         const selectedDataFakerService = ConfigurationService.getSelectedDataFakerServiceConfig();
-        const expectedFakerJSRecipeFileIndicator = 'recipe-fakerjs';
+        const expectedFakerJSRecipeFileIndicator = FAKER_JS_RECIPE_INDICATOR;
 
         const entries = await fs.promises.readdir(folderPathToParse, { withFileTypes: true });
         for (const entry of entries) {

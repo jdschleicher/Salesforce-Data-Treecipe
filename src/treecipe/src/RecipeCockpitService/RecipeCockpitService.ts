@@ -134,6 +134,11 @@ export const RECIPE_COCKPIT_UNGROUPED_TREE_TITLE = 'Not in a relationship tree';
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
 
+// A TREE CARD'S ▶ Run Faker HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND BACKEND CHECK
+export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
+export const RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL = '▶ Run Faker';
+export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker…';
+
 export const RECIPE_COCKPIT_TREE_TABS = ['structure', 'versions', 'datasets'] as const;
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
@@ -273,6 +278,10 @@ export interface IRecipeCockpitTreeObjectViewModel {
     keeps across runs. The ungrouped card, and a recipe file with no tree folder, have none, and
     the panel draws no history tabs for them.
 */
+/*
+    runFakerRecipeFileName is set only on a card ▶ Run Faker can run: the recipe FILE NAME, for the
+    button's tooltip. The path stays on the host; the panel posts the treeKey.
+*/
 export interface IRecipeCockpitTreeViewModel {
     treeKey: string;
     title: string;
@@ -280,6 +289,7 @@ export interface IRecipeCockpitTreeViewModel {
     objects: IRecipeCockpitTreeObjectViewModel[];
     fieldCount: number;
     history?: IRecipeCockpitTreeHistoryViewModel;
+    runFakerRecipeFileName?: string;
 }
 
 export interface IRecipeCockpitRecipeViewModel {
@@ -474,6 +484,17 @@ export interface IRecipeCockpitDatasetRecordCountsMessage {
     renderSequence: number;
 }
 
+/*
+    Whether a Run Faker started from this panel is still running. Every Run Faker button is disabled
+    while it is, and the message is replayed on a reveal so a reloaded document does not offer a
+    second run the host would refuse.
+*/
+export interface IRecipeCockpitRunFakerStateMessage {
+    command: 'runFakerState';
+    isRunning: boolean;
+    treeKey: string;
+}
+
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
@@ -481,7 +502,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitOrgProgressMessage
                                         | IRecipeCockpitPicklistValuesMessage
                                         | IRecipeCockpitVersionSummariesMessage
-                                        | IRecipeCockpitDatasetRecordCountsMessage;
+                                        | IRecipeCockpitDatasetRecordCountsMessage
+                                        | IRecipeCockpitRunFakerStateMessage;
 
 /*
     The loader's whole answer: what is posted, the picklist values that stay on the host for the
@@ -505,6 +527,7 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     openableDatasetFolderNames: Set<string>;
     insertableDatasetFolderNames: Set<string>;
     countableDatasetFolderNames: Set<string>;
+    runnableTreeKeys: Set<string>;
 }
 
 /*
@@ -524,7 +547,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
     | { kind: 'diffTreeVersion'; versionRecipeFilePath: string; currentRecipeFilePath: string; diffTitle: string }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
-    | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus };
+    | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
+    | { kind: 'runFaker'; treeKey: string; recipeFilePath: string };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -568,6 +592,7 @@ export interface IRecipeCockpitPanelState {
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     isOrgDescribeInFlight: boolean;
     isRegenerateInFlight: boolean;
+    runFakerStateMessage?: IRecipeCockpitRunFakerStateMessage;
     reportedFailureDescriptions: Set<string>;
 }
 
@@ -616,7 +641,8 @@ export class RecipeCockpitService {
             diffKeys: new Set(),
             openableDatasetFolderNames: new Set(),
             insertableDatasetFolderNames: new Set(),
-            countableDatasetFolderNames: new Set()
+            countableDatasetFolderNames: new Set(),
+            runnableTreeKeys: new Set()
         };
 
     }
@@ -627,6 +653,10 @@ export class RecipeCockpitService {
         const treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
 
         recipeViewModel.trees.forEach(tree => {
+
+            if ( tree.runFakerRecipeFileName ) {
+                treeHistoryAllowLists.runnableTreeKeys.add(tree.treeKey);
+            }
 
             if ( !tree.history ) {
                 return;
@@ -1067,6 +1097,70 @@ export class RecipeCockpitService {
 
             }
 
+            case 'runFaker':
+
+                await this.runFakerForTree(cockpitPanel, panelState, panelAction.treeKey, panelAction.recipeFilePath);
+                return;
+
+        }
+
+    }
+
+    /*
+        Runs one tree's recipe through Run Faker by Recipe, then reloads the run on screen with the
+        card on its Previous Fake Sets tab, so the data set it wrote is listed there.
+
+        The reload happens however the command ends -- written, failed, refused or cancelled at its
+        modal -- because the panel disabled every Run Faker button on the click, and a run that left
+        them disabled would leave a card that can never be run again. The state message is posted
+        once more after the reload, for a reload that could not render a model to re-enable them.
+
+        A recipe file gone since the model was drawn is said so here and nothing runs; the command
+        checks again on its own, since it is callable by id.
+    */
+    private static async runFakerForTree(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            treeKey: string,
+                                            recipeFilePath: string) {
+
+        const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
+        const selectedRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
+
+        panelState.runFakerStateMessage = { command: 'runFakerState', isRunning: true, treeKey: treeKey };
+        this.postToPanel(cockpitPanel, panelState.runFakerStateMessage);
+
+        let hasRunFailed = false;
+        let runError: unknown;
+
+        try {
+
+            if ( this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
+                try {
+                    await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath);
+                } catch (commandError) {
+                    hasRunFailed = true;
+                    runError = commandError;
+                }
+            } else {
+                VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" no longer exists in this workspace, so Run Faker did not run. The Recipe Cockpit has reloaded the run.`);
+            }
+
+            if ( isPanelStillCurrent() ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
+            }
+
+        } finally {
+
+            panelState.runFakerStateMessage = undefined;
+
+            if ( isPanelStillCurrent() ) {
+                this.postToPanel(cockpitPanel, { command: 'runFakerState', isRunning: false, treeKey: treeKey });
+            }
+
+        }
+
+        if ( hasRunFailed ) {
+            throw runError;
         }
 
     }
@@ -1861,6 +1955,27 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                The tree's KEY -- its folder name -- never a path: the recipe file is looked up in
+                the host-only targets of the confirmed-drawn model, and one run at a time.
+            */
+            case 'runFaker': {
+
+                const { treeKey } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || panelState.runFakerStateMessage
+                        || !panelState.treeHistoryAllowLists.runnableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+
+                return recipeFilePath ? { kind: 'runFaker', treeKey: treeKey, recipeFilePath: recipeFilePath } : undefined;
+
+            }
+
         }
 
         return undefined;
@@ -1898,6 +2013,10 @@ export class RecipeCockpitService {
 
         if ( panelState.recipeDataMessage && panelState.orgProgressMessage ) {
             replayMessages.push(panelState.orgProgressMessage);
+        }
+
+        if ( panelState.runFakerStateMessage ) {
+            replayMessages.push(panelState.runFakerStateMessage);
         }
 
         if ( panelState.loadFailedMessage ) {
@@ -2139,6 +2258,10 @@ export class RecipeCockpitService {
             const treeHistory = treeHistoryBuild.historiesByTreeKey.get(tree.treeKey);
             if ( treeHistory ) {
                 tree.history = treeHistory;
+            }
+            const runFakerRecipeFilePath = treeHistoryBuild.targets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
+            if ( runFakerRecipeFilePath ) {
+                tree.runFakerRecipeFileName = path.basename(runFakerRecipeFilePath);
             }
         });
 
@@ -3010,7 +3133,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeHeader { padding: 0.5rem 0.6rem; background-color: var(--sdt-header); }
     .treeTitle { font-weight: 600; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction {
         background: none;
         border: none;
         padding: 0;
@@ -3020,6 +3143,8 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 4px;
     }
     .treeScope { margin-left: auto; padding: 0 0.3rem; }
+    .treeRunFaker { padding: 0 0.3rem; }
+    .treeRunFaker:disabled { opacity: 0.6; cursor: default; }
     .treeScope.selected { outline: 1px solid var(--sdt-accent); }
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.75rem; padding: 0.3rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
@@ -3080,6 +3205,8 @@ ${this.buildPaletteCustomProperties()}
     const DIFF_PICKLIST_VALUES_SHOWN = ${RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN};
     const REGENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL)};
     const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
+    const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
+    const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
 
     let objectStates = [];
     // WHICH VIEW IS ON SCREEN OUTLIVES A MODEL, SO SWITCHING RUNS DOES NOT THROW THE READER BACK TO THE DEFAULT
@@ -3101,6 +3228,8 @@ ${this.buildPaletteCustomProperties()}
     let orgProgressElement = null;
     let renderedRunFolderName = '';
     let renderedSequence = null;
+    // THE TREE WHOSE RUN FAKER IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
+    let runFakerRunningTreeKey = null;
 
     /*
         Every node the panel draws is made here and filled through textContent, so nothing from the
@@ -4229,11 +4358,56 @@ ${this.buildPaletteCustomProperties()}
         treeHeaderElement.appendChild(treeState.matchElement);
         treeHeaderElement.appendChild(scopeElement);
 
+        if (tree.runFakerRecipeFileName) {
+            treeState.runFakerElement = buildRunFakerElement(tree);
+            treeHeaderElement.appendChild(treeState.runFakerElement);
+        }
+
         treeElement.appendChild(treeHeaderElement);
         treeElement.appendChild(treeState.bodyElement);
         treesViewElement.appendChild(treeElement);
 
         treeStates.push(treeState);
+
+    }
+
+    /*
+        Posts the tree's KEY; the host looks its recipe file up. Every Run Faker button is disabled
+        on the click, before the host answers, so a second click cannot start a second run -- the
+        host's runFakerState is what enables them again.
+    */
+    function buildRunFakerElement(tree) {
+
+        const runFakerElement = createElement('button', 'treeRunFaker', RUN_FAKER_ACTION_LABEL);
+
+        runFakerElement.setAttribute('title', 'Run Faker by Recipe on ' + tree.runFakerRecipeFileName);
+        runFakerElement.setAttribute('aria-label', 'Run Faker on ' + tree.title + ' (' + tree.runFakerRecipeFileName + ')');
+        runFakerElement.addEventListener('click', function () {
+            if (runFakerRunningTreeKey !== null) { return; }
+            setRunFakerRunning(tree.treeKey);
+            vscodeApi.postMessage({ command: 'runFaker', treeKey: tree.treeKey });
+        });
+
+        applyRunFakerStateTo(tree, runFakerElement);
+
+        return runFakerElement;
+
+    }
+
+    function applyRunFakerStateTo(tree, runFakerElement) {
+
+        runFakerElement.disabled = runFakerRunningTreeKey !== null;
+        runFakerElement.textContent = runFakerRunningTreeKey === tree.treeKey ? RUN_FAKER_RUNNING_LABEL : RUN_FAKER_ACTION_LABEL;
+
+    }
+
+    function setRunFakerRunning(runningTreeKey) {
+
+        runFakerRunningTreeKey = runningTreeKey;
+
+        treeStates.forEach(function (treeState) {
+            if (treeState.runFakerElement) { applyRunFakerStateTo(treeState.tree, treeState.runFakerElement); }
+        });
 
     }
 
@@ -4722,6 +4896,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'datasetRecordCounts') {
             renderDatasetRecordCounts(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'runFakerState') {
+            setRunFakerRunning(hostMessage.isRunning ? hostMessage.treeKey : null);
             return;
         }
 

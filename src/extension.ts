@@ -37,10 +37,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
-	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', () => {
+	/*
+		The Recipe Cockpit's Run Faker passes the recipe file of its tree; the palette passes nothing
+		and gets the recipe picker. Returned so executeCommand settles when the data set is written,
+		which is when the cockpit reloads the tree's history.
+	*/
+	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', (recipeFilePath?: unknown) => {
 
 		const extensionCommandService = new ExtensionCommandService();
-		extensionCommandService.runFakerGenerationByRecipeFile();
+		return extensionCommandService.runFakerGenerationByRecipeFile(
+			typeof recipeFilePath === 'string' ? recipeFilePath : undefined
+		);
 
 	});
 

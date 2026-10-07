@@ -10,6 +10,7 @@ import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipePro
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { DatasetSourceService } from "../DatasetSourceService/DatasetSourceService";
 import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
+import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
@@ -118,17 +119,44 @@ export class ExtensionCommandService {
 
     }
 
-    async runFakerGenerationByRecipeFile() {
+    /*
+        The palette passes nothing and gets the recipe picker. The Recipe Cockpit's Run Faker passes
+        the recipe file of the tree it was clicked on -- but the command is callable by id, so a
+        path is held to what the picker could have offered before anything reads it.
+    */
+    async runFakerGenerationByRecipeFile(recipeFilePath?: string) {
 
         try {
             
             const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
-            const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
-            const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
-            if (!selectedRecipeFilePathNameQuickPickItem) {
-                return;
+            let recipeFullFileNamePath: string;
+
+            if ( recipeFilePath === undefined ) {
+
+                const vsCodeQuickPickItemPromptLabel = 'Select recipe file to process';
+                const selectedRecipeFilePathNameQuickPickItem:vscode.QuickPickItem  = await VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection(expectedGeneratedRecipesFolderPath, vsCodeQuickPickItemPromptLabel);
+                if (!selectedRecipeFilePathNameQuickPickItem) {
+                    return;
+                }
+                recipeFullFileNamePath = selectedRecipeFilePathNameQuickPickItem.detail;
+
+            } else {
+
+                const recipeFilePathRefusal = ExtensionCommandService.findRecipeFilePathRefusal(
+                    recipeFilePath,
+                    path.join(VSCodeWorkspaceService.getWorkspaceRoot(), expectedGeneratedRecipesFolderPath),
+                    VSCodeWorkspaceService.getWorkspaceRoot(),
+                    ConfigurationService.getSelectedDataFakerServiceConfig()
+                );
+
+                if ( recipeFilePathRefusal ) {
+                    VSCodeWorkspaceService.showWarningMessage(recipeFilePathRefusal);
+                    return;
+                }
+
+                recipeFullFileNamePath = recipeFilePath;
+
             }
-            const recipeFullFileNamePath = selectedRecipeFilePathNameQuickPickItem.detail;
 
             const recipeYamlContent = fs.readFileSync(recipeFullFileNamePath, 'utf8');
             const parsedRecipeYaml = yaml.load(recipeYamlContent) as any[];
@@ -172,7 +200,7 @@ export class ExtensionCommandService {
             const baseArtifactsFoldername = ConfigurationService.getBaseArtifactsFolderName();
             const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
-            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${selectedRecipeFilePathNameQuickPickItem.label}`);
+            fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${path.basename(recipeFullFileNamePath)}`);
 
             /* 
                 The below lines get the timestamped parent recipe folder 
@@ -216,6 +244,49 @@ export class ExtensionCommandService {
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
+
+    }
+
+    /*
+        Why a recipe path handed to Run Faker by Recipe will not be run, or undefined when it will.
+        Containment is checked before the file is looked at, so a path outside the workspace is
+        never read; and a backend mismatch is refused by the rule the picker filters with, since a
+        recipe the picker would not offer is one the selected backend cannot run.
+    */
+    static findRecipeFilePathRefusal(recipeFilePath: string,
+                                        generatedRecipesFolderPath: string,
+                                        workspaceRoot: string,
+                                        selectedFakerService: string): string | undefined {
+
+        const recipeFileName = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        const resolvedRecipeFilePath = path.resolve(recipeFilePath);
+
+        if ( path.extname(recipeFilePath) !== '.yml' ) {
+            return `"${recipeFileName}" is not a .yml recipe file, so no data was generated.`;
+        }
+
+        const isInsideGeneratedRecipes = SfdxProjectService.isPathContainedInWorkspace(resolvedRecipeFilePath, path.resolve(generatedRecipesFolderPath))
+                                            && SfdxProjectService.isPathContainedInWorkspace(resolvedRecipeFilePath, path.resolve(workspaceRoot));
+
+        if ( !isInsideGeneratedRecipes ) {
+            return `"${recipeFileName}" is not a recipe inside this workspace's GeneratedRecipes folder, so no data was generated.`;
+        }
+
+        if ( !fs.existsSync(resolvedRecipeFilePath) || !fs.statSync(resolvedRecipeFilePath).isFile() ) {
+            return `The recipe file "${recipeFileName}" no longer exists, so no data was generated.`;
+        }
+
+        const recipeFakerService = VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, resolvedRecipeFilePath);
+
+        if ( recipeFakerService === undefined ) {
+            return `"${recipeFileName}" has a file name and folder that disagree on which faker implementation generated it, so no data was generated.`;
+        }
+
+        if ( recipeFakerService !== selectedFakerService ) {
+            return `This recipe was generated for ${recipeFakerService} — switch with "Select Faker Implementation".`;
+        }
+
+        return undefined;
 
     }
 

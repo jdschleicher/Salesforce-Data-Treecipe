@@ -1,5 +1,39 @@
 # Change Log
 
+## [3.34.0] - Run Faker from a Recipe Cockpit tree card
+
+Closes [#178](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/178), slice 5 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Generating data for one tree meant leaving the cockpit, running **Run Faker by Recipe**, and finding the right file in a recursive picker. Each tree card now has a **▶ Run Faker** button.
+
+- **▶ Run Faker on each tree card.**
+  - It runs that tree's recipe from the run on screen. Its tooltip names the recipe file.
+  - It appears only on a card whose folder holds exactly one `.yml` recipe in that run, inside the workspace.
+  - When the run ends (written, failed, refused or cancelled at the modal), the cockpit reloads the run with the card open on **Previous Fake Sets**. The new data set is listed there and in **Previous Versions**.
+  - While it runs, every Run Faker button is disabled. The button you clicked reads *Running Faker…*. A reload of the panel mid-run keeps them disabled.
+- **The panel posts the tree's key, never a path.**
+  - The host looks the recipe file up in a host-only map built with the model (`runFakerRecipeFilePathsByTreeKey`).
+  - A new pending/active allow-list (`runnableTreeKeys`) holds only what the confirmed-drawn model offered. It follows the same rules as the other history actions: promoted on `rendered`, emptied on `ready`, on a new post and on a failure to draw.
+  - Only one run at a time is routed.
+  - A recipe file deleted after the draw gets a "no longer exists" warning, nothing runs, and the run is reloaded.
+- **Run Faker by Recipe takes an optional recipe path:** `runFakerGenerationByRecipeFile(recipeFilePath?: string)`.
+  - Its registration returns the handler's promise, so the cockpit reloads when the data set is written.
+  - Without a path, the palette command works exactly as before.
+  - With a path, it skips the picker but keeps the confirmation modal and the configured backend. It runs nothing and warns for any of these:
+    - a path that is not a `.yml` file
+    - a path outside `GeneratedRecipes/`, or one that fails `isPathContainedInWorkspace`
+    - a file that no longer exists
+    - a recipe generated for the other backend: *This recipe was generated for faker-js — switch with "Select Faker Implementation".* (or *snowfakery*)
+  - The backend rule is `VSCodeWorkspaceService.readRecipeFakerService`. A test holds it to the picker's real walk over a real directory for both backends, so the two cannot drift.
+- Snowfakery still runs through `execFile` with no shell ([#115](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/115)).
+
+**Tests.**
+- **Handler:** with a path for both backends (picker skipped, modal kept, data set written); without a path (picker used); refusal of an outside, out-of-`GeneratedRecipes`, `..`, `.yaml` and non-recipe path; a deleted file; a backend mismatch each way; a cancelled modal.
+- **Snowfakery:** the recipe path reaches `execFile` as one argument, with no `shell` option and no `exec`.
+- **Registration** returns the run's promise and passes only a string path.
+- **Cockpit routing:** each card's file name with its path kept on the host; no button for a recipe outside the workspace; resolution through the host map; refusal before the draw is confirmed, for an unknown key, for a wrong payload type and while a run is in flight; the running state replayed after the model.
+- **Cockpit execution:** the command handed the file; the reload focused on **Previous Fake Sets** showing the new data set; a second run refused mid-run; a failed command still reloads and re-enables; a cancelled modal; a deleted recipe file; no run from a reloaded document.
+- **Panel:** the button and its tooltip; every button disabled on a click and across a reload; re-enabled by the host's `runFakerState`.
 ## [3.33.0] - faker-js recipes nest related objects under friends: and wire their lookups
 
 Closes [#46](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/46), under [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
