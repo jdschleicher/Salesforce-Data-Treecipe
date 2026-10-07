@@ -35,15 +35,25 @@ export type DatasetSourceFakerService = 'faker-js' | 'snowfakery';
 
 export type DatasetSourceStatus = 'linked' | 'unreadable' | 'absent' | 'unknown';
 
+export type DatasetSourceOrigin = 'runFaker' | 'createInOrg';
+
+/*
+    origin "createInOrg" is a data set the Recipe Cockpit's Create made and INSERTED (#180): it also
+    names the org (by username), the one object created, and the Ids the insert returned. Those three
+    are present exactly when the origin is createInOrg.
+*/
 export interface IDatasetSource {
     schemaVersion: 1;
-    origin: 'runFaker';
+    origin: DatasetSourceOrigin;
     recipeRunFolderName: string | null;
     recipeTreeFolderName: string | null;
     recipeFileName: string;
     fakerService: DatasetSourceFakerService;
     generatedAt: string;
     recordCountsByObject: Record<string, number>;
+    orgUsername?: string;
+    createdObjectApiName?: string;
+    createdRecordIds?: string[];
 }
 
 export interface IRecipeSourceNames {
@@ -158,6 +168,24 @@ export class DatasetSourceService {
             fakerService: fakerService,
             generatedAt: generatedAt,
             recordCountsByObject: recordCountsByObject
+        };
+
+    }
+
+    static buildCreateInOrgDatasetSource(recipeSourceNames: IRecipeSourceNames,
+                                            fakerService: DatasetSourceFakerService,
+                                            generatedAt: string,
+                                            recordCountsByObject: Record<string, number>,
+                                            orgUsername: string,
+                                            createdObjectApiName: string,
+                                            createdRecordIds: string[]): IDatasetSource {
+
+        return {
+            ...this.buildDatasetSource(recipeSourceNames, fakerService, generatedAt, recordCountsByObject),
+            origin: 'createInOrg',
+            orgUsername: orgUsername,
+            createdObjectApiName: createdObjectApiName,
+            createdRecordIds: [...createdRecordIds]
         };
 
     }
@@ -282,8 +310,17 @@ export class DatasetSourceService {
                                         typeof recordCount === 'number' && Number.isInteger(recordCount) && recordCount >= 0
                                     ));
 
+        const isCreateInOrg = candidate.origin === 'createInOrg';
+        const isCreateInOrgDetailValid = !isCreateInOrg || (
+            typeof candidate.orgUsername === 'string'
+            && typeof candidate.createdObjectApiName === 'string'
+            && Array.isArray(candidate.createdRecordIds)
+            && candidate.createdRecordIds.every(createdRecordId => typeof createdRecordId === 'string')
+        );
+
         const isValid = candidate.schemaVersion === DATASET_SOURCE_SCHEMA_VERSION
-                        && candidate.origin === 'runFaker'
+                        && (candidate.origin === 'runFaker' || isCreateInOrg)
+                        && isCreateInOrgDetailValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
                         && typeof candidate.recipeFileName === 'string'
@@ -302,13 +339,18 @@ export class DatasetSourceService {
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
-            origin: 'runFaker',
+            origin: isCreateInOrg ? 'createInOrg' : 'runFaker',
             recipeRunFolderName: candidate.recipeRunFolderName as string | null,
             recipeTreeFolderName: candidate.recipeTreeFolderName as string | null,
             recipeFileName: candidate.recipeFileName as string,
             fakerService: candidate.fakerService as DatasetSourceFakerService,
             generatedAt: candidate.generatedAt as string,
-            recordCountsByObject: recordCountsByObject
+            recordCountsByObject: recordCountsByObject,
+            ...( isCreateInOrg ? {
+                orgUsername: candidate.orgUsername as string,
+                createdObjectApiName: candidate.createdObjectApiName as string,
+                createdRecordIds: [...(candidate.createdRecordIds as string[])]
+            } : {} )
         };
 
     }

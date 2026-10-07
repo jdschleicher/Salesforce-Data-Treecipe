@@ -81,7 +81,8 @@ describe('SalesforceOrgService', () => {
                 referenceTo: [],
                 isNillable: true,
                 isCreateable: true,
-                isCalculated: false
+                isCalculated: false,
+                isDefaultedOnCreate: false
             });
 
             expect(normalizedDescribe.fields.find(field => field.fieldApiName === 'Region__c').picklistValues).toEqual([
@@ -138,6 +139,7 @@ describe('SalesforceOrgService', () => {
             expect(normalizedDescribe).toEqual({
                 objectApiName: 'Widget__c',
                 objectLabel: '',
+                isCreateable: false,
                 fields: [{
                     fieldApiName: 'Odd__c',
                     fieldLabel: '',
@@ -150,7 +152,8 @@ describe('SalesforceOrgService', () => {
                     referenceTo: ['Account'],
                     isNillable: false,
                     isCreateable: false,
-                    isCalculated: false
+                    isCalculated: false,
+                    isDefaultedOnCreate: false
                 }]
             });
 
@@ -617,4 +620,45 @@ describe('SalesforceOrgService', () => {
 
     });
 
+    describe('queryRecordIds', () => {
+
+        it('asks for up to 2000 Ids and keeps only what is Id-shaped', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [
+                { Id: '001000000000001AAA' }, { Id: '001000000000002' }, { Id: 'not an id!' }, { Id: 7 }, null
+            ] }) };
+
+            expect(await SalesforceOrgService.queryRecordIds(querySource, 'Account')).toEqual(['001000000000001AAA', '001000000000002']);
+            expect(querySource.query).toHaveBeenCalledWith('SELECT Id FROM Account LIMIT 2000');
+
+        });
+
+        it('refuses a name that is not an api name before any query', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn() };
+
+            await expect(SalesforceOrgService.queryRecordIds(querySource, 'Account; DELETE')).rejects.toThrow();
+            expect(querySource.query).not.toHaveBeenCalled();
+
+        });
+
+    });
+
+    describe('normalizeDescribeResult, what a Create reads', () => {
+
+        it('carries the object\'s createable and each field\'s defaultedOnCreate', () => {
+
+            const normalizedDescribe = SalesforceOrgService.normalizeDescribeResult('Account', {
+                name: 'Account', createable: true,
+                fields: [{ name: 'OwnerId', type: 'reference', nillable: false, createable: true, defaultedOnCreate: true, referenceTo: ['Group', 'User'] }]
+            });
+
+            expect(normalizedDescribe.isCreateable).toBe(true);
+            expect(normalizedDescribe.fields[0].isDefaultedOnCreate).toBe(true);
+
+        });
+
+    });
+
 });
+

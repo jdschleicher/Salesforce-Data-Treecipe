@@ -52,11 +52,14 @@ export interface INormalizedOrgField {
     isNillable: boolean;
     isCreateable: boolean;
     isCalculated: boolean;
+    isDefaultedOnCreate: boolean;
 }
 
+// isCreateable IS THE OBJECT'S OWN "createable" -- WHETHER THE USER CAN INSERT RECORDS OF IT AT ALL
 export interface INormalizedOrgObjectDescribe {
     objectApiName: string;
     objectLabel: string;
+    isCreateable: boolean;
     fields: INormalizedOrgField[];
 }
 
@@ -128,6 +131,10 @@ export interface IOrgTypeDetail {
 }
 
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
+
+export const ORG_PARENT_RECORD_ID_LIMIT = 2000;
+
+const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 export const ORG_ORGANIZATION_QUERY = 'SELECT IsSandbox, OrganizationType FROM Organization';
 
@@ -276,6 +283,27 @@ export class SalesforceOrgService {
         });
 
         return { outcomes: outcomes, wasCancelled: wasCancelled };
+
+    }
+
+    /*
+        Up to 2000 Ids of one object -- the parents a Create picks from at random. The name is held
+        to the api-name rule before it is put in the SOQL, and every Id is type-checked: the answer
+        came over the network, and what is kept is written into a record's lookup field.
+    */
+    static async queryRecordIds(querySource: IOrgQuerySource, objectApiName: string): Promise<string[]> {
+
+        if ( !this.isUsableObjectApiName(objectApiName) ) {
+            throw new Error(`"${objectApiName}" is ${ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE}.`);
+        }
+
+        const queryRecords = this.asRecord(await querySource.query(`SELECT Id FROM ${objectApiName} LIMIT ${ORG_PARENT_RECORD_ID_LIMIT}`))?.records;
+
+        return Array.isArray(queryRecords)
+            ? queryRecords
+                .map(queryRecord => this.asRecord(queryRecord)?.Id)
+                .filter((recordId): recordId is string => typeof recordId === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(recordId))
+            : [];
 
     }
 
@@ -561,7 +589,8 @@ export class SalesforceOrgService {
                     : [],
                 isNillable: fieldRecord.nillable === true,
                 isCreateable: fieldRecord.createable === true,
-                isCalculated: fieldRecord.calculated === true
+                isCalculated: fieldRecord.calculated === true,
+                isDefaultedOnCreate: fieldRecord.defaultedOnCreate === true
             });
 
         });
@@ -571,6 +600,7 @@ export class SalesforceOrgService {
         return {
             objectApiName: typeof describedObjectApiName === 'string' && describedObjectApiName ? describedObjectApiName : requestedObjectApiName,
             objectLabel: this.asString(describeRecord.label),
+            isCreateable: describeRecord.createable === true,
             fields: fields
         };
 

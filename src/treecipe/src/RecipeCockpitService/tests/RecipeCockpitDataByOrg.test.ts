@@ -225,6 +225,17 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
+        it('says why when the authorized orgs could not be listed', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'listAuthorizedOrgDetails').mockRejectedValue(new Error('auth files unreadable'));
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], noOrgsMessage: 'The authorized Salesforce orgs could not be listed: auth files unreadable' });
+
+        });
+
         it('says there are no authorized orgs with the existing message', async () => {
 
             jest.spyOn(SalesforceOrgService, 'listAuthorizedOrgDetails').mockResolvedValue([]);

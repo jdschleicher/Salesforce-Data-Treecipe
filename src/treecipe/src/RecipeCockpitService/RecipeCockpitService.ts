@@ -2,11 +2,13 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import type { Connection } from '@salesforce/core';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import {
     IOrgDescribeRequestResult,
+    IOrgDescribeSource,
     IOrgQuerySource,
     IOrgRecordCountOutcome,
     IOrgTypeDetail,
@@ -22,6 +24,14 @@ import {
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
 import { IScannedObject, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import {
+    IRecipeCockpitCreateReadinessViewModel,
+    IRequiredLookupParentIds,
+    RecipeCockpitRecordCreation,
+    RECIPE_COCKPIT_CREATE_MAX_COUNT
+} from './RecipeCockpitRecordCreation';
+import { CollectionsApiService } from '../CollectionsApiService/CollectionsApiService';
+import { RecordTypeService } from '../RecordTypeService/RecordTypeService';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
@@ -402,6 +412,7 @@ export interface IRecipeCockpitPanelMessage {
     fieldApiName?: unknown;
     treeKey?: unknown;
     orgIndex?: unknown;
+    count?: unknown;
     datasetFolderName?: unknown;
     tab?: unknown;
     message?: unknown;
@@ -591,6 +602,40 @@ export interface IRecipeCockpitDataOrgCountsMessage {
     renderSequence: number;
 }
 
+/*
+    What the last Create of one object in one tree did, as its row shows it. Kept on the host per org
+    USERNAME, tree and object, and posted with the readiness of the org it was made in, so it
+    survives the reload a Create ends with.
+*/
+export interface IRecipeCockpitCreateResultViewModel {
+    treeKey: string;
+    objectApiName: string;
+    createdCount: number;
+    failedCount: number;
+    message: string;
+}
+
+/*
+    Whether "+ Create" is offered for each object the trees list, in the org the selection names --
+    and the last Create made there. Posted once the counts are in, since a required parent's record
+    count is part of the answer.
+*/
+export interface IRecipeCockpitDataOrgReadinessMessage {
+    command: 'dataOrgReadiness';
+    objects: IRecipeCockpitCreateReadinessViewModel[];
+    createResults: IRecipeCockpitCreateResultViewModel[];
+    requestSequence: number;
+    renderSequence: number;
+}
+
+// A CREATE IN FLIGHT DISABLES EVERY "+ Create"; REPLAYED ON A RELOAD SO A RELOADED DOCUMENT DOES NOT OFFER A SECOND
+export interface IRecipeCockpitCreateStateMessage {
+    command: 'createState';
+    isRunning: boolean;
+    treeKey: string;
+    objectApiName: string;
+}
+
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
@@ -602,7 +647,17 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRunFakerStateMessage
                                         | IRecipeCockpitDataOrgListMessage
                                         | IRecipeCockpitDataOrgSelectionMessage
-                                        | IRecipeCockpitDataOrgCountsMessage;
+                                        | IRecipeCockpitDataOrgCountsMessage
+                                        | IRecipeCockpitDataOrgReadinessMessage
+                                        | IRecipeCockpitCreateStateMessage;
+
+export const RECIPE_COCKPIT_CREATE_CONFIRM_LABEL = 'Create';
+
+// A STORED CREATE RESULT, WITH THE HOST-ONLY RESULTS FILE "View errors" OPENS
+export interface IRecipeCockpitStoredCreateResult {
+    viewModel: IRecipeCockpitCreateResultViewModel;
+    resultsFilePath: string;
+}
 
 // THE SLICE OF vscode.Memento THE COCKPIT USES, SO A TEST CAN HAND IN A MAP
 export interface IRecipeCockpitWorkspaceState {
@@ -673,7 +728,10 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postRunFakerState'; hostMessage: IRecipeCockpitRunFakerStateMessage }
     | { kind: 'loadDataOrgs' }
     | { kind: 'selectDataOrg'; orgIndex: number }
-    | { kind: 'refreshDataOrgCounts' };
+    | { kind: 'refreshDataOrgCounts' }
+    | { kind: 'createRecords'; treeKey: string; objectApiName: string; recordCount: number; recipeFilePath: string }
+    | { kind: 'postCreateState'; hostMessage: IRecipeCockpitCreateStateMessage }
+    | { kind: 'viewCreateErrors'; resultsFilePath: string };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -725,6 +783,10 @@ export interface IRecipeCockpitPanelState {
     dataOrgUsername?: string;
     dataOrgSelection?: IRecipeCockpitDataOrgSelection;
     dataOrgRequestSequence: number;
+    pendingCreatableObjectKeys: Set<string>;
+    creatableObjectKeys: Set<string>;
+    createStateMessage?: IRecipeCockpitCreateStateMessage;
+    dataOrgCreateResults: Map<string, IRecipeCockpitStoredCreateResult>;
 }
 
 /*
@@ -844,7 +906,10 @@ export class RecipeCockpitService {
             pendingDataOrgObjectApiNames: new Set(),
             dataOrgObjectApiNames: new Set(),
             dataOrgDetails: [],
-            dataOrgRequestSequence: 0
+            dataOrgRequestSequence: 0,
+            pendingCreatableObjectKeys: new Set(),
+            creatableObjectKeys: new Set(),
+            dataOrgCreateResults: new Map()
         };
 
     }
@@ -1056,6 +1121,8 @@ export class RecipeCockpitService {
         */
         panelState.pendingDataOrgObjectApiNames = new Set(this.collectDataOrgObjectApiNames(recipeViewModel));
         panelState.dataOrgObjectApiNames = new Set();
+        panelState.pendingCreatableObjectKeys = new Set(this.collectCreatableObjectKeys(recipeViewModel));
+        panelState.creatableObjectKeys = new Set();
         panelState.dataOrgSelection = undefined;
         panelState.dataOrgRequestSequence++;
 
@@ -1130,6 +1197,7 @@ export class RecipeCockpitService {
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                 // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL COUNTING IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
+                panelState.creatableObjectKeys = new Set();
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
@@ -1143,6 +1211,7 @@ export class RecipeCockpitService {
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 panelState.dataOrgObjectApiNames = panelState.pendingDataOrgObjectApiNames;
+                panelState.creatableObjectKeys = panelState.pendingCreatableObjectKeys;
                 return;
 
             case 'reportRenderFailure': {
@@ -1157,6 +1226,7 @@ export class RecipeCockpitService {
                     panelState.loadablePicklistKeys = new Set();
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                     panelState.dataOrgObjectApiNames = new Set();
+                    panelState.creatableObjectKeys = new Set();
                 }
 
                 const renderFailureError = new Error(`The Recipe Cockpit panel could not render the recipe: ${panelAction.failureDescription}`);
@@ -1278,6 +1348,26 @@ export class RecipeCockpitService {
 
                 SalesforceOrgService.clearRecordCountCache(panelState.dataOrgSelection.orgDetail.username);
                 await this.selectDataOrg(cockpitPanel, panelState, panelState.dataOrgSelection.orgIndex);
+                return;
+
+            case 'createRecords':
+
+                await this.createRecordsInOrg(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'postCreateState':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'viewCreateErrors':
+
+                if ( !this.isUsableWorkspacePath(panelAction.resultsFilePath, panelState.workspaceRoot) ) {
+                    VSCodeWorkspaceService.showWarningMessage('The insert results file of that Create no longer exists in this workspace.');
+                    return;
+                }
+
+                await VSCodeWorkspaceService.openFileInEditor(panelAction.resultsFilePath);
                 return;
 
         }
@@ -1953,10 +2043,12 @@ export class RecipeCockpitService {
 
         postSelection();
 
+        let connection: Connection;
         let querySource: IOrgQuerySource;
 
         try {
-            querySource = SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username));
+            connection = await SalesforceOrgService.getConnection(orgDetail.username);
+            querySource = SalesforceOrgService.toQuerySource(connection);
         } catch (connectionError) {
             isOrgTypeAnswered = true;
             postSelection();
@@ -1982,8 +2074,375 @@ export class RecipeCockpitService {
             isCancellationRequested: () => !isSelectionCurrent()
         });
 
-        if ( !countResult.wasCancelled ) {
-            postCounts(objectApiNames.length, true);
+        if ( countResult.wasCancelled ) {
+            return;
+        }
+
+        postCounts(objectApiNames.length, true);
+
+        /*
+            AFTER the counts, so the reader sees them first: whether "+ Create" is offered needs each
+            object's describe and its required parents' counts, and none of that is asked of an org
+            that has not answered it is a sandbox.
+        */
+        let readinessByObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+
+        try {
+            readinessByObjectApiName = await this.computeCreateReadiness(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail, () => !isSelectionCurrent());
+        } catch (describeError) {
+            const describeFailureMessage = String(describeError?.message ?? describeError);
+            readinessByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, {
+                objectApiName: objectApiName,
+                disabledReason: `The objects could not be described in this org (${describeFailureMessage}), so nothing is created in it.`,
+                requiredLookups: []
+            }]));
+        }
+
+        if ( !isSelectionCurrent() ) {
+            return;
+        }
+
+        const usernamePrefix = `${orgDetail.username}\n`;
+
+        this.postToPanel(cockpitPanel, {
+            command: 'dataOrgReadiness',
+            objects: objectApiNames.map(objectApiName => readinessByObjectApiName.get(objectApiName)).filter(readiness => !!readiness),
+            createResults: [...panelState.dataOrgCreateResults.entries()]
+                .filter(([createResultKey]) => createResultKey.startsWith(usernamePrefix))
+                .map(([, storedCreateResult]) => storedCreateResult.viewModel),
+            requestSequence: requestSequence,
+            renderSequence: renderSequence
+        });
+
+    }
+
+    /*
+        "+ Create" for each object, in one org: fail-closed guards (RecipeCockpitRecordCreation) fed
+        with what the org says. An org that has not answered that it is a sandbox is asked nothing
+        more -- its answer is the same for every object. Otherwise each object is described (from
+        the session cache where it can be) and the parent of each required lookup is counted.
+    */
+    static async computeCreateReadiness(orgUsername: string,
+                                        describeSource: IOrgDescribeSource,
+                                        querySource: IOrgQuerySource,
+                                        objectApiNames: string[],
+                                        orgTypeDetail: IOrgTypeDetail | undefined,
+                                        isCancellationRequested: () => boolean): Promise<Map<string, IRecipeCockpitCreateReadinessViewModel>> {
+
+        const readinessByObjectApiName = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
+
+        if ( orgTypeDetail?.isSandbox !== true ) {
+            objectApiNames.forEach(objectApiName => readinessByObjectApiName.set(objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness({
+                objectApiName: objectApiName, orgTypeDetail: orgTypeDetail, parentRecordCountsByObject: new Map()
+            })));
+            return readinessByObjectApiName;
+        }
+
+        const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => describeSource, { isCancellationRequested });
+
+        const parentObjectApiNames = [...new Set(describeResult.outcomes
+            .filter(describeOutcome => !!describeOutcome.describe)
+            .flatMap(describeOutcome => RecipeCockpitRecordCreation.findRequiredLookups(describeOutcome.describe))
+            .filter(requiredLookup => requiredLookup.referenceTo.length === 1)
+            .map(requiredLookup => requiredLookup.referenceTo[0]))];
+
+        const parentCountResult = parentObjectApiNames.length > 0
+            ? await SalesforceOrgService.countRecords(orgUsername, parentObjectApiNames, async () => querySource, { isCancellationRequested })
+            : { outcomes: [] as IOrgRecordCountOutcome[], wasCancelled: false };
+
+        const parentRecordCountsByObject = new Map<string, number | undefined>(parentCountResult.outcomes.map(countOutcome => [
+            countOutcome.objectApiName,
+            countOutcome.status === 'count' ? countOutcome.recordCount : undefined
+        ]));
+
+        describeResult.outcomes.forEach(describeOutcome => readinessByObjectApiName.set(describeOutcome.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness({
+            objectApiName: describeOutcome.objectApiName,
+            orgTypeDetail: orgTypeDetail,
+            describe: describeOutcome.describe,
+            describeFailureMessage: describeOutcome.failureMessage,
+            parentRecordCountsByObject: parentRecordCountsByObject
+        })));
+
+        return readinessByObjectApiName;
+
+    }
+
+    static buildCreatableObjectKey(treeKey: string, objectApiName: string): string {
+
+        return `${treeKey}\n${objectApiName}`;
+
+    }
+
+    static buildCreateResultKey(orgUsername: string, treeKey: string, objectApiName: string): string {
+
+        return `${orgUsername}\n${treeKey}\n${objectApiName}`;
+
+    }
+
+    // EVERY OBJECT OF EVERY TREE THAT HAS A RECIPE FILE TO CUT IT FROM -- THE SAME CARDS ▶ Run Faker IS OFFERED ON
+    static collectCreatableObjectKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
+
+        return recipeViewModel.trees
+            .filter(tree => !!tree.runFakerRecipeFileName)
+            .flatMap(tree => tree.objects
+                .filter(treeObject => treeObject.iterationNickname === undefined)
+                .map(treeObject => this.buildCreatableObjectKey(tree.treeKey, treeObject.objectApiName)));
+
+    }
+
+    /*
+        Create: N records of one object, cut from its tree's recipe, generated by the configured
+        backend and inserted into the selected sandbox with every required lookup set to a random
+        existing parent.
+
+        Every refusal before the modal says why and writes nothing. The modal is HOST-side, so what
+        it names -- the org, that it is a sandbox, the object, the count, each required lookup with
+        its parent's count, the backend and the tree -- is what the host checked, not what the panel
+        said. Cancel writes nothing and contacts the org no further. After it, the selection is
+        checked again: an org the reader changed while the modal was open is not the one confirmed.
+
+        Like Run Faker, the run on screen is reloaded once a data set folder was made, however the
+        Create ended, and the state message is posted last, because the panel disabled every
+        "+ Create" on the click.
+    */
+    private static async createRecordsInOrg(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            createAction: Extract<RecipeCockpitPanelAction, { kind: 'createRecords' }>) {
+
+        const { treeKey, objectApiName } = createAction;
+        const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
+
+        panelState.createStateMessage = { command: 'createState', isRunning: true, treeKey: treeKey, objectApiName: objectApiName };
+        this.postToPanel(cockpitPanel, panelState.createStateMessage);
+
+        let isDatasetWritten = false;
+        let hasCreateFailed = false;
+        let createError: unknown;
+
+        try {
+
+            isDatasetWritten = await this.performCreate(cockpitPanel, panelState, createAction, () => { isDatasetWritten = true; });
+
+        } catch (thrownError) {
+
+            hasCreateFailed = true;
+            createError = thrownError;
+
+        } finally {
+
+            panelState.createStateMessage = undefined;
+
+            if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName);
+            }
+
+            if ( isPanelStillCurrent() ) {
+                this.postToPanel(cockpitPanel, { command: 'createState', isRunning: false, treeKey: treeKey, objectApiName: objectApiName });
+            }
+
+        }
+
+        if ( hasCreateFailed ) {
+            throw createError;
+        }
+
+    }
+
+    // TRUE WHEN A DATA SET FOLDER WAS MADE; onDatasetFolderMade SAYS SO EVEN WHEN A LATER STEP THROWS
+    private static async performCreate(cockpitPanel: vscode.WebviewPanel,
+                                        panelState: IRecipeCockpitPanelState,
+                                        createAction: Extract<RecipeCockpitPanelAction, { kind: 'createRecords' }>,
+                                        onDatasetFolderMade: () => void): Promise<boolean> {
+
+        const { treeKey, objectApiName, recordCount, recipeFilePath } = createAction;
+        const dataOrgSelection = panelState.dataOrgSelection;
+        const orgDetail = dataOrgSelection.orgDetail;
+        // EACH NAME ESCAPED ON ITS OWN, SO THE PARENTHESES AROUND THE USERNAME STAY READABLE
+        const orgLabel = orgDetail.alias
+            ? `${RecipeYamlScalar.escapeForNotification(orgDetail.alias)} (${RecipeYamlScalar.escapeForNotification(orgDetail.username)})`
+            : RecipeYamlScalar.escapeForNotification(orgDetail.username);
+        const objectLabel = RecipeYamlScalar.escapeForNotification(objectApiName);
+        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        const refuse = (refusalMessage: string) => { VSCodeWorkspaceService.showWarningMessage(refusalMessage); return false; };
+
+        if ( !this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
+            return refuse(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so no ${objectLabel} records were created.`);
+        }
+
+        const generatedRecipesFolderPath = path.join(panelState.workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath());
+        const recipeFakerService = VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath);
+        const selectedFakerService = ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' ? 'faker-js' : 'snowfakery';
+
+        if ( recipeFakerService !== selectedFakerService ) {
+            return refuse(recipeFakerService
+                ? `This recipe was generated for ${recipeFakerService} — switch with "Select Faker Implementation".`
+                : `"${recipeFileLabel}" has a file name and folder that disagree on which faker implementation generated it, so no records were created.`);
+        }
+
+        const recipeObject = panelState.recipeDataMessage.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName);
+        const objectNickname = recipeObject?.iterations?.length ? recipeObject.nickname : undefined;
+        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(fs.readFileSync(recipeFilePath, 'utf-8'), objectApiName, recordCount, objectNickname);
+
+        if ( 'refusal' in extraction ) {
+            return refuse(`The ${objectLabel} block could not be cut from "${recipeFileLabel}", so no records were created: ${RecipeYamlScalar.escapeForNotification(extraction.refusal.message)}`);
+        }
+
+        const connection = await SalesforceOrgService.getConnection(orgDetail.username);
+        const querySource = SalesforceOrgService.toQuerySource(connection);
+
+        // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE INSERT RELIES ON
+        const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
+        const readiness = ( await this.computeCreateReadiness(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail, () => false) ).get(objectApiName);
+
+        if ( !readiness || readiness.disabledReason ) {
+            return refuse(`No ${objectLabel} records were created in ${orgLabel}: ${RecipeYamlScalar.escapeForNotification(readiness?.disabledReason ?? 'it could not be checked')}`);
+        }
+
+        const confirmation = await vscode.window.showWarningMessage(
+            `Create ${recordCount} ${objectLabel} ${recordCount === 1 ? 'record' : 'records'} in ${orgLabel}?`,
+            { modal: true, detail: this.buildCreateConfirmationDetail(orgLabel, orgTypeDetail, objectLabel, recordCount, readiness, selectedFakerService, treeKey, recipeFileLabel) },
+            RECIPE_COCKPIT_CREATE_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_CREATE_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        const isSameOrgSelected = this.recipeCockpitPanel === cockpitPanel
+                                    && this.recipeCockpitPanelState === panelState
+                                    && panelState.dataOrgSelection?.orgIndex === dataOrgSelection.orgIndex
+                                    && panelState.dataOrgSelection.orgDetail.username === orgDetail.username;
+
+        if ( !isSameOrgSelected ) {
+            return refuse(`The selected org changed after ${orgLabel} was confirmed, so no ${objectLabel} records were created.`);
+        }
+
+        const requiredLookupParentIds: IRequiredLookupParentIds[] = [];
+
+        for ( const requiredLookup of readiness.requiredLookups ) {
+            const parentRecordIds = await SalesforceOrgService.queryRecordIds(querySource, requiredLookup.parentObjectApiName);
+            if ( parentRecordIds.length === 0 ) {
+                return refuse(`${RecipeYamlScalar.escapeForNotification(requiredLookup.fieldApiName)} needs a ${RecipeYamlScalar.escapeForNotification(requiredLookup.parentObjectApiName)} record, and ${orgLabel} returned none, so no ${objectLabel} records were created.`);
+            }
+            requiredLookupParentIds.push({ fieldApiName: requiredLookup.fieldApiName, parentRecordIds: parentRecordIds });
+        }
+
+        const datasetFolderPath = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(
+            VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(VSCodeWorkspaceService.getNowIsoDateTimestamp())
+        );
+        onDatasetFolderMade();
+
+        const baseArtifactsFolderPath = path.join(datasetFolderPath, ConfigurationService.getBaseArtifactsFolderName());
+        const collectionsApiFolderPath = path.join(datasetFolderPath, ConfigurationService.getDatasetFilesForCollectionsApiFolderName());
+        fs.mkdirSync(baseArtifactsFolderPath, { recursive: true });
+        fs.mkdirSync(collectionsApiFolderPath, { recursive: true });
+
+        const createRecipeFilePath = path.join(baseArtifactsFolderPath, `createRecipe-${objectApiName}.yml`);
+        fs.writeFileSync(createRecipeFilePath, extraction.recipeText);
+        this.copyRunWrapperInto(panelState, treeKey, baseArtifactsFolderPath);
+
+        const fakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
+        const fakerOutput = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(createRecipeFilePath) as string;
+        const generatedRecords = fakerRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerOutput).get(objectApiName)?.records ?? [];
+
+        if ( generatedRecords.length === 0 ) {
+            throw new Error(`The ${selectedFakerService} backend generated no ${objectApiName} records from the cut recipe.`);
+        }
+
+        const describe = ( await SalesforceOrgService.describeObjects(orgDetail.username, [objectApiName], async () => connection) ).outcomes[0].describe;
+        const assignedRecords = RecipeCockpitRecordCreation.assignLookupIds(
+            generatedRecords,
+            requiredLookupParentIds,
+            RecipeCockpitRecordCreation.findOptionalLookupFieldApiNames(describe),
+            choiceCount => Math.floor(Math.random() * choiceCount)
+        );
+
+        const collectionsApiFileName = CollectionsApiService.buildCollectionsApiFileNameBySobjectName(objectApiName);
+        let collectionsApiJson = JSON.stringify({ allOrNone: false, records: assignedRecords }, null, 2);
+
+        if ( assignedRecords.some(assignedRecord => !!assignedRecord && typeof assignedRecord === 'object' && Object.prototype.hasOwnProperty.call(assignedRecord, 'RecordTypeId')) ) {
+            collectionsApiJson = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(
+                collectionsApiJson,
+                await RecordTypeService.getRecordTypeIdsByConnection(connection, [objectApiName]),
+                collectionsApiFileName
+            );
+        }
+
+        fs.writeFileSync(path.join(collectionsApiFolderPath, collectionsApiFileName), collectionsApiJson);
+
+        const insertResult = await CollectionsApiService.insertRecordsWithoutRollback(datasetFolderPath, objectApiName, JSON.parse(collectionsApiJson).records, connection);
+
+        DatasetSourceService.writeDatasetSourceFile(baseArtifactsFolderPath, DatasetSourceService.buildCreateInOrgDatasetSource(
+            DatasetSourceService.resolveRecipeSourceNames(generatedRecipesFolderPath, recipeFilePath),
+            selectedFakerService,
+            new Date().toISOString(),
+            { [objectApiName]: generatedRecords.length },
+            orgDetail.username,
+            objectApiName,
+            insertResult.createdRecordIds
+        ));
+
+        const createdCount = insertResult.createdRecordIds.length;
+        const failedCount = insertResult.failures.length;
+
+        panelState.dataOrgCreateResults.set(this.buildCreateResultKey(orgDetail.username, treeKey, objectApiName), {
+            viewModel: {
+                treeKey: treeKey,
+                objectApiName: objectApiName,
+                createdCount: createdCount,
+                failedCount: failedCount,
+                message: failedCount > 0 ? insertResult.failures.slice(0, 3).map(failure => failure.message).join(' · ') : ''
+            },
+            resultsFilePath: insertResult.resultsFilePath
+        });
+
+        SalesforceOrgService.clearRecordCountCache(orgDetail.username, objectApiName);
+
+        if ( failedCount > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(`${createdCount} ${objectLabel} ${createdCount === 1 ? 'record was' : 'records were'} created in ${orgLabel} and ${failedCount} failed. Nothing was rolled back; "View errors" on the row opens the results.`);
+        }
+
+        return true;
+
+    }
+
+    static buildCreateConfirmationDetail(orgLabel: string,
+                                            orgTypeDetail: IOrgTypeDetail | undefined,
+                                            objectLabel: string,
+                                            recordCount: number,
+                                            readiness: IRecipeCockpitCreateReadinessViewModel,
+                                            fakerService: string,
+                                            treeKey: string,
+                                            recipeFileLabel: string): string {
+
+        const requiredLookupLines = readiness.requiredLookups.length > 0
+            ? readiness.requiredLookups.map(requiredLookup => `  ${RecipeYamlScalar.escapeForNotification(requiredLookup.fieldApiName)} → a random one of ${requiredLookup.parentRecordCount} ${RecipeYamlScalar.escapeForNotification(requiredLookup.parentObjectApiName)} ${requiredLookup.parentRecordCount === 1 ? 'record' : 'records'}`)
+            : ['  none'];
+
+        return [
+            `Org: ${orgLabel}`,
+            `Type: ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}`,
+            `Object: ${objectLabel}`,
+            `Records: ${recordCount}`,
+            'Required lookups:',
+            ...requiredLookupLines,
+            'Every other lookup is left blank.',
+            `Backend: ${fakerService}`,
+            `Recipe tree: ${RecipeYamlScalar.escapeForNotification(treeKey)} (${recipeFileLabel})`,
+            '',
+            'Records are inserted with allOrNone false, and nothing is rolled back: what Salesforce accepts stays in the org.'
+        ].join('\n');
+
+    }
+
+    // THE RUN'S WRAPPER, SO THE DATA SET CAN ALSO BE INSERTED AGAIN WITH Insert… -- A RUN WITH NONE IS SIMPLY LEFT WITHOUT IT
+    private static copyRunWrapperInto(panelState: IRecipeCockpitPanelState, treeKey: string, baseArtifactsFolderPath: string) {
+
+        const summarySource = panelState.treeHistoryTargets.summarySourcesByTreeKey.get(treeKey);
+        const objectsWrapperFilePath = summarySource?.runs.find(summaryRun => summaryRun.runFolderName === summarySource.currentRunFolderName)?.objectsWrapperFilePath;
+
+        if ( objectsWrapperFilePath && this.isUsableWorkspacePath(objectsWrapperFilePath, panelState.workspaceRoot) ) {
+            fs.copyFileSync(objectsWrapperFilePath, path.join(baseArtifactsFolderPath, `originalTreecipeWrapper-${path.basename(objectsWrapperFilePath)}`));
         }
 
     }
@@ -2398,6 +2857,68 @@ export class RecipeCockpitService {
 
                 return { kind: 'refreshDataOrgCounts' };
 
+            /*
+                Create posts the org's INDEX, the tree's key, an object name and a count, and none of
+                them is taken on the panel's word: the count must be an integer from 1 to 200, the
+                index must be the org selected now, the tree and object must be a pair the
+                confirmed-drawn model offered, and the selected org must have answered that it is a
+                sandbox. A forged message naming a production org stops here, before any connection.
+            */
+            case 'createRecords': {
+
+                const { orgIndex, treeKey, objectApiName, count } = panelMessage;
+
+                // A CREATE IN FLIGHT ALREADY HOLDS EVERY BUTTON DISABLED, AND ITS OWN END RE-ENABLES THEM
+                if ( panelState.createStateMessage ) {
+                    return undefined;
+                }
+
+                const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
+                const isRoutable = RecipeCockpitRecordCreation.isValidCreateCount(count)
+                                    && typeof treeKey === 'string'
+                                    && typeof objectApiName === 'string'
+                                    && !!panelState.recipeDataMessage
+                                    && !!panelState.dataOrgSelection
+                                    && orgIndex === panelState.dataOrgSelection.orgIndex
+                                    && panelState.dataOrgSelection.orgTypeDetail?.isSandbox === true
+                                    && panelState.creatableObjectKeys.has(this.buildCreatableObjectKey(treeKey, objectApiName))
+                                    && !!recipeFilePath;
+
+                if ( isRoutable ) {
+                    return { kind: 'createRecords', treeKey: treeKey as string, objectApiName: objectApiName as string, recordCount: count as number, recipeFilePath: recipeFilePath };
+                }
+
+                // THE PANEL DISABLED EVERY "+ Create" ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
+                return {
+                    kind: 'postCreateState',
+                    hostMessage: {
+                        command: 'createState',
+                        isRunning: false,
+                        treeKey: typeof treeKey === 'string' ? treeKey : '',
+                        objectApiName: typeof objectApiName === 'string' ? objectApiName : ''
+                    }
+                };
+
+            }
+
+            case 'viewCreateErrors': {
+
+                const { treeKey, objectApiName } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || typeof objectApiName !== 'string' || !panelState.dataOrgSelection ) {
+                    return undefined;
+                }
+
+                const storedCreateResult = panelState.dataOrgCreateResults.get(
+                    this.buildCreateResultKey(panelState.dataOrgSelection.orgDetail.username, treeKey, objectApiName)
+                );
+
+                return storedCreateResult && storedCreateResult.viewModel.failedCount > 0
+                    ? { kind: 'viewCreateErrors', resultsFilePath: storedCreateResult.resultsFilePath }
+                    : undefined;
+
+            }
+
         }
 
         return undefined;
@@ -2439,6 +2960,10 @@ export class RecipeCockpitService {
 
         if ( panelState.runFakerStateMessage ) {
             replayMessages.push(panelState.runFakerStateMessage);
+        }
+
+        if ( panelState.createStateMessage ) {
+            replayMessages.push(panelState.createStateMessage);
         }
 
         if ( panelState.loadFailedMessage ) {
@@ -3709,6 +4234,35 @@ ${this.buildPaletteCustomProperties()}
     .dataTreeTitle, .dataObjectName { font-weight: 600; }
     .dataTreeBody { border-top: 1px solid var(--sdt-border); }
     .dataObject { padding: 0.3rem 0.6rem 0.3rem 2.1rem; }
+    .dataCreateControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; margin-top: 0.2rem; }
+    .dataCreateCount {
+        width: 4.5rem;
+        padding: 0.15rem 0.3rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .dataCreate {
+        padding: 0.15rem 0.5rem;
+        color: var(--sdt-on-accent);
+        background-color: var(--sdt-accent);
+        border: 1px solid var(--sdt-accent);
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .dataCreate:disabled { opacity: 0.6; cursor: default; }
+    .dataCreateErrors {
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        color: var(--sdt-accent);
+        text-decoration: underline;
+        cursor: pointer;
+    }
+    .dataCreateResult.succeeded { color: var(--sdt-added); }
+    .dataCreateResult.partial { color: var(--sdt-changed); }
     .dataObject:hover { background-color: var(--sdt-row-hover); }
     .picklistValues { margin: 0.2rem 0 0 1.4rem; }
     .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
@@ -3741,6 +4295,7 @@ ${this.buildPaletteCustomProperties()}
     const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
     const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
+    const CREATE_MAX_COUNT = ${RECIPE_COCKPIT_CREATE_MAX_COUNT};
 
     let objectStates = [];
     // WHICH VIEW IS ON SCREEN OUTLIVES A MODEL, SO SWITCHING RUNS DOES NOT THROW THE READER BACK TO THE DEFAULT
@@ -3777,6 +4332,13 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgRequestSequence = null;
     // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgCountsByObject = Object.create(null);
+    let dataObjectStates = [];
+    let dataOrgSelectedIndex = null;
+    // KEYED BY OBJECT NAMES, AND BY TREE KEY AND OBJECT NAME -- NAMES FROM FILES, SO NO PROTOTYPE
+    let dataOrgReadinessByObject = Object.create(null);
+    let dataOrgCreateResultsByKey = Object.create(null);
+    // THE ROW WHOSE CREATE IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE CREATE ENDED
+    let createRunningKey = null;
 
     /*
         Every node the panel draws is made here and filled through textContent, so nothing from the
@@ -5257,6 +5819,7 @@ ${this.buildPaletteCustomProperties()}
             objectHeaderElement.appendChild(createElement('span', 'dataObjectName', objectApiName));
             objectHeaderElement.appendChild(countElement);
             objectElement.appendChild(objectHeaderElement);
+            objectElement.appendChild(buildCreateControls(tree, objectApiName));
             bodyElement.appendChild(objectElement);
             if (!Object.prototype.hasOwnProperty.call(dataTreeState.objectCountElements, objectApiName)) {
                 dataTreeState.objectCountElements[objectApiName] = [];
@@ -5325,6 +5888,151 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    function buildCreateKey(treeKey, objectApiName) {
+        return treeKey + '\\n' + objectApiName;
+    }
+
+    /*
+        A number and "+ Create" under each object, shown once an org is selected. The host decides
+        whether Create is offered and says why not; the row only draws that answer, and a count it
+        posts is checked again on the host whatever the input allowed.
+    */
+    function buildCreateControls(tree, objectApiName) {
+
+        const controlsElement = createElement('div', 'dataCreateControls hidden');
+        const countInputElement = createElement('input', 'dataCreateCount');
+        const createButtonElement = createElement('button', 'dataCreate', '+ Create');
+        const reasonElement = createElement('span', 'dataCreateReason muted');
+        const resultElement = createElement('span', 'dataCreateResult');
+        const errorsElement = createElement('button', 'dataCreateErrors hidden', 'View errors');
+
+        const dataObjectState = {
+            tree: tree,
+            objectApiName: objectApiName,
+            createKey: buildCreateKey(tree.treeKey, objectApiName),
+            isCreatable: !!tree.runFakerRecipeFileName,
+            controlsElement: controlsElement,
+            countInputElement: countInputElement,
+            createButtonElement: createButtonElement,
+            reasonElement: reasonElement,
+            resultElement: resultElement,
+            errorsElement: errorsElement,
+            countError: ''
+        };
+
+        countInputElement.setAttribute('type', 'number');
+        countInputElement.setAttribute('min', '1');
+        countInputElement.setAttribute('max', String(CREATE_MAX_COUNT));
+        countInputElement.setAttribute('step', '1');
+        countInputElement.setAttribute('aria-label', 'How many ' + objectApiName + ' records to create');
+        countInputElement.value = '1';
+
+        createButtonElement.setAttribute('aria-label', 'Create ' + objectApiName + ' records in the selected org');
+        createButtonElement.addEventListener('click', function () {
+
+            if (createRunningKey !== null || dataOrgSelectedIndex === null) { return; }
+
+            const recordCount = Number(countInputElement.value);
+
+            if (!Number.isInteger(recordCount) || recordCount < 1 || recordCount > CREATE_MAX_COUNT) {
+                dataObjectState.countError = 'Enter a whole number from 1 to ' + CREATE_MAX_COUNT + '.';
+                drawCreateControls(dataObjectState);
+                return;
+            }
+
+            dataObjectState.countError = '';
+            setCreateRunning(dataObjectState.createKey);
+            vscodeApi.postMessage({ command: 'createRecords', orgIndex: dataOrgSelectedIndex, treeKey: tree.treeKey, objectApiName: objectApiName, count: recordCount });
+
+        });
+
+        errorsElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'viewCreateErrors', treeKey: tree.treeKey, objectApiName: objectApiName });
+        });
+
+        controlsElement.appendChild(countInputElement);
+        controlsElement.appendChild(createButtonElement);
+        controlsElement.appendChild(reasonElement);
+        controlsElement.appendChild(resultElement);
+        controlsElement.appendChild(errorsElement);
+
+        dataObjectStates.push(dataObjectState);
+        drawCreateControls(dataObjectState);
+
+        return controlsElement;
+
+    }
+
+    function drawCreateControls(dataObjectState) {
+
+        if (dataOrgRequestSequence === null || !dataObjectState.isCreatable) {
+            dataObjectState.controlsElement.classList.add('hidden');
+            return;
+        }
+
+        dataObjectState.controlsElement.classList.remove('hidden');
+
+        const readiness = Object.prototype.hasOwnProperty.call(dataOrgReadinessByObject, dataObjectState.objectApiName)
+            ? dataOrgReadinessByObject[dataObjectState.objectApiName]
+            : null;
+        const isThisRowRunning = createRunningKey === dataObjectState.createKey;
+        const disabledReason = !readiness ? 'checking whether records can be created…' : readiness.disabledReason;
+
+        dataObjectState.createButtonElement.disabled = createRunningKey !== null || !!disabledReason;
+        dataObjectState.createButtonElement.textContent = isThisRowRunning ? 'Creating…' : '+ Create';
+        dataObjectState.countInputElement.disabled = !!disabledReason;
+        dataObjectState.reasonElement.textContent = dataObjectState.countError || disabledReason;
+        dataObjectState.createButtonElement.setAttribute('title', readiness && readiness.requiredLookups.length > 0
+            ? 'Each record gets a random existing ' + readiness.requiredLookups.map(function (requiredLookup) {
+                return requiredLookup.parentObjectApiName + ' for ' + requiredLookup.fieldApiName;
+            }).join(', ')
+            : 'Create records of this object from its own block in its tree recipe');
+
+        const createResult = Object.prototype.hasOwnProperty.call(dataOrgCreateResultsByKey, dataObjectState.createKey)
+            ? dataOrgCreateResultsByKey[dataObjectState.createKey]
+            : null;
+
+        dataObjectState.resultElement.className = 'dataCreateResult';
+        dataObjectState.errorsElement.classList.add('hidden');
+
+        if (!createResult) {
+            dataObjectState.resultElement.textContent = '';
+            return;
+        }
+
+        if (createResult.failedCount === 0) {
+            dataObjectState.resultElement.textContent = '✓ ' + createResult.createdCount + ' created';
+            dataObjectState.resultElement.classList.add('succeeded');
+            return;
+        }
+
+        dataObjectState.resultElement.textContent = createResult.createdCount + ' created · ' + createResult.failedCount + ' failed';
+        dataObjectState.resultElement.setAttribute('title', createResult.message);
+        dataObjectState.resultElement.classList.add('partial');
+        dataObjectState.errorsElement.classList.remove('hidden');
+
+    }
+
+    function setCreateRunning(runningKey) {
+
+        createRunningKey = runningKey;
+        dataObjectStates.forEach(drawCreateControls);
+
+    }
+
+    function renderDataOrgReadiness(dataOrgReadiness) {
+
+        if (!dataOrgStatusElement || dataOrgReadiness.renderSequence !== renderedSequence || dataOrgReadiness.requestSequence !== dataOrgRequestSequence) { return; }
+
+        dataOrgReadiness.objects.forEach(function (readiness) { dataOrgReadinessByObject[readiness.objectApiName] = readiness; });
+        dataOrgReadiness.createResults.forEach(function (createResult) {
+            dataOrgCreateResultsByKey[buildCreateKey(createResult.treeKey, createResult.objectApiName)] = createResult;
+        });
+
+        dataObjectStates.forEach(drawCreateControls);
+
+    }
+
     function setDataOrgStatus(statusText, isFailure) {
 
         dataOrgStatusElement.textContent = statusText;
@@ -5379,15 +6087,19 @@ ${this.buildPaletteCustomProperties()}
         if (dataOrgSelection.requestSequence !== dataOrgRequestSequence) {
             dataOrgRequestSequence = dataOrgSelection.requestSequence;
             dataOrgCountsByObject = Object.create(null);
+            dataOrgReadinessByObject = Object.create(null);
+            dataOrgCreateResultsByKey = Object.create(null);
             setDataOrgStatus('Counting records in ' + dataOrgSelection.orgLabel + '…', false);
         }
 
+        dataOrgSelectedIndex = dataOrgSelection.orgIndex;
         dataOrgSelectElement.value = String(dataOrgSelection.orgIndex);
         dataOrgTypeElement.textContent = dataOrgSelection.orgTypeLabel || 'checking…';
         dataOrgTypeElement.classList.remove('hidden');
         dataOrgRefreshElement.classList.remove('hidden');
 
         dataTreeStates.forEach(drawDataTreeCounts);
+        dataObjectStates.forEach(drawCreateControls);
 
     }
 
@@ -5482,6 +6194,10 @@ ${this.buildPaletteCustomProperties()}
         dataOrgRequestedSequence = null;
         dataOrgRequestSequence = null;
         dataOrgCountsByObject = Object.create(null);
+        dataObjectStates = [];
+        dataOrgSelectedIndex = null;
+        dataOrgReadinessByObject = Object.create(null);
+        dataOrgCreateResultsByKey = Object.create(null);
         pendingPicklistValueElements = Object.create(null);
         pendingDatasetCountElements = Object.create(null);
         answeredDatasetCounts = Object.create(null);
@@ -5799,6 +6515,16 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'dataOrgCounts') {
             renderDataOrgCounts(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'dataOrgReadiness') {
+            renderDataOrgReadiness(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'createState') {
+            setCreateRunning(hostMessage.isRunning ? buildCreateKey(hostMessage.treeKey, hostMessage.objectApiName) : null);
             return;
         }
 

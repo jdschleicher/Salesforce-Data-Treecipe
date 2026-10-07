@@ -87,6 +87,7 @@ function buildOrgField(fieldApiName: string, fieldType: string, overrides: Parti
         isNillable: true,
         isCreateable: true,
         isCalculated: false,
+        isDefaultedOnCreate: false,
         ...overrides
     };
 
@@ -102,6 +103,7 @@ const buildOrgPicklistValue = (value: string, isActive = true) => ({ value: valu
 const ACCOUNT_ORG_DESCRIBE: INormalizedOrgObjectDescribe = {
     objectApiName: 'Account',
     objectLabel: 'Account',
+    isCreateable: true,
     fields: [
         buildOrgField('Id', 'id', { isCreateable: false }),
         buildOrgField('Name', 'string'),
@@ -1913,7 +1915,7 @@ describe('RecipeCockpitService', () => {
 
     describe('buildOrgDescribeMessage', () => {
 
-        const accountDescribe = { objectApiName: 'Account', objectLabel: 'Account', fields: [] as any[] };
+        const accountDescribe = { objectApiName: 'Account', objectLabel: 'Account', isCreateable: true, fields: [] as any[] };
 
         it('given every object described, counts them and each one\'s fields', () => {
 
@@ -2878,7 +2880,7 @@ describe('RecipeCockpitService', () => {
 
         const describedFixture = (renderSequence: number) => RecipeCockpitService.buildOrgDescribeMessage('devhub (jd@example.com)', {
             outcomes: [
-                { objectApiName: 'Account', describe: { objectApiName: 'Account', objectLabel: 'Account', fields: [{}, {}, {}] as any[] }, wasCached: false },
+                { objectApiName: 'Account', describe: { objectApiName: 'Account', objectLabel: 'Account', isCreateable: true, fields: [{}, {}, {}] as any[] }, wasCached: false },
                 { objectApiName: 'Contact', failureMessage: 'NOT_FOUND: The requested resource does not exist', wasCached: false }
             ],
             wasCancelled: false

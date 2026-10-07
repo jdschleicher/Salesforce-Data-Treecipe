@@ -1081,4 +1081,122 @@ describe('RecipeCockpitRecipeWriter', () => {
 
     });
 
+    describe('extractObjectBlock, the one-object recipe a Create runs (#180)', () => {
+
+        const SELF_LOOKUP_RECIPE_FIXTURE: [string, string] = ['faker-js self-lookup', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml'];
+
+        // EVERY OCCURRENCE OF AN OBJECT IN THE PARSED RECIPE, AT ANY friends: DEPTH
+        const findParsedEntries = (parsedEntries: any[], objectApiName: string): any[] => (parsedEntries ?? []).flatMap((parsedEntry: any) => [
+            ...( parsedEntry?.object === objectApiName ? [parsedEntry] : [] ),
+            ...findParsedEntries(parsedEntry?.friends, objectApiName)
+        ]);
+
+        describe.each([...ALL_RECIPE_FIXTURES, SELF_LOOKUP_RECIPE_FIXTURE])('%s', (_backendLabel, fixtureFileName) => {
+
+            const recipeText = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, fixtureFileName), 'utf-8');
+            const parsedRecipe = yaml.load(recipeText) as any[];
+            const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines);
+
+            it('cuts every object, at any depth, into a recipe of that one object with its own fields and the count asked for', () => {
+
+                scannedObjects.forEach(scannedObject => {
+
+                    const isWrittenTwice = scannedObjects.filter(otherObject => otherObject.objectApiName === scannedObject.objectApiName).length > 1;
+                    const objectNickname = isWrittenTwice ? scannedObject.nicknames[0] : undefined;
+
+                    const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, scannedObject.objectApiName, 7, objectNickname);
+
+                    if ( !extraction.isExtracted ) {
+                        throw new Error(`${scannedObject.objectApiName}: ${'refusal' in extraction ? extraction.refusal.message : ''}`);
+                    }
+
+                    const extractedEntries = yaml.load(extraction.recipeText) as any[];
+                    const originalEntry = findParsedEntries(parsedRecipe, scannedObject.objectApiName)
+                        .find((parsedEntry: any) => parsedEntry.nickname === scannedObject.nicknames[0]);
+
+                    expect(extractedEntries).toHaveLength(1);
+                    expect(extractedEntries[0].object).toBe(scannedObject.objectApiName);
+                    expect(extractedEntries[0].count).toBe(7);
+                    expect(extractedEntries[0].friends).toBeUndefined();
+                    expect(extractedEntries[0].nickname).toBe(originalEntry.nickname);
+                    expect(extractedEntries[0].fields).toEqual(originalEntry.fields);
+                    // AT COLUMN ZERO, WHATEVER DEPTH IT WAS CUT FROM, SO THE SCAN READS ONE TOP-LEVEL OBJECT
+                    expect(RecipeCockpitRecipeWriter.scanRecipeObjects(extraction.recipeText.split('\n')).map(extracted => [extracted.objectApiName, extracted.objectIndent]))
+                        .toEqual([[scannedObject.objectApiName, 0]]);
+
+                });
+
+            });
+
+            it('keeps the generator\'s comments inside the block', () => {
+
+                const objectWithTodo = scannedObjects.find(scannedObject => {
+                    const lines = recipeText.split(/\r?\n/);
+                    return scannedObject.fields.some(scannedField => lines[scannedField.startIndex].includes('### TODO'));
+                });
+                const isWrittenTwice = scannedObjects.filter(otherObject => otherObject.objectApiName === objectWithTodo.objectApiName).length > 1;
+
+                const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, objectWithTodo.objectApiName, 1, isWrittenTwice ? objectWithTodo.nicknames[0] : undefined);
+
+                expect(extraction.isExtracted && extraction.recipeText).toContain('### TODO');
+
+            });
+
+        });
+
+        it('leaves out the object\'s own friends: block, children and the self-lookup iteration alike', () => {
+
+            const recipeText = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, NESTED_RECIPE_FIXTURE[1]), 'utf-8');
+
+            const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, 'Account', 3);
+
+            expect(extraction.isExtracted).toBe(true);
+            const extractedText = extraction.isExtracted ? extraction.recipeText : '';
+            expect(extractedText).not.toContain('friends:');
+            expect(extractedText).not.toContain('- object: Contact');
+            expect(extractedText.match(/- object:/g)).toHaveLength(1);
+
+        });
+
+        it('picks an object written twice by its nickname, and refuses it without one', () => {
+
+            const recipeText = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml'), 'utf-8');
+            const duplicatedObject = RecipeCockpitRecipeWriter.scanRecipeObjects(recipeText.split(/\r?\n/))
+                .find((scannedObject, _index, scannedObjects) => scannedObjects.filter(other => other.objectApiName === scannedObject.objectApiName).length > 1);
+
+            const refused = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, duplicatedObject.objectApiName, 1);
+            const picked = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, duplicatedObject.objectApiName, 1, duplicatedObject.nicknames[0]);
+
+            expect('refusal' in refused && refused.refusal.reason).toBe('duplicate-object');
+            expect(picked.isExtracted).toBe(true);
+
+        });
+
+        it.each([
+            ['zero', 0],
+            ['a fraction', 2.5],
+            ['a negative count', -1],
+            ['not a number', Number.NaN]
+        ])('refuses %s as the count', (_description, recordCount) => {
+
+            const extraction = RecipeCockpitRecipeWriter.extractObjectBlock('- object: Lead\n  nickname: Lead_NickName\n  count: 1\n  fields:\n    Company: x\n', 'Lead', recordCount);
+
+            expect('refusal' in extraction && extraction.refusal.reason).toBe('invalid-value');
+
+        });
+
+        it('refuses an object the recipe does not have, a name that is not an api name, and a block with no count line', () => {
+
+            const recipeText = '- object: Lead\n  nickname: Lead_NickName\n  fields:\n    Company: x\n';
+            const reasonOf = (extraction: any) => extraction.refusal?.reason;
+
+            expect(reasonOf(RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, 'Contact', 1))).toBe('object-not-found');
+            expect(reasonOf(RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, 'Lead\n- object: Evil', 1))).toBe('invalid-object-api-name');
+            expect(reasonOf(RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, 'Lead', 1))).toBe('property-not-found');
+
+        });
+
+    });
+
 });
+

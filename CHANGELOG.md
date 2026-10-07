@@ -1,5 +1,49 @@
 # Change Log
 
+## [3.37.0] - Create N fake records of one object in a sandbox from the Recipe Cockpit
+
+Closes [#180](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/180), slice 7 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Adding more data for one object in an org meant generating a whole tree's data set, inserting all of it, and wiring the recipe's lookups to parent records by hand. Each object row in **Data-by-Org** now has a number input and **+ Create**.
+
+- **Controls.** Once an org is selected, each object row of an expanded tree shows a number (1 by default) and **+ Create**. The panel will not post a count that is not a whole number from 1 to 200, and the host refuses any other count whatever the panel sends (`RecipeCockpitRecordCreation.isValidCreateCount`: `0`, `201`, `2.5`, `"abc"` and `"25"` are all refused).
+- **Create is disabled, with the reason on the row,** when:
+  - the org's `IsSandbox` is false, Developer Edition included (`Records are created only in a sandbox, and this org is Production · Developer Edition.`)
+  - the Organization query failed — it fails closed
+  - the object is not in the org, or not createable (the describe's object-level `createable`, now normalized as `isCreateable`)
+  - a required parent has 0 records, or could not be counted
+  - a required lookup is polymorphic
+  - another Create is running (every button is disabled on the click, and the host's `createState` re-enables them, replayed to a reloaded document)
+  - The answer is posted as `dataOrgReadiness` once the counts are in. An org that has not answered that it is a sandbox is asked nothing more.
+- **Required lookups** are the lookups the describe marks `nillable: false` (every master-detail included), leaving out ones the org fills itself (`defaultedOnCreate`, now normalized — `OwnerId` is the usual one), ones the user cannot write, and `RecordTypeId`. Each is filled with a random existing Id from `SELECT Id FROM <Parent> LIMIT 2000` (`SalesforceOrgService.queryRecordIds`, which refuses a non-api name and keeps only Id-shaped answers). Every other lookup is removed from the records, so it is left blank rather than sent as a TODO or an ancestor's nickname.
+- **Host-side modal** (`showWarningMessage` with `modal: true`) shows the org alias and username, Sandbox, the object, the count, each required lookup with its parent's record count, the backend and the recipe tree. Cancel writes nothing and contacts the org no further.
+  - The org's type is queried again, on the connection the insert will use, before the modal — not read from the selection.
+  - After the confirm, the host refuses if the selected org changed between the click and the confirm.
+- **Generation:**
+  - `RecipeCockpitRecipeWriter.extractObjectBlock` (pure, still no imports) cuts the object's own block from the tree's recipe: its header, properties and fields block with every comment, moved to column zero when it was a friend, its own `friends:` block left out, and `count:` set to N. An object written twice (#188) is picked by its nickname.
+  - It is written as `BaseArtifactFiles/createRecipe-<Object>.yml` in a new data set folder (with the run's wrapper copied beside it, so **Insert…** works on it too), then run through the configured processor unchanged.
+  - A recipe generated for the other backend is refused, with Run Faker's message.
+  - Lookup TODOs and nickname values are replaced after generation (`RecipeCockpitRecordCreation.assignLookupIds`, pure, with its randomness handed in).
+  - `RecordTypeId` uses the existing developer-name → Id swap.
+- **Insert** goes through the Collections API callout the directory insert uses, with `allOrNone: false`, via the new `CollectionsApiService.insertRecordsWithoutRollback`: 200 records a request, each rejected record reported by its position with Salesforce's messages, a request that failed outright recorded as a failure of each of its records, and nothing deleted. Results are written to `InsertAttempts/insertAttempt-<ts>/insertAttemptResults-<ts>.json` as today.
+- **`datasetSource.json`** gets `origin: "createInOrg"`, `orgUsername`, `createdObjectApiName` and `createdRecordIds` (`DatasetSourceService.buildCreateInOrgDatasetSource`; the reader type-checks all three, and requires them exactly when the origin is `createInOrg`). It names the tree's recipe run and folder, so the data set shows in that tree's **Previous Fake Sets** after the reload.
+- **The row shows the result:** `✓ 25 created`, or `23 created · 2 failed` with **View errors**, which opens the results file. The result is kept on the host per org username, tree and object, and survives the reload a Create ends with. The object's cached count is cleared, so the reload re-counts it.
+- **Allow-list.** The panel posts the org index, tree key, object api name and count. The host requires the index to be the org selected now and that org to have answered it is a sandbox, matches the tree and object against `creatableObjectKeys` (pending/active, from the rendered model's trees that have a recipe file) and resolves the recipe file from the host-only map ▶ Run Faker uses. A production org cannot be reached even with a forged message: the router refuses before any connection, and the readiness check refuses again after a fresh Organization query.
+- **Both backends** produce N records with the required lookups set. Snowfakery still runs through `execFile` with no shell.
+
+**Tests.**
+- **`RecipeCockpitRecordCreation.test.ts`** (new): the module imports nothing; count validation; required and blanked lookups; every guard (production, Developer Edition, a failed Organization query, a non-boolean sandbox flag, not in org, not createable, polymorphic, a parent with 0 records or not counted); lookup Id assignment tested pure, records left unchanged, picks kept in range.
+- **`RecipeCockpitRecipeWriter`:** block extraction and count setting for every object at every depth of every fixture (fields equal to the original's, one top-level object, no friends), comments kept, friends left out, a duplicate picked by nickname, and every refusal.
+- **`RecipeCockpitCreateInOrg.test.ts`** (new):
+  - routing and allow-lists: valid routing, every refused count, another org's index, an object or tree not offered, no selection, an undrawn model, a production or unknown-type org, a Create in flight, View errors only for a failed result
+  - `computeCreateReadiness`: a production org is asked nothing; a sandbox's describes and parent counts
+  - the modal's detail, and modal cancel writing and querying nothing
+  - both-backend generation through to the inserted Collections API records, the snowfakery `execFile` argv, the `createInOrg` source file and the reloaded Previous Fake Sets
+  - the row result after the reload, re-counting, View errors and a missing results file
+  - unhappy paths: the org changed before the confirm, an org that now answers Production, a backend mismatch, a parent deleted between counting and inserting (per-record failures, nothing rolled back), a deleted recipe file, a block that cannot be cut, no parent Ids, no records generated, a failed generation and a failed describe
+  - the panel's controls, posted payload, client-side count refusal, results, stale readiness and the running state across a model
+- **`CollectionsApiService`, `DatasetSourceService`, `SalesforceOrgService`:** the no-rollback insert, the `createInOrg` source round trip and link, `queryRecordIds`, and the new describe fields.
+
 ## [3.36.0] - The Recipe Cockpit's Data-by-Org view counts each tree's records in an org
 
 Closes [#179](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/179), slice 6 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

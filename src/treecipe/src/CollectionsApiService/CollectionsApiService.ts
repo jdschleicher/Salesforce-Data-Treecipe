@@ -8,7 +8,23 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import path = require('path');
 
+// ONE RECORD THE INSERT REJECTED, BY ITS POSITION IN WHAT WAS SENT, WITH SALESFORCE'S OWN MESSAGES JOINED
+export interface IRecordInsertFailure {
+    recordIndex: number;
+    message: string;
+}
+
+export interface IInsertWithoutRollbackResult {
+    createdRecordIds: string[];
+    failures: IRecordInsertFailure[];
+    resultsFilePath: string;
+}
+
 export class CollectionsApiService {
+
+    static readonly insertAttemptsDirectoryName = 'InsertAttempts';
+
+    static readonly collectionsApiRecordBatchSizeLimit = 200;
 
     static async promptForDataSetObjectsPathVSCodeQuickItems(): Promise<vscode.QuickPickItem> | undefined {
 
@@ -246,6 +262,68 @@ export class CollectionsApiService {
             return true;
 
     
+    }
+
+    /*
+        One object's records through the same Collections API callout as Insert Data Set by
+        Directory, with allOrNone FALSE, and never rolled back: what Salesforce accepted stays, and
+        what it rejected is reported record by record -- which is how a parent deleted since it
+        was counted surfaces. A batch whose request failed outright, such as a dropped connection,
+        is recorded as a failure of each of its records, and the next batch still goes. Results are
+        written to InsertAttempts/insertAttempt-<ts>/insertAttemptResults-<ts>.json after every
+        batch, in the shape the directory insert writes.
+    */
+    static async insertRecordsWithoutRollback(datasetFolderPath: string,
+                                                objectApiName: string,
+                                                records: unknown[],
+                                                aliasAuthenticationConnection: Connection): Promise<IInsertWithoutRollbackResult> {
+
+        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
+        const insertAttemptFolderPath = path.join(datasetFolderPath, this.insertAttemptsDirectoryName, `insertAttempt-${isoDateTimestamp}`);
+        fs.mkdirSync(insertAttemptFolderPath, { recursive: true });
+        const resultsFilePath = path.join(insertAttemptFolderPath, `insertAttemptResults-${isoDateTimestamp}.json`);
+
+        let allSobjectResults: Record<string, Record<string, any[]>> = { 'SuccessResults': {}, 'FailureResults': {} };
+        const createdRecordIds: string[] = [];
+        const failures: IRecordInsertFailure[] = [];
+
+        for ( let batchStartIndex = 0; batchStartIndex < records.length; batchStartIndex += this.collectionsApiRecordBatchSizeLimit ) {
+
+            const recordsBatch = records.slice(batchStartIndex, batchStartIndex + this.collectionsApiRecordBatchSizeLimit);
+            let batchResults: any[];
+
+            try {
+                const calloutResults = await this.insertCollectionsApiCallout(recordsBatch, aliasAuthenticationConnection, false, objectApiName);
+                batchResults = Array.isArray(calloutResults) ? calloutResults : [calloutResults];
+            } catch (batchError) {
+                const batchFailureMessage = batchError?.message ?? String(batchError);
+                batchResults = recordsBatch.map(() => ({ success: false, errors: [{ message: batchFailureMessage }] }));
+            }
+
+            recordsBatch.forEach((_record, batchRecordIndex) => {
+
+                const recordResult = batchResults[batchRecordIndex];
+
+                if ( recordResult?.success === true && typeof recordResult.id === 'string' ) {
+                    createdRecordIds.push(recordResult.id);
+                    return;
+                }
+
+                const errorMessages = Array.isArray(recordResult?.errors)
+                    ? recordResult.errors.map((recordError: any) => [recordError?.statusCode, recordError?.message].filter(Boolean).join(': ')).filter(Boolean)
+                    : [];
+
+                failures.push({ recordIndex: batchStartIndex + batchRecordIndex, message: errorMessages.join('; ') || 'no result was returned for this record' });
+
+            });
+
+            allSobjectResults = this.updateCompleteCollectionApiSobjectResults(allSobjectResults, batchResults.filter(recordResult => !!recordResult), objectApiName, aliasAuthenticationConnection);
+            this.appendInsertAttemptsFileWithLatestSobjectResults(allSobjectResults, resultsFilePath);
+
+        }
+
+        return { createdRecordIds, failures, resultsFilePath };
+
     }
 
     static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, 

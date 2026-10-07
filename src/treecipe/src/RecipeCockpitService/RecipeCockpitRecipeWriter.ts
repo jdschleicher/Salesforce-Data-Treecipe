@@ -72,6 +72,11 @@ export interface IRecipeWriterEdit {
     insertedLines: string[];
 }
 
+// A ONE-OBJECT RECIPE CUT FROM A LARGER ONE, OR WHY IT COULD NOT BE CUT
+export type RecipeBlockExtractionResult =
+    | { isExtracted: true; recipeText: string }
+    | { isExtracted: false; refusal: IRecipeWriterRefusal };
+
 export type RecipeWriterResult =
     | { isApplied: true; recipeText: string; edit: IRecipeWriterEdit }
     | { isApplied: false; refusal: IRecipeWriterRefusal };
@@ -374,6 +379,86 @@ export class RecipeCockpitRecipeWriter {
             ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
             propertyName: propertyName
         });
+
+    }
+
+    /*
+        One object's own block as a recipe of its own, with "count:" set: what the Recipe Cockpit's
+        Create runs to make N records of one object (#180).
+
+        Its lines are copied, not rebuilt -- the header, its properties and its fields block with
+        every comment in it, so a TODO the generator wrote still says what it said -- and moved to
+        column zero when the object is a friend. Its OWN friends: block is left out: a Create makes
+        records of this object and nothing beneath it. An object written twice is picked by its
+        nickname, as for every other operation. A lookup value that names an ancestor's nickname is
+        copied as it is: it is just a string to the processor, and the caller replaces every lookup
+        after generation.
+    */
+    static extractObjectBlock(recipeText: string, objectApiName: string, recordCount: number, objectNickname?: string): RecipeBlockExtractionResult {
+
+        const located = this.locateObject(recipeText, objectApiName, undefined, objectNickname);
+        if ( 'refusal' in located ) {
+            return { isExtracted: false, refusal: located.refusal };
+        }
+
+        if ( !Number.isSafeInteger(recordCount) || recordCount < 1 ) {
+            return {
+                isExtracted: false,
+                refusal: {
+                    reason: 'invalid-value',
+                    message: `The count for ${this.describeObject(objectApiName, objectNickname)} must be a whole number of one or more.`,
+                    objectApiName: objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                    propertyName: 'count'
+                }
+            };
+        }
+
+        const { recipeLines, scannedObject } = located;
+        const layout = this.getObjectLayout(scannedObject.objectIndent);
+        const blockLines = [recipeLines.lines[scannedObject.headerIndex]];
+        let isInFriendsBlock = false;
+
+        for ( let lineIndex = scannedObject.headerIndex + 1; lineIndex < recipeLines.lines.length; lineIndex++ ) {
+
+            const recipeLine = recipeLines.lines[lineIndex];
+            const isBlank = !recipeLine.trim();
+            const lineIndent = recipeLine.length - recipeLine.trimStart().length;
+
+            // ANY LINE AT OR LEFT OF THE HEADER'S COLUMN ENDS THE OBJECT, AS IN scanRecipeObjects
+            if ( !isBlank && lineIndent <= scannedObject.objectIndent ) {
+                break;
+            }
+
+            // A friends: BLOCK RUNS UNTIL THE NEXT PROPERTY-COLUMN LINE THAT IS NOT A COMMENT
+            if ( isInFriendsBlock && ( isBlank || lineIndent > scannedObject.objectIndent + 2 || recipeLine.trimStart().startsWith('#') ) ) {
+                continue;
+            }
+
+            isInFriendsBlock = layout.friendsLinePattern.test(recipeLine);
+
+            if ( !isInFriendsBlock ) {
+                blockLines.push(recipeLine);
+            }
+
+        }
+
+        while ( blockLines.length > 1 && !blockLines[blockLines.length - 1].trim() ) {
+            blockLines.pop();
+        }
+
+        const extractedText = [
+            `# Recipe Cockpit -- ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}, cut from the object's own block in its tree's recipe`,
+            '',
+            ...blockLines.map(blockLine => blockLine.slice(Math.min(scannedObject.objectIndent, blockLine.length - blockLine.trimStart().length))),
+            ''
+        ].join('\n');
+
+        const countResult = this.setObjectProperty(extractedText, objectApiName, 'count', recordCount);
+
+        return 'refusal' in countResult
+            ? { isExtracted: false, refusal: countResult.refusal }
+            : { isExtracted: true, recipeText: countResult.recipeText };
 
     }
 

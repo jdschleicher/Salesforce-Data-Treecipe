@@ -1,6 +1,8 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { CollectionsApiService } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { MockDirectoryService } from '../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService';
@@ -1313,3 +1315,82 @@ describe('Shared tests for CollectionsApiService', () => {
     });
     
 });
+
+describe('insertRecordsWithoutRollback, the Recipe Cockpit Create insert (#180)', () => {
+
+    let datasetFolderPath: string;
+
+    beforeEach(() => {
+        datasetFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-create-insert-'));
+        jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue('2026-10-07T12-00-00');
+    });
+
+    afterEach(() => {
+        fs.rmSync(datasetFolderPath, { recursive: true, force: true });
+    });
+
+    const buildConnection = (insert: jest.Mock) => ({
+        instanceUrl: 'https://qa.my.salesforce.com',
+        sobject: jest.fn().mockReturnValue({ insert: insert, delete: jest.fn() })
+    });
+
+    const records = (recordCount: number) => Array.from({ length: recordCount }, (_record, recordIndex) => ({
+        attributes: { type: 'Contact', referenceId: `Contact_Reference_${recordIndex + 1}__Contact_NickName` },
+        LastName: `Name ${recordIndex}`
+    }));
+
+    test('inserts with allOrNone false, reports each rejected record, deletes nothing, and writes the results to InsertAttempts', async () => {
+
+        const insert = jest.fn().mockResolvedValue([
+            { id: '003000000000001AAA', success: true, errors: [] },
+            { success: false, errors: [{ statusCode: 'ENTITY_IS_DELETED', message: 'entity is deleted' }] },
+            { id: '003000000000003AAA', success: true, errors: [] }
+        ]);
+        const connection = buildConnection(insert);
+
+        const insertResult = await CollectionsApiService.insertRecordsWithoutRollback(datasetFolderPath, 'Contact', records(3), connection as any);
+
+        expect(insert).toHaveBeenCalledWith(records(3), { allowRecursive: false, allOrNone: false });
+        expect(connection.sobject('Contact').delete).not.toHaveBeenCalled();
+        expect(insertResult.createdRecordIds).toEqual(['003000000000001AAA', '003000000000003AAA']);
+        expect(insertResult.failures).toEqual([{ recordIndex: 1, message: 'ENTITY_IS_DELETED: entity is deleted' }]);
+        expect(insertResult.resultsFilePath).toBe(path.join(datasetFolderPath, 'InsertAttempts', 'insertAttempt-2026-10-07T12-00-00', 'insertAttemptResults-2026-10-07T12-00-00.json'));
+
+        const writtenResults = JSON.parse(fs.readFileSync(insertResult.resultsFilePath, 'utf8'));
+        expect(writtenResults.SuccessResults.Contact).toHaveLength(2);
+        expect(writtenResults.FailureResults.Contact).toHaveLength(1);
+
+    });
+
+    test('sends 200 records a request, and records a request that failed outright as a failure of each of its records', async () => {
+
+        const insert = jest.fn()
+            .mockRejectedValueOnce(new Error('socket hang up'))
+            .mockImplementationOnce(async (batch: unknown[]) => batch.map((_record, recordIndex) => ({ id: `003${String(recordIndex).padStart(15, '0')}`, success: true, errors: [] })));
+
+        const insertResult = await CollectionsApiService.insertRecordsWithoutRollback(datasetFolderPath, 'Contact', records(250), buildConnection(insert) as any);
+
+        expect(insert.mock.calls.map(insertCall => insertCall[0].length)).toEqual([200, 50]);
+        expect(insertResult.failures).toHaveLength(200);
+        expect(insertResult.failures[0].message).toContain('socket hang up');
+        expect(insertResult.createdRecordIds).toHaveLength(50);
+
+    });
+
+    test('reads an answer that is not a list, and a result with no errors as per-record failures', async () => {
+
+        const insert = jest.fn()
+            .mockResolvedValueOnce({ success: false })
+            .mockRejectedValueOnce('timed out');
+
+        const insertResult = await CollectionsApiService.insertRecordsWithoutRollback(datasetFolderPath, 'Contact', records(201), buildConnection(insert) as any);
+
+        expect(insertResult.createdRecordIds).toEqual([]);
+        expect(insertResult.failures[0]).toEqual({ recordIndex: 0, message: 'no result was returned for this record' });
+        expect(insertResult.failures[1]).toEqual({ recordIndex: 1, message: 'no result was returned for this record' });
+        expect(insertResult.failures[200]).toEqual({ recordIndex: 200, message: 'Error importing records: timed out' });
+
+    });
+
+});
+
