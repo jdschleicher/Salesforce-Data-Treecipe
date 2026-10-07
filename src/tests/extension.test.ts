@@ -136,4 +136,28 @@ describe('activate', () => {
 
     });
 
+    // THE RECIPE COCKPIT'S Run Faker HANDS OVER ITS TREE'S RECIPE FILE, AND WAITS FOR THE DATA SET
+    it('passes a recipe file to Run Faker by Recipe and returns the run, and passes nothing that is not a path', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const fakerRun = Promise.resolve();
+        const runFakerSpy = jest.spyOn(ExtensionCommandService.prototype, 'runFakerGenerationByRecipeFile').mockReturnValue(fakerRun);
+
+        await activate(buildExtensionContext() as never);
+
+        const [, runFakerHandler] = (vscode.commands.registerCommand as jest.Mock).mock.calls
+            .find(registerCall => registerCall[0] === 'treecipe.runFakerByRecipe');
+
+        expect(runFakerHandler('/workspace/treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-20T10-00-00.yml')).toBe(fakerRun);
+        expect(runFakerHandler()).toBe(fakerRun);
+        runFakerHandler({ fsPath: '/elsewhere' });
+
+        expect(runFakerSpy.mock.calls).toEqual([
+            ['/workspace/treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-20T10-00-00.yml'],
+            [undefined],
+            [undefined]
+        ]);
+
+    });
+
 });

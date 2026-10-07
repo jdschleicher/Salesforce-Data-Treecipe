@@ -7,6 +7,7 @@ import { SfdxProjectService } from "../../SfdxProjectService/SfdxProjectService"
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as os from 'os';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -1190,6 +1191,65 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         afterEach(() => {        
             jest.restoreAllMocks();
+        });
+
+    });
+
+    /*
+        The Recipe Cockpit's Run Faker skips the picker, so the handler refuses a backend mismatch
+        with readRecipeFakerService instead. It has to answer exactly what the picker's filter does,
+        so it is held to the REAL walk over a real directory rather than to a restatement of it.
+    */
+    describe('readRecipeFakerService', () => {
+
+        const recipeRelativeFilePaths = [
+            'recipe-fakerjs--Loose-2026-09-01T00-00-00.yml',
+            'recipe--Loose-2026-09-01T00-00-00.yml',
+            'recipe-fakerjs-2026-09-10T00-00-00/Lead-ONLY/recipe-fakerjs--Lead-ONLY-2026-09-10T00-00-00.yml',
+            'recipe-fakerjs-2026-09-10T00-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-10T00-00-00.yml',
+            'recipe-2026-09-20T10-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-20T10-00-00.yml',
+            'recipe-2026-09-20T10-00-00/Lead-ONLY/recipe-fakerjs--Lead-ONLY-2026-09-20T10-00-00.yml',
+            'recipe-2026-09-20T10-00-00/recipe-fakerjs-tree/recipe--Tree-2026-09-20T10-00-00.yml'
+        ];
+
+        let generatedRecipesFolderPath: string;
+
+        beforeEach(() => {
+            generatedRecipesFolderPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'recipe-backend-')), 'GeneratedRecipes');
+            recipeRelativeFilePaths.forEach(recipeRelativeFilePath => {
+                const recipeFilePath = path.join(generatedRecipesFolderPath, recipeRelativeFilePath);
+                fs.mkdirSync(path.dirname(recipeFilePath), { recursive: true });
+                fs.writeFileSync(recipeFilePath, '- object: Lead\n');
+            });
+        });
+
+        afterEach(() => {
+            removeTemporaryDirectoryQuietly(path.dirname(generatedRecipesFolderPath));
+        });
+
+        test('names the backend of a recipe whose file name and folders agree, and none otherwise', () => {
+
+            const readBackendOf = (recipeRelativeFilePath: string) => VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, path.join(generatedRecipesFolderPath, recipeRelativeFilePath));
+
+            expect(recipeRelativeFilePaths.map(readBackendOf)).toEqual(['faker-js', 'snowfakery', 'faker-js', undefined, 'snowfakery', undefined, undefined]);
+
+        });
+
+        test.each(['faker-js', 'snowfakery'])('given %s selected, accepts exactly the recipes the picker offers', async (selectedFakerService) => {
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue(selectedFakerService);
+
+            const offeredRecipeFilePaths = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath))
+                .map(quickPickItem => quickPickItem.detail)
+                .sort();
+            const acceptedRecipeFilePaths = recipeRelativeFilePaths
+                .map(recipeRelativeFilePath => path.join(generatedRecipesFolderPath, recipeRelativeFilePath))
+                .filter(recipeFilePath => VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath) === selectedFakerService)
+                .sort();
+
+            expect(offeredRecipeFilePaths.length).toBeGreaterThan(0);
+            expect(acceptedRecipeFilePaths).toEqual(offeredRecipeFilePaths);
+
         });
 
     });

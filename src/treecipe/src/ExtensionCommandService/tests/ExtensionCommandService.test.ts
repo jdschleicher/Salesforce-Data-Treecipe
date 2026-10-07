@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import * as childProcess from 'child_process';
 
 import * as matchers from 'jest-extended';
 expect.extend(matchers);
@@ -1890,6 +1891,184 @@ describe('ExtensionCommandService', () => {
             expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.any(Error), 'runFakerGenerationByRecipeFile');
             expect(FakerJSRecipeProcessor.prototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
+
+        });
+
+
+        /*
+            The Recipe Cockpit's Run Faker hands the handler its tree's recipe file. The picker is
+            skipped, but nothing else is: the modal still asks, the configured backend still runs,
+            and a path the picker could not have offered is refused before anything is read.
+        */
+        describe('given a recipe file path', () => {
+
+            const arrangeRecipeFilePath = (backendCase: typeof backendCases[number]) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
+                return path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', backendCase.runFolderName, 'Account-thru-Contact', backendCase.recipeFileName);
+
+            };
+
+            const expectNothingRun = (backendCase: typeof backendCases[number]) => {
+
+                expect(backendCase.processorPrototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
+                expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+                expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+
+            };
+
+            beforeEach(() => {
+                jest.spyOn(ConfigurationService, 'getGeneratedRecipesFolderPath').mockReturnValue('treecipe/GeneratedRecipes');
+                jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+                // A jest.fn FROM THE vscode MOCK FACTORY, WHICH KEEPS EVERY EARLIER TEST'S CALLS
+                (vscode.window.showInformationMessage as jest.Mock).mockClear();
+            });
+
+            test.each(backendCases)('given $fakerService, skips the picker, keeps the modal and runs the configured backend on that file', async (backendCase) => {
+
+                const recipeFilePath = arrangeRecipeFilePath(backendCase);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath);
+
+                expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).not.toHaveBeenCalled();
+                expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.any(String), { modal: true }, 'Generate Data');
+                expect(backendCase.processorPrototype.generateFakeDataBySelectedRecipeFile).toHaveBeenCalledWith(recipeFilePath);
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+
+                const [datasetFolderName] = readDatasetFolderNames();
+                expect(readWrittenDatasetSource(datasetFolderName)).toMatchObject({
+                    recipeRunFolderName: backendCase.runFolderName,
+                    recipeTreeFolderName: 'Account-thru-Contact',
+                    recipeFileName: backendCase.recipeFileName,
+                    fakerService: backendCase.fakerService
+                });
+                expect(fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets', datasetFolderName, 'BaseArtifactFiles')))
+                    .toContain(`originalRecipe-${backendCase.recipeFileName}`);
+
+            });
+
+            // THE CHECKS RUN ON THE RESOLVED PATH, SO THE RESOLVED PATH IS WHAT IS READ AND HANDED TO THE BACKEND
+            test('given a relative path, runs the resolved path the checks ran on', async () => {
+
+                const [fakerJsCase] = backendCases;
+                const recipeFilePath = arrangeRecipeFilePath(fakerJsCase);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(path.relative(process.cwd(), recipeFilePath));
+
+                expect(fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile).toHaveBeenCalledWith(recipeFilePath);
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+
+            });
+
+            test('given no path, the palette still prompts with the picker', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRecipeFilePath(fakerJsCase);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile();
+
+                expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).toHaveBeenCalledWith('treecipe/GeneratedRecipes', 'Select recipe file to process');
+                expect(readDatasetFolderNames()).toHaveLength(1);
+
+            });
+
+            test.each([
+                { description: 'a file outside the workspace', relativeFilePath: null },
+                { description: 'a recipe inside the workspace but outside GeneratedRecipes', relativeFilePath: 'elsewhere/recipe-fakerjs--Account-2026-09-01T08-00-00.yml' },
+                { description: 'a path that climbs out of GeneratedRecipes', relativeFilePath: 'treecipe/GeneratedRecipes/../recipe-fakerjs--Account-2026-09-01T08-00-00.yml' },
+                { description: 'a .yaml file', relativeFilePath: 'treecipe/GeneratedRecipes/recipe-fakerjs-2026-09-01T08-00-00/Account-thru-Contact/recipe-fakerjs--Account-2026-09-01T08-00-00.yaml' },
+                { description: 'a file that is not a recipe', relativeFilePath: 'treecipe/GeneratedRecipes/recipe-fakerjs-2026-09-01T08-00-00/treecipeObjectsWrapper-2026-09-01T08-00-00.json' }
+            ])('refuses $description and runs nothing', async ({ relativeFilePath }) => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRecipeFilePath(fakerJsCase);
+
+                const outsideWorkspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'run-faker-outside-'));
+                const refusedFilePath = relativeFilePath === null
+                    ? path.join(outsideWorkspaceRoot, 'treecipe', 'GeneratedRecipes', fakerJsCase.recipeFileName)
+                    : path.join(workspaceRoot, relativeFilePath);
+                fs.mkdirSync(path.dirname(refusedFilePath), { recursive: true });
+                fs.writeFileSync(refusedFilePath, '- object: Account\n');
+
+                try {
+                    await extensionCommandService.runFakerGenerationByRecipeFile(refusedFilePath);
+                } finally {
+                    fs.rmSync(outsideWorkspaceRoot, { recursive: true, force: true });
+                }
+
+                expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledTimes(1);
+                expectNothingRun(fakerJsCase);
+
+            });
+
+            test('given a recipe file deleted after the cockpit rendered it, says it no longer exists and runs nothing', async () => {
+
+                const [fakerJsCase] = backendCases;
+                const recipeFilePath = arrangeRecipeFilePath(fakerJsCase);
+                fs.unlinkSync(recipeFilePath);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath);
+
+                expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(`The recipe file "${fakerJsCase.recipeFileName}" no longer exists, so no data was generated.`);
+                expectNothingRun(fakerJsCase);
+
+            });
+
+            test.each([
+                { recipeBackendIndex: 0, selectedFakerService: 'snowfakery', expectedMessage: 'This recipe was generated for faker-js — switch with "Select Faker Implementation".' },
+                { recipeBackendIndex: 1, selectedFakerService: 'faker-js', expectedMessage: 'This recipe was generated for snowfakery — switch with "Select Faker Implementation".' }
+            ])('given a $selectedFakerService selection and a recipe for the other backend, refuses before generating', async ({ recipeBackendIndex, selectedFakerService, expectedMessage }) => {
+
+                const recipeBackendCase = backendCases[recipeBackendIndex];
+                const recipeFilePath = arrangeRecipeFilePath(recipeBackendCase);
+                jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue(selectedFakerService);
+                backendCases.forEach(backendCase => jest.spyOn(backendCase.processorPrototype, 'generateFakeDataBySelectedRecipeFile'));
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath);
+
+                expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(expectedMessage);
+                backendCases.forEach(backendCase => expectNothingRun(backendCase));
+
+            });
+
+            test('given the modal is cancelled, writes nothing', async () => {
+
+                const [fakerJsCase] = backendCases;
+                const recipeFilePath = arrangeRecipeFilePath(fakerJsCase);
+                jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValue(undefined);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath);
+
+                expect(FakerJSRecipeProcessor.prototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
+                expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
+
+            });
+
+            // #115: THE PATH REACHES SNOWFAKERY AS ONE argv ELEMENT, NEVER THROUGH A SHELL
+            test('given snowfakery, hands the recipe path to execFile as an argument with no shell', async () => {
+
+                const [, snowfakeryCase] = backendCases;
+                const recipeFilePath = arrangeRecipeFilePath(snowfakeryCase);
+                (SnowfakeryRecipeProcessor.prototype.generateFakeDataBySelectedRecipeFile as jest.Mock).mockRestore();
+                const execFileSpy = jest.spyOn(childProcess, 'execFile').mockImplementation(((_command: string, _args: string[], _options: unknown, execFileCallback: (...callbackArgs: unknown[]) => void) => {
+                    execFileCallback(null, snowfakeryCase.fakerOutput, '');
+                    return {} as childProcess.ChildProcess;
+                }) as unknown as typeof childProcess.execFile);
+                const execSpy = jest.spyOn(childProcess, 'exec');
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath);
+
+                expect(execFileSpy).toHaveBeenCalledTimes(1);
+                const [command, commandArguments, execFileOptions] = execFileSpy.mock.calls[0] as unknown as [string, string[], Record<string, unknown>];
+                expect(command).toBe('snowfakery');
+                expect(commandArguments).toEqual([recipeFilePath, '--output-format', 'json']);
+                expect(execFileOptions).not.toHaveProperty('shell');
+                expect(execSpy).not.toHaveBeenCalled();
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                expect(readDatasetFolderNames()).toHaveLength(1);
+
+            });
 
         });
 

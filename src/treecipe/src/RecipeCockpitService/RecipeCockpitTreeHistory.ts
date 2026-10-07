@@ -76,10 +76,16 @@ export interface IRecipeCockpitTreeDiffTarget {
     paths, and every one of these paths passed workspace containment when it was put here -- and
     is checked again when it is used.
 */
+/*
+    runFakerRecipeFilePathsByTreeKey holds the recipe file Run Faker runs for a tree: the one .yml
+    the run on screen wrote to the tree's folder. A .yaml is left out because Run Faker by Recipe
+    refuses one handed to it by path.
+*/
 export interface IRecipeCockpitTreeHistoryTargets {
     summarySourcesByTreeKey: Map<string, IRecipeCockpitTreeSummarySource>;
     diffTargetsByKey: Map<string, IRecipeCockpitTreeDiffTarget>;
     datasetFolderPathsByName: Map<string, string>;
+    runFakerRecipeFilePathsByTreeKey: Map<string, string>;
 }
 
 export interface IRecipeCockpitTreeHistoryBuild {
@@ -99,7 +105,7 @@ export class RecipeCockpitTreeHistory {
 
     static buildEmptyTargets(): IRecipeCockpitTreeHistoryTargets {
 
-        return { summarySourcesByTreeKey: new Map(), diffTargetsByKey: new Map(), datasetFolderPathsByName: new Map() };
+        return { summarySourcesByTreeKey: new Map(), diffTargetsByKey: new Map(), datasetFolderPathsByName: new Map(), runFakerRecipeFilePathsByTreeKey: new Map() };
 
     }
 
@@ -326,6 +332,10 @@ export class RecipeCockpitTreeHistory {
             const treeFolderPathOf = (runFolderName: string) => path.join(generatedRecipesFolderPath, runFolderName, tree.folderName);
             const currentRecipeFilePath = this.findTreeRecipeFilePath(treeFolderPathOf(currentRunFolderName));
             const summarySource: IRecipeCockpitTreeSummarySource = { treeFolderName: tree.folderName, currentRunFolderName: currentRunFolderName, runs: [] };
+
+            if ( currentRecipeFilePath && path.extname(currentRecipeFilePath) === '.yml' && isContained(currentRecipeFilePath) ) {
+                targets.runFakerRecipeFilePathsByTreeKey.set(tree.treeKey, currentRecipeFilePath);
+            }
 
             treeHistory.versions.forEach(version => {
 
