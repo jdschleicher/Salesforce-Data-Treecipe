@@ -588,9 +588,6 @@ export class CollectionsApiService {
 
         const referenceRegexMatch = /(Reference_\d+__)/;
 
-        // Extract nickname from each reference ID, then sort longest-first so that
-        // more-specific nested nicknames (e.g. "Account_top_1") are replaced before
-        // shorter parent nicknames (e.g. "top") that are substrings of the longer ones.
         const nicknameToOrgIdEntries: { nicknameValue: string; orgRecordId: string }[] = [];
 
         for (const [referenceIdKey, orgRecordId] of Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
@@ -602,13 +599,14 @@ export class CollectionsApiService {
             }
         }
 
-        nicknameToOrgIdEntries.sort((a, b) => b.nicknameValue.length - a.nicknameValue.length);
-
         /*
             Only a JSON string that IS the nickname is replaced -- never one that merely contains it,
             and never a key. A nested friend's nickname is built from its parent's
             ("Contact_Account_NickName" holds "Account_NickName"), so a substring replace rewrote
-            the friend's own attributes.referenceId and lost every reference to it (#46).
+            the friend's own attributes.referenceId and lost every reference to it (#46). An exact
+            match also makes the order of replacement irrelevant, which is why the nicknames are no
+            longer sorted longest-first; records sharing a nickname keep insertion order, so the
+            first inserted still wins.
         */
         for (const { nicknameValue, orgRecordId } of nicknameToOrgIdEntries) {
             const quotedNickname = JSON.stringify(nicknameValue);

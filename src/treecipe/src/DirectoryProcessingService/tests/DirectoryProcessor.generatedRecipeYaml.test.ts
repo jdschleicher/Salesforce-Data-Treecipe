@@ -1,4 +1,5 @@
 import * as childProcess from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
@@ -273,6 +274,22 @@ describe.each([
         });
 
         expect(wiredLookupCount > 0).toBe(objectInfoWrapper.RecipeFiles.some(recipeFile => recipeFile.content.includes('friends:')));
+
+    });
+
+    // THE RECIPE COCKPIT'S NESTED WRITER FIXTURE IS THIS PIPELINE'S OUTPUT, SO A CHANGE TO THE LAYOUT THAT DOES NOT REGENERATE IT FAILS HERE
+    test('the first tree is byte-identical to the Recipe Cockpit\'s writer fixture for this backend', () => {
+
+        const fixtureFileName = createFakerService() instanceof FakerJSRecipeFakerService
+            ? 'recipe-fakerjs-nested--RelationshipTree_1.yml'
+            : undefined;
+        if ( !fixtureFileName ) {
+            expect(recipeFiles[0].content).not.toContain('friends:');
+            return;
+        }
+
+        const fixturePath = path.join(__dirname, '..', '..', 'RecipeCockpitService', 'tests', 'mocks', 'recipeWriter', fixtureFileName);
+        expect(recipeFiles[0].content).toBe(fs.readFileSync(fixturePath, 'utf-8'));
 
     });
 
