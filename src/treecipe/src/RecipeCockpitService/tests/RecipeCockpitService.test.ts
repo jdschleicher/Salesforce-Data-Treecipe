@@ -15,11 +15,14 @@ jest.mock('vscode', () => ({
 
 import {
     RecipeCockpitService,
+    IRecipeCockpitLoadedRecipe,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_VIEW_TYPE,
     RECIPE_COCKPIT_PANEL_TITLE,
     RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT,
+    RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE,
+    RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_ISSUES_URL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_NO_RUN_MESSAGE,
@@ -45,6 +48,10 @@ const MOCK_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'workspace');
 const MOCK_GENERATED_RECIPES_PATH = path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes');
 const LATEST_RUN_FOLDER_NAME = 'recipe-2026-09-04T11-22-07';
 const FAKER_JS_RUN_FOLDER_NAME = 'recipe-fakerjs-2026-09-01T08-00-00';
+// A WORKSPACE OF ITS OWN, SO ITS RUNS DO NOT CHANGE WHICH RUN IS LATEST IN THE ONE ABOVE
+const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
+const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
+const LEGACY_TREE_RUN_FOLDER_NAME = 'recipe-2026-09-01T00-00-00';
 const LATEST_RECIPE_FILE_PATH = path.join(
     MOCK_GENERATED_RECIPES_PATH,
     LATEST_RUN_FOLDER_NAME,
@@ -100,6 +107,7 @@ function buildRecipeViewModel(overrides: Partial<IRecipeCockpitRecipeViewModel> 
         runs: [{ runFolderName: LATEST_RUN_FOLDER_NAME, label: 'latest run' }],
         selectedRunFolderName: LATEST_RUN_FOLDER_NAME,
         objects: [],
+        trees: [],
         notices: [],
         emptyStateMessage: '',
         ...overrides
@@ -493,10 +501,12 @@ describe('RecipeCockpitService', () => {
                 fieldApiName: 'Industry_Group__c',
                 fieldLabel: 'Industry Group',
                 fieldType: 'Picklist',
+                fieldTypeWithSize: 'Picklist',
                 recipeValue: "if:\n    - choice:\n        when: ${{ Industry == 'Agriculture' }}\n        pick: Ag Co-op",
                 controllingField: 'Industry',
                 isOnlyInRecipeFile: false,
-                lineNumber: 13
+                lineNumber: 13,
+                isPicklist: true
             });
             // THE BLOCK SCALAR INDICATOR AND ITS FILE INDENTATION ARE NOT PART OF THE EXPRESSION
             expect(numberOfContactsField.recipeValue).toBe('${{ random_number(min=0, max=999999) }}');
@@ -537,7 +547,7 @@ describe('RecipeCockpitService', () => {
 
             const actualRecipe = RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist'));
 
-            expect(actualRecipe).toEqual({ runs: [], selectedRunFolderName: '', objects: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE });
+            expect(actualRecipe).toEqual({ runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE });
             expect(RECIPE_COCKPIT_NO_RUN_MESSAGE).toContain('Generate Treecipe');
 
         });
@@ -696,7 +706,10 @@ describe('RecipeCockpitService', () => {
                 const actualRecipe = RecipeCockpitService.buildRecipeViewModel(temporaryWorkspaceRoot);
 
                 expect(actualRecipe.objects[0].recipeFilePath).toBe('');
-                expect(actualRecipe.notices).toEqual(['The recipe file "recipe.yml" could not be read (EACCES), so its objects and fields cannot be opened from here.']);
+                expect(actualRecipe.notices).toEqual([
+                    'The recipe file "recipe.yml" could not be read (EACCES), so its objects and fields cannot be opened from here.',
+                    RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE
+                ]);
 
             });
 
@@ -798,13 +811,29 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('keeps the values off the field view model, so the posted payload does not grow', () => {
+        /*
+            The Structure tab draws a picklist's values, and they are posted when its row is
+            expanded: the row itself carries only isPicklist, because posting every value with the
+            model measured past 60 MB at 120,000 fields. The diff's own copy is unchanged -- a
+            dependent picklist is still absent from it, because its wrapper values cannot say
+            whether they are the field's whole set.
+        */
+        it('marks a picklist row and keeps its active values for display beside the model, dependent picklists included', () => {
 
             const normalizedWrapper = RecipeCockpitService.normalizeObjectsWrapper(wrapperWithPicklists);
+            const fieldsByApiName = new Map(normalizedWrapper.objects[0].fields.map(fieldViewModel => [fieldViewModel.fieldApiName, fieldViewModel]));
+            const displayValuesOf = (fieldApiName: string) => normalizedWrapper.picklistDisplayValuesByObjectApiName.get('Account')?.get(fieldApiName);
 
-            normalizedWrapper.objects.forEach(objectViewModel => objectViewModel.fields.forEach(fieldViewModel => {
-                expect(Object.keys(fieldViewModel)).not.toContain('picklistValues');
-            }));
+            expect(fieldsByApiName.get('Industry')?.isPicklist).toBe(true);
+            expect(Object.keys(fieldsByApiName.get('Legacy_Code__c'))).not.toContain('isPicklist');
+            expect(JSON.stringify(normalizedWrapper.objects)).not.toContain('Agriculture');
+
+            expect(displayValuesOf('Industry')).toEqual({ picklistValues: ['Agriculture', 'Retail'], recordTypePicklistValues: [] });
+            expect(displayValuesOf('Status__c')?.picklistValues).toEqual([]);
+            expect(displayValuesOf('Sub_Industry__c')?.picklistValues).toEqual(['Dairy']);
+            expect(displayValuesOf('Legacy_Code__c')).toBeUndefined();
+
+            expect(normalizedWrapper.picklistValuesByObjectApiName.get('Account')?.has('Sub_Industry__c')).toBe(false);
 
         });
 
@@ -1273,16 +1302,311 @@ describe('RecipeCockpitService', () => {
 
     });
 
+    describe('formatFieldTypeWithSize', () => {
+
+        it.each([
+            ['Text', { length: 50 }, 'Text(50)'],
+            ['Number', { precision: 16, scale: 2 }, 'Number(16,2)'],
+            ['Currency', { precision: 18, scale: 2 }, 'Currency(18,2)'],
+            ['Percent', { precision: 5, scale: 2 }, 'Percent(5,2)'],
+            ['Number', { precision: 18 }, 'Number(18,0)'],
+            ['Number', { precision: 18, scale: 0 }, 'Number(18,0)'],
+            ['Checkbox', {}, 'Checkbox'],
+            ['LongTextArea', { length: 32768 }, 'LongTextArea(32768)'],
+            ['', { length: 50 }, '']
+        ])('formats %s with %j as %s', (fieldType, fieldSize, expectedTypeWithSize) => {
+
+            expect(RecipeCockpitService.formatFieldTypeWithSize(fieldType, fieldSize)).toBe(expectedTypeWithSize);
+
+        });
+
+    });
+
+    describe('relationship trees', () => {
+
+        const loadTreeRun = (runFolderName = TREE_RUN_FOLDER_NAME) => RecipeCockpitService.buildRecipeViewModel(TREE_WORKSPACE_ROOT, runFolderName);
+
+        it('builds one card per RecipeFiles entry, in RecipeFiles order, keyed and subtitled by the folder the tree was written to', () => {
+
+            const treeRecipe = loadTreeRun();
+
+            expect(treeRecipe.trees.map(tree => [tree.treeKey, tree.title, tree.folderName])).toEqual([
+                ['Account-thru-OtherChildObject__c', 'Relationship Tree 1', 'Account-thru-OtherChildObject__c'],
+                ['Lead-ONLY', 'Relationship Tree 2', 'Lead-ONLY']
+            ]);
+            expect(treeRecipe.notices).toEqual([]);
+
+        });
+
+        it('lists a tree\'s objects in insert order, leaving out a lookup target with no recipe of its own', () => {
+
+            const [firstTree, secondTree] = loadTreeRun().trees;
+
+            expect(firstTree.objects.map(treeObject => treeObject.objectApiName)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(secondTree.objects.map(treeObject => treeObject.objectApiName)).toEqual(['Lead']);
+            expect(firstTree.fieldCount).toBe(13);
+            expect(secondTree.fieldCount).toBe(2);
+
+        });
+
+        it('carries each object\'s lookups to a parent in the same tree, a self-lookup included', () => {
+
+            const [firstTree, secondTree] = loadTreeRun().trees;
+            const parentLookupsOf = (objectApiName: string) => firstTree.objects.find(treeObject => treeObject.objectApiName === objectApiName).parentLookups;
+
+            expect(parentLookupsOf('Account')).toEqual([
+                { fieldApiName: 'ParentId', parentObjectApiName: 'Account' },
+                { fieldApiName: 'OwnerId', parentObjectApiName: 'User' }
+            ]);
+            expect(parentLookupsOf('Contact')).toEqual([{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]);
+            expect(parentLookupsOf('OtherChildObject__c')).toEqual([{ fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' }]);
+            expect(secondTree.objects[0].parentLookups).toEqual([]);
+
+        });
+
+        it('carries each field\'s type with its size, and the bare type where the wrapper records none', () => {
+
+            const treeRecipe = loadTreeRun();
+            const typeOf = (objectApiName: string, fieldApiName: string) => treeRecipe.objects
+                .find(objectViewModel => objectViewModel.objectApiName === objectApiName).fields
+                .find(fieldViewModel => fieldViewModel.fieldApiName === fieldApiName);
+
+            expect(typeOf('Account', 'Legacy_Code__c').fieldTypeWithSize).toBe('Text(50)');
+            expect(typeOf('Account', 'Annual_Budget__c').fieldTypeWithSize).toBe('Currency(18,2)');
+            expect(typeOf('OtherChildObject__c', 'Score__c').fieldTypeWithSize).toBe('Number(18,0)');
+            expect(typeOf('OtherChildObject__c', 'Ratio__c').fieldTypeWithSize).toBe('Percent(5,2)');
+            expect(typeOf('Account', 'OwnerId').fieldTypeWithSize).toBe('Lookup');
+            // THE CLASSIC LIST AND THE DIFF STILL READ THE BARE TYPE
+            expect(typeOf('Account', 'Legacy_Code__c').fieldType).toBe('Text');
+
+        });
+
+        it('keeps a picklist\'s active values beside the model, grouped per record type, and marks only picklist rows', () => {
+
+            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME);
+            const [accountObject] = loadedRecipe.recipeViewModel.objects;
+            const fieldOf = (fieldApiName: string) => accountObject.fields.find(fieldViewModel => fieldViewModel.fieldApiName === fieldApiName);
+            const displayValuesOf = (fieldApiName: string) => loadedRecipe.picklistDisplayValuesByObjectApiName.get('Account')?.get(fieldApiName);
+
+            expect(displayValuesOf('Rating__c')).toEqual({
+                picklistValues: ['Hot', 'Warm', 'Cold'],
+                recordTypePicklistValues: [
+                    { recordTypeDeveloperName: 'Business', picklistValues: ['Hot', 'Warm'] },
+                    { recordTypeDeveloperName: 'Partner', picklistValues: ['Cold'] }
+                ]
+            });
+            expect(displayValuesOf('Regions__c')).toEqual({ picklistValues: [], recordTypePicklistValues: [] });
+            expect(fieldOf('Sub_Rating__c').controllingField).toBe('Rating__c');
+            expect(['Rating__c', 'Sub_Rating__c', 'Regions__c', 'Legacy_Code__c'].map(fieldApiName => !!fieldOf(fieldApiName).isPicklist)).toEqual([true, true, true, false]);
+            expect(RecipeCockpitService.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel)).toEqual([
+                'Account\nRating__c', 'Account\nSub_Rating__c', 'Account\nRegions__c', 'Lead\nStatus'
+            ]);
+
+        });
+
+        describe('loadPicklistValues, routed', () => {
+
+            const buildPicklistPanelState = (): IRecipeCockpitPanelState => {
+                const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+                const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME);
+                const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
+                panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 3 };
+                panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
+                panelState.pendingLoadablePicklistKeys = new Set(RecipeCockpitService.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel));
+                return panelState;
+            };
+
+            const activate = (panelState: IRecipeCockpitPanelState) => {
+                panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
+                return panelState;
+            };
+
+            it('answers with one row\'s values, tagged with the model they belong to, once that model is confirmed drawn', () => {
+
+                const panelState = buildPicklistPanelState();
+                const loadMessage = { command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' };
+
+                // PENDING IS NOT ENOUGH: A POSTED MODEL IS NOT A DRAWN ONE
+                expect(RecipeCockpitService.routePanelMessage(loadMessage, panelState)).toBeUndefined();
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'rendered', renderSequence: 3 }, panelState)).toEqual({ kind: 'activateActions' });
+                activate(panelState);
+
+                expect(RecipeCockpitService.routePanelMessage(loadMessage, panelState)).toEqual({
+                    kind: 'postPicklistValues',
+                    hostMessage: {
+                        command: 'picklistValues',
+                        objectApiName: 'Account',
+                        fieldApiName: 'Rating__c',
+                        picklistValues: ['Hot', 'Warm', 'Cold'],
+                        recordTypePicklistValues: [
+                            { recordTypeDeveloperName: 'Business', picklistValues: ['Hot', 'Warm'] },
+                            { recordTypeDeveloperName: 'Partner', picklistValues: ['Cold'] }
+                        ],
+                        renderSequence: 3
+                    }
+                });
+
+            });
+
+            it.each([
+                ['a row that is not a picklist', { objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }],
+                ['an object the model does not name', { objectApiName: 'Opportunity', fieldApiName: 'StageName' }],
+                ['a non-string object name', { objectApiName: ['Account'], fieldApiName: 'Rating__c' }],
+                ['a missing field name', { objectApiName: 'Account' }],
+                ['a key smuggled across the separator', { objectApiName: 'Account\nRating__c', fieldApiName: '' }]
+            ])('answers nothing for %s', (unusedDescription, payload) => {
+
+                const panelState = activate(buildPicklistPanelState());
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'loadPicklistValues', ...payload }, panelState)).toBeUndefined();
+
+            });
+
+            it('answers an allow-listed row the host holds no values for with an empty list rather than nothing', () => {
+
+                const panelState = activate(buildPicklistPanelState());
+                panelState.picklistDisplayValuesByObjectApiName = new Map();
+
+                const panelAction = RecipeCockpitService.routePanelMessage({ command: 'loadPicklistValues', objectApiName: 'Lead', fieldApiName: 'Status' }, panelState);
+
+                expect(panelAction).toEqual({ kind: 'postPicklistValues', hostMessage: expect.objectContaining({ picklistValues: [], recordTypePicklistValues: [] }) });
+
+            });
+
+            it('answers nothing when no model has been posted', () => {
+
+                const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
+                panelState.loadablePicklistKeys = new Set(['Account\nRating__c']);
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' }, panelState)).toBeUndefined();
+
+            });
+
+        });
+
+        it('given a run from before field sizes were recorded, draws the bare type and still builds', () => {
+
+            const legacyRecipe = loadTreeRun(LEGACY_TREE_RUN_FOLDER_NAME);
+            const legacyCodeField = legacyRecipe.objects[0].fields.find(fieldViewModel => fieldViewModel.fieldApiName === 'Legacy_Code__c');
+
+            expect(legacyCodeField.fieldTypeWithSize).toBe('Text');
+
+        });
+
+        it('given a wrapper with no RecipeFiles, falls back to one card per recipe file, objects in file order, no lookups, and says why', () => {
+
+            const legacyRecipe = loadTreeRun(LEGACY_TREE_RUN_FOLDER_NAME);
+
+            expect(legacyRecipe.trees.map(tree => [tree.treeKey, tree.title, tree.folderName])).toEqual([
+                ['Account-thru-Contact', 'Relationship Tree 1', 'Account-thru-Contact'],
+                ['Lead-ONLY', 'Relationship Tree 2', 'Lead-ONLY']
+            ]);
+            expect(legacyRecipe.trees[0].objects).toEqual([
+                { objectApiName: 'Account', parentLookups: [] },
+                { objectApiName: 'Contact', parentLookups: [] }
+            ]);
+            expect(legacyRecipe.notices).toEqual([RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE]);
+
+        });
+
+        describe('buildRecipeTreeViewModels, tested pure', () => {
+
+            const buildObject = (objectApiName: string, fieldCount = 1) => ({
+                objectApiName: objectApiName,
+                recipeFilePath: '',
+                recipeFileName: '',
+                fields: Array.from({ length: fieldCount }, (unusedValue, fieldIndex) => ({
+                    fieldApiName: `Field${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
+                }))
+            });
+
+            it('given an empty RecipeFiles list, falls back the same as a missing one', () => {
+
+                const normalizedWrapper = RecipeCockpitService.normalizeObjectsWrapper({
+                    ObjectToObjectInfoMap: { Lead: { Fields: [{ fieldName: 'Company' }] } },
+                    RecipeFiles: []
+                });
+                const recipeSourceFile = { filePath: path.join('run', 'Lead-ONLY', 'recipe.yml'), objectEntries: new Map([['Lead', { lineNumber: 1, fieldEntries: new Map() }]]) };
+
+                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(normalizedWrapper, [buildObject('Lead')], [recipeSourceFile], 'run');
+
+                expect(treeBuild.trees.map(tree => tree.folderName)).toEqual(['Lead-ONLY']);
+                expect(treeBuild.notices).toEqual([RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE]);
+
+            });
+
+            it('given a recipe file written straight into the run folder, names its card by the file', () => {
+
+                const recipeSourceFile = { filePath: path.join('run', 'recipe.yml'), objectEntries: new Map([['Lead', { lineNumber: 1, fieldEntries: new Map() }]]) };
+
+                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(
+                    { recipeTrees: [], parentLookupsByObjectApiName: new Map() }, [buildObject('Lead')], [recipeSourceFile], 'run'
+                );
+
+                expect(treeBuild.trees[0].folderName).toBe('recipe.yml');
+
+            });
+
+            it('drops a lookup to a parent outside the tree, and gives an object no tree claimed a card of its own', () => {
+
+                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels({
+                    recipeTrees: [{ objectApiNames: ['Contact'] }],
+                    parentLookupsByObjectApiName: new Map([['Contact', [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]]])
+                }, [buildObject('Contact', 2), buildObject('Stray__c', 3)], [], 'run');
+
+                expect(treeBuild.trees.map(tree => [tree.treeKey, tree.title, tree.objects.map(treeObject => treeObject.objectApiName), tree.fieldCount])).toEqual([
+                    ['Contact-ONLY', 'Relationship Tree 1', ['Contact'], 2],
+                    ['', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE, ['Stray__c'], 3]
+                ]);
+                expect(treeBuild.trees[0].objects[0].parentLookups).toEqual([]);
+
+            });
+
+            it('keeps two cards distinct when a hand-edited wrapper repeats a folder, and lists an object in its first tree only', () => {
+
+                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels({
+                    recipeTrees: [{ objectApiNames: ['Lead'] }, { objectApiNames: ['Lead'] }],
+                    parentLookupsByObjectApiName: new Map()
+                }, [buildObject('Lead')], [], 'run');
+
+                expect(treeBuild.trees.map(tree => tree.treeKey)).toEqual(['Lead-ONLY', 'Lead-ONLY#2']);
+                expect(treeBuild.trees.map(tree => tree.objects.length)).toEqual([1, 0]);
+
+            });
+
+            it('reads lookups and record type sections defensively, dropping whatever is not the expected type', () => {
+
+                expect(RecipeCockpitService.readParentLookups({ parentObjectToFieldReferences: { Account: ['AccountId', 7, ''], User: 'OwnerId' } }))
+                    .toEqual([{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]);
+                expect(RecipeCockpitService.readParentLookups(undefined)).toEqual([]);
+
+                const [recordTypeSection] = RecipeCockpitService.readRecordTypePicklistSections({
+                    Business: { PicklistFieldSectionsToPicklistDetail: { Rating__c: ['Hot', 3], Broken__c: 'Hot', constructor: ['Value'] } }
+                });
+                expect(recordTypeSection.recordTypeDeveloperName).toBe('Business');
+                expect({ ...recordTypeSection.picklistValuesByFieldApiName }).toEqual({ Rating__c: ['Hot'], constructor: ['Value'] });
+                expect(RecipeCockpitService.readRecordTypePicklistSections(['not', 'a', 'map'])).toEqual([]);
+                expect(RecipeCockpitService.readRecordTypePicklistSections({ Bare: { DeveloperName: 'Bare' } }).map(section => ({ ...section.picklistValuesByFieldApiName })))
+                    .toEqual([{}]);
+
+            });
+
+        });
+
+    });
+
     describe('loadRecipeRunByRuns', () => {
 
-        it('answers the posted model and, beside it, the picklist values that stay on the host', () => {
+        it('answers the posted model and, beside it, the diff\'s own copy of the picklist values, which is never posted', () => {
 
             const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(MOCK_GENERATED_RECIPES_PATH);
             const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, MOCK_WORKSPACE_ROOT);
 
             expect(loadedRecipe.recipeViewModel).toEqual(RecipeCockpitService.buildRecipeViewModelByRuns(recipeRuns, MOCK_WORKSPACE_ROOT));
             expect(loadedRecipe.recipePicklistValuesByObjectApiName).toBeInstanceOf(Map);
-            expect(JSON.stringify(loadedRecipe.recipeViewModel)).not.toContain('picklistValues');
+            expect(Object.keys(loadedRecipe.recipeViewModel)).not.toContain('recipePicklistValuesByObjectApiName');
 
         });
 
@@ -1579,6 +1903,376 @@ describe('RecipeCockpitService', () => {
 
     }
 
+    describe('the panel script, Recipe Trees view', () => {
+
+        const renderTreeRecipe = (runFolderName = TREE_RUN_FOLDER_NAME) => {
+            const panel = runPanelScript();
+            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const loadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, runFolderName);
+            const recipe = loadedRecipe.recipeViewModel;
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+            return { panel, recipe, loadedRecipe };
+        };
+
+        /*
+            Answers the panel's last loadPicklistValues through the REAL router, with the host
+            state the panel's "rendered" would have activated -- so the values the panel draws are
+            exactly what the host would have posted.
+        */
+        const answerLastPicklistRequest = (panel: any, loadedRecipe: IRecipeCockpitLoadedRecipe, renderSequence = 1) => {
+            const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
+            panelState.recipeDataMessage = { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: renderSequence };
+            panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
+            panelState.loadablePicklistKeys = new Set(RecipeCockpitService.collectLoadablePicklistKeys(loadedRecipe.recipeViewModel));
+            const loadMessage = [...panel.postedHostMessages].reverse().find((hostMessage: any) => hostMessage.command === 'loadPicklistValues');
+            const panelAction = RecipeCockpitService.routePanelMessage(loadMessage, panelState);
+            if ( panelAction?.kind !== 'postPicklistValues' ) {
+                throw new Error('the router did not answer the panel\'s loadPicklistValues');
+            }
+            panel.postToPanel(panelAction.hostMessage);
+            return panelAction.hostMessage;
+        };
+
+        const textOf = (panel: any, rootElement: any, className: string) => panel.findAll(rootElement, className).map((element: any) => element.textContent);
+        const treeCardsOf = (panel: any) => panel.findAll(panel.cockpitBodyElement, 'treeCard');
+        const treeBodyOf = (treeCard: any) => treeCard.children[1];
+        const viewOf = (panel: any, className: string) => panel.findAll(panel.cockpitBodyElement, className)[0];
+        const clickNamed = (panel: any, rootElement: any, className: string, labelText: string) =>
+            panel.findAll(rootElement, className).find((element: any) => element.textContent === labelText).dispatch('click');
+        const treeObjectNamed = (panel: any, treeCard: any, objectApiName: string) => panel.findAll(treeCard, 'treeObject')
+            .find((objectElement: any) => panel.findAll(objectElement, 'treeObjectName')[0].textContent === objectApiName);
+        const treeFieldNamed = (panel: any, objectElement: any, fieldApiName: string) => panel.findAll(objectElement, 'treeField')
+            .find((fieldElement: any) => panel.findAll(fieldElement, 'treeFieldName')[0].textContent === fieldApiName);
+        const expandTree = (panel: any, treeCard: any) => panel.findAll(treeCard, 'treeToggle')[0].dispatch('click');
+        const expandTreeObject = (panel: any, objectElement: any) => panel.findAll(objectElement, 'treeObjectToggle')[0].dispatch('click');
+
+        it('opens on Recipe Trees, with the Classic list one click away and behaving as before', () => {
+
+            const { panel } = renderTreeRecipe();
+
+            expect(panel.isHidden(viewOf(panel, 'treesView'))).toBe(false);
+            expect(panel.isHidden(viewOf(panel, 'classicView'))).toBe(true);
+            expect(panel.isHidden(viewOf(panel, 'classicControls'))).toBe(true);
+            expect(textOf(panel, panel.cockpitBodyElement.children[0], 'viewButton')).toEqual(['Recipe Trees', 'Classic list']);
+            expect(panel.findAll(panel.cockpitBodyElement.children[0], 'selected').map((element: any) => element.textContent)).toEqual(['Recipe Trees']);
+
+            clickNamed(panel, panel.cockpitBodyElement, 'viewButton', 'Classic list');
+
+            expect(panel.isHidden(viewOf(panel, 'treesView'))).toBe(true);
+            expect(panel.isHidden(viewOf(panel, 'classicView'))).toBe(false);
+            expect(panel.isHidden(viewOf(panel, 'classicControls'))).toBe(false);
+            expect(panel.objectElements().map(panel.objectNameOf)).toEqual(['Account', 'Contact', 'OtherChildObject__c', 'Lead']);
+            expect(panel.findAll(viewOf(panel, 'classicControls'), 'describeInOrg')).toHaveLength(1);
+
+        });
+
+        it('keeps the chosen view when the next model is drawn', () => {
+
+            const { panel, recipe } = renderTreeRecipe();
+
+            clickNamed(panel, panel.cockpitBodyElement, 'viewButton', 'Classic list');
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+
+            expect(panel.isHidden(viewOf(panel, 'classicView'))).toBe(false);
+            expect(panel.isHidden(viewOf(panel, 'treesView'))).toBe(true);
+
+        });
+
+        it('draws one collapsed card per tree, titled by position, subtitled by folder, with its object and field counts', () => {
+
+            const { panel } = renderTreeRecipe();
+            const treeCards = treeCardsOf(panel);
+
+            expect(treeCards).toHaveLength(2);
+            expect(textOf(panel, panel.cockpitBodyElement, 'treeTitle')).toEqual(['Relationship Tree 1', 'Relationship Tree 2']);
+            expect(textOf(panel, panel.cockpitBodyElement, 'treeFolder')).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY']);
+            expect(textOf(panel, panel.cockpitBodyElement, 'treeCount')).toEqual(['3 objects · 13 fields', '1 object · 2 fields']);
+            expect(treeCards.every((treeCard: any) => panel.isHidden(treeBodyOf(treeCard)))).toBe(true);
+            // THE BODY IS BUILT ON FIRST EXPAND, SO A COLLAPSED CARD HAS NO TAB STRIP AND NO ROWS YET
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeTab')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeField')).toEqual([]);
+            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('15 fields · 2 trees');
+
+        });
+
+        it('given a card is expanded, draws its one Structure tab and its objects in insert order with their lookups', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+
+            expandTree(panel, firstTreeCard);
+
+            expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
+            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Structure']);
+            expect(panel.findAll(firstTreeCard, 'treeTab')[0].attributes['aria-selected']).toBe('true');
+            expect(textOf(panel, firstTreeCard, 'treeObjectName')).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(textOf(panel, firstTreeCard, 'treeLookups')).toEqual(['(ParentId, OwnerId → User)', '(AccountId → Account)', '(Contact__c → Contact)']);
+
+        });
+
+        it('given an object is expanded, draws each field with its sized type, its controlling field and a link to its recipe line', () => {
+
+            const { panel, recipe } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            const otherChildElement = treeObjectNamed(panel, firstTreeCard, 'OtherChildObject__c');
+            expandTreeObject(panel, accountElement);
+            expandTreeObject(panel, otherChildElement);
+
+            expect(textOf(panel, treeFieldNamed(panel, accountElement, 'Legacy_Code__c'), 'fieldType')).toEqual(['Text(50)']);
+            expect(textOf(panel, treeFieldNamed(panel, accountElement, 'Annual_Budget__c'), 'fieldType')).toEqual(['Currency(18,2)']);
+            expect(textOf(panel, treeFieldNamed(panel, otherChildElement, 'Score__c'), 'fieldType')).toEqual(['Number(18,0)']);
+            expect(textOf(panel, treeFieldNamed(panel, otherChildElement, 'Ratio__c'), 'fieldType')).toEqual(['Percent(5,2)']);
+            expect(textOf(panel, treeFieldNamed(panel, accountElement, 'Sub_Rating__c'), 'controllingField')).toEqual(['controlled by Rating__c']);
+
+            const legacyCodeSource = panel.findAll(treeFieldNamed(panel, accountElement, 'Legacy_Code__c'), 'treeFieldSource')[0];
+            expect(legacyCodeSource.textContent).toBe('↗ yml');
+
+            legacyCodeSource.dispatch('click');
+
+            const openSourceMessage = panel.postedHostMessages[panel.postedHostMessages.length - 1];
+            expect(openSourceMessage).toEqual({ command: 'openSource', filePath: recipe.objects[0].recipeFilePath, lineNumber: 12 });
+            // THE SAME ALLOW-LIST AS THE CLASSIC LIST: THE TREE OFFERS NOTHING THE MODEL DID NOT NAME
+            expect(RecipeCockpitService.collectOpenableSourceKeys(recipe)).toContain(RecipeCockpitService.buildOpenSourceKey(openSourceMessage.filePath, openSourceMessage.lineNumber));
+
+        });
+
+        it('expands a picklist to its values, asked for on expand and grouped per record type, and says when a picklist has none', () => {
+
+            const { panel, loadedRecipe } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            expandTreeObject(panel, accountElement);
+
+            const ratingRow = treeFieldNamed(panel, accountElement, 'Rating__c');
+            expect(panel.findAll(ratingRow, 'picklistValues')).toEqual([]);
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toEqual([]);
+
+            panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
+
+            expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' });
+            expect(textOf(panel, ratingRow, 'picklistLoading')).toEqual(['Loading values…']);
+
+            answerLastPicklistRequest(panel, loadedRecipe);
+
+            const ratingValuesElement = panel.findAll(ratingRow, 'picklistValues')[0];
+            expect(ratingValuesElement.children.map((element: any) => element.textContent)).toEqual([
+                'Hot', 'Warm', 'Cold',
+                'Record type: Business', 'Hot', 'Warm',
+                'Record type: Partner', 'Cold'
+            ]);
+
+            panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
+            expect(panel.isHidden(ratingValuesElement)).toBe(true);
+
+            // A SECOND EXPAND SHOWS WHAT WAS ALREADY ANSWERED RATHER THAN ASKING AGAIN
+            const requestCount = panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues').length;
+            panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
+            expect(panel.isHidden(ratingValuesElement)).toBe(false);
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toHaveLength(requestCount);
+
+            const regionsRow = treeFieldNamed(panel, accountElement, 'Regions__c');
+            panel.findAll(regionsRow, 'picklistToggle')[0].dispatch('click');
+            answerLastPicklistRequest(panel, loadedRecipe);
+            expect(textOf(panel, regionsRow, 'picklistEmpty')).toEqual(['no values']);
+
+            expect(panel.findAll(treeFieldNamed(panel, accountElement, 'Legacy_Code__c'), 'picklistToggle')).toEqual([]);
+
+        });
+
+        it('ignores values answered for a model that is no longer on screen, or for a row that did not ask', () => {
+
+            const { panel, recipe, loadedRecipe } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            expandTreeObject(panel, accountElement);
+            const ratingRow = treeFieldNamed(panel, accountElement, 'Rating__c');
+            panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
+
+            panel.postToPanel({ command: 'picklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c', picklistValues: ['Stale'], recordTypePicklistValues: [], renderSequence: 7 });
+            panel.postToPanel({ command: 'picklistValues', objectApiName: 'Account', fieldApiName: 'Regions__c', picklistValues: ['Unasked'], recordTypePicklistValues: [], renderSequence: 1 });
+
+            expect(textOf(panel, ratingRow, 'picklistLoading')).toEqual(['Loading values…']);
+            expect(textOf(panel, panel.cockpitBodyElement, 'picklistValue')).toEqual([]);
+
+            // A NEWER MODEL DROPS THE OLD ROW'S REQUEST, SO ITS LATE ANSWER DRAWS NOTHING EITHER
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+            answerLastPicklistRequest(panel, loadedRecipe, 2);
+            expect(textOf(panel, panel.cockpitBodyElement, 'picklistValue')).toEqual([]);
+
+        });
+
+        it('writes every value from the model as text, never as markup', () => {
+
+            const { panel, loadedRecipe } = renderTreeRecipe();
+            const hostileValue = '<img src=x onerror=alert(1)>';
+            loadedRecipe.picklistDisplayValuesByObjectApiName.get('Account').get('Rating__c').picklistValues = [hostileValue];
+
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            expandTreeObject(panel, accountElement);
+            const ratingRow = treeFieldNamed(panel, accountElement, 'Rating__c');
+            panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
+            answerLastPicklistRequest(panel, loadedRecipe);
+
+            expect(textOf(panel, ratingRow, 'picklistValue')[0]).toBe(hostileValue);
+            expect(RecipeCockpitService.buildWebviewShellHtml('testNonce')).not.toContain('innerHTML');
+
+        });
+
+        it('given a search, opens the trees and objects that match and labels a tree with none rather than hiding it', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
+
+            panel.typeIntoFilter('status');
+
+            expect(panel.isHidden(secondTreeCard)).toBe(false);
+            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(false);
+            expect(textOf(panel, secondTreeCard, 'treeMatch')).toEqual(['1 matching field']);
+
+            expect(panel.isHidden(firstTreeCard)).toBe(false);
+            expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(true);
+            expect(textOf(panel, firstTreeCard, 'treeMatch')).toEqual(['no matches']);
+
+            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('1 of 15 fields · 1 of 2 trees');
+
+            const leadElement = treeObjectNamed(panel, secondTreeCard, 'Lead');
+            expect(panel.findAll(leadElement, 'treeField').filter((fieldElement: any) => !panel.isHidden(fieldElement))
+                .map((fieldElement: any) => panel.findAll(fieldElement, 'treeFieldName')[0].textContent)).toEqual(['Status']);
+
+        });
+
+        it('given the 🔍 on a tree, searches only that tree and says so, and gives the rest back as the reader left them', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
+
+            expandTree(panel, secondTreeCard);
+            panel.findAll(firstTreeCard, 'treeScope')[0].dispatch('click');
+            panel.typeIntoFilter('a');
+
+            expect(panel.findAll(firstTreeCard, 'treeScope')[0].attributes['aria-pressed']).toBe('true');
+            expect(panel.isHidden(viewOf(panel, 'treeScopeStatus'))).toBe(false);
+            expect(textOf(panel, viewOf(panel, 'treeScopeStatus'), 'treeScopeText')).toEqual(['Searching only Relationship Tree 1 (Account-thru-OtherChildObject__c) ']);
+            expect(textOf(panel, secondTreeCard, 'treeMatch')).toEqual(['not searched']);
+            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(false);
+            expect(viewOf(panel, 'treeMatchCount').textContent).toMatch(/^13 of 13 fields · 1 of 1 tree$/);
+
+            panel.findAll(viewOf(panel, 'treeScopeStatus'), 'treeScopeClear')[0].dispatch('click');
+
+            expect(panel.isHidden(viewOf(panel, 'treeScopeStatus'))).toBe(true);
+            expect(panel.findAll(firstTreeCard, 'treeScope')[0].attributes['aria-pressed']).toBe('false');
+            expect(viewOf(panel, 'treeMatchCount').textContent).toMatch(/ of 15 fields · 2 of 2 trees$/);
+
+        });
+
+        it('given the search is cleared, puts back the cards and objects the reader had open', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
+
+            expandTree(panel, secondTreeCard);
+            panel.typeIntoFilter('rating');
+            expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
+            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(true);
+
+            panel.typeIntoFilter('');
+
+            expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(true);
+            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(false);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeMatch').every((element: any) => panel.isHidden(element))).toBe(true);
+
+        });
+
+        it('opens at most the auto-expand limit of matching objects across every tree', () => {
+
+            const manyObjects = Array.from({ length: RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT + 5 }, (unusedValue, objectIndex) => ({
+                objectApiName: `Object${objectIndex}__c`,
+                recipeFilePath: '',
+                recipeFileName: '',
+                fields: [{ fieldApiName: 'Shared__c', fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
+            }));
+            const manyTrees = manyObjects.map(objectViewModel => ({
+                treeKey: `${objectViewModel.objectApiName}-ONLY`,
+                title: 'Relationship Tree',
+                folderName: `${objectViewModel.objectApiName}-ONLY`,
+                objects: [{ objectApiName: objectViewModel.objectApiName, parentLookups: [] }],
+                fieldCount: 1
+            }));
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({ objects: manyObjects, trees: manyTrees }) });
+
+            panel.typeIntoFilter('shared');
+
+            const openedTreeCards = treeCardsOf(panel).filter((treeCard: any) => !panel.isHidden(treeBodyOf(treeCard)));
+            expect(openedTreeCards).toHaveLength(RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT);
+            expect(textOf(panel, treeCardsOf(panel)[RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT], 'treeMatch')).toEqual(['1 matching field']);
+
+        });
+
+        it('stops opening objects once the next would pass the row budget, and always opens the first', () => {
+
+            const buildWideObject = (objectApiName: string, fieldCount: number) => ({
+                objectApiName: objectApiName,
+                recipeFilePath: '',
+                recipeFileName: '',
+                fields: Array.from({ length: fieldCount }, (unusedValue, fieldIndex) => ({
+                    fieldApiName: `Shared_${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
+                }))
+            });
+            const wideObjects = [buildWideObject('Widest__c', RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET + 1), buildWideObject('Narrow__c', 1)];
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
+                objects: wideObjects,
+                trees: [{ treeKey: 'Widest__c-thru-Narrow__c', title: 'Relationship Tree 1', folderName: 'Widest__c-thru-Narrow__c', fieldCount: wideObjects[0].fields.length + 1,
+                          objects: wideObjects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] })) }]
+            }) });
+
+            panel.typeIntoFilter('shared');
+
+            const [treeCard] = treeCardsOf(panel);
+            expect(panel.findAll(treeCard, 'treeObjectBody').map((bodyElement: any) => !panel.isHidden(bodyElement))).toEqual([true, false]);
+            expect(panel.findAll(treeCard, 'treeObjectCount').map((element: any) => element.textContent)).toEqual([
+                `${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET + 1} of ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET + 1} fields`, '1 of 1 field'
+            ]);
+
+        });
+
+        it('given a run with no tree data, draws one card per recipe file and the notice that says why', () => {
+
+            const { panel } = renderTreeRecipe(LEGACY_TREE_RUN_FOLDER_NAME);
+
+            expect(textOf(panel, panel.cockpitBodyElement, 'treeFolder')).toEqual(['Account-thru-Contact', 'Lead-ONLY']);
+            expect(textOf(panel, panel.cockpitBodyElement, 'notice')).toEqual([RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE]);
+
+            expandTree(panel, treeCardsOf(panel)[0]);
+            expect(panel.findAll(treeCardsOf(panel)[0], 'treeLookups')).toEqual([]);
+
+        });
+
+        it('given a model with objects and no trees, says so in the trees view and keeps the Classic list', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
+                objects: [{ objectApiName: 'Lead', recipeFilePath: '', recipeFileName: '', fields: [] }]
+            }) });
+
+            expect(textOf(panel, viewOf(panel, 'treesView'), 'emptyState')).toEqual(['This run has no relationship trees to show. Its objects are listed in the Classic list.']);
+            expect(panel.objectElements().map(panel.objectNameOf)).toEqual(['Lead']);
+
+        });
+
+    });
+
     describe('the panel script, executed', () => {
 
         const renderFixtureRecipe = () => {
@@ -1721,7 +2415,7 @@ describe('RecipeCockpitService', () => {
                 objectApiName: `Object${objectIndex}__c`,
                 recipeFilePath: '',
                 recipeFileName: '',
-                fields: [{ fieldApiName: 'Shared__c', fieldLabel: '', fieldType: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
+                fields: [{ fieldApiName: 'Shared__c', fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
             }));
 
             const panel = runPanelScript();
@@ -1746,7 +2440,7 @@ describe('RecipeCockpitService', () => {
                 recipeFilePath: '',
                 recipeFileName: '',
                 fields: Array.from({ length: fieldCount }, (unusedValue, fieldIndex) => ({
-                    fieldApiName: `Shared_${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
+                    fieldApiName: `Shared_${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
                 }))
             });
 
@@ -2463,6 +3157,36 @@ describe('RecipeCockpitService', () => {
             await receivedMessageHandler({ command: 'openSource', filePath: LATEST_RECIPE_FILE_PATH, lineNumber: 12 });
 
             expect(openFileInEditorSpy).toHaveBeenCalledWith(LATEST_RECIPE_FILE_PATH, 12);
+
+        });
+
+        it('posts a picklist row\'s values only once the panel has confirmed drawing it, and stops on a reload', async () => {
+
+            await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
+            await receivedMessageHandler({ command: 'ready' });
+
+            const postedPicklistValues = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'picklistValues');
+            const loadIndustryValues = () => receivedMessageHandler({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Industry' });
+
+            await loadIndustryValues();
+            expect(postedPicklistValues()).toEqual([]);
+
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            await loadIndustryValues();
+
+            expect(postedPicklistValues()).toEqual([{
+                command: 'picklistValues',
+                objectApiName: 'Account',
+                fieldApiName: 'Industry',
+                picklistValues: [],
+                recordTypePicklistValues: [],
+                renderSequence: lastRenderSequence()
+            }]);
+
+            await receivedMessageHandler({ command: 'ready' });
+            await loadIndustryValues();
+
+            expect(postedPicklistValues()).toHaveLength(1);
 
         });
 

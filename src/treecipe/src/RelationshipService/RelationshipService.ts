@@ -4,6 +4,21 @@ import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 
 export class RelationshipService {
 
+  /*
+    The folder Generate Treecipe writes one tree's recipe into, and what the Recipe Cockpit names
+    that tree's card by: "<only>-ONLY", or "<first>-thru-<last>" in insert order. One rule, so the
+    subtitle a reader sees is always the folder they find on disk.
+  */
+  static buildRecipeTreeFolderName(objectApiNames: string[]): string {
+
+    if ( objectApiNames.length === 1 ) {
+      return `${objectApiNames[0]}-ONLY`;
+    }
+
+    return `${objectApiNames.at(0)}-thru-${objectApiNames.at(-1)}`;
+
+  }
+
 
   buildNewRelationshipDetail(objectApiName?: string): RelationshipDetail {
 

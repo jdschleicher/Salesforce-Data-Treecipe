@@ -431,6 +431,9 @@ A panel for browsing a generated recipe (every object, every field, the field's 
 How it works:
 
 * **It reads what Generate Treecipe already wrote.** Every run leaves a `treecipeObjectsWrapper-<timestamp>.json` next to its recipe files under `treecipe/GeneratedRecipes/`. The panel reads that file rather than re-parsing your metadata, and opens on the **latest** run
+* **It opens on Recipe Trees**: one collapsible card per relationship tree, titled *Relationship Tree N* with the folder the tree was written to (`Account-thru-Contact`, `Lead-ONLY`) and its object and field counts. A card's **Structure** tab lists its objects in insert order, each with the lookups tying it to a parent in the same tree, such as `(AccountId → Account)` (a self-lookup shows as `(ParentId)`). Field rows show the type with its size (`Text(50)`, `Currency(18,2)`), a dependent picklist says what controls it, and `↗ yml` opens the recipe at the field's line. A picklist row expands to its values, grouped per record type. Runs generated before sizes were recorded show the bare type. A run whose wrapper has no tree data shows one card per recipe file and says so
+* **Classic list**, the other view, is the flat list of every object below. Comparing with an org lives there for now
+* The filter works in both views. In Recipe Trees a tree with no match stays listed and is marked *no matches*, and the 🔍 on a tree's header searches only that tree
 * **Switch runs from the selector** next to the filter box. Each run is labelled with when it was generated (UTC) and which faker backend wrote it
 * **Filter** narrows fields as you type. It matches field names, labels, types, controlling fields and faker expressions. Typing an object's name shows all of its fields. An object with nothing matching **stays listed**, collapsed and marked *no matching fields*, so a filter never looks like missing data
 * **Click an object or field name** to open the recipe `.yml` at that exact line

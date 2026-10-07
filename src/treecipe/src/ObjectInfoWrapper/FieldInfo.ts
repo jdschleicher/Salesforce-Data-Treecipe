@@ -1,7 +1,15 @@
 
 
 export class FieldInfo {
-  
+
+  /*
+    The field XML's <length>, <precision> and <scale>, recorded only when the XML has them, so a field
+    without one serializes into the objects wrapper exactly as it did before they were recorded.
+  */
+  public length?: number;
+  public precision?: number;
+  public scale?: number;
+
   constructor(
     public objectName: string,
     public fieldName: string,
@@ -49,6 +57,30 @@ export class FieldInfo {
 
   }
 
+  public static applyFieldSize(fieldInfo: FieldInfo, fieldSize: IFieldSize): FieldInfo {
+
+    if ( Number.isInteger(fieldSize.length) ) {
+      fieldInfo.length = fieldSize.length;
+    }
+
+    if ( Number.isInteger(fieldSize.precision) ) {
+      fieldInfo.precision = fieldSize.precision;
+    }
+
+    if ( Number.isInteger(fieldSize.scale) ) {
+      fieldInfo.scale = fieldSize.scale;
+    }
+
+    return fieldInfo;
+
+  }
+
+}
+
+export interface IFieldSize {
+  length?: number;
+  precision?: number;
+  scale?: number;
 }
 
 export interface IPicklistValue {

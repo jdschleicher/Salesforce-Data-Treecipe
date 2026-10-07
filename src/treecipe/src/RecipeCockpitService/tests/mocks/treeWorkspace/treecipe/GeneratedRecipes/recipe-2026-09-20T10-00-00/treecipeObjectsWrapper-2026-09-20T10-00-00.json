@@ -1,0 +1,84 @@
+{
+  "ObjectToObjectInfoMap": {
+    "Account": {
+      "ApiName": "Account",
+      "Fields": [
+        { "objectName": "Account", "fieldName": "Legacy_Code__c", "fieldLabel": "Legacy Code", "type": "Text", "length": 50, "recipeValue": "${{fake.Word}}" },
+        { "objectName": "Account", "fieldName": "Annual_Budget__c", "fieldLabel": "Annual Budget", "type": "Currency", "precision": 18, "scale": 2, "recipeValue": "${{ random_number(min=0, max=9999999999999999) }}" },
+        { "objectName": "Account", "fieldName": "Rating__c", "fieldLabel": "Rating", "type": "Picklist", "picklistValues": [
+            { "picklistOptionApiName": "Hot", "label": "Hot" },
+            { "picklistOptionApiName": "Warm", "label": "Warm" },
+            { "picklistOptionApiName": "Cold", "label": "Cold" },
+            { "picklistOptionApiName": "Retired", "label": "Retired", "isActive": false }
+          ], "recipeValue": "${{ random_choice('Hot','Warm','Cold') }}" },
+        { "objectName": "Account", "fieldName": "Sub_Rating__c", "fieldLabel": "Sub Rating", "type": "Picklist", "controllingField": "Rating__c", "picklistValues": [
+            { "picklistOptionApiName": "Very Hot", "label": "Very Hot", "controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection": ["Hot"] }
+          ], "recipeValue": "\n        if:\n            - choice:\n                when: ${{ Rating__c == 'Hot' }}\n                pick: Very Hot" },
+        { "objectName": "Account", "fieldName": "Regions__c", "fieldLabel": "Regions", "type": "MultiselectPicklist", "picklistValues": [], "recipeValue": "### TODO -- NO PICKLIST VALUES" },
+        { "objectName": "Account", "fieldName": "ParentId", "fieldLabel": "Parent Account", "type": "Hierarchy", "referenceTo": "Account", "recipeValue": "### TODO -- REFERENCE ID REQUIRED" },
+        { "objectName": "Account", "fieldName": "OwnerId", "fieldLabel": "Owner", "type": "Lookup", "referenceTo": "User", "recipeValue": "### TODO -- REFERENCE ID REQUIRED" }
+      ],
+      "RecordTypesMap": {
+        "Business": { "DeveloperName": "Business", "Active": true, "PicklistFieldSectionsToPicklistDetail": { "Rating__c": ["Hot", "Warm"] } },
+        "Partner": { "DeveloperName": "Partner", "Active": true, "PicklistFieldSectionsToPicklistDetail": { "Rating__c": ["Cold"] } }
+      },
+      "RelationshipDetail": {
+        "objectApiName": "Account", "level": 0, "isProcessed": true,
+        "parentObjectToFieldReferences": { "Account": ["ParentId"], "User": ["OwnerId"] },
+        "childObjectToFieldReferences": { "Contact": ["AccountId"] }
+      }
+    },
+    "User": {
+      "ApiName": "User",
+      "RelationshipDetail": {
+        "objectApiName": "User", "level": 0, "isProcessed": true,
+        "parentObjectToFieldReferences": {},
+        "childObjectToFieldReferences": { "Account": ["OwnerId"] }
+      }
+    },
+    "Contact": {
+      "ApiName": "Contact",
+      "Fields": [
+        { "objectName": "Contact", "fieldName": "LastName", "fieldLabel": "Last Name", "type": "Text", "length": 80, "recipeValue": "${{fake.LastName}}" },
+        { "objectName": "Contact", "fieldName": "AccountId", "fieldLabel": "Account", "type": "Lookup", "referenceTo": "Account", "recipeValue": "### TODO -- REFERENCE ID REQUIRED" }
+      ],
+      "RelationshipDetail": {
+        "objectApiName": "Contact", "level": 1, "isProcessed": true,
+        "parentObjectToFieldReferences": { "Account": ["AccountId"] },
+        "childObjectToFieldReferences": { "OtherChildObject__c": ["Contact__c"] }
+      }
+    },
+    "OtherChildObject__c": {
+      "ApiName": "OtherChildObject__c",
+      "Fields": [
+        { "objectName": "OtherChildObject__c", "fieldName": "Score__c", "fieldLabel": "Score", "type": "Number", "precision": 18, "recipeValue": "${{ random_number(min=0, max=999999999999999999) }}" },
+        { "objectName": "OtherChildObject__c", "fieldName": "Ratio__c", "fieldLabel": "Ratio", "type": "Percent", "precision": 5, "scale": 2, "recipeValue": "${{ random_number(min=0, max=999) }}" },
+        { "objectName": "OtherChildObject__c", "fieldName": "Contact__c", "fieldLabel": "Contact", "type": "Lookup", "referenceTo": "Contact", "recipeValue": "### TODO -- REFERENCE ID REQUIRED" }
+      ],
+      "RelationshipDetail": {
+        "objectApiName": "OtherChildObject__c", "level": 2, "isProcessed": true,
+        "parentObjectToFieldReferences": { "Contact": ["Contact__c"] },
+        "childObjectToFieldReferences": {}
+      }
+    },
+    "Lead": {
+      "ApiName": "Lead",
+      "Fields": [
+        { "objectName": "Lead", "fieldName": "Company", "fieldLabel": "Company", "type": "Text", "length": 255, "recipeValue": "${{fake.Company}}" },
+        { "objectName": "Lead", "fieldName": "Status", "fieldLabel": "Status", "type": "Picklist", "picklistValues": [
+            { "picklistOptionApiName": "Open", "label": "Open" },
+            { "picklistOptionApiName": "Closed", "label": "Closed" }
+          ], "recipeValue": "${{ random_choice('Open','Closed') }}" }
+      ],
+      "RelationshipDetail": {
+        "objectApiName": "Lead", "level": -1, "isProcessed": true,
+        "parentObjectToFieldReferences": {},
+        "childObjectToFieldReferences": {}
+      }
+    }
+  },
+  "RecipeFiles": [
+    { "fileName": "recipe_relationshiptree_1.yml", "content": "", "objectCount": 4, "maxLevel": 2, "objects": ["Account", "User", "Contact", "OtherChildObject__c"] },
+    { "fileName": "recipe_relationshiptree_2.yml", "content": "", "objectCount": 1, "maxLevel": 0, "objects": ["Lead"] }
+  ]
+}

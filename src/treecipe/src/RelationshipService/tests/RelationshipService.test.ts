@@ -1253,3 +1253,15 @@ describe('a lookup whose parent is not a Salesforce api name (#164)', () => {
     });
 
 });
+
+describe('buildRecipeTreeFolderName', () => {
+
+    test('names a one-object tree "<object>-ONLY"', () => {
+        expect(RelationshipService.buildRecipeTreeFolderName(['Lead'])).toBe('Lead-ONLY');
+    });
+
+    test('names a tree by its first and last object in insert order', () => {
+        expect(RelationshipService.buildRecipeTreeFolderName(['Account', 'Contact', 'OtherChildObject__c'])).toBe('Account-thru-OtherChildObject__c');
+    });
+
+});

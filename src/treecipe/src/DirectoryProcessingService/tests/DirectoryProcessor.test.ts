@@ -237,6 +237,52 @@ describe('Shared DirectoryProcessor Snowfakery FakerService Implementation Testi
 
     });
 
+    const buildFieldXml = (fieldApiName: string, fieldType: string, sizeMarkup: string) => `<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>${fieldApiName}</fullName>
+    <label>${fieldApiName}</label>
+    ${sizeMarkup}
+    <type>${fieldType}</type>
+</CustomField>`;
+
+    test('records the field XML length on the field info, for the objects wrapper', async () => {
+
+      const actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(
+        buildFieldXml('Code__c', 'Text', '<length>50</length>'), 'Account', {}, 'Code__c.field-meta.xml'
+      );
+
+      expect(actualFieldInfo.length).toBe(50);
+      expect(Object.prototype.hasOwnProperty.call(actualFieldInfo, 'precision')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(actualFieldInfo, 'scale')).toBe(false);
+
+    });
+
+    test('records the field XML precision and scale on the field info', async () => {
+
+      const actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(
+        buildFieldXml('Amount__c', 'Currency', '<precision>18</precision><scale>2</scale>'), 'Account', {}, 'Amount__c.field-meta.xml'
+      );
+
+      expect(actualFieldInfo.precision).toBe(18);
+      expect(actualFieldInfo.scale).toBe(2);
+      expect(Object.prototype.hasOwnProperty.call(actualFieldInfo, 'length')).toBe(false);
+
+    });
+
+    test('a field whose XML has no size serializes exactly as it did before sizes were recorded', async () => {
+
+      const actualFieldInfo = await directoryProcessor.buildFieldInfoByXMLContent(
+        buildFieldXml('Flag__c', 'Checkbox', '<defaultValue>false</defaultValue>'), 'Account', {}, 'Flag__c.field-meta.xml'
+      );
+
+      const serializedKeys = Object.keys(JSON.parse(JSON.stringify(actualFieldInfo)));
+
+      expect(serializedKeys).not.toContain('length');
+      expect(serializedKeys).not.toContain('precision');
+      expect(serializedKeys).not.toContain('scale');
+
+    });
+
   });
 
   describe('processFieldsDirectory', () => {
