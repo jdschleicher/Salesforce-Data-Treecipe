@@ -351,6 +351,15 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // THE CHIP ALSO CARRIES .muted, SO ITS COLOUR MUST NOT DEPEND ON WHICH OF THE TWO RULES COMES LAST
+        it('draws a field type as a chip whose rule outranks .muted', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+
+            expect(styleSheet).toMatch(/\.fieldHeader \.fieldType \{[^}]*color: var\(--sdt-chip-text\);[^}]*background-color: var\(--sdt-chip-bg\);/);
+
+        });
+
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
             expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(26);

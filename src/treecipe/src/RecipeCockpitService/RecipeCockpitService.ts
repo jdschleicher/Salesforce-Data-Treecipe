@@ -1986,7 +1986,7 @@ ${this.buildPaletteCustomProperties()}
     .sourceLink:hover { text-decoration: underline; }
     .objectBody { padding: 0.25rem 0 0.25rem 0; border-top: 1px solid var(--sdt-border); }
     .field { padding: 0.3rem 0.6rem 0.3rem 2.1rem; }
-    .fieldType {
+    .fieldHeader .fieldType {
         font-size: 0.85em;
         padding: 0 0.4rem;
         color: var(--sdt-chip-text);
