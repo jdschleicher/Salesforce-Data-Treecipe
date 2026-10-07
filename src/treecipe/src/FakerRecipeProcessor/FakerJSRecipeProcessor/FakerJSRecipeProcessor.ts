@@ -57,6 +57,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const count = objectYamlEntry.count || 1;
         const fieldsTemplate = objectYamlEntry.fields || {};
         const friends: any[] | undefined = objectYamlEntry.friends;
+        const inheritedAncestorNicknames: Map<string, string> = objectYamlEntry._ancestorNicknameToEffectiveNickname ?? new Map<string, string>();
 
         const hasActiveFriendsBlock = friends && Array.isArray(friends) && friends.length > 0;
         const requiresPerIterationNickname = hasActiveFriendsBlock && count > 1;
@@ -120,14 +121,19 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
                 const parentNicknameForChildren = effectiveNickname || objectType;
 
+                // EVERY ANCESTOR ON THE CHAIN, NOT ONLY THIS PARENT: A GRANDCHILD'S LOOKUP TO THE TOP PARENT NAMES THE TOP PARENT'S YAML NICKNAME (#46)
+                const ancestorNicknameToEffectiveNickname = new Map(inheritedAncestorNicknames);
+                if ( originalYamlNickname ) {
+                    ancestorNicknameToEffectiveNickname.set(originalYamlNickname, effectiveNickname);
+                }
+
                 for (const friendEntry of friends) {
                     const friendObjectType = friendEntry.object;
                     const generatedFriendNickname = `${friendObjectType}_${parentNicknameForChildren}`;
 
-                    const updatedFriendFields = this.replaceParentNicknameReferencesInFriendFields(
+                    const updatedFriendFields = this.replaceAncestorNicknameReferencesInFriendFields(
                         friendEntry.fields,
-                        originalYamlNickname,
-                        effectiveNickname
+                        ancestorNicknameToEffectiveNickname
                     );
 
                     const friendEntryWithContext = {
@@ -135,6 +141,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                         fields: updatedFriendFields,
                         nickname: generatedFriendNickname,
                         _originalYamlNickname: friendEntry.nickname,
+                        _ancestorNicknameToEffectiveNickname: ancestorNicknameToEffectiveNickname,
                     };
 
                     processedYamlWrapper = await this.processObjectDeclarationForYamlDocumentItem(
@@ -152,19 +159,25 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
     }
 
-    replaceParentNicknameReferencesInFriendFields(
+    /*
+        A field whose value is EXACTLY an ancestor's YAML nickname is pointed at the record of that
+        ancestor this friend is being generated under. A Map rather than an object, because a
+        nickname is text from the recipe and could be "__proto__".
+    */
+    replaceAncestorNicknameReferencesInFriendFields(
         fields: Record<string, any> | undefined,
-        originalNickname: string | undefined,
-        effectiveNickname: string
+        ancestorNicknameToEffectiveNickname: Map<string, string>
     ): Record<string, any> {
 
-        if (!fields || !originalNickname || originalNickname === effectiveNickname) {
-            return fields || {};
+        if (!fields) {
+            return {};
         }
 
         const updatedFields: Record<string, any> = {};
         for (const [fieldName, fieldValue] of Object.entries(fields)) {
-            updatedFields[fieldName] = (fieldValue === originalNickname) ? effectiveNickname : fieldValue;
+            updatedFields[fieldName] = ( typeof fieldValue === 'string' && ancestorNicknameToEffectiveNickname.has(fieldValue) )
+                ? ancestorNicknameToEffectiveNickname.get(fieldValue)
+                : fieldValue;
         }
         return updatedFields;
 

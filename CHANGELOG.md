@@ -1,5 +1,57 @@
 # Change Log
 
+## [3.32.0] - faker-js recipes nest related objects under friends: and wire their lookups
+
+Closes [#46](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/46), under [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Generate Treecipe wrote every object in a relationship tree as its own top-level entry, and every lookup as `### TODO -- REFERENCE ID REQUIRED`. So a generated recipe linked nothing: children were not created per parent, and every lookup had to be filled in by hand. The faker-js processor has read `friends:` since 2.11.0 (#45), but nothing generated it.
+
+- **faker-js recipes nest each child under its parent's `friends:` block.**
+  - Each object is still written once per tree. A friend's `count` is records **per parent record**.
+  - An object with several parents in the tree is nested under the **closest** one: the deepest by relationship level, ties broken by name with `<`, never `localeCompare` (#166). Only a parent at a strictly lower level qualifies, so the nesting is a forest even when the lookups have cycles.
+  - A lookup target with no recipe of its own (`User` with no folder) is not nested under.
+  - The comment naming each object and its relationships moves with it, inside its parent's `friends:` block.
+- **Lookups to ancestors are wired.**
+  - A child's lookup to its parent, and to every ancestor above it, is written as that ancestor's nickname instead of the TODO. For example, a grandchild's `Account__c` holds the top-level `Account_NickName`.
+  - Only a line that is exactly the generated TODO is rewritten, so a lookup filled in by a mapping or by hand is left alone.
+  - A lookup to a parent that is not an ancestor keeps its TODO. So does a self-lookup such as `Account.ParentId`; nesting a second iteration of the same object is [#188](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/188).
+- **Unchanged output:**
+  - A tree with no relationships is written byte for byte as before.
+  - **Snowfakery recipes are unchanged:** still flat, lookups still TODO. `DirectoryProcessor` turns nesting on from the faker service that writes the object recipes, so it never reads the configuration a second time.
+- **Run Faker by Recipe resolves a lookup to any ancestor**, not only the direct parent. `FakerJSRecipeProcessor` hands each friend a map from every ancestor's YAML nickname to the nickname of the record it is being generated under. So with two top-level Accounts, every grandchild's `Account__c` points at the Account above its own parent.
+  - The map is a `Map`, because a nickname is recipe text and could be `__proto__`.
+  - `replaceParentNicknameReferencesInFriendFields` is replaced by `replaceAncestorNicknameReferencesInFriendFields`.
+- **Insert Data Set by Directory replaces only a lookup value that IS a nickname.**
+  - `updateLookupReferencesInCollectionApiJson` used to `replaceAll` each nickname over the whole JSON. A friend's generated nickname contains its parent's (`Contact_Account_NickName` contains `Account_NickName`), so inserting the parent rewrote the friend's own `attributes.referenceId`, and every reference to the friend was lost.
+  - It now replaces a JSON string only when the whole string is the nickname, and never a key. A value that merely contains a nickname, such as a description, is no longer rewritten.
+- **The Recipe Cockpit reads and edits nested recipes.**
+  - `RecipeCockpitRecipeWriter.scanRecipeObjects` keeps the open objects as a stack, one per `friends:` level. Each level moves every column of the layout contract four spaces deeper: `- object:`, `nickname:`/`count:`, `fields:`, field lines, continuations and the commented-out-field marker.
+  - A `- object:` line opens a friend only at the next level down, and only inside its parent's `friends:` block. Anywhere else it is an unrecognized line, as before.
+  - `RecipeCockpitService.parseRecipeSource` now reads through that same scan rather than a second copy of it, so the line the panel jumps to and the line an edit changes cannot disagree.
+  - Every nested object gets its recipe file, `↗ yml`, field line numbers and recipe-only fields.
+  - The fallback cards (a wrapper with no `RecipeFiles`) list nested objects in file order.
+  - Every writer operation works at a friend's depth. A value passed to `insertField` or `replaceFieldValue` is written as for a top-level object, and its continuation lines are moved to the friend's depth.
+  - An object written at two depths is refused by the writer and read first-wins, as a duplicate always has been.
+  - A flat recipe scans exactly as before: depth zero is the old contract.
+
+**Tests.**
+- `RelationshipService.nestedFriends.test.ts` covers:
+  - a single child, written out in full
+  - several children
+  - a child with two parents (nested under the closer one, both lookups wired)
+  - a second parent that is not an ancestor (TODO kept)
+  - a self-lookup
+  - a lookup target with no recipe
+  - a hand-filled lookup
+  - a block scalar
+  - the flat and snowfakery cases
+  - independence from insertion order
+  - an end-to-end run: generate, run the faker-js processor, convert to Collections API files, then simulate the inserts. Every grandchild resolves to its own parent and that parent's Account.
+- The DirectoryProcessor suites now load what Generate Treecipe actually writes (`objectInfoWrapper.RecipeFiles`) rather than regenerating flat files. `DirectoryProcessor.generatedRecipeYaml.test.ts` asserts that, over the whole mock metadata, every object loads with the same fields as the flat recipe apart from the lookups nesting wired.
+- The hostile picklist fixture is nested under a synthetic parent and must load identically in js-yaml and PyYAML. Run Faker over it must evaluate nothing.
+- The writer's full per-field suite (replace, comment out and restore, insert, set nickname and count, in all four line-ending variants) also runs against a new fixture, `recipe-fakerjs-nested--RelationshipTree_1.yml`, which is the real pipeline's nested output for the mock metadata. Scanner edge cases cover siblings after grandchildren, a parent property after its `friends:` block, headers outside a `friends:` block or at the wrong column, and an object at two depths.
+- New `CollectionsApiService` tests cover the nested-nickname collision, keys and a grandchild's two lookups. New `FakerJSRecipeProcessor` tests cover top-parent resolution with `count > 1` and the nearer ancestor winning a shared nickname.
+
 ## [3.31.0] - The Recipe Cockpit shows each relationship tree as a card with a Structure tab
 
 Closes [#175](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/175), slice 2 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

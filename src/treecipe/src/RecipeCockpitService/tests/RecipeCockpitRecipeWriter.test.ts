@@ -26,6 +26,14 @@ const RECIPE_FIXTURES: ReadonlyArray<[string, string]> = [
     ['faker-js', 'recipe-fakerjs--RelationshipTree_1.yml']
 ];
 
+/*
+    The same mock metadata through the same pipeline with faker-js nesting turned on (#46): every
+    child object under its parent's friends: block, two levels deep, and lookups to ancestors wired.
+    Every operation below runs against every object and field of it as well.
+*/
+const NESTED_RECIPE_FIXTURE: [string, string] = ['faker-js nested', 'recipe-fakerjs-nested--RelationshipTree_1.yml'];
+const ALL_RECIPE_FIXTURES: ReadonlyArray<[string, string]> = [...RECIPE_FIXTURES, NESTED_RECIPE_FIXTURE];
+
 const LINE_ENDING_VARIANTS: ReadonlyArray<[string, string, boolean]> = [
     ['LF with a final newline', '\n', true],
     ['LF without a final newline', '\n', false],
@@ -35,6 +43,12 @@ const LINE_ENDING_VARIANTS: ReadonlyArray<[string, string, boolean]> = [
 
 function readFixture(fileName: string): string {
     return fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, fileName), 'utf-8');
+}
+
+// THE OBJECT'S FIELD COLUMN, READ FROM ITS HEADER LINE RATHER THAN FROM THE WRITER UNDER TEST
+function fieldIndentOf(recipeText: string, objectApiName: string): string {
+    const headerMatch = new RegExp(`^( *)- object: ${objectApiName}\\r?$`, 'm').exec(recipeText);
+    return ' '.repeat(headerMatch[1].length + 4);
 }
 
 function toVariant(recipeText: string, lineEnding: string, hasFinalNewline: boolean): string {
@@ -221,7 +235,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
     });
 
-    describe.each(RECIPE_FIXTURES)('against the %s fixture', (unusedBackend, fileName) => {
+    describe.each(ALL_RECIPE_FIXTURES)('against the %s fixture', (unusedBackend, fileName) => {
 
         describe.each(LINE_ENDING_VARIANTS)('%s', (unusedVariantName, lineEnding, hasFinalNewline) => {
 
@@ -248,7 +262,7 @@ describe('RecipeCockpitRecipeWriter', () => {
                         const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, objectApiName, fieldApiName, valueText));
 
                         expect(edit).toMatchObject({ operation: 'replace-field-value', objectApiName: objectApiName, fieldApiName: fieldApiName });
-                        expect(edit.removedLines[0]).toStartWith(`    ${fieldApiName}:`);
+                        expect(edit.removedLines[0]).toStartWith(`${fieldIndentOf(recipeText, objectApiName)}${fieldApiName}:`);
                         expectFidelity(recipeText, patchedRecipeText, edit);
                         expectRoundTrip(recipeText, patchedRecipeText, objectApiName, fieldApiName, { isAbsent: false, valueText: expectedDisplayValue });
 
@@ -265,9 +279,10 @@ describe('RecipeCockpitRecipeWriter', () => {
                     const { recipeText: commentedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.commentOutField(recipeText, objectApiName, fieldApiName, 'not in devhub'));
 
                     const lineCount = edit.removedLines.length;
-                    expect(edit.insertedLines[0]).toBe(`${RecipeCockpitRecipeWriter.COMMENTED_OUT_MARKER_PREFIX}${fieldApiName} -- ${lineCount} ${lineCount === 1 ? 'line' : 'lines'} -- not in devhub`);
+                    const fieldIndent = fieldIndentOf(recipeText, objectApiName);
+                    expect(edit.insertedLines[0]).toBe(`${fieldIndent}${RecipeCockpitRecipeWriter.COMMENTED_OUT_MARKER_PREFIX.trimStart()}${fieldApiName} -- ${lineCount} ${lineCount === 1 ? 'line' : 'lines'} -- not in devhub`);
                     expect(edit.insertedLines).toHaveLength(edit.removedLines.length + 1);
-                    edit.insertedLines.forEach(insertedLine => expect(insertedLine).toMatch(/^ {4}#/));
+                    edit.insertedLines.forEach(insertedLine => expect(insertedLine).toStartWith(`${fieldIndent}#`));
                     expectFidelity(recipeText, commentedRecipeText, edit);
                     expectRoundTrip(recipeText, commentedRecipeText, objectApiName, fieldApiName, { isAbsent: true });
 
@@ -287,7 +302,7 @@ describe('RecipeCockpitRecipeWriter', () => {
                     const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(recipeText, objectApiName, 'Cockpit_Inserted__c', DEPENDENT_PICKLIST_VALUE));
 
                     expect(edit.removedLines).toEqual([]);
-                    expect(edit.insertedLines[0]).toBe('    Cockpit_Inserted__c: ');
+                    expect(edit.insertedLines[0]).toBe(`${fieldIndentOf(recipeText, objectApiName)}Cockpit_Inserted__c: `);
                     expectFidelity(recipeText, patchedRecipeText, edit);
                     expectRoundTrip(recipeText, patchedRecipeText, objectApiName, 'Cockpit_Inserted__c', {
                         isAbsent: false,
@@ -305,7 +320,8 @@ describe('RecipeCockpitRecipeWriter', () => {
 
                 objectApiNames.forEach(objectApiName => {
 
-                    ([['nickname', `${objectApiName}_Renamed`, `  nickname: ${objectApiName}_Renamed`], ['count', 25, '  count: 25']] as const).forEach(([propertyName, value, expectedLine]) => {
+                    const propertyIndent = fieldIndentOf(recipeText, objectApiName).slice(2);
+                    ([['nickname', `${objectApiName}_Renamed`, `${propertyIndent}nickname: ${objectApiName}_Renamed`], ['count', 25, `${propertyIndent}count: 25`]] as const).forEach(([propertyName, value, expectedLine]) => {
 
                         const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.setObjectProperty(recipeText, objectApiName, propertyName, value));
 
@@ -356,13 +372,14 @@ describe('RecipeCockpitRecipeWriter', () => {
             const recipeText = readFixture(fileName);
 
             const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Example_Everything__c', 'RecordTypeId', 'Example_Everything__c.TwoRecType'));
+            const fieldIndent = fieldIndentOf(recipeText, 'Example_Everything__c');
 
             expect(edit.removedLines).toEqual([
-                '    RecordTypeId: Example_Everything__c.OneRecType',
-                '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
-                '                    # Example_Everything__c.TwoRecType'
+                `${fieldIndent}RecordTypeId: Example_Everything__c.OneRecType`,
+                `${fieldIndent}                ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection`,
+                `${fieldIndent}                # Example_Everything__c.TwoRecType`
             ]);
-            expect(edit.insertedLines).toEqual(['    RecordTypeId: Example_Everything__c.TwoRecType']);
+            expect(edit.insertedLines).toEqual([`${fieldIndent}RecordTypeId: Example_Everything__c.TwoRecType`]);
             expect(patchedRecipeText).toContain('### TODO: -- RecordType Options -- OneRecType -- SELECT THIS SECTION');
 
         });
@@ -723,6 +740,162 @@ describe('RecipeCockpitRecipeWriter', () => {
         test('ignores lines before the first object header', () => {
 
             expect(RecipeCockpitRecipeWriter.scanRecipeObjects(['# Relationship Tree: T', '  fields:', '    Name: x'])).toEqual([]);
+
+        });
+
+    });
+
+    describe('nested friends: objects (#46)', () => {
+
+        const nestedRecipeText = readFixture(NESTED_RECIPE_FIXTURE[1]);
+
+        test('the reader finds every object at every depth, each at its header line, and the same fields as the flat recipe', () => {
+
+            const nestedEntries = RecipeCockpitService.parseRecipeSource(nestedRecipeText);
+            const nestedLines = nestedRecipeText.split('\n');
+            const headerObjectApiNames = [...nestedRecipeText.matchAll(/^ *- object: (\S+)$/gm)].map(([, objectApiName]) => objectApiName);
+
+            expect(nestedRecipeText).toMatch(/^ {8}- object: /m);
+            expect(Array.from(nestedEntries.keys())).toEqual(headerObjectApiNames);
+            nestedEntries.forEach((objectEntry, objectApiName) => {
+                expect(nestedLines[objectEntry.lineNumber - 1].trim()).toBe(`- object: ${objectApiName}`);
+                objectEntry.fieldEntries.forEach((fieldEntry, fieldApiName) => {
+                    expect(nestedLines[fieldEntry.lineNumber - 1]).toStartWith(`${fieldIndentOf(nestedRecipeText, objectApiName)}${fieldApiName}:`);
+                });
+            });
+
+            const sortedAddresses = (recipeText: string) => collectFieldAddresses(recipeText).map(address => address.join('.')).sort();
+            expect(sortedAddresses(nestedRecipeText)).toEqual(sortedAddresses(readFixture('recipe-fakerjs--RelationshipTree_1.yml')));
+
+        });
+
+        test('the reader shows a wired lookup as the ancestor nickname it holds', () => {
+
+            const nestedEntries = RecipeCockpitService.parseRecipeSource(nestedRecipeText);
+
+            expect(nestedEntries.get('Contact').fieldEntries.get('AccountId').valueText).toBe('Account_NickName');
+            expect(nestedEntries.get('MasterDetailMadness__c').fieldEntries.get('LU_Contact__c').valueText).toBe('Contact_NickName');
+
+        });
+
+        test('insertField on a parent writes into its fields block, above its friends: line', () => {
+
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'Account', 'Cockpit_Inserted__c', SINGLE_LINE_VALUE));
+            const patchedLines = patchedRecipeText.split('\n');
+
+            expect(edit.insertedLines).toEqual([`    Cockpit_Inserted__c: ${SINGLE_LINE_VALUE}`]);
+            expect(patchedLines[edit.startLineNumber]).toBe('  friends:');
+            expect((yaml.load(patchedRecipeText) as Array<{ fields: Record<string, unknown> }>)[0].fields.Cockpit_Inserted__c).toBe(SINGLE_LINE_VALUE);
+
+        });
+
+        test('a value written for a top-level object is moved to the friend\'s depth', () => {
+
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'MasterDetailMadness__c', 'Cockpit_Inserted__c', BLOCK_SCALAR_VALUE));
+
+            expect(edit.insertedLines).toEqual([
+                '            Cockpit_Inserted__c: |',
+                '                        ${{fake.word}}'
+            ]);
+            expect(RecipeCockpitService.parseRecipeSource(patchedRecipeText).get('MasterDetailMadness__c').fieldEntries.get('Cockpit_Inserted__c').valueText).toBe('${{fake.word}}');
+
+        });
+
+        test('a value that would not keep the layout at the top level is refused for a friend too', () => {
+
+            expectRefused(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'Contact', 'Cockpit_Inserted__c', 'first\n  second'), 'invalid-value');
+
+        });
+
+    });
+
+    describe('scanRecipeObjects over friends: blocks', () => {
+
+        const scan = (recipeLines: string[]) => RecipeCockpitRecipeWriter.scanRecipeObjects(recipeLines)
+            .map(scannedObject => ({
+                objectApiName: scannedObject.objectApiName,
+                objectIndent: scannedObject.objectIndent,
+                fields: scannedObject.fields.map(scannedField => scannedField.fieldApiName),
+                count: scannedObject.propertyLineIndexes.count
+            }));
+
+        test('a sibling after a grandchild, and a parent property after its friends, land on the right object', () => {
+
+            expect(scan([
+                '- object: Account',
+                '  fields:',
+                '    Name: a',
+                '  friends:',
+                '    # Contact (Parents: Account)',
+                '    - object: Contact',
+                '      fields:',
+                '        LastName: b',
+                '      friends:',
+                '        - object: Case',
+                '          fields:',
+                '            Subject: c',
+                '    # Opportunity (Parents: Account)',
+                '    - object: Opportunity',
+                '      count: 3',
+                '      fields:',
+                '        StageName: d',
+                '  count: 2',
+                '# Lead',
+                '- object: Lead',
+                '  fields:',
+                '    Company: e'
+            ])).toEqual([
+                { objectApiName: 'Account', objectIndent: 0, fields: ['Name'], count: [17] },
+                { objectApiName: 'Contact', objectIndent: 4, fields: ['LastName'], count: [] },
+                { objectApiName: 'Case', objectIndent: 8, fields: ['Subject'], count: [] },
+                { objectApiName: 'Opportunity', objectIndent: 4, fields: ['StageName'], count: [14] },
+                { objectApiName: 'Lead', objectIndent: 0, fields: ['Company'], count: [] }
+            ]);
+
+        });
+
+        test.each([
+            ['outside a friends: block', ['- object: Account', '  fields:', '    Name: a', '    - object: Contact', '      fields:', '        LastName: b']],
+            ['at a column that is not a friends level', ['- object: Account', '  friends:', '   - object: Contact', '      fields:', '        LastName: b']],
+            ['two levels below the open object', ['- object: Account', '  friends:', '        - object: Contact', '          fields:', '            LastName: b']]
+        ])('a nested "- object:" header %s opens no object', (unusedDescription, recipeLines) => {
+
+            expect(scan(recipeLines).map(scannedObject => scannedObject.objectApiName)).toEqual(['Account']);
+
+        });
+
+        test('a field written twice in one friend is refused by the writer and read first-wins by the reader', () => {
+
+            const recipeText = [
+                '- object: Account',
+                '  fields:',
+                '    Name: top',
+                '  friends:',
+                '    - object: Contact',
+                '      fields:',
+                '        LastName: first',
+                '        LastName: second'
+            ].join('\n');
+
+            expectRefused(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Contact', 'LastName', 'x'), 'duplicate-field');
+            expect(RecipeCockpitService.parseRecipeSource(recipeText).get('Contact').fieldEntries.get('LastName')).toEqual({ lineNumber: 7, valueText: 'first' });
+
+        });
+
+        test('the same object at two depths is refused by the writer and read first-wins by the reader', () => {
+
+            const recipeText = [
+                '- object: Account',
+                '  fields:',
+                '    Name: top',
+                '  friends:',
+                '    - object: Account',
+                '      fields:',
+                '        Name: child'
+            ].join('\n');
+
+            expectRefused(RecipeCockpitRecipeWriter.replaceFieldValue(recipeText, 'Account', 'Name', 'x'), 'duplicate-object');
+            expect(RecipeCockpitService.parseRecipeSource(recipeText).get('Account').fieldEntries.get('Name')).toEqual({ lineNumber: 3, valueText: 'top' });
 
         });
 

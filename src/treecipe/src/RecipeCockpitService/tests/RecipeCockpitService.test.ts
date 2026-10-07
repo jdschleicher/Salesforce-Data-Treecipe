@@ -1537,6 +1537,43 @@ describe('RecipeCockpitService', () => {
 
             });
 
+            it('given a nested faker-js recipe and no RecipeFiles, the card lists every object at every friends: depth in file order (#46)', () => {
+
+                const nestedRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-nested--RelationshipTree_1.yml'), 'utf-8');
+                const recipeSourceFile = { filePath: path.join('run', 'Account-thru-MasterDetailMadness__c', 'recipe.yml'), objectEntries: RecipeCockpitService.parseRecipeSource(nestedRecipeText) };
+                const objectApiNamesInFileOrder = [...nestedRecipeText.matchAll(/^ *- object: (\S+)$/gm)].map(([, objectApiName]) => objectApiName);
+
+                const treeBuild = RecipeCockpitService.buildRecipeTreeViewModels(
+                    { recipeTrees: [], parentLookupsByObjectApiName: new Map() },
+                    objectApiNamesInFileOrder.map(objectApiName => buildObject(objectApiName)),
+                    [recipeSourceFile],
+                    'run'
+                );
+
+                expect(objectApiNamesInFileOrder).toContain('MasterDetailMadness__c');
+                expect(treeBuild.trees).toHaveLength(1);
+                expect(treeBuild.trees[0].objects.map(treeObject => treeObject.objectApiName)).toEqual(objectApiNamesInFileOrder);
+
+            });
+
+            it('gives a nested object its recipe file, header line and field lines (#46)', () => {
+
+                const nestedRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-nested--RelationshipTree_1.yml'), 'utf-8');
+                const nestedLines = nestedRecipeText.split('\n');
+                const recipeSourceFile = { filePath: path.join('run', 'tree', 'recipe.yml'), objectEntries: RecipeCockpitService.parseRecipeSource(nestedRecipeText) };
+
+                const [masterDetailObject] = RecipeCockpitService.attachRecipeSources([{
+                    ...buildObject('MasterDetailMadness__c'),
+                    fields: [{ fieldApiName: 'LU_Contact__c', fieldLabel: '', fieldType: 'Lookup', fieldTypeWithSize: 'Lookup', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
+                }], [recipeSourceFile]);
+
+                expect(masterDetailObject.recipeFilePath).toBe(recipeSourceFile.filePath);
+                expect(nestedLines[masterDetailObject.lineNumber - 1]).toBe('        - object: MasterDetailMadness__c');
+                expect(nestedLines[masterDetailObject.fields[0].lineNumber - 1]).toBe('            LU_Contact__c: Contact_NickName');
+                expect(masterDetailObject.fields.filter(field => field.isOnlyInRecipeFile).map(field => field.fieldApiName)).toEqual(['MD_MegaMapMadness__c']);
+
+            });
+
             it('given a recipe file written straight into the run folder, names its card by the file', () => {
 
                 const recipeSourceFile = { filePath: path.join('run', 'recipe.yml'), objectEntries: new Map([['Lead', { lineNumber: 1, fieldEntries: new Map() }]]) };

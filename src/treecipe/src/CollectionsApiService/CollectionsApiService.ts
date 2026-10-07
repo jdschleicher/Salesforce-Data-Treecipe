@@ -604,8 +604,16 @@ export class CollectionsApiService {
 
         nicknameToOrgIdEntries.sort((a, b) => b.nicknameValue.length - a.nicknameValue.length);
 
+        /*
+            Only a JSON string that IS the nickname is replaced -- never one that merely contains it,
+            and never a key. A nested friend's nickname is built from its parent's
+            ("Contact_Account_NickName" holds "Account_NickName"), so a substring replace rewrote
+            the friend's own attributes.referenceId and lost every reference to it (#46).
+        */
         for (const { nicknameValue, orgRecordId } of nicknameToOrgIdEntries) {
-            collectionsApiJson = collectionsApiJson.replaceAll(nicknameValue, orgRecordId);
+            const quotedNickname = JSON.stringify(nicknameValue);
+            const quotedNicknameValuePattern = new RegExp(`${quotedNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\s*:)`, 'g');
+            collectionsApiJson = collectionsApiJson.replace(quotedNicknameValuePattern, () => JSON.stringify(orgRecordId));
         }
 
         return collectionsApiJson;

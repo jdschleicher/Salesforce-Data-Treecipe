@@ -160,6 +160,30 @@ As part of this yaml file generation there are some items to be aware of:
 * **"TODO" items:** Review sections marked with "TODO" before generating fake data. These mark areas that need clarification or input.
 * **Handling of field files without xml markup:** OOTB fields (e.g., AccountNumber, Name) lack XML detail. Some (like Name) need faker values manually added.
 * **Record Type Picklist, Dependent Picklist, Multiselect Picklist Selections:** Object folders are parsed to detect record types and relevant picklist faker options.
+* **Related objects are nested under `friends:` (faker-js):** With the faker-js service selected, each child object in a relationship tree is written under its parent's `friends:` block instead of as a separate top-level entry. A friend's `count` is records **per parent record**, so `count: 3` on a Contact under an Account with `count: 10` creates 30 Contacts, three for each Account. The child's lookup to its parent, and to every ancestor above it (for example the top-level Account of a grandchild), is filled in with that ancestor's nickname instead of `### TODO -- REFERENCE ID REQUIRED`, and Run Faker by Recipe points it at the record the child was generated under. A child with two parents is nested under the closer one; a lookup to a parent that is not one of its ancestors, and a self-lookup such as `Account.ParentId`, keep their TODO. Snowfakery recipes are written flat, as before.
+
+  ```yaml
+  - object: Account
+    nickname: Account_NickName
+    count: 1
+    fields:
+      Name: ${{faker.company.name()}}
+    friends:
+      # Other__c (Parents: Account | Children: OtherChildObject__c)
+      - object: Other__c
+        nickname: Other__c_NickName
+        count: 1
+        fields:
+          Account__c: Account_NickName
+        friends:
+          # OtherChildObject__c (Parents: Account, Other__c)
+          - object: OtherChildObject__c
+            nickname: OtherChildObject__c_NickName
+            count: 1
+            fields:
+              Account__c: Account_NickName
+              Other__c: Other__c_NickName
+  ```
 
 **NOTE:**
 

@@ -52,7 +52,7 @@ import * as vscode from 'vscode';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../../GlobalValueSetSingleton/GlobalValueSetSingleton';
-import { RelationshipService, RecipeFileOutput } from '../../RelationshipService/RelationshipService';
+import { RecipeFileOutput } from '../../RelationshipService/RelationshipService';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -84,7 +84,8 @@ async function generateRecipeFiles(createFakerService: () => IRecipeFakerService
     await GlobalValueSetSingleton.getInstance().initialize(PROTOTYPE_METADATA_PATH);
     const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(PROTOTYPE_OBJECTS_PATH));
 
-    return new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper);
+    // WHAT GENERATE TREECIPE WRITES -- NESTED UNDER friends: FOR faker-js (#46), FLAT FOR SNOWFAKERY
+    return objectInfoWrapper.RecipeFiles;
 
 }
 

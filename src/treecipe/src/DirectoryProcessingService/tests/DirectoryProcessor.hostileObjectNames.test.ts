@@ -77,7 +77,7 @@ const HOSTILE_REFERENCE_TO_XML = HOSTILE_REFERENCE_TO.replace(/&/g, '&amp;').rep
 const ORDINARY_OBJECT_API_NAMES = ['Account', 'ns__Thing__c'];
 const EVERY_LINE_BREAK = /\r\n|\r|\n|\u0085|\u2028|\u2029/;
 
-type LoadedRecipeEntry = { object?: string, nickname?: string, fields?: Record<string, unknown> };
+type LoadedRecipeEntry = { object?: string, nickname?: string, fields?: Record<string, unknown>, friends?: LoadedRecipeEntry[] };
 
 const buildFieldXml = (fieldApiName: string, fieldType: string, referenceToXml?: string): string =>
 `<?xml version="1.0" encoding="UTF-8"?>
@@ -135,8 +135,12 @@ async function generate(metadataPath: string, createFakerService: () => IRecipeF
 
 }
 
+// EVERY ENTRY AT EVERY DEPTH, PARENTS BEFORE THEIR FRIENDS -- A faker-js RECIPE NESTS CHILD OBJECTS UNDER friends: (#46)
+const flattenRecipeEntries = (recipeEntries: LoadedRecipeEntry[]): LoadedRecipeEntry[] =>
+    recipeEntries.flatMap(recipeEntry => [recipeEntry, ...flattenRecipeEntries(recipeEntry.friends ?? [])]);
+
 const recipeEntriesOf = (recipeFiles: RecipeFileOutput[]): LoadedRecipeEntry[] =>
-    recipeFiles.flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedRecipeEntry[]);
+    recipeFiles.flatMap(recipeFile => flattenRecipeEntries(yaml.load(recipeFile.content) as LoadedRecipeEntry[]));
 
 // A DIRECTORY NAME WITH A LINE BREAK CANNOT EXIST ON WINDOWS, WHICH IS ALSO WHY THE ATTACK DOES NOT
 const describeWherePossible = process.platform === 'win32' ? describe.skip : describe;

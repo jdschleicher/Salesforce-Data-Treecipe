@@ -676,26 +676,25 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     });
 
-    describe('replaceParentNicknameReferencesInFriendFields', () => {
+    describe('replaceAncestorNicknameReferencesInFriendFields', () => {
 
-        test('replaces field values that exactly match the original nickname with the effective nickname', () => {
+        test('replaces field values that exactly match an ancestor nickname with its effective nickname', () => {
 
-            const fields = { AccountId: 'top_account', Name: 'Some Name', OtherId: 'unrelated' };
-            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
-                fields, 'top_account', 'top_account_1'
+            const fields = { AccountId: 'top_account', Other__c: 'other_parent', Name: 'Some Name', OtherId: 'unrelated' };
+            const result = fakerJSRecipeProcessor.replaceAncestorNicknameReferencesInFriendFields(
+                fields,
+                new Map([['top_account', 'top_account_1'], ['other_parent', 'Other__c_top_account_1']])
             );
 
-            expect(result.AccountId).toBe('top_account_1');
-            expect(result.Name).toBe('Some Name');
-            expect(result.OtherId).toBe('unrelated');
+            expect(result).toEqual({ AccountId: 'top_account_1', Other__c: 'Other__c_top_account_1', Name: 'Some Name', OtherId: 'unrelated' });
 
         });
 
-        test('returns fields unchanged when originalNickname equals effectiveNickname (count=1 case)', () => {
+        test('returns fields unchanged when every ancestor keeps its nickname (count=1 case)', () => {
 
             const fields = { AccountId: 'top_account', Name: 'Corp' };
-            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
-                fields, 'top_account', 'top_account'
+            const result = fakerJSRecipeProcessor.replaceAncestorNicknameReferencesInFriendFields(
+                fields, new Map([['top_account', 'top_account']])
             );
 
             expect(result).toEqual(fields);
@@ -704,8 +703,8 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         test('returns empty object when fields is undefined', () => {
 
-            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
-                undefined, 'top_account', 'top_account_1'
+            const result = fakerJSRecipeProcessor.replaceAncestorNicknameReferencesInFriendFields(
+                undefined, new Map([['top_account', 'top_account_1']])
             );
 
             expect(result).toEqual({});
@@ -714,13 +713,108 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         test('does not do partial string replacement — only exact field value matches are replaced', () => {
 
-            const fields = { AccountId: 'top_account_extra', Name: 'top_account' };
-            const result = fakerJSRecipeProcessor.replaceParentNicknameReferencesInFriendFields(
-                fields, 'top_account', 'top_account_1'
+            const fields = { AccountId: 'top_account_extra', Name: 'top_account', Count__c: 3 };
+            const result = fakerJSRecipeProcessor.replaceAncestorNicknameReferencesInFriendFields(
+                fields, new Map([['top_account', 'top_account_1']])
             );
 
             expect(result.AccountId).toBe('top_account_extra');
             expect(result.Name).toBe('top_account_1');
+            expect(result.Count__c).toBe(3);
+
+        });
+
+        test('a nickname that names an Object.prototype member is matched only as a nickname', () => {
+
+            const fields = { AccountId: '__proto__', Name: 'constructor' };
+            const result = fakerJSRecipeProcessor.replaceAncestorNicknameReferencesInFriendFields(
+                fields, new Map([['__proto__', 'Account_1']])
+            );
+
+            expect(result.AccountId).toBe('Account_1');
+            expect(result.Name).toBe('constructor');
+
+        });
+
+    });
+
+    describe('friends lookups to ancestors above the direct parent (#46)', () => {
+
+        test('a grandchild lookup to the TOP parent resolves to the top parent iteration it was generated under', async () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const entry = {
+                object: 'Account',
+                nickname: 'Account_NickName',
+                count: 2,
+                fields: { Name: 'Top Corp' },
+                friends: [
+                    {
+                        object: 'Other__c',
+                        nickname: 'Other__c_NickName',
+                        count: 1,
+                        fields: { Account__c: 'Account_NickName' },
+                        friends: [
+                            {
+                                object: 'OtherChildObject__c',
+                                nickname: 'OtherChildObject__c_NickName',
+                                count: 2,
+                                fields: { Other__c: 'Other__c_NickName', Account__c: 'Account_NickName' }
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem('Account', entry, processedYamlWrapper);
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Account'].map(account => account.nickname)).toEqual(['Account_NickName_1', 'Account_NickName_2']);
+            expect(result.ObjectPropertyToExistingProcessedYaml['Other__c'].map(other => [other.nickname, other.fields.Account__c])).toEqual([
+                ['Other__c_Account_NickName_1', 'Account_NickName_1'],
+                ['Other__c_Account_NickName_2', 'Account_NickName_2']
+            ]);
+            expect(result.ObjectPropertyToExistingProcessedYaml['OtherChildObject__c'].map(grandchild => [grandchild.fields.Other__c, grandchild.fields.Account__c])).toEqual([
+                ['Other__c_Account_NickName_1', 'Account_NickName_1'],
+                ['Other__c_Account_NickName_1', 'Account_NickName_1'],
+                ['Other__c_Account_NickName_2', 'Account_NickName_2'],
+                ['Other__c_Account_NickName_2', 'Account_NickName_2']
+            ]);
+
+        });
+
+        test('the nearer ancestor wins when two ancestors share a YAML nickname', async () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {}
+            };
+
+            const entry = {
+                object: 'Account',
+                nickname: 'shared',
+                count: 2,
+                fields: {},
+                friends: [
+                    {
+                        object: 'Contact',
+                        nickname: 'shared',
+                        count: 1,
+                        fields: {},
+                        friends: [ { object: 'Case', fields: { ParentRef__c: 'shared' } } ]
+                    }
+                ]
+            };
+
+            const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem('Account', entry, processedYamlWrapper);
+
+            expect(result.ObjectPropertyToExistingProcessedYaml['Case'].map(caseRecord => caseRecord.fields.ParentRef__c)).toEqual([
+                'Contact_shared_1',
+                'Contact_shared_2'
+            ]);
 
         });
 
