@@ -56,7 +56,7 @@ import * as vscode from 'vscode';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../../GlobalValueSetSingleton/GlobalValueSetSingleton';
-import { RelationshipService, RecipeFileOutput } from '../../RelationshipService/RelationshipService';
+import { RecipeFileOutput } from '../../RelationshipService/RelationshipService';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -112,7 +112,8 @@ async function generateRecipeFiles(createFakerService: () => IRecipeFakerService
     await GlobalValueSetSingleton.getInstance().initialize(HOSTILE_METADATA_PATH);
     const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(HOSTILE_OBJECTS_PATH));
 
-    return new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper);
+    // WHAT GENERATE TREECIPE WRITES -- NESTED UNDER friends: FOR faker-js (#46), FLAT FOR SNOWFAKERY
+    return objectInfoWrapper.RecipeFiles;
 
 }
 
@@ -234,7 +235,7 @@ describe('Generate Treecipe over the ordinary mock metadata', () => {
         mockConfiguration(() => new FakerJSRecipeFakerService());
         await GlobalValueSetSingleton.getInstance().initialize(mockMetadataPath);
         const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(path.join(mockMetadataPath, 'objects')));
-        const recipeFiles = new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper);
+        const recipeFiles = objectInfoWrapper.RecipeFiles;
 
         expect(recipeFiles.length).toBeGreaterThan(0);
         recipeFiles.forEach(recipeFile => {

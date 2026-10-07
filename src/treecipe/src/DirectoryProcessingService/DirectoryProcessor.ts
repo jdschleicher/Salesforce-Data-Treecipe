@@ -1,5 +1,6 @@
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { RecipeService } from '../RecipeService/RecipeService';
+import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
@@ -22,8 +23,11 @@ export class DirectoryProcessor {
   private relationshipService: RelationshipService;
   private customRelationshipMappings: Record<string, string> | undefined;
   private customCompoundAddressFields: string[] | undefined;
+  // THE SERVICE THAT WRITES EVERY OBJECT'S RECIPE DECIDES WHETHER THE TREE NESTS ITS CHILDREN UNDER friends: (#46)
+  private isFakerJSServiceSelected: boolean;
   constructor() {
     const selectedDataFakerService = ConfigurationService.getFakerImplementationByExtensionConfigSelection();
+    this.isFakerJSServiceSelected = selectedDataFakerService instanceof FakerJSRecipeFakerService;
     this.recipeService = new RecipeService(selectedDataFakerService);
     this.relationshipService = new RelationshipService();
   }
@@ -397,7 +401,8 @@ export class DirectoryProcessor {
   
     objectInfoWrapper.RelationshipTrees = this.relationshipService.buildRelationshipTrees(objectInfoWrapper);
 
-    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper);
+    // ONLY faker-js RECIPES NEST CHILDREN UNDER friends: AND WIRE THEIR LOOKUPS (#46) -- A SNOWFAKERY RECIPE IS WRITTEN FLAT, AS BEFORE
+    const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper, this.isFakerJSServiceSelected);
     
     objectInfoWrapper.RecipeFiles = recipeFiles;
       

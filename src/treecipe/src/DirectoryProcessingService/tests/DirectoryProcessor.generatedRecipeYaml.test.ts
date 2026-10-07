@@ -1,4 +1,5 @@
 import * as childProcess from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
@@ -66,6 +67,7 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { RecordTypeService } from '../../RecordTypeService/RecordTypeService';
+import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 
@@ -80,24 +82,43 @@ const PYYAML_CHECK = [
     '        print(recipe_file["fileName"] + ": " + str(yaml_error).splitlines()[0])'
 ].join('\n');
 
-async function generateRecipeFiles(createFakerService: () => IRecipeFakerService): Promise<RecipeFileOutput[]> {
+async function processMockMetadata(createFakerService: () => IRecipeFakerService): Promise<ObjectInfoWrapper> {
 
     jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 
-    const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(MOCK_OBJECTS_PATH));
-
-    return new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper);
+    return new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(MOCK_OBJECTS_PATH));
 
 }
 
-type LoadedObjectRecipe = { object: string, fields: Record<string, unknown> | null };
+async function generateRecipeFiles(createFakerService: () => IRecipeFakerService): Promise<RecipeFileOutput[]> {
+
+    // WHAT GENERATE TREECIPE WRITES -- NESTED UNDER friends: FOR faker-js (#46), FLAT FOR SNOWFAKERY
+    return (await processMockMetadata(createFakerService)).RecipeFiles;
+
+}
+
+type LoadedObjectRecipe = { object: string, fields: Record<string, unknown> | null, friends?: LoadedObjectRecipe[] };
+
+// EVERY OBJECT AT EVERY DEPTH -- A faker-js RECIPE NESTS CHILD OBJECTS UNDER friends: (#46)
+const flattenObjectRecipes = (objectRecipes: LoadedObjectRecipe[]): LoadedObjectRecipe[] =>
+    objectRecipes.flatMap(objectRecipe => [objectRecipe, ...flattenObjectRecipes(objectRecipe.friends ?? [])]);
+
+/*
+    The RecordTypeId block, at whatever depth its object is written: the field line at the object's
+    field indent, and its options sixteen spaces deeper than that, as RecipeService writes them.
+*/
+const buildRecordTypeIdBlockPattern = (selectedRecordTypeName: string, commentedRecordTypeName: string): RegExp => new RegExp([
+    `^( {4}(?: {4})*)RecordTypeId: Example_Everything__c\\.${selectedRecordTypeName}`,
+    '\\1 {16}### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
+    `\\1 {16}# Example_Everything__c\\.${commentedRecordTypeName}$`
+].join('\n'), 'm');
 
 function collectRecordTypeIdsByObject(loadedRecipes: unknown[]): Record<string, unknown[]> {
 
     const recordTypeIdsByObject: Record<string, unknown[]> = {};
-    (loadedRecipes as LoadedObjectRecipe[][]).flat().forEach(objectRecipe => {
+    flattenObjectRecipes((loadedRecipes as LoadedObjectRecipe[][]).flat()).forEach(objectRecipe => {
         if ( objectRecipe.fields && 'RecordTypeId' in objectRecipe.fields ) {
             (recordTypeIdsByObject[objectRecipe.object] ??= []).push(objectRecipe.fields.RecordTypeId);
         }
@@ -125,8 +146,8 @@ describe.each([
 
         const recipeText = recipeFiles.map(recipeFile => recipeFile.content).join('\n');
 
-        expect(recipeText).toMatch(/### TODO: -- RecordType Options -- \w+ -- Below is the faker recipe for the record type \w+ for the field Picklist__c\n {20}# \$\{\{/);
-        expect(recipeText).toMatch(/### TODO: -- RecordType Options -- \w+ -- Below is the Multiselect faker recipe for the record type \w+ for the field MultiPicklist__c\n {20}# \$\{\{/);
+        expect(recipeText).toMatch(/^( *)### TODO: -- RecordType Options -- \w+ -- Below is the faker recipe for the record type \w+ for the field Picklist__c\n\1# \$\{\{/m);
+        expect(recipeText).toMatch(/^( *)### TODO: -- RecordType Options -- \w+ -- Below is the Multiselect faker recipe for the record type \w+ for the field MultiPicklist__c\n\1# \$\{\{/m);
 
     });
 
@@ -134,11 +155,7 @@ describe.each([
 
         const recipeText = recipeFiles.map(recipeFile => recipeFile.content).join('\n');
 
-        expect(recipeText).toContain([
-            '    RecordTypeId: Example_Everything__c.OneRecType',
-            '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
-            '                    # Example_Everything__c.TwoRecType\n'
-        ].join('\n'));
+        expect(recipeText).toMatch(buildRecordTypeIdBlockPattern('OneRecType', 'TwoRecType'));
 
     });
 
@@ -172,7 +189,7 @@ describe.each([
                 in map order, so within one field (or one when: block) the names must come out sorted.
             */
             const recordTypeNamesBySection = recipeText
-                .split(/\n(?= {4}\w+:| *when:)/)
+                .split(/\n(?= {4}(?: {4})*\w+:| *when:)/)
                 .map(section => [...section.matchAll(/### TODO: -- RecordType Options -- (\w+) --/g)].map(([, recordTypeName]) => recordTypeName))
                 .map(recordTypeNames => recordTypeNames.filter((recordTypeName, index) => recordTypeName !== recordTypeNames[index - 1]))
                 .filter(recordTypeNames => recordTypeNames.length > 1);
@@ -197,11 +214,7 @@ describe.each([
         const inactiveFirstRecipeFiles = await generateRecipeFiles(createFakerService);
         const recipeText = inactiveFirstRecipeFiles.map(recipeFile => recipeFile.content).join('\n');
 
-        expect(recipeText).toContain([
-            '    RecordTypeId: Example_Everything__c.TwoRecType',
-            '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
-            '                    # Example_Everything__c.OneRecType\n'
-        ].join('\n'));
+        expect(recipeText).toMatch(buildRecordTypeIdBlockPattern('TwoRecType', 'OneRecType'));
         expect(collectRecordTypeIdsByObject(inactiveFirstRecipeFiles.map(recipeFile => yaml.load(recipeFile.content)))).toEqual({
             Example_Everything__c: ['Example_Everything__c.TwoRecType']
         });
@@ -223,6 +236,60 @@ describe.each([
         expect(collectRecordTypeIdsByObject(pyYamlLoadedRecipes)).toEqual({
             Example_Everything__c: ['Example_Everything__c.OneRecType']
         });
+
+    });
+
+    /*
+        Nesting moves an object's lines four spaces deeper per friends: level and fills in the lookups
+        to its ancestors -- nothing else. So every object loads with the same fields as the flat
+        recipe, apart from a lookup that was the REFERENCE ID REQUIRED TODO (null) and is now an
+        ancestor's nickname (#46). For snowfakery, which stays flat, the two are identical.
+    */
+    test('every object loads with the same fields as the flat recipe, apart from the lookups nesting wired', async () => {
+
+        const objectInfoWrapper = await processMockMetadata(createFakerService);
+        const loadObjectRecipesByName = (recipeContents: string[]): Map<string, LoadedObjectRecipe> => new Map(
+            flattenObjectRecipes(recipeContents.flatMap(recipeContent => yaml.load(recipeContent) as LoadedObjectRecipe[]))
+                .map(objectRecipe => [objectRecipe.object, objectRecipe])
+        );
+
+        const writtenObjectRecipes = loadObjectRecipesByName(objectInfoWrapper.RecipeFiles.map(recipeFile => recipeFile.content));
+        const flatObjectRecipes = loadObjectRecipesByName(new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, false).map(recipeFile => recipeFile.content));
+        const nicknames = new Set(Array.from(flatObjectRecipes.values()).map(objectRecipe => (objectRecipe as unknown as { nickname: string }).nickname));
+
+        expect(Array.from(writtenObjectRecipes.keys()).sort()).toEqual(Array.from(flatObjectRecipes.keys()).sort());
+
+        let wiredLookupCount = 0;
+        flatObjectRecipes.forEach((flatObjectRecipe, objectApiName) => {
+            const writtenFields = writtenObjectRecipes.get(objectApiName).fields ?? {};
+            const flatFields = flatObjectRecipe.fields ?? {};
+            expect(Object.keys(writtenFields)).toEqual(Object.keys(flatFields));
+            Object.keys(flatFields).forEach(fieldApiName => {
+                if ( flatFields[fieldApiName] === null && nicknames.has(writtenFields[fieldApiName] as string) ) {
+                    wiredLookupCount++;
+                    return;
+                }
+                expect([objectApiName, fieldApiName, writtenFields[fieldApiName]]).toEqual([objectApiName, fieldApiName, flatFields[fieldApiName]]);
+            });
+        });
+
+        expect(wiredLookupCount > 0).toBe(objectInfoWrapper.RecipeFiles.some(recipeFile => recipeFile.content.includes('friends:')));
+
+    });
+
+    // THE RECIPE COCKPIT'S NESTED WRITER FIXTURE IS THIS PIPELINE'S OUTPUT, SO A CHANGE TO THE LAYOUT THAT DOES NOT REGENERATE IT FAILS HERE
+    test('the first tree is byte-identical to the Recipe Cockpit\'s writer fixture for this backend', () => {
+
+        const fixtureFileName = createFakerService() instanceof FakerJSRecipeFakerService
+            ? 'recipe-fakerjs-nested--RelationshipTree_1.yml'
+            : undefined;
+        if ( !fixtureFileName ) {
+            expect(recipeFiles[0].content).not.toContain('friends:');
+            return;
+        }
+
+        const fixturePath = path.join(__dirname, '..', '..', 'RecipeCockpitService', 'tests', 'mocks', 'recipeWriter', fixtureFileName);
+        expect(recipeFiles[0].content).toBe(fs.readFileSync(fixturePath, 'utf-8'));
 
     });
 

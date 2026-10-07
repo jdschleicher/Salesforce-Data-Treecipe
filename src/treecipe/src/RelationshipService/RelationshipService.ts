@@ -274,7 +274,7 @@ export class RelationshipService {
     
   }
 
-  getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper): OrderedRecipeStructure {
+  getOrderedObjectsForRecipes(objectInfoWrapper: ObjectInfoWrapper, nestChildObjectsAsFriends: boolean): OrderedRecipeStructure {
 
     const orderedStructure: OrderedRecipeStructure = {
       relationshipTrees: [],
@@ -339,7 +339,10 @@ export class RelationshipService {
       }
 
       // Build combined recipe for this tree (in dependency order)
-      orderedTree.combinedRecipe = this.buildCombinedTreeRecipe(orderedTree);
+      const nestedTreeRecipe = nestChildObjectsAsFriends
+        ? this.buildNestedFriendsTreeRecipe(orderedTree, objectInfoWrapper)
+        : undefined;
+      orderedTree.combinedRecipe = nestedTreeRecipe ?? this.buildCombinedTreeRecipe(orderedTree);
       orderedStructure.relationshipTrees.push(orderedTree);
       orderedStructure.totalObjects += tree.allObjects.length;
 
@@ -371,6 +374,161 @@ export class RelationshipService {
     return combinedRecipe;
   }
 
+  static readonly referenceIdRequiredTodo = '### TODO -- REFERENCE ID REQUIRED';
+
+  /*
+    The parent an object is nested under in a faker-js recipe (#46): of its parents in the same tree
+    that have a recipe, the DEEPEST -- its closest ancestor -- with ties broken by name. Only a parent
+    at a strictly lower level qualifies, so the chosen parents form a forest whatever cycles the
+    lookups themselves contain. Names compare with "<", never localeCompare, so the nesting does not
+    depend on the machine's locale (#166).
+  */
+  static selectFriendsParentByObjectName(objectNamesInInsertOrder: string[], objectInfoWrapper: ObjectInfoWrapper): Map<string, string> {
+
+    const objectNamesWithRecipes = new Set(objectNamesInInsertOrder);
+    const friendsParentByObjectName = new Map<string, string>();
+
+    // ONLY CALLED FOR AN OBJECT THAT HAS A RECIPE IN THIS TREE, AND buildRelationshipTrees ONLY GROUPS OBJECTS WITH A RelationshipDetail
+    const levelOf = (objectName: string): number => objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.level;
+
+    objectNamesInInsertOrder.forEach(objectName => {
+
+      const relationshipDetail = objectInfoWrapper.ObjectToObjectInfoMap[objectName]?.RelationshipDetail;
+      if ( !relationshipDetail ) {
+        return;
+      }
+
+      const candidateParentNames = Object.keys(relationshipDetail.parentObjectToFieldReferences)
+        .filter(parentName => parentName !== objectName
+                                && objectNamesWithRecipes.has(parentName)
+                                && levelOf(parentName) < levelOf(objectName));
+
+      const selectedParentName = candidateParentNames.reduce<string | undefined>((selected, candidate) => {
+        if ( selected === undefined ) {
+          return candidate;
+        }
+        if ( levelOf(candidate) !== levelOf(selected) ) {
+          return levelOf(candidate) > levelOf(selected) ? candidate : selected;
+        }
+        return candidate < selected ? candidate : selected;
+      }, undefined);
+
+      if ( selectedParentName !== undefined ) {
+        friendsParentByObjectName.set(objectName, selectedParentName);
+      }
+
+    });
+
+    return friendsParentByObjectName;
+
+  }
+
+  /*
+    One faker-js recipe per tree with every child written under its parent's "friends:" block (#46),
+    so a friend's count is records PER parent record. Each object is still written once, and a
+    lookup to ANY ancestor on its chain -- the parent it sits under, the top parent above that -- is
+    wired to that ancestor's nickname in place of the REFERENCE ID REQUIRED TODO, which
+    FakerJSRecipeProcessor resolves to the ancestor record the child was generated under. A lookup to
+    an object that is not its ancestor (a second, unrelated parent; a self-lookup, #188) keeps its
+    TODO. undefined when nothing in the tree nests, so a tree without relationships is written by
+    buildCombinedTreeRecipe exactly as before.
+  */
+  private buildNestedFriendsTreeRecipe(orderedTree: OrderedRelationshipTree, objectInfoWrapper: ObjectInfoWrapper): string | undefined {
+
+    const recipeInfosInInsertOrder = orderedTree.orderedLevels.flatMap(level => level.recipes);
+    const objectNamesInInsertOrder = recipeInfosInInsertOrder.map(recipeInfo => recipeInfo.objectName);
+
+    const friendsParentByObjectName = RelationshipService.selectFriendsParentByObjectName(objectNamesInInsertOrder, objectInfoWrapper);
+    if ( friendsParentByObjectName.size === 0 ) {
+      return undefined;
+    }
+
+    const recipeInfoByObjectName = new Map(recipeInfosInInsertOrder.map(recipeInfo => [recipeInfo.objectName, recipeInfo]));
+    const friendObjectNamesByParentName = new Map<string, string[]>();
+    friendsParentByObjectName.forEach((parentName, objectName) => {
+      friendObjectNamesByParentName.set(parentName, [...(friendObjectNamesByParentName.get(parentName) ?? []), objectName]);
+    });
+
+    const renderObject = (objectName: string, depth: number, ancestorObjectNames: string[]): string[] => {
+
+      const recipeInfo = recipeInfoByObjectName.get(objectName);
+      const indentation = ' '.repeat(4 * depth);
+      const objectLines = this.wireAncestorLookups(objectName, recipeInfo.recipe, ancestorObjectNames, recipeInfoByObjectName, objectInfoWrapper)
+        .map(recipeLine => recipeLine ? `${indentation}${recipeLine}` : recipeLine);
+
+      const friendObjectNames = friendObjectNamesByParentName.get(objectName) ?? [];
+      if ( friendObjectNames.length === 0 ) {
+        return objectLines;
+      }
+
+      const friendIndentation = ' '.repeat(4 * (depth + 1));
+      const friendLines = friendObjectNames.flatMap(friendObjectName => [
+        `${friendIndentation}# ${friendObjectName} (${recipeInfoByObjectName.get(friendObjectName).relationshipInfo})`,
+        ...renderObject(friendObjectName, depth + 1, [...ancestorObjectNames, objectName])
+      ]);
+
+      return [...objectLines, `${indentation}  friends:`, ...friendLines];
+
+    };
+
+    let nestedRecipe = `# Relationship Tree: ${orderedTree.treeName}\n`;
+    nestedRecipe += `# Child objects are nested under their parent's friends: block -- a friend's count is records PER parent record\n\n`;
+
+    objectNamesInInsertOrder
+      .filter(objectName => !friendsParentByObjectName.has(objectName))
+      .forEach(rootObjectName => {
+        nestedRecipe += `# ${rootObjectName} (${recipeInfoByObjectName.get(rootObjectName).relationshipInfo})\n`;
+        nestedRecipe += `${renderObject(rootObjectName, 0, []).join('\n')}\n\n`;
+      });
+
+    return nestedRecipe;
+
+  }
+
+  /*
+    The object's recipe as lines, without the blank lines around it, with each lookup to an
+    ancestor set to that ancestor's nickname. Only a line that is EXACTLY the generated TODO is
+    rewritten, so a lookup a mapping or a person already filled in is left as it is.
+  */
+  private wireAncestorLookups(objectName: string,
+                                objectRecipe: string,
+                                ancestorObjectNames: string[],
+                                recipeInfoByObjectName: Map<string, RecipeInfo>,
+                                objectInfoWrapper: ObjectInfoWrapper): string[] {
+
+    const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences;
+    const nicknameByLookupLine = new Map<string, string>();
+
+    ancestorObjectNames.forEach(ancestorObjectName => {
+
+      const ancestorNicknameMatch = /^ {2}nickname:[ \t]*(\S+)[ \t]*$/m.exec(recipeInfoByObjectName.get(ancestorObjectName).recipe);
+      if ( !ancestorNicknameMatch || !Object.prototype.hasOwnProperty.call(lookupFieldNamesByParentName, ancestorObjectName) ) {
+        return;
+      }
+
+      lookupFieldNamesByParentName[ancestorObjectName].forEach(lookupFieldName => {
+        nicknameByLookupLine.set(`    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`, ancestorNicknameMatch[1]);
+      });
+
+    });
+
+    const objectLines = objectRecipe.split('\n');
+    while ( objectLines.length > 0 && !objectLines[0].trim() ) {
+      objectLines.shift();
+    }
+    while ( objectLines.length > 0 && !objectLines[objectLines.length - 1].trim() ) {
+      objectLines.pop();
+    }
+
+    return objectLines.map(objectLine => {
+      const ancestorNickname = nicknameByLookupLine.get(objectLine);
+      return ancestorNickname === undefined
+        ? objectLine
+        : `${objectLine.slice(0, objectLine.indexOf(':') + 1)} ${ancestorNickname}`;
+    });
+
+  }
+
   private getObjectRelationshipSummary(relationshipDetail: RelationshipDetail): string {
 
     const parts = [];
@@ -386,9 +544,9 @@ export class RelationshipService {
     return parts.join(' | ') || 'No relationships';
   }
 
-  generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper): RecipeFileOutput[] {
+  generateSeparateRecipeFiles(objectInfoWrapper: ObjectInfoWrapper, nestChildObjectsAsFriends: boolean = false): RecipeFileOutput[] {
 
-    const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper);
+    const orderedStructure = this.getOrderedObjectsForRecipes(objectInfoWrapper, nestChildObjectsAsFriends);
     const recipeFiles: RecipeFileOutput[] = [];
 
     orderedStructure.relationshipTrees.forEach((tree, index) => {

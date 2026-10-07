@@ -13,6 +13,7 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
+import { RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
@@ -2679,93 +2680,47 @@ export class RecipeCockpitService {
         Where each object and field sits in one recipe file, by line, with the text of each field's
         value.
 
-        This reads the layout both faker backends emit -- RecipeService writes the same object
-        header for each -- rather than parsing YAML: "- object: X" at column zero, "  fields:" under
-        it, and one field per line at exactly four spaces. Anything deeper is the continuation of the
-        field above (a block scalar, a choice-if, a commented TODO), a comment at four spaces or
-        fewer ends that field without ending the block, and anything else shallower ends the
-        fields block. The first occurrence wins, for an object and for a field, which is the line a
-        reader jumping to it expects.
+        This reads the layout both faker backends emit rather than parsing YAML, through the SAME
+        scan RecipeCockpitRecipeWriter edits by, so the line the panel jumps to and the line an edit
+        changes cannot disagree: "- object: X" at column zero, "  fields:" under it, one field per
+        line at exactly four spaces, and every column four spaces deeper for each "friends:" level a
+        faker-js recipe nests a child object under (#46). Anything deeper than a field is its
+        continuation (a block scalar, a choice-if, a commented TODO). The first occurrence wins, for
+        an object and for a field, which is the line a reader jumping to it expects.
     */
     static parseRecipeSource(recipeContent: string): Map<string, IRecipeSourceObjectEntry> {
 
         const objectEntries = new Map<string, IRecipeSourceObjectEntry>();
+        const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeContent);
 
-        let currentObjectEntry: IRecipeSourceObjectEntry | undefined;
-        let isInFieldsBlock = false;
-        let currentFieldValueLines: string[] | undefined;
-        let currentFieldEntry: IRecipeSourceFieldEntry | undefined;
+        RecipeCockpitRecipeWriter.scanRecipeObjects(lines).forEach(scannedObject => {
 
-        const closeCurrentField = () => {
-            if ( currentFieldEntry && currentFieldValueLines ) {
-                currentFieldEntry.valueText = this.buildDisplayExpression(currentFieldValueLines);
+            if ( objectEntries.has(scannedObject.objectApiName) ) {
+                return;
             }
-            currentFieldEntry = undefined;
-            currentFieldValueLines = undefined;
-        };
 
-        recipeContent.split(/\r?\n/).forEach((recipeLine, lineIndex) => {
+            const { fieldIndent } = RecipeCockpitRecipeWriter.getObjectLayout(scannedObject.objectIndent);
+            const fieldEntries = new Map<string, IRecipeSourceFieldEntry>();
 
-            const objectMatch = /^- object:\s*(\S+)\s*$/.exec(recipeLine);
+            scannedObject.fields.forEach(scannedField => {
 
-            if ( objectMatch ) {
-
-                closeCurrentField();
-                isInFieldsBlock = false;
-
-                if ( objectEntries.has(objectMatch[1]) ) {
-                    currentObjectEntry = undefined;
+                if ( fieldEntries.has(scannedField.fieldApiName) ) {
                     return;
                 }
 
-                currentObjectEntry = { lineNumber: lineIndex + 1, fieldEntries: new Map() };
-                objectEntries.set(objectMatch[1], currentObjectEntry);
-                return;
+                const firstLineValue = lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1);
+                const continuationLines = lines.slice(scannedField.startIndex + 1, scannedField.endIndex);
 
-            }
+                fieldEntries.set(scannedField.fieldApiName, {
+                    lineNumber: scannedField.startIndex + 1,
+                    valueText: this.buildDisplayExpression([firstLineValue, ...continuationLines])
+                });
 
-            if ( !currentObjectEntry || !recipeLine.trim() ) {
-                return;
-            }
+            });
 
-            const fieldMatch = /^ {4}([A-Za-z][A-Za-z0-9_]*):(.*)$/.exec(recipeLine);
-
-            if ( isInFieldsBlock && fieldMatch ) {
-
-                closeCurrentField();
-
-                if ( !currentObjectEntry.fieldEntries.has(fieldMatch[1]) ) {
-                    currentFieldEntry = { lineNumber: lineIndex + 1, valueText: '' };
-                    currentFieldValueLines = [fieldMatch[2]];
-                    currentObjectEntry.fieldEntries.set(fieldMatch[1], currentFieldEntry);
-                }
-
-                return;
-
-            }
-
-            if ( isInFieldsBlock && /^ {5,}\S/.test(recipeLine) ) {
-                currentFieldValueLines?.push(recipeLine);
-                return;
-            }
-
-            // A COMMENT AT FIELD DEPTH OR SHALLOWER ENDS THE FIELD ABOVE BUT NOT THE BLOCK -- IT IS WHERE RecipeCockpitRecipeWriter.commentOutField LEAVES A FIELD
-            if ( isInFieldsBlock && /^ {1,4}#/.test(recipeLine) ) {
-                closeCurrentField();
-                return;
-            }
-
-            closeCurrentField();
-            isInFieldsBlock = /^ {2}fields:\s*$/.test(recipeLine);
-
-            // A LINE AT COLUMN ZERO THAT IS NOT AN OBJECT HEADER -- A TREE COMMENT -- ENDS THE OBJECT
-            if ( /^\S/.test(recipeLine) ) {
-                currentObjectEntry = undefined;
-            }
+            objectEntries.set(scannedObject.objectApiName, { lineNumber: scannedObject.headerIndex + 1, fieldEntries: fieldEntries });
 
         });
-
-        closeCurrentField();
 
         return objectEntries;
 

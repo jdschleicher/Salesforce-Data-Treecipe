@@ -7,11 +7,14 @@
     It patches LINES rather than round-tripping YAML. Both faker backends write recipes as template
     strings, and the "### TODO" comments in them carry meaning -- which record type to pick, which
     lookup needs a reference. js-yaml drops every comment on dump, so a load and dump would delete
-    them all. The writer instead holds to the layout contract RecipeCockpitService.parseRecipeSource
-    reads: "- object: X" at column zero, "  fields:" under it, one field per line at exactly four
-    spaces, anything deeper as the continuation of the field above, and a comment at one to four
-    spaces as neither. A field's lines are its own line and its continuation lines; every other
-    line of the file is left byte for byte as it was found, and so are its line endings.
+    them all. The writer instead holds to one layout contract, which RecipeCockpitService.parseRecipeSource
+    reads through this file's own scanRecipeObjects: "- object: X" at column zero, "  fields:" under
+    it, one field per line at exactly four spaces, anything deeper as the continuation of the field
+    above, and a comment at one to four spaces as neither. A faker-js recipe nests child objects
+    under "  friends:" (#46), and each friends level moves every one of those columns four spaces
+    deeper: "    - object: Y" under a parent's "  friends:", its fields at eight spaces, and so on.
+    A field's lines are its own line and its continuation lines; every other line of the file is
+    left byte for byte as it was found, and so are its line endings.
 
     Unlike the reader, the writer never takes the first occurrence. First-wins is the right rule for
     jumping to a line and the wrong one for changing it: an object written twice, a field written
@@ -86,6 +89,8 @@ export interface IScannedField extends ILineSpan {
 
 export interface IScannedObject {
     objectApiName: string;
+    // THE COLUMN OF "- object:" -- 0 AT THE TOP, FOUR MORE FOR EACH friends: LEVEL
+    objectIndent: number;
     headerIndex: number;
     fieldsLineIndexes: number[];
     fields: IScannedField[];
@@ -95,28 +100,77 @@ export interface IScannedObject {
     commentedOutFieldMarkers: IScannedField[];
 }
 
-const FIELD_INDENT = '    ';
-const PROPERTY_INDENT = '  ';
-const COMMENT_PREFIX = `${FIELD_INDENT}#`;
-const COMMENTED_OUT_MARKER_PREFIX = `${FIELD_INDENT}### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- `;
+/*
+    Every column the layout contract names, for an object whose "- object:" sits at objectIndent.
+    At 0 these are the top-level columns; a friend at 4 has its properties at 6 and its fields at 8.
+*/
+export interface IRecipeObjectLayout {
+    objectIndent: number;
+    propertyIndent: string;
+    fieldIndent: string;
+    commentPrefix: string;
+    commentedOutMarkerPrefix: string;
+    fieldLinePattern: RegExp;
+    continuationLinePattern: RegExp;
+    fieldsBlockCommentPattern: RegExp;
+    fieldsLinePattern: RegExp;
+    friendsLinePattern: RegExp;
+    propertyLinePattern: RegExp;
+}
 
-const OBJECT_HEADER_PATTERN = /^- object:\s*(\S+)\s*$/;
-const FIELD_LINE_PATTERN = /^ {4}([A-Za-z][A-Za-z0-9_]*):(.*)$/;
-const CONTINUATION_LINE_PATTERN = /^ {5,}\S/;
-const FIELDS_BLOCK_COMMENT_PATTERN = /^ {1,4}#/;
-const FIELDS_LINE_PATTERN = /^ {2}fields:\s*$/;
-const PROPERTY_LINE_PATTERN = /^ {2}(nickname|count):/;
+interface IOpenScannedObject {
+    scannedObject: IScannedObject;
+    layout: IRecipeObjectLayout;
+    isInFieldsBlock: boolean;
+    isInFriendsBlock: boolean;
+    currentField?: IScannedField;
+}
+
+const COMMENTED_OUT_MARKER_TEXT = '### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- ';
+const OBJECT_HEADER_PATTERN = /^( *)- object:\s*(\S+)\s*$/;
+const FRIENDS_INDENT_STEP = 4;
 const API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 export class RecipeCockpitRecipeWriter {
 
-    static readonly COMMENTED_OUT_MARKER_PREFIX = COMMENTED_OUT_MARKER_PREFIX;
+    private static readonly objectLayoutsByIndent = new Map<number, IRecipeObjectLayout>();
+
+    static getObjectLayout(objectIndent: number): IRecipeObjectLayout {
+
+        const cachedLayout = this.objectLayoutsByIndent.get(objectIndent);
+        if ( cachedLayout ) {
+            return cachedLayout;
+        }
+
+        const fieldIndent = ' '.repeat(objectIndent + 4);
+        const layout: IRecipeObjectLayout = {
+            objectIndent: objectIndent,
+            propertyIndent: ' '.repeat(objectIndent + 2),
+            fieldIndent: fieldIndent,
+            commentPrefix: `${fieldIndent}#`,
+            commentedOutMarkerPrefix: `${fieldIndent}${COMMENTED_OUT_MARKER_TEXT}`,
+            fieldLinePattern: new RegExp(`^ {${objectIndent + 4}}([A-Za-z][A-Za-z0-9_]*):(.*)$`),
+            continuationLinePattern: new RegExp(`^ {${objectIndent + 5},}\\S`),
+            fieldsBlockCommentPattern: new RegExp(`^ {1,${objectIndent + 4}}#`),
+            fieldsLinePattern: new RegExp(`^ {${objectIndent + 2}}fields:\\s*$`),
+            friendsLinePattern: new RegExp(`^ {${objectIndent + 2}}friends:\\s*$`),
+            propertyLinePattern: new RegExp(`^ {${objectIndent + 2}}(nickname|count):`)
+        };
+
+        this.objectLayoutsByIndent.set(objectIndent, layout);
+        return layout;
+
+    }
+
+    static readonly COMMENTED_OUT_MARKER_PREFIX = RecipeCockpitRecipeWriter.getObjectLayout(0).commentedOutMarkerPrefix;
 
     /*
         valueText is what follows "Field: ", exactly as the faker services build a field's recipe:
         one line, or a first line followed by lines indented five spaces or more. A value that
         starts with a newline -- the dependent-picklist "if:" block -- leaves "Field: " with its
-        trailing space, as RecipeService.appendFieldRecipeToObjectRecipe writes it.
+        trailing space, as RecipeService.appendFieldRecipeToObjectRecipe writes it. It is always
+        written for a TOP-LEVEL object; for a friend, every continuation line is moved to the
+        friend's depth, as RelationshipService moves the whole recipe when it nests one (#46).
     */
     static insertField(recipeText: string, objectApiName: string, fieldApiName: string, valueText: string): RecipeWriterResult {
 
@@ -135,7 +189,7 @@ export class RecipeCockpitRecipeWriter {
             return this.refuse('field-already-exists', `${objectApiName} already has a ${fieldApiName} line, so it is not inserted again.`, objectApiName, fieldApiName);
         }
 
-        const fieldLines = this.buildFieldLines(fieldApiName, valueText);
+        const fieldLines = this.buildFieldLines(fieldApiName, valueText, this.getObjectLayout(scannedObject.objectIndent));
         if ( !fieldLines ) {
             return this.refuseInvalidValue(objectApiName, fieldApiName);
         }
@@ -157,7 +211,7 @@ export class RecipeCockpitRecipeWriter {
             return located;
         }
 
-        const fieldLines = this.buildFieldLines(fieldApiName, valueText);
+        const fieldLines = this.buildFieldLines(fieldApiName, valueText, located.layout);
         if ( !fieldLines ) {
             return this.refuseInvalidValue(objectApiName, fieldApiName);
         }
@@ -187,20 +241,20 @@ export class RecipeCockpitRecipeWriter {
         if ( 'refusal' in located ) {
             return located;
         }
-        const { recipeLines, scannedField } = located;
+        const { recipeLines, scannedField, layout } = located;
 
         const fieldLines = recipeLines.lines.slice(scannedField.startIndex, scannedField.endIndex);
 
-        if ( fieldLines.some(fieldLine => fieldLine && !fieldLine.startsWith(FIELD_INDENT)) ) {
+        if ( fieldLines.some(fieldLine => fieldLine && !fieldLine.startsWith(layout.fieldIndent)) ) {
             return this.refuse('unsupported-field-layout', `${objectApiName}.${fieldApiName} has a line of one to three spaces inside it, which commenting out could not give back exactly.`, objectApiName, fieldApiName);
         }
 
         // EVERY LINE BREAK PyYAML READS -- U+0085 IS NOT IN \s -- AND EVERY CONTROL CHARACTER, SO THE REASON CANNOT END THE COMMENT
         const singleLineReason = reason.replace(/[\s\u0000-\u001f\u007f-\u009f]+/g, ' ').trim();
         const lineCountText = `${fieldLines.length} ${fieldLines.length === 1 ? 'line' : 'lines'}`;
-        const markerLine = `${COMMENTED_OUT_MARKER_PREFIX}${fieldApiName} -- ${lineCountText}${singleLineReason ? ` -- ${singleLineReason}` : ''}`;
+        const markerLine = `${layout.commentedOutMarkerPrefix}${fieldApiName} -- ${lineCountText}${singleLineReason ? ` -- ${singleLineReason}` : ''}`;
         const commentedLines = fieldLines.map(fieldLine => (
-            fieldLine ? `${COMMENT_PREFIX} ${fieldLine.slice(FIELD_INDENT.length)}` : COMMENT_PREFIX
+            fieldLine ? `${layout.commentPrefix} ${fieldLine.slice(layout.fieldIndent.length)}` : layout.commentPrefix
         ));
 
         return this.applySplice(recipeLines, scannedField, [markerLine, ...commentedLines], {
@@ -234,7 +288,7 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const [marker] = markers;
-        const restoredLines = this.readCommentedOutFieldLines(recipeLines.lines, marker);
+        const restoredLines = this.readCommentedOutFieldLines(recipeLines.lines, marker, this.getObjectLayout(scannedObject.objectIndent));
 
         if ( !restoredLines ) {
             return this.refuse('commented-out-field-altered', `The lines under ${objectApiName}'s ${fieldApiName} marker are not the ones commenting it out wrote, so restoring them could not give the field back exactly.`, objectApiName, fieldApiName);
@@ -289,7 +343,7 @@ export class RecipeCockpitRecipeWriter {
 
         const [propertyLineIndex] = propertyLineIndexes;
 
-        return this.applySplice(recipeLines, { startIndex: propertyLineIndex, endIndex: propertyLineIndex + 1 }, [`${PROPERTY_INDENT}${propertyName}: ${propertyValueText}`], {
+        return this.applySplice(recipeLines, { startIndex: propertyLineIndex, endIndex: propertyLineIndex + 1 }, [`${this.getObjectLayout(scannedObject.objectIndent).propertyIndent}${propertyName}: ${propertyValueText}`], {
             operation: 'set-object-property',
             objectApiName: objectApiName,
             propertyName: propertyName
@@ -324,32 +378,41 @@ export class RecipeCockpitRecipeWriter {
     }
 
     /*
-        Every object in the file, in the order written, duplicates included. The walk is
-        parseRecipeSource's, line for line; where they differ it is only that this one keeps what
-        the reader discards -- the second occurrences, the spans, the "nickname:" and "count:"
-        lines and the markers commentOutField leaves.
+        Every object in the file, in the order written, duplicates included and friends at every
+        depth. This is the one scan of the layout contract: RecipeCockpitService.parseRecipeSource
+        reads its objects and fields from it, and keeps only the FIRST of each name, where the
+        writer refuses a name it finds twice.
+
+        The objects still open form a stack, one per friends level, so the object at depth d always
+        has its "- object:" at column 4d. A header at column 4d opens a friend only while the object
+        at depth d - 1 is inside its "  friends:" block; anywhere else it is just an unrecognized
+        line. Any other non-blank line at or left of an open object's header column closes that
+        object -- which, at depth 0, is the "line at column zero that is not an object header ends
+        the object" rule a flat recipe has always had.
     */
     static scanRecipeObjects(lines: string[]): IScannedObject[] {
 
         const scannedObjects: IScannedObject[] = [];
-
-        let currentObject: IScannedObject | undefined;
-        let currentField: IScannedField | undefined;
-        let isInFieldsBlock = false;
-
-        const closeCurrentField = () => {
-            currentField = undefined;
-        };
+        const openObjects: IOpenScannedObject[] = [];
 
         lines.forEach((recipeLine, lineIndex) => {
 
-            const objectMatch = OBJECT_HEADER_PATTERN.exec(recipeLine);
+            const objectHeaderMatch = OBJECT_HEADER_PATTERN.exec(recipeLine);
+            const objectIndent = objectHeaderMatch ? objectHeaderMatch[1].length : -1;
+            const parentDepth = objectIndent / FRIENDS_INDENT_STEP - 1;
+            const isTopLevelHeader = objectIndent === 0;
+            const isFriendHeader = objectIndent > 0
+                                    && Number.isInteger(parentDepth)
+                                    && openObjects[parentDepth]?.isInFriendsBlock === true;
 
-            if ( objectMatch ) {
-                closeCurrentField();
-                isInFieldsBlock = false;
-                currentObject = {
-                    objectApiName: objectMatch[1],
+            if ( isTopLevelHeader || isFriendHeader ) {
+
+                openObjects.length = isTopLevelHeader ? 0 : parentDepth + 1;
+                openObjects.forEach(openObject => { openObject.currentField = undefined; });
+
+                const scannedObject: IScannedObject = {
+                    objectApiName: objectHeaderMatch[2],
+                    objectIndent: objectIndent,
                     headerIndex: lineIndex,
                     fieldsLineIndexes: [],
                     fields: [],
@@ -357,59 +420,79 @@ export class RecipeCockpitRecipeWriter {
                     propertyLineIndexes: { nickname: [], count: [] },
                     commentedOutFieldMarkers: []
                 };
-                scannedObjects.push(currentObject);
+                scannedObjects.push(scannedObject);
+                openObjects.push({
+                    scannedObject: scannedObject,
+                    layout: this.getObjectLayout(objectIndent),
+                    isInFieldsBlock: false,
+                    isInFriendsBlock: false
+                });
+                return;
+
+            }
+
+            if ( openObjects.length === 0 || !recipeLine.trim() ) {
                 return;
             }
 
-            if ( !currentObject || !recipeLine.trim() ) {
+            const lineIndent = recipeLine.length - recipeLine.trimStart().length;
+            while ( openObjects.length > 0 && lineIndent <= openObjects[openObjects.length - 1].layout.objectIndent ) {
+                openObjects.pop();
+            }
+
+            const openObject = openObjects[openObjects.length - 1];
+            if ( !openObject ) {
                 return;
             }
 
-            const fieldMatch = FIELD_LINE_PATTERN.exec(recipeLine);
+            const { scannedObject, layout } = openObject;
+            const fieldMatch = layout.fieldLinePattern.exec(recipeLine);
 
-            if ( isInFieldsBlock && fieldMatch ) {
-                closeCurrentField();
-                currentField = { fieldApiName: fieldMatch[1], startIndex: lineIndex, endIndex: lineIndex + 1 };
-                currentObject.fields.push(currentField);
-                currentObject.lastFieldsBlockLineIndex = lineIndex;
+            if ( openObject.isInFieldsBlock && fieldMatch ) {
+                openObject.currentField = { fieldApiName: fieldMatch[1], startIndex: lineIndex, endIndex: lineIndex + 1 };
+                scannedObject.fields.push(openObject.currentField);
+                scannedObject.lastFieldsBlockLineIndex = lineIndex;
                 return;
             }
 
-            if ( isInFieldsBlock && CONTINUATION_LINE_PATTERN.test(recipeLine) ) {
-                if ( currentField ) {
-                    currentField.endIndex = lineIndex + 1;
+            if ( openObject.isInFieldsBlock && layout.continuationLinePattern.test(recipeLine) ) {
+                if ( openObject.currentField ) {
+                    openObject.currentField.endIndex = lineIndex + 1;
                 }
-                currentObject.lastFieldsBlockLineIndex = lineIndex;
+                scannedObject.lastFieldsBlockLineIndex = lineIndex;
                 return;
             }
 
-            if ( isInFieldsBlock && FIELDS_BLOCK_COMMENT_PATTERN.test(recipeLine) ) {
-                const commentedOutFieldMarker = this.readCommentedOutFieldMarker(recipeLine, lineIndex);
+            // A COMMENT AT FIELD DEPTH OR SHALLOWER ENDS THE FIELD ABOVE BUT NOT THE BLOCK -- IT IS WHERE commentOutField LEAVES A FIELD
+            if ( openObject.isInFieldsBlock && layout.fieldsBlockCommentPattern.test(recipeLine) ) {
+                const commentedOutFieldMarker = this.readCommentedOutFieldMarker(recipeLine, lineIndex, layout);
                 if ( commentedOutFieldMarker ) {
-                    currentObject.commentedOutFieldMarkers.push(commentedOutFieldMarker);
+                    scannedObject.commentedOutFieldMarkers.push(commentedOutFieldMarker);
                 }
-                currentField = undefined;
-                currentObject.lastFieldsBlockLineIndex = lineIndex;
+                openObject.currentField = undefined;
+                scannedObject.lastFieldsBlockLineIndex = lineIndex;
                 return;
             }
 
-            closeCurrentField();
-            isInFieldsBlock = FIELDS_LINE_PATTERN.test(recipeLine);
+            openObject.currentField = undefined;
 
-            if ( isInFieldsBlock ) {
-                currentObject.fieldsLineIndexes.push(lineIndex);
-                currentObject.lastFieldsBlockLineIndex = lineIndex;
+            // OUTSIDE THE FIELDS BLOCK A COMMENT CHANGES NOTHING -- THE ONE NAMING A FRIEND SITS INSIDE ITS PARENT'S friends: BLOCK
+            if ( recipeLine.trimStart().startsWith('#') ) {
                 return;
             }
 
-            const propertyMatch = PROPERTY_LINE_PATTERN.exec(recipeLine);
+            openObject.isInFieldsBlock = layout.fieldsLinePattern.test(recipeLine);
+            openObject.isInFriendsBlock = layout.friendsLinePattern.test(recipeLine);
+
+            if ( openObject.isInFieldsBlock ) {
+                scannedObject.fieldsLineIndexes.push(lineIndex);
+                scannedObject.lastFieldsBlockLineIndex = lineIndex;
+                return;
+            }
+
+            const propertyMatch = layout.propertyLinePattern.exec(recipeLine);
             if ( propertyMatch ) {
-                currentObject.propertyLineIndexes[propertyMatch[1] as RecipeObjectProperty].push(lineIndex);
-                return;
-            }
-
-            if ( /^\S/.test(recipeLine) ) {
-                currentObject = undefined;
+                scannedObject.propertyLineIndexes[propertyMatch[1] as RecipeObjectProperty].push(lineIndex);
             }
 
         });
@@ -419,13 +502,13 @@ export class RecipeCockpitRecipeWriter {
     }
 
     // THE SPAN IS THE MARKER AND THE LINE COUNT IT DECLARES, WHETHER OR NOT THOSE LINES ARE STILL THERE -- readCommentedOutFieldLines DECIDES THAT
-    private static readCommentedOutFieldMarker(recipeLine: string, lineIndex: number): IScannedField | undefined {
+    private static readCommentedOutFieldMarker(recipeLine: string, lineIndex: number, layout: IRecipeObjectLayout): IScannedField | undefined {
 
-        if ( !recipeLine.startsWith(COMMENTED_OUT_MARKER_PREFIX) ) {
+        if ( !recipeLine.startsWith(layout.commentedOutMarkerPrefix) ) {
             return undefined;
         }
 
-        const markerMatch = /^([A-Za-z][A-Za-z0-9_]*) -- (\d{1,9}) lines?(?: -- |$)/.exec(recipeLine.slice(COMMENTED_OUT_MARKER_PREFIX.length));
+        const markerMatch = /^([A-Za-z][A-Za-z0-9_]*) -- (\d{1,9}) lines?(?: -- |$)/.exec(recipeLine.slice(layout.commentedOutMarkerPrefix.length));
 
         return markerMatch
             ? { fieldApiName: markerMatch[1], startIndex: lineIndex, endIndex: lineIndex + 1 + Number(markerMatch[2]) }
@@ -438,21 +521,21 @@ export class RecipeCockpitRecipeWriter {
         commentOutField writes: the declared number of commented lines, the first the field's own
         line, the rest continuations or blank, and the last not blank.
     */
-    private static readCommentedOutFieldLines(lines: string[], marker: IScannedField): string[] | undefined {
+    private static readCommentedOutFieldLines(lines: string[], marker: IScannedField, layout: IRecipeObjectLayout): string[] | undefined {
 
         const commentedLines = lines.slice(marker.startIndex + 1, marker.endIndex);
 
-        if ( commentedLines.length === 0 || marker.endIndex > lines.length || !commentedLines.every(commentedLine => this.isCommentedLine(commentedLine)) ) {
+        if ( commentedLines.length === 0 || marker.endIndex > lines.length || !commentedLines.every(commentedLine => this.isCommentedLine(commentedLine, layout)) ) {
             return undefined;
         }
 
-        const [fieldLine, ...continuationLines] = commentedLines.map(commentedLine => this.uncommentLine(commentedLine));
+        const [fieldLine, ...continuationLines] = commentedLines.map(commentedLine => this.uncommentLine(commentedLine, layout));
 
-        if ( !fieldLine.startsWith(`${FIELD_INDENT}${marker.fieldApiName}:`) ) {
+        if ( !fieldLine.startsWith(`${layout.fieldIndent}${marker.fieldApiName}:`) ) {
             return undefined;
         }
 
-        if ( !continuationLines.every(continuationLine => this.isBlankFieldLine(continuationLine) || CONTINUATION_LINE_PATTERN.test(continuationLine)) ) {
+        if ( !continuationLines.every(continuationLine => this.isBlankFieldLine(continuationLine, layout) || layout.continuationLinePattern.test(continuationLine)) ) {
             return undefined;
         }
 
@@ -465,16 +548,16 @@ export class RecipeCockpitRecipeWriter {
     }
 
     // THE ONLY BLANK LINES commentOutField CAN GIVE BACK EXACTLY: EMPTY, OR WHITESPACE BEHIND AT LEAST THE FIELD INDENT
-    private static isBlankFieldLine(recipeLine: string): boolean {
-        return !recipeLine || ( recipeLine.startsWith(FIELD_INDENT) && !recipeLine.trim() );
+    private static isBlankFieldLine(recipeLine: string, layout: IRecipeObjectLayout): boolean {
+        return !recipeLine || ( recipeLine.startsWith(layout.fieldIndent) && !recipeLine.trim() );
     }
 
-    private static isCommentedLine(recipeLine: string): boolean {
-        return recipeLine === COMMENT_PREFIX || recipeLine.startsWith(`${COMMENT_PREFIX} `);
+    private static isCommentedLine(recipeLine: string, layout: IRecipeObjectLayout): boolean {
+        return recipeLine === layout.commentPrefix || recipeLine.startsWith(`${layout.commentPrefix} `);
     }
 
-    private static uncommentLine(commentedLine: string): string {
-        return commentedLine === COMMENT_PREFIX ? '' : `${FIELD_INDENT}${commentedLine.slice(COMMENT_PREFIX.length + 1)}`;
+    private static uncommentLine(commentedLine: string, layout: IRecipeObjectLayout): string {
+        return commentedLine === layout.commentPrefix ? '' : `${layout.fieldIndent}${commentedLine.slice(layout.commentPrefix.length + 1)}`;
     }
 
     private static locateObject(recipeText: string, objectApiName: string, fieldApiName?: string):
@@ -504,7 +587,7 @@ export class RecipeCockpitRecipeWriter {
     }
 
     private static locateField(recipeText: string, objectApiName: string, fieldApiName: string):
-        { recipeLines: IRecipeLines; scannedField: IScannedField } | { isApplied: false; refusal: IRecipeWriterRefusal } {
+        { recipeLines: IRecipeLines; scannedField: IScannedField; layout: IRecipeObjectLayout } | { isApplied: false; refusal: IRecipeWriterRefusal } {
 
         const located = this.locateObject(recipeText, objectApiName, fieldApiName);
         if ( 'refusal' in located ) {
@@ -526,7 +609,7 @@ export class RecipeCockpitRecipeWriter {
             return this.refuse('duplicate-field', `${objectApiName} has ${fieldApiName} more than once, so which to change cannot be told.`, objectApiName, fieldApiName);
         }
 
-        return { recipeLines: located.recipeLines, scannedField: scannedFields[0] };
+        return { recipeLines: located.recipeLines, scannedField: scannedFields[0], layout: this.getObjectLayout(located.scannedObject.objectIndent) };
 
     }
 
@@ -552,16 +635,18 @@ export class RecipeCockpitRecipeWriter {
         snowfakery reads recipes with, breaks lines at U+0085, U+2028 and U+2029, so any of them
         would start a line this writer never checked -- a new field, or a new object.
     */
-    private static buildFieldLines(fieldApiName: string, valueText: string): string[] | undefined {
+    private static buildFieldLines(fieldApiName: string, valueText: string, layout: IRecipeObjectLayout): string[] | undefined {
 
-        const fieldLines = `${FIELD_INDENT}${fieldApiName}: ${valueText}`.split(/\r\n|\n/);
+        const objectIndentation = ' '.repeat(layout.objectIndent);
+        const fieldLines = `${layout.fieldIndent}${fieldApiName}: ${valueText}`.split(/\r\n|\n/)
+            .map((fieldLine, lineIndex) => ( lineIndex > 0 && fieldLine ? `${objectIndentation}${fieldLine}` : fieldLine ));
         const continuationLines = fieldLines.slice(1);
 
         if ( fieldLines.some(fieldLine => /[\r\u0085\u2028\u2029]/.test(fieldLine)) ) {
             return undefined;
         }
 
-        if ( !continuationLines.every(continuationLine => this.isBlankFieldLine(continuationLine) || CONTINUATION_LINE_PATTERN.test(continuationLine)) ) {
+        if ( !continuationLines.every(continuationLine => this.isBlankFieldLine(continuationLine, layout) || layout.continuationLinePattern.test(continuationLine)) ) {
             return undefined;
         }
 

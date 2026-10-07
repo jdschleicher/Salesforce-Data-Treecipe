@@ -595,6 +595,76 @@ describe('Shared tests for CollectionsApiService', () => {
 
     });
 
+    describe('updateLookupReferencesInCollectionApiJson with nested friends nicknames (#46)', () => {
+
+        test('a friend whose nickname contains its parent nickname keeps its own referenceId, and only exact values are replaced', () => {
+
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                'Account_Reference_1__Account_NickName': '001PARENT'
+            };
+
+            const collectionsApiJson = JSON.stringify({
+                allOrNone: true,
+                records: [
+                    {
+                        attributes: { type: 'Contact', referenceId: 'Contact_Reference_1__Contact_Account_NickName' },
+                        AccountId: 'Account_NickName',
+                        Description: 'met at Account_NickName offsite'
+                    }
+                ]
+            }, null, 2);
+
+            const parsed = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap));
+
+            expect(parsed.records[0].attributes.referenceId).toBe('Contact_Reference_1__Contact_Account_NickName');
+            expect(parsed.records[0].AccountId).toBe('001PARENT');
+            expect(parsed.records[0].Description).toBe('met at Account_NickName offsite');
+
+        });
+
+        test('a key equal to a nickname is never replaced', () => {
+
+            const objectReferenceIdToOrgCreatedRecordIdMap = { 'Account_Reference_1__Account_NickName': '001PARENT' };
+            const collectionsApiJson = '{"records":[{"Account_NickName" : "Account_NickName"}]}';
+
+            const result = CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap);
+
+            expect(JSON.parse(result)).toEqual({ records: [ { Account_NickName: '001PARENT' } ] });
+
+        });
+
+        test('a grandchild resolves its parent and its top parent once both were inserted', () => {
+
+            const objectReferenceIdToOrgCreatedRecordIdMap = {
+                'Account_Reference_1__Account_NickName_1': '001FIRST',
+                'Account_Reference_2__Account_NickName_2': '001SECOND',
+                'Other__c_Reference_1__Other__c_Account_NickName_1': 'a01FIRST',
+                'Other__c_Reference_1__Other__c_Account_NickName_2': 'a01SECOND'
+            };
+
+            const collectionsApiJson = JSON.stringify({
+                allOrNone: true,
+                records: [
+                    {
+                        attributes: { type: 'OtherChildObject__c', referenceId: 'OtherChildObject__c_Reference_1__OtherChildObject__c_Other__c_Account_NickName_2' },
+                        Other__c: 'Other__c_Account_NickName_2',
+                        Account__c: 'Account_NickName_2'
+                    }
+                ]
+            });
+
+            const parsed = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(collectionsApiJson, objectReferenceIdToOrgCreatedRecordIdMap));
+
+            expect(parsed.records[0]).toEqual({
+                attributes: { type: 'OtherChildObject__c', referenceId: 'OtherChildObject__c_Reference_1__OtherChildObject__c_Other__c_Account_NickName_2' },
+                Other__c: 'a01SECOND',
+                Account__c: '001SECOND'
+            });
+
+        });
+
+    });
+
     describe('updateCollectionApiJsonContentWithOrgRecordTypeIds', () => {
 
         function buildCollectionsApiJson(records: Array<Record<string, unknown> | null>): string {

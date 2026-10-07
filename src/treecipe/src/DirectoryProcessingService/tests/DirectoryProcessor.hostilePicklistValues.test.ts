@@ -52,6 +52,8 @@ import { ConfigurationService } from '../../ConfigurationService/ConfigurationSe
 import { DirectoryProcessor } from '../DirectoryProcessor';
 import { GlobalValueSetSingleton } from '../../GlobalValueSetSingleton/GlobalValueSetSingleton';
 import { RelationshipService, RecipeFileOutput } from '../../RelationshipService/RelationshipService';
+import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
+import { FieldInfo } from '../../ObjectInfoWrapper/FieldInfo';
 import { IRecipeFakerService } from '../../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -73,16 +75,47 @@ const DECLARED_FIELD_API_NAMES = ['Controlling__c', 'Dependent__c', 'Global__c',
 
 type LoadedRecipeEntry = { object?: string, fields?: Record<string, unknown> };
 
-async function generateRecipeFiles(createFakerService: () => IRecipeFakerService): Promise<RecipeFileOutput[]> {
+async function processHostileMetadata(createFakerService: () => IRecipeFakerService): Promise<ObjectInfoWrapper> {
 
     jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 
     await GlobalValueSetSingleton.getInstance().initialize(HOSTILE_METADATA_PATH);
-    const objectInfoWrapper = await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(HOSTILE_OBJECTS_PATH));
+    return new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(HOSTILE_OBJECTS_PATH));
 
-    return new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper);
+}
+
+async function generateRecipeFiles(createFakerService: () => IRecipeFakerService): Promise<RecipeFileOutput[]> {
+
+    // WHAT GENERATE TREECIPE WRITES -- NESTED UNDER friends: FOR faker-js (#46), FLAT FOR SNOWFAKERY
+    return (await processHostileMetadata(createFakerService)).RecipeFiles;
+
+}
+
+/*
+    The fixture's one object has no parent, so its faker-js recipe is flat. Nesting is the case that
+    moves every one of its lines -- every hostile value included -- four spaces deeper, so Hostile__c
+    is given a parent here and the tree is written again with nesting on (#46).
+*/
+async function generateNestedRecipeFiles(): Promise<RecipeFileOutput[]> {
+
+    const objectInfoWrapper = await processHostileMetadata(() => new FakerJSRecipeFakerService());
+    const relationshipService = new RelationshipService();
+
+    objectInfoWrapper.addKeyToObjectInfoMap('HostileParent__c');
+    const parentObjectInfo = objectInfoWrapper.ObjectToObjectInfoMap['HostileParent__c'];
+    parentObjectInfo.RelationshipDetail = relationshipService.buildNewRelationshipDetail('HostileParent__c');
+    parentObjectInfo.FullRecipe = '\n- object: HostileParent__c\n  nickname: HostileParent__c_NickName\n  count: 1\n  fields:\n    Name: ${{ faker.company.name() }}';
+    relationshipService.buildBidirectionalChildAndParentRelationshipReferences(
+        new FieldInfo('Hostile__c', 'HostileParent__c', 'Hostile Parent', 'Lookup'),
+        objectInfoWrapper,
+        'Hostile__c',
+        'HostileParent__c'
+    );
+    relationshipService.processAllRelationships(objectInfoWrapper);
+
+    return relationshipService.generateSeparateRecipeFiles(objectInfoWrapper, true);
 
 }
 
@@ -214,6 +247,84 @@ describe('Run Faker by Recipe with faker-js over the hostile recipe', () => {
             .replace(/^(- object: Hostile__c\n(?: {2}\S.*\n)*?) {2}count: 1\n/m, '$1  count: 200\n')
             .replace(/^( {4}RecordTypeId: ).*$/m, '$1EveryValue');
         expect(runnableRecipeText).toContain('  count: 200\n');
+        fs.writeFileSync(recipeFilePath, runnableRecipeText);
+
+        const generatedRecords = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile(recipeFilePath)) as Array<{ object: string, fields: Record<string, string> }>;
+        const hostileRecords = generatedRecords.filter(generatedRecord => generatedRecord.object === 'Hostile__c');
+
+        expect(globalThis).not.toHaveProperty(INJECTION_MARKER);
+        expect(hostileRecords).toHaveLength(200);
+        hostileRecords.forEach(hostileRecord => {
+            expect(Object.keys(hostileRecord.fields).sort()).toEqual(DECLARED_FIELD_API_NAMES);
+            expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Controlling__c']);
+            expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Dependent__c']);
+            expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Global__c']);
+        });
+
+    });
+
+});
+
+describe('faker-js over hostile picklist values nested under a parent\'s friends: block (#46)', () => {
+
+    let flatRecipeFiles: RecipeFileOutput[];
+    let nestedRecipeFiles: RecipeFileOutput[];
+    let recipeDirectoryPath: string;
+
+    beforeAll(async () => {
+        flatRecipeFiles = await generateRecipeFiles(() => new FakerJSRecipeFakerService());
+        nestedRecipeFiles = await generateNestedRecipeFiles();
+        recipeDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-hostile-nested-'));
+    });
+
+    afterAll(() => {
+        fs.rmSync(recipeDirectoryPath, { recursive: true, force: true });
+    });
+
+    afterEach(() => {
+        delete (globalThis as Record<string, unknown>)[INJECTION_MARKER];
+    });
+
+    const findHostileEntry = (recipeContent: string): LoadedRecipeEntry => {
+        const loadedEntries = yaml.load(recipeContent) as Array<LoadedRecipeEntry & { friends?: LoadedRecipeEntry[] }>;
+        return loadedEntries.flatMap(loadedEntry => [loadedEntry, ...(loadedEntry.friends ?? [])]).find(loadedEntry => loadedEntry.object === 'Hostile__c');
+    };
+
+    test('Hostile__c is written under the parent, and loads with exactly the fields the flat recipe gives it', () => {
+
+        const [nestedRecipeFile] = nestedRecipeFiles;
+        const flatHostileRecipeFile = flatRecipeFiles.find(recipeFile => recipeFile.content.includes('- object: Hostile__c'));
+
+        expect(nestedRecipeFiles).toHaveLength(1);
+        expect(nestedRecipeFile.content).toContain('  friends:\n');
+        expect(nestedRecipeFile.content).toMatch(/^ {4}- object: Hostile__c$/m);
+        expect(findHostileEntry(nestedRecipeFile.content)).toEqual(findHostileEntry(flatHostileRecipeFile.content));
+
+    });
+
+    testRequiringPyYaml('the nested recipe loads with PyYAML exactly as js-yaml loads it', () => {
+
+        const recipeTexts = nestedRecipeFiles.map(recipeFile => recipeFile.content);
+
+        expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+
+    });
+
+    test('the nested recipe text names no injected field on any line', () => {
+
+        nestedRecipeFiles[0].content.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/).forEach(recipeLine => {
+            expect(recipeLine).not.toMatch(new RegExp(`^\\s*${INJECTED_FIELD_API_NAME}:`));
+        });
+
+    });
+
+    test('Run Faker by Recipe over the nested recipe generates only fixture values and never evaluates an injected expression', async () => {
+
+        const recipeFilePath = path.join(recipeDirectoryPath, nestedRecipeFiles[0].fileName);
+        const runnableRecipeText = nestedRecipeFiles[0].content
+            .replace(/^( {4}- object: Hostile__c\n(?: {6}\S.*\n)*?) {6}count: 1\n/m, '$1      count: 200\n')
+            .replace(/^( {8}RecordTypeId: ).*$/m, '$1EveryValue');
+        expect(runnableRecipeText).toContain('      count: 200\n');
         fs.writeFileSync(recipeFilePath, runnableRecipeText);
 
         const generatedRecords = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile(recipeFilePath)) as Array<{ object: string, fields: Record<string, string> }>;
