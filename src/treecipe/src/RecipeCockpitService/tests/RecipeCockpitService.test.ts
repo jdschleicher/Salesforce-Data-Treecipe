@@ -275,6 +275,13 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // THE PALETTE IS WRITTEN INTO THE NONCED STYLE BLOCK AS IS, SO A RUNTIME WRITE TO IT WOULD BE ONE INTO THE DOCUMENT
+        it('is frozen, so nothing can change a value the shell writes into its stylesheet', () => {
+
+            expect(Object.isFrozen(RECIPE_COCKPIT_PALETTE)).toBeTrue();
+
+        });
+
         // A TYPO IN A var() READ FALLS BACK TO THE INHERITED VALUE SILENTLY, SO EVERY READ IS CHECKED AGAINST WHAT IS DEFINED
         it('reads no --sdt- property the palette does not define', () => {
 

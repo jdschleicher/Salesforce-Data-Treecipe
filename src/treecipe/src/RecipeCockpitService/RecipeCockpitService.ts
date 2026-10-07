@@ -37,7 +37,7 @@ export type RecipeCockpitPaletteToken =
     pair the stylesheet draws is held to WCAG 4.5:1 by a test, so a value changed here is measured
     rather than eyeballed.
 */
-export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, string>> = {
+export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, string>> = Object.freeze({
     page: '#F4F6F9',
     surface: '#FFFFFF',
     border: '#DDE3EA',
@@ -52,7 +52,7 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     added: '#15803D',
     removed: '#B91C1C',
     changed: '#B45309'
-};
+});
 
 export const RECIPE_COCKPIT_LOAD_PHASES = {
     findingRuns: 'Finding generated recipe runs…',
@@ -1841,19 +1841,6 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        The cockpit's document, as a string carrying NO value this extension does not author.
-
-        The template interpolates the nonce and compile-time constants in this file, and nothing
-        else. Recipes -- object and field names, faker expressions, file paths -- come from files
-        this extension does not control, so none of it is interpolated into html: it arrives over
-        postMessage and is written through textContent, which is why this builder needs no escaping
-        rather than having escaping that could be forgotten.
-
-        Keeping the SIGNATURE to the nonce is what holds that line in place, because a value from
-        outside this file can only reach the template through a parameter. Widening it to take a
-        model would quietly re-open the markup context the guarantee rests on.
-    */
     static buildPaletteCustomPropertyName(paletteToken: RecipeCockpitPaletteToken): string {
 
         return '--sdt-' + paletteToken.replace(/[A-Z]/g, upperCaseLetter => '-' + upperCaseLetter.toLowerCase());
@@ -1868,6 +1855,19 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        The cockpit's document, as a string carrying NO value this extension does not author.
+
+        The template interpolates the nonce and compile-time constants in this file, and nothing
+        else. Recipes -- object and field names, faker expressions, file paths -- come from files
+        this extension does not control, so none of it is interpolated into html: it arrives over
+        postMessage and is written through textContent, which is why this builder needs no escaping
+        rather than having escaping that could be forgotten.
+
+        Keeping the SIGNATURE to the nonce is what holds that line in place, because a value from
+        outside this file can only reach the template through a parameter. Widening it to take a
+        model would quietly re-open the markup context the guarantee rests on.
+    */
     static buildWebviewShellHtml(nonce: string): string {
 
         return `<!DOCTYPE html>
