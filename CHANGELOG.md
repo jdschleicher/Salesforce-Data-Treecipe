@@ -1,5 +1,77 @@
 # Change Log
 
+## [3.32.0] - Recipe Cockpit tree cards show Previous Versions and Previous Fake Sets
+
+Closes [#177](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/177), slice 4 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+You could not see how a tree's recipe changed across Generate Treecipe runs, or which data sets each version produced, without browsing `GeneratedRecipes/` and `FakeDataSets/` by hand. Each tree card now has two more tabs beside **Structure**.
+
+- **Previous Versions.**
+  - Lists every run that wrote this tree's folder, newest first by the run's timestamp suffix rather than its folder name.
+  - A tree is matched across runs by its **folder name**, the one identity it keeps between runs.
+  - Each row shows:
+    - the date;
+    - the backend;
+    - the field count;
+    - the change against the current version, worded from the version's side (`+2 fields` means that version had two more), or `same field count`;
+    - `backend ≠` when the backend differs;
+    - a `current` marker on the run on screen.
+  - The field count comes from each run's objects wrapper, read only when the tab is **first opened** (`loadVersionSummaries`) and cached per run for the model on screen. It counts the fields the wrapper gives the tree's objects, so it excludes the recipe-only rows (standard-field mappings, the record type line) that the card header counts. A wrapper with no `RecipeFiles` is matched through the tree folder's recipe file instead.
+  - A run whose wrapper cannot be read, or is missing, is listed as **"summary unavailable"** and can still be diffed.
+- **Each version expands** to the data sets made from it, with their date and per-object record counts.
+- **`Diff`** runs `vscode.diff` between that version's recipe for the tree and the current one: the single `.yml` in each tree folder. A version with no such file, or with more than one, offers no `Diff`.
+- **Previous Fake Sets.**
+  - Lists every data set linked to this tree (through #176's `datasetSource.json`, or inferred for an older data set), newest first.
+  - The same-second `-<n>` suffix orders after the plain name.
+  - Each is tagged `current version`, `version of <date>`, or **`version unknown`** when only the tree matched.
+  - `DatasetSourceService` now returns a `treeFolderNameHint` on an `unknown` result that still names a plain tree folder: a recorded run that is gone, or legacy copies whose run is gone or disagrees.
+- **Unmatched data sets** are counted in one panel notice, e.g. "3 data sets couldn't be matched to a recipe tree". These are data sets with no source, an unreadable one, a recipe outside any tree, or a tree that is not one of the cards on screen.
+- **`Open`** reveals the data set folder in VS Code's Explorer (`revealInExplorer`).
+- **`Insert…`** runs **Insert Data Set by Directory** with that folder pre-selected.
+  - The handler takes an optional folder path, and its registration returns the promise.
+  - The palette command still shows its folder picker, and the org and AllOrNone prompts are unchanged.
+  - Because the command can be executed by id with any argument, a pre-selected folder is used only if it is an existing directory inside the workspace; otherwise the command warns and inserts nothing. The registration passes on only a string.
+- **Names, never paths, and an allow-list per action.**
+  - The panel posts tree keys, run folder names and data set folder names. Each is matched against its own allow-list drawn from the rendered model's histories: summaries, diffs, open, insert, and legacy counts.
+  - Allow-lists go pending → active on `rendered`, and are emptied on every `ready`, every newly posted model and every failure to draw.
+  - Each name is resolved through a host-only map (`IRecipeCockpitTreeHistoryTargets`) built when the model was. No path reaches the panel; a test pins that the posted histories name no workspace path.
+  - Every recipe and data set path passes `isPathContainedInWorkspace` when the model is built (an outside path is left out, so its data set is absent and its version not diffable) and again, with an existence check, when it is used.
+- **Legacy record counts.** A data set without `datasetSource.json` has its counts read from its `DatasetFilesForCollectionsApi/collectionsApi-<Object>.json` files when the version or the Fake Sets tab shows it, once per model however many rows show it (`DatasetSourceService.countLegacyRecordsByObject`). A file that is not JSON with a `records` array is named in the row rather than counted as zero.
+- **Unhappy paths.**
+  - A data set folder deleted after rendering: `Open` or `Insert…` says it no longer exists and reloads the run on screen. The host posts a `focusTree`, so the reader's card and tab re-open; it is kept only when it names a card of the model and a history tab.
+  - A recipe file deleted after rendering: `Diff` says so instead of opening.
+  - A legacy data set deleted before its counts are read says it is gone.
+- **Other behaviour.**
+  - A search that opens a card's rows switches that card back to Structure.
+  - The ungrouped card, and a fallback card for a recipe file with no tree folder, have no history and draw only the Structure tab.
+  - Every name read from disk is written with `textContent`, and the panel's name-keyed maps have no prototype.
+- **Found in review, and fixed:**
+  - **Opening Previous Versions parsed every run's wrapper in one synchronous pass.** At 370 MB per wrapper, 10 runs blocked the extension host on about 3.7 GB. Now:
+    - Only the field counts are kept, in a cache keyed by the wrapper's path, size and modification time. The cache outlives a model, so a reload, run switch or regeneration re-reads only a wrapper that changed.
+    - The current run's counts come from the load, which already parsed that wrapper.
+    - Every other wrapper is read after a yield and posted on its own. Each post is cumulative and names only the runs it knows, so the rows fill in as wrappers are read.
+    - Closing the panel stops the walk.
+  - **Previous Fake Sets read every legacy data set's Collections API files as soon as the tab opened.** A legacy row on that tab now has a **Show record counts** button. Expanding a version is still its own request.
+  - **`focusTree` was stored with the model, so every reveal replayed it** and re-opened a card the reader had closed. It now rides only on the post that follows the reload.
+  - **A recipe file name was shown in a warning unescaped.** A name shaped like `[label](command:…)` would have rendered as a link that runs a command. The new warnings and the two older `openSource` warnings now go through `RecipeYamlScalar.escapeForNotification`.
+  - **Two containment gaps.**
+    - The tree recipe read by the fallback field count now passes workspace containment when it is used.
+    - A data set whose `DatasetFilesForCollectionsApi` folder resolves outside the workspace is no longer counted.
+  - Not changed: a double click on `Insert…` starts two inserts, each with its own org prompt, the same as running the palette command twice.
+- New pure-ish module `RecipeCockpitService/RecipeCockpitTreeHistory.ts`: discovery, grouping, ordering, summaries and change wording, with fs only for directory listings. `DatasetSourceService` still imports only `fs` and `path`, and repeats the `DatasetFilesForCollectionsApi` folder name; a cockpit test holds it equal to `ConfigurationService`'s.
+
+**Tests.**
+- `RecipeCockpitService.test.ts`, against a new `historyWorkspace` fixture: the tree workspace's runs, a faker-js run with an unreadable wrapper, and data sets that are recorded, suffixed, legacy, of a gone run, loose, malformed, and of a tree that is not on screen.
+  - Tested pure: `groupTreeHistories` (ordering, same-second ties, repeated folders, unmatched counting), summaries and change wording, and field counts with and without `RecipeFiles`.
+  - The loader end to end, including paths outside the workspace.
+  - Every history route: before `rendered`, unknown names, wrong types, a missing target, focus validation.
+  - The real panel script: both tabs, summary answers for the model on screen only, version expansion, legacy count requests deduplicated, Open/Insert/Diff posts, focus after `rendered`, Structure on search, and text only.
+  - The host executor through a fake webview: diff, reveal, insert, reload on a deleted data set, deleted recipe file, deleted legacy data set, and allow-lists emptied on `ready`.
+  - One existing expectation changed: an expanded card now has three tabs, not one.
+- `DatasetSourceService.test.ts` covers the tree hint (recorded and legacy, never on a linked or unsafe result) and `countLegacyRecordsByObject`.
+- `ExtensionCommandService.test.ts` covers Insert with no folder (picker), a pre-selected folder (no picker, unchanged org and AllOrNone prompts), and a missing, outside or `..` folder (refused).
+- `extension.test.ts` covers that the registration returns the insert and passes on only a string.
+
 ## [3.31.0] - The Recipe Cockpit shows each relationship tree as a card with a Structure tab
 
 Closes [#175](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/175), slice 2 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
