@@ -231,13 +231,16 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         const references: { recordContext: GeneratedRecordContext, fieldName: string, yamlNickname: string }[] = [];
         generatedRecordContexts.forEach(recordContext => {
-            Object.entries(recordContext.record.fields ?? {}).forEach(([fieldName, fieldValue]) => {
+            const fields = recordContext.record.fields ?? {};
+            for ( const fieldName in fields ) {
+                const fieldValue = fields[fieldName];
                 if ( typeof fieldValue === 'string'
-                        && !recordContext.ancestorResolvedFieldNames.has(fieldName)
-                        && recordContextsByYamlNickname.has(fieldValue) ) {
+                        && recordContextsByYamlNickname.has(fieldValue)
+                        && Object.prototype.hasOwnProperty.call(fields, fieldName)
+                        && !recordContext.ancestorResolvedFieldNames.has(fieldName) ) {
                     references.push({ recordContext, fieldName, yamlNickname: fieldValue });
                 }
-            });
+            }
         });
 
         if ( references.length === 0 ) {
@@ -249,18 +252,31 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             this.renameRecordsSharingANickname(recordContextsByYamlNickname.get(yamlNickname).map(recordContext => recordContext.record), usedNicknames);
         });
 
+        // BUILT ONCE PER NICKNAME: COPYING THE CANDIDATES PER REFERENCE MADE THE PASS O(REFERENCES x RECORDS), 13 s AT 100k REFERENCES
+        const recordsByYamlNickname = new Map<string, GeneratedRecord[]>();
+        const recordIndexByRecord = new Map<GeneratedRecord, number>();
+        recordContextsByYamlNickname.forEach((recordContexts, yamlNickname) => {
+            recordsByYamlNickname.set(yamlNickname, recordContexts.map((recordContext, recordIndex) => {
+                recordIndexByRecord.set(recordContext.record, recordIndex);
+                return recordContext.record;
+            }));
+        });
+
         const nextRecordIndexByYamlNickname = new Map<string, number>();
         references.forEach(({ recordContext, fieldName, yamlNickname }) => {
 
-            const candidateRecords = recordContextsByYamlNickname.get(yamlNickname)
-                .map(candidateContext => candidateContext.record)
-                .filter(candidateRecord => candidateRecord !== recordContext.record);
-            if ( candidateRecords.length === 0 ) {
+            const records = recordsByYamlNickname.get(yamlNickname);
+            // THE REFERENCING RECORD IS LEFT OUT OF ITS OWN CANDIDATES BY INDEX, SO THE PICK IS THE ONE A FILTERED COPY WOULD GIVE
+            const ownRecordIndex = recordContext.yamlNickname === yamlNickname ? recordIndexByRecord.get(recordContext.record) : undefined;
+            const candidateCount = ownRecordIndex === undefined ? records.length : records.length - 1;
+            if ( candidateCount === 0 ) {
                 return;
             }
 
             const nextRecordIndex = nextRecordIndexByYamlNickname.get(yamlNickname) ?? 0;
-            recordContext.record.fields[fieldName] = candidateRecords[nextRecordIndex % candidateRecords.length].nickname;
+            const candidateIndex = nextRecordIndex % candidateCount;
+            const pickedRecordIndex = ( ownRecordIndex !== undefined && candidateIndex >= ownRecordIndex ) ? candidateIndex + 1 : candidateIndex;
+            recordContext.record.fields[fieldName] = records[pickedRecordIndex].nickname;
             nextRecordIndexByYamlNickname.set(yamlNickname, nextRecordIndex + 1);
 
         });

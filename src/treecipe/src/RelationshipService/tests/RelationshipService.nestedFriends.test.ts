@@ -663,6 +663,22 @@ describe('a lookup to a second parent that is not an ancestor (#189)', () => {
 
     });
 
+    test('a field that looks up two lower-level parents with recipes is wired to the first by name', () => {
+
+        const objectInfoWrapper = buildObjectInfoWrapper([
+            { objectApiName: 'Account' },
+            { objectApiName: 'Lead' },
+            { objectApiName: 'Order__c', lookups: { Account__c: 'Account' } },
+            { objectApiName: 'Task__c', lookups: { Order__c: 'Order__c', WhoId: 'Lead' } }
+        ]);
+        objectInfoWrapper.ObjectToObjectInfoMap['Task__c'].RelationshipDetail.parentObjectToFieldReferences['Account'] = ['WhoId'];
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, true);
+
+        expect(findEntry(yaml.load(recipeFile.content) as LoadedRecipeEntry[], 'Task__c').fields.WhoId).toBe('Account_NickName');
+
+    });
+
     test('snowfakery recipes are unchanged: flat, every lookup a bare TODO', () => {
 
         const [recipeContent] = generateRecipeContents(ORDER_ITEM_WITH_SECOND_PARENT, false);

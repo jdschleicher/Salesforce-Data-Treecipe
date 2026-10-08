@@ -575,9 +575,11 @@ export class RelationshipService {
 
       lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
         const lookupLine = `    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`;
-        if ( parentNickname !== undefined ) {
-          ( isAncestor ? ancestorNicknameByLookupLine : lowerLevelNicknameByLookupLine ).set(lookupLine, parentNickname);
-        } else {
+        const nicknameByLookupLine = isAncestor ? ancestorNicknameByLookupLine : lowerLevelNicknameByLookupLine;
+        // A POLYMORPHIC LOOKUP WITH TWO PARENTS THAT QUALIFY IS WIRED TO THE FIRST BY NAME
+        if ( parentNickname !== undefined && !nicknameByLookupLine.has(lookupLine) ) {
+          nicknameByLookupLine.set(lookupLine, parentNickname);
+        } else if ( parentNickname === undefined ) {
           todoParentNamesByLookupLine.set(lookupLine, [...(todoParentNamesByLookupLine.get(lookupLine) ?? []), parentName]);
         }
       });

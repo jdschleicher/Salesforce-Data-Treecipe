@@ -1041,6 +1041,35 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
         });
 
+        test('resolves 100k references to 10k parent records in linear time', () => {
+
+            const parentContexts = Array.from({ length: 10000 }, (unused, recordIndex) => ({
+                record: { id: recordIndex + 1, object: 'Product__c', nickname: `Product__c_NickName_${recordIndex + 1}`, fields: { Name: 'Widget' } },
+                yamlNickname: 'Product__c_NickName',
+                ancestorResolvedFieldNames: new Set<string>()
+            }));
+            const childContexts = Array.from({ length: 100000 }, (unused, recordIndex) => ({
+                record: { id: recordIndex + 1, object: 'Order_Item__c', nickname: 'Order_Item__c_NickName', fields: { Product__c: 'Product__c_NickName' } as Record<string, unknown> },
+                yamlNickname: 'Order_Item__c_NickName',
+                ancestorResolvedFieldNames: new Set<string>()
+            }));
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {},
+                GeneratedRecordContexts: [...parentContexts, ...childContexts]
+            };
+
+            const startedAt = Date.now();
+            fakerJSRecipeProcessor.resolveNonAncestorNicknameReferences(processedYamlWrapper);
+
+            // THE QUADRATIC PASS THIS REPLACED TOOK ~13 s HERE
+            expect(Date.now() - startedAt).toBeLessThan(3000);
+            expect(childContexts[0].record.fields.Product__c).toBe('Product__c_NickName_1');
+            expect(childContexts[10000].record.fields.Product__c).toBe('Product__c_NickName_1');
+            expect(childContexts[99999].record.fields.Product__c).toBe('Product__c_NickName_10000');
+
+        });
+
         test('a wrapper that generated nothing resolves nothing', () => {
 
             const processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };

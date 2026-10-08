@@ -3,7 +3,7 @@ export type GeneratedRecord = {
     id: number;
     object: string;
     nickname: string;
-    fields: Record<string, any>;
+    fields: Record<string, unknown>;
 };
 
 /*
