@@ -31,6 +31,7 @@ import {
     RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET,
     RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL,
+    RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL,
     RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER,
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
     RECIPE_COCKPIT_REGENERATE_ACTION_LABEL,
@@ -479,7 +480,6 @@ describe('RecipeCockpitService', () => {
             const [accountObject, contactObject] = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects;
 
             expect(accountObject.recipeFilePath).toBe(LATEST_RECIPE_FILE_PATH);
-            expect(accountObject.recipeFileName).toBe('recipe--Account-thru-Contact-2026-09-04T11-22-07.yml');
             expect(accountObject.lineNumber).toBe(7);
             expect(contactObject.lineNumber).toBe(24);
 
@@ -956,7 +956,7 @@ describe('RecipeCockpitService', () => {
             fieldApiName: fieldApiName, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
         });
         const buildObject = (objectApiName: string, fieldApiNames: string[]) => ({
-            objectApiName: objectApiName, recipeFilePath: '', recipeFileName: '', fields: fieldApiNames.map(buildField)
+            objectApiName: objectApiName, recipeFilePath: '', fields: fieldApiNames.map(buildField)
         });
         const attachSelfLookupRecipe = () => RecipeCockpitService.attachRecipeSources(
             [buildObject('Account', ['Name', 'ParentId']), buildObject('Contact', ['Name', 'AccountId'])],
@@ -1388,7 +1388,22 @@ describe('RecipeCockpitService', () => {
                 withRenderedRecipe();
                 panelState.describableObjectApiNamesByTreeKey = new Map([['Account-thru-Contact', ['Account', 'Contact']]]);
 
-                expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg', treeKey: 'Account-thru-Contact' }, panelState)).toEqual({ kind: 'selectOrg', treeKey: 'Account-thru-Contact' });
+                expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg', treeKey: 'Account-thru-Contact' }, panelState)).toEqual({ kind: 'selectOrg', treeKey: 'Account-thru-Contact', isOrgChosenByReader: false });
+
+            });
+
+            // ONLY A LITERAL true ASKS FOR THE PICKER -- ANYTHING ELSE IS THE ORDINARY COMPARE
+            it.each([
+                [true, true],
+                ['true', false],
+                [1, false]
+            ])('given chooseOrg %p, asks for the picker: %p', (chooseOrg, isOrgChosenByReader) => {
+
+                withRenderedRecipe();
+                panelState.describableObjectApiNamesByTreeKey = new Map([['Account-thru-Contact', ['Account']]]);
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg', treeKey: 'Account-thru-Contact', chooseOrg: chooseOrg }, panelState))
+                    .toEqual({ kind: 'selectOrg', treeKey: 'Account-thru-Contact', isOrgChosenByReader: isOrgChosenByReader });
 
             });
 
@@ -1399,7 +1414,7 @@ describe('RecipeCockpitService', () => {
                 panelState.describableObjectApiNamesByTreeKey = new Map([['Account-thru-Contact', ['Account']]]);
 
                 expect(RecipeCockpitService.routePanelMessage({ command: 'selectOrg', treeKey: 'Account-thru-Contact', objectApiNames: ['User'] } as any, panelState))
-                    .toEqual({ kind: 'selectOrg', treeKey: 'Account-thru-Contact' });
+                    .toEqual({ kind: 'selectOrg', treeKey: 'Account-thru-Contact', isOrgChosenByReader: false });
 
             });
 
@@ -1444,8 +1459,8 @@ describe('RecipeCockpitService', () => {
 
                 const recipeViewModel = buildRecipeViewModel({
                     objects: [
-                        { objectApiName: 'Account', recipeFilePath: '', recipeFileName: '', fields: [] },
-                        { objectApiName: 'Contact', recipeFilePath: '', recipeFileName: '', fields: [] }
+                        { objectApiName: 'Account', recipeFilePath: '', fields: [] },
+                        { objectApiName: 'Contact', recipeFilePath: '', fields: [] }
                     ],
                     trees: [
                         { treeKey: 'Account-thru-Contact', title: 'Relationship Tree 1', folderName: 'Account-thru-Contact', fieldCount: 0, objects: [
@@ -1755,7 +1770,6 @@ describe('RecipeCockpitService', () => {
             const buildObject = (objectApiName: string, fieldCount = 1) => ({
                 objectApiName: objectApiName,
                 recipeFilePath: '',
-                recipeFileName: '',
                 fields: Array.from({ length: fieldCount }, (unusedValue, fieldIndex) => ({
                     fieldApiName: `Field${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
                 }))
@@ -2211,7 +2225,6 @@ describe('RecipeCockpitService', () => {
             const buildObject = (objectApiName: string, fieldApiNames: string[]) => ({
                 objectApiName: objectApiName,
                 recipeFilePath: '',
-                recipeFileName: '',
                 fields: fieldApiNames.map(fieldApiName => ({ fieldApiName: fieldApiName, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }))
             });
             const objects = RecipeCockpitService.attachRecipeSources(
@@ -2257,7 +2270,7 @@ describe('RecipeCockpitService', () => {
             const selfLookupRecipeText = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml'), 'utf-8');
             const recipeFilePath = path.join(TREE_WORKSPACE_ROOT, 'recipe.yml');
             const [accountObject] = RecipeCockpitService.attachRecipeSources(
-                [{ objectApiName: 'Account', recipeFilePath: '', recipeFileName: '', fields: [] }],
+                [{ objectApiName: 'Account', recipeFilePath: '', fields: [] }],
                 [{ filePath: recipeFilePath, objectEntries: RecipeCockpitService.parseRecipeSource(selfLookupRecipeText) }]
             );
             accountObject.iterations[0].fields.push({ fieldApiName: 'Iteration_Only__c', lineNumber: 99, recipeValue: 'branch' });
@@ -2454,7 +2467,6 @@ describe('RecipeCockpitService', () => {
             const manyObjects = Array.from({ length: RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT + 5 }, (unusedValue, objectIndex) => ({
                 objectApiName: `Object${objectIndex}__c`,
                 recipeFilePath: '',
-                recipeFileName: '',
                 fields: [{ fieldApiName: 'Shared__c', fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
             }));
             const manyTrees = manyObjects.map(objectViewModel => ({
@@ -2481,7 +2493,6 @@ describe('RecipeCockpitService', () => {
             const buildWideObject = (objectApiName: string, fieldCount: number) => ({
                 objectApiName: objectApiName,
                 recipeFilePath: '',
-                recipeFileName: '',
                 fields: Array.from({ length: fieldCount }, (unusedValue, fieldIndex) => ({
                     fieldApiName: `Shared_${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
                 }))
@@ -2519,7 +2530,7 @@ describe('RecipeCockpitService', () => {
 
         it('given an object named __proto__ in a hand-edited wrapper, still lists it in its card', () => {
 
-            const prototypeNamedObject = { objectApiName: '__proto__', recipeFilePath: '', recipeFileName: '', fields: [] as any[] };
+            const prototypeNamedObject = { objectApiName: '__proto__', recipeFilePath: '', fields: [] as any[] };
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
                 objects: [prototypeNamedObject],
@@ -2611,7 +2622,7 @@ describe('RecipeCockpitService', () => {
 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
-                objects: [{ objectApiName: 'Lead', recipeFilePath: '', recipeFileName: '', fields: [] }]
+                objects: [{ objectApiName: 'Lead', recipeFilePath: '', fields: [] }]
             }) });
 
             expect(textOf(panel, viewOf(panel, 'treesView'), 'emptyState')).toEqual(['This run has no relationship trees to show. Run "Generate Treecipe" again to draw its objects in relationship trees.']);
@@ -2775,7 +2786,6 @@ describe('RecipeCockpitService', () => {
             const manyObjects = Array.from({ length: RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT + 5 }, (unusedValue, objectIndex) => ({
                 objectApiName: `Object${objectIndex}__c`,
                 recipeFilePath: '',
-                recipeFileName: '',
                 fields: [{ fieldApiName: 'Shared__c', fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
             }));
 
@@ -2799,7 +2809,6 @@ describe('RecipeCockpitService', () => {
             const buildWideObject = (objectApiName: string, fieldCount: number) => ({
                 objectApiName: objectApiName,
                 recipeFilePath: '',
-                recipeFileName: '',
                 fields: Array.from({ length: fieldCount }, (unusedValue, fieldIndex) => ({
                     fieldApiName: `Shared_${fieldIndex}__c`, fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false
                 }))
@@ -2994,6 +3003,13 @@ describe('RecipeCockpitService', () => {
             describeButtons[0].dispatch('click');
 
             expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'selectOrg', treeKey: 'Account-thru-Contact' });
+
+            const [chooseOrgButton] = panel.findAll(structureElement.children[0], 'describeInChosenOrg');
+            expect(chooseOrgButton.textContent).toBe(RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL);
+
+            chooseOrgButton.dispatch('click');
+
+            expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'selectOrg', treeKey: 'Account-thru-Contact', chooseOrg: true });
 
         });
 
@@ -3474,6 +3490,40 @@ describe('RecipeCockpitService', () => {
                 expect(statusFilterElement.value).toBe('type-changed');
                 expect(panel.isHidden(panel.findAll(accountCard, 'treeBody')[0])).toBe(false);
                 expect(panel.isHidden(panel.findAll(contactCard, 'treeBody')[0])).toBe(false);
+
+            });
+
+            // THE HOST RUNS ONE REGENERATE AT A TIME, SO A SECOND CARD'S CLICK WOULD BE REFUSED AND ITS BUTTON LEFT "Regenerating…"
+            it('given Regenerate is clicked in one card, disables Regenerate in every card', () => {
+
+                const panel = renderTwoTrees();
+                const [accountCard, contactCard] = panel.treeCards();
+                panel.postToPanel({ ...buildComparison(1), treeKey: 'Contact-ONLY', objects: [], diff: { ...buildComparison(1).diff } });
+
+                const [accountRegenerate] = panel.findAll(accountCard, 'regenerateRecipe');
+                const [contactRegenerate] = panel.findAll(contactCard, 'regenerateRecipe');
+                accountRegenerate.dispatch('click');
+
+                expect(accountRegenerate.disabled).toBe(true);
+                expect(accountRegenerate.textContent).toBe('Regenerating…');
+                expect(contactRegenerate.disabled).toBe(true);
+                expect(contactRegenerate.textContent).toBe(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL);
+                expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'regenerateRecipe')).toEqual([{ command: 'regenerateRecipe', treeKey: 'Account-ONLY' }]);
+
+            });
+
+            it('given the find box is scoped to one card, still counts another card its own status filter narrows', () => {
+
+                const panel = renderTwoTrees();
+                const [accountCard, contactCard] = panel.treeCards();
+
+                panel.findAll(contactCard, 'treeScope')[0].dispatch('click');
+                const statusFilterElement = panel.findAll(accountCard, 'statusFilter')[0];
+                statusFilterElement.value = 'removed-from-org';
+                statusFilterElement.dispatch('change');
+
+                expect(panel.findAll(accountCard, 'treeMatch')[0].textContent).toBe('1 matching field');
+                expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent).toBe('3 of 8 fields · 2 of 2 trees');
 
             });
 

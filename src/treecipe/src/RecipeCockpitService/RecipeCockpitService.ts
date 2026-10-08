@@ -92,6 +92,9 @@ export const RECIPE_COCKPIT_LOAD_PHASES = {
 
 export const RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL = 'Compare with an org…';
 
+// ALWAYS THE AUTHORIZED-ORG PICKER: Data-by-Org LISTS NO PRODUCTION ORG, AND A DESCRIBE WRITES NOTHING
+export const RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL = 'Choose another org…';
+
 export const RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org to compare the objects of this recipe with';
 
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND = 'treecipe.generateTreecipe';
@@ -269,7 +272,6 @@ export type RecipeCockpitPicklistDisplayValuesByObjectApiName = Map<string, Map<
 export interface IRecipeCockpitObjectViewModel {
     objectApiName: string;
     recipeFilePath: string;
-    recipeFileName: string;
     lineNumber?: number;
     fields: IRecipeCockpitFieldViewModel[];
     // SET ONLY ON AN OBJECT WITH iterations, WHERE THE NICKNAME IS WHAT TELLS ITS OCCURRENCES APART
@@ -418,6 +420,7 @@ export interface IRecipeCockpitPanelMessage {
     count?: unknown;
     datasetFolderName?: unknown;
     tab?: unknown;
+    chooseOrg?: unknown;
     message?: unknown;
     stack?: unknown;
 }
@@ -729,7 +732,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
-    | { kind: 'selectOrg'; treeKey: string }
+    | { kind: 'selectOrg'; treeKey: string; isOrgChosenByReader: boolean }
     | { kind: 'regenerateRecipe'; treeKey: string }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadVersionSummaries'; treeKey: string; summarySource: IRecipeCockpitTreeSummarySource; renderSequence: number }
@@ -1281,7 +1284,7 @@ export class RecipeCockpitService {
 
             case 'selectOrg':
 
-                await this.describeTreeObjectsInOrg(cockpitPanel, panelState, panelAction.treeKey);
+                await this.describeTreeObjectsInOrg(cockpitPanel, panelState, panelAction.treeKey, panelAction.isOrgChosenByReader);
                 return;
 
             case 'regenerateRecipe':
@@ -1717,9 +1720,13 @@ export class RecipeCockpitService {
         runs while it is open, and the describe answers for the tree they asked about. Its answer is
         posted only if that model is still the one on screen. Nothing here is fatal to the panel --
         no authorized org, a connection that fails and an object the org does not have are all told
-        to the reader and leave the rows as they were.
+        to the reader and leave the rows as they were. "Choose another org…" skips straight to the
+        picker, which is the only way to compare with an org Data-by-Org does not list (production).
     */
-    private static async describeTreeObjectsInOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, treeKey: string) {
+    private static async describeTreeObjectsInOrg(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    treeKey: string,
+                                                    isOrgChosenByReader: boolean) {
 
         const describedRecipeDataMessage = panelState.recipeDataMessage;
         const describedRecipePicklistValues = panelState.recipePicklistValuesByObjectApiName;
@@ -1733,7 +1740,9 @@ export class RecipeCockpitService {
 
         try {
 
-            const selectedOrgDetail = await this.resolveComparisonOrgDetail(panelState);
+            const selectedOrgDetail = isOrgChosenByReader
+                ? await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER)
+                : await this.resolveComparisonOrgDetail(panelState);
 
             if ( !selectedOrgDetail ) {
                 return;
@@ -2776,7 +2785,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'selectOrg', treeKey: treeKey };
+                return { kind: 'selectOrg', treeKey: treeKey, isOrgChosenByReader: panelMessage.chooseOrg === true };
 
             }
 
@@ -3533,7 +3542,7 @@ export class RecipeCockpitService {
 
             });
 
-            objects.push({ objectApiName: objectApiName, recipeFilePath: '', recipeFileName: '', fields: fields });
+            objects.push({ objectApiName: objectApiName, recipeFilePath: '', fields: fields });
 
         });
 
@@ -4053,7 +4062,6 @@ export class RecipeCockpitService {
             return {
                 ...objectViewModel,
                 recipeFilePath: recipeSourceFile.filePath,
-                recipeFileName: path.basename(recipeSourceFile.filePath),
                 lineNumber: objectEntry.lineNumber,
                 fields: [...locatedFields, ...unlocatedFields],
                 ...( objectEntry.iterations ? {
@@ -4423,6 +4431,7 @@ ${this.buildPaletteCustomProperties()}
     const REGENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL)};
     const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
     const DESCRIBE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL)};
+    const CHOOSE_ORG_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL)};
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
     const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
     const CREATE_MAX_COUNT = ${RECIPE_COCKPIT_CREATE_MAX_COUNT};
@@ -5319,7 +5328,6 @@ ${this.buildPaletteCustomProperties()}
         return {
             objectApiName: object.objectApiName,
             recipeFilePath: object.recipeFilePath,
-            recipeFileName: object.recipeFileName,
             lineNumber: iteration.lineNumber,
             nickname: iteration.nickname,
             iteration: iteration,
@@ -5514,9 +5522,11 @@ ${this.buildPaletteCustomProperties()}
 
         treeStates.forEach(function (treeState) {
 
-            const isSearched = treeScopeKey === null || treeState.tree.treeKey === treeScopeKey;
-            const isTreeTextFiltering = isTextFiltering && isSearched;
             const isStatusFiltering = treeState.statusFilter !== 'all';
+            // A CARD OUTSIDE THE 🔍 SCOPE IS STILL COUNTED WHILE ITS OWN STATUS FILTER NARROWS IT, SINCE ITS MATCHES ARE ON SCREEN
+            const isInScope = treeScopeKey === null || treeState.tree.treeKey === treeScopeKey;
+            const isSearched = isInScope || isStatusFiltering;
+            const isTreeTextFiltering = isTextFiltering && isInScope;
             const isTreeFiltering = isTreeTextFiltering || isStatusFiltering;
             let treeMatchingFieldCount = 0;
 
@@ -6169,7 +6179,14 @@ ${this.buildPaletteCustomProperties()}
         const compareElement = createElement('div', 'treeCompare');
         const controlsElement = createElement('div', 'treeCompareControls');
         const describeButtonElement = createElement('button', 'describeInOrg', DESCRIBE_ACTION_LABEL);
+        const chooseOrgButtonElement = createElement('button', 'describeInChosenOrg', CHOOSE_ORG_ACTION_LABEL);
         const statusFilterElement = createElement('select', 'statusFilter hidden');
+
+        chooseOrgButtonElement.setAttribute('title', 'Choose any authorized org, production included, and compare the objects of this tree with it');
+        chooseOrgButtonElement.setAttribute('aria-label', CHOOSE_ORG_ACTION_LABEL + ' (' + treeState.tree.title + ')');
+        chooseOrgButtonElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey, chooseOrg: true });
+        });
 
         describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in Data-by-Org (or one you choose), and mark each field with how it compares');
         describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + treeState.tree.title + ')');
@@ -6194,6 +6211,7 @@ ${this.buildPaletteCustomProperties()}
         });
 
         controlsElement.appendChild(describeButtonElement);
+        controlsElement.appendChild(chooseOrgButtonElement);
         controlsElement.appendChild(statusFilterElement);
         compareElement.appendChild(controlsElement);
 
@@ -6201,7 +6219,8 @@ ${this.buildPaletteCustomProperties()}
             element: compareElement,
             statusFilterElement: statusFilterElement,
             progressElement: createElement('div', 'orgProgress muted hidden'),
-            statusElement: createElement('div', 'orgStatus hidden')
+            statusElement: createElement('div', 'orgStatus hidden'),
+            regenerateButtonElement: null
         };
 
         compareElement.appendChild(compareState.progressElement);
@@ -6229,6 +6248,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.compare.progressElement.classList.add('hidden');
 
         statusElement.textContent = '';
+        treeState.compare.regenerateButtonElement = null;
         statusElement.appendChild(createElement('div', 'orgDescribeSummary', orgDescribe.summary));
         statusElement.classList.remove('hidden');
 
@@ -6274,13 +6294,17 @@ ${this.buildPaletteCustomProperties()}
 
         regenerateButtonElement.setAttribute('title', REGENERATE_NOTE);
         regenerateButtonElement.addEventListener('click', function () {
-            regenerateButtonElement.disabled = true;
+            // EVERY CARD'S BUTTON: THE HOST RUNS ONE REGENERATE AT A TIME, AND ITS RELOAD REDRAWS THEM ALL
+            treeStates.forEach(function (otherTreeState) {
+                if (otherTreeState.compare && otherTreeState.compare.regenerateButtonElement) { otherTreeState.compare.regenerateButtonElement.disabled = true; }
+            });
             regenerateButtonElement.textContent = 'Regenerating…';
             vscodeApi.postMessage({ command: 'regenerateRecipe', treeKey: treeState.tree.treeKey });
         });
 
         regenerateElement.appendChild(regenerateButtonElement);
         regenerateElement.appendChild(createElement('div', 'regenerateNote muted', REGENERATE_NOTE));
+        treeState.compare.regenerateButtonElement = regenerateButtonElement;
 
         return regenerateElement;
 

@@ -600,6 +600,22 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             });
 
+            // DATA-BY-ORG NEVER LISTS PRODUCTION, SO "Choose another org…" IS HOW A READER COMPARES WITH IT
+            it('given "Choose another org…", asks with the picker even though Data-by-Org remembers an org', async () => {
+
+                workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
+                const listSpy = SalesforceOrgService.listDataOrgDetails as unknown as jest.SpyInstance;
+
+                await openRenderedCockpit();
+                listSpy.mockClear();
+                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY, chooseOrg: true });
+
+                expect(promptSpy).toHaveBeenCalledTimes(1);
+                expect(listSpy).not.toHaveBeenCalled();
+                expect(describedUsernames()).toEqual(['jd@example.com']);
+
+            });
+
             it('given a card the rendered model does not have, describes nothing', async () => {
 
                 await openRenderedCockpit();
