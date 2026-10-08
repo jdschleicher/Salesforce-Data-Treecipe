@@ -1,5 +1,109 @@
 # Change Log
 
+## [3.37.0] - Create N fake records of one object in a sandbox from the Recipe Cockpit
+
+Closes [#180](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/180), slice 7 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Adding more data for one object in an org meant generating a whole tree's data set, inserting all of it, and wiring the recipe's lookups to parent records by hand. Each object row in **Data-by-Org** now has a number input and **+ Create**.
+
+- **Controls.** Once an org is selected, each object row of an expanded tree shows a number (1 by default) and **+ Create**. The panel will not post a count that is not a whole number from 1 to 200, and the host refuses any other count whatever the panel sends (`RecipeCockpitRecordCreation.isValidCreateCount`: `0`, `201`, `2.5`, `"abc"` and `"25"` are all refused).
+- **Create is disabled, with the reason on the row,** when:
+  - the org's `IsSandbox` is false, Developer Edition included (`Records are created only in a sandbox, and this org is Production · Developer Edition.`)
+  - the Organization query failed — it fails closed
+  - the object is not in the org, or not createable (the describe's object-level `createable`, now normalized as `isCreateable`)
+  - a required parent has 0 records, or could not be counted
+  - a required lookup is polymorphic
+  - another Create is running (every button is disabled on the click, and the host's `createState` re-enables them, replayed to a reloaded document)
+  - The answer is posted as `dataOrgReadiness` once the counts are in. An org that has not answered that it is a sandbox is asked nothing more.
+- **Required lookups** are the lookups the describe marks `nillable: false` (every master-detail included), leaving out ones the org fills itself (`defaultedOnCreate`, now normalized — `OwnerId` is the usual one), ones the user cannot write, and `RecordTypeId`. Each is filled with a random existing Id from `SELECT Id FROM <Parent> LIMIT 2000` (`SalesforceOrgService.queryRecordIds`, which refuses a non-api name and keeps only Id-shaped answers). Every other lookup is removed from the records, so it is left blank rather than sent as a TODO or an ancestor's nickname.
+- **Host-side modal** (`showWarningMessage` with `modal: true`) shows the org alias and username, Sandbox, the object, the count, each required lookup with its parent's record count, the backend and the recipe tree. Cancel writes nothing and contacts the org no further.
+  - The org's type is queried again, on the connection the insert will use, before the modal — not read from the selection.
+  - After the confirm, the host refuses if the selected org changed between the click and the confirm.
+- **Generation:**
+  - `RecipeCockpitRecipeWriter.extractObjectBlock` (pure, still no imports) cuts the object's own block from the tree's recipe: its header, properties and fields block with every comment, moved to column zero when it was a friend, its own `friends:` block left out, and `count:` set to N. An object written twice (#188) is picked by its nickname.
+  - It is written as `BaseArtifactFiles/createRecipe-<Object>.yml` in a new data set folder (with the run's wrapper copied beside it, so **Insert…** works on it too), then run through the configured processor unchanged.
+  - A recipe generated for the other backend is refused, with Run Faker's message.
+  - Lookup TODOs and nickname values are replaced after generation (`RecipeCockpitRecordCreation.assignLookupIds`, pure, with its randomness handed in).
+  - `RecordTypeId` uses the existing developer-name → Id swap.
+- **Insert** goes through the Collections API callout the directory insert uses, with `allOrNone: false`, via the new `CollectionsApiService.insertRecordsWithoutRollback`: 200 records a request, each rejected record reported by its position with Salesforce's messages, a request that failed outright recorded as a failure of each of its records, and nothing deleted. Results are written to `InsertAttempts/insertAttempt-<ts>/insertAttemptResults-<ts>.json` as today.
+- **`datasetSource.json`** gets `origin: "createInOrg"`, `orgUsername`, `createdObjectApiName` and `createdRecordIds` (`DatasetSourceService.buildCreateInOrgDatasetSource`; the reader type-checks all three, and requires them exactly when the origin is `createInOrg`). It names the tree's recipe run and folder, so the data set shows in that tree's **Previous Fake Sets** after the reload.
+- **The row shows the result:** `✓ 25 created`, or `23 created · 2 failed` with **View errors**, which opens the results file. The result is kept on the host per org username, tree and object, and survives the reload a Create ends with. The object's cached count is cleared, so the reload re-counts it.
+- **Allow-list.** The panel posts the org index, tree key, object api name and count. The host requires the index to be the org selected now and that org to have answered it is a sandbox, matches the tree and object against `creatableObjectKeys` (pending/active, from the rendered model's trees that have a recipe file) and resolves the recipe file from the host-only map ▶ Run Faker uses. A production org cannot be reached even with a forged message: the router refuses before any connection, and the readiness check refuses again after a fresh Organization query.
+- **Both backends** produce N records with the required lookups set. Snowfakery still runs through `execFile` with no shell.
+- **Data-by-Org never connects to a production org.** This tightens what 3.36.0 shipped.
+  - **Before any connection:** the dropdown lists only orgs the Salesforce CLI knows are not production (`SalesforceOrgService.listDataOrgDetails`, `isKnownNonProductionAuthorization`): a scratch org, an org the CLI recorded as a sandbox, or one whose instance url is a sandbox's (`<domain>--<name>.sandbox.my.salesforce.com`, or the pre-enhanced-domain `<domain>--<name>.my.salesforce.com`). The url is read too because the CLI records a sandbox only when its production org is authorized as well. Anything else — production, a Developer Edition, an authorization that says nothing — is left out, and the view says how many were (`2 authorized orgs are not listed: …`). With none left, it says no sandbox or scratch org is authorized and how to authorize one. A remembered org that is no longer listed is forgotten.
+  - **After connecting:** the Organization row is the deciding answer. An org that answers it is not a sandbox, or cannot say (the query failed), is asked nothing more: no count, no describe, no Create, and the view says why. This replaces 3.36.0's "type unknown, and the counts still load".
+  - The Classic list's **Compare with an org…** and **Insert Data Set by Directory** are unchanged.
+- **Fixed in review (PR #199):**
+  - Create inserts only when the backend generated exactly the N records the dialog confirmed. Before this fix, a cut block that nested another `- object:` of the same object could insert more.
+  - After the dialog, Create requires the SAME selection the reader confirmed. Choosing another org, ⟳, or a reload of the run all refuse it, rather than only a change of org.
+  - Re-listing the orgs ends the current selection and selects the remembered org again by username in the new list. Before this fix, ⟳ re-selected by the old index, which could point at another org or nothing.
+  - A failure to draw ends a selection still counting, as `ready` and a new model already did.
+  - Optional lookups are removed, and required ones replaced, whatever case the recipe wrote the key in.
+  - A failed insert request is reported per record as "whether this record was saved is unknown", not as a known failure.
+  - `insertRecordsWithoutRollback` reads results as `unknown`, with no explicit `any`.
+  - `RecordTypeService.getRecordTypeIdsByConnection` now sends only api names into its SOQL, and makes no query when none is left.
+- **The preview warning says the cockpit can write to an org.** Before this slice it described a read-only panel. It now says Data-by-Org's **+ Create** inserts records into the selected org, that Data-by-Org never lists or connects to production, that Create is offered only for an org that reports itself as a sandbox, after a confirmation each time, and never deletes or rolls back.
+- **`checkPackagedPaths.test.js` bundles the current source itself** (the packaging build's own options, into a temporary folder) instead of reading `out/`. It failed on a fresh checkout, where nothing had bundled yet, and would have passed on a stale `out/` that no longer matched the source.
+
+**Tests.**
+- **`RecipeCockpitRecordCreation.test.ts`** (new): the module imports nothing; count validation; required and blanked lookups; every guard (production, Developer Edition, a failed Organization query, a non-boolean sandbox flag, not in org, not createable, polymorphic, a parent with 0 records or not counted); lookup Id assignment tested pure, records left unchanged, picks kept in range.
+- **`RecipeCockpitRecipeWriter`:** block extraction and count setting for every object at every depth of every fixture (fields equal to the original's, one top-level object, no friends), comments kept, friends left out, a duplicate picked by nickname, and every refusal.
+- **`RecipeCockpitCreateInOrg.test.ts`** (new):
+  - routing and allow-lists: valid routing, every refused count, another org's index, an object or tree not offered, no selection, an undrawn model, a production or unknown-type org, a Create in flight, View errors only for a failed result
+  - `computeCreateReadiness`: a production org is asked nothing; a sandbox's describes and parent counts
+  - the modal's detail, and modal cancel writing and querying nothing
+  - both-backend generation through to the inserted Collections API records, the snowfakery `execFile` argv, the `createInOrg` source file and the reloaded Previous Fake Sets
+  - the row result after the reload, re-counting, View errors and a missing results file
+  - unhappy paths: the org changed before the confirm, an org that now answers Production, a backend mismatch, a parent deleted between counting and inserting (per-record failures, nothing rolled back), a deleted recipe file, a block that cannot be cut, no parent Ids, no records generated, a failed generation and a failed describe
+  - the panel's controls, posted payload, client-side count refusal, results, stale readiness and the running state across a model
+- **`CollectionsApiService`, `DatasetSourceService`, `SalesforceOrgService`:** the no-rollback insert, the `createInOrg` source round trip and link, `queryRecordIds`, and the new describe fields.
+
+## [3.36.0] - The Recipe Cockpit's Data-by-Org view counts each tree's records in an org
+
+Closes [#179](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/179), slice 6 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+There was no way to see, from the recipe's point of view, how much data an org holds for each object in each relationship tree.
+
+- **A Data-by-Org view joins the view switch:** Recipe Trees · Data-by-Org · Classic list. It is the only place in the redesigned views that picks an org; the Classic list's **Compare with an org…** is unchanged. The find box is hidden in this view, since it lists no fields to find.
+- **Org dropdown** (a native `<select>`):
+  - Its options are the CLI's authorized orgs from `SalesforceOrgService`, labelled by alias, or by username when there is no alias.
+  - The host posts LABELS only. The panel posts back the chosen option's **index into the list the host posted** (`selectDataOrg {orgIndex}`), never a name, and the host refuses anything that is not an integer index into that list. The username never reaches the panel.
+  - With no authorized orgs it shows the existing "no authorized orgs" message.
+- **On choosing an org** the host connects by username and queries `SELECT IsSandbox, OrganizationType FROM Organization`. The label reads **Sandbox**, or **Production · \<OrganizationType\>** (a Developer Edition is Production). A failed query reads **type unknown**, and the counts still load.
+- **The choice is remembered per workspace** in `context.workspaceState`, keyed by username.
+  - Reopening the cockpit preselects it, but contacts no org until the Data-by-Org view is opened. Listing the orgs reads only the CLI's local authorizations.
+  - An org no longer authorized is dropped silently, and forgotten.
+- **Counts:**
+  - Every tree is listed in Recipe Trees order. Its header shows the object count and the total records in the org (`3 objects · 4,500 records in the org`, with `· 2 not counted` when some could not be).
+  - Expanding a tree lists its objects in insert order with `SELECT COUNT() FROM <Object>` counts: a number, `not in org`, `no access` or `could not count`, with the reason on hover.
+  - A later occurrence of an object (#188's child iteration) is the same object in the org, and is counted once.
+  - Counts are posted as they arrive, ten at a time, with an `n of m` progress line.
+- **New `SalesforceOrgService.countRecords`:**
+  - checks each name with `isUsableObjectApiName` before any query, so `Account; DELETE` is refused and never reaches SOQL
+  - runs 5 queries at a time
+  - caches successes per username and object for the session, never failures
+  - reports each object as `count`, `notInOrg` (`INVALID_TYPE`), `noAccess` (`INSUFFICIENT_ACCESS…`) or `failed`
+  - `queryOrganizationType`, `normalizeOrganizationResult` and `buildOrgTypeLabel` are the org type; an answer not typed as expected is undefined, never a guess either way
+- **A failed connection** is reported once for the whole org, not per object, and every row then reads `could not count`.
+- **⟳** clears the selected org's cached counts and counts again.
+- **Stale answers are dropped.** Each selection carries a `requestSequence`, and every count and selection message carries the model's `renderSequence`.
+  - The host stops counting, and posts nothing more, for a selection the reader has replaced or a model that is no longer on screen. Choosing another org mid-count discards the first org's answers.
+  - The panel drops a message for an older selection or an older model.
+  - A new model empties the countable objects until its `rendered`, like every other allow-list. The panel asks again for the new model when Data-by-Org is on screen.
+- **Read-only.** Nothing writes to an org.
+
+**Tests.**
+- **`SalesforceOrgService`:** `countRecords` and its cache (per username, per object, failures never cached, clearing one org or one object), the five-at-a-time limit, refusal of non-api names before any connection, a failed connection, cancellation, and the org-type query and its labels.
+- **`RecipeCockpitDataByOrg.test.ts`** (new):
+  - index-only routing, refusing a username, an alias, a string, an out-of-range, negative or fractional index, and a selection before the draw is confirmed
+  - workspaceState persistence: remembered on select, preselected on reopen with no org contacted until asked, and an unauthorized org dropped without a warning
+  - sandbox, Developer Edition and type-unknown labels; notInOrg; a failed connection reported once
+  - stale-answer dropping: another org mid-count, and a new model mid-count; ⟳ re-counting
+  - panel rendering: the view switch, tree and object order, the select's labels and posted index, counts and totals, uncountable objects, older selections and models dropped, a failed connection, ⟳, and labels written as text
+- **`RecipeCockpitPanelHarness.ts`:** the fake-DOM harness that runs the real panel script, moved out of `RecipeCockpitService.test.ts` so both suites share it.
+- **`ExtensionCommandService`:** the cockpit is handed the extension's `workspaceState`.
+
 ## [3.35.0] - A self-lookup adds a nested child iteration of the same object
 
 Closes [#188](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/188), a follow-up to [#46](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/46) under [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

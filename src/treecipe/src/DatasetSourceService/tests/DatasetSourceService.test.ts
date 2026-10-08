@@ -197,6 +197,33 @@ describe('DatasetSourceService', () => {
 
         });
 
+        test('writes the createInOrg source a Create records, which the reader links to its tree', () => {
+
+            const generatedRecipesFolderPath = path.join(temporaryDirectoryPath, 'GeneratedRecipes');
+            fs.mkdirSync(path.join(generatedRecipesFolderPath, 'recipe-2026-09-20T10-00-00', 'Account-thru-Contact'), { recursive: true });
+
+            const datasetSource = DatasetSourceService.buildCreateInOrgDatasetSource(
+                { recipeRunFolderName: 'recipe-2026-09-20T10-00-00', recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe--Account-thru-Contact.yml' },
+                'snowfakery',
+                '2026-09-21T10:00:00.000Z',
+                { Contact: 2 },
+                'qa@example.com.qa',
+                'Contact',
+                ['003000000000001AAA', '003000000000002AAA']
+            );
+
+            const datasetFolderPath = path.join(temporaryDirectoryPath, 'dataset-2026-09-21T10-00-00');
+            const baseArtifactsFolderPath = path.join(datasetFolderPath, 'BaseArtifactFiles');
+            fs.mkdirSync(baseArtifactsFolderPath, { recursive: true });
+            DatasetSourceService.writeDatasetSourceFile(baseArtifactsFolderPath, datasetSource);
+
+            const readResult = DatasetSourceService.readDatasetSource(datasetFolderPath, DatasetSourceService.findKnownRecipeRuns(generatedRecipesFolderPath));
+
+            expect(datasetSource).toMatchObject({ origin: 'createInOrg', orgUsername: 'qa@example.com.qa', createdObjectApiName: 'Contact', createdRecordIds: ['003000000000001AAA', '003000000000002AAA'] });
+            expect(readResult).toMatchObject({ status: 'linked', recipeTreeFolderName: 'Account-thru-Contact', datasetSource: datasetSource });
+
+        });
+
     });
 
     describe('parseDatasetFolderName', () => {
@@ -362,7 +389,10 @@ describe('DatasetSourceService', () => {
             ['null', null],
             ['a string', 'datasetSource'],
             ['another schema version', { ...validDatasetSource, schemaVersion: 2 }],
-            ['another origin', { ...validDatasetSource, origin: 'createInOrg' }],
+            ['an unknown origin', { ...validDatasetSource, origin: 'importedByHand' }],
+            ['a createInOrg origin with no org, object or Ids', { ...validDatasetSource, origin: 'createInOrg' }],
+            ['a createInOrg origin with a numeric Id', { ...validDatasetSource, origin: 'createInOrg', orgUsername: 'qa@example.com', createdObjectApiName: 'Contact', createdRecordIds: [7] }],
+            ['a createInOrg origin with a numeric username', { ...validDatasetSource, origin: 'createInOrg', orgUsername: 1, createdObjectApiName: 'Contact', createdRecordIds: [] }],
             ['a numeric run folder name', { ...validDatasetSource, recipeRunFolderName: 7 }],
             ['a missing tree folder name', { ...validDatasetSource, recipeTreeFolderName: undefined }],
             ['a null recipe file name', { ...validDatasetSource, recipeFileName: null }],
@@ -375,6 +405,21 @@ describe('DatasetSourceService', () => {
         ])('refuses %s', (_description, candidate) => {
 
             expect(DatasetSourceService.typeCheckDatasetSource(candidate)).toBeUndefined();
+
+        });
+
+        test('accepts a createInOrg source with its org, object and Ids, and drops those three from a runFaker one', () => {
+
+            const createInOrgSource: IDatasetSource = {
+                ...validDatasetSource,
+                origin: 'createInOrg',
+                orgUsername: 'qa@example.com.qa',
+                createdObjectApiName: 'Account',
+                createdRecordIds: ['001000000000001AAA']
+            };
+
+            expect(DatasetSourceService.typeCheckDatasetSource(createInOrgSource)).toEqual(createInOrgSource);
+            expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, orgUsername: 'x', createdRecordIds: ['y'] })).toEqual(validDatasetSource);
 
         });
 

@@ -217,6 +217,23 @@ describe('RecordTypeService Shared Instance Tests', () => {
 
     describe('getRecordTypeIdsByConnection', () => {
 
+        test('sends only api names into the SOQL, and no query at all when none is left', async () => {
+
+            const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();
+            mockedConnection.query.mockResolvedValue({ totalSize: 0, done: true, records: [] });
+
+            await RecordTypeService.getRecordTypeIdsByConnection(mockedConnection, ['Account', "Contact') OR Id != ('"]);
+
+            expect(mockedConnection.query).toHaveBeenCalledTimes(1);
+            expect(mockedConnection.query.mock.calls[0][0]).toContain("SObjectType IN ('Account')");
+            expect(mockedConnection.query.mock.calls[0][0]).not.toContain('OR Id');
+
+            mockedConnection.query.mockClear();
+            expect(await RecordTypeService.getRecordTypeIdsByConnection(mockedConnection, ['x; DELETE'])).toEqual({ totalSize: 0, done: true, records: [] });
+            expect(mockedConnection.query).not.toHaveBeenCalled();
+
+        });
+
         test('given mocked Connection instance and mocked query funtcion, should query record type IDs for given object API names', async () => {   
             
             const mockedConnection = MockCollectionsApiService.getMockedSalesforceCoreConnection();

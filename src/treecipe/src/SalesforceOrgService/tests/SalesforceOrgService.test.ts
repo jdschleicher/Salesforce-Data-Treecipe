@@ -21,7 +21,10 @@ import {
     NO_AUTHORIZED_ORGS_MESSAGE,
     ORG_DESCRIBE_CANCELLED_MESSAGE,
     ORG_DESCRIBE_CONCURRENCY,
-    ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE
+    ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE,
+    ORG_ORGANIZATION_QUERY,
+    ORG_TYPE_UNKNOWN_LABEL,
+    IOrgQuerySource
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -78,7 +81,8 @@ describe('SalesforceOrgService', () => {
                 referenceTo: [],
                 isNillable: true,
                 isCreateable: true,
-                isCalculated: false
+                isCalculated: false,
+                isDefaultedOnCreate: false
             });
 
             expect(normalizedDescribe.fields.find(field => field.fieldApiName === 'Region__c').picklistValues).toEqual([
@@ -135,6 +139,7 @@ describe('SalesforceOrgService', () => {
             expect(normalizedDescribe).toEqual({
                 objectApiName: 'Widget__c',
                 objectLabel: '',
+                isCreateable: false,
                 fields: [{
                     fieldApiName: 'Odd__c',
                     fieldLabel: '',
@@ -147,7 +152,8 @@ describe('SalesforceOrgService', () => {
                     referenceTo: ['Account'],
                     isNillable: false,
                     isCreateable: false,
-                    isCalculated: false
+                    isCalculated: false,
+                    isDefaultedOnCreate: false
                 }]
             });
 
@@ -437,4 +443,270 @@ describe('SalesforceOrgService', () => {
 
     });
 
+    describe('countRecords', () => {
+
+        beforeEach(() => {
+            SalesforceOrgService.clearRecordCountCache();
+        });
+
+        // A CONNECTION STAND-IN THAT ANSWERS COUNT() BY OBJECT AND RECORDS EVERY SOQL IT WAS SENT
+        function buildQuerySource(answersByObjectApiName: Record<string, number | Error>) {
+
+            const sentQueries: string[] = [];
+            let inFlightCount = 0;
+            let maximumInFlightCount = 0;
+
+            const querySource: IOrgQuerySource = {
+                query: jest.fn().mockImplementation(async (soql: string) => {
+                    sentQueries.push(soql);
+                    inFlightCount++;
+                    maximumInFlightCount = Math.max(maximumInFlightCount, inFlightCount);
+                    await new Promise(resolveYield => setImmediate(resolveYield));
+                    inFlightCount--;
+                    const objectApiName = soql.replace('SELECT COUNT() FROM ', '');
+                    const answer = answersByObjectApiName[objectApiName];
+                    if ( answer instanceof Error ) {
+                        throw answer;
+                    }
+                    return { totalSize: answer, done: true, records: [] };
+                })
+            };
+
+            return { querySource, sentQueries, maxInFlight: () => maximumInFlightCount };
+
+        }
+
+        it('counts each object and reports count, notInOrg, noAccess and failed', async () => {
+
+            const { querySource, sentQueries } = buildQuerySource({
+                Account: 12,
+                Ghost__c: Object.assign(new Error("sObject type 'Ghost__c' is not supported."), { errorCode: 'INVALID_TYPE' }),
+                Secret__c: Object.assign(new Error('no access'), { errorCode: 'INSUFFICIENT_ACCESS_OR_READONLY' }),
+                Broken__c: new Error('socket hang up')
+            });
+
+            const countResult = await SalesforceOrgService.countRecords(ORG_USERNAME, ['Account', 'Ghost__c', 'Secret__c', 'Broken__c'], async () => querySource);
+
+            expect(sentQueries).toContain('SELECT COUNT() FROM Account');
+            expect(countResult.wasCancelled).toBe(false);
+            expect(countResult.outcomes.map(outcome => [outcome.objectApiName, outcome.status, outcome.recordCount])).toEqual([
+                ['Account', 'count', 12],
+                ['Ghost__c', 'notInOrg', undefined],
+                ['Secret__c', 'noAccess', undefined],
+                ['Broken__c', 'failed', undefined]
+            ]);
+            expect(countResult.outcomes[3].failureMessage).toBe('socket hang up');
+
+        });
+
+        it('refuses a name that is not an api name before any query, and connects not at all when nothing else is asked', async () => {
+
+            const querySourceFactory = jest.fn();
+
+            const countResult = await SalesforceOrgService.countRecords(ORG_USERNAME, ['Account; DELETE', 'x/../query'], querySourceFactory);
+
+            expect(querySourceFactory).not.toHaveBeenCalled();
+            expect(countResult.outcomes.map(outcome => [outcome.status, outcome.failureMessage])).toEqual([
+                ['failed', ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE],
+                ['failed', ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE]
+            ]);
+
+        });
+
+        it('runs five queries at a time', async () => {
+
+            const objectApiNames = Array.from({ length: 12 }, (_, objectIndex) => `Object_${objectIndex}__c`);
+            const { querySource, maxInFlight } = buildQuerySource(Object.fromEntries(objectApiNames.map(objectApiName => [objectApiName, 1])));
+
+            await SalesforceOrgService.countRecords(ORG_USERNAME, objectApiNames, async () => querySource);
+
+            expect(maxInFlight()).toBe(ORG_DESCRIBE_CONCURRENCY);
+
+        });
+
+        it('caches successes per username and object for the session, and never failures', async () => {
+
+            const { querySource, sentQueries } = buildQuerySource({ Account: 3, Broken__c: new Error('boom') });
+            const querySourceFactory = jest.fn().mockResolvedValue(querySource);
+
+            await SalesforceOrgService.countRecords(ORG_USERNAME, ['Account', 'Broken__c'], querySourceFactory);
+            const repeatResult = await SalesforceOrgService.countRecords(ORG_USERNAME, ['Account', 'Broken__c'], querySourceFactory);
+
+            expect(sentQueries.filter(soql => soql.endsWith('Account'))).toHaveLength(1);
+            expect(sentQueries.filter(soql => soql.endsWith('Broken__c'))).toHaveLength(2);
+            expect(repeatResult.outcomes[0]).toEqual({ objectApiName: 'Account', status: 'count', recordCount: 3, wasCached: true });
+
+            await SalesforceOrgService.countRecords('other@example.com', ['Account'], querySourceFactory);
+            expect(sentQueries.filter(soql => soql.endsWith('Account'))).toHaveLength(2);
+
+        });
+
+        it('clears one org, or one object of one org, from the cache', async () => {
+
+            const { querySource } = buildQuerySource({ Account: 3, Contact: 4 });
+
+            await SalesforceOrgService.countRecords(ORG_USERNAME, ['Account', 'Contact'], async () => querySource);
+            await SalesforceOrgService.countRecords('other@example.com', ['Account'], async () => querySource);
+
+            SalesforceOrgService.clearRecordCountCache(ORG_USERNAME, 'Account');
+            expect(SalesforceOrgService.getCachedRecordCount(ORG_USERNAME, 'Account')).toBeUndefined();
+            expect(SalesforceOrgService.getCachedRecordCount(ORG_USERNAME, 'Contact')).toBe(4);
+
+            SalesforceOrgService.clearRecordCountCache(ORG_USERNAME);
+            expect(SalesforceOrgService.getCachedRecordCount(ORG_USERNAME, 'Contact')).toBeUndefined();
+            expect(SalesforceOrgService.getCachedRecordCount('other@example.com', 'Account')).toBe(3);
+
+        });
+
+        it('throws a failed connection, once, for the whole request', async () => {
+
+            await expect(SalesforceOrgService.countRecords(ORG_USERNAME, ['Account'], async () => { throw new Error('expired'); })).rejects.toThrow('expired');
+
+        });
+
+        it('stops when cancelled, and names what it did not count', async () => {
+
+            const { querySource } = buildQuerySource({ Account: 1, Contact: 2 });
+            let isCancelled = false;
+
+            const countResult = await SalesforceOrgService.countRecords(ORG_USERNAME, ['Account', 'Contact', 'Lead', 'Case', 'Order', 'Asset'], async () => querySource, {
+                onObjectCounted: () => { isCancelled = true; },
+                isCancellationRequested: () => isCancelled
+            });
+
+            expect(countResult.wasCancelled).toBe(true);
+            expect(countResult.outcomes.filter(outcome => outcome.failureMessage === ORG_DESCRIBE_CANCELLED_MESSAGE).length).toBeGreaterThan(0);
+
+        });
+
+        it('reads a count from totalSize and refuses an answer that has none', () => {
+
+            expect(SalesforceOrgService.readTotalSize({ totalSize: 0 })).toBe(0);
+            expect(() => SalesforceOrgService.readTotalSize({ records: [] })).toThrow();
+            expect(() => SalesforceOrgService.readTotalSize({ totalSize: -1 })).toThrow();
+
+        });
+
+    });
+
+    describe('the org type query', () => {
+
+        it('queries IsSandbox and OrganizationType and labels a sandbox', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ totalSize: 1, records: [{ IsSandbox: true, OrganizationType: 'Unlimited Edition' }] }) };
+
+            const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
+
+            expect(querySource.query).toHaveBeenCalledWith(ORG_ORGANIZATION_QUERY);
+            expect(orgTypeDetail).toEqual({ isSandbox: true, organizationType: 'Unlimited Edition' });
+            expect(SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)).toBe('Sandbox');
+
+        });
+
+        it('labels anything that is not a sandbox as Production with its type, Developer Edition included', () => {
+
+            expect(SalesforceOrgService.buildOrgTypeLabel({ isSandbox: false, organizationType: 'Developer Edition' })).toBe('Production · Developer Edition');
+
+        });
+
+        it('answers undefined, labelled "type unknown", when the query fails or answers with the wrong shape', async () => {
+
+            expect(await SalesforceOrgService.queryOrganizationType({ query: jest.fn().mockRejectedValue(new Error('nope')) })).toBeUndefined();
+            expect(SalesforceOrgService.normalizeOrganizationResult({ records: [{ IsSandbox: 'true', OrganizationType: 'x' }] })).toBeUndefined();
+            expect(SalesforceOrgService.normalizeOrganizationResult({ records: [] })).toBeUndefined();
+            expect(SalesforceOrgService.buildOrgTypeLabel(undefined)).toBe(ORG_TYPE_UNKNOWN_LABEL);
+
+        });
+
+    });
+
+    describe('queryRecordIds', () => {
+
+        it('asks for up to 2000 Ids and keeps only what is Id-shaped', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [
+                { Id: '001000000000001AAA' }, { Id: '001000000000002' }, { Id: 'not an id!' }, { Id: 7 }, null
+            ] }) };
+
+            expect(await SalesforceOrgService.queryRecordIds(querySource, 'Account')).toEqual(['001000000000001AAA', '001000000000002']);
+            expect(querySource.query).toHaveBeenCalledWith('SELECT Id FROM Account LIMIT 2000');
+
+        });
+
+        it('refuses a name that is not an api name before any query', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn() };
+
+            await expect(SalesforceOrgService.queryRecordIds(querySource, 'Account; DELETE')).rejects.toThrow();
+            expect(querySource.query).not.toHaveBeenCalled();
+
+        });
+
+    });
+
+    describe('normalizeDescribeResult, what a Create reads', () => {
+
+        it('carries the object\'s createable and each field\'s defaultedOnCreate', () => {
+
+            const normalizedDescribe = SalesforceOrgService.normalizeDescribeResult('Account', {
+                name: 'Account', createable: true,
+                fields: [{ name: 'OwnerId', type: 'reference', nillable: false, createable: true, defaultedOnCreate: true, referenceTo: ['Group', 'User'] }]
+            });
+
+            expect(normalizedDescribe.isCreateable).toBe(true);
+            expect(normalizedDescribe.fields[0].isDefaultedOnCreate).toBe(true);
+
+        });
+
+    });
+
+    describe('which orgs Data-by-Org may connect to', () => {
+
+        it.each([
+            ['a scratch org', { isScratchOrg: true }],
+            ['an org the CLI recorded as a sandbox', { isSandbox: true }],
+            ['an enhanced-domain sandbox url', { instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com' }],
+            ['a legacy sandbox url', { instanceUrl: 'https://acme--uat.my.salesforce.com' }]
+        ])('accepts %s', (_description, authorization) => {
+
+            expect(SalesforceOrgService.isKnownNonProductionAuthorization(authorization)).toBe(true);
+
+        });
+
+        it.each([
+            ['a production My Domain', { instanceUrl: 'https://acme.my.salesforce.com', isSandbox: false, isScratchOrg: false }],
+            ['a Developer Edition', { instanceUrl: 'https://acme-dev-ed.develop.my.salesforce.com' }],
+            ['a login url', { instanceUrl: 'https://login.salesforce.com' }],
+            ['a lookalike host', { instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com.evil.example' }],
+            ['an authorization that says nothing', {}],
+            ['a url that does not parse', { instanceUrl: 'not a url' }],
+            ['flags that are truthy but not true', { isSandbox: 'true' as any, isScratchOrg: 1 as any }],
+            ['no authorization at all', undefined]
+        ])('refuses %s', (_description, authorization) => {
+
+            expect(SalesforceOrgService.isKnownNonProductionAuthorization(authorization)).toBe(false);
+
+        });
+
+        it('lists only the non-production orgs, and counts the rest', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: 'qa@example.com.qa', aliases: ['qa'], orgId: '00D1', oauthMethod: 'web', configs: null, isExpired: false, instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com' },
+                { username: 'prod@example.com', aliases: ['prod'], orgId: '00D2', oauthMethod: 'web', configs: null, isExpired: false, instanceUrl: 'https://acme.my.salesforce.com', isSandbox: false },
+                { username: 'scratch@example.com', aliases: null, orgId: '00D3', oauthMethod: 'jwt', configs: null, isExpired: false, isScratchOrg: true }
+            ]);
+
+            expect(await SalesforceOrgService.listDataOrgDetails()).toEqual({
+                orgDetails: [
+                    { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' },
+                    { targetOrgIdentifier: 'scratch@example.com', username: 'scratch@example.com', alias: undefined }
+                ],
+                hiddenOrgCount: 1
+            });
+
+        });
+
+    });
+
 });
+

@@ -3596,10 +3596,12 @@ describe('ExtensionCommandService', () => {
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel')
                 .mockResolvedValue({} as any);
 
-            await extensionCommandService.openRecipeCockpit();
+            const workspaceState = { get: jest.fn(), update: jest.fn() };
 
-            // THE PANEL LOADS THE LATEST RUN UNDER THE WORKSPACE THE GUARD ABOVE IT CHECKED FOR
-            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledWith('/workspace');
+            await extensionCommandService.openRecipeCockpit(workspaceState);
+
+            // THE PANEL LOADS THE LATEST RUN UNDER THE WORKSPACE THE GUARD ABOVE IT CHECKED FOR, AND REMEMBERS DATA-BY-ORG'S ORG IN THE WORKSPACE STATE IT WAS HANDED
+            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledWith('/workspace', workspaceState);
             // THE WARNING IS THE OPT-IN, NOT A CONFIRMATION -- A WORKSPACE ACCEPTS IT ONCE
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 

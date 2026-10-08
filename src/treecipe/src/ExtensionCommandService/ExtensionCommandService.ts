@@ -25,6 +25,7 @@ import {
 import { PicklistDependencyManifestService } from "../PicklistDependencyManifestService/PicklistDependencyManifestService";
 import { PicklistDependencyMetadataWriterService } from "../PicklistDependencyMetadataWriterService/PicklistDependencyMetadataWriterService";
 import {
+    IRecipeCockpitWorkspaceState,
     RecipeCockpitService,
     RECIPE_COCKPIT_ISSUES_URL,
     RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE,
@@ -1468,7 +1469,7 @@ export class ExtensionCommandService {
         the report this raises, which is the one a user cannot diagnose a broken webview without.
         Runs chosen later from the panel's own selector report through the panel's handler.
     */
-    async openRecipeCockpit() {
+    async openRecipeCockpit(workspaceState?: IRecipeCockpitWorkspaceState) {
 
         try {
 
@@ -1478,7 +1479,7 @@ export class ExtensionCommandService {
                 return;
             }
 
-            await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot());
+            await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot(), workspaceState);
 
         } catch(error) {
 
