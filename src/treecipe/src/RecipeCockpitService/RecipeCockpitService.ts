@@ -228,7 +228,7 @@ export interface IRecipeCockpitRunViewModel {
 */
 /*
     fieldTypeWithSize is what the Structure tab draws ("Text(50)", "Number(16,2)"); fieldType stays
-    the bare type, which is what the Classic list draws and what the diff compares.
+    the bare type, which is what the diff compares and what an org-only row is typed by.
 
     isPicklist is set ONLY on a picklist or multi-select picklist row, and is all the model says
     about its values: the values are posted when the reader expands the row (loadPicklistValues).
@@ -306,7 +306,7 @@ export interface IRecipeCockpitParentLookupViewModel {
 
 /*
     An object as a tree lists it. Its fields are not repeated here: the panel finds them by name in
-    the recipe's objects, so the Structure tab and the Classic list draw one posted field model.
+    the recipe's objects, so every card that lists an object draws the one posted field model.
 */
 export interface IRecipeCockpitTreeObjectViewModel {
     objectApiName: string;
@@ -495,13 +495,15 @@ export interface IRecipeCockpitOrgDescribeObjectSummary {
 }
 
 /*
-    What one org comparison said about the recipe on screen: a per-object describe SUMMARY and the
-    diff computed host side. The normalized describe stays in the host's cache -- the panel draws
-    statuses, not describes. renderSequence ties it to the model it compared -- a comparison of an
-    earlier run's objects must not be drawn over a later run's rows.
+    What one org comparison said about ONE TREE of the recipe on screen: a per-object describe
+    SUMMARY and the diff computed host side. The normalized describe stays in the host's cache --
+    the panel draws statuses, not describes. renderSequence ties it to the model it compared -- a
+    comparison of an earlier run's objects must not be drawn over a later run's rows -- and treeKey
+    to the card whose Structure tab asked for it.
 */
 export interface IRecipeCockpitOrgDescribeMessage {
     command: 'orgDescribe';
+    treeKey: string;
     orgLabel: string;
     summary: string;
     isFailure: boolean;
@@ -514,6 +516,7 @@ export interface IRecipeCockpitOrgDescribeMessage {
 // WHERE A COMPARISON IS WHILE IT RUNS, DRAWN IN THE PANEL AS WELL AS IN THE NOTIFICATION
 export interface IRecipeCockpitOrgProgressMessage {
     command: 'orgProgress';
+    treeKey: string;
     message: string;
     renderSequence: number;
 }
@@ -726,8 +729,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
-    | { kind: 'selectOrg' }
-    | { kind: 'regenerateRecipe' }
+    | { kind: 'selectOrg'; treeKey: string }
+    | { kind: 'regenerateRecipe'; treeKey: string }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadVersionSummaries'; treeKey: string; summarySource: IRecipeCockpitTreeSummarySource; renderSequence: number }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
@@ -752,10 +755,11 @@ export type RecipeCockpitPanelAction =
     of a hidden tab) empties the active pair until the replayed model is drawn again. An action is
     honoured only when the panel has confirmed the row it came from is actually drawn.
 
-    The describable objects are an allow-list of the same kind with no payload to match: the panel
-    only asks for "an org describe", and WHICH objects are described is read from here, never from
-    the message. isOrgDescribeInFlight refuses a second request while the first is still picking
-    or describing, so two quick picks cannot race to post two answers.
+    The describable objects are an allow-list of the same kind, keyed by TREE: the panel names only
+    the card it asks from, and WHICH objects are described is read from here, never from the
+    message. isOrgDescribeInFlight refuses a second request while the first is still picking or
+    describing, so two quick picks cannot race to post two answers. Comparisons are kept per tree,
+    so comparing a second card does not take the first card's answer off the screen.
 
     recipePicklistValuesByObjectApiName belongs to recipeDataMessage and is replaced with it: it is
     the diff's recipe side for picklists, and it is never posted. picklistDisplayValuesByObjectApiName
@@ -770,15 +774,15 @@ export interface IRecipeCockpitPanelState {
     recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
     picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
     loadFailedMessage?: IRecipeCockpitLoadFailedMessage;
-    orgDescribeMessage?: IRecipeCockpitOrgDescribeMessage;
+    orgDescribeMessagesByTreeKey: Map<string, IRecipeCockpitOrgDescribeMessage>;
     orgProgressMessage?: IRecipeCockpitOrgProgressMessage;
     pendingOpenableSourceKeys: Set<string>;
     pendingSelectableRunFolderNames: Set<string>;
-    pendingDescribableObjectApiNames: Set<string>;
+    pendingDescribableObjectApiNamesByTreeKey: Map<string, string[]>;
     pendingLoadablePicklistKeys: Set<string>;
     openableSourceKeys: Set<string>;
     selectableRunFolderNames: Set<string>;
-    describableObjectApiNames: Set<string>;
+    describableObjectApiNamesByTreeKey: Map<string, string[]>;
     loadablePicklistKeys: Set<string>;
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
@@ -901,11 +905,12 @@ export class RecipeCockpitService {
             picklistDisplayValuesByObjectApiName: new Map(),
             pendingOpenableSourceKeys: new Set(),
             pendingSelectableRunFolderNames: new Set(),
-            pendingDescribableObjectApiNames: new Set(),
+            pendingDescribableObjectApiNamesByTreeKey: new Map(),
             pendingLoadablePicklistKeys: new Set(),
             openableSourceKeys: new Set(),
             selectableRunFolderNames: new Set(),
-            describableObjectApiNames: new Set(),
+            describableObjectApiNamesByTreeKey: new Map(),
+            orgDescribeMessagesByTreeKey: new Map(),
             loadablePicklistKeys: new Set(),
             treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets(),
             pendingTreeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
@@ -1105,13 +1110,13 @@ export class RecipeCockpitService {
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.loadFailedMessage = undefined;
         // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
-        panelState.orgDescribeMessage = undefined;
+        panelState.orgDescribeMessagesByTreeKey = new Map();
         panelState.orgProgressMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
-        panelState.pendingDescribableObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
+        panelState.pendingDescribableObjectApiNamesByTreeKey = this.collectDescribableObjectApiNamesByTreeKey(recipeViewModel);
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
         panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel);
         panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
@@ -1123,7 +1128,7 @@ export class RecipeCockpitService {
             so a click landing between this post and the ack would describe the old run's objects
             and draw the answer over the new run's rows.
         */
-        panelState.describableObjectApiNames = new Set();
+        panelState.describableObjectApiNamesByTreeKey = new Map();
         /*
             The same for Data-by-Org: its counts are tagged with the model they count, so a new
             model ends whatever selection was counting for the old one. The org list and the org
@@ -1202,7 +1207,7 @@ export class RecipeCockpitService {
                 panelState.isPanelReady = true;
                 panelState.openableSourceKeys = new Set();
                 panelState.selectableRunFolderNames = new Set();
-                panelState.describableObjectApiNames = new Set();
+                panelState.describableObjectApiNamesByTreeKey = new Map();
                 panelState.loadablePicklistKeys = new Set();
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                 // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL COUNTING IS ENDED
@@ -1217,7 +1222,7 @@ export class RecipeCockpitService {
 
                 panelState.openableSourceKeys = panelState.pendingOpenableSourceKeys;
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
-                panelState.describableObjectApiNames = panelState.pendingDescribableObjectApiNames;
+                panelState.describableObjectApiNamesByTreeKey = panelState.pendingDescribableObjectApiNamesByTreeKey;
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 panelState.dataOrgObjectApiNames = panelState.pendingDataOrgObjectApiNames;
@@ -1232,7 +1237,7 @@ export class RecipeCockpitService {
                 if ( panelAction.invalidatesPanel ) {
                     panelState.openableSourceKeys = new Set();
                     panelState.selectableRunFolderNames = new Set();
-                    panelState.describableObjectApiNames = new Set();
+                    panelState.describableObjectApiNamesByTreeKey = new Map();
                     panelState.loadablePicklistKeys = new Set();
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                     panelState.dataOrgObjectApiNames = new Set();
@@ -1276,12 +1281,12 @@ export class RecipeCockpitService {
 
             case 'selectOrg':
 
-                await this.describeRecipeObjectsInSelectedOrg(cockpitPanel, panelState);
+                await this.describeTreeObjectsInOrg(cockpitPanel, panelState, panelAction.treeKey);
                 return;
 
             case 'regenerateRecipe':
 
-                await this.regenerateRecipe(cockpitPanel, panelState);
+                await this.regenerateRecipe(cockpitPanel, panelState, panelAction.treeKey);
                 return;
 
             case 'postPicklistValues':
@@ -1704,22 +1709,23 @@ export class RecipeCockpitService {
     }
 
     /*
-        Asks which authorized org to describe in, describes every object of the model on screen
-        there, and posts what came back.
+        Describes the objects of ONE tree card in an org and posts how they compare.
 
-        The objects are the ones the rendered model named, captured BEFORE the quick pick: the
-        reader can switch runs while the picker is open, and the describe answers for the recipe
-        they asked about. Its answer is posted only if that model is still the one on screen.
-        Nothing here is fatal to the panel -- no authorized org, a connection that fails and an
-        object the org does not have are all told to the reader and leave the rows as they were.
+        The org is the one Data-by-Org has picked -- in this panel, or remembered for this workspace
+        -- and the authorized-org quick pick is shown only when there is none. The objects are the
+        ones the rendered model put in that card, captured BEFORE any picker: the reader can switch
+        runs while it is open, and the describe answers for the tree they asked about. Its answer is
+        posted only if that model is still the one on screen. Nothing here is fatal to the panel --
+        no authorized org, a connection that fails and an object the org does not have are all told
+        to the reader and leave the rows as they were.
     */
-    private static async describeRecipeObjectsInSelectedOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+    private static async describeTreeObjectsInOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, treeKey: string) {
 
         const describedRecipeDataMessage = panelState.recipeDataMessage;
         const describedRecipePicklistValues = panelState.recipePicklistValuesByObjectApiName;
-        const objectApiNames = [...panelState.describableObjectApiNames];
+        const objectApiNames = panelState.describableObjectApiNamesByTreeKey.get(treeKey);
 
-        if ( !describedRecipeDataMessage || objectApiNames.length === 0 ) {
+        if ( !describedRecipeDataMessage || !objectApiNames ) {
             return;
         }
 
@@ -1727,7 +1733,7 @@ export class RecipeCockpitService {
 
         try {
 
-            const selectedOrgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER);
+            const selectedOrgDetail = await this.resolveComparisonOrgDetail(panelState);
 
             if ( !selectedOrgDetail ) {
                 return;
@@ -1736,7 +1742,7 @@ export class RecipeCockpitService {
             const orgLabel = this.buildOrgLabel(selectedOrgDetail);
             const objectCountText = `${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'}`;
             const reportProgress = (progressText: string) => this.reportOrgProgress(
-                cockpitPanel, panelState, describedRecipeDataMessage, `Comparing with ${orgLabel}: ${progressText}`
+                cockpitPanel, panelState, describedRecipeDataMessage, treeKey, `Comparing with ${orgLabel}: ${progressText}`
             );
             let describeResult: IOrgDescribeRequestResult | undefined;
             let connectionFailureMessage: IRecipeCockpitOrgDescribeMessage | undefined;
@@ -1747,7 +1753,7 @@ export class RecipeCockpitService {
 
                 describeResult = await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
-                    title: `Recipe Cockpit: describing ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} in ${orgLabel}`,
+                    title: `Recipe Cockpit: describing ${objectCountText} in ${orgLabel}`,
                     cancellable: true
                 }, async (progress, cancellationToken) => (
                     await SalesforceOrgService.describeObjects(
@@ -1767,7 +1773,7 @@ export class RecipeCockpitService {
 
             } catch (connectionError) {
 
-                connectionFailureMessage = this.buildOrgConnectionFailureMessage(orgLabel, connectionError, describedRecipeDataMessage.renderSequence);
+                connectionFailureMessage = this.buildOrgConnectionFailureMessage(treeKey, orgLabel, connectionError, describedRecipeDataMessage.renderSequence);
 
             }
 
@@ -1777,6 +1783,7 @@ export class RecipeCockpitService {
                 not connect" would send the reader to re-authorize an org that answered.
             */
             const orgDescribeMessage = connectionFailureMessage ?? this.buildOrgDescribeMessage(
+                treeKey,
                 orgLabel,
                 describeResult,
                 describedRecipeDataMessage.renderSequence,
@@ -1800,7 +1807,7 @@ export class RecipeCockpitService {
             }
 
             panelState.orgProgressMessage = undefined;
-            panelState.orgDescribeMessage = orgDescribeMessage;
+            panelState.orgDescribeMessagesByTreeKey.set(treeKey, orgDescribeMessage);
             this.postToPanel(cockpitPanel, orgDescribeMessage);
 
         } finally {
@@ -1816,10 +1823,45 @@ export class RecipeCockpitService {
             panelState.orgProgressMessage = undefined;
 
             if ( unansweredProgressMessage && this.recipeCockpitPanelState === panelState ) {
-                this.postToPanel(cockpitPanel, { command: 'orgProgress', message: '', renderSequence: unansweredProgressMessage.renderSequence });
+                this.postToPanel(cockpitPanel, { command: 'orgProgress', treeKey: unansweredProgressMessage.treeKey, message: '', renderSequence: unansweredProgressMessage.renderSequence });
             }
 
         }
+
+    }
+
+    /*
+        The org a comparison describes in: the one Data-by-Org has picked in this panel, else the
+        one it remembers for this workspace (looked up in the CLI's local authorizations, which
+        contacts no org), else whichever authorized org the reader picks now. A listing that fails
+        only means the reader is asked.
+    */
+    private static async resolveComparisonOrgDetail(panelState: IRecipeCockpitPanelState): Promise<IAuthenticatedOrgDetail | undefined> {
+
+        const pickedOrgDetail = panelState.dataOrgUsername
+            ? panelState.dataOrgDetails.find(orgDetail => orgDetail.username === panelState.dataOrgUsername)
+            : undefined;
+
+        if ( pickedOrgDetail ) {
+            return pickedOrgDetail;
+        }
+
+        // A PICKED ORG IS ALWAYS IN THE LIST: A RE-LIST THAT DROPS IT FORGETS IT
+        const rememberedUsername = this.readRememberedDataOrgUsername();
+
+        if ( rememberedUsername ) {
+            try {
+                const rememberedOrgDetail = ( await SalesforceOrgService.listDataOrgDetails() ).orgDetails
+                    .find(orgDetail => orgDetail.username === rememberedUsername);
+                if ( rememberedOrgDetail ) {
+                    return rememberedOrgDetail;
+                }
+            } catch {
+                // NOT LISTED IS THE SAME ANSWER AS NOT REMEMBERED: THE READER CHOOSES
+            }
+        }
+
+        return await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER);
 
     }
 
@@ -1831,6 +1873,7 @@ export class RecipeCockpitService {
     private static reportOrgProgress(cockpitPanel: vscode.WebviewPanel,
                                         panelState: IRecipeCockpitPanelState,
                                         describedRecipeDataMessage: IRecipeCockpitRecipeDataMessage,
+                                        treeKey: string,
                                         progressText: string) {
 
         if ( this.recipeCockpitPanelState !== panelState || panelState.recipeDataMessage !== describedRecipeDataMessage ) {
@@ -1839,6 +1882,7 @@ export class RecipeCockpitService {
 
         const orgProgressMessage: IRecipeCockpitOrgProgressMessage = {
             command: 'orgProgress',
+            treeKey: treeKey,
             message: progressText,
             renderSequence: describedRecipeDataMessage.renderSequence
         };
@@ -1849,7 +1893,8 @@ export class RecipeCockpitService {
     }
 
     /*
-        The v1 "apply": hands off to Generate Treecipe, then loads the run it wrote.
+        The v1 "apply": hands off to Generate Treecipe, then loads the run it wrote into the cards,
+        with the card the reader regenerated from open on its Structure tab.
 
         The command is the unflagged one a reader can already run from the palette -- the cockpit's
         flag gates this BUTTON by gating the panel it is drawn in, not the command it hands off to.
@@ -1858,7 +1903,7 @@ export class RecipeCockpitService {
         generation wrote one: Generate Treecipe reports its own failures, and reloading an
         unchanged latest run shows the reader exactly what is on disk.
     */
-    private static async regenerateRecipe(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+    private static async regenerateRecipe(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, treeKey: string) {
 
         /*
             In flight until the RELOAD has finished, not only the command: the comparison that routes
@@ -1885,7 +1930,7 @@ export class RecipeCockpitService {
             }
 
             if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot);
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, { treeKey: treeKey, tab: 'structure' });
             }
 
         } finally {
@@ -1895,6 +1940,32 @@ export class RecipeCockpitService {
         if ( hasGenerationFailed ) {
             throw generationError;
         }
+
+    }
+
+    /*
+        Per tree card, every object it draws a Structure tab for, once: the objects the model has a
+        recipe for, since a lookup target with none is not on the card. A card with none offers no
+        comparison.
+    */
+    static collectDescribableObjectApiNamesByTreeKey(recipeViewModel: IRecipeCockpitRecipeViewModel): Map<string, string[]> {
+
+        const recipeObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
+        const describableObjectApiNamesByTreeKey = new Map<string, string[]>();
+
+        recipeViewModel.trees.forEach(tree => {
+
+            const treeObjectApiNames = [...new Set(tree.objects
+                .map(treeObject => treeObject.objectApiName)
+                .filter(objectApiName => recipeObjectApiNames.has(objectApiName)))];
+
+            if ( treeObjectApiNames.length > 0 ) {
+                describableObjectApiNamesByTreeKey.set(tree.treeKey, treeObjectApiNames);
+            }
+
+        });
+
+        return describableObjectApiNamesByTreeKey;
 
     }
 
@@ -2562,7 +2633,8 @@ export class RecipeCockpitService {
 
     }
 
-    static buildOrgDescribeMessage(orgLabel: string,
+    static buildOrgDescribeMessage(treeKey: string,
+                                    orgLabel: string,
                                     describeResult: IOrgDescribeRequestResult,
                                     renderSequence: number,
                                     recipeDiff: IRecipeCockpitDiffViewModel = RecipeCockpitService.buildEmptyDiffViewModel()): IRecipeCockpitOrgDescribeMessage {
@@ -2592,6 +2664,7 @@ export class RecipeCockpitService {
 
         return {
             command: 'orgDescribe',
+            treeKey: treeKey,
             orgLabel: orgLabel,
             summary: summary,
             isFailure: false,
@@ -2603,12 +2676,13 @@ export class RecipeCockpitService {
 
     }
 
-    static buildOrgConnectionFailureMessage(orgLabel: string, connectionError: unknown, renderSequence: number): IRecipeCockpitOrgDescribeMessage {
+    static buildOrgConnectionFailureMessage(treeKey: string, orgLabel: string, connectionError: unknown, renderSequence: number): IRecipeCockpitOrgDescribeMessage {
 
         const failureText = ( connectionError as { message?: unknown } )?.message;
 
         return {
             command: 'orgDescribe',
+            treeKey: treeKey,
             orgLabel: orgLabel,
             summary: `Could not connect to ${orgLabel}: ${typeof failureText === 'string' && failureText ? failureText : String(connectionError)}. Re-authorize the org with "sf org login web" and try again.`,
             isFailure: true,
@@ -2687,30 +2761,46 @@ export class RecipeCockpitService {
 
             }
 
-            case 'selectOrg':
+            /*
+                The tree's KEY, never an object name: the objects described are the ones the
+                confirmed-drawn model put in that card, read from the active allow-list. One request
+                at a time.
+            */
+            case 'selectOrg': {
 
-                // ONLY ONCE A MODEL WITH OBJECTS IS CONFIRMED ON SCREEN, AND ONE REQUEST AT A TIME
-                if ( panelState.describableObjectApiNames.size === 0 || panelState.isOrgDescribeInFlight ) {
+                const { treeKey } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.describableObjectApiNamesByTreeKey.has(treeKey)
+                        || panelState.isOrgDescribeInFlight ) {
                     return undefined;
                 }
 
-                return { kind: 'selectOrg' };
+                return { kind: 'selectOrg', treeKey: treeKey };
 
-            case 'regenerateRecipe':
+            }
+
+            case 'regenerateRecipe': {
 
                 /*
                     Offered only beside a comparison of the model the panel confirmed drawing: the
-                    active describable set is non-empty only after that model's "rendered", and a
-                    comparison is stored only while its model is the one on screen.
+                    active describable map is non-empty only after that model's "rendered", and a
+                    comparison is stored only while its model is the one on screen. The tree key
+                    names the card whose comparison the button was drawn beside, and the card the
+                    reload re-opens.
                 */
-                if ( panelState.describableObjectApiNames.size === 0
-                        || !panelState.orgDescribeMessage
-                        || panelState.orgDescribeMessage.diff.objects.length === 0
+                const { treeKey } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.describableObjectApiNamesByTreeKey.has(treeKey)
+                        || !( panelState.orgDescribeMessagesByTreeKey.get(treeKey)?.diff.objects.length > 0 )
                         || panelState.isRegenerateInFlight ) {
                     return undefined;
                 }
 
-                return { kind: 'regenerateRecipe' };
+                return { kind: 'regenerateRecipe', treeKey: treeKey };
+
+            }
 
             /*
                 Names, not a path, and answered only for a row the CONFIRMED-drawn model marked as a
@@ -3004,8 +3094,8 @@ export class RecipeCockpitService {
             replayMessages.push(panelState.recipeDataMessage);
         }
 
-        if ( panelState.recipeDataMessage && panelState.orgDescribeMessage ) {
-            replayMessages.push(panelState.orgDescribeMessage);
+        if ( panelState.recipeDataMessage ) {
+            replayMessages.push(...panelState.orgDescribeMessagesByTreeKey.values());
         }
 
         if ( panelState.recipeDataMessage && panelState.orgProgressMessage ) {
@@ -4095,7 +4185,7 @@ ${this.buildPaletteCustomProperties()}
     }
     .toolbar input::placeholder { color: var(--sdt-muted); opacity: 1; }
     .toolbar select { padding: 0.3rem; }
-    .toolbar button, .regenerate button {
+    .toolbar button, .treeCompare button {
         padding: 0.3rem 0.6rem;
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
@@ -4103,8 +4193,16 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 4px;
         cursor: pointer;
     }
-    .toolbar button:disabled, .regenerate button:disabled { opacity: 0.6; cursor: default; }
-    .matchCount { margin-bottom: 0.75rem; }
+    .toolbar button:disabled, .treeCompare button:disabled { opacity: 0.6; cursor: default; }
+    .treeCompare { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
+    .treeCompareControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeCompare select {
+        padding: 0.3rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
     .orgStatus {
         border-left: 3px solid var(--sdt-accent);
         padding: 0.3rem 0.6rem;
@@ -4128,39 +4226,17 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.6rem 0.8rem;
         margin-top: 0.75rem;
     }
-    .object {
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 8px;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
-        margin: 0.5rem 0;
-        overflow: hidden;
-    }
-    .objectHeader, .fieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-    .objectHeader { padding: 0.4rem 0.6rem; background-color: var(--sdt-header); }
-    .objectHeader:hover, .field:hover { background-color: var(--sdt-row-hover); }
-    .objectName { font-weight: 600; }
-    .toggle, .sourceLink {
+    .sourceLink {
         background: none;
         border: none;
         padding: 0;
         font: inherit;
-        color: inherit;
+        color: var(--sdt-accent);
+        text-align: left;
         cursor: pointer;
     }
-    .toggle { color: var(--sdt-accent); border-radius: 4px; }
-    .toggle:focus-visible, .sourceLink:focus-visible { outline-offset: -1px; }
-    .sourceLink { color: var(--sdt-accent); text-align: left; }
+    .sourceLink:focus-visible { outline-offset: -1px; }
     .sourceLink:hover { text-decoration: underline; }
-    .objectBody { padding: 0.25rem 0 0.25rem 0; border-top: 1px solid var(--sdt-border); }
-    .field { padding: 0.3rem 0.6rem 0.3rem 2.1rem; }
-    .fieldHeader .fieldType {
-        font-size: 0.85em;
-        padding: 0 0.4rem;
-        color: var(--sdt-chip-text);
-        background-color: var(--sdt-chip-bg);
-        border-radius: 0.6rem;
-    }
     .orgProgress { margin: 0.4rem 0; }
     .diffSummary { margin-top: 0.2rem; }
     .regenerate { margin-top: 0.4rem; }
@@ -4187,7 +4263,6 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-accent);
         border-color: var(--sdt-accent);
     }
-    .classicControls { display: contents; }
     .treeScopeStatus {
         border-left: 3px solid var(--sdt-accent);
         padding: 0.3rem 0.6rem;
@@ -4347,28 +4422,21 @@ ${this.buildPaletteCustomProperties()}
     const DIFF_PICKLIST_VALUES_SHOWN = ${RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN};
     const REGENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL)};
     const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
+    const DESCRIBE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL)};
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
     const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
     const CREATE_MAX_COUNT = ${RECIPE_COCKPIT_CREATE_MAX_COUNT};
 
-    let objectStates = [];
     // WHICH VIEW IS ON SCREEN OUTLIVES A MODEL, SO SWITCHING RUNS DOES NOT THROW THE READER BACK TO THE DEFAULT
     let viewMode = 'trees';
     let treeStates = [];
     let treeScopeKey = null;
     let treesViewElement = null;
-    let classicViewElement = null;
-    let classicControlsElement = null;
     let treeMatchCountElement = null;
     let treeScopeStatusElement = null;
     let viewButtonStates = [];
     let filterQuery = '';
-    let statusFilter = 'all';
-    let matchCountElement = null;
     let runSelectElement = null;
-    let statusFilterElement = null;
-    let orgStatusElement = null;
-    let orgProgressElement = null;
     let renderedRunFolderName = '';
     let renderedSequence = null;
     // THE TREE WHOSE RUN FAKER IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
@@ -4447,42 +4515,6 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function buildFieldRow(objectState, fieldState) {
-
-        const field = fieldState.field;
-        const fieldRowElement = createElement('div', 'field');
-        const fieldHeaderElement = createElement('div', 'fieldHeader');
-
-        fieldHeaderElement.appendChild(buildSourceLink('fieldName', field.fieldApiName, objectState.object.recipeFilePath, field.lineNumber));
-
-        if (field.fieldType) {
-            fieldHeaderElement.appendChild(createElement('span', 'fieldType muted', field.fieldType));
-        }
-
-        if (field.controllingField) {
-            fieldHeaderElement.appendChild(createElement('span', 'controllingField muted', '← controlled by ' + field.controllingField));
-        }
-
-        if (field.isOnlyInRecipeFile) {
-            fieldHeaderElement.appendChild(createElement('span', 'recipeFileOnly muted', 'read from the recipe file'));
-        }
-
-        if (fieldState.diffStatus) {
-            fieldHeaderElement.appendChild(createElement('span', 'diffBadge diff-' + fieldState.diffStatus, DIFF_STATUS_LABELS[fieldState.diffStatus]));
-        }
-
-        fieldRowElement.appendChild(fieldHeaderElement);
-
-        appendDiffDetail(fieldRowElement, fieldState.diff);
-
-        if (field.recipeValue) {
-            fieldRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
-        }
-
-        return fieldRowElement;
-
-    }
-
     function listValues(values) {
 
         const shownValues = values.slice(0, DIFF_PICKLIST_VALUES_SHOWN);
@@ -4513,148 +4545,13 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // ROWS ARE BUILT ON FIRST EXPAND, SO A COLLAPSED OBJECT COSTS ITS HEADER AND NOTHING ELSE
-    function ensureObjectBodyBuilt(objectState) {
-
-        if (objectState.isBodyBuilt) { return; }
-
-        objectState.fieldStates.forEach(function (fieldState) {
-            fieldState.rowElement = buildFieldRow(objectState, fieldState);
-            applyFieldVisibility(fieldState);
-            objectState.bodyElement.appendChild(fieldState.rowElement);
-        });
-
-        objectState.isBodyBuilt = true;
-
-    }
-
-    function applyFieldVisibility(fieldState) {
-
-        if (!fieldState.rowElement) { return; }
-
-        if (fieldState.isMatch) {
-            fieldState.rowElement.classList.remove('hidden');
-        } else {
-            fieldState.rowElement.classList.add('hidden');
-        }
-
-    }
-
-    function setObjectExpanded(objectState, isExpanded) {
-
-        if (isExpanded) {
-            ensureObjectBodyBuilt(objectState);
-            objectState.bodyElement.classList.remove('hidden');
-        } else {
-            objectState.bodyElement.classList.add('hidden');
-        }
-
-        objectState.isExpanded = isExpanded;
-        objectState.toggleElement.textContent = isExpanded ? '▾' : '▸';
-        objectState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-
-    }
-
-    /*
-        A row of an object that was not compared has no status, so it matches no status filter:
-        a row that says nothing about the org is not one the reader asked to see by its status.
-    */
-    function isStatusMatch(fieldState) {
-
-        if (statusFilter === 'all') { return true; }
-        if (statusFilter === 'changed') { return !!fieldState.diffStatus && fieldState.diffStatus !== 'unchanged'; }
-
-        return fieldState.diffStatus === statusFilter;
-
-    }
-
-    /*
-        Narrows fields live, and never hides an OBJECT.
-
-        An object whose name matches keeps all its fields; otherwise only the fields whose name,
-        label, type, controlling field or faker expression match are shown. The status filter
-        narrows either way. An object with no match stays on screen, collapsed and labelled,
-        because hiding it would make a filter look like a truncation -- the reader could not tell
-        "not in the recipe" from "filtered away".
-    */
-    function applyFilter() {
-
-        const isFiltering = !!filterQuery || statusFilter !== 'all';
-
-        let totalFieldCount = 0;
-        let matchingFieldCount = 0;
-        let matchingObjectCount = 0;
-        let autoExpandedObjectCount = 0;
-        let autoExpandedRowCount = 0;
-        let isAutoExpandBudgetSpent = false;
-
-        objectStates.forEach(function (objectState) {
-
-            const isObjectNameMatch = !filterQuery || objectState.objectSearchText.indexOf(filterQuery) !== -1;
-            let objectMatchingFieldCount = 0;
-
-            objectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = (isObjectNameMatch || isFieldTextMatch(fieldState)) && isStatusMatch(fieldState);
-                if (fieldState.isMatch) { objectMatchingFieldCount++; }
-                applyFieldVisibility(fieldState);
-            });
-
-            const objectFieldCount = objectState.fieldStates.length;
-            totalFieldCount += objectFieldCount;
-            matchingFieldCount += objectMatchingFieldCount;
-
-            // AN EMPTY FIND BOX "MATCHES" EVERY NAME, SO UNDER A STATUS FILTER ONLY A MATCHING ROW MAKES A MATCHING OBJECT
-            const isObjectMatch = (isObjectNameMatch && statusFilter === 'all') || objectMatchingFieldCount > 0;
-            if (isObjectMatch) { matchingObjectCount++; }
-
-            if (!isFiltering || (isObjectNameMatch && statusFilter === 'all')) {
-                objectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
-            } else if (objectMatchingFieldCount > 0) {
-                objectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
-            } else {
-                objectState.countElement.textContent = 'no matching fields';
-            }
-
-            // A CLEARED FILTER GIVES BACK WHAT THE READER HAD OPENED, RATHER THAN CLOSING IT ON THEM
-            if (!isFiltering) {
-                setObjectExpanded(objectState, objectState.isExpandedByReader);
-                return;
-            }
-
-            if (objectMatchingFieldCount === 0 || isAutoExpandBudgetSpent) {
-                setObjectExpanded(objectState, false);
-                return;
-            }
-
-            const fitsRowBudget = autoExpandedObjectCount === 0 || autoExpandedRowCount + objectFieldCount <= AUTO_EXPAND_ROW_BUDGET;
-
-            if (autoExpandedObjectCount >= AUTO_EXPAND_OBJECT_LIMIT || !fitsRowBudget) {
-                isAutoExpandBudgetSpent = true;
-                setObjectExpanded(objectState, false);
-                return;
-            }
-
-            autoExpandedObjectCount++;
-            autoExpandedRowCount += objectFieldCount;
-            setObjectExpanded(objectState, true);
-
-        });
-
-        if (!matchCountElement) { return; }
-
-        matchCountElement.textContent = isFiltering
-            ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') + ' · ' + matchingObjectCount + ' of ' + pluralize(objectStates.length, 'object', 'objects')
-            : pluralize(totalFieldCount, 'field', 'fields') + ' · ' + pluralize(objectStates.length, 'object', 'objects');
-
-    }
-
     function renderToolbar(recipe, hasObjects) {
 
         const toolbarElement = createElement('div', 'toolbar');
 
         if (hasObjects) {
 
-            [['trees', 'Recipe Trees'], ['org', 'Data-by-Org'], ['classic', 'Classic list']].forEach(function (viewOption) {
+            [['trees', 'Recipe Trees'], ['org', 'Data-by-Org']].forEach(function (viewOption) {
                 const viewButtonElement = createElement('button', 'viewButton', viewOption[1]);
                 viewButtonElement.addEventListener('click', function () { setViewMode(viewOption[0]); });
                 viewButtonStates.push({ viewMode: viewOption[0], element: viewButtonElement });
@@ -4668,7 +4565,7 @@ ${this.buildPaletteCustomProperties()}
             filterInputElement.value = filterQuery;
             filterInputElement.addEventListener('input', function () {
                 filterQuery = String(filterInputElement.value || '').trim().toLowerCase();
-                applyFiltersForView();
+                applyTreeFilter();
             });
             toolbarElement.appendChild(filterInputElement);
 
@@ -4694,61 +4591,14 @@ ${this.buildPaletteCustomProperties()}
 
         }
 
-        // THE COMPARISON'S CONTROLS BELONG TO THE CLASSIC LIST, AND ARE ON SCREEN ONLY WITH IT
-        classicControlsElement = createElement('span', 'classicControls');
-        toolbarElement.appendChild(classicControlsElement);
-
-        // SHOWN ONCE A COMPARISON IS DRAWN -- BEFORE THAT NO ROW HAS A STATUS TO FILTER BY
-        if (hasObjects) {
-
-            statusFilterElement = createElement('select', 'statusFilter hidden');
-            statusFilterElement.setAttribute('aria-label', 'Show fields by their comparison with the org');
-
-            [['all', 'All fields'], ['changed', 'Changed fields only']].concat(DIFF_STATUSES.map(function (diffStatus) {
-                return [diffStatus, 'Only ' + DIFF_STATUS_LABELS[diffStatus]];
-            })).forEach(function (statusOption) {
-                const statusOptionElement = createElement('option', '', statusOption[1]);
-                statusOptionElement.value = statusOption[0];
-                statusFilterElement.appendChild(statusOptionElement);
-            });
-
-            statusFilterElement.value = statusFilter;
-            statusFilterElement.addEventListener('change', function () {
-                statusFilter = String(statusFilterElement.value || 'all');
-                applyFilter();
-            });
-            classicControlsElement.appendChild(statusFilterElement);
-
-        }
-
-        // THE PANEL ASKS ONLY FOR "A DESCRIBE" -- WHICH OBJECTS, AND IN WHICH ORG, THE HOST DECIDES
-        if (hasObjects) {
-            const describeButtonElement = createElement('button', 'describeInOrg', '${RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL}');
-            describeButtonElement.setAttribute('title', 'Choose an authorized org, describe the objects of this recipe in it, and mark each field with how it compares');
-            describeButtonElement.addEventListener('click', function () {
-                vscodeApi.postMessage({ command: 'selectOrg' });
-            });
-            classicControlsElement.appendChild(describeButtonElement);
-        }
-
         cockpitBodyElement.appendChild(toolbarElement);
-
-        if (hasObjects) {
-            matchCountElement = createElement('div', 'matchCount muted');
-            classicViewElement.appendChild(matchCountElement);
-            orgProgressElement = createElement('div', 'orgProgress muted hidden');
-            classicViewElement.appendChild(orgProgressElement);
-            orgStatusElement = createElement('div', 'orgStatus hidden');
-            classicViewElement.appendChild(orgStatusElement);
-        }
 
     }
 
     /*
-        One lowercased haystack per FIELD, shared by the Classic list and the Structure tab: both
-        draw the same posted field, and the faker expression that dominates it would otherwise be
-        held in the webview twice. The type is matched separately, because each view draws its own
-        (the bare type, or the type with its size), and a match has to be on screen.
+        One lowercased haystack per FIELD, shared by every occurrence of its object a card draws, so
+        the faker expression that dominates it is lowercased and held once. The type is matched
+        separately, as the type with its size the row draws, because a match has to be on screen.
     */
     let fieldSearchTexts = new Map();
 
@@ -4769,91 +4619,13 @@ ${this.buildPaletteCustomProperties()}
         return searchTextOf(fieldState.field).indexOf(filterQuery) !== -1 || fieldState.typeSearchText.indexOf(filterQuery) !== -1;
     }
 
-    function buildFieldState(field, fieldDiff, diffStatus) {
-
-        return {
-            field: field,
-            typeSearchText: String(field.fieldType || '').toLowerCase(),
-            isMatch: true,
-            rowElement: null,
-            diff: fieldDiff,
-            diffStatus: diffStatus
-        };
-
-    }
-
-    function renderObject(object) {
-
-        const objectElement = createElement('div', 'object');
-        const objectHeaderElement = createElement('div', 'objectHeader');
-        const toggleElement = createElement('button', 'toggle', '▸');
-        const bodyElement = createElement('div', 'objectBody hidden');
-
-        const objectState = {
-            object: object,
-            objectSearchText: object.objectApiName.toLowerCase(),
-            fieldStates: object.fields.map(function (field) { return buildFieldState(field, null, null); }),
-            isBodyBuilt: false,
-            isExpanded: false,
-            isExpandedByReader: false,
-            toggleElement: toggleElement,
-            bodyElement: bodyElement,
-            countElement: createElement('span', 'objectCount muted'),
-            orgDescribeElement: createElement('span', 'orgDescribeStatus muted hidden'),
-            diffElement: createElement('span', 'objectDiff hidden')
-        };
-
-        toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
-        toggleElement.addEventListener('click', function () {
-            objectState.isExpandedByReader = !objectState.isExpanded;
-            setObjectExpanded(objectState, objectState.isExpandedByReader);
-        });
-
-        objectHeaderElement.appendChild(toggleElement);
-        objectHeaderElement.appendChild(buildSourceLink('objectName', object.objectApiName, object.recipeFilePath, object.lineNumber));
-
-        if (object.recipeFileName) {
-            objectHeaderElement.appendChild(createElement('span', 'recipeFileName muted', object.recipeFileName));
-        }
-
-        objectHeaderElement.appendChild(objectState.countElement);
-        objectHeaderElement.appendChild(objectState.orgDescribeElement);
-        objectHeaderElement.appendChild(objectState.diffElement);
-
-        objectElement.appendChild(objectHeaderElement);
-        objectElement.appendChild(bodyElement);
-        classicViewElement.appendChild(objectElement);
-
-        objectStates.push(objectState);
-
-    }
-
-    /*
-        A keystroke filters the view on SCREEN. Each view's auto-expand builds rows, and building
-        them into the hidden view would double what a keystroke costs for rows nobody sees; the
-        hidden view is filtered when it is switched to. With an empty find box nothing is
-        auto-expanded, so both are brought back to what the reader had open, and their counts filled.
-    */
-    function applyFiltersForView() {
-
-        if (viewMode === 'classic' || !filterQuery) { applyFilter(); }
-        if (viewMode === 'trees' || !filterQuery) { applyTreeFilter(); }
-
-    }
-
     function setViewMode(nextViewMode) {
 
-        const isSwitching = nextViewMode !== viewMode;
-        viewMode = nextViewMode === 'classic' || nextViewMode === 'org' ? nextViewMode : 'trees';
-
-        if (isSwitching && filterQuery) {
-            if (viewMode === 'classic') { applyFilter(); }
-            if (viewMode === 'trees') { applyTreeFilter(); }
-        }
+        viewMode = nextViewMode === 'org' ? nextViewMode : 'trees';
 
         // THE FIND BOX SEARCHES RECIPES, AND DATA-BY-ORG LISTS NO FIELDS FOR IT TO FIND
-        if (treesViewElement && classicViewElement && classicControlsElement && dataOrgViewElement) {
-            [[treesViewElement, viewMode === 'trees'], [classicViewElement, viewMode === 'classic'], [classicControlsElement, viewMode === 'classic'], [dataOrgViewElement, viewMode === 'org'], [filterInputElement, viewMode !== 'org']].forEach(function (viewPart) {
+        if (treesViewElement && dataOrgViewElement) {
+            [[treesViewElement, viewMode === 'trees'], [dataOrgViewElement, viewMode === 'org'], [filterInputElement, viewMode !== 'org']].forEach(function (viewPart) {
                 if (!viewPart[0]) { return; }
                 if (viewPart[1]) { viewPart[0].classList.remove('hidden'); } else { viewPart[0].classList.add('hidden'); }
             });
@@ -4896,7 +4668,9 @@ ${this.buildPaletteCustomProperties()}
             field: field,
             typeSearchText: String(field.fieldTypeWithSize || field.fieldType || '').toLowerCase(),
             isMatch: true,
-            rowElement: null
+            rowElement: null,
+            diff: null,
+            diffStatus: null
         };
 
     }
@@ -5006,7 +4780,18 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(buildSourceLink('treeFieldSource', '↗ yml', treeObjectState.object.recipeFilePath, field.lineNumber));
         }
 
+        if (fieldState.diffStatus) {
+            fieldHeaderElement.appendChild(createElement('span', 'diffBadge diff-' + fieldState.diffStatus, DIFF_STATUS_LABELS[fieldState.diffStatus]));
+        }
+
         fieldRowElement.appendChild(fieldHeaderElement);
+
+        appendDiffDetail(fieldRowElement, fieldState.diff);
+
+        // THE FIND BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW
+        if (field.recipeValue) {
+            fieldRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
+        }
 
         return fieldRowElement;
 
@@ -5066,7 +4851,9 @@ ${this.buildPaletteCustomProperties()}
             element: objectElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeObjectBody hidden'),
-            countElement: createElement('span', 'treeObjectCount muted')
+            countElement: createElement('span', 'treeObjectCount muted'),
+            orgDescribeElement: createElement('span', 'orgDescribeStatus muted hidden'),
+            diffElement: createElement('span', 'objectDiff hidden')
         };
 
         toggleElement.setAttribute('aria-expanded', 'false');
@@ -5092,6 +4879,8 @@ ${this.buildPaletteCustomProperties()}
         }
 
         objectHeaderElement.appendChild(treeObjectState.countElement);
+        objectHeaderElement.appendChild(treeObjectState.orgDescribeElement);
+        objectHeaderElement.appendChild(treeObjectState.diffElement);
 
         objectElement.appendChild(objectHeaderElement);
         objectElement.appendChild(treeObjectState.bodyElement);
@@ -5114,6 +4903,10 @@ ${this.buildPaletteCustomProperties()}
         const structureElement = createElement('div', 'treeStructure');
 
         tabsElement.setAttribute('role', 'tablist');
+
+        if (treeState.compare) {
+            structureElement.appendChild(treeState.compare.element);
+        }
 
         treeState.objectStates.forEach(function (treeObjectState) {
             structureElement.appendChild(treeObjectState.element);
@@ -5564,8 +5357,15 @@ ${this.buildPaletteCustomProperties()}
             toggleElement: toggleElement,
             scopeElement: scopeElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            matchElement: createElement('span', 'treeMatch muted hidden')
+            matchElement: createElement('span', 'treeMatch muted hidden'),
+            statusFilter: 'all',
+            compare: null
         };
+
+        // A CARD WITH NO OBJECT TO DRAW HAS NOTHING TO COMPARE, AND THE HOST OFFERS IT NO DESCRIBE
+        if (treeState.objectStates.length > 0) {
+            treeState.compare = buildTreeCompareElement(treeState);
+        }
 
         // AN OBJECT AND ITS FIELDS ARE COUNTED ONCE, HOWEVER MANY OCCURRENCES OF IT THE CARD DRAWS
         const objectStatesCounted = treeState.objectStates.filter(function (treeObjectState) { return !treeObjectState.isIteration; });
@@ -5664,7 +5464,7 @@ ${this.buildPaletteCustomProperties()}
         const trees = recipe.trees || [];
 
         if (trees.length === 0) {
-            treesViewElement.appendChild(createElement('div', 'emptyState', 'This run has no relationship trees to show. Its objects are listed in the Classic list.'));
+            treesViewElement.appendChild(createElement('div', 'emptyState', 'This run has no relationship trees to show. Run "Generate Treecipe" again to draw its objects in relationship trees.'));
             return;
         }
 
@@ -5673,19 +5473,36 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The find box across every tree, or across the one the reader scoped it to with 🔍.
+        A row of an object the card's comparison did not cover has no status, so it matches no
+        status filter: a row that says nothing about the org is not one the reader asked to see by
+        its status.
+    */
+    function isStatusMatch(treeState, fieldState) {
 
-        It narrows rows and never hides a CARD: a tree with no match stays on screen, collapsed and
-        labelled "no matches", for the same reason the Classic list keeps an object with none. A
-        card opens only for an object the filter opens, and objects open under the same
-        RECIPE_COCKPIT_AUTO_EXPAND_* limits as the Classic list, so a keystroke's cost is bounded by
-        what it expands, across every tree together.
+        if (treeState.statusFilter === 'all') { return true; }
+        if (treeState.statusFilter === 'changed') { return !!fieldState.diffStatus && fieldState.diffStatus !== 'unchanged'; }
+
+        return fieldState.diffStatus === treeState.statusFilter;
+
+    }
+
+    /*
+        The find box across every tree, or across the one the reader scoped it to with 🔍, and each
+        card's own status filter within that card.
+
+        It narrows rows and never hides a CARD or an OBJECT: a tree or object with no match stays on
+        screen, collapsed and labelled, because hiding it would make a filter look like a truncation
+        -- the reader could not tell "not in the recipe" from "filtered away". A card opens only for
+        an object the filter opens (a card under a status filter stays open: the filter is in it),
+        and objects open under the RECIPE_COCKPIT_AUTO_EXPAND_* limits, so a keystroke's cost is
+        bounded by what it expands, across every tree together.
     */
     function applyTreeFilter() {
 
         if (!treeMatchCountElement) { return; }
 
-        const isFiltering = !!filterQuery;
+        const isTextFiltering = !!filterQuery;
+        const isAnyStatusFiltering = treeStates.some(function (treeState) { return treeState.statusFilter !== 'all'; });
 
         let totalFieldCount = 0;
         let matchingFieldCount = 0;
@@ -5698,15 +5515,18 @@ ${this.buildPaletteCustomProperties()}
         treeStates.forEach(function (treeState) {
 
             const isSearched = treeScopeKey === null || treeState.tree.treeKey === treeScopeKey;
+            const isTreeTextFiltering = isTextFiltering && isSearched;
+            const isStatusFiltering = treeState.statusFilter !== 'all';
+            const isTreeFiltering = isTreeTextFiltering || isStatusFiltering;
             let treeMatchingFieldCount = 0;
 
             treeState.objectStates.forEach(function (treeObjectState) {
 
-                const isObjectNameMatch = !isFiltering || !isSearched || treeObjectState.objectSearchText.indexOf(filterQuery) !== -1;
+                const isObjectNameMatch = !isTreeTextFiltering || treeObjectState.objectSearchText.indexOf(filterQuery) !== -1;
                 let objectMatchingFieldCount = 0;
 
                 treeObjectState.fieldStates.forEach(function (fieldState) {
-                    fieldState.isMatch = isObjectNameMatch || isFieldTextMatch(fieldState);
+                    fieldState.isMatch = (isObjectNameMatch || isFieldTextMatch(fieldState)) && isStatusMatch(treeState, fieldState);
                     if (fieldState.isMatch) { objectMatchingFieldCount++; }
                     applyTreeFieldVisibility(fieldState);
                 });
@@ -5720,7 +5540,7 @@ ${this.buildPaletteCustomProperties()}
                     treeMatchingFieldCount += objectMatchingFieldCount;
                 }
 
-                if (!isFiltering || !isSearched || isObjectNameMatch) {
+                if (!isTreeFiltering || (isObjectNameMatch && !isStatusFiltering)) {
                     treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
                 } else if (objectMatchingFieldCount > 0) {
                     treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
@@ -5733,10 +5553,10 @@ ${this.buildPaletteCustomProperties()}
             if (isSearched) { searchedTreeCount++; }
             if (isSearched && treeMatchingFieldCount > 0) { matchingTreeCount++; }
 
-            // A CLEARED FILTER, OR A TREE OUTSIDE THE SCOPE, GIVES BACK WHAT THE READER HAD OPENED
-            if (!isFiltering || !isSearched) {
-                treeState.matchElement.textContent = isFiltering ? 'not searched' : '';
-                if (isFiltering) { treeState.matchElement.classList.remove('hidden'); } else { treeState.matchElement.classList.add('hidden'); }
+            // A CLEARED FILTER, OR A TREE OUTSIDE THE SCOPE WITH NO STATUS FILTER, GIVES BACK WHAT THE READER HAD OPENED
+            if (!isTreeFiltering) {
+                treeState.matchElement.textContent = isTextFiltering ? 'not searched' : '';
+                if (isTextFiltering) { treeState.matchElement.classList.remove('hidden'); } else { treeState.matchElement.classList.add('hidden'); }
                 setTreeExpanded(treeState, treeState.isExpandedByReader);
                 treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
                 return;
@@ -5770,7 +5590,7 @@ ${this.buildPaletteCustomProperties()}
 
             });
 
-            setTreeExpanded(treeState, isAnyObjectOpened);
+            setTreeExpanded(treeState, isAnyObjectOpened || isStatusFiltering);
 
             // THE ROWS A FILTER OPENED ARE ON THE STRUCTURE TAB, SO A CARD SHOWING A HISTORY TAB SWITCHES TO IT
             if (isAnyObjectOpened && treeState.selectedTab && treeState.selectedTab !== 'structure') {
@@ -5779,7 +5599,7 @@ ${this.buildPaletteCustomProperties()}
 
         });
 
-        treeMatchCountElement.textContent = isFiltering
+        treeMatchCountElement.textContent = isTextFiltering || isAnyStatusFiltering
             ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') + ' · ' + matchingTreeCount + ' of ' + pluralize(searchedTreeCount, 'tree', 'trees')
             : pluralize(totalFieldCount, 'field', 'fields') + ' · ' + pluralize(searchedTreeCount, 'tree', 'trees');
 
@@ -6205,12 +6025,9 @@ ${this.buildPaletteCustomProperties()}
 
         resetPanelState();
         renderedRunFolderName = recipe.selectedRunFolderName;
-        // A NEW MODEL HAS NO COMPARISON, SO A STATUS FILTER LEFT ON WOULD HIDE EVERY ROW OF IT
-        statusFilter = 'all';
 
         const hasObjects = recipe.objects.length > 0;
 
-        classicViewElement = createElement('div', 'classicView');
         treesViewElement = createElement('div', 'treesView');
         dataOrgViewElement = createElement('div', 'dataOrgView');
 
@@ -6227,14 +6044,12 @@ ${this.buildPaletteCustomProperties()}
 
         cockpitBodyElement.appendChild(treesViewElement);
         cockpitBodyElement.appendChild(dataOrgViewElement);
-        cockpitBodyElement.appendChild(classicViewElement);
 
-        recipe.objects.forEach(renderObject);
         renderTrees(recipe);
         renderDataOrgView(recipe);
 
         setViewMode(viewMode);
-        applyFiltersForView();
+        applyTreeFilter();
 
     }
 
@@ -6242,12 +6057,9 @@ ${this.buildPaletteCustomProperties()}
     function resetPanelState() {
 
         cockpitBodyElement.textContent = '';
-        objectStates = [];
         treeStates = [];
         treeScopeKey = null;
         treesViewElement = null;
-        classicViewElement = null;
-        classicControlsElement = null;
         treeMatchCountElement = null;
         treeScopeStatusElement = null;
         viewButtonStates = [];
@@ -6270,11 +6082,7 @@ ${this.buildPaletteCustomProperties()}
         pendingDatasetCountElements = Object.create(null);
         answeredDatasetCounts = Object.create(null);
         fieldSearchTexts = new Map();
-        matchCountElement = null;
         runSelectElement = null;
-        statusFilterElement = null;
-        orgStatusElement = null;
-        orgProgressElement = null;
         renderedSequence = null;
 
     }
@@ -6343,58 +6151,108 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    function findTreeState(treeKey) {
+
+        return treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === treeKey; }) || null;
+
+    }
+
     /*
-        What an org describe said, on the summary line and on each object's header. Drawn only over
-        the model it described: a describe of an earlier run's objects says nothing about these rows.
+        The comparison's controls, at the top of a card's Structure tab: Compare, the status filter
+        (shown once a comparison is drawn -- before that no row has a status to filter by), where a
+        comparison is while it runs, and what it said. Made with the card, because an answer can
+        arrive for a card the reader has since collapsed; attached when the Structure tab is built.
+        The panel names only the TREE -- which objects, and in which org, the host decides.
+    */
+    function buildTreeCompareElement(treeState) {
+
+        const compareElement = createElement('div', 'treeCompare');
+        const controlsElement = createElement('div', 'treeCompareControls');
+        const describeButtonElement = createElement('button', 'describeInOrg', DESCRIBE_ACTION_LABEL);
+        const statusFilterElement = createElement('select', 'statusFilter hidden');
+
+        describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in Data-by-Org (or one you choose), and mark each field with how it compares');
+        describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + treeState.tree.title + ')');
+        describeButtonElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey });
+        });
+
+        statusFilterElement.setAttribute('aria-label', 'Show the fields of ' + treeState.tree.title + ' by their comparison with the org');
+
+        [['all', 'All fields'], ['changed', 'Changed fields only']].concat(DIFF_STATUSES.map(function (diffStatus) {
+            return [diffStatus, 'Only ' + DIFF_STATUS_LABELS[diffStatus]];
+        })).forEach(function (statusOption) {
+            const statusOptionElement = createElement('option', '', statusOption[1]);
+            statusOptionElement.value = statusOption[0];
+            statusFilterElement.appendChild(statusOptionElement);
+        });
+
+        statusFilterElement.value = 'all';
+        statusFilterElement.addEventListener('change', function () {
+            treeState.statusFilter = String(statusFilterElement.value || 'all');
+            applyTreeFilter();
+        });
+
+        controlsElement.appendChild(describeButtonElement);
+        controlsElement.appendChild(statusFilterElement);
+        compareElement.appendChild(controlsElement);
+
+        const compareState = {
+            element: compareElement,
+            statusFilterElement: statusFilterElement,
+            progressElement: createElement('div', 'orgProgress muted hidden'),
+            statusElement: createElement('div', 'orgStatus hidden')
+        };
+
+        compareElement.appendChild(compareState.progressElement);
+        compareElement.appendChild(compareState.statusElement);
+
+        return compareState;
+
+    }
+
+    /*
+        What an org describe said about one card, on its summary line and on each object's header.
+        Drawn only over the model it described: a describe of an earlier run's objects says nothing
+        about these rows.
     */
     function renderOrgDescribe(orgDescribe) {
 
-        if (!orgStatusElement || orgDescribe.renderSequence !== renderedSequence) { return; }
+        if (orgDescribe.renderSequence !== renderedSequence) { return; }
 
-        orgProgressElement.classList.add('hidden');
+        const treeState = findTreeState(orgDescribe.treeKey);
 
-        orgStatusElement.textContent = '';
-        orgStatusElement.appendChild(createElement('div', 'orgDescribeSummary', orgDescribe.summary));
-        orgStatusElement.classList.remove('hidden');
+        if (!treeState || !treeState.compare) { return; }
+
+        const statusElement = treeState.compare.statusElement;
+
+        treeState.compare.progressElement.classList.add('hidden');
+
+        statusElement.textContent = '';
+        statusElement.appendChild(createElement('div', 'orgDescribeSummary', orgDescribe.summary));
+        statusElement.classList.remove('hidden');
 
         if (orgDescribe.isFailure) {
-            orgStatusElement.classList.add('failed');
+            statusElement.classList.add('failed');
         } else {
-            orgStatusElement.classList.remove('failed');
+            statusElement.classList.remove('failed');
         }
 
-        const summariesByObjectApiName = {};
+        // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
+        const summariesByObjectApiName = Object.create(null);
         orgDescribe.objects.forEach(function (objectSummary) {
             summariesByObjectApiName[objectSummary.objectApiName] = objectSummary;
             if (!objectSummary.isDescribed) {
-                orgStatusElement.appendChild(createElement('div', 'orgDescribeFailure', objectSummary.objectApiName + ': ' + objectSummary.failureMessage));
+                statusElement.appendChild(createElement('div', 'orgDescribeFailure', objectSummary.objectApiName + ': ' + objectSummary.failureMessage));
             }
-        });
-
-        objectStates.forEach(function (objectState) {
-
-            const objectSummary = Object.prototype.hasOwnProperty.call(summariesByObjectApiName, objectState.object.objectApiName)
-                ? summariesByObjectApiName[objectState.object.objectApiName]
-                : null;
-
-            if (!objectSummary) {
-                objectState.orgDescribeElement.classList.add('hidden');
-                return;
-            }
-
-            objectState.orgDescribeElement.textContent = objectSummary.isDescribed
-                ? 'org: ' + pluralize(objectSummary.describedFieldCount, 'field', 'fields')
-                : 'not described in the org';
-            objectState.orgDescribeElement.classList.remove('hidden');
-
         });
 
         // A FAILED CONNECTION COMPARED NOTHING, AND REPLACES WHATEVER AN EARLIER COMPARISON SAID
-        applyDiff(orgDescribe.diff, !orgDescribe.isFailure, summariesByObjectApiName);
+        applyTreeDiff(treeState, orgDescribe.diff, !orgDescribe.isFailure, summariesByObjectApiName);
 
         if (orgDescribe.diff.objects.length > 0) {
-            orgStatusElement.appendChild(createElement('div', 'diffSummary', 'Compared ' + pluralize(orgDescribe.diff.objects.length, 'object', 'objects') + ': ' + describeStatusCounts(orgDescribe.diff.statusCounts, true)));
-            orgStatusElement.appendChild(buildRegenerateElement());
+            statusElement.appendChild(createElement('div', 'diffSummary', 'Compared ' + pluralize(orgDescribe.diff.objects.length, 'object', 'objects') + ': ' + describeStatusCounts(orgDescribe.diff.statusCounts, true)));
+            statusElement.appendChild(buildRegenerateElement(treeState));
         }
 
     }
@@ -6409,7 +6267,7 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function buildRegenerateElement() {
+    function buildRegenerateElement(treeState) {
 
         const regenerateElement = createElement('div', 'regenerate');
         const regenerateButtonElement = createElement('button', 'regenerateRecipe', REGENERATE_ACTION_LABEL);
@@ -6418,7 +6276,7 @@ ${this.buildPaletteCustomProperties()}
         regenerateButtonElement.addEventListener('click', function () {
             regenerateButtonElement.disabled = true;
             regenerateButtonElement.textContent = 'Regenerating…';
-            vscodeApi.postMessage({ command: 'regenerateRecipe' });
+            vscodeApi.postMessage({ command: 'regenerateRecipe', treeKey: treeState.tree.treeKey });
         });
 
         regenerateElement.appendChild(regenerateButtonElement);
@@ -6429,29 +6287,32 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        Lays a comparison over the rows already drawn. Every row of a compared object gets a status
-        -- one with no entry in the diff is unchanged, which the host does not post -- a field only
-        the org has becomes a row of its own, and an object that was not compared says so rather
-        than showing statuses it has none of. Rows built from an earlier comparison are rebuilt from
-        this one, so a field only an OLDER org had does not survive into a newer answer.
+        Lays a comparison over one card's rows. Every row of a compared object gets a status -- one
+        with no entry in the diff is unchanged, which the host does not post -- a field only the org
+        has becomes a row of its own (on the object's first occurrence, which is the one the card
+        counts), and an object that was not compared says so rather than showing statuses it has
+        none of. Rows built from an earlier comparison are rebuilt from this one, so a field only an
+        OLDER org had does not survive into a newer answer.
     */
-    function applyDiff(diff, isComparisonShown, summariesByObjectApiName) {
+    function applyTreeDiff(treeState, diff, isComparisonShown, summariesByObjectApiName) {
 
-        const objectDiffsByApiName = {};
+        // KEYED BY OBJECT AND FIELD NAMES FROM FILES, SO NO PROTOTYPE
+        const objectDiffsByApiName = Object.create(null);
         diff.objects.forEach(function (objectDiff) { objectDiffsByApiName[objectDiff.objectApiName] = objectDiff; });
 
-        objectStates.forEach(function (objectState) {
+        treeState.objectStates.forEach(function (treeObjectState) {
 
-            const objectDiff = isComparisonShown && Object.prototype.hasOwnProperty.call(objectDiffsByApiName, objectState.object.objectApiName)
-                ? objectDiffsByApiName[objectState.object.objectApiName]
+            const objectApiName = treeObjectState.object.objectApiName;
+            const objectDiff = isComparisonShown && Object.prototype.hasOwnProperty.call(objectDiffsByApiName, objectApiName)
+                ? objectDiffsByApiName[objectApiName]
                 : null;
 
-            const changedFieldsByApiName = {};
+            const changedFieldsByApiName = Object.create(null);
             (objectDiff ? objectDiff.changedFields : []).forEach(function (fieldDiff) { changedFieldsByApiName[fieldDiff.fieldApiName] = fieldDiff; });
 
-            objectState.fieldStates = objectState.fieldStates.filter(function (fieldState) { return !fieldState.field.isOnlyInOrg; });
+            treeObjectState.fieldStates = treeObjectState.fieldStates.filter(function (fieldState) { return !fieldState.field.isOnlyInOrg; });
 
-            objectState.fieldStates.forEach(function (fieldState) {
+            treeObjectState.fieldStates.forEach(function (fieldState) {
                 const fieldDiff = Object.prototype.hasOwnProperty.call(changedFieldsByApiName, fieldState.field.fieldApiName)
                     ? changedFieldsByApiName[fieldState.field.fieldApiName]
                     : null;
@@ -6459,69 +6320,89 @@ ${this.buildPaletteCustomProperties()}
                 fieldState.diffStatus = objectDiff ? (fieldDiff ? fieldDiff.status : 'unchanged') : null;
             });
 
-            (objectDiff ? objectDiff.changedFields : []).filter(function (fieldDiff) { return fieldDiff.status === 'new-in-org'; }).forEach(function (fieldDiff) {
-                objectState.fieldStates.push(buildFieldState({
-                    fieldApiName: fieldDiff.fieldApiName,
-                    fieldLabel: '',
-                    fieldType: fieldDiff.orgFieldType,
-                    recipeValue: '',
-                    controllingField: '',
-                    isOnlyInRecipeFile: false,
-                    isOnlyInOrg: true
-                }, fieldDiff, fieldDiff.status));
-            });
-
-            if (!isComparisonShown) {
-                objectState.diffElement.classList.add('hidden');
-            } else {
-                objectState.diffElement.textContent = objectDiff ? describeStatusCounts(objectDiff.statusCounts, false) : 'not compared';
-                const objectSummary = Object.prototype.hasOwnProperty.call(summariesByObjectApiName, objectState.object.objectApiName)
-                    ? summariesByObjectApiName[objectState.object.objectApiName]
-                    : null;
-                // THE DESCRIBE'S OWN REASON -- A CANCELLED DESCRIBE IS NOT ONE THE ORG COULD NOT ANSWER
-                objectState.diffElement.setAttribute('title', objectDiff
-                    ? pluralize(objectDiff.uncreateableOrgOnlyFieldCount, 'org field', 'org fields') + ' a recipe cannot write (system and formula fields) are not listed'
-                    : 'Not compared: ' + (objectSummary && objectSummary.failureMessage ? objectSummary.failureMessage : 'this object was not described in the org'));
-                objectState.diffElement.classList.remove('hidden');
+            if (!treeObjectState.isIteration) {
+                (objectDiff ? objectDiff.changedFields : []).filter(function (fieldDiff) { return fieldDiff.status === 'new-in-org'; }).forEach(function (fieldDiff) {
+                    const orgFieldState = buildTreeFieldState({
+                        fieldApiName: fieldDiff.fieldApiName,
+                        fieldLabel: '',
+                        fieldType: fieldDiff.orgFieldType,
+                        fieldTypeWithSize: '',
+                        recipeValue: '',
+                        controllingField: '',
+                        isOnlyInRecipeFile: false,
+                        isOnlyInOrg: true
+                    });
+                    orgFieldState.diff = fieldDiff;
+                    orgFieldState.diffStatus = fieldDiff.status;
+                    treeObjectState.fieldStates.push(orgFieldState);
+                });
             }
 
-            objectState.bodyElement.textContent = '';
-            objectState.isBodyBuilt = false;
+            const objectSummary = isComparisonShown && Object.prototype.hasOwnProperty.call(summariesByObjectApiName, objectApiName)
+                ? summariesByObjectApiName[objectApiName]
+                : null;
 
-            if (objectState.isExpanded) {
-                ensureObjectBodyBuilt(objectState);
+            if (!objectSummary) {
+                treeObjectState.orgDescribeElement.classList.add('hidden');
+            } else {
+                treeObjectState.orgDescribeElement.textContent = objectSummary.isDescribed
+                    ? 'org: ' + pluralize(objectSummary.describedFieldCount, 'field', 'fields')
+                    : 'not described in the org';
+                treeObjectState.orgDescribeElement.classList.remove('hidden');
+            }
+
+            if (!isComparisonShown) {
+                treeObjectState.diffElement.classList.add('hidden');
+            } else {
+                treeObjectState.diffElement.textContent = objectDiff ? describeStatusCounts(objectDiff.statusCounts, false) : 'not compared';
+                // THE DESCRIBE'S OWN REASON -- A CANCELLED DESCRIBE IS NOT ONE THE ORG COULD NOT ANSWER
+                treeObjectState.diffElement.setAttribute('title', objectDiff
+                    ? pluralize(objectDiff.uncreateableOrgOnlyFieldCount, 'org field', 'org fields') + ' a recipe cannot write (system and formula fields) are not listed'
+                    : 'Not compared: ' + (objectSummary && objectSummary.failureMessage ? objectSummary.failureMessage : 'this object was not described in the org'));
+                treeObjectState.diffElement.classList.remove('hidden');
+            }
+
+            treeObjectState.bodyElement.textContent = '';
+            treeObjectState.isBodyBuilt = false;
+
+            if (treeObjectState.isExpanded) {
+                setTreeObjectExpanded(treeObjectState, true);
             }
 
         });
 
-        if (statusFilterElement) {
+        const statusFilterElement = treeState.compare.statusFilterElement;
 
-            if (diff.objects.length > 0 && isComparisonShown) {
-                statusFilterElement.classList.remove('hidden');
-            } else {
-                statusFilterElement.classList.add('hidden');
-                statusFilter = 'all';
-                statusFilterElement.value = 'all';
-            }
-
+        if (diff.objects.length > 0 && isComparisonShown) {
+            statusFilterElement.classList.remove('hidden');
+        } else {
+            statusFilterElement.classList.add('hidden');
+            treeState.statusFilter = 'all';
+            statusFilterElement.value = 'all';
         }
 
-        applyFilter();
+        applyTreeFilter();
 
     }
 
     function renderOrgProgress(orgProgress) {
 
-        if (!orgProgressElement || orgProgress.renderSequence !== renderedSequence) { return; }
+        if (orgProgress.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(orgProgress.treeKey);
+
+        if (!treeState || !treeState.compare) { return; }
+
+        const progressElement = treeState.compare.progressElement;
 
         // AN EMPTY MESSAGE IS A COMPARISON THAT ENDED WITH NO ANSWER TO REPLACE THE LINE
         if (!orgProgress.message) {
-            orgProgressElement.classList.add('hidden');
+            progressElement.classList.add('hidden');
             return;
         }
 
-        orgProgressElement.textContent = orgProgress.message;
-        orgProgressElement.classList.remove('hidden');
+        progressElement.textContent = orgProgress.message;
+        progressElement.classList.remove('hidden');
 
     }
 

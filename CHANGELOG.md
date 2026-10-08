@@ -1,5 +1,30 @@
 # Change Log
 
+## [3.38.0] - The Recipe Cockpit compares each relationship tree with an org, and the Classic list is gone
+
+Closes [#181](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/181), slice 8 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Until this slice the org comparison and **Regenerate recipe** lived only in the Classic list, a second layout of the same run beside the tree cards. They now live in each card's **Structure** tab, and the Classic list is removed.
+
+- **Compare with an org…** is at the top of each card's Structure tab, and describes **that tree's objects only** (the objects of the card that have a recipe, once each).
+  - It uses the org picked in **Data-by-Org**, or the one Data-by-Org remembers for this workspace (looked up in the CLI's local authorizations, which contacts no org). With neither, it asks with the authorized-org quick pick, as before.
+  - The panel posts only the card's tree key (`selectOrg {treeKey}`). The host matches it against `describableObjectApiNamesByTreeKey`, a pending/active allow-list of the confirmed-drawn model (`collectDescribableObjectApiNamesByTreeKey`), and reads the objects from there.
+  - `orgDescribe` and `orgProgress` now carry the `treeKey` they answer. Comparisons are kept per tree, so comparing a second card leaves the first card's answer on screen, and a reloaded document gets every card's comparison back.
+- **Diff badges** (`new in org`, `removed from org`, `type changed`, `picklist changed`, `unchanged`) and their details attach to Structure field rows. A field only the org has is a row of its own on the object's first occurrence in the card. Each object header says how many fields the org described and what changed, or *not compared*.
+- **The status filter works within a card.** It appears in the card once a comparison is drawn, narrows only that card's rows, combines with the find box, and keeps its card open even when nothing matches. A new model resets it.
+- **Regenerate recipe** sits beside the card's comparison with its existing wording and note. It posts the card's tree key, is routed only beside that card's stored comparison, and reloads the run into the cards with that card open on its Structure tab.
+- **Structure rows show the faker expression.** The find box already matched fields by their expression, and with the Classic list gone that match would otherwise have nothing on screen to show for it.
+- **The Classic list is removed:** its view, its rows, its filter, its stylesheet rules and its view button. The view switch is **Recipe Trees · Data-by-Org**. `describableObjectApiNames` and `orgDescribeMessage` are replaced by their per-tree forms, and no message type, allow-list or function serves only the old layout.
+- `RecipeCockpitMetadataDiff` is unchanged.
+
+**Unhappy paths.**
+- A describe that fails for one object marks only that object's rows *not compared*. The card's other objects keep their statuses.
+- Switching run mid-comparison drops the stale answer (the existing `renderSequence` rule, on the host and in the panel).
+- A comparison or progress message naming a card the model does not draw is ignored.
+- A card that was never compared says nothing about an org, rather than *not compared*.
+
+**Tests.** Every existing diff and regenerate test is ported to the cards rather than deleted: the router (`selectOrg` and `regenerateRecipe` by tree key, refused for a tree the model does not offer, for an inherited member name, before the ack and while in flight), the replay of several comparisons, the panel's badges, details, *not compared*, status filter, progress and regenerate in the Structure tab, and the host's describe, cache, connection failure, cancel, run switch and regenerate flows. New: comparisons and status filters stay in their own card, an answer for a collapsed card is drawn when it opens, a regenerate reload opens its card on Structure, and Compare uses the Data-by-Org org (picked, remembered, or the picker when neither is usable). The shared panel harness now drives the Structure tab.
+
 ## [3.37.0] - Create N fake records of one object in a sandbox from the Recipe Cockpit
 
 Closes [#180](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/180), slice 7 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

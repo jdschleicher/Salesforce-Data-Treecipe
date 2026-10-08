@@ -511,6 +511,106 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
+
+        /*
+            Compare with an org… sits in a card's Structure tab and describes in the org Data-by-Org
+            picked, so a reader who chose an org once is not asked again. Only with none picked or
+            remembered does the authorized-org picker open.
+        */
+        describe('Compare with an org… in a card', () => {
+
+            const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
+            let describeObjectsSpy: jest.SpyInstance;
+            let promptSpy: jest.SpyInstance;
+
+            beforeEach(() => {
+
+                describeObjectsSpy = jest.spyOn(SalesforceOrgService, 'describeObjects').mockImplementation(async (orgUsername: string, objectApiNames: string[]) => ({
+                    outcomes: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName, failureMessage: 'NOT_FOUND', wasCached: false })),
+                    wasCancelled: false
+                }));
+                promptSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue({ targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' });
+                jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+                (vscode.window.withProgress as jest.Mock).mockReset();
+                (vscode.window.withProgress as jest.Mock).mockImplementation(async (progressOptions: any, progressTask: Function) => (
+                    progressTask({ report: jest.fn() }, { isCancellationRequested: false })
+                ));
+
+            });
+
+            const describedUsernames = () => describeObjectsSpy.mock.calls.map(describeCall => describeCall[0]);
+
+            it('uses the org picked in Data-by-Org, describes only that card\'s objects, and tags the answer with the card', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+                jest.spyOn(RecipeCockpitService, 'computeCreateReadiness').mockResolvedValue(new Map());
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 1 });
+                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
+
+                expect(promptSpy).not.toHaveBeenCalled();
+                expect(describeObjectsSpy).toHaveBeenCalledTimes(1);
+                expect(describeObjectsSpy.mock.calls[0][0]).toBe('prod@example.com');
+                expect(describeObjectsSpy.mock.calls[0][1]).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+                expect(postedNamed('orgDescribe')).toEqual([expect.objectContaining({ treeKey: ACCOUNT_TREE_KEY, orgLabel: 'prod@example.com' })]);
+
+                await receivedMessageHandler({ command: 'selectOrg', treeKey: 'Lead-ONLY' });
+
+                expect(describeObjectsSpy.mock.calls[1][1]).toEqual(['Lead']);
+                // EACH CARD KEEPS ITS OWN ANSWER, SO A RELOADED DOCUMENT GETS BOTH BACK
+                postedPanelMessages.length = 0;
+                await receivedMessageHandler({ command: 'ready' });
+                expect(postedNamed('orgDescribe').map(orgDescribe => orgDescribe.treeKey)).toEqual([ACCOUNT_TREE_KEY, 'Lead-ONLY']);
+
+            });
+
+            it('given Data-by-Org was not opened, uses the org it remembers for this workspace, connecting to nothing to find it', async () => {
+
+                workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
+                const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
+
+                expect(promptSpy).not.toHaveBeenCalled();
+                expect(describedUsernames()).toEqual([SANDBOX_ORG.username]);
+                // THE DESCRIBE IS HANDED A CONNECTION FACTORY, WHICH THIS SPY NEVER RUNS -- LISTING THE ORGS CONNECTED TO NONE
+                expect(getConnectionSpy).not.toHaveBeenCalled();
+
+            });
+
+            it.each([
+                ['nothing is picked or remembered', undefined, () => undefined],
+                ['the remembered org is no longer authorized', 'gone@example.com', () => undefined],
+                ['the authorized orgs cannot be listed', SANDBOX_ORG.username, () => jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockRejectedValue(new Error('auth files unreadable'))]
+            ])('given %s, asks for an org with the picker', async (_description, rememberedUsername, arrange) => {
+
+                if ( rememberedUsername ) {
+                    workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, rememberedUsername);
+                }
+                arrange();
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
+
+                expect(promptSpy).toHaveBeenCalledTimes(1);
+                expect(describedUsernames()).toEqual(['jd@example.com']);
+
+            });
+
+            it('given a card the rendered model does not have, describes nothing', async () => {
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'selectOrg', treeKey: 'Opportunity-ONLY' });
+
+                expect(promptSpy).not.toHaveBeenCalled();
+                expect(describeObjectsSpy).not.toHaveBeenCalled();
+
+            });
+
+        });
     });
 
     describe('the panel script, Data-by-Org view', () => {
@@ -537,11 +637,11 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             });
         };
 
-        it('joins the view switch between Recipe Trees and the Classic list, and asks for the orgs once, when it is first shown', () => {
+        it('joins the view switch beside Recipe Trees, and asks for the orgs once, when it is first shown', () => {
 
             const { panel } = renderDataOrgPanel();
 
-            expect(textOf(panel, 'viewButton')).toEqual(['Recipe Trees', 'Data-by-Org', 'Classic list']);
+            expect(textOf(panel, 'viewButton')).toEqual(['Recipe Trees', 'Data-by-Org']);
             expect(panel.isHidden(viewOf(panel, 'dataOrgView'))).toBe(true);
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
 
