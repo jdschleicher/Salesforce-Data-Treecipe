@@ -145,6 +145,12 @@ export interface IRecipeObjectLayout {
     propertyLinePattern: RegExp;
 }
 
+export interface IScannedFriendIndex {
+    objectsByHeaderIndex: Map<number, IScannedObject>;
+    // THE OBJECTS WHOSE "- object:" SITS IN THE friends: BLOCK OF THE OBJECT AT THIS HEADER LINE, IN FILE ORDER
+    friendsByParentHeaderIndex: Map<number, IScannedObject[]>;
+}
+
 interface IOpenScannedObject {
     scannedObject: IScannedObject;
     layout: IRecipeObjectLayout;
@@ -519,14 +525,41 @@ export class RecipeCockpitRecipeWriter {
     }
 
     /*
+        The scanned objects by header line and by the friends: block they sit in, built ONCE per scan:
+        listInsertableFriendObjectApiNames runs for every iteration of a recipe at every cockpit load,
+        and walking the whole scan per iteration made a load of a ten-thousand-object recipe take
+        seconds rather than milliseconds.
+    */
+    static buildScannedFriendIndex(scannedObjects: IScannedObject[]): IScannedFriendIndex {
+
+        const objectsByHeaderIndex = new Map<number, IScannedObject>();
+        const friendsByParentHeaderIndex = new Map<number, IScannedObject[]>();
+
+        scannedObjects.forEach(scannedObject => {
+            objectsByHeaderIndex.set(scannedObject.headerIndex, scannedObject);
+            if ( scannedObject.parentHeaderIndex !== undefined ) {
+                const friends = friendsByParentHeaderIndex.get(scannedObject.parentHeaderIndex) ?? [];
+                friends.push(scannedObject);
+                friendsByParentHeaderIndex.set(scannedObject.parentHeaderIndex, friends);
+            }
+        });
+
+        return { objectsByHeaderIndex: objectsByHeaderIndex, friendsByParentHeaderIndex: friendsByParentHeaderIndex };
+
+    }
+
+    /*
         The friends insertFriend would accept for this occurrence, in the order the top occurrence
         lists them: what the Recipe Cockpit's "+" offers, so the panel never offers a friend the
         writer would refuse for a reason the file already shows. Empty for anything that is not a
-        self-lookup iteration.
+        self-lookup iteration. A caller asking for many iterations of one scan passes the index it
+        built once.
     */
-    static listInsertableFriendObjectApiNames(scannedObjects: IScannedObject[], iteration: IScannedObject): string[] {
+    static listInsertableFriendObjectApiNames(scannedObjects: IScannedObject[],
+                                                iteration: IScannedObject,
+                                                friendIndex: IScannedFriendIndex = this.buildScannedFriendIndex(scannedObjects)): string[] {
 
-        const topOccurrence = scannedObjects.find(scannedObject => scannedObject.headerIndex === iteration.parentHeaderIndex);
+        const topOccurrence = iteration.parentHeaderIndex === undefined ? undefined : friendIndex.objectsByHeaderIndex.get(iteration.parentHeaderIndex);
 
         if ( !topOccurrence
                 || topOccurrence.objectApiName !== iteration.objectApiName
@@ -538,38 +571,40 @@ export class RecipeCockpitRecipeWriter {
             return [];
         }
 
-        const countFriendsOf = (parent: IScannedObject) => {
-            const friendCounts = new Map<string, number>();
-            scannedObjects
-                .filter(scannedObject => scannedObject.parentHeaderIndex === parent.headerIndex)
-                .forEach(scannedObject => friendCounts.set(scannedObject.objectApiName, (friendCounts.get(scannedObject.objectApiName) ?? 0) + 1));
-            return friendCounts;
-        };
+        const topFriends = friendIndex.friendsByParentHeaderIndex.get(topOccurrence.headerIndex) ?? [];
+        const iterationFriendApiNames = new Set(( friendIndex.friendsByParentHeaderIndex.get(iteration.headerIndex) ?? [] ).map(friend => friend.objectApiName));
+        const topFriendCounts = new Map<string, number>();
+        topFriends.forEach(friend => topFriendCounts.set(friend.objectApiName, (topFriendCounts.get(friend.objectApiName) ?? 0) + 1));
 
-        const topFriendCounts = countFriendsOf(topOccurrence);
-        const iterationFriendCounts = countFriendsOf(iteration);
+        return topFriends
+            .filter(friend => friend.objectApiName !== iteration.objectApiName
+                                && API_NAME_PATTERN.test(friend.objectApiName)
+                                && topFriendCounts.get(friend.objectApiName) === 1
+                                && !iterationFriendApiNames.has(friend.objectApiName)
+                                && friend.nicknames.length === 1
+                                && friend.propertyLineIndexes.nickname.length === 1
+                                && !!this.buildFriendCopyBaseNickname(friend.nicknames[0]))
+            .map(friend => friend.objectApiName);
 
-        return scannedObjects
-            .filter(scannedObject => scannedObject.parentHeaderIndex === topOccurrence.headerIndex
-                                        && scannedObject.objectApiName !== iteration.objectApiName
-                                        && API_NAME_PATTERN.test(scannedObject.objectApiName)
-                                        && topFriendCounts.get(scannedObject.objectApiName) === 1
-                                        && !iterationFriendCounts.has(scannedObject.objectApiName)
-                                        && scannedObject.nicknames.length === 1
-                                        && scannedObject.propertyLineIndexes.nickname.length === 1
-                                        && !!this.buildFriendCopyNickname(scannedObject.nicknames[0], scannedObjects))
-            .map(scannedObject => scannedObject.objectApiName);
+    }
+
+    // "_NickName" BECOMES "_child_NickName", ANYTHING ELSE GAINS "_child" -- OR undefined WHEN THAT IS NOT A NAME
+    private static buildFriendCopyBaseNickname(sourceNickname: string): string | undefined {
+
+        const baseNickname = /_NickName$/.test(sourceNickname)
+            ? sourceNickname.replace(/_NickName$/, '_child_NickName')
+            : `${sourceNickname}_child`;
+
+        return API_NAME_PATTERN.test(baseNickname) ? baseNickname : undefined;
 
     }
 
     // A NICKNAME NO OCCURRENCE IN THE FILE HOLDS, OR undefined WHEN THE SOURCE'S CANNOT BE MADE INTO ONE
     private static buildFriendCopyNickname(sourceNickname: string, scannedObjects: IScannedObject[]): string | undefined {
 
-        const baseNickname = /_NickName$/.test(sourceNickname)
-            ? sourceNickname.replace(/_NickName$/, '_child_NickName')
-            : `${sourceNickname}_child`;
+        const baseNickname = this.buildFriendCopyBaseNickname(sourceNickname);
 
-        if ( !API_NAME_PATTERN.test(baseNickname) ) {
+        if ( !baseNickname ) {
             return undefined;
         }
 

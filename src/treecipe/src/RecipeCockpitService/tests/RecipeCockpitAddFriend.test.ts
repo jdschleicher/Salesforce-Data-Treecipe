@@ -128,6 +128,27 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
 
         });
 
+        // EACH ITERATION'S LIST USED TO WALK THE WHOLE SCAN: 18 s FOR THIS SHAPE, ABOUT 0.2 s ONCE THE SCAN IS INDEXED ONCE PER PARSE
+        it('reads a recipe of 11,000 objects with 500 self-lookup iterations in linear time', () => {
+
+            const recipeLines: string[] = [];
+            const fieldLines = (indentation: string, lookupLine: string) => [`${indentation}fields:`, `${indentation}  Name: x`, `${indentation}  ${lookupLine}`];
+            for ( let objectIndex = 0; objectIndex < 500; objectIndex++ ) {
+                recipeLines.push(`- object: Obj${objectIndex}__c`, `  nickname: Obj${objectIndex}__c_NickName`, ...fieldLines('  ', 'Parent__c: x'), '  friends:');
+                for ( let friendIndex = 0; friendIndex < 20; friendIndex++ ) {
+                    recipeLines.push(`    - object: Child${objectIndex}_${friendIndex}__c`, `      nickname: Child${objectIndex}_${friendIndex}__c_NickName`, ...fieldLines('      ', `Obj__c: Obj${objectIndex}__c_NickName`));
+                }
+                recipeLines.push(`    - object: Obj${objectIndex}__c`, `      nickname: Obj${objectIndex}__c_child_NickName`, ...fieldLines('      ', `Parent__c: Obj${objectIndex}__c_NickName`));
+            }
+
+            const startedAt = Date.now();
+            const objectEntries = RecipeCockpitService.parseRecipeSource(recipeLines.join('\n'));
+
+            expect(Date.now() - startedAt).toBeLessThan(3000);
+            expect(objectEntries.get('Obj499__c').iterations[0].insertableFriendObjectApiNames).toHaveLength(20);
+
+        });
+
         it('offers nothing for a card that does not list the iteration, nor for a snowfakery recipe, which has none', () => {
 
             const recipeViewModel = loadModel();

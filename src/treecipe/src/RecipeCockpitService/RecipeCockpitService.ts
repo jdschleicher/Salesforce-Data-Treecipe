@@ -4228,7 +4228,8 @@ export class RecipeCockpitService {
         const objectEntries = new Map<string, IRecipeSourceObjectEntry>();
         const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeContent);
         const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(lines);
-        const scannedObjectsByHeaderIndex = new Map(scannedObjects.map(scannedObject => [scannedObject.headerIndex, scannedObject]));
+        const scannedFriendIndex = RecipeCockpitRecipeWriter.buildScannedFriendIndex(scannedObjects);
+        const scannedObjectsByHeaderIndex = scannedFriendIndex.objectsByHeaderIndex;
 
         // "<object>\n<nickname>" -> HOW MANY OCCURRENCES OF THAT OBJECT CARRY THAT NICKNAME
         const occurrenceCountsByNicknameKey = new Map<string, number>();
@@ -4264,7 +4265,7 @@ export class RecipeCockpitService {
             }
 
             const parentScannedObject = scannedObjectsByHeaderIndex.get(scannedObject.parentHeaderIndex);
-            const insertableFriendObjectApiNames = RecipeCockpitRecipeWriter.listInsertableFriendObjectApiNames(scannedObjects, scannedObject);
+            const insertableFriendObjectApiNames = RecipeCockpitRecipeWriter.listInsertableFriendObjectApiNames(scannedObjects, scannedObject, scannedFriendIndex);
             firstObjectEntry.iterations = [...(firstObjectEntry.iterations ?? []), {
                 nickname: nickname,
                 lineNumber: scannedObject.headerIndex + 1,
@@ -5158,6 +5159,7 @@ ${this.buildPaletteCustomProperties()}
                     friendObjectApiName: friendObjectApiName
                 });
             });
+            choiceElement.disabled = isAddFriendRunning;
             addFriendButtonElements.push(choiceElement);
             addFriendsElement.appendChild(choiceElement);
         });
@@ -5165,7 +5167,8 @@ ${this.buildPaletteCustomProperties()}
         addFriendButtonElements.push(addFriendElement);
         objectHeaderElement.appendChild(addFriendElement);
         objectHeaderElement.appendChild(addFriendsElement);
-        setAddFriendRunning(isAddFriendRunning);
+        // ONLY THIS ROW'S BUTTONS -- SETTING EVERY ONE DRAWN SO FAR, PER ROW, IS QUADRATIC IN THE ROWS
+        addFriendElement.disabled = isAddFriendRunning;
 
     }
 
