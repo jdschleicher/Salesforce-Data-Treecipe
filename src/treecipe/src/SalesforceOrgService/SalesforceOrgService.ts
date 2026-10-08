@@ -650,7 +650,7 @@ export class SalesforceOrgService {
             }
         }
 
-        if ( invocationResult.exitCode === null ) {
+        if ( invocationResult.timedOut || invocationResult.exitCode === null ) {
             throw new OrgConnectionStatusUnavailableError(`"sf org list" did not answer within ${SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS / 1000} seconds.`);
         }
 

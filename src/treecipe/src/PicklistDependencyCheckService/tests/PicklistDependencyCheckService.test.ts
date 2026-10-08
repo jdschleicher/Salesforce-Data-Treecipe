@@ -317,6 +317,101 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
     });
 
+    describe('runSalesforceCli timeout', () => {
+
+        // A CLI THAT NEVER ANSWERS: execFile HOLDS ITS CALLBACK, AS IT DOES WHILE A GRANDCHILD KEEPS THE PIPES OPEN
+        const stubHungSalesforceCli = () => {
+
+            const killMock = jest.fn();
+            const execFileSpy = jest.spyOn(childProcess, 'execFile').mockImplementation(((
+                command: string, _args: string[], _options: unknown, callback: (...callbackArguments: unknown[]) => void
+            ) => {
+                if ( command === 'taskkill' ) {
+                    callback(null, '', '');
+                }
+                return { pid: 4242, kill: killMock } as any;
+            }) as any);
+
+            return { execFileSpy, killMock };
+
+        };
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('resolves as timed out when the timeout passes, whatever the pipes are still doing, and kills the child', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            const { killMock } = stubHungSalesforceCli();
+
+            const invocation = PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
+            jest.advanceTimersByTime(60000);
+
+            expect(await invocation).toEqual({ stdout: '', stderr: '', exitCode: null, timedOut: true });
+            expect(killMock).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('on Windows, ends the whole process tree with taskkill rather than killing only cmd.exe', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            const { execFileSpy, killMock } = stubHungSalesforceCli();
+
+            const invocation = PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
+            jest.advanceTimersByTime(60000);
+
+            expect((await invocation).timedOut).toBe(true);
+            const taskkillCall = execFileSpy.mock.calls.find(([command]) => command === 'taskkill');
+            expect(taskkillCall?.[1]).toEqual(['/pid', '4242', '/T', '/F']);
+            expect(taskkillCall?.[2]).not.toHaveProperty('shell');
+            expect(killMock).not.toHaveBeenCalled();
+
+        });
+
+        it('on Windows, a cancellation ends the whole process tree too', () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            const { execFileSpy } = stubHungSalesforceCli();
+
+            let cancel: (() => void) | undefined;
+            void PicklistDependencyCheckService.runSalesforceCli(['apex', 'run', 'test'], killChildProcess => { cancel = killChildProcess; });
+            cancel();
+
+            expect(execFileSpy.mock.calls.filter(([command]) => command === 'taskkill')).toHaveLength(1);
+
+        });
+
+        it('kills nothing when the CLI answers before the timeout, and never marks that answer timed out', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            const { killMock } = stubSalesforceCli({ stdout: '{"status":0}' });
+
+            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json'], undefined, 60000);
+            jest.advanceTimersByTime(60000);
+
+            expect(invocationResult).toEqual({ stdout: '{"status":0}', stderr: '', exitCode: 0, spawnError: undefined });
+            expect(killMock).not.toHaveBeenCalled();
+
+        });
+
+        it('sets no timer at all when no timeout is asked for', async () => {
+
+            const { killMock } = stubHungSalesforceCli();
+
+            void PicklistDependencyCheckService.runSalesforceCli(['apex', 'run', 'test']);
+            jest.advanceTimersByTime(24 * 60 * 60 * 1000);
+
+            expect(killMock).not.toHaveBeenCalled();
+
+        });
+
+    });
+
     it('shouldBoundTheDeployWaitRatherThanUsingTheThirtyThreeMinuteDefault', async () => {
 
         jest.spyOn(fs, 'existsSync').mockReturnValue(true);

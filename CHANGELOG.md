@@ -33,6 +33,10 @@ Every org picker was built from `AuthInfo.listAllAuthorizations()`, which return
     - An expired scratch org the CLI leaves out is still an authorization the check answered, so it does not trigger a re-check.
   - **⟳ could leave Data-by-Org stuck on "counting…".** When ⟳ forgot the selected org (it was no longer connected), every row read "counting…" and the Create controls stayed on screen, because no selection followed. Rows now read "—" with Create hidden, and an answer still on its way for the cleared selection is dropped.
   - **Repeated ⟳ clicks started overlapping `sf org list` processes**, none of them killed. ⟳ is now disabled until the list it asked for arrives, and on the host `refreshConnectedOrgAuthorizations` shares a check already in flight instead of starting a second one.
+  - **On Windows the 60-second timeout did not bound a hung check.** There the CLI runs as `cmd.exe` → `sf.cmd` → `node`. execFile's own `timeout` killed only `cmd.exe`, and its callback then waited on pipes the orphaned `node` still held, so a hung `sf org list` kept the picker busy past the timeout.
+    - `runSalesforceCli` now runs its own timer. When it fires, the call resolves at once as `timedOut`, whatever the pipes are doing.
+    - The whole process tree is killed: `taskkill /pid <pid> /T /F` on Windows, with a numeric pid and constant arguments and no shell, and a plain kill elsewhere. A cancellation of an Apex test run or a deploy kills the tree the same way.
+    - `timedOut` is reported as a timeout even though a killed Windows process exits with code 1.
   - **The CLI's error text was shown unescaped in a warning notification.** It now goes through `RecipeYamlScalar.escapeForNotification`, because a notification renders `[label](command:…)` as a link that runs the command.
 - **Tests:** `SalesforceOrgService` (with an `sf org list --json --verbose` fixture and matching authorization files in `tests/mocks/`), the Data-by-Org suite, `VSCodeWorkspaceService`, `CollectionsApiService`, `ExtensionCommandService`, and `RecipeCockpitConnectedOrgs.test.ts`, which runs all four pickers through one fixture and asserts a single `execFile`.
 

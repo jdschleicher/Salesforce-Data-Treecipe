@@ -529,6 +529,7 @@ describe('SalesforceOrgService', () => {
         it('runs "sf org list --json --verbose" through execFile with no shell and a timeout, never skipping the connection check', async () => {
 
             jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
             answerOrgList();
 
             await SalesforceOrgService.listConnectedOrgAuthorizations();
@@ -537,7 +538,9 @@ describe('SalesforceOrgService', () => {
             const [command, args, options] = (execFile as unknown as jest.Mock).mock.calls[0];
             expect(command).toBe('sf');
             expect(args).toEqual(['org', 'list', '--json', '--verbose']);
-            expect(options).toMatchObject({ shell: false, timeout: SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS });
+            expect(options).toMatchObject({ shell: false });
+            // THE TIMEOUT IS runSalesforceCli'S OWN TIMER, SO IT CAN END THE WHOLE PROCESS TREE ON WINDOWS
+            expect(runSalesforceCliSpy.mock.calls[0][2]).toBe(SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS);
             expect(args).not.toContain('--skip-connection-status');
 
         });
@@ -545,14 +548,15 @@ describe('SalesforceOrgService', () => {
         it('runs sf.cmd on Windows, with the same arguments quoted for its shim', async () => {
 
             jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
             answerOrgList();
 
             await SalesforceOrgService.listConnectedOrgAuthorizations();
 
-            const [command, args, options] = (execFile as unknown as jest.Mock).mock.calls[0];
+            const [command, args] = (execFile as unknown as jest.Mock).mock.calls[0];
             expect(command).toBe('sf.cmd');
             expect(args).toEqual(['"org"', '"list"', '"--json"', '"--verbose"']);
-            expect(options).toMatchObject({ timeout: SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS });
+            expect(runSalesforceCliSpy.mock.calls[0][2]).toBe(SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS);
 
         });
 
@@ -720,6 +724,13 @@ describe('SalesforceOrgService', () => {
 
             expect(() => SalesforceOrgService.parseOrgListInvocation({ stdout: JSON.stringify(payload), stderr: stderr, exitCode: 1 }))
                 .toThrow(expectedMessage);
+
+        });
+
+        it('reports a run the timeout ended as a timeout, though a killed Windows process exits with code 1', () => {
+
+            expect(() => SalesforceOrgService.parseOrgListInvocation({ stdout: '', stderr: '', exitCode: 1, timedOut: true }))
+                .toThrow(`"sf org list" did not answer within ${SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS / 1000} seconds.`);
 
         });
 
