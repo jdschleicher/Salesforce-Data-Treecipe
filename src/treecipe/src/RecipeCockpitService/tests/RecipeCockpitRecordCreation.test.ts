@@ -201,6 +201,19 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
+        it('replaces a lookup whatever case the recipe wrote its key in, as Salesforce reads field names', () => {
+
+            const [assignedRecord] = RecipeCockpitRecordCreation.assignLookupIds(
+                [{ LastName: 'Ng', accountid: 'Account_NickName', REPORTSTOID: 'Contact_NickName' }],
+                [{ fieldApiName: 'AccountId', parentRecordIds: ['001A'] }],
+                ['ReportsToId'],
+                () => 0
+            );
+
+            expect(assignedRecord).toEqual({ LastName: 'Ng', AccountId: '001A' });
+
+        });
+
         it('leaves the records it was handed unchanged', () => {
 
             const handedRecords = JSON.parse(JSON.stringify(generatedRecords));

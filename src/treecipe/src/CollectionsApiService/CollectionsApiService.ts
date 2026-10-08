@@ -14,6 +14,13 @@ export interface IRecordInsertFailure {
     message: string;
 }
 
+// ONE RECORD'S ANSWER FROM THE COLLECTIONS API, AS FAR AS IT IS READ -- EVERY PART OPTIONAL, BECAUSE IT CAME OVER THE NETWORK
+interface IRecordSaveResult {
+    success?: unknown;
+    id?: unknown;
+    errors?: Array<{ statusCode?: unknown; message?: unknown } | null>;
+}
+
 export interface IInsertWithoutRollbackResult {
     createdRecordIds: string[];
     failures: IRecordInsertFailure[];
@@ -290,19 +297,20 @@ export class CollectionsApiService {
         for ( let batchStartIndex = 0; batchStartIndex < records.length; batchStartIndex += this.collectionsApiRecordBatchSizeLimit ) {
 
             const recordsBatch = records.slice(batchStartIndex, batchStartIndex + this.collectionsApiRecordBatchSizeLimit);
-            let batchResults: any[];
+            let batchResults: unknown[];
 
             try {
-                const calloutResults = await this.insertCollectionsApiCallout(recordsBatch, aliasAuthenticationConnection, false, objectApiName);
+                const calloutResults: unknown = await this.insertCollectionsApiCallout(recordsBatch, aliasAuthenticationConnection, false, objectApiName);
                 batchResults = Array.isArray(calloutResults) ? calloutResults : [calloutResults];
             } catch (batchError) {
-                const batchFailureMessage = batchError?.message ?? String(batchError);
+                // THE REQUEST FAILED, NOT NECESSARILY THE RECORDS -- SALESFORCE MAY HAVE SAVED THEM BEFORE THE ANSWER WAS LOST
+                const batchFailureMessage = `The insert request failed, so whether this record was saved is unknown: ${(batchError as { message?: unknown })?.message ?? String(batchError)}`;
                 batchResults = recordsBatch.map(() => ({ success: false, errors: [{ message: batchFailureMessage }] }));
             }
 
             recordsBatch.forEach((_record, batchRecordIndex) => {
 
-                const recordResult = batchResults[batchRecordIndex];
+                const recordResult = batchResults[batchRecordIndex] as IRecordSaveResult | null | undefined;
 
                 if ( recordResult?.success === true && typeof recordResult.id === 'string' ) {
                     createdRecordIds.push(recordResult.id);
@@ -310,7 +318,9 @@ export class CollectionsApiService {
                 }
 
                 const errorMessages = Array.isArray(recordResult?.errors)
-                    ? recordResult.errors.map((recordError: any) => [recordError?.statusCode, recordError?.message].filter(Boolean).join(': ')).filter(Boolean)
+                    ? recordResult.errors
+                        .map(recordError => [recordError?.statusCode, recordError?.message].filter(errorPart => typeof errorPart === 'string' && errorPart).join(': '))
+                        .filter(errorMessage => !!errorMessage)
                     : [];
 
                 failures.push({ recordIndex: batchStartIndex + batchRecordIndex, message: errorMessages.join('; ') || 'no result was returned for this record' });

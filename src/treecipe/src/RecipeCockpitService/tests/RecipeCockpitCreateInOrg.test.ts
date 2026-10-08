@@ -589,7 +589,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
 
-            expect(showWarningMessageSpy).toHaveBeenCalledWith('The selected org changed after qa (qa@example.com.qa) was confirmed, so no Contact records were created.');
+            expect(showWarningMessageSpy).toHaveBeenCalledWith('The org selection changed after qa (qa@example.com.qa) was confirmed (another org was chosen, or the counts or the run were reloaded), so no Contact records were created. Choose + Create again.');
             expect(connection.insertedBatches).toEqual([]);
             expect(datasetFolderNames()).toEqual([]);
 
@@ -691,6 +691,48 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
         });
 
+        it('refuses a Create when the run is reloaded while the dialog is open, even with the same org re-selected', async () => {
+
+            const connection = buildFakeConnection();
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+
+            await openSelectedCockpit(SNOWFAKERY_RUN);
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: SNOWFAKERY_RUN });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                return RECIPE_COCKPIT_CREATE_CONFIRM_LABEL;
+            });
+
+            await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+            expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('The org selection changed after qa (qa@example.com.qa) was confirmed'));
+            expect(connection.insertedBatches).toEqual([]);
+            expect(datasetFolderNames()).toEqual([]);
+
+        });
+
+        it('inserts nothing when the backend generates more records than were confirmed', async () => {
+
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            const tooManyRecords = Array.from({ length: 5 }, (_record, recordIndex) => ({ attributes: { type: 'Contact', referenceId: `Contact_Reference_${recordIndex + 1}` }, LastName: 'x' }));
+            jest.spyOn(ConfigurationService, 'getFakerRecipeProcessorByExtensionConfigSelection').mockReturnValue({
+                generateFakeDataBySelectedRecipeFile: jest.fn().mockResolvedValue('[]'),
+                transformFakerJsonDataToCollectionApiFormattedFilesBySObject: jest.fn().mockReturnValue(new Map([['Contact', { allOrNone: true, records: tooManyRecords }]]))
+            });
+            const connection = buildFakeConnection();
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+
+            await openSelectedCockpit(SNOWFAKERY_RUN);
+            await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+            expect(connection.insertedBatches).toEqual([]);
+            expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({
+                message: 'The snowfakery backend generated 5 Contact records from the cut recipe where 3 were confirmed, so nothing was inserted.'
+            }), 'openRecipeCockpit');
+
+        });
+
         it('reports a backend that generated no records of the object, and inserts nothing', async () => {
 
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
@@ -705,7 +747,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
 
             expect(connection.insertedBatches).toEqual([]);
-            expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'The snowfakery backend generated no Contact records from the cut recipe.' }), 'openRecipeCockpit');
+            expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'The snowfakery backend generated 0 Contact records from the cut recipe where 3 were confirmed, so nothing was inserted.' }), 'openRecipeCockpit');
 
         });
 

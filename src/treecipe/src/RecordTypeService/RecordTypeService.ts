@@ -1,6 +1,7 @@
 
 import { XmlFileProcessor } from '../XMLProcessingService/XmlFileProcessor';
 import { RecordTypeWrapper } from './RecordTypesWrapper';
+import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 
 import * as fs from 'fs';
 import * as xml2js from 'xml2js';
@@ -74,7 +75,14 @@ export class RecordTypeService {
                                             objectApiNames: string[]
                                             ): Promise<any> {
       
-    const joinedObjectNames = objectApiNames.join("','");
+    // EACH NAME IS INTERPOLATED INTO SOQL, SO ONLY AN API NAME IS EVER SENT -- WHATEVER THE CALLER CHECKED
+    const queryableObjectApiNames = objectApiNames.filter(objectApiName => SalesforceApiName.isApiName(objectApiName));
+
+    if ( queryableObjectApiNames.length === 0 ) {
+      return { totalSize: 0, done: true, records: [] };
+    }
+
+    const joinedObjectNames = queryableObjectApiNames.join("','");
     const recordTypeDetail = await conn.query(`
         SELECT Id, 
             SObjectType,

@@ -1237,6 +1237,9 @@ export class RecipeCockpitService {
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.creatableObjectKeys = new Set();
+                    // NOTHING IS ON SCREEN TO DRAW A COUNT IN, SO A SELECTION STILL COUNTING STOPS ASKING THE ORG
+                    panelState.dataOrgSelection = undefined;
+                    panelState.dataOrgRequestSequence++;
                 }
 
                 const renderFailureError = new Error(`The Recipe Cockpit panel could not render the recipe: ${panelAction.failureDescription}`);
@@ -1969,7 +1972,14 @@ export class RecipeCockpitService {
             return;
         }
 
+        /*
+            A new list re-numbers the orgs, so a selection made against the old one is ended rather
+            than left pointing at whatever now sits at its index. The org chosen last is selected
+            again below, by USERNAME.
+        */
         panelState.dataOrgDetails = orgDetails;
+        panelState.dataOrgSelection = undefined;
+        panelState.dataOrgRequestSequence++;
 
         const rememberedUsername = panelState.dataOrgUsername ?? this.readRememberedDataOrgUsername();
         const selectedOrgIndex = rememberedUsername ? orgDetails.findIndex(orgDetail => orgDetail.username === rememberedUsername) : -1;
@@ -2346,13 +2356,17 @@ export class RecipeCockpitService {
             return false;
         }
 
-        const isSameOrgSelected = this.recipeCockpitPanel === cockpitPanel
+        /*
+            The SAME selection, not merely the same org: another org chosen, ⟳, or a reload of the
+            run each start a new one, and the recipe cut and the readiness checked before the dialog
+            belong to the one the reader confirmed.
+        */
+        const isSameSelection = this.recipeCockpitPanel === cockpitPanel
                                     && this.recipeCockpitPanelState === panelState
-                                    && panelState.dataOrgSelection?.orgIndex === dataOrgSelection.orgIndex
-                                    && panelState.dataOrgSelection.orgDetail.username === orgDetail.username;
+                                    && panelState.dataOrgSelection === dataOrgSelection;
 
-        if ( !isSameOrgSelected ) {
-            return refuse(`The selected org changed after ${orgLabel} was confirmed, so no ${objectLabel} records were created.`);
+        if ( !isSameSelection ) {
+            return refuse(`The org selection changed after ${orgLabel} was confirmed (another org was chosen, or the counts or the run were reloaded), so no ${objectLabel} records were created. Choose + Create again.`);
         }
 
         const requiredLookupParentIds: IRequiredLookupParentIds[] = [];
@@ -2383,8 +2397,9 @@ export class RecipeCockpitService {
         const fakerOutput = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(createRecipeFilePath) as string;
         const generatedRecords = fakerRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerOutput).get(objectApiName)?.records ?? [];
 
-        if ( generatedRecords.length === 0 ) {
-            throw new Error(`The ${selectedFakerService} backend generated no ${objectApiName} records from the cut recipe.`);
+        // THE DIALOG SAID N RECORDS: A CUT BLOCK THAT GENERATES MORE OR FEWER OF THIS OBJECT IS NOT WHAT WAS CONFIRMED
+        if ( generatedRecords.length !== recordCount ) {
+            throw new Error(`The ${selectedFakerService} backend generated ${generatedRecords.length} ${objectApiName} ${generatedRecords.length === 1 ? 'record' : 'records'} from the cut recipe where ${recordCount} were confirmed, so nothing was inserted.`);
         }
 
         // THE READINESS CHECK ABOVE DESCRIBED IT, AND A READY OBJECT IS ONE THE CACHE HOLDS

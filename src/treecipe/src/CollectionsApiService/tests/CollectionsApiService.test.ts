@@ -1388,7 +1388,8 @@ describe('insertRecordsWithoutRollback, the Recipe Cockpit Create insert (#180)'
         expect(insertResult.createdRecordIds).toEqual([]);
         expect(insertResult.failures[0]).toEqual({ recordIndex: 0, message: 'no result was returned for this record' });
         expect(insertResult.failures[1]).toEqual({ recordIndex: 1, message: 'no result was returned for this record' });
-        expect(insertResult.failures[200]).toEqual({ recordIndex: 200, message: 'Error importing records: timed out' });
+        // THE REQUEST FAILED, SO THE RECORDS' FATE IS UNKNOWN RATHER THAN A KNOWN FAILURE
+        expect(insertResult.failures[200]).toEqual({ recordIndex: 200, message: 'The insert request failed, so whether this record was saved is unknown: Error importing records: timed out' });
 
     });
 

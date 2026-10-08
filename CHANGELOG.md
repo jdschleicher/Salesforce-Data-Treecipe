@@ -34,6 +34,15 @@ Adding more data for one object in an org meant generating a whole tree's data s
   - **Before any connection:** the dropdown lists only orgs the Salesforce CLI knows are not production (`SalesforceOrgService.listDataOrgDetails`, `isKnownNonProductionAuthorization`): a scratch org, an org the CLI recorded as a sandbox, or one whose instance url is a sandbox's (`<domain>--<name>.sandbox.my.salesforce.com`, or the pre-enhanced-domain `<domain>--<name>.my.salesforce.com`). The url is read too because the CLI records a sandbox only when its production org is authorized as well. Anything else — production, a Developer Edition, an authorization that says nothing — is left out, and the view says how many were (`2 authorized orgs are not listed: …`). With none left, it says no sandbox or scratch org is authorized and how to authorize one. A remembered org that is no longer listed is forgotten.
   - **After connecting:** the Organization row is the deciding answer. An org that answers it is not a sandbox, or cannot say (the query failed), is asked nothing more: no count, no describe, no Create, and the view says why. This replaces 3.36.0's "type unknown, and the counts still load".
   - The Classic list's **Compare with an org…** and **Insert Data Set by Directory** are unchanged.
+- **Fixed in review (PR #199):**
+  - Create inserts only when the backend generated exactly the N records the dialog confirmed. Before this fix, a cut block that nested another `- object:` of the same object could insert more.
+  - After the dialog, Create requires the SAME selection the reader confirmed. Choosing another org, ⟳, or a reload of the run all refuse it, rather than only a change of org.
+  - Re-listing the orgs ends the current selection and selects the remembered org again by username in the new list. Before this fix, ⟳ re-selected by the old index, which could point at another org or nothing.
+  - A failure to draw ends a selection still counting, as `ready` and a new model already did.
+  - Optional lookups are removed, and required ones replaced, whatever case the recipe wrote the key in.
+  - A failed insert request is reported per record as "whether this record was saved is unknown", not as a known failure.
+  - `insertRecordsWithoutRollback` reads results as `unknown`, with no explicit `any`.
+  - `RecordTypeService.getRecordTypeIdsByConnection` now sends only api names into its SOQL, and makes no query when none is left.
 - **The preview warning says the cockpit can write to an org.** Before this slice it described a read-only panel. It now says Data-by-Org's **+ Create** inserts records into the selected org, that Data-by-Org never lists or connects to production, that Create is offered only for an org that reports itself as a sandbox, after a confirmation each time, and never deletes or rolls back.
 - **`checkPackagedPaths.test.js` bundles the current source itself** (the packaging build's own options, into a temporary folder) instead of reading `out/`. It failed on a fresh checkout, where nothing had bundled yet, and would have passed on a stale `out/` that no longer matched the source.
 

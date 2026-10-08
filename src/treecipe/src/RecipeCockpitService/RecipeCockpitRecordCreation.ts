@@ -182,7 +182,12 @@ export class RecipeCockpitRecordCreation {
 
             const assignedRecord: Record<string, unknown> = { ...(record as Record<string, unknown>) };
 
-            clearedFieldApiNames.forEach(fieldApiName => { delete assignedRecord[fieldApiName]; });
+            // SALESFORCE READS FIELD NAMES CASE-INSENSITIVELY, SO "accountid:" IN A HAND-EDITED RECIPE IS AccountId TOO
+            const replacedFieldApiNames = new Set([...clearedFieldApiNames, ...requiredLookupParentIds.map(requiredLookup => requiredLookup.fieldApiName)]
+                .map(fieldApiName => fieldApiName.toLowerCase()));
+            Object.keys(assignedRecord)
+                .filter(recordKey => replacedFieldApiNames.has(recordKey.toLowerCase()))
+                .forEach(recordKey => { delete assignedRecord[recordKey]; });
 
             requiredLookupParentIds.forEach(requiredLookup => {
                 const parentRecordIds = requiredLookup.parentRecordIds;

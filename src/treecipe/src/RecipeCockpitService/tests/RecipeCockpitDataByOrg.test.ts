@@ -22,6 +22,7 @@ import {
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { NO_AUTHORIZED_ORGS_MESSAGE, ORG_TYPE_UNKNOWN_LABEL, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
@@ -429,6 +430,47 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             expect(postedNamed('dataOrgCounts').every(countsMessage => countsMessage.requestSequence === secondRequestSequence)).toBe(true);
             // THE FIRST ORG'S COUNT LOOP STOPPED, SO NO MORE THAN ITS IN-FLIGHT QUERIES WERE EVER SENT
             expect(firstConnection.sentQueries.filter(soql => soql.startsWith('SELECT COUNT()')).length).toBeLessThanOrEqual(TREE_OBJECT_API_NAMES.length);
+
+        });
+
+        it('ends the selection when the org list is reloaded, and selects the same org again by username in the new list', async () => {
+
+            const listSpy = jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, SECOND_ORG], hiddenOrgCount: 0 });
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+
+            // THE CLI'S LIST CHANGED ORDER: INDEX 0 IS NOW ANOTHER ORG
+            listSpy.mockResolvedValue({ orgDetails: [SECOND_ORG, SANDBOX_ORG], hiddenOrgCount: 0 });
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList').at(-1).selectedOrgIndex).toBe(1);
+            expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgIndex: 1, orgLabel: 'qa' });
+
+            getConnectionSpy.mockClear();
+            await receivedMessageHandler({ command: 'refreshDataOrgCounts' });
+
+            expect(getConnectionSpy).toHaveBeenCalledWith(SANDBOX_ORG.username);
+            expect(getConnectionSpy).not.toHaveBeenCalledWith(SECOND_ORG.username);
+
+        });
+
+        it('ends a selection still counting when the panel fails to draw', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            const selection = receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+            await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'boom' });
+            await selection;
+
+            expect(postedNamed('dataOrgCounts')).toEqual([]);
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, (RecipeCockpitService as any).recipeCockpitPanelState)).toBeUndefined();
 
         });
 
