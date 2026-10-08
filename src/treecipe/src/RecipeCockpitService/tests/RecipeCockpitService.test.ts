@@ -1052,7 +1052,9 @@ describe('RecipeCockpitService', () => {
                 fields: [
                     { fieldApiName: 'Name', lineNumber: selfLookupLines.indexOf('        ParentId: Account_NickName'), recipeValue: '${{ faker.company.name() }}' },
                     { fieldApiName: 'ParentId', lineNumber: selfLookupLines.indexOf('        ParentId: Account_NickName') + 1, recipeValue: 'Account_NickName' }
-                ]
+                ],
+                // THE FRIENDS OF THE Account ABOVE IT THAT IT DOES NOT CARRY -- WHAT ITS "+" OFFERS (#197)
+                insertableFriendObjectApiNames: ['Contact']
             }]);
             expect(contactObject).not.toHaveProperty('nickname');
             expect(contactObject).not.toHaveProperty('iterations');

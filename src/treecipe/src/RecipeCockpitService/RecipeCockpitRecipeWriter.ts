@@ -21,10 +21,11 @@
     twice or a second "fields:" block is REFUSED, because either copy could be the one the reader
     meant. The one way to name an occurrence is its NICKNAME: every operation takes an optional
     objectNickname, which is how the nested child iteration a self-lookup adds (#188) is edited
-    apart from the object above it.
+    apart from the object above it. insertFriend (#197) takes that nickname as REQUIRED, since the
+    only object it adds a friend to is such an iteration.
 */
 
-export type RecipeWriterOperation = 'insert-field' | 'replace-field-value' | 'comment-out-field' | 'restore-commented-out-field' | 'set-object-property';
+export type RecipeWriterOperation = 'insert-field' | 'replace-field-value' | 'comment-out-field' | 'restore-commented-out-field' | 'set-object-property' | 'insert-friend';
 
 export type RecipeObjectProperty = 'nickname' | 'count';
 
@@ -45,7 +46,14 @@ export type RecipeWriterRefusalReason =
     | 'unsupported-field-layout'
     | 'commented-out-field-altered'
     | 'property-not-found'
-    | 'duplicate-property';
+    | 'duplicate-property'
+    | 'invalid-friend-object-api-name'
+    | 'not-a-self-lookup-iteration'
+    | 'friend-not-found'
+    | 'duplicate-friend'
+    | 'friend-already-exists'
+    | 'duplicate-friends-block'
+    | 'unsupported-friend-layout';
 
 export interface IRecipeWriterRefusal {
     reason: RecipeWriterRefusalReason;
@@ -54,6 +62,7 @@ export interface IRecipeWriterRefusal {
     objectNickname?: string;
     fieldApiName?: string;
     propertyName?: RecipeObjectProperty;
+    friendObjectApiName?: string;
 }
 
 /*
@@ -67,6 +76,9 @@ export interface IRecipeWriterEdit {
     objectNickname?: string;
     fieldApiName?: string;
     propertyName?: RecipeObjectProperty;
+    friendObjectApiName?: string;
+    // THE NICKNAME insertFriend GAVE THE FRIEND IT ADDED
+    friendNickname?: string;
     startLineNumber: number;
     removedLines: string[];
     insertedLines: string[];
@@ -107,6 +119,7 @@ export interface IScannedObject {
     // THE VALUE OF EVERY "nickname:" LINE, IN ORDER -- WHAT TELLS TWO OCCURRENCES OF ONE OBJECT APART (#188)
     nicknames: string[];
     fieldsLineIndexes: number[];
+    friendsLineIndexes: number[];
     fields: IScannedField[];
     // THE LAST NON-BLANK LINE OF THE FIELDS BLOCK -- A FIELD, A CONTINUATION OR A COMMENT -- WHICH IS WHERE AN INSERT GOES AFTER
     lastFieldsBlockLineIndex: number;
@@ -130,6 +143,12 @@ export interface IRecipeObjectLayout {
     fieldsLinePattern: RegExp;
     friendsLinePattern: RegExp;
     propertyLinePattern: RegExp;
+}
+
+export interface IScannedFriendIndex {
+    objectsByHeaderIndex: Map<number, IScannedObject>;
+    // THE OBJECTS WHOSE "- object:" SITS IN THE friends: BLOCK OF THE OBJECT AT THIS HEADER LINE, IN FILE ORDER
+    friendsByParentHeaderIndex: Map<number, IScannedObject[]>;
 }
 
 interface IOpenScannedObject {
@@ -383,6 +402,271 @@ export class RecipeCockpitRecipeWriter {
     }
 
     /*
+        Adds one of an object's friends beneath the nested child iteration a self-lookup gives it
+        (#188, #197), so child records hang off child records the way the top occurrence's do.
+
+        The friend's block is COPIED from the top occurrence -- the object whose friends: block holds
+        the iteration -- so a hand edit made there is kept, every TODO the generator wrote still says
+        what it said, and nothing is regenerated from metadata. Only its OWN block is copied, as
+        extractObjectBlock cuts it: the friend's own friends: block stays with the original, so the
+        recipe grows by one object per call. The copy moves one friends level deeper and changes in
+        exactly two ways:
+
+          - its nickname, so the reader and the writer can still tell it from every other occurrence
+            of the object: "_NickName" becomes "_child_NickName" (anything else gains "_child"), and
+            "_2", "_3", ... follow while the name is already held anywhere in the file;
+          - every field whose whole value was the TOP occurrence's nickname now holds the
+            iteration's, so its records point at the child records they are generated under. A
+            lookup to any other ancestor still names an ancestor, and any other value -- a TODO, a
+            non-ancestor nickname -- is copied as it is.
+
+        The lines go after the iteration's last line, under its friends: block, which is written
+        first when the iteration has none. The result is read back through scanRecipeObjects, and
+        anything that does not read as exactly one new friend of the iteration is refused rather
+        than written.
+    */
+    static insertFriend(recipeText: string, objectApiName: string, iterationNickname: string, friendObjectApiName: string): RecipeWriterResult {
+
+        const iterationLabel = this.describeObject(objectApiName, iterationNickname);
+        const refuseFriend = (reason: RecipeWriterRefusalReason, message: string): { isApplied: false; refusal: IRecipeWriterRefusal } => ({
+            isApplied: false,
+            refusal: { reason: reason, message: message, objectApiName: objectApiName, objectNickname: iterationNickname, friendObjectApiName: friendObjectApiName }
+        });
+
+        if ( !API_NAME_PATTERN.test(friendObjectApiName) ) {
+            return refuseFriend('invalid-friend-object-api-name', `"${friendObjectApiName}" is not an object api name.`);
+        }
+
+        // REQUIRED HERE, SO A MISSING ONE IS A NICKNAME THAT IS NOT ONE RATHER THAN "ANY OCCURRENCE"
+        if ( typeof iterationNickname !== 'string' || !API_NAME_PATTERN.test(iterationNickname) ) {
+            return refuseFriend('invalid-object-nickname', `"${iterationNickname}" is not a nickname.`);
+        }
+
+        const located = this.locateObject(recipeText, objectApiName, undefined, iterationNickname);
+        if ( 'refusal' in located ) {
+            return { isApplied: false, refusal: { ...located.refusal, friendObjectApiName: friendObjectApiName } };
+        }
+        const { recipeLines, scannedObject: iteration, allScannedObjects } = located;
+
+        const topOccurrence = allScannedObjects.find(scannedObject => scannedObject.headerIndex === iteration.parentHeaderIndex);
+        if ( !topOccurrence || topOccurrence.objectApiName !== objectApiName ) {
+            return refuseFriend('not-a-self-lookup-iteration', `${iterationLabel} is not nested under another ${objectApiName}, so it is not a self-lookup iteration to add a friend to.`);
+        }
+
+        if ( topOccurrence.nicknames.length !== 1 ) {
+            return refuseFriend('unsupported-friend-layout', `The ${objectApiName} ${iterationNickname} is nested under has ${topOccurrence.nicknames.length === 0 ? 'no' : 'more than one'} "nickname:" line, so which lookups point at it cannot be told.`);
+        }
+
+        if ( friendObjectApiName === objectApiName ) {
+            return refuseFriend('friend-not-found', `${objectApiName} is the iteration's own object, which is not added beneath itself.`);
+        }
+
+        const sourceFriends = allScannedObjects.filter(scannedObject => scannedObject.parentHeaderIndex === topOccurrence.headerIndex && scannedObject.objectApiName === friendObjectApiName);
+        if ( sourceFriends.length === 0 ) {
+            return refuseFriend('friend-not-found', `The ${objectApiName} above ${iterationNickname} has no ${friendObjectApiName} under its friends: block to copy.`);
+        }
+        if ( sourceFriends.length > 1 ) {
+            return refuseFriend('duplicate-friend', `The ${objectApiName} above ${iterationNickname} has ${friendObjectApiName} under its friends: block more than once, so which to copy cannot be told.`);
+        }
+        const [sourceFriend] = sourceFriends;
+
+        if ( allScannedObjects.some(scannedObject => scannedObject.parentHeaderIndex === iteration.headerIndex && scannedObject.objectApiName === friendObjectApiName) ) {
+            return refuseFriend('friend-already-exists', `${iterationLabel} already has ${friendObjectApiName} under its friends: block, so it is not added again.`);
+        }
+
+        if ( iteration.friendsLineIndexes.length > 1 ) {
+            return refuseFriend('duplicate-friends-block', `${iterationLabel} has more than one "friends:" line, so which to add to cannot be told.`);
+        }
+
+        if ( sourceFriend.nicknames.length !== 1 || sourceFriend.propertyLineIndexes.nickname.length !== 1 ) {
+            return refuseFriend('unsupported-friend-layout', `The ${friendObjectApiName} to copy has ${sourceFriend.nicknames.length === 0 ? 'no' : 'more than one'} "nickname:" line, so the copy could not be given one of its own.`);
+        }
+
+        const friendNickname = this.buildFriendCopyNickname(sourceFriend.nicknames[0], allScannedObjects);
+        if ( !friendNickname ) {
+            return refuseFriend('unsupported-friend-layout', `The ${friendObjectApiName} to copy has the nickname "${sourceFriend.nicknames[0]}", from which no nickname of letters, digits and underscores could be made for the copy.`);
+        }
+
+        const friendLines = this.buildFriendCopyLines(recipeLines.lines, sourceFriend, topOccurrence.nicknames[0], iterationNickname, friendNickname);
+
+        /*
+            The copy is moved a level deeper by indenting each line the JS split sees, but YAML also
+            breaks at a lone CR -- and PyYAML at U+0085, U+2028 and U+2029 -- so text after one of
+            those would stay at its old column and could leave a block scalar as a field of its own,
+            which the read-back below cannot tell from the original. Such a block is refused.
+        */
+        if ( friendLines.some(friendLine => /[\r\u0085\u2028\u2029]/.test(friendLine)) ) {
+            return refuseFriend('unsupported-friend-layout', `The ${friendObjectApiName} to copy has a line break inside a line (a lone carriage return, or U+0085, U+2028 or U+2029), so it could not be moved a level deeper exactly.`);
+        }
+
+        const iterationLayout = this.getObjectLayout(iteration.objectIndent);
+        const friendIndentation = ' '.repeat(iteration.objectIndent + FRIENDS_INDENT_STEP);
+        const insertedLines = [
+            ...( iteration.friendsLineIndexes.length === 0 ? [`${iterationLayout.propertyIndent}friends:`] : [] ),
+            `${friendIndentation}# ${friendObjectApiName} (Added by the Recipe Cockpit under ${iterationNickname}, copied from the ${friendObjectApiName} under ${topOccurrence.nicknames[0]})`,
+            ...friendLines
+        ];
+        const insertIndex = this.findLastLineIndexOfObject(recipeLines.lines, iteration) + 1;
+
+        const result = this.applySplice(recipeLines, { startIndex: insertIndex, endIndex: insertIndex }, insertedLines, {
+            operation: 'insert-friend',
+            objectApiName: objectApiName,
+            objectNickname: iterationNickname,
+            friendObjectApiName: friendObjectApiName,
+            friendNickname: friendNickname
+        });
+
+        if ( !this.isInsertedFriendReadBack(result.recipeText, allScannedObjects.length, iteration.headerIndex, insertIndex + insertedLines.length - friendLines.length, friendObjectApiName, friendNickname, sourceFriend) ) {
+            return refuseFriend('unsupported-friend-layout', `${iterationLabel}'s block does not end with its friends: block, so a ${friendObjectApiName} added after it would not read back as its friend.`);
+        }
+
+        return result;
+
+    }
+
+    /*
+        The scanned objects by header line and by the friends: block they sit in, built ONCE per scan:
+        listInsertableFriendObjectApiNames runs for every iteration of a recipe at every cockpit load,
+        and walking the whole scan per iteration made a load of a ten-thousand-object recipe take
+        seconds rather than milliseconds.
+    */
+    static buildScannedFriendIndex(scannedObjects: IScannedObject[]): IScannedFriendIndex {
+
+        const objectsByHeaderIndex = new Map<number, IScannedObject>();
+        const friendsByParentHeaderIndex = new Map<number, IScannedObject[]>();
+
+        scannedObjects.forEach(scannedObject => {
+            objectsByHeaderIndex.set(scannedObject.headerIndex, scannedObject);
+            if ( scannedObject.parentHeaderIndex !== undefined ) {
+                const friends = friendsByParentHeaderIndex.get(scannedObject.parentHeaderIndex) ?? [];
+                friends.push(scannedObject);
+                friendsByParentHeaderIndex.set(scannedObject.parentHeaderIndex, friends);
+            }
+        });
+
+        return { objectsByHeaderIndex: objectsByHeaderIndex, friendsByParentHeaderIndex: friendsByParentHeaderIndex };
+
+    }
+
+    /*
+        The friends insertFriend would accept for this occurrence, in the order the top occurrence
+        lists them: what the Recipe Cockpit's "+" offers, so the panel never offers a friend the
+        writer would refuse for a reason the file already shows. Empty for anything that is not a
+        self-lookup iteration. A caller asking for many iterations of one scan passes the index it
+        built once.
+    */
+    static listInsertableFriendObjectApiNames(scannedObjects: IScannedObject[],
+                                                iteration: IScannedObject,
+                                                friendIndex: IScannedFriendIndex = this.buildScannedFriendIndex(scannedObjects)): string[] {
+
+        const topOccurrence = iteration.parentHeaderIndex === undefined ? undefined : friendIndex.objectsByHeaderIndex.get(iteration.parentHeaderIndex);
+
+        if ( !topOccurrence
+                || topOccurrence.objectApiName !== iteration.objectApiName
+                || topOccurrence.nicknames.length !== 1
+                || iteration.nicknames.length !== 1
+                || !API_NAME_PATTERN.test(iteration.objectApiName)
+                || !API_NAME_PATTERN.test(iteration.nicknames[0])
+                || iteration.friendsLineIndexes.length > 1 ) {
+            return [];
+        }
+
+        const topFriends = friendIndex.friendsByParentHeaderIndex.get(topOccurrence.headerIndex) ?? [];
+        const iterationFriendApiNames = new Set(( friendIndex.friendsByParentHeaderIndex.get(iteration.headerIndex) ?? [] ).map(friend => friend.objectApiName));
+        const topFriendCounts = new Map<string, number>();
+        topFriends.forEach(friend => topFriendCounts.set(friend.objectApiName, (topFriendCounts.get(friend.objectApiName) ?? 0) + 1));
+
+        return topFriends
+            .filter(friend => friend.objectApiName !== iteration.objectApiName
+                                && API_NAME_PATTERN.test(friend.objectApiName)
+                                && topFriendCounts.get(friend.objectApiName) === 1
+                                && !iterationFriendApiNames.has(friend.objectApiName)
+                                && friend.nicknames.length === 1
+                                && friend.propertyLineIndexes.nickname.length === 1
+                                && !!this.buildFriendCopyBaseNickname(friend.nicknames[0]))
+            .map(friend => friend.objectApiName);
+
+    }
+
+    // "_NickName" BECOMES "_child_NickName", ANYTHING ELSE GAINS "_child" -- OR undefined WHEN THAT IS NOT A NAME
+    private static buildFriendCopyBaseNickname(sourceNickname: string): string | undefined {
+
+        const baseNickname = /_NickName$/.test(sourceNickname)
+            ? sourceNickname.replace(/_NickName$/, '_child_NickName')
+            : `${sourceNickname}_child`;
+
+        return API_NAME_PATTERN.test(baseNickname) ? baseNickname : undefined;
+
+    }
+
+    // A NICKNAME NO OCCURRENCE IN THE FILE HOLDS, OR undefined WHEN THE SOURCE'S CANNOT BE MADE INTO ONE
+    private static buildFriendCopyNickname(sourceNickname: string, scannedObjects: IScannedObject[]): string | undefined {
+
+        const baseNickname = this.buildFriendCopyBaseNickname(sourceNickname);
+
+        if ( !baseNickname ) {
+            return undefined;
+        }
+
+        const heldNicknames = new Set(scannedObjects.flatMap(scannedObject => scannedObject.nicknames));
+        let candidateNickname = baseNickname;
+
+        for ( let suffix = 2; heldNicknames.has(candidateNickname); suffix++ ) {
+            candidateNickname = `${baseNickname}_${suffix}`;
+        }
+
+        return candidateNickname;
+
+    }
+
+    // THE SOURCE FRIEND'S OWN BLOCK ONE friends LEVEL DEEPER, WITH ITS NICKNAME AND ITS LOOKUPS TO THE TOP OCCURRENCE CHANGED
+    private static buildFriendCopyLines(lines: string[], sourceFriend: IScannedObject, topNickname: string, iterationNickname: string, friendNickname: string): string[] {
+
+        const copyLayout = this.getObjectLayout(sourceFriend.objectIndent + FRIENDS_INDENT_STEP);
+        const sourceLayout = this.getObjectLayout(sourceFriend.objectIndent);
+        const [nicknameLineIndex] = sourceFriend.propertyLineIndexes.nickname;
+        const indentation = ' '.repeat(FRIENDS_INDENT_STEP);
+
+        const rewrittenLinesByIndex = new Map<number, string>([[nicknameLineIndex, `${copyLayout.propertyIndent}nickname: ${friendNickname}`]]);
+
+        sourceFriend.fields
+            .filter(scannedField => scannedField.endIndex === scannedField.startIndex + 1
+                                        && lines[scannedField.startIndex].slice(sourceLayout.fieldIndent.length + scannedField.fieldApiName.length + 1).trim() === topNickname)
+            .forEach(scannedField => rewrittenLinesByIndex.set(scannedField.startIndex, `${copyLayout.fieldIndent}${scannedField.fieldApiName}: ${iterationNickname}`));
+
+        return this.collectOwnBlockLineIndexes(lines, sourceFriend).map(lineIndex => (
+            rewrittenLinesByIndex.get(lineIndex) ?? ( lines[lineIndex] ? `${indentation}${lines[lineIndex]}` : lines[lineIndex] )
+        ));
+
+    }
+
+    /*
+        Whether the patched text reads as before plus exactly one object: the friend, at the header
+        line it was written to, nested under the iteration, with the nickname it was given and the
+        fields it was copied with.
+    */
+    private static isInsertedFriendReadBack(patchedRecipeText: string,
+                                            scannedObjectCount: number,
+                                            iterationHeaderIndex: number,
+                                            friendHeaderIndex: number,
+                                            friendObjectApiName: string,
+                                            friendNickname: string,
+                                            sourceFriend: IScannedObject): boolean {
+
+        const patchedScannedObjects = this.scanRecipeObjects(this.splitRecipeLines(patchedRecipeText).lines);
+        const insertedFriend = patchedScannedObjects.find(scannedObject => scannedObject.headerIndex === friendHeaderIndex);
+
+        return patchedScannedObjects.length === scannedObjectCount + 1
+                && !!insertedFriend
+                && insertedFriend.objectApiName === friendObjectApiName
+                && insertedFriend.parentHeaderIndex === iterationHeaderIndex
+                && insertedFriend.nicknames.length === 1
+                && insertedFriend.nicknames[0] === friendNickname
+                && insertedFriend.fields.map(scannedField => scannedField.fieldApiName).join('\n') === sourceFriend.fields.map(scannedField => scannedField.fieldApiName).join('\n');
+
+    }
+
+    /*
         One object's own block as a recipe of its own, with "count:" set: what the Recipe Cockpit's
         Create runs to make N records of one object (#180).
 
@@ -415,13 +699,37 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const { recipeLines, scannedObject } = located;
+        const blockLines = this.collectOwnBlockLineIndexes(recipeLines.lines, scannedObject).map(lineIndex => recipeLines.lines[lineIndex]);
+
+        const extractedText = [
+            `# Recipe Cockpit -- ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}, cut from the object's own block in its tree's recipe`,
+            '',
+            ...blockLines.map(blockLine => blockLine.slice(Math.min(scannedObject.objectIndent, blockLine.length - blockLine.trimStart().length))),
+            ''
+        ].join('\n');
+
+        const countResult = this.setObjectProperty(extractedText, objectApiName, 'count', recordCount);
+
+        return 'refusal' in countResult
+            ? { isExtracted: false, refusal: countResult.refusal }
+            : { isExtracted: true, recipeText: countResult.recipeText };
+
+    }
+
+    /*
+        The lines of one object's OWN block, by index: its header, its properties and its fields block
+        with every comment in it, and not its friends: block, which belongs to the objects beneath it.
+        Trailing blank lines are the gap before whatever follows, not part of the object.
+    */
+    private static collectOwnBlockLineIndexes(lines: string[], scannedObject: IScannedObject): number[] {
+
         const layout = this.getObjectLayout(scannedObject.objectIndent);
-        const blockLines = [recipeLines.lines[scannedObject.headerIndex]];
+        const blockLineIndexes = [scannedObject.headerIndex];
         let isInFriendsBlock = false;
 
-        for ( let lineIndex = scannedObject.headerIndex + 1; lineIndex < recipeLines.lines.length; lineIndex++ ) {
+        for ( let lineIndex = scannedObject.headerIndex + 1; lineIndex < lines.length; lineIndex++ ) {
 
-            const recipeLine = recipeLines.lines[lineIndex];
+            const recipeLine = lines[lineIndex];
             const isBlank = !recipeLine.trim();
             const lineIndent = recipeLine.length - recipeLine.trimStart().length;
 
@@ -438,27 +746,41 @@ export class RecipeCockpitRecipeWriter {
             isInFriendsBlock = layout.friendsLinePattern.test(recipeLine);
 
             if ( !isInFriendsBlock ) {
-                blockLines.push(recipeLine);
+                blockLineIndexes.push(lineIndex);
             }
 
         }
 
-        while ( blockLines.length > 1 && !blockLines[blockLines.length - 1].trim() ) {
-            blockLines.pop();
+        while ( blockLineIndexes.length > 1 && !lines[blockLineIndexes[blockLineIndexes.length - 1]].trim() ) {
+            blockLineIndexes.pop();
         }
 
-        const extractedText = [
-            `# Recipe Cockpit -- ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}, cut from the object's own block in its tree's recipe`,
-            '',
-            ...blockLines.map(blockLine => blockLine.slice(Math.min(scannedObject.objectIndent, blockLine.length - blockLine.trimStart().length))),
-            ''
-        ].join('\n');
+        return blockLineIndexes;
 
-        const countResult = this.setObjectProperty(extractedText, objectApiName, 'count', recordCount);
+    }
 
-        return 'refusal' in countResult
-            ? { isExtracted: false, refusal: countResult.refusal }
-            : { isExtracted: true, recipeText: countResult.recipeText };
+    // THE LAST NON-BLANK LINE OF THE OBJECT, ITS friends: BLOCK AND EVERYTHING NESTED IN IT INCLUDED
+    private static findLastLineIndexOfObject(lines: string[], scannedObject: IScannedObject): number {
+
+        let lastLineIndex = scannedObject.headerIndex;
+
+        for ( let lineIndex = scannedObject.headerIndex + 1; lineIndex < lines.length; lineIndex++ ) {
+
+            const recipeLine = lines[lineIndex];
+
+            if ( !recipeLine.trim() ) {
+                continue;
+            }
+
+            if ( recipeLine.length - recipeLine.trimStart().length <= scannedObject.objectIndent ) {
+                break;
+            }
+
+            lastLineIndex = lineIndex;
+
+        }
+
+        return lastLineIndex;
 
     }
 
@@ -528,6 +850,7 @@ export class RecipeCockpitRecipeWriter {
                     ...( isFriendHeader ? { parentHeaderIndex: openObjects[parentDepth].scannedObject.headerIndex } : {} ),
                     nicknames: [],
                     fieldsLineIndexes: [],
+                    friendsLineIndexes: [],
                     fields: [],
                     lastFieldsBlockLineIndex: -1,
                     propertyLineIndexes: { nickname: [], count: [] },
@@ -600,6 +923,11 @@ export class RecipeCockpitRecipeWriter {
             if ( openObject.isInFieldsBlock ) {
                 scannedObject.fieldsLineIndexes.push(lineIndex);
                 scannedObject.lastFieldsBlockLineIndex = lineIndex;
+                return;
+            }
+
+            if ( openObject.isInFriendsBlock ) {
+                scannedObject.friendsLineIndexes.push(lineIndex);
                 return;
             }
 
@@ -683,7 +1011,7 @@ export class RecipeCockpitRecipeWriter {
         occurrence carries, it is refused rather than guessed.
     */
     private static locateObject(recipeText: string, objectApiName: string, fieldApiName?: string, objectNickname?: string):
-        { recipeLines: IRecipeLines; scannedObject: IScannedObject } | { isApplied: false; refusal: IRecipeWriterRefusal } {
+        { recipeLines: IRecipeLines; scannedObject: IScannedObject; allScannedObjects: IScannedObject[] } | { isApplied: false; refusal: IRecipeWriterRefusal } {
 
         if ( !API_NAME_PATTERN.test(objectApiName) ) {
             return this.refuse('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName, fieldApiName, objectNickname);
@@ -698,7 +1026,8 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const recipeLines = this.splitRecipeLines(recipeText);
-        const scannedObjects = this.scanRecipeObjects(recipeLines.lines)
+        const allScannedObjects = this.scanRecipeObjects(recipeLines.lines);
+        const scannedObjects = allScannedObjects
             .filter(scannedObject => scannedObject.objectApiName === objectApiName
                                         && ( objectNickname === undefined || scannedObject.nicknames.includes(objectNickname) ));
 
@@ -718,7 +1047,7 @@ export class RecipeCockpitRecipeWriter {
                 objectApiName, fieldApiName, objectNickname);
         }
 
-        return { recipeLines: recipeLines, scannedObject: scannedObjects[0] };
+        return { recipeLines: recipeLines, scannedObject: scannedObjects[0], allScannedObjects: allScannedObjects };
 
     }
 
@@ -823,8 +1152,8 @@ export class RecipeCockpitRecipeWriter {
         recipeLines: IRecipeLines,
         span: ILineSpan,
         newLines: string[],
-        editIdentity: Pick<IRecipeWriterEdit, 'operation' | 'objectApiName' | 'fieldApiName' | 'propertyName'>
-    ): RecipeWriterResult {
+        editIdentity: Omit<IRecipeWriterEdit, 'startLineNumber' | 'removedLines' | 'insertedLines'>
+    ): Extract<RecipeWriterResult, { isApplied: true }> {
 
         const { lines, lineEndings } = recipeLines;
         const defaultLineEnding = lineEndings.find(lineEnding => lineEnding) ?? '\n';
