@@ -190,7 +190,6 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
         expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('could not report which authorized orgs are connected'));
         // A FAILURE IS NOT CACHED: THE SECOND PICKER ASKED THE CLI AGAIN
         expect(execFile).toHaveBeenCalledTimes(2);
-        expect(AuthInfo.listAllAuthorizations).not.toHaveBeenCalled();
 
     });
 

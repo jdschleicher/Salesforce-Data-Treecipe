@@ -1,6 +1,7 @@
 import { AuthInfo, Connection, Org, OrgAuthorization } from '@salesforce/core';
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
 export const NO_AUTHORIZED_ORGS_MESSAGE = 'No authorized Salesforce orgs were found. Authorize one with "sf org login web" and try again.';
 
@@ -167,9 +168,14 @@ export interface IHiddenAuthorizedOrg {
     reason: HiddenOrgReason;
 }
 
-// WHAT ONE "sf org list" ANSWERED, BY USERNAME
+/*
+    What one "sf org list" answered, by username, and which authorizations existed when it was asked.
+    An authorization added since -- "sf org login web" in a terminal, or a scratch org created --
+    is one the answer cannot speak for, so it is asked again rather than reported not connected.
+*/
 export interface IConnectedOrgStatusListing {
     connectionStatesByUsername: Map<string, OrgConnectionState>;
+    checkedAuthorizationUsernames?: Set<string>;
 }
 
 /*
@@ -571,16 +577,48 @@ export class SalesforceOrgService {
 
     }
 
-    // DATA-BY-ORG'S ⟳, AND AN ORG THE EXTENSION JUST CREATED: ASK THE CLI AGAIN AND REPLACE THE CACHED ANSWER
+    /*
+        Data-by-Org's ⟳, and an org the extension just created: ask the CLI again and replace the
+        cached answer. A check already in flight IS a fresh answer, so it is shared rather than
+        joined by a second process -- repeated clicks would otherwise each start an "sf org list"
+        that pings every authorized org, none of them killed.
+    */
     static async refreshConnectedOrgAuthorizations(): Promise<IConnectedOrgStatusListing> {
 
-        this.clearConnectedOrgStatusCache();
+        if ( !this.connectedOrgStatusRequest ) {
+            this.clearConnectedOrgStatusCache();
+        }
 
         return await this.listConnectedOrgAuthorizations();
 
     }
 
+    /*
+        The cached answer, unless it cannot speak for the authorizations in hand: one added after
+        it was asked is checked rather than reported "not connected", which would leave a reader
+        who followed "re-authorize one with sf org login web" looking at the same refusal.
+    */
+    private static async listConnectedOrgStatusForAuthorizations(authorizations: OrgAuthorization[]): Promise<IConnectedOrgStatusListing> {
+
+        const connectedOrgStatusListing = await this.listConnectedOrgAuthorizations();
+        const checkedAuthorizationUsernames = connectedOrgStatusListing.checkedAuthorizationUsernames;
+
+        const hasUncheckedAuthorization = !!checkedAuthorizationUsernames && authorizations.some(authorization => (
+            typeof authorization?.username === 'string'
+            && !!authorization.username
+            && !checkedAuthorizationUsernames.has(authorization.username)
+        ));
+
+        return hasUncheckedAuthorization ? await this.refreshConnectedOrgAuthorizations() : connectedOrgStatusListing;
+
+    }
+
+    // THE AUTHORIZATIONS ARE READ BEFORE THE CLI RUNS, SO ONE ADDED DURING THE CHECK IS NEVER COUNTED AS CHECKED
     private static async runOrgListCommand(): Promise<IConnectedOrgStatusListing> {
+
+        const checkedAuthorizationUsernames = new Set(this.readAuthorizations(await AuthInfo.listAllAuthorizations())
+            .map(authorization => authorization?.username)
+            .filter((username): username is string => typeof username === 'string' && !!username));
 
         const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(
             [...SALESFORCE_CLI_ORG_LIST_ARGUMENTS],
@@ -588,7 +626,13 @@ export class SalesforceOrgService {
             SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS
         );
 
-        return this.parseOrgListInvocation(invocationResult);
+        return { ...this.parseOrgListInvocation(invocationResult), checkedAuthorizationUsernames: checkedAuthorizationUsernames };
+
+    }
+
+    private static readAuthorizations(authorizations: unknown): OrgAuthorization[] {
+
+        return Array.isArray(authorizations) ? authorizations : [];
 
     }
 
@@ -719,7 +763,7 @@ export class SalesforceOrgService {
         const hiddenOrgs: IHiddenAuthorizedOrg[] = [];
         const usableAuthorizations: OrgAuthorization[] = [];
 
-        ( Array.isArray(authorizations) ? authorizations : [] ).forEach(authorization => {
+        this.readAuthorizations(authorizations).forEach(authorization => {
 
             const username = authorization?.username;
 
@@ -797,18 +841,32 @@ export class SalesforceOrgService {
     // THE ORGS DATA-BY-ORG LISTS: ONLY THOSE KNOWN NOT TO BE PRODUCTION AND REPORTED CONNECTED, WITH WHY THE REST ARE NOT
     static async listDataOrgDetails(): Promise<IDataOrgListing> {
 
-        const connectedOrgStatusListing = await this.listConnectedOrgAuthorizations();
-        const connectedOrgListing = this.buildConnectedOrgListing(await AuthInfo.listAllAuthorizations(), connectedOrgStatusListing, true);
+        const authorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        const connectedOrgStatusListing = await this.listConnectedOrgStatusForAuthorizations(authorizations);
+        const connectedOrgListing = this.buildConnectedOrgListing(authorizations, connectedOrgStatusListing, true);
 
         return { ...connectedOrgListing, hiddenOrgCount: this.countHiddenOrgs(connectedOrgListing.hiddenOrgReasonCounts) };
 
     }
 
+    /*
+        The quick-pick commands have no ⟳, so an answer from the cache that leaves them nothing to
+        offer is asked again once: the reader may have re-authorized an org since, which is exactly
+        what the empty-list warning tells them to do.
+    */
     static async listAuthorizedOrgDetails(): Promise<IConnectedOrgListing> {
 
-        const connectedOrgStatusListing = await this.listConnectedOrgAuthorizations();
+        const authorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        const cachedOrgStatusListing = this.connectedOrgStatusCache;
+        const connectedOrgStatusListing = await this.listConnectedOrgStatusForAuthorizations(authorizations);
+        const connectedOrgListing = this.buildConnectedOrgListing(authorizations, connectedOrgStatusListing, false);
+        const wasAnsweredFromCache = cachedOrgStatusListing !== undefined && connectedOrgStatusListing === cachedOrgStatusListing;
 
-        return this.buildConnectedOrgListing(await AuthInfo.listAllAuthorizations(), connectedOrgStatusListing, false);
+        if ( wasAnsweredFromCache && connectedOrgListing.orgDetails.length === 0 && connectedOrgListing.hiddenOrgs.length > 0 ) {
+            return this.buildConnectedOrgListing(authorizations, await this.refreshConnectedOrgAuthorizations(), false);
+        }
+
+        return connectedOrgListing;
 
     }
 
@@ -833,12 +891,16 @@ export class SalesforceOrgService {
 
         } catch (listError) {
 
-            return {
-                orgDetails: [],
-                emptyListMessage: listError instanceof OrgConnectionStatusUnavailableError
-                    ? listError.message
-                    : `The authorized Salesforce orgs could not be listed: ${(listError as Error)?.message ?? listError}`
-            };
+            /*
+                The reason is the CLI's own text -- its JSON message, stderr or a spawn error -- and a
+                notification renders [label](command:...) as a link that RUNS the command, so it is
+                escaped like any other text this extension does not author.
+            */
+            const failureReason = RecipeYamlScalar.escapeForNotification(listError instanceof OrgConnectionStatusUnavailableError
+                ? listError.message
+                : `The authorized Salesforce orgs could not be listed: ${(listError as Error)?.message ?? listError}`);
+
+            return { orgDetails: [], emptyListMessage: failureReason };
 
         }
 

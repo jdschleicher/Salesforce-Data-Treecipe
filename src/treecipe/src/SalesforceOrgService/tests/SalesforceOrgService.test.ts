@@ -509,7 +509,9 @@ describe('SalesforceOrgService', () => {
 
             expect(pickerListing.orgDetails).toEqual([]);
             expect(pickerListing.emptyListMessage).toContain('could not report which authorized orgs are connected, so no org is listed');
-            expect(pickerListing.emptyListMessage).toContain('The Salesforce CLI ("sf") is not installed or not on PATH');
+            // THE CLI'S OWN TEXT IS ESCAPED: A NOTIFICATION RENDERS [label](command:...) AS A LINK THAT RUNS IT
+            expect(pickerListing.emptyListMessage).toContain('The Salesforce CLI \\u0028"sf"\\u0029 is not installed or not on PATH');
+            expect(pickerListing.emptyListMessage).not.toMatch(/[[\]()]/);
 
         });
 
@@ -703,7 +705,6 @@ describe('SalesforceOrgService', () => {
             await expect(failedListing).rejects.toThrow(OrgConnectionStatusUnavailableError);
             await expect(failedListing).rejects.toThrow(expectedMessage);
             expect(SalesforceOrgService.isConnectedOrgStatusCached()).toBe(false);
-            expect(AuthInfo.listAllAuthorizations).not.toHaveBeenCalled();
 
             answerOrgList();
             expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
@@ -751,6 +752,70 @@ describe('SalesforceOrgService', () => {
                 orgDetails: [],
                 emptyListMessage: 'The authorized Salesforce orgs could not be listed: auth files unreadable'
             });
+
+        });
+
+        it('asks again when an authorization was added after the cached check, and only then', async () => {
+
+            answerOrgList();
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(ORG_AUTHORIZATIONS);
+            await SalesforceOrgService.listAuthorizedOrgDetails();
+            await SalesforceOrgService.listDataOrgDetails();
+            expect(execFile).toHaveBeenCalledTimes(1);
+
+            const newlyAuthorizedOrg = { username: 'new@example.com.qa', aliases: ['newqa'], orgId: '00D7', oauthMethod: 'web', configs: null, isExpired: false, isSandbox: true };
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([...ORG_AUTHORIZATIONS, newlyAuthorizedOrg]);
+            answerOrgList({ stdout: buildOrgListStdout({
+                ...JSON.parse(SF_ORG_LIST_STDOUT).result,
+                nonScratchOrgs: [...JSON.parse(SF_ORG_LIST_STDOUT).result.nonScratchOrgs, { username: 'new@example.com.qa', connectedStatus: 'Connected' }]
+            }) });
+
+            expect((await SalesforceOrgService.listAuthorizedOrgDetails()).orgDetails.map(orgDetail => orgDetail.username)).toContain('new@example.com.qa');
+            await SalesforceOrgService.listDataOrgDetails();
+
+            expect(execFile).toHaveBeenCalledTimes(2);
+
+        });
+
+        it('asks again once when a cached answer leaves a quick pick nothing to offer, as after "sf org login web"', async () => {
+
+            const disconnectedOrgList = buildOrgListStdout({ nonScratchOrgs: [{ username: 'qa@example.com.qa', connectedStatus: 'RefreshTokenAuthError' }] });
+            answerOrgList({ stdout: disconnectedOrgList });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([ORG_AUTHORIZATIONS[0]]);
+
+            expect((await SalesforceOrgService.listAuthorizedOrgDetails()).orgDetails).toEqual([]);
+            expect(execFile).toHaveBeenCalledTimes(1);
+
+            answerOrgList({ stdout: buildOrgListStdout({ nonScratchOrgs: [{ username: 'qa@example.com.qa', connectedStatus: 'Connected' }] }) });
+
+            expect((await SalesforceOrgService.listAuthorizedOrgDetails()).orgDetails).toEqual([CONNECTED_SANDBOX]);
+            expect(execFile).toHaveBeenCalledTimes(2);
+
+        });
+
+        it('does not ask again for an authorization the cached check already answered, an expired scratch org the CLI leaves out included', async () => {
+
+            answerOrgList({ stdout: buildOrgListStdout({ nonScratchOrgs: [{ username: 'qa@example.com.qa', connectedStatus: 'Connected' }] }) });
+
+            await SalesforceOrgService.listDataOrgDetails();
+            await SalesforceOrgService.listDataOrgDetails();
+            await SalesforceOrgService.listAuthorizedOrgDetails();
+
+            expect(execFile).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('shares a check already in flight with a refresh, rather than starting a second process', async () => {
+
+            answerOrgList();
+
+            const [listing, refreshedListing] = await Promise.all([
+                SalesforceOrgService.listConnectedOrgAuthorizations(),
+                SalesforceOrgService.refreshConnectedOrgAuthorizations()
+            ]);
+
+            expect(execFile).toHaveBeenCalledTimes(1);
+            expect(refreshedListing).toBe(listing);
 
         });
 

@@ -846,6 +846,38 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
+        it('disables ⟳ while the check is out, and enables it again with the list it asked for', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
+
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            expect(viewOf(panel, 'dataOrgRefresh').disabled).toBe(true);
+
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
+            expect(viewOf(panel, 'dataOrgRefresh').disabled).toBe(false);
+
+        });
+
+        it('after a ⟳ that forgets the org, reads "—" rather than "counting…", hides Create, and draws nothing more of the old selection', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            postSelectionAndCounts(panel, 1, 5);
+
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, forgottenOrgNotice: 'The last org used, qa, is no longer connected.', hiddenOrgNote: '', renderSequence: 1 });
+
+            expect(textOf(panel, 'dataObjectCount')).toEqual(['—', '—', '—', '—']);
+            expect(textOf(panel, 'dataTreeCount').join(' ')).not.toContain('counting…');
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreateControls').every((controlsElement: any) => panel.isHidden(controlsElement))).toBe(true);
+
+            // AN ANSWER STILL ON ITS WAY FOR THE CLEARED SELECTION IS DROPPED
+            postSelectionAndCounts(panel, 1, 999);
+            expect(textOf(panel, 'dataObjectCount')).toEqual(['—', '—', '—', '—']);
+
+        });
+
         it('asks again for the next model drawn while Data-by-Org is on screen', () => {
 
             const { panel, recipe } = renderDataOrgPanel();

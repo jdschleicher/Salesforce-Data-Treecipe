@@ -4462,6 +4462,8 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgRequestedSequence = null;
     // THE LATEST SELECTION THE HOST NAMED; COUNTS FOR ANY OTHER ARE A DIFFERENT ORG'S, OR AN OLDER ASK OF THIS ONE
     let dataOrgRequestSequence = null;
+    // THE LAST SELECTION CLEARED BY A RE-LISTING: NOTHING AT OR BELOW IT IS DRAWN AGAIN
+    let dataOrgClearedRequestSequence = null;
     // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgCountsByObject = Object.create(null);
     let dataObjectStates = [];
@@ -6194,6 +6196,7 @@ ${this.buildPaletteCustomProperties()}
         clearDataOrgSelection();
         // ⟳ IS HOW A READER WHO JUST RE-AUTHORIZED AN ORG SEES IT LISTED, SO IT STAYS EVEN WITH NOTHING LISTED
         dataOrgRefreshElement.classList.remove('hidden');
+        dataOrgRefreshElement.disabled = false;
 
         // PRODUCTION AND ORGS THE CLI DOES NOT REPORT CONNECTED ARE NEVER LISTED, AND THE READER IS TOLD WHY ONE THEY AUTHORIZED IS MISSING
         const hiddenNoteText = [dataOrgList.forgottenOrgNotice || '', dataOrgList.hiddenOrgNote || ''].filter(Boolean).join(' ');
@@ -6225,6 +6228,15 @@ ${this.buildPaletteCustomProperties()}
     // NO ORG IS SELECTED WHILE THE ORGS ARE BEING LISTED AGAIN, SO NOTHING FROM THE LAST ONE STAYS ON SCREEN
     function clearDataOrgSelection() {
 
+        /*
+            With no selection, a row reads "—" rather than "counting…", and Create is hidden: a
+            re-listing that forgot the org posts no selection after it. The sequence it cleared is
+            kept, so an answer still on its way for that selection is not drawn back in.
+        */
+        if (dataOrgRequestSequence !== null) {
+            dataOrgClearedRequestSequence = Math.max(dataOrgClearedRequestSequence === null ? 0 : dataOrgClearedRequestSequence, dataOrgRequestSequence);
+        }
+        dataOrgRequestSequence = null;
         dataOrgSelectedIndex = null;
         dataOrgCountsByObject = Object.create(null);
         dataOrgReadinessByObject = Object.create(null);
@@ -6240,6 +6252,8 @@ ${this.buildPaletteCustomProperties()}
 
         dataOrgSelectElement.classList.add('hidden');
         dataOrgHiddenNoteElement.classList.add('hidden');
+        // ONE CHECK AT A TIME: ⟳ COMES BACK WITH THE LIST IT ASKED FOR
+        dataOrgRefreshElement.disabled = true;
         clearDataOrgSelection();
         setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
 
@@ -6249,6 +6263,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (!dataOrgSelectElement || dataOrgSelection.renderSequence !== renderedSequence) { return; }
         if (dataOrgRequestSequence !== null && dataOrgSelection.requestSequence < dataOrgRequestSequence) { return; }
+        if (dataOrgClearedRequestSequence !== null && dataOrgSelection.requestSequence <= dataOrgClearedRequestSequence) { return; }
 
         // A NEW SELECTION, OR A REFRESH OF THIS ONE, STARTS FROM NO COUNTS
         if (dataOrgSelection.requestSequence !== dataOrgRequestSequence) {
@@ -6361,6 +6376,7 @@ ${this.buildPaletteCustomProperties()}
         dataTreeStates = [];
         dataOrgRequestedSequence = null;
         dataOrgRequestSequence = null;
+        dataOrgClearedRequestSequence = null;
         dataOrgCountsByObject = Object.create(null);
         dataObjectStates = [];
         dataOrgSelectedIndex = null;

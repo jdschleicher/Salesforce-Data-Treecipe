@@ -26,6 +26,14 @@ Every org picker was built from `AuthInfo.listAllAuthorizations()`, which return
   - The list in hand is dropped before each check, so no org can be selected or created in while one is out. A new model, a `ready` or a later listing discards a stale answer.
 - **Nothing logs out of, deletes or changes an org.** The only argv sent is `org list --json --verbose`.
 - **Removed:** `VSCodeWorkspaceService.promptForAuthenticatedTargetOrg`, `promptForAuthenticatedOrgDetail` and `promptForUserInput`. Their only callers now go through `SalesforceOrgService.promptForAuthorizedOrg`.
+- **Fixed in review (PR #202):**
+  - **A newly authorized org was hidden for the rest of the session.** The cached answer read any authorization added after it as `not connected`, so following the warning's own advice (`sf org login web`, then try again) changed nothing.
+    - The cache now records which authorizations existed when the CLI was asked (read before it runs), and an authorization added since causes the CLI to be asked again.
+    - The quick-pick commands, which have no ⟳, also ask again once when a cached answer leaves them nothing to offer.
+    - An expired scratch org the CLI leaves out is still an authorization the check answered, so it does not trigger a re-check.
+  - **⟳ could leave Data-by-Org stuck on "counting…".** When ⟳ forgot the selected org (it was no longer connected), every row read "counting…" and the Create controls stayed on screen, because no selection followed. Rows now read "—" with Create hidden, and an answer still on its way for the cleared selection is dropped.
+  - **Repeated ⟳ clicks started overlapping `sf org list` processes**, none of them killed. ⟳ is now disabled until the list it asked for arrives, and on the host `refreshConnectedOrgAuthorizations` shares a check already in flight instead of starting a second one.
+  - **The CLI's error text was shown unescaped in a warning notification.** It now goes through `RecipeYamlScalar.escapeForNotification`, because a notification renders `[label](command:…)` as a link that runs the command.
 - **Tests:** `SalesforceOrgService` (with an `sf org list --json --verbose` fixture and matching authorization files in `tests/mocks/`), the Data-by-Org suite, `VSCodeWorkspaceService`, `CollectionsApiService`, `ExtensionCommandService`, and `RecipeCockpitConnectedOrgs.test.ts`, which runs all four pickers through one fixture and asserts a single `execFile`.
 
 ## [3.37.0] - Create N fake records of one object in a sandbox from the Recipe Cockpit
