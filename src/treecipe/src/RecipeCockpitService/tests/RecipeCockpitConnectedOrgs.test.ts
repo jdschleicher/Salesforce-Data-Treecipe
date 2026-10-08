@@ -138,7 +138,9 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
         await openRenderedCockpit();
 
         await receivedMessageHandler({ command: 'loadDataOrgs' });
-        await receivedMessageHandler({ command: 'selectOrg' });
+        // COMPARE IS PER TREE CARD; "Choose another org…" ALWAYS OPENS THE PICKER
+        const firstTreeKey = postedNamed('recipeData').at(-1).recipe.trees[0].treeKey;
+        await receivedMessageHandler({ command: 'selectOrg', treeKey: firstTreeKey, chooseOrg: true });
         await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
         await (new ExtensionCommandService() as any).promptForPicklistDependencyTargetOrg();
 

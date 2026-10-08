@@ -90,9 +90,11 @@ export function runPanelScript() {
 
     const isHidden = (element: any) => element.classList.contains('hidden');
 
-    const objectElements = () => findAll(cockpitBodyElement, 'object');
+    // THE STRUCTURE TAB'S OBJECTS, OF EVERY CARD WHOSE BODY IS BUILT -- A COLLAPSED CARD HAS NOT ATTACHED ITS OBJECTS YET
+    const objectElements = () => findAll(cockpitBodyElement, 'treeObject');
     const objectHeaderOf = (objectElement: any) => objectElement.children[0];
     const objectBodyOf = (objectElement: any) => objectElement.children[1];
+    const treeCards = () => findAll(cockpitBodyElement, 'treeCard');
 
     return {
         postedHostMessages,
@@ -100,20 +102,24 @@ export function runPanelScript() {
         cockpitBodyElement,
         findAll,
         isHidden,
+        treeCards,
         objectElements,
         objectBodyOf,
-        objectNameOf: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'objectName')[0].textContent,
-        objectCountOf: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'objectCount')[0].textContent,
-        visibleFieldNamesOf: (objectElement: any) => findAll(objectBodyOf(objectElement), 'field')
+        objectNameOf: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'treeObjectName')[0].textContent,
+        objectCountOf: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'treeObjectCount')[0].textContent,
+        visibleFieldNamesOf: (objectElement: any) => findAll(objectBodyOf(objectElement), 'treeField')
             .filter(fieldElement => !isHidden(fieldElement))
-            .map(fieldElement => findAll(fieldElement, 'fieldName')[0].textContent),
+            .map(fieldElement => findAll(fieldElement, 'treeFieldName')[0].textContent),
+        fieldRowNamed: (objectElement: any, fieldApiName: string) => findAll(objectBodyOf(objectElement), 'treeField')
+            .find(fieldElement => findAll(fieldElement, 'treeFieldName')[0].textContent === fieldApiName),
+        expandObject: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'treeObjectToggle')[0].dispatch('click'),
+        // EVERY CARD OPENED BY ITS TOGGLE, AS A READER WOULD, SO ITS STRUCTURE TAB IS ATTACHED
+        expandAllTrees: () => treeCards().forEach(treeCard => findAll(treeCard, 'treeToggle')[0].dispatch('click')),
         typeIntoFilter: (filterText: string) => {
             const filterInputElement = findAll(cockpitBodyElement, 'filterInput')[0];
             filterInputElement.value = filterText;
             filterInputElement.dispatch('input');
         },
-        // A KEYSTROKE FILTERS ONLY THE VIEW ON SCREEN, SO A TEST OF THE CLASSIC LIST'S FILTER SWITCHES TO IT FIRST, AS A READER WOULD
-        showClassicList: () => findAll(cockpitBodyElement, 'viewButton').find((element: any) => element.textContent === 'Classic list').dispatch('click'),
         postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
         raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent)
     };

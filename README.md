@@ -458,21 +458,21 @@ How it works:
 
 * **It reads what Generate Treecipe already wrote.** Every run leaves a `treecipeObjectsWrapper-<timestamp>.json` next to its recipe files under `treecipe/GeneratedRecipes/`. The panel reads that file rather than re-parsing your metadata, and opens on the **latest** run
 * **It opens on Recipe Trees**: one collapsible card per relationship tree, titled *Relationship Tree N* with the folder the tree was written to (`Account-thru-Contact`, `Lead-ONLY`) and its object and field counts. A card's **Structure** tab lists its objects in insert order, each with the lookups tying it to a parent in the same tree, such as `(AccountId → Account)` (a self-lookup shows as `(ParentId)`). An object written twice, such as a self-lookup's nested child iteration, is listed twice: once with its own nickname, and once more as `Account_child_NickName · nested under Account_NickName`, whose `↗ yml` links open the nested occurrence's lines. Field rows show the type with its size (`Text(50)`, `Currency(18,2)`), a dependent picklist says what controls it, and `↗ yml` opens the recipe at the field's line. A picklist row expands to its values, grouped per record type. Runs generated before sizes were recorded show the bare type. A run whose wrapper has no tree data shows one card per recipe file and says so
-* **Classic list**, the other view, is the flat list of every object below. Comparing with an org lives there for now
-* The filter works in both views. In Recipe Trees a tree with no match stays listed and is marked *no matches*, and the 🔍 on a tree's header searches only that tree
+* **Data-by-Org**, the other view, counts each tree's records in a sandbox or scratch org and creates more (see below the comparison)
+* In Recipe Trees a tree with no match stays listed and is marked *no matches*, and the 🔍 on a tree's header searches only that tree
 * **Switch runs from the selector** next to the filter box. Each run is labelled with when it was generated (UTC) and which faker backend wrote it
 * **Filter** narrows fields as you type. It matches field names, labels, types, controlling fields and faker expressions. Typing an object's name shows all of its fields. An object with nothing matching **stays listed**, collapsed and marked *no matching fields*, so a filter never looks like missing data
-* **Click an object or field name** to open the recipe `.yml` at that exact line
+* **Click an object name, or a field's `↗ yml`,** to open the recipe `.yml` at that exact line. Each field row also shows its faker expression
 * **Fields that only the recipe file carries are shown too.** Standard-field mappings such as `Account.Name`, and the record type line, are written straight into the recipe and are not in the wrapper file. They appear marked *read from the recipe file*
-* **Compare with an org…** lists every org the Salesforce CLI has authorized and reports as connected (`sf org login web` adds one), describes each object of the recipe on screen in the org you pick, and marks every field with how it compares:
+* **Compare with an org…**, at the top of a tree's **Structure** tab, describes that tree's objects in the org picked in **Data-by-Org** (or the one it remembers for this workspace). With none picked it lists every org the Salesforce CLI has authorized and reports as connected (`sf org login web` adds one) and asks. **Choose another org…** beside it always asks, which is how you compare with an org Data-by-Org does not list, such as production. It marks every field row of the tree with how it compares:
   * *new in org*: the org has a field the recipe does not. It gets a row of its own. Fields a recipe cannot write, such as `Id` and formula fields, are counted on the object's header rather than listed
   * *removed from org*: the recipe writes a field the org no longer has
   * *type changed*: the row says what the type is in the recipe and in the org
   * *picklist changed*: the row names the values active in the org and missing from the recipe, and the other way round
   * *unchanged*
-* Progress shows in the panel while the org is described, and a failure is reported there. An object the org could not describe is marked *not compared* rather than given statuses it has none of. Describes are cached for the VS Code session, so comparing with the same org again does not call the API again
-* **Filter by status** with the selector that appears once a comparison is drawn: *Changed fields only*, or one status. It combines with the text filter
-* **Regenerate recipe** runs Generate Treecipe and loads the run it writes. It regenerates from the object metadata **in your workspace**, not from the org, so retrieve the org's changes first (for example `sf project retrieve start`) for them to reach the recipe
+* Progress shows in the tree's Structure tab while the org is described, and a failure is reported there. An object the org could not describe is marked *not compared* rather than given statuses it has none of. Each tree keeps its own comparison. Describes are cached for the VS Code session, so comparing with the same org again does not call the API again
+* **Filter by status** with the selector that appears in the tree once a comparison is drawn: *Changed fields only*, or one status. It narrows that tree only, and combines with the text filter
+* **Regenerate recipe**, beside a tree's comparison, runs Generate Treecipe and loads the run it writes back into the cards, with that tree open. It regenerates from the object metadata **in your workspace**, not from the org, so retrieve the org's changes first (for example `sf project retrieve start`) for them to reach the recipe
 
 ### <a name="which-orgs-the-pickers-list"></a>Which orgs the pickers list
 
