@@ -218,7 +218,7 @@ Each run writes a new `treecipe/FakeDataSets/dataset-<timestamp>` folder (`datas
 This command prompts the user for the following items:
 
 1. Select a pre-existing "dataset" directory with expected Collections-Api structure files
-2. Enter name of already locally authenticated Salesforce alias (**DO NOT USE PRODUCTION ORG!!!**)
+2. Pick the Salesforce org to insert into (**DO NOT USE PRODUCTION ORG!!!**). Only orgs the Salesforce CLI reports as connected are offered; see [Which orgs the pickers list](#which-orgs-the-pickers-list)
 3. Select "ALL OR NONE" option.
 
    * "false" keeps successfully inserted records
@@ -353,7 +353,7 @@ This command deploys and runs the generated picklist dependency tests against an
 
 The command:
 
-1. Lists your authenticated orgs and prompts you to pick the target
+1. Lists your connected orgs and prompts you to pick the target (see [Which orgs the pickers list](#which-orgs-the-pickers-list))
 2. Checks whether the `SDTPicklistDependencyTests` suite in that org still contains `SDTPLDSpecsTest`, and offers to deploy if it does not — nothing is deployed without explicit confirmation. Membership is what is checked rather than the suite's existence: a suite whose member class was deleted still exists, and running it would pass having asserted nothing
 3. Runs the suite with `sf apex run test --suite-names SDTPicklistDependencyTests`
 4. Writes a per-method report to the **Picklist Dependency Check** output channel and shows a pass/fail summary notification
@@ -464,7 +464,7 @@ How it works:
 * **Filter** narrows fields as you type. It matches field names, labels, types, controlling fields and faker expressions. Typing an object's name shows all of its fields. An object with nothing matching **stays listed**, collapsed and marked *no matching fields*, so a filter never looks like missing data
 * **Click an object or field name** to open the recipe `.yml` at that exact line
 * **Fields that only the recipe file carries are shown too.** Standard-field mappings such as `Account.Name`, and the record type line, are written straight into the recipe and are not in the wrapper file. They appear marked *read from the recipe file*
-* **Compare with an org…** lists every org the Salesforce CLI has authorized (`sf org login web` adds one), describes each object of the recipe on screen in the org you pick, and marks every field with how it compares:
+* **Compare with an org…** lists every org the Salesforce CLI has authorized and reports as connected (`sf org login web` adds one), describes each object of the recipe on screen in the org you pick, and marks every field with how it compares:
   * *new in org*: the org has a field the recipe does not. It gets a row of its own. Fields a recipe cannot write, such as `Id` and formula fields, are counted on the object's header rather than listed
   * *removed from org*: the recipe writes a field the org no longer has
   * *type changed*: the row says what the type is in the recipe and in the org
@@ -473,6 +473,17 @@ How it works:
 * Progress shows in the panel while the org is described, and a failure is reported there. An object the org could not describe is marked *not compared* rather than given statuses it has none of. Describes are cached for the VS Code session, so comparing with the same org again does not call the API again
 * **Filter by status** with the selector that appears once a comparison is drawn: *Changed fields only*, or one status. It combines with the text filter
 * **Regenerate recipe** runs Generate Treecipe and loads the run it writes. It regenerates from the object metadata **in your workspace**, not from the org, so retrieve the org's changes first (for example `sf project retrieve start`) for them to reach the recipe
+
+### <a name="which-orgs-the-pickers-list"></a>Which orgs the pickers list
+
+Every org picker (the Recipe Cockpit's Data-by-Org dropdown and **Compare with an org…**, **Insert Data Set by Directory** and **Run Picklist Dependency Check**) lists only the orgs the Salesforce CLI reports as connected, from `sf org list --json --verbose`:
+
+* An org is listed when the CLI says it is `Connected`. A scratch org is listed when its Dev Hub says it is `Active` and it has not expired.
+* An expired or deleted scratch org, an org whose refresh token was revoked (`RefreshTokenAuthError`), and an org whose status the CLI reports as `Unknown` are left out. When nothing is left, the warning says how many were left out and why, and how to re-authorize one (`sf org login web`).
+* Answering this pings each authorized org's token, so the first picker you open in a VS Code session can take a few seconds and shows *Checking org connections…*. The answer is kept for the session, so later pickers open at once. Data-by-Org's **⟳** asks the CLI again.
+* If the CLI cannot answer (it is not installed, it timed out, or it returned something unreadable), no org is listed and the message says why. The extension never falls back to listing every authorization unchecked.
+* Data-by-Org also leaves out every org not known to be a sandbox or a scratch org, and its note counts each reason: `3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected.`
+* Treecipe connects only to the org you select. It never logs out of, deletes or changes an org to clean up the list.
 
 ---
 

@@ -121,15 +121,21 @@ describe('Shared tests for CollectionsApiService', () => {
 
     describe('getExpectedSalesforceOrgToInsertAgainst', () =>{
 
-        test('given mocked module methods and expected return value for entered alias, should return that alias', async () => {
-            
-            const fakeAlias = 'testAlias';
-            jest.spyOn(vscode.window, "showInputBox").mockReturnValue(Promise.resolve(fakeAlias));
+        test('picks from the orgs the Salesforce CLI reports connected and returns the chosen org\'s username, never a typed alias', async () => {
 
-            jest.spyOn(VSCodeWorkspaceService, 'promptForUserInput').mockReturnValue(Promise.resolve(fakeAlias));
+            const promptSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue({ targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' });
 
-            const result = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
-            expect(result).toEqual(fakeAlias);
+            expect(await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst()).toBe('qa@example.com.qa');
+            expect(promptSpy).toHaveBeenCalledWith(expect.stringContaining('DO NOT USE A PRODUCTION ORG'));
+            expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+
+        });
+
+        test('given the picker dismissed or no connected org, returns undefined', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(undefined);
+
+            expect(await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst()).toBeUndefined();
 
         });
 

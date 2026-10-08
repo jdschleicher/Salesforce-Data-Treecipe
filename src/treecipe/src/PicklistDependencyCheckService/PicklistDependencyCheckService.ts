@@ -171,9 +171,11 @@ export class PicklistDependencyCheckService {
         installed extension, so a synchronous spawn freezes the whole window -- and these commands are
         long running by nature: an Apex test run waits on an org side queue and a deploy waits on the
         Metadata API. onCancellationRequested kills the child so a user is never stuck waiting.
+        A timeout kills it too, and is reported the way a kill is: an exitCode of null.
     */
     static runSalesforceCli(salesforceCliArguments: string[],
-                            registerCancellation?: (killChildProcess: () => void) => void): Promise<ISalesforceCliInvocationResult> {
+                            registerCancellation?: (killChildProcess: () => void) => void,
+                            timeoutMilliseconds?: number): Promise<ISalesforceCliInvocationResult> {
 
         const invocation = this.buildSalesforceCliInvocation(salesforceCliArguments);
 
@@ -181,7 +183,8 @@ export class PicklistDependencyCheckService {
             encoding: 'utf8',
             maxBuffer: 1024 * 1024 * 8,
             shell: invocation.useShell,
-            windowsHide: true
+            windowsHide: true,
+            ...( timeoutMilliseconds !== undefined ? { timeout: timeoutMilliseconds } : {} )
         };
 
         return new Promise<ISalesforceCliInvocationResult>(resolve => {

@@ -1,0 +1,109 @@
+{
+  "status": 0,
+  "result": {
+    "other": [],
+    "sandboxes": [
+      {
+        "orgId": "00D000000000001AAA",
+        "username": "qa@example.com.qa",
+        "alias": "qa",
+        "instanceUrl": "https://acme--qa.sandbox.my.salesforce.com",
+        "isSandbox": true,
+        "connectedStatus": "Connected",
+        "isDevHub": false
+      },
+      {
+        "orgId": "00D000000000002AAA",
+        "username": "uat@example.com.uat",
+        "alias": "uat",
+        "instanceUrl": "https://acme--uat.sandbox.my.salesforce.com",
+        "isSandbox": true,
+        "connectedStatus": "RefreshTokenAuthError",
+        "isDevHub": false
+      },
+      {
+        "orgId": "00D000000000003AAA",
+        "username": "stale@example.com.dev",
+        "alias": "stale",
+        "instanceUrl": "https://acme--dev.sandbox.my.salesforce.com",
+        "isSandbox": true,
+        "connectedStatus": "Unknown",
+        "isDevHub": false
+      }
+    ],
+    "nonScratchOrgs": [
+      {
+        "orgId": "00D000000000001AAA",
+        "username": "qa@example.com.qa",
+        "alias": "qa",
+        "instanceUrl": "https://acme--qa.sandbox.my.salesforce.com",
+        "isSandbox": true,
+        "connectedStatus": "Connected",
+        "isDevHub": false
+      },
+      {
+        "orgId": "00D000000000002AAA",
+        "username": "uat@example.com.uat",
+        "alias": "uat",
+        "instanceUrl": "https://acme--uat.sandbox.my.salesforce.com",
+        "isSandbox": true,
+        "connectedStatus": "RefreshTokenAuthError",
+        "isDevHub": false
+      },
+      {
+        "orgId": "00D000000000003AAA",
+        "username": "stale@example.com.dev",
+        "alias": "stale",
+        "instanceUrl": "https://acme--dev.sandbox.my.salesforce.com",
+        "isSandbox": true,
+        "connectedStatus": "Unknown",
+        "isDevHub": false
+      },
+      {
+        "orgId": "00D000000000009AAA",
+        "username": "ghost@example.com",
+        "instanceUrl": "https://ghost--qa.sandbox.my.salesforce.com",
+        "isSandbox": true,
+        "connectedStatus": "Connected",
+        "isDevHub": false
+      }
+    ],
+    "devHubs": [],
+    "scratchOrgs": [
+      {
+        "orgId": "00D000000000004AAA",
+        "username": "test-expired@example.com",
+        "alias": "expiredScratch",
+        "instanceUrl": "https://ability-expired-1.scratch.my.salesforce.com",
+        "isScratch": true,
+        "devHubUsername": "hub@example.com",
+        "status": "Expired",
+        "isExpired": true,
+        "expirationDate": "2026-09-01"
+      },
+      {
+        "orgId": "00D000000000005AAA",
+        "username": "test-deleted@example.com",
+        "alias": "deletedScratch",
+        "instanceUrl": "https://ability-deleted-2.scratch.my.salesforce.com",
+        "isScratch": true,
+        "devHubUsername": "hub@example.com",
+        "status": "Deleted",
+        "isExpired": true,
+        "expirationDate": "2026-09-15"
+      },
+      {
+        "orgId": "00D000000000006AAA",
+        "username": "test-active@example.com",
+        "alias": "activeScratch",
+        "instanceUrl": "https://ability-active-3.scratch.my.salesforce.com",
+        "isScratch": true,
+        "devHubUsername": "hub@example.com",
+        "status": "Active",
+        "isExpired": false,
+        "expirationDate": "2026-10-30"
+      }
+    ]
+  },
+  "warnings": []
+}

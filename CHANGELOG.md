@@ -1,5 +1,33 @@
 # Change Log
 
+## [3.38.0] - Org pickers list only orgs the Salesforce CLI reports as connected
+
+Closes [#201](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/201), slice 9 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Every org picker was built from `AuthInfo.listAllAuthorizations()`, which returns every authorization file on disk, working or not. Expired or deleted scratch orgs, and orgs whose refresh token was revoked, were offered next to working ones. Picking one failed late, with a connection error that did not say the org was gone.
+
+- **Source of truth: the CLI's connection status.** `SalesforceOrgService.listConnectedOrgAuthorizations()` runs `sf org list --json --verbose` through `PicklistDependencyCheckService.runSalesforceCli`, with a 60-second timeout (`runSalesforceCli` takes an optional timeout now). `--skip-connection-status` is never passed. It uses the same invocation the picklist check does: argv with no shell, and on Windows `sf.cmd` with quoted arguments through the shell, because Node refuses to spawn a `.cmd` file without one (EINVAL, since CVE-2024-27980). The arguments are constants.
+- **The answer is read as untrusted.** Every field is type-checked.
+  - A non-scratch org is usable only when `connectedStatus === "Connected"` exactly.
+  - The CLI never pings a scratch org; it asks the org's Dev Hub. So a scratch org is usable when `status === "Active"`, `isExpired !== true`, and any `connectedStatus` it carries is `"Connected"`. This is narrower than the issue text, which required `connectedStatus` on every org and would have hidden every scratch org (checked against plugin-org 6.0.20's `OrgListUtil`).
+  - Anything else is left out, failing closed: an error code such as `RefreshTokenAuthError`, `"Unknown"`, `Expired`, `Deleted`, or a missing or mistyped field. The reason is recorded as `expired`, `deleted` or `not connected`; `"Unknown"` counts as not connected.
+  - An org the CLI names more than once keeps its first unusable answer, so one `Connected` entry cannot outvote another.
+  - An authorization the answer does not mention is left out too: as `expired` when its auth file says so, otherwise `not connected`.
+- **Only the usernames that survive are matched** against `AuthInfo.listAllAuthorizations()`. A username with no authorization file is left out. `isValidTargetOrgIdentifier` and, for Data-by-Org, `isKnownNonProductionAuthorization` still apply on top.
+- **Session cache.** The answer is cached in `SalesforceOrgService` for the life of the extension host. Two pickers opened during a check share one process. A failure (`ENOENT`, a timeout, a non-zero exit, malformed JSON) is never cached, so the next picker asks again. `refreshConnectedOrgAuthorizations()` (Data-by-Org's ⟳, and #200 after it creates an org) asks again and replaces the answer. A check started before a clear never writes over the answer asked for after it.
+- **When the CLI cannot answer, no org is listed**, and the message says why (`OrgConnectionStatusUnavailableError`). It never falls back to every authorization unchecked.
+- **All four pickers** read the shared listing: Data-by-Org's dropdown (`listDataOrgDetails`), **Compare with an org…** (`promptForAuthorizedOrg`), **Run Picklist Dependency Check**, and **Insert Data Set by Directory**. Insert Data Set used to ask for an alias in a free-text box; it now offers the same quick pick and connects by the chosen org's username.
+- **Quick-pick commands** open a busy quick pick (*Checking org connections…*) at once, with nothing selectable until the CLI answers (`VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed`). With nothing left to offer, the picker closes and the warning says how many orgs were left out and why: `No connected Salesforce org is authorized: 2 authorized orgs are not listed (1 expired, 1 not connected). Re-authorize one with "sf org login web" and try again.`
+- **Data-by-Org:**
+  - It shows *Checking org connections…* in place of the dropdown until the answer arrives.
+  - The note counts each reason: `3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected.` With nothing left and any org left out as unconnected, it says no connected sandbox or scratch org is authorized and how to re-authorize one.
+  - A remembered org that is now expired, deleted or not connected is forgotten, and the view says so once: `The last org used, <alias>, is no longer connected.` It is written with `textContent`.
+  - **⟳** now asks the CLI again, re-lists the orgs and re-selects the remembered org by username, which counts it again. It is shown even when no org is listed, so an org re-authorized meanwhile can be listed without reloading the window.
+  - The list in hand is dropped before each check, so no org can be selected or created in while one is out. A new model, a `ready` or a later listing discards a stale answer.
+- **Nothing logs out of, deletes or changes an org.** The only argv sent is `org list --json --verbose`.
+- **Removed:** `VSCodeWorkspaceService.promptForAuthenticatedTargetOrg`, `promptForAuthenticatedOrgDetail` and `promptForUserInput`. Their only callers now go through `SalesforceOrgService.promptForAuthorizedOrg`.
+- **Tests:** `SalesforceOrgService` (with an `sf org list --json --verbose` fixture and matching authorization files in `tests/mocks/`), the Data-by-Org suite, `VSCodeWorkspaceService`, `CollectionsApiService`, `ExtensionCommandService`, and `RecipeCockpitConnectedOrgs.test.ts`, which runs all four pickers through one fixture and asserts a single `execFile`.
+
 ## [3.37.0] - Create N fake records of one object in a sandbox from the Recipe Cockpit
 
 Closes [#180](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/180), slice 7 of [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

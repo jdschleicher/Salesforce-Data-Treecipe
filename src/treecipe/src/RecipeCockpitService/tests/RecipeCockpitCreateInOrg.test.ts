@@ -416,7 +416,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockImplementation(() => temporaryWorkspaceRoot);
             jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue('2026-10-07T12-00-00');
             showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
-            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgCount: 0 });
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
             selectedFakerService = 'snowfakery';
             jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockImplementation(() => selectedFakerService);
 
@@ -579,7 +579,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             const connection = buildFakeConnection();
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
-            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, { targetOrgIdentifier: 'other', username: 'other@example.com.qa', alias: 'other' }], hiddenOrgCount: 0 });
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, { targetOrgIdentifier: 'other', username: 'other@example.com.qa', alias: 'other' }], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
 
             await openSelectedCockpit(SNOWFAKERY_RUN);
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
