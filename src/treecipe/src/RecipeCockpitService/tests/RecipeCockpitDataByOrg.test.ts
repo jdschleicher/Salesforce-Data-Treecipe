@@ -16,7 +16,8 @@ import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_DATA_ORG_STATE_KEY
+    RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
+    RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { NO_AUTHORIZED_ORGS_MESSAGE, ORG_TYPE_UNKNOWN_LABEL, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -27,7 +28,7 @@ const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const TREE_OBJECT_API_NAMES = ['Account', 'Contact', 'OtherChildObject__c', 'Lead'];
 
 const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
-const PRODUCTION_ORG = { targetOrgIdentifier: 'prod@example.com', username: 'prod@example.com', alias: undefined as string | undefined };
+const SECOND_ORG = { targetOrgIdentifier: 'prod@example.com', username: 'prod@example.com', alias: undefined as string | undefined };
 
 function loadTreeRecipe(): IRecipeCockpitRecipeViewModel {
 
@@ -91,7 +92,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('labels an org by alias, or by username when it has none', () => {
 
             expect(RecipeCockpitService.buildDataOrgLabel(SANDBOX_ORG)).toBe('qa');
-            expect(RecipeCockpitService.buildDataOrgLabel(PRODUCTION_ORG)).toBe('prod@example.com');
+            expect(RecipeCockpitService.buildDataOrgLabel(SECOND_ORG)).toBe('prod@example.com');
 
         });
 
@@ -103,7 +104,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             const panelState = RecipeCockpitService.buildInitialPanelState(TREE_WORKSPACE_ROOT);
             panelState.recipeDataMessage = { command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 1 };
             panelState.dataOrgObjectApiNames = new Set(TREE_OBJECT_API_NAMES);
-            panelState.dataOrgDetails = [SANDBOX_ORG, PRODUCTION_ORG];
+            panelState.dataOrgDetails = [SANDBOX_ORG, SECOND_ORG];
             return panelState;
         };
 
@@ -199,7 +200,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             }));
 
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
-            jest.spyOn(SalesforceOrgService, 'listAuthorizedOrgDetails').mockResolvedValue([SANDBOX_ORG, PRODUCTION_ORG]);
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, SECOND_ORG], hiddenOrgCount: 0 });
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -218,6 +219,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
                 orgLabels: ['qa', 'prod@example.com'],
                 selectedOrgIndex: null,
                 noOrgsMessage: '',
+                hiddenOrgCount: 0,
                 renderSequence: lastRenderSequence()
             }]);
             expect(JSON.stringify(postedPanelMessages)).not.toContain('qa@example.com.qa');
@@ -227,7 +229,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         it('says why when the authorized orgs could not be listed', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'listAuthorizedOrgDetails').mockRejectedValue(new Error('auth files unreadable'));
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockRejectedValue(new Error('auth files unreadable'));
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
@@ -238,7 +240,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         it('says there are no authorized orgs with the existing message', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'listAuthorizedOrgDetails').mockResolvedValue([]);
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgCount: 0 });
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
@@ -270,28 +272,50 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('labels a production org with its type, Developer Edition included', async () => {
+        it('lists only the orgs the CLI knows are not production, and says how many it left out', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({}, { IsSandbox: false, OrganizationType: 'Developer Edition' }) as any);
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgCount: 2 });
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
-            await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 1 });
 
-            expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgLabel: 'prod@example.com', orgTypeLabel: 'Production · Developer Edition', isSandbox: false });
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: ['qa'], hiddenOrgCount: 2, noOrgsMessage: '' });
 
         });
 
-        it('given the Organization query fails, labels the org "type unknown" and still loads the counts', async () => {
+        it('says no sandbox is authorized when every authorized org was left out', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }, new Error('INSUFFICIENT_ACCESS')) as any);
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgCount: 1 });
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], hiddenOrgCount: 1, noOrgsMessage: RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE });
+
+        });
+
+        it.each([
+            ['answers that it is production, Developer Edition included', { IsSandbox: false, OrganizationType: 'Developer Edition' }, 'Production · Developer Edition', false, 'answered that it is Production · Developer Edition'],
+            ['cannot say what it is', new Error('INSUFFICIENT_ACCESS'), ORG_TYPE_UNKNOWN_LABEL, null, 'could not say whether it is a sandbox']
+        ])('asks an org that %s nothing more: no count, no describe, and Create refused', async (_description, organizationRow, expectedTypeLabel, expectedIsSandbox, expectedReason) => {
+
+            const fakeConnection = buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }, organizationRow);
+            const describeSpy = jest.spyOn(SalesforceOrgService, 'describeObjects');
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(fakeConnection as any);
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
             await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
 
-            expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null });
-            expect(countedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
+            expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgTypeLabel: expectedTypeLabel, isSandbox: expectedIsSandbox });
+            expect(fakeConnection.sentQueries).toEqual(['SELECT IsSandbox, OrganizationType FROM Organization']);
+            expect(describeSpy).not.toHaveBeenCalled();
+            expect(postedNamed('dataOrgCounts')).toEqual([expect.objectContaining({
+                counts: [],
+                isComplete: true,
+                connectionFailureMessage: expect.stringContaining(`qa ${expectedReason}, so Data-by-Org asked it nothing more.`)
+            })]);
+            expect(postedNamed('dataOrgReadiness').at(-1).objects.every((readiness: any) => readiness.disabledReason !== '')).toBe(true);
 
         });
 
@@ -336,6 +360,21 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             expect(postedNamed('dataOrgList')[0].selectedOrgIndex).toBe(1);
             expect(getConnectionSpy).toHaveBeenCalledWith('prod@example.com');
+            expect(countedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
+
+        });
+
+        it('still counts when remembering the org fails, and leaves no rejection unhandled', async () => {
+
+            workspaceState.update.mockRejectedValue(new Error('workspace state is read-only'));
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+            await new Promise(resolveYield => setImmediate(resolveYield));
+
+            expect(workspaceState.update).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
             expect(countedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
 
         });
@@ -498,6 +537,19 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             selectElement.dispatch('change');
 
             expect(postedNamed(panel, 'selectDataOrg')).toEqual([{ command: 'selectDataOrg', orgIndex: 1 }]);
+
+        });
+
+        it('says how many authorized orgs it left out, and why', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 2, renderSequence: 1 });
+
+            expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(false);
+            expect(viewOf(panel, 'dataOrgHiddenNote').textContent).toBe('2 authorized orgs are not listed: Data-by-Org connects only to orgs the Salesforce CLI knows as a sandbox or a scratch org, never to production.');
+
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 0, renderSequence: 1 });
+            expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(true);
 
         });
 

@@ -197,7 +197,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose and counts that org's records, but does not yet write a change back into a recipe, and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. It is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted.
+It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. Data-by-Org never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org, and it is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -559,13 +559,20 @@ export interface IRecipeCockpitRunFakerStateMessage {
     index of the one chosen, and the host looks the username up in the list it holds. A name the
     panel posted would be an org of its choosing; an index can only be one the host offered.
 */
+/*
+    hiddenOrgCount is how many authorized orgs were left out because the CLI does not know them to
+    be a sandbox or a scratch org -- Data-by-Org never lists, and so never connects to, production.
+*/
 export interface IRecipeCockpitDataOrgListMessage {
     command: 'dataOrgList';
     orgLabels: string[];
     selectedOrgIndex: number | null;
     noOrgsMessage: string;
+    hiddenOrgCount: number;
     renderSequence: number;
 }
+
+export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. Data-by-Org connects only to sandboxes and scratch orgs: authorize one with "sf org login web --instance-url https://test.salesforce.com" and try again.';
 
 /*
     The org Data-by-Org is counting in. orgTypeLabel is '' while the Organization query is still
@@ -1946,10 +1953,14 @@ export class RecipeCockpitService {
 
         const listedRecipeDataMessage = panelState.recipeDataMessage;
         let orgDetails: IAuthenticatedOrgDetail[] = [];
+        let hiddenOrgCount = 0;
         let noOrgsMessage = NO_AUTHORIZED_ORGS_MESSAGE;
 
         try {
-            orgDetails = await SalesforceOrgService.listAuthorizedOrgDetails();
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
+            orgDetails = dataOrgListing.orgDetails;
+            hiddenOrgCount = dataOrgListing.hiddenOrgCount;
+            noOrgsMessage = hiddenOrgCount > 0 ? RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE : NO_AUTHORIZED_ORGS_MESSAGE;
         } catch (listError) {
             noOrgsMessage = `The authorized Salesforce orgs could not be listed: ${listError?.message ?? listError}`;
         }
@@ -1973,6 +1984,7 @@ export class RecipeCockpitService {
             orgLabels: orgDetails.map(orgDetail => this.buildDataOrgLabel(orgDetail)),
             selectedOrgIndex: selectedOrgIndex >= 0 ? selectedOrgIndex : null,
             noOrgsMessage: orgDetails.length === 0 ? noOrgsMessage : '',
+            hiddenOrgCount: hiddenOrgCount,
             renderSequence: listedRecipeDataMessage.renderSequence
         });
 
@@ -2067,6 +2079,29 @@ export class RecipeCockpitService {
         isOrgTypeAnswered = true;
         postSelection();
 
+        /*
+            Listed only because the CLI knew it as a sandbox or scratch org -- but the org's own
+            answer is the one that counts. An org that answers it is not a sandbox, or cannot say,
+            is asked NOTHING more: no count, no describe, no Create.
+        */
+        if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
+
+            postCounts(0, true, `${orgLabel} ${dataOrgSelection.orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)}` : 'could not say whether it is a sandbox'}, so Data-by-Org asked it nothing more. Data-by-Org counts and creates records only in a sandbox.`);
+
+            if ( isSelectionCurrent() ) {
+                this.postToPanel(cockpitPanel, {
+                    command: 'dataOrgReadiness',
+                    objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
+                    createResults: [],
+                    requestSequence: requestSequence,
+                    renderSequence: renderSequence
+                });
+            }
+
+            return;
+
+        }
+
         const countResult = await SalesforceOrgService.countRecords(orgDetail.username, objectApiNames, async () => querySource, {
             onObjectCounted: (countOutcome, completedCount) => {
                 pendingCounts.push(this.buildDataOrgCountViewModel(countOutcome));
@@ -2130,7 +2165,7 @@ export class RecipeCockpitService {
                                         querySource: IOrgQuerySource,
                                         objectApiNames: string[],
                                         orgTypeDetail: IOrgTypeDetail | undefined,
-                                        isCancellationRequested: () => boolean): Promise<Map<string, IRecipeCockpitCreateReadinessViewModel>> {
+                                        isCancellationRequested?: () => boolean): Promise<Map<string, IRecipeCockpitCreateReadinessViewModel>> {
 
         const readinessByObjectApiName = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
 
@@ -2295,7 +2330,7 @@ export class RecipeCockpitService {
 
         // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE INSERT RELIES ON
         const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
-        const readiness = ( await this.computeCreateReadiness(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail, () => false) ).get(objectApiName);
+        const readiness = ( await this.computeCreateReadiness(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail) ).get(objectApiName);
 
         if ( !readiness || readiness.disabledReason ) {
             return refuse(`No ${objectLabel} records were created in ${orgLabel}: ${RecipeYamlScalar.escapeForNotification(readiness?.disabledReason ?? 'it could not be checked')}`);
@@ -2352,7 +2387,8 @@ export class RecipeCockpitService {
             throw new Error(`The ${selectedFakerService} backend generated no ${objectApiName} records from the cut recipe.`);
         }
 
-        const describe = ( await SalesforceOrgService.describeObjects(orgDetail.username, [objectApiName], async () => connection) ).outcomes[0].describe;
+        // THE READINESS CHECK ABOVE DESCRIBED IT, AND A READY OBJECT IS ONE THE CACHE HOLDS
+        const describe = SalesforceOrgService.getCachedDescribe(orgDetail.username, objectApiName);
         const assignedRecords = RecipeCockpitRecordCreation.assignLookupIds(
             generatedRecords,
             requiredLookupParentIds,
@@ -4328,6 +4364,7 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgTypeElement = null;
     let dataOrgRefreshElement = null;
     let dataOrgStatusElement = null;
+    let dataOrgHiddenNoteElement = null;
     let dataTreeStates = [];
     // THE renderSequence DATA-BY-ORG ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE WHEN THE VIEW IS FIRST SHOWN
     let dataOrgRequestedSequence = null;
@@ -5764,6 +5801,9 @@ ${this.buildPaletteCustomProperties()}
         controlsElement.appendChild(dataOrgRefreshElement);
         dataOrgViewElement.appendChild(controlsElement);
 
+        dataOrgHiddenNoteElement = createElement('div', 'dataOrgHiddenNote muted hidden');
+        dataOrgViewElement.appendChild(dataOrgHiddenNoteElement);
+
         dataOrgStatusElement = createElement('div', 'dataOrgStatus muted', 'Loading the authorized orgs…');
         dataOrgViewElement.appendChild(dataOrgStatusElement);
 
@@ -6059,6 +6099,15 @@ ${this.buildPaletteCustomProperties()}
 
         dataOrgSelectElement.textContent = '';
 
+        // PRODUCTION IS NEVER LISTED, AND THE READER IS TOLD WHY AN ORG THEY AUTHORIZED IS MISSING
+        if (dataOrgList.hiddenOrgCount > 0) {
+            dataOrgHiddenNoteElement.textContent = pluralize(dataOrgList.hiddenOrgCount, 'authorized org is', 'authorized orgs are')
+                + ' not listed: Data-by-Org connects only to orgs the Salesforce CLI knows as a sandbox or a scratch org, never to production.';
+            dataOrgHiddenNoteElement.classList.remove('hidden');
+        } else {
+            dataOrgHiddenNoteElement.classList.add('hidden');
+        }
+
         if (dataOrgList.orgLabels.length === 0) {
             dataOrgSelectElement.classList.add('hidden');
             setDataOrgStatus(dataOrgList.noOrgsMessage, true);
@@ -6193,6 +6242,7 @@ ${this.buildPaletteCustomProperties()}
         dataOrgTypeElement = null;
         dataOrgRefreshElement = null;
         dataOrgStatusElement = null;
+        dataOrgHiddenNoteElement = null;
         dataTreeStates = [];
         dataOrgRequestedSequence = null;
         dataOrgRequestSequence = null;

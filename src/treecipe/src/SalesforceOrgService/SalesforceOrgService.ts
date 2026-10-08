@@ -132,6 +132,29 @@ export interface IOrgTypeDetail {
 
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
 
+/*
+    The slice of a CLI authorization Data-by-Org judges an org by, before it ever connects. Every
+    flag is optional because older authorizations carry none of them.
+*/
+export interface INonProductionAuthorizationFields {
+    isSandbox?: boolean;
+    isScratchOrg?: boolean;
+    instanceUrl?: string;
+}
+
+// THE AUTHORIZED ORGS DATA-BY-ORG MAY CONNECT TO, AND HOW MANY IT LEFT OUT FOR NOT BEING KNOWN AS NON-PRODUCTION
+export interface IDataOrgListing {
+    orgDetails: IAuthenticatedOrgDetail[];
+    hiddenOrgCount: number;
+}
+
+/*
+    A sandbox's instance url: "<domain>--<sandbox>.sandbox.my.salesforce.com" with enhanced domains,
+    and "<domain>--<sandbox>.my.salesforce.com" before them. "--" separates the sandbox name and
+    cannot appear in a production My Domain name.
+*/
+const SANDBOX_INSTANCE_HOST_PATTERN = /(?:\.sandbox\.my\.salesforce\.com|--[a-z0-9-]+\.my\.salesforce\.com)$/i;
+
 export const ORG_PARENT_RECORD_ID_LIMIT = 2000;
 
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
@@ -397,6 +420,45 @@ export class SalesforceOrgService {
 
     }
 
+    /*
+        Whether the CLI's own record of an org says it is NOT production: a scratch org, an org the
+        CLI recorded as a sandbox, or one whose instance url is a sandbox's. Anything else -- a
+        production org, a Developer Edition, or an authorization that says nothing -- is false, so
+        Data-by-Org never even offers to connect to it. The CLI records isSandbox only when the
+        sandbox's production org is authorized too, which is why the url is read as well.
+    */
+    static isKnownNonProductionAuthorization(authorization: INonProductionAuthorizationFields | null | undefined): boolean {
+
+        if ( authorization?.isScratchOrg === true || authorization?.isSandbox === true ) {
+            return true;
+        }
+
+        if ( typeof authorization?.instanceUrl !== 'string' ) {
+            return false;
+        }
+
+        try {
+            return SANDBOX_INSTANCE_HOST_PATTERN.test(new URL(authorization.instanceUrl).hostname);
+        } catch {
+            return false;
+        }
+
+    }
+
+    // THE ORGS DATA-BY-ORG LISTS: ONLY THOSE KNOWN NOT TO BE PRODUCTION, WITH A COUNT OF THE REST
+    static async listDataOrgDetails(): Promise<IDataOrgListing> {
+
+        const allAuthorizations = await AuthInfo.listAllAuthorizations();
+        const authorizations = Array.isArray(allAuthorizations) ? allAuthorizations : [];
+        const nonProductionAuthorizations = authorizations.filter(authorization => this.isKnownNonProductionAuthorization(authorization));
+
+        return {
+            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(nonProductionAuthorizations),
+            hiddenOrgCount: authorizations.length - nonProductionAuthorizations.length
+        };
+
+    }
+
     static async listAuthorizedOrgDetails(): Promise<IAuthenticatedOrgDetail[]> {
 
         const allAuthorizations = await AuthInfo.listAllAuthorizations();
@@ -419,6 +481,12 @@ export class SalesforceOrgService {
         }
 
         return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetail(authorizedOrgDetails, placeHolder);
+
+    }
+
+    static getCachedDescribe(orgUsername: string, objectApiName: string): INormalizedOrgObjectDescribe | undefined {
+
+        return this.describeCache.get(this.buildDescribeCacheKey(orgUsername, objectApiName));
 
     }
 

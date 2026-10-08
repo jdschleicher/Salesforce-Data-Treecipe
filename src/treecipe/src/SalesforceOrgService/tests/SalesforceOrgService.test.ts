@@ -660,5 +660,53 @@ describe('SalesforceOrgService', () => {
 
     });
 
+    describe('which orgs Data-by-Org may connect to', () => {
+
+        it.each([
+            ['a scratch org', { isScratchOrg: true }],
+            ['an org the CLI recorded as a sandbox', { isSandbox: true }],
+            ['an enhanced-domain sandbox url', { instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com' }],
+            ['a legacy sandbox url', { instanceUrl: 'https://acme--uat.my.salesforce.com' }]
+        ])('accepts %s', (_description, authorization) => {
+
+            expect(SalesforceOrgService.isKnownNonProductionAuthorization(authorization)).toBe(true);
+
+        });
+
+        it.each([
+            ['a production My Domain', { instanceUrl: 'https://acme.my.salesforce.com', isSandbox: false, isScratchOrg: false }],
+            ['a Developer Edition', { instanceUrl: 'https://acme-dev-ed.develop.my.salesforce.com' }],
+            ['a login url', { instanceUrl: 'https://login.salesforce.com' }],
+            ['a lookalike host', { instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com.evil.example' }],
+            ['an authorization that says nothing', {}],
+            ['a url that does not parse', { instanceUrl: 'not a url' }],
+            ['flags that are truthy but not true', { isSandbox: 'true' as any, isScratchOrg: 1 as any }],
+            ['no authorization at all', undefined]
+        ])('refuses %s', (_description, authorization) => {
+
+            expect(SalesforceOrgService.isKnownNonProductionAuthorization(authorization)).toBe(false);
+
+        });
+
+        it('lists only the non-production orgs, and counts the rest', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: 'qa@example.com.qa', aliases: ['qa'], orgId: '00D1', oauthMethod: 'web', configs: null, isExpired: false, instanceUrl: 'https://acme--qa.sandbox.my.salesforce.com' },
+                { username: 'prod@example.com', aliases: ['prod'], orgId: '00D2', oauthMethod: 'web', configs: null, isExpired: false, instanceUrl: 'https://acme.my.salesforce.com', isSandbox: false },
+                { username: 'scratch@example.com', aliases: null, orgId: '00D3', oauthMethod: 'jwt', configs: null, isExpired: false, isScratchOrg: true }
+            ]);
+
+            expect(await SalesforceOrgService.listDataOrgDetails()).toEqual({
+                orgDetails: [
+                    { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' },
+                    { targetOrgIdentifier: 'scratch@example.com', username: 'scratch@example.com', alias: undefined }
+                ],
+                hiddenOrgCount: 1
+            });
+
+        });
+
+    });
+
 });
 
