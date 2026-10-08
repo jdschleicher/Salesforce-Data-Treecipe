@@ -285,6 +285,31 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
 
         });
 
+        it('given the reader switched runs while the confirmation was open, reloads the run the friend was written to', async () => {
+
+            const otherRunFolderName = 'recipe-fakerjs-2026-09-01T00-00-00';
+            const generatedRecipesPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes');
+            fs.cpSync(path.join(generatedRecipesPath, RUN_FOLDER_NAME), path.join(generatedRecipesPath, otherRunFolderName), { recursive: true });
+            fs.renameSync(
+                path.join(generatedRecipesPath, otherRunFolderName, 'treecipeObjectsWrapper-2026-10-01T00-00-00.json'),
+                path.join(generatedRecipesPath, otherRunFolderName, 'treecipeObjectsWrapper-2026-09-01T00-00-00.json')
+            );
+
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: otherRunFolderName });
+                return RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL;
+            });
+
+            await openRenderedCockpit();
+            await receivedMessageHandler(ADD_CONTACT_MESSAGE);
+
+            const reloadedModel = lastModel();
+            expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').map(hostMessage => hostMessage.recipe.selectedRunFolderName))
+                .toEqual([otherRunFolderName, RUN_FOLDER_NAME]);
+            expect(reloadedModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Contact').iterations[0].nickname).toBe('Contact_child_NickName');
+
+        });
+
         it('on cancel writes nothing, reloads nothing and gives the buttons back', async () => {
 
             const originalRecipeText = fs.readFileSync(recipeFilePath, 'utf-8');

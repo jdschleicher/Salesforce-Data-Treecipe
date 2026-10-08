@@ -510,7 +510,7 @@ export class RecipeCockpitRecipeWriter {
             friendNickname: friendNickname
         });
 
-        if ( 'refusal' in result || !this.isInsertedFriendReadBack(result.recipeText, allScannedObjects.length, iteration.headerIndex, insertIndex + insertedLines.length - friendLines.length, friendObjectApiName, friendNickname, sourceFriend) ) {
+        if ( !this.isInsertedFriendReadBack(result.recipeText, allScannedObjects.length, iteration.headerIndex, insertIndex + insertedLines.length - friendLines.length, friendObjectApiName, friendNickname, sourceFriend) ) {
             return refuseFriend('unsupported-friend-layout', `${iterationLabel}'s block does not end with its friends: block, so a ${friendObjectApiName} added after it would not read back as its friend.`);
         }
 
@@ -1118,7 +1118,7 @@ export class RecipeCockpitRecipeWriter {
         span: ILineSpan,
         newLines: string[],
         editIdentity: Omit<IRecipeWriterEdit, 'startLineNumber' | 'removedLines' | 'insertedLines'>
-    ): RecipeWriterResult {
+    ): Extract<RecipeWriterResult, { isApplied: true }> {
 
         const { lines, lineEndings } = recipeLines;
         const defaultLineEnding = lineEndings.find(lineEnding => lineEnding) ?? '\n';

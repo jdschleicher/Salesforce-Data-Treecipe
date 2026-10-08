@@ -1477,6 +1477,8 @@ export class RecipeCockpitService {
         const { treeKey, objectApiName, iterationNickname, friendObjectApiName, recipeFilePath } = addFriendAction;
         const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
         const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        // THE RUN THE FILE BELONGS TO, READ AT THE CLICK -- THE READER CAN SWITCH RUNS WHILE THE MODAL IS OPEN, AND THE RELOAD SHOWS WHAT WAS WRITTEN
+        const writtenRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
 
         panelState.addFriendStateMessage = { command: 'addFriendState', isRunning: true };
         this.postToPanel(cockpitPanel, panelState.addFriendStateMessage);
@@ -1486,7 +1488,7 @@ export class RecipeCockpitService {
             const isAdded = await this.writeFriendToIteration(recipeFilePath, recipeFileLabel, panelState.workspaceRoot, objectApiName, iterationNickname, friendObjectApiName);
 
             if ( isAdded && isPanelStillCurrent() ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'structure' });
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, writtenRunFolderName, { treeKey: treeKey, tab: 'structure' });
             }
 
         } finally {
