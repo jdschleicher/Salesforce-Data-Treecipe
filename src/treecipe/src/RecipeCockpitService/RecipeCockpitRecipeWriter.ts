@@ -482,6 +482,17 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const friendLines = this.buildFriendCopyLines(recipeLines.lines, sourceFriend, topOccurrence.nicknames[0], iterationNickname, friendNickname);
+
+        /*
+            The copy is moved a level deeper by indenting each line the JS split sees, but YAML also
+            breaks at a lone CR -- and PyYAML at U+0085, U+2028 and U+2029 -- so text after one of
+            those would stay at its old column and could leave a block scalar as a field of its own,
+            which the read-back below cannot tell from the original. Such a block is refused.
+        */
+        if ( friendLines.some(friendLine => /[\r\u0085\u2028\u2029]/.test(friendLine)) ) {
+            return refuseFriend('unsupported-friend-layout', `The ${friendObjectApiName} to copy has a line break inside a line (a lone carriage return, or U+0085, U+2028 or U+2029), so it could not be moved a level deeper exactly.`);
+        }
+
         const iterationLayout = this.getObjectLayout(iteration.objectIndent);
         const friendIndentation = ' '.repeat(iteration.objectIndent + FRIENDS_INDENT_STEP);
         const insertedLines = [

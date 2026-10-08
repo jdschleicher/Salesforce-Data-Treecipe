@@ -1444,6 +1444,25 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             });
 
+            // YAML BREAKS A LINE WHERE THE JS SPLIT DOES NOT, SO TEXT AFTER THE BREAK WOULD KEEP ITS OLD COLUMN AND COULD LEAVE THE BLOCK SCALAR
+            it.each([
+                ['a lone carriage return', '\r'],
+                ['U+0085', '\u0085'],
+                ['U+2028', '\u2028'],
+                ['U+2029', '\u2029']
+            ])('refuses a friend block carrying %s inside a line, rather than moving part of it a level deeper', (_description, lineBreak) => {
+
+                const hiddenBreakText = friendsRecipeText.replace(
+                    '          ${{ faker.lorem.paragraph() }}\n',
+                    `          \${{ faker.lorem.paragraph() }}${lineBreak}            Injected: \${{ 'X' }}\n`
+                );
+
+                expect(hiddenBreakText).not.toBe(friendsRecipeText);
+                expectRefused(insertInto(hiddenBreakText, 'Account', ITERATION_NICKNAME, 'Opportunity'), 'unsupported-friend-layout');
+                expectApplied(insertInto(hiddenBreakText, 'Account', ITERATION_NICKNAME, 'Contact'));
+
+            });
+
             it('refuses a friend whose nickname no api-name-shaped nickname can be made from, and does not offer it', () => {
 
                 const digitNicknameText = friendsRecipeText.replace('nickname: Contact_NickName', 'nickname: 9Contact');
