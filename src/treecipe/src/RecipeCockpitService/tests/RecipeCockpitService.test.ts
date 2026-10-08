@@ -5255,7 +5255,7 @@ describe('RecipeCockpitService', () => {
                     await receivedMessageHandler(regenerateMessage());
 
                     expect(executeCommand).toHaveBeenCalledTimes(1);
-                    expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
+                    expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, { isCompletionNotificationSuppressed: true });
                     expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
                     expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree)
                         .toEqual({ treeKey: 'Account-thru-Contact', tab: 'structure' });

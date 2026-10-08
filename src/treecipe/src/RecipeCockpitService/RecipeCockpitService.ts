@@ -101,6 +101,8 @@ export const RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL = 'Choose another org…';
 export const RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org to compare the objects of this recipe with';
 
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND = 'treecipe.generateTreecipe';
+// THE COCKPIT RELOADS AND FOCUSES THE TREE IT REGENERATED, SO GENERATION'S COMPLETION TOAST WOULD ONLY PULL THE READER OUT OF THE PANEL (#206)
+export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificationSuppressed: true };
 
 export const RECIPE_COCKPIT_REGENERATE_ACTION_LABEL = 'Regenerate recipe';
 
@@ -2087,7 +2089,7 @@ export class RecipeCockpitService {
         try {
 
             try {
-                await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
+                await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS);
             } catch (commandError) {
                 hasGenerationFailed = true;
                 generationError = commandError;

@@ -108,7 +108,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 
 }
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -1668,7 +1668,7 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection')
                 .mockReturnValue(new FakerJSRecipeFakerService());
 
-            jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory').mockResolvedValue(undefined as any);
+            jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory').mockResolvedValue({ runFolderPath: `${workspaceRoot}/treecipe/GeneratedRecipes/recipe-fakerjs-2026-10-08T12-00-00`, recipeFilePaths: [] });
 
             // A REAL globalValueSets DIRECTORY HOLDING ONE SET, READ THROUGH THE SAME CALL THE COMMAND MAKES
             jest.spyOn(fs, 'existsSync').mockReturnValue(true);
@@ -2124,6 +2124,134 @@ describe('ExtensionCommandService', () => {
 
     });
 
+    /*
+        One notification per run, naming where the run went, with buttons to it (#206). It replaces
+        3N + 1 toasts that named nothing.
+    */
+    describe('generateRecipeFromConfigurationDetail completion notification', () => {
+
+        const workspaceRoot = '/workspace';
+        const runFolderPath = `${workspaceRoot}/treecipe/GeneratedRecipes/recipe-fakerjs-2026-10-08T12-00-00`;
+        const accountRecipeFilePath = `${runFolderPath}/Account-thru-Contact/recipe-fakerjs--Account-thru-Contact-2026-10-08T12-00-00.yml`;
+        const leadRecipeFilePath = `${runFolderPath}/Lead-ONLY/recipe-fakerjs--Lead-ONLY-2026-10-08T12-00-00.yml`;
+
+        let showCreatedFilesNotificationSpy: jest.SpyInstance;
+        let handleCapturedErrorSpy: jest.SpyInstance;
+        let createRecipeFilesSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('./force-app/main/default/objects');
+            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
+            jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockResolvedValue(undefined);
+            jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
+            createRecipeFilesSpy = jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory')
+                .mockResolvedValue({ runFolderPath: runFolderPath, recipeFilePaths: [accountRecipeFilePath, leadRecipeFilePath] });
+
+            handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            showCreatedFilesNotificationSpy = jest.spyOn(VSCodeWorkspaceService, 'showCreatedFilesNotification').mockResolvedValue(undefined);
+
+        });
+
+        test('given a run of two trees, shows ONE notification naming the run folder and the tree count', async () => {
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+            expect(showCreatedFilesNotificationSpy).toHaveBeenCalledTimes(1);
+            expect(showCreatedFilesNotificationSpy).toHaveBeenCalledWith(
+                'Generated 2 relationship-tree recipes in "treecipe/GeneratedRecipes/recipe-fakerjs-2026-10-08T12-00-00".',
+                [
+                    { label: REVEAL_IN_EXPLORER_ACTION_LABEL, targetPath: runFolderPath, kind: 'revealInExplorer' },
+                    { label: OPEN_RECIPE_ACTION_LABEL, targetPath: accountRecipeFilePath, kind: 'openInEditor' }
+                ]
+            );
+
+        });
+
+        test('given a snowfakery run of one tree, names it in the singular and opens that recipe', async () => {
+
+            const snowfakeryRunFolderPath = `${workspaceRoot}/treecipe/GeneratedRecipes/recipe-2026-10-08T12-00-00`;
+            const snowfakeryRecipeFilePath = `${snowfakeryRunFolderPath}/Lead-ONLY/recipe--Lead-ONLY-2026-10-08T12-00-00.yml`;
+            createRecipeFilesSpy.mockResolvedValue({ runFolderPath: snowfakeryRunFolderPath, recipeFilePaths: [snowfakeryRecipeFilePath] });
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            const [message, actions] = showCreatedFilesNotificationSpy.mock.calls[0];
+            expect(message).toBe('Generated 1 relationship-tree recipe in "treecipe/GeneratedRecipes/recipe-2026-10-08T12-00-00".');
+            expect(actions[1]).toEqual({ label: OPEN_RECIPE_ACTION_LABEL, targetPath: snowfakeryRecipeFilePath, kind: 'openInEditor' });
+
+        });
+
+        test('given a run that wrote no recipe, offers only Reveal in Explorer', async () => {
+
+            createRecipeFilesSpy.mockResolvedValue({ runFolderPath: runFolderPath, recipeFilePaths: [] });
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            const [message, actions] = showCreatedFilesNotificationSpy.mock.calls[0];
+            expect(message).toContain('Generated 0 relationship-tree recipes');
+            expect(actions).toEqual([{ label: REVEAL_IN_EXPLORER_ACTION_LABEL, targetPath: runFolderPath, kind: 'revealInExplorer' }]);
+
+        });
+
+        test('given a run folder whose name carries link syntax, the message cannot render it as a command link', async () => {
+
+            createRecipeFilesSpy.mockResolvedValue({ runFolderPath: `${workspaceRoot}/[run](command:workbench.action.terminal.new)`, recipeFilePaths: [] });
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            const [message] = showCreatedFilesNotificationSpy.mock.calls[0];
+            expect(message).not.toContain('[run](command:');
+
+        });
+
+        test('given the Recipe Cockpit\'s suppression option, generates the run and shows no notification', async () => {
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail({ isCompletionNotificationSuppressed: true });
+
+            expect(createRecipeFilesSpy).toHaveBeenCalled();
+            expect(showCreatedFilesNotificationSpy).not.toHaveBeenCalled();
+
+        });
+
+        test.each([
+            ['a truthy non-boolean', { isCompletionNotificationSuppressed: 'true' }],
+            ['a string', 'isCompletionNotificationSuppressed'],
+            ['null', null],
+            ['an array', [true]],
+            ['a vscode Uri, as a context-menu invocation passes', { fsPath: '/workspace/treecipe' }]
+        ])('given %s as the command argument, still shows the notification -- only the exact option suppresses', async (_description, generateTreecipeOptions) => {
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail(generateTreecipeOptions);
+
+            expect(showCreatedFilesNotificationSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given writing the run fails, reports the error and shows no success notification', async () => {
+
+            createRecipeFilesSpy.mockRejectedValue(new Error('EACCES: permission denied'));
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('generateRecipeFromConfigurationDetail');
+            expect(showCreatedFilesNotificationSpy).not.toHaveBeenCalled();
+
+        });
+
+        test('given a toast nobody answers, the command still settles', async () => {
+
+            showCreatedFilesNotificationSpy.mockReturnValue(new Promise(() => undefined));
+
+            await expect(new ExtensionCommandService().generateRecipeFromConfigurationDetail()).resolves.toBeUndefined();
+
+        });
+
+    });
+
     describe('initiateTreecipeConfigurationSetup', () => {
 
         test('given a successful setup, delegates to ConfigurationService and reports no error', async () => {
@@ -2147,6 +2275,64 @@ describe('ExtensionCommandService', () => {
 
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('initiateTreecipeConfigurationSetup');
+
+        });
+
+        describe('completion notification (#206)', () => {
+
+            const workspaceRoot = '/workspace';
+            const configurationFilePath = `${workspaceRoot}/treecipe/treecipe.config.json`;
+
+            let showCreatedFilesNotificationSpy: jest.SpyInstance;
+
+            beforeEach(() => {
+                jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+                jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+                showCreatedFilesNotificationSpy = jest.spyOn(VSCodeWorkspaceService, 'showCreatedFilesNotification').mockResolvedValue(undefined);
+            });
+
+            test('given the file was written, shows one notification naming it with Open and Reveal buttons', async () => {
+
+                jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockResolvedValue(configurationFilePath);
+
+                await new ExtensionCommandService().initiateTreecipeConfigurationSetup();
+
+                expect(showCreatedFilesNotificationSpy).toHaveBeenCalledTimes(1);
+                expect(showCreatedFilesNotificationSpy).toHaveBeenCalledWith('Created "treecipe/treecipe.config.json".', [
+                    { label: OPEN_CONFIGURATION_FILE_ACTION_LABEL, targetPath: configurationFilePath, kind: 'openInEditor' },
+                    { label: REVEAL_IN_EXPLORER_ACTION_LABEL, targetPath: configurationFilePath, kind: 'revealInExplorer' }
+                ]);
+
+            });
+
+            test('given a pick was dismissed and nothing was written, shows no notification', async () => {
+
+                jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockResolvedValue(undefined);
+
+                await new ExtensionCommandService().initiateTreecipeConfigurationSetup();
+
+                expect(showCreatedFilesNotificationSpy).not.toHaveBeenCalled();
+
+            });
+
+            test('given the write failed, shows no success notification', async () => {
+
+                jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockRejectedValue(new Error('EACCES'));
+
+                await new ExtensionCommandService().initiateTreecipeConfigurationSetup();
+
+                expect(showCreatedFilesNotificationSpy).not.toHaveBeenCalled();
+
+            });
+
+            test('given a toast nobody answers, the command still settles', async () => {
+
+                jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockResolvedValue(configurationFilePath);
+                showCreatedFilesNotificationSpy.mockReturnValue(new Promise(() => undefined));
+
+                await expect(new ExtensionCommandService().initiateTreecipeConfigurationSetup()).resolves.toBeUndefined();
+
+            });
 
         });
 

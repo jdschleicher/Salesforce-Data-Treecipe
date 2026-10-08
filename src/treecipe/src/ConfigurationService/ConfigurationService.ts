@@ -301,7 +301,8 @@ export class ConfigurationService {
 
     }
 
-    static async createTreecipeJSONConfigurationFile() {
+    // THE PATH WRITTEN, OR undefined WHEN EITHER PICK WAS DISMISSED AND NOTHING WAS WRITTEN
+    static async createTreecipeJSONConfigurationFile(): Promise<string | undefined> {
 
         const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
         const expectedObjectsPath = await VSCodeWorkspaceService.promptForObjectsPath(workspaceRoot);
@@ -326,11 +327,11 @@ export class ConfigurationService {
         const treecipeBaseDirectory = this.getDefaultTreecipeConfigurationFolderName();
         const expectedTreecipeDirectoryPath = path.join(workspaceRoot, treecipeBaseDirectory);
 
-        this.createTreecipeConfigFile(configurationDetail, expectedTreecipeDirectoryPath);
+        return this.createTreecipeConfigFile(configurationDetail, expectedTreecipeDirectoryPath);
 
     }
 
-    static async createTreecipeConfigFile(treecipeContrigurationDetail, expectedTreecipeDirectoryPath) {
+    static async createTreecipeConfigFile(treecipeContrigurationDetail, expectedTreecipeDirectoryPath: string): Promise<string> {
 
         if (!fs.existsSync(expectedTreecipeDirectoryPath)) {
             fs.mkdirSync(expectedTreecipeDirectoryPath);
@@ -343,6 +344,8 @@ export class ConfigurationService {
         const pathToCreateConfigurationFile = `${ expectedTreecipeDirectoryPath}/${configurationFileName }`;
         
         fs.writeFileSync(pathToCreateConfigurationFile, configurationJsonData);
+
+        return pathToCreateConfigurationFile;
 
     }
 

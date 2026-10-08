@@ -5,6 +5,7 @@ import * as os from 'os';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
 // WHAT A FAKER-JS RUN FOLDER AND ITS RECIPE FILES ARE NAMED WITH, AND A SNOWFAKERY ONE IS NOT
 export const FAKER_JS_RECIPE_INDICATOR = 'recipe-fakerjs';
@@ -22,6 +23,13 @@ export interface IDirectoryScanProgress {
 export interface IObjectsDirectoryScanRoots {
     scanRootPaths: string[];
     isSeededFromSfdxProject: boolean;
+}
+
+// A BUTTON ON A COMMAND'S COMPLETION NOTIFICATION, AND THE FILE OR FOLDER THE COMMAND JUST WROTE THAT IT ACTS ON
+export interface ICreatedFileNotificationAction {
+    label: string;
+    targetPath: string;
+    kind: 'revealInExplorer' | 'openInEditor';
 }
 
 export const ORG_CONNECTION_CHECK_PLACEHOLDER = 'Checking org connections…';
@@ -697,7 +705,7 @@ export class VSCodeWorkspaceService {
 
         } catch (error) {
 
-          vscode.window.showErrorMessage(`Failed to open file: ${filePath} - ${error}`);
+          vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(`Failed to open file: ${filePath} - ${error}`));
           
         }
     }
@@ -717,6 +725,59 @@ export class VSCodeWorkspaceService {
     static showInformationMessage(message: string) {
 
         vscode.window.showInformationMessage(message);
+
+    }
+
+    /*
+        The returned promise settles when the reader clicks or dismisses, which can be never, so a
+        command reports completion with `void` rather than awaiting this -- awaiting it held
+        executeCommand, and every caller of it, on an unanswered toast. A target is checked again
+        when clicked: the file can be moved or deleted while the toast is up, and a path outside
+        the workspace is never revealed or opened whoever built the action.
+    */
+    static showCreatedFilesNotification(message: string, actions: ICreatedFileNotificationAction[]): Promise<void> {
+
+        const actionLabels = actions.map(action => action.label);
+
+        return Promise.resolve(vscode.window.showInformationMessage(message, ...actionLabels))
+            .then(selectedLabel => {
+                const selectedAction = actions.find(action => action.label === selectedLabel);
+                return selectedAction ? this.runCreatedFileNotificationAction(selectedAction) : undefined;
+            });
+
+    }
+
+    static async runCreatedFileNotificationAction(action: ICreatedFileNotificationAction): Promise<void> {
+
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if ( !workspaceRoot ) {
+            return;
+        }
+
+        const resolvedTargetPath = path.resolve(action.targetPath);
+        if ( !fs.existsSync(resolvedTargetPath) || !SfdxProjectService.isPathContainedInWorkspace(resolvedTargetPath, path.resolve(workspaceRoot)) ) {
+            void vscode.window.showWarningMessage(`"${this.toWorkspaceRelativeDisplayPath(resolvedTargetPath, workspaceRoot)}" is no longer in this workspace, so it cannot be shown.`);
+            return;
+        }
+
+        if ( action.kind === 'openInEditor' ) {
+            await this.openFileInEditor(resolvedTargetPath);
+            return;
+        }
+
+        try {
+            await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(resolvedTargetPath));
+        } catch (revealError) {
+            void vscode.window.showErrorMessage(`Failed to reveal "${this.toWorkspaceRelativeDisplayPath(resolvedTargetPath, workspaceRoot)}" in the Explorer: ${RecipeYamlScalar.escapeForNotification(revealError instanceof Error ? revealError.message : String(revealError))}`);
+        }
+
+    }
+
+    // FORWARD SLASHES ON EVERY PLATFORM, ESCAPED FOR A NOTIFICATION -- A FOLDER NAME IS WORKSPACE TEXT AND A `[label](command:...)` IN ONE WOULD RENDER AS A LINK THAT RUNS A COMMAND
+    static toWorkspaceRelativeDisplayPath(targetPath: string, workspaceRoot: string): string {
+
+        const relativePath = path.relative(workspaceRoot, targetPath).split(path.sep).join('/');
+        return RecipeYamlScalar.escapeForNotification(relativePath);
 
     }
 

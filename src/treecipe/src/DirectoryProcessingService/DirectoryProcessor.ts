@@ -17,6 +17,12 @@ import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceServic
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { MermaidService } from '../MermaidService/MermaidService';
 
+export interface IGeneratedRecipeRun {
+  runFolderPath: string;
+  // ONE PER RELATIONSHIP TREE, IN RecipeFiles ORDER
+  recipeFilePaths: string[];
+}
+
 export class DirectoryProcessor {
 
   private recipeService: RecipeService;
@@ -437,8 +443,13 @@ export class DirectoryProcessor {
 
   }
 
+  /*
+      Every write is awaited, so the run is on disk when the promise resolves and a failed write
+      rejects it -- a throw inside an fs.writeFile callback reached nothing, and the command
+      reported success over a missing file. The caller reports the run once; nothing here notifies.
+  */
   async createRecipeFilesInSubdirectory(objectsInfoWrapper: ObjectInfoWrapper,
-                                          workspaceRoot): Promise<void> {
+                                          workspaceRoot: string): Promise<IGeneratedRecipeRun> {
 
       // ensure dedicated directory for generated recipes exists
       const generatedRecipesFolderName = ConfigurationService.getGeneratedRecipesDefaultFolderName();
@@ -470,6 +481,9 @@ export class DirectoryProcessor {
       timestampedRecipeGenerationFolder = `${expectedGeneratedRecipesFolderPath}/${recipePrefix}-${isoDateTimestamp}`;
       fs.mkdirSync(timestampedRecipeGenerationFolder);
 
+      const recipeFilePaths: string[] = [];
+      const pendingFileWrites: Promise<void>[] = [];
+
       const recipeFilesToCreate = objectsInfoWrapper.RecipeFiles;
       for ( const recipeFile of recipeFilesToCreate ) {
 
@@ -481,54 +495,51 @@ export class DirectoryProcessor {
           fs.mkdirSync(treecipeTopToBottomFolder);
 
           const outputFilePath = `${treecipeTopToBottomFolder}/${recipeFileName}`;
-
-          fs.writeFile(outputFilePath, recipeFile.content, (err) => {
-
-            if (err) {
-                  throw new Error('an error occurred when parsing objects directory and generating a recipe yaml file.');
-            } else {
-                  vscode.window.showInformationMessage('Treecipe YAML generated successfully');
-            }
-
-          });
+          recipeFilePaths.push(outputFilePath);
+          pendingFileWrites.push(DirectoryProcessor.writeGeneratedFile(outputFilePath, recipeFile.content, 'an error occurred when parsing objects directory and generating a recipe yaml file.'));
 
           const soqlTemplateFileName = `soql-sosl-templates--${treecipeTopToBottomLevelName}-${isoDateTimestamp}.md`;
           const soqlTemplateFilePath = `${treecipeTopToBottomFolder}/${soqlTemplateFileName}`;
           const soqlTemplateContent = SOQLTemplateService.generateSOQLTemplateMarkdownForTree(objectsInfoWrapper, recipeFile.objects, isoDateTimestamp);
-          fs.writeFile(soqlTemplateFilePath, soqlTemplateContent, (err) => {
-              if (err) {
-                  throw new Error(`an error occurred when attempting to create the "${soqlTemplateFileName}" file.`);
-              } else {
-                  vscode.window.showInformationMessage('SOQL/SOSL template file generated successfully');
-              }
-          });
+          pendingFileWrites.push(DirectoryProcessor.writeGeneratedFile(soqlTemplateFilePath, soqlTemplateContent, `an error occurred when attempting to create the "${soqlTemplateFileName}" file.`));
 
           const mermaidErdFileName = `mermaid-erd--${treecipeTopToBottomLevelName}-${isoDateTimestamp}.md`;
           const mermaidErdFilePath = `${treecipeTopToBottomFolder}/${mermaidErdFileName}`;
           const mermaidErdContent = MermaidService.generateMermaidMarkdownForTree(objectsInfoWrapper, recipeFile.objects, isoDateTimestamp);
-          fs.writeFile(mermaidErdFilePath, mermaidErdContent, (err) => {
-              if (err) {
-                  throw new Error(`an error occurred when attempting to create the "${mermaidErdFileName}" file.`);
-              } else {
-                  vscode.window.showInformationMessage('Mermaid ERD file generated successfully');
-              }
-          });
+          pendingFileWrites.push(DirectoryProcessor.writeGeneratedFile(mermaidErdFilePath, mermaidErdContent, `an error occurred when attempting to create the "${mermaidErdFileName}" file.`));
 
       }
 
       const objectsInfoWrapperFileName = `treecipeObjectsWrapper-${isoDateTimestamp}.json`;
       const filePathOfOjectsInfoWrapperJson = `${timestampedRecipeGenerationFolder}/${objectsInfoWrapperFileName}`;
       const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
-      fs.writeFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, (err) => {
-          if (err) {
-              throw new Error(`an error occurred when attempting to create the "${objectsInfoWrapperFileName}" file.`);
-          } else {
-              vscode.window.showInformationMessage('treecipeObjectsWrapper JSON file generated successfully');
-          }
-      });
+      pendingFileWrites.push(DirectoryProcessor.writeGeneratedFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, `an error occurred when attempting to create the "${objectsInfoWrapperFileName}" file.`));
+
+      // SETTLED BEFORE A FAILURE IS RAISED: Promise.all REJECTS ON THE FIRST ONE WHILE THE REST ARE STILL WRITING, AND THE COCKPIT'S Regenerate RELOADS THE RUN AS SOON AS THE COMMAND SETTLES
+      const settledFileWrites = await Promise.allSettled(pendingFileWrites);
+      const failedFileWrite = settledFileWrites.find((settledFileWrite): settledFileWrite is PromiseRejectedResult => settledFileWrite.status === 'rejected');
+      if ( failedFileWrite ) {
+          throw failedFileWrite.reason;
+      }
+
+      return {
+          runFolderPath: timestampedRecipeGenerationFolder,
+          recipeFilePaths: recipeFilePaths
+      };
 
   }
 
+  private static async writeGeneratedFile(filePath: string, content: string, failureMessage: string): Promise<void> {
+
+      try {
+          await fs.promises.writeFile(filePath, content);
+      } catch (writeError) {
+          // A NODE fs ERROR NAMES THE ABSOLUTE PATH, AND THE WORKSPACE ROOT'S FOLDER NAME IS NOT AN API NAME -- THE MESSAGE IS SHOWN IN A NOTIFICATION
+          const writeErrorDetail = writeError instanceof Error ? writeError.message : String(writeError);
+          throw new Error(`${failureMessage} ${DirectoryProcessor.escapeForNotification(writeErrorDetail)}`);
+      }
+
+  }
 
 }
 
