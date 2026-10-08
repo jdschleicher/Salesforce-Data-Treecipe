@@ -535,6 +535,65 @@ describe('a self-lookup adds one nested child iteration of the same object (#188
 
     });
 
+
+    test('a friend the Recipe Cockpit adds under the child iteration resolves to the child Account it is generated under, for every iteration (#197)', async () => {
+
+        const [generatedRecipeContent] = generateRecipeContents([
+            { objectApiName: 'Account', lookups: { ParentId: 'Account' } },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
+        ], true);
+        // TWO TOP ACCOUNTS, TWO CHILD ACCOUNTS PER ACCOUNT, TWO CONTACTS PER ACCOUNT OF EITHER KIND
+        const countedRecipeContent = generatedRecipeContent
+            .replace(/^(  count:) 1$/m, '$1 2')
+            .replace(/^(      nickname: Account_child_NickName\n      count:) 1$/m, '$1 2')
+            .replace(/^(      nickname: Contact_NickName\n      count:) 1$/m, '$1 2');
+
+        const insertResult = RecipeCockpitRecipeWriter.insertFriend(countedRecipeContent, 'Account', 'Account_child_NickName', 'Contact');
+        if ( 'refusal' in insertResult ) {
+            throw new Error(insertResult.refusal.message);
+        }
+
+        const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+        let processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };
+        for ( const recipeEntry of yaml.load(insertResult.recipeText) as LoadedRecipeEntry[] ) {
+            processedYamlWrapper = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(recipeEntry.object, recipeEntry, processedYamlWrapper);
+        }
+        fakerJSRecipeProcessor.resolveNonAncestorNicknameReferences(processedYamlWrapper);
+
+        const fakerJson = JSON.stringify(Object.values(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml).flat());
+        const collectionsByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
+
+        let referenceIdToOrgId: Record<string, string> = {};
+        const insertedRecordsByObject: Record<string, Record<string, unknown>[]> = {};
+        let insertedRecordCount = 0;
+
+        ['Account', 'Contact'].forEach(objectApiName => {
+            insertedRecordsByObject[objectApiName] = [];
+            const resolvedFileRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify(collectionsByObject.get(objectApiName)), referenceIdToOrgId)).records;
+            CollectionsApiService.partitionRecordsIntoInsertRounds(resolvedFileRecords).forEach(insertRound => {
+                const resolvedRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify({ records: insertRound }), referenceIdToOrgId)).records;
+                const fakeInsertResults = resolvedRecords.map(() => ({ id: `ID${insertedRecordCount++}`, success: true }));
+                referenceIdToOrgId = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(referenceIdToOrgId, fakeInsertResults, resolvedRecords);
+                resolvedRecords.forEach((resolvedRecord, recordIndex) => insertedRecordsByObject[objectApiName].push({ ...resolvedRecord, Id: fakeInsertResults[recordIndex].id }));
+            });
+        });
+
+        const accounts = insertedRecordsByObject['Account'];
+        const topAccountIds = accounts.filter(account => account.ParentId === null).map(account => account.Id);
+        const childAccountIds = accounts.filter(account => account.ParentId !== null).map(account => account.Id);
+        const contactAccountIds = insertedRecordsByObject['Contact'].map(contact => contact.AccountId);
+        const contactCountOf = (accountId: unknown) => contactAccountIds.filter(contactAccountId => contactAccountId === accountId).length;
+
+        expect(topAccountIds).toHaveLength(2);
+        expect(childAccountIds).toHaveLength(4);
+        expect(insertedRecordsByObject['Contact']).toHaveLength(12);
+        // EVERY CONTACT POINTS AT AN INSERTED ACCOUNT -- NONE IS LEFT HOLDING A NICKNAME
+        expect(contactAccountIds.every(contactAccountId => accounts.some(account => account.Id === contactAccountId))).toBe(true);
+        expect(topAccountIds.map(contactCountOf)).toEqual([2, 2]);
+        expect(childAccountIds.map(contactCountOf)).toEqual([2, 2, 2, 2]);
+
+    });
+
 });
 
 describe('a generated nested recipe resolves every lookup to the records it was generated under (#46)', () => {

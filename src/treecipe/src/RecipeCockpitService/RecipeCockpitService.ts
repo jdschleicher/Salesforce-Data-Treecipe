@@ -163,6 +163,10 @@ export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
 export const RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL = '▶ Run Faker';
 export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker…';
 
+// A SELF-LOOKUP ITERATION'S "+" ADDS ONE OF ITS OBJECT'S FRIENDS BENEATH IT (#197)
+export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
+export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
+
 export const RECIPE_COCKPIT_TREE_TABS = ['structure', 'versions', 'datasets'] as const;
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
@@ -201,7 +205,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
     is no clickable link in a modal, so the button is the link and this line is what a reader can
     copy if they would rather not hand the dialog a browser.
 */
-export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose and counts that org's records, but does not yet write a change back into a recipe, and its layout, its messages and the shape of what it shows will change between releases.
+export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose and counts that org's records, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
 It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. Data-by-Org never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and it is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted.
 
@@ -295,12 +299,20 @@ export interface IRecipeCockpitObjectIterationFieldViewModel {
     every field link open the occurrence the reader chose. parentObjectApiName and parentNickname
     name the object whose friends: block holds it.
 */
+/*
+    insertableFriendObjectApiNames is set only on a SELF-LOOKUP iteration -- nested under another
+    occurrence of its own object -- with at least one friend to offer: the friends the occurrence
+    above it carries that it does not, which is what its "+" lists (#197). It is the writer's own
+    answer (RecipeCockpitRecipeWriter.listInsertableFriendObjectApiNames), so the panel never offers
+    a friend the writer would refuse for a reason the file already shows.
+*/
 export interface IRecipeCockpitObjectIterationViewModel {
     nickname: string;
     lineNumber: number;
     parentObjectApiName?: string;
     parentNickname?: string;
     fields: IRecipeCockpitObjectIterationFieldViewModel[];
+    insertableFriendObjectApiNames?: string[];
 }
 
 // ONE LOOKUP TYING AN OBJECT TO A PARENT IN ITS OWN TREE; A SELF-LOOKUP NAMES ITS OWN OBJECT AS THE PARENT
@@ -394,6 +406,7 @@ export interface IRecipeSourceObjectIterationEntry {
     parentObjectApiName?: string;
     parentNickname?: string;
     fieldEntries: Map<string, IRecipeSourceFieldEntry>;
+    insertableFriendObjectApiNames?: string[];
 }
 
 export interface IRecipeSourceFile {
@@ -424,6 +437,8 @@ export interface IRecipeCockpitPanelMessage {
     datasetFolderName?: unknown;
     tab?: unknown;
     chooseOrg?: unknown;
+    objectNickname?: unknown;
+    friendObjectApiName?: unknown;
     message?: unknown;
     stack?: unknown;
 }
@@ -664,6 +679,16 @@ export interface IRecipeCockpitCreateStateMessage {
     objectApiName: string;
 }
 
+/*
+    Whether a friend is being added to a self-lookup iteration from this panel. Every "+" is
+    disabled while one is, since the host writes one at a time, and the message is replayed on a
+    reveal so a reloaded document does not offer a second.
+*/
+export interface IRecipeCockpitAddFriendStateMessage {
+    command: 'addFriendState';
+    isRunning: boolean;
+}
+
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
@@ -677,7 +702,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitDataOrgSelectionMessage
                                         | IRecipeCockpitDataOrgCountsMessage
                                         | IRecipeCockpitDataOrgReadinessMessage
-                                        | IRecipeCockpitCreateStateMessage;
+                                        | IRecipeCockpitCreateStateMessage
+                                        | IRecipeCockpitAddFriendStateMessage;
 
 export const RECIPE_COCKPIT_CREATE_CONFIRM_LABEL = 'Create';
 
@@ -759,7 +785,9 @@ export type RecipeCockpitPanelAction =
     | { kind: 'refreshDataOrgCounts' }
     | { kind: 'createRecords'; treeKey: string; objectApiName: string; recordCount: number; recipeFilePath: string }
     | { kind: 'postCreateState'; hostMessage: IRecipeCockpitCreateStateMessage }
-    | { kind: 'viewCreateErrors'; resultsFilePath: string };
+    | { kind: 'viewCreateErrors'; resultsFilePath: string }
+    | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
+    | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
@@ -816,6 +844,9 @@ export interface IRecipeCockpitPanelState {
     creatableObjectKeys: Set<string>;
     createStateMessage?: IRecipeCockpitCreateStateMessage;
     dataOrgCreateResults: Map<string, IRecipeCockpitStoredCreateResult>;
+    pendingInsertableFriendTargets: Map<string, string>;
+    insertableFriendTargets: Map<string, string>;
+    addFriendStateMessage?: IRecipeCockpitAddFriendStateMessage;
 }
 
 /*
@@ -939,7 +970,9 @@ export class RecipeCockpitService {
             dataOrgRequestSequence: 0,
             pendingCreatableObjectKeys: new Set(),
             creatableObjectKeys: new Set(),
-            dataOrgCreateResults: new Map()
+            dataOrgCreateResults: new Map(),
+            pendingInsertableFriendTargets: new Map(),
+            insertableFriendTargets: new Map()
         };
 
     }
@@ -1153,6 +1186,9 @@ export class RecipeCockpitService {
         panelState.dataOrgObjectApiNames = new Set();
         panelState.pendingCreatableObjectKeys = new Set(this.collectCreatableObjectKeys(recipeViewModel));
         panelState.creatableObjectKeys = new Set();
+        // A "+" OF THE OLD MODEL NAMES AN ITERATION THE NEW ONE'S ROWS MAY NOT DRAW WHERE IT WAS
+        panelState.pendingInsertableFriendTargets = this.collectInsertableFriendTargets(recipeViewModel);
+        panelState.insertableFriendTargets = new Map();
         panelState.dataOrgSelection = undefined;
         panelState.dataOrgRequestSequence++;
 
@@ -1228,6 +1264,7 @@ export class RecipeCockpitService {
                 // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL COUNTING IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
                 panelState.creatableObjectKeys = new Set();
+                panelState.insertableFriendTargets = new Map();
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
@@ -1242,6 +1279,7 @@ export class RecipeCockpitService {
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 panelState.dataOrgObjectApiNames = panelState.pendingDataOrgObjectApiNames;
                 panelState.creatableObjectKeys = panelState.pendingCreatableObjectKeys;
+                panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
                 return;
 
             case 'reportRenderFailure': {
@@ -1257,6 +1295,7 @@ export class RecipeCockpitService {
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.creatableObjectKeys = new Set();
+                    panelState.insertableFriendTargets = new Map();
                     // NOTHING IS ON SCREEN TO DRAW A COUNT IN, SO A SELECTION STILL COUNTING STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
                     panelState.dataOrgRequestSequence++;
@@ -1406,7 +1445,106 @@ export class RecipeCockpitService {
                 await VSCodeWorkspaceService.openFileInEditor(panelAction.resultsFilePath);
                 return;
 
+            case 'addIterationFriend':
+
+                await this.addFriendToIteration(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'postAddFriendState':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
         }
+
+    }
+
+    /*
+        Adds one friend beneath a self-lookup iteration (#197): a host-side confirmation naming the
+        file, the friend and the iteration, then RecipeCockpitRecipeWriter.insertFriend on the file as
+        it is NOW -- the writer re-checks everything against the current text, so an edit made since
+        the model was drawn is refused or built on rather than overwritten -- and the run reloaded
+        with the card open on its Structure tab, where the new friend is drawn under the iteration.
+
+        Only a write reloads. Whatever else it ended in -- cancelled, refused, the file gone -- the
+        rows on screen are still the file's, and the closing addFriendState gives back the "+"
+        buttons the panel disabled on the click.
+    */
+    private static async addFriendToIteration(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                addFriendAction: Extract<RecipeCockpitPanelAction, { kind: 'addIterationFriend' }>) {
+
+        const { treeKey, objectApiName, iterationNickname, friendObjectApiName, recipeFilePath } = addFriendAction;
+        const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
+        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+
+        panelState.addFriendStateMessage = { command: 'addFriendState', isRunning: true };
+        this.postToPanel(cockpitPanel, panelState.addFriendStateMessage);
+
+        try {
+
+            const isAdded = await this.writeFriendToIteration(recipeFilePath, recipeFileLabel, panelState.workspaceRoot, objectApiName, iterationNickname, friendObjectApiName);
+
+            if ( isAdded && isPanelStillCurrent() ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'structure' });
+            }
+
+        } finally {
+
+            panelState.addFriendStateMessage = undefined;
+
+            if ( isPanelStillCurrent() ) {
+                this.postToPanel(cockpitPanel, { command: 'addFriendState', isRunning: false });
+            }
+
+        }
+
+    }
+
+    // WHETHER THE FILE WAS WRITTEN; EVERY OTHER ENDING HAS ALREADY BEEN SAID TO THE READER, OR WAS THEIR OWN CANCEL
+    private static async writeFriendToIteration(recipeFilePath: string,
+                                                recipeFileLabel: string,
+                                                workspaceRoot: string,
+                                                objectApiName: string,
+                                                iterationNickname: string,
+                                                friendObjectApiName: string): Promise<boolean> {
+
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so ${friendObjectApiName} was not added. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+            return false;
+        }
+
+        const confirmation = await vscode.window.showWarningMessage(
+            `Add ${friendObjectApiName} under ${iterationNickname}?`,
+            {
+                modal: true,
+                detail: `This writes to "${recipeFileLabel}": a copy of the ${friendObjectApiName} block under the ${objectApiName} above ${iterationNickname}, nested under ${iterationNickname} with a nickname of its own, its lookups to that ${objectApiName} pointed at ${iterationNickname}. Every other line of the file is left as it is.`
+            },
+            RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        // CHECKED AGAIN AFTER THE MODAL: THE FILE CAN HAVE BEEN REPLACED WHILE IT WAS OPEN
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so ${friendObjectApiName} was not added.`);
+            return false;
+        }
+
+        const insertResult = RecipeCockpitRecipeWriter.insertFriend(fs.readFileSync(recipeFilePath, 'utf-8'), objectApiName, iterationNickname, friendObjectApiName);
+
+        if ( 'refusal' in insertResult ) {
+            VSCodeWorkspaceService.showWarningMessage(`${friendObjectApiName} was not added to "${recipeFileLabel}": ${RecipeYamlScalar.escapeForNotification(insertResult.refusal.message)}`);
+            return false;
+        }
+
+        fs.writeFileSync(recipeFilePath, insertResult.recipeText);
+
+        VSCodeWorkspaceService.showInformationMessage(`Added ${friendObjectApiName} as ${insertResult.edit.friendNickname} under ${iterationNickname} in "${recipeFileLabel}".`);
+
+        return true;
 
     }
 
@@ -3130,6 +3268,45 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                "+" on a self-lookup iteration posts four NAMES -- the card, the object, the
+                iteration's nickname and the friend -- and the four together must be a target the
+                confirmed-drawn model offered. The recipe file is the host's own, looked up by that
+                key; nothing posted is read as a path or as recipe text.
+            */
+            case 'addIterationFriend': {
+
+                const { treeKey, objectApiName, objectNickname, friendObjectApiName } = panelMessage;
+
+                // ONE AT A TIME -- THE ONE IN FLIGHT ALREADY HOLDS EVERY "+" DISABLED, AND ITS OWN END RE-ENABLES THEM
+                if ( panelState.addFriendStateMessage ) {
+                    return undefined;
+                }
+
+                const recipeFilePath = typeof treeKey === 'string'
+                                        && typeof objectApiName === 'string'
+                                        && typeof objectNickname === 'string'
+                                        && typeof friendObjectApiName === 'string'
+                                        && !!panelState.recipeDataMessage
+                    ? panelState.insertableFriendTargets.get(this.buildInsertableFriendKey(treeKey, objectApiName, objectNickname, friendObjectApiName))
+                    : undefined;
+
+                if ( recipeFilePath ) {
+                    return {
+                        kind: 'addIterationFriend',
+                        treeKey: treeKey as string,
+                        objectApiName: objectApiName as string,
+                        iterationNickname: objectNickname as string,
+                        friendObjectApiName: friendObjectApiName as string,
+                        recipeFilePath: recipeFilePath
+                    };
+                }
+
+                // THE PANEL DISABLED EVERY "+" ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
+                return { kind: 'postAddFriendState', hostMessage: { command: 'addFriendState', isRunning: false } };
+
+            }
+
             case 'viewCreateErrors': {
 
                 const { treeKey, objectApiName } = panelMessage;
@@ -3195,6 +3372,10 @@ export class RecipeCockpitService {
             replayMessages.push(panelState.createStateMessage);
         }
 
+        if ( panelState.addFriendStateMessage ) {
+            replayMessages.push(panelState.addFriendStateMessage);
+        }
+
         if ( panelState.loadFailedMessage ) {
             replayMessages.push(panelState.loadFailedMessage);
         } else if ( panelState.loadPhaseMessage ) {
@@ -3208,6 +3389,44 @@ export class RecipeCockpitService {
     static buildOpenSourceKey(filePath: string, lineNumber: number): string {
 
         return `${filePath}\n${lineNumber}`;
+
+    }
+
+    static buildInsertableFriendKey(treeKey: string, objectApiName: string, iterationNickname: string, friendObjectApiName: string): string {
+
+        return `${treeKey}\n${objectApiName}\n${iterationNickname}\n${friendObjectApiName}`;
+
+    }
+
+    /*
+        Every friend a "+" the rendered model draws can add, by card, object, iteration and friend,
+        each mapped to the recipe file the iteration is in -- host-only, so the panel never names it.
+        Only a card that LISTS the iteration offers it, so a key names a "+" that is on screen.
+    */
+    static collectInsertableFriendTargets(recipeViewModel: IRecipeCockpitRecipeViewModel): Map<string, string> {
+
+        const insertableFriendTargets = new Map<string, string>();
+        const objectsByApiName = new Map(recipeViewModel.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
+
+        recipeViewModel.trees.forEach(tree => tree.objects
+            .filter(treeObject => treeObject.iterationNickname !== undefined)
+            .forEach(treeObject => {
+
+                const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
+                const iteration = objectViewModel?.iterations?.find(candidateIteration => candidateIteration.nickname === treeObject.iterationNickname);
+
+                if ( !objectViewModel?.recipeFilePath || !iteration ) {
+                    return;
+                }
+
+                ( iteration.insertableFriendObjectApiNames ?? [] ).forEach(friendObjectApiName => insertableFriendTargets.set(
+                    this.buildInsertableFriendKey(tree.treeKey, objectViewModel.objectApiName, iteration.nickname, friendObjectApiName),
+                    objectViewModel.recipeFilePath
+                ));
+
+            }));
+
+        return insertableFriendTargets;
 
     }
 
@@ -4043,12 +4262,14 @@ export class RecipeCockpitService {
             }
 
             const parentScannedObject = scannedObjectsByHeaderIndex.get(scannedObject.parentHeaderIndex);
+            const insertableFriendObjectApiNames = RecipeCockpitRecipeWriter.listInsertableFriendObjectApiNames(scannedObjects, scannedObject);
             firstObjectEntry.iterations = [...(firstObjectEntry.iterations ?? []), {
                 nickname: nickname,
                 lineNumber: scannedObject.headerIndex + 1,
                 ...( parentScannedObject ? { parentObjectApiName: parentScannedObject.objectApiName } : {} ),
                 ...( parentScannedObject?.nicknames.length === 1 ? { parentNickname: parentScannedObject.nicknames[0] } : {} ),
-                fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines)
+                fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines),
+                ...( insertableFriendObjectApiNames.length > 0 ? { insertableFriendObjectApiNames: insertableFriendObjectApiNames } : {} )
             }];
 
         });
@@ -4151,7 +4372,8 @@ export class RecipeCockpitService {
                             fieldApiName: fieldApiName,
                             lineNumber: fieldEntry.lineNumber,
                             recipeValue: fieldEntry.valueText
-                        }))
+                        })),
+                        ...( iteration.insertableFriendObjectApiNames ? { insertableFriendObjectApiNames: iteration.insertableFriendObjectApiNames.slice() } : {} )
                     }))
                 } : {} )
             };
@@ -4365,7 +4587,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeHeader { padding: 0.5rem 0.6rem; background-color: var(--sdt-header); }
     .treeTitle { font-weight: 600; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice {
         background: none;
         border: none;
         padding: 0;
@@ -4377,6 +4599,10 @@ ${this.buildPaletteCustomProperties()}
     .treeScope { margin-left: auto; padding: 0 0.3rem; }
     .treeRunFaker { padding: 0 0.3rem; }
     .treeRunFaker:disabled { opacity: 0.6; cursor: default; }
+    .treeAddFriend { padding: 0 0.3rem; font-weight: 600; }
+    .treeAddFriendChoice { padding: 0 0.3rem; text-decoration: underline; }
+    .treeAddFriend:disabled, .treeAddFriendChoice:disabled { opacity: 0.6; cursor: default; }
+    .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; padding-left: 1.5rem; }
     .treeScope.selected { outline: 1px solid var(--sdt-accent); }
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.75rem; padding: 0.3rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
@@ -4510,6 +4736,7 @@ ${this.buildPaletteCustomProperties()}
     const CHOOSE_ORG_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL)};
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
     const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
+    const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const CREATE_MAX_COUNT = ${RECIPE_COCKPIT_CREATE_MAX_COUNT};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
 
@@ -4527,6 +4754,10 @@ ${this.buildPaletteCustomProperties()}
     let renderedSequence = null;
     // THE TREE WHOSE RUN FAKER IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
     let runFakerRunningTreeKey = null;
+    // WHETHER A FRIEND IS BEING ADDED; IT OUTLIVES A MODEL FOR THE SAME REASON
+    let isAddFriendRunning = false;
+    // EVERY "+" AND FRIEND CHOICE DRAWN FOR THIS MODEL, SO ONE CLICK CAN DISABLE THEM ALL
+    let addFriendButtonElements = [];
     let filterInputElement = null;
     let dataOrgViewElement = null;
     let dataOrgSelectElement = null;
@@ -4885,6 +5116,64 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        A self-lookup iteration's "+" (#197): the button, and the list of friends it opens on a line
+        of its own at the end of the header, so an object is still its header and its rows. Each choice posts NAMES only -- the card, the
+        object, the iteration's nickname and the friend -- and the host matches the four against what
+        it rendered. One click disables every "+" until the host answers, so only one friend is ever
+        being added.
+    */
+    function appendAddFriendControls(treeKey, object, objectHeaderElement) {
+
+        const friendObjectApiNames = object.iteration.insertableFriendObjectApiNames || [];
+        if (friendObjectApiNames.length === 0) { return; }
+
+        const addFriendElement = createElement('button', 'treeAddFriend', ADD_FRIEND_ACTION_LABEL);
+        const addFriendsElement = createElement('div', 'treeAddFriends hidden');
+
+        addFriendElement.setAttribute('title', 'Add one of the friends of ' + object.objectApiName + ' under ' + object.nickname);
+        addFriendElement.setAttribute('aria-label', 'Add a friend under ' + object.nickname);
+        addFriendElement.setAttribute('aria-expanded', 'false');
+        addFriendElement.addEventListener('click', function () {
+            const isOpening = addFriendsElement.classList.contains('hidden');
+            if (isOpening) { addFriendsElement.classList.remove('hidden'); } else { addFriendsElement.classList.add('hidden'); }
+            addFriendElement.setAttribute('aria-expanded', isOpening ? 'true' : 'false');
+        });
+
+        addFriendsElement.appendChild(createElement('span', 'muted', 'Add under ' + object.nickname + ':'));
+
+        friendObjectApiNames.forEach(function (friendObjectApiName) {
+            const choiceElement = createElement('button', 'treeAddFriendChoice', '+ ' + friendObjectApiName);
+            choiceElement.setAttribute('aria-label', 'Add ' + friendObjectApiName + ' under ' + object.nickname);
+            choiceElement.addEventListener('click', function () {
+                if (isAddFriendRunning) { return; }
+                setAddFriendRunning(true);
+                vscodeApi.postMessage({
+                    command: 'addIterationFriend',
+                    treeKey: treeKey,
+                    objectApiName: object.objectApiName,
+                    objectNickname: object.nickname,
+                    friendObjectApiName: friendObjectApiName
+                });
+            });
+            addFriendButtonElements.push(choiceElement);
+            addFriendsElement.appendChild(choiceElement);
+        });
+
+        addFriendButtonElements.push(addFriendElement);
+        objectHeaderElement.appendChild(addFriendElement);
+        objectHeaderElement.appendChild(addFriendsElement);
+        setAddFriendRunning(isAddFriendRunning);
+
+    }
+
+    function setAddFriendRunning(isRunning) {
+
+        isAddFriendRunning = isRunning;
+        addFriendButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRunning; });
+
+    }
+
     function applyTreeFieldVisibility(fieldState) {
 
         if (!fieldState.rowElement) { return; }
@@ -4920,7 +5209,7 @@ ${this.buildPaletteCustomProperties()}
         An object's header is made with its tree, because the filter writes its count whether or
         not the card is open; its ROWS wait for the object's own first expand.
     */
-    function buildTreeObjectState(treeObject, object) {
+    function buildTreeObjectState(treeObject, object, treeKey) {
 
         const objectElement = createElement('div', 'treeObject');
         const objectHeaderElement = createElement('div', 'treeObjectHeader');
@@ -4969,6 +5258,8 @@ ${this.buildPaletteCustomProperties()}
         objectHeaderElement.appendChild(treeObjectState.countElement);
         objectHeaderElement.appendChild(treeObjectState.orgDescribeElement);
         objectHeaderElement.appendChild(treeObjectState.diffElement);
+
+        if (object.iteration) { appendAddFriendControls(treeKey, object, objectHeaderElement); }
 
         objectElement.appendChild(objectHeaderElement);
         objectElement.appendChild(treeObjectState.bodyElement);
@@ -5436,7 +5727,7 @@ ${this.buildPaletteCustomProperties()}
             objectStates: tree.objects
                 .map(function (treeObject) { return { treeObject: treeObject, object: resolveTreeObject(treeObject, objectsByApiName) }; })
                 .filter(function (resolved) { return resolved.object !== null; })
-                .map(function (resolved) { return buildTreeObjectState(resolved.treeObject, resolved.object); }),
+                .map(function (resolved) { return buildTreeObjectState(resolved.treeObject, resolved.object, tree.treeKey); }),
             isBodyBuilt: false,
             isExpanded: false,
             isExpandedByReader: false,
@@ -6208,6 +6499,7 @@ ${this.buildPaletteCustomProperties()}
         pendingDatasetCountElements = Object.create(null);
         answeredDatasetCounts = Object.create(null);
         fieldSearchTexts = new Map();
+        addFriendButtonElements = [];
         runSelectElement = null;
         renderedSequence = null;
 
@@ -6614,6 +6906,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'createState') {
             setCreateRunning(hostMessage.isRunning ? buildCreateKey(hostMessage.treeKey, hostMessage.objectApiName) : null);
+            return;
+        }
+
+        if (hostMessage.command === 'addFriendState') {
+            setAddFriendRunning(!!hostMessage.isRunning);
             return;
         }
 

@@ -1198,5 +1198,263 @@ describe('RecipeCockpitRecipeWriter', () => {
 
     });
 
-});
+    describe('insertFriend, a friend added under a self-lookup iteration (#197)', () => {
 
+        const FRIENDS_FIXTURE = 'recipe-fakerjs-selfLookupFriends--RelationshipTree_1.yml';
+        const friendsRecipeText = readFixture(FRIENDS_FIXTURE);
+        const ITERATION_NICKNAME = 'Account_child_NickName';
+
+        const scanIteration = (recipeText: string, nickname = ITERATION_NICKNAME) => {
+            const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines);
+            return { scannedObjects: scannedObjects, iteration: scannedObjects.find(scannedObject => scannedObject.nicknames.includes(nickname)) };
+        };
+
+        const insertableFriendsOf = (recipeText: string, nickname = ITERATION_NICKNAME) => {
+            const { scannedObjects, iteration } = scanIteration(recipeText, nickname);
+            return RecipeCockpitRecipeWriter.listInsertableFriendObjectApiNames(scannedObjects, iteration);
+        };
+
+        it('writes the friend under a new friends: block at the iteration\'s depth plus one, its lookup to the object pointed at the iteration', () => {
+
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertFriend(friendsRecipeText, 'Account', ITERATION_NICKNAME, 'Contact'));
+
+            expect(edit).toMatchObject({ operation: 'insert-friend', objectApiName: 'Account', objectNickname: ITERATION_NICKNAME, friendObjectApiName: 'Contact', friendNickname: 'Contact_child_NickName', removedLines: [] });
+            expect(friendsRecipeText.split('\n')[edit.startLineNumber - 2]).toBe('        ParentId: Account_NickName');
+            // THE COPY KEEPS THE TODO AND THE READER'S OWN COMMENT, AND LEAVES THE CONTACT'S OWN Case BEHIND
+            expect(edit.insertedLines).toEqual([
+                '      friends:',
+                '        # Contact (Added by the Recipe Cockpit under Account_child_NickName, copied from the Contact under Account_NickName)',
+                '        - object: Contact',
+                '          nickname: Contact_child_NickName',
+                '          count: 2',
+                '          fields:',
+                '            LastName: ${{ faker.person.lastName() }}',
+                '            AccountId: Account_child_NickName',
+                '            ReportsToId: ### TODO -- REFERENCE ID REQUIRED -- Contact',
+                '            ### TODO -- the reader\'s own note about Contact'
+            ]);
+            expectFidelity(friendsRecipeText, patchedRecipeText, edit);
+
+        });
+
+        it('appends a second friend to the iteration\'s friends: block, and offers only what the iteration does not carry yet', () => {
+
+            expect(insertableFriendsOf(friendsRecipeText)).toEqual(['Contact', 'Opportunity']);
+
+            const { recipeText: withContactText } = expectApplied(RecipeCockpitRecipeWriter.insertFriend(friendsRecipeText, 'Account', ITERATION_NICKNAME, 'Contact'));
+            expect(insertableFriendsOf(withContactText)).toEqual(['Opportunity']);
+
+            const { recipeText: withBothText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertFriend(withContactText, 'Account', ITERATION_NICKNAME, 'Opportunity'));
+            expect(insertableFriendsOf(withBothText)).toEqual([]);
+
+            expect(edit.insertedLines[0]).toBe('        # Opportunity (Added by the Recipe Cockpit under Account_child_NickName, copied from the Opportunity under Account_NickName)');
+            // A BLOCK SCALAR MOVES WITH ITS FIELD, ITS RELATIVE INDENTATION KEPT
+            expect(edit.insertedLines.slice(1)).toEqual([
+                '        - object: Opportunity',
+                '          nickname: Opportunity_child_NickName',
+                '          count: 1',
+                '          fields:',
+                '            Name: ${{ faker.commerce.productName() }}',
+                '            AccountId: Account_child_NickName',
+                '            Description: |',
+                '              ${{ faker.lorem.paragraph() }}',
+                '            StageName: Prospecting'
+            ]);
+            expectFidelity(withContactText, withBothText, edit);
+
+            const { scannedObjects, iteration } = scanIteration(withBothText);
+            expect(scannedObjects.filter(scannedObject => scannedObject.parentHeaderIndex === iteration.headerIndex).map(scannedObject => scannedObject.nicknames)).toEqual([
+                ['Contact_child_NickName'], ['Opportunity_child_NickName']
+            ]);
+
+        });
+
+        it('loads as YAML with the friend nested under the iteration, and the cockpit reader keeps every occurrence apart', () => {
+
+            const { recipeText: patchedRecipeText } = expectApplied(RecipeCockpitRecipeWriter.insertFriend(friendsRecipeText, 'Account', ITERATION_NICKNAME, 'Contact'));
+
+            const [account] = yaml.load(patchedRecipeText) as any[];
+            const iteration = account.friends.find((friend: any) => friend.nickname === ITERATION_NICKNAME);
+
+            expect(iteration.friends).toEqual([{
+                object: 'Contact',
+                nickname: 'Contact_child_NickName',
+                count: 2,
+                fields: { LastName: '${{ faker.person.lastName() }}', AccountId: ITERATION_NICKNAME, ReportsToId: null }
+            }]);
+
+            const contactEntry = RecipeCockpitService.parseRecipeSource(patchedRecipeText).get('Contact');
+            expect(contactEntry.nickname).toBe('Contact_NickName');
+            expect(contactEntry.iterations).toEqual([expect.objectContaining({
+                nickname: 'Contact_child_NickName',
+                parentObjectApiName: 'Account',
+                parentNickname: ITERATION_NICKNAME
+            })]);
+            expect(contactEntry.iterations[0]).not.toHaveProperty('insertableFriendObjectApiNames');
+
+        });
+
+        it('keeps a lookup to an ancestor above the top occurrence, which is the iteration\'s ancestor too', () => {
+
+            const nestedText = [
+                '- object: Region__c',
+                '  nickname: Region__c_NickName',
+                '  fields:',
+                '    Name: r',
+                '  friends:',
+                '    - object: Account',
+                '      nickname: Account_NickName',
+                '      fields:',
+                '        Region__c: Region__c_NickName',
+                '      friends:',
+                '        - object: Contact',
+                '          nickname: Contact_NickName',
+                '          fields:',
+                '            AccountId: Account_NickName',
+                '            Region__c: Region__c_NickName',
+                '        - object: Account',
+                '          nickname: Account_child_NickName',
+                '          fields:',
+                '            ParentId: Account_NickName',
+                ''
+            ].join('\n');
+
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertFriend(nestedText, 'Account', ITERATION_NICKNAME, 'Contact'));
+
+            expect(edit.insertedLines.slice(2)).toEqual([
+                '            - object: Contact',
+                '              nickname: Contact_child_NickName',
+                '              fields:',
+                '                AccountId: Account_child_NickName',
+                '                Region__c: Region__c_NickName'
+            ]);
+            expectFidelity(nestedText, patchedRecipeText, edit);
+
+        });
+
+        it('copies a blank line inside the friend\'s block as a blank line', () => {
+
+            const blankLineText = friendsRecipeText.replace('        LastName: ${{ faker.person.lastName() }}\n', '        LastName: ${{ faker.person.lastName() }}\n\n');
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertFriend(blankLineText, 'Account', ITERATION_NICKNAME, 'Contact'));
+
+            expect(edit.insertedLines.slice(6, 9)).toEqual(['            LastName: ${{ faker.person.lastName() }}', '', '            AccountId: Account_child_NickName']);
+            expectFidelity(blankLineText, patchedRecipeText, edit);
+
+        });
+
+        it('gives the copy a nickname no occurrence in the file holds', () => {
+
+            const heldText = friendsRecipeText.replace('nickname: Lead_NickName', 'nickname: Contact_child_NickName');
+            const doublyHeldText = heldText.replace('nickname: Case_NickName', 'nickname: Contact_child_NickName_2');
+
+            expect(expectApplied(RecipeCockpitRecipeWriter.insertFriend(heldText, 'Account', ITERATION_NICKNAME, 'Contact')).edit.friendNickname).toBe('Contact_child_NickName_2');
+            expect(expectApplied(RecipeCockpitRecipeWriter.insertFriend(doublyHeldText, 'Account', ITERATION_NICKNAME, 'Contact')).edit.friendNickname).toBe('Contact_child_NickName_3');
+            expect(expectApplied(RecipeCockpitRecipeWriter.insertFriend(friendsRecipeText.replace('nickname: Contact_NickName', 'nickname: Branch_Contact'), 'Account', ITERATION_NICKNAME, 'Contact')).edit.friendNickname).toBe('Branch_Contact_child');
+
+        });
+
+        describe.each(LINE_ENDING_VARIANTS)('with %s', (_variantName, lineEnding, hasFinalNewline) => {
+
+            it.each([
+                ['an iteration followed by another object', FRIENDS_FIXTURE],
+                ['an iteration on the last lines of the file', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml']
+            ])('inserts under %s leaving every other line byte-identical', (_fixtureDescription, fileName) => {
+
+                const variantText = toVariant(readFixture(fileName), lineEnding, hasFinalNewline);
+                const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertFriend(variantText, 'Account', ITERATION_NICKNAME, 'Contact'));
+
+                expectFidelity(variantText, patchedRecipeText, edit);
+                expect(insertableFriendsOf(patchedRecipeText)).toEqual(insertableFriendsOf(variantText).filter(friendObjectApiName => friendObjectApiName !== 'Contact'));
+
+            });
+
+        });
+
+        describe('refusals', () => {
+
+            const insertInto = (recipeText: string, objectApiName: string, nickname: string, friendObjectApiName: string) => RecipeCockpitRecipeWriter.insertFriend(recipeText, objectApiName, nickname, friendObjectApiName);
+
+            it.each<[string, string, string, string, RecipeWriterRefusalReason]>([
+                ['a friend name that is not an api name', 'Account', ITERATION_NICKNAME, 'Contact\n- object: Evil', 'invalid-friend-object-api-name'],
+                ['an object name that is not an api name', 'Account\n- object: Evil', ITERATION_NICKNAME, 'Contact', 'invalid-object-api-name'],
+                ['a nickname that is not one', 'Account', 'Account child', 'Contact', 'invalid-object-nickname'],
+                ['an empty nickname', 'Account', '', 'Contact', 'invalid-object-nickname'],
+                ['a nickname no occurrence carries', 'Account', 'Account_Missing_NickName', 'Contact', 'object-not-found'],
+                ['the top occurrence, which is not nested under its own object', 'Account', 'Account_NickName', 'Contact', 'not-a-self-lookup-iteration'],
+                ['a friend that is not an iteration of its own object', 'Contact', 'Contact_NickName', 'Case', 'not-a-self-lookup-iteration'],
+                ['an object the top occurrence has no friend of', 'Account', ITERATION_NICKNAME, 'Lead', 'friend-not-found'],
+                ['the iteration\'s own object', 'Account', ITERATION_NICKNAME, 'Account', 'friend-not-found'],
+                ['a grandchild, which is not the top occurrence\'s own friend', 'Account', ITERATION_NICKNAME, 'Case', 'friend-not-found']
+            ])('refuses %s', (_description, objectApiName, nickname, friendObjectApiName, expectedReason) => {
+
+                const result = insertInto(friendsRecipeText, objectApiName, nickname, friendObjectApiName);
+
+                expectRefused(result, expectedReason);
+                expect('refusal' in result && result.refusal.friendObjectApiName).toBe(friendObjectApiName);
+
+            });
+
+            it('refuses an iteration nickname two occurrences share, and a friend the iteration already carries', () => {
+
+                const sharedNicknameText = friendsRecipeText.replace('nickname: Lead_NickName', `nickname: ${ITERATION_NICKNAME}`).replace('- object: Lead', '- object: Account');
+                const { recipeText: withContactText } = expectApplied(insertInto(friendsRecipeText, 'Account', ITERATION_NICKNAME, 'Contact'));
+
+                expectRefused(insertInto(sharedNicknameText, 'Account', ITERATION_NICKNAME, 'Contact'), 'duplicate-object');
+                expectRefused(insertInto(withContactText, 'Account', ITERATION_NICKNAME, 'Contact'), 'friend-already-exists');
+
+            });
+
+            it('refuses a friend the top occurrence carries twice, which could be either block', () => {
+
+                const twiceText = friendsRecipeText.replace('    # Opportunity (Parents: Account)\n    - object: Opportunity\n      nickname: Opportunity_NickName', '    # Opportunity (Parents: Account)\n    - object: Contact\n      nickname: Contact_Second_NickName');
+
+                expectRefused(insertInto(twiceText, 'Account', ITERATION_NICKNAME, 'Contact'), 'duplicate-friend');
+                expect(insertableFriendsOf(twiceText)).toEqual([]);
+
+            });
+
+            it('refuses an iteration with two friends: lines, and one whose friends: block is not its last', () => {
+
+                const iterationTail = '        ParentId: Account_NickName\n';
+                const twoBlocksText = friendsRecipeText.replace(iterationTail, `${iterationTail}      friends:\n      friends:\n`);
+                const propertyAfterFriendsText = friendsRecipeText.replace(iterationTail, `${iterationTail}      friends:\n        - object: Task\n          nickname: Task_NickName\n          fields:\n            Subject: s\n      count: 3\n`);
+
+                expectRefused(insertInto(twoBlocksText, 'Account', ITERATION_NICKNAME, 'Contact'), 'duplicate-friends-block');
+                expect(insertableFriendsOf(twoBlocksText)).toEqual([]);
+                expectRefused(insertInto(propertyAfterFriendsText, 'Account', ITERATION_NICKNAME, 'Contact'), 'unsupported-friend-layout');
+
+            });
+
+            it('refuses a friend block with no nickname, and a top occurrence with none, since neither copy could be wired', () => {
+
+                const noFriendNicknameText = friendsRecipeText.replace('      nickname: Contact_NickName\n', '');
+                const noTopNicknameText = friendsRecipeText.replace('  nickname: Account_NickName\n', '');
+
+                expectRefused(insertInto(noFriendNicknameText, 'Account', ITERATION_NICKNAME, 'Contact'), 'unsupported-friend-layout');
+                expect(insertableFriendsOf(noFriendNicknameText)).toEqual(['Opportunity']);
+                expectRefused(insertInto(noTopNicknameText, 'Account', ITERATION_NICKNAME, 'Contact'), 'unsupported-friend-layout');
+                expect(insertableFriendsOf(noTopNicknameText)).toEqual([]);
+
+            });
+
+            it('refuses a friend block, or a top occurrence, with two nickname lines', () => {
+
+                expectRefused(insertInto(friendsRecipeText.replace('      nickname: Contact_NickName\n', '      nickname: Contact_NickName\n      nickname: Contact_Other_NickName\n'), 'Account', ITERATION_NICKNAME, 'Contact'), 'unsupported-friend-layout');
+                expectRefused(insertInto(friendsRecipeText.replace('  nickname: Account_NickName\n', '  nickname: Account_NickName\n  nickname: Account_Other_NickName\n'), 'Account', ITERATION_NICKNAME, 'Contact'), 'unsupported-friend-layout');
+
+            });
+
+            it('refuses a friend whose nickname no api-name-shaped nickname can be made from, and does not offer it', () => {
+
+                const digitNicknameText = friendsRecipeText.replace('nickname: Contact_NickName', 'nickname: 9Contact');
+
+                expectRefused(insertInto(digitNicknameText, 'Account', ITERATION_NICKNAME, 'Contact'), 'unsupported-friend-layout');
+                expect(insertableFriendsOf(digitNicknameText)).toEqual(['Opportunity']);
+
+            });
+
+        });
+
+    });
+
+});
