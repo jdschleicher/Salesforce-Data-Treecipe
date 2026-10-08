@@ -1,0 +1,53 @@
+# Relationship Tree: RelationshipTree_1
+# Child objects are nested under their parent's friends: block -- a friend's count is records PER parent record
+
+# Account (Parents: Account | Children: Account, Contact, Opportunity)
+- object: Account
+  nickname: Account_NickName
+  count: 2
+  fields:
+    Name: ${{ faker.company.name() }}
+    ParentId: ### TODO -- REFERENCE ID REQUIRED -- Account
+  friends:
+    # Contact (Parents: Account | Children: Case)
+    - object: Contact
+      nickname: Contact_NickName
+      count: 2
+      fields:
+        LastName: ${{ faker.person.lastName() }}
+        AccountId: Account_NickName
+        ReportsToId: ### TODO -- REFERENCE ID REQUIRED -- Contact
+        ### TODO -- the reader's own note about Contact
+      friends:
+        # Case (Parents: Account, Contact)
+        - object: Case
+          nickname: Case_NickName
+          count: 1
+          fields:
+            Subject: ${{ faker.lorem.sentence() }}
+            AccountId: Account_NickName
+            ContactId: Contact_NickName
+    # Opportunity (Parents: Account)
+    - object: Opportunity
+      nickname: Opportunity_NickName
+      count: 1
+      fields:
+        Name: ${{ faker.commerce.productName() }}
+        AccountId: Account_NickName
+        Description: |
+          ${{ faker.lorem.paragraph() }}
+        StageName: Prospecting
+    # Account (Child iteration of the Account above, through ParentId)
+    - object: Account
+      nickname: Account_child_NickName
+      count: 2
+      fields:
+        Name: ${{ faker.company.name() }}
+        ParentId: Account_NickName
+
+# Lead (Parents: none)
+- object: Lead
+  nickname: Lead_NickName
+  count: 1
+  fields:
+    LastName: ${{ faker.person.lastName() }}
