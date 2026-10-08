@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.41.0] - Initiate Configuration File and Generate Treecipe end with one notification that opens or reveals what they wrote
+
+Closes [#206](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/206).
+
+**Initiate Configuration File** finished silently. **Generate Treecipe** raised four toasts per relationship tree plus one more (recipe, SOQL/SOSL template, Mermaid ERD, objects wrapper), so a six-tree run showed 19 notifications. None of them said where the files went, and every one fired from an `fs.writeFile` callback the command never awaited: the command settled before its files existed, and a failed write threw into a callback nothing caught, so the user was told it succeeded.
+
+- **Initiate Configuration File** now shows `Created "treecipe/treecipe.config.json".` with **Open Configuration File** and **Reveal in Explorer**. `ConfigurationService.createTreecipeJSONConfigurationFile` returns the path it wrote, or `undefined` when either pick was dismissed, in which case nothing is shown.
+- **Generate Treecipe** now shows ONE notification, `Generated N relationship-tree recipe(s) in "treecipe/GeneratedRecipes/<run>".`, with **Reveal in Explorer** (the run folder) and **Open Recipe** (the first tree's `.yml`, in `RecipeFiles` order; left out when the run wrote none). It is the same for faker-js (`recipe-fakerjs-*`) and snowfakery (`recipe-*`) runs.
+- **Writes are awaited.** `DirectoryProcessor.createRecipeFilesInSubdirectory` writes through `fs.promises.writeFile`, resolves only once every file is on disk, and returns `{ runFolderPath, recipeFilePaths }`. A failed write now rejects naming the file, reaches `ErrorHandlingService`, and no success notification is shown.
+- **The notification does not hold the command.** `VSCodeWorkspaceService.showCreatedFilesNotification` is called with `void`: a toast can stay unanswered forever, and `treecipe.generateTreecipe` returns its promise to the Recipe Cockpit.
+- **Each click is checked again.** The file can be moved or deleted while the toast is open, so a button opens or reveals its target only if it still exists and passes `SfdxProjectService.isPathContainedInWorkspace` (the symlink half included). Otherwise it warns and does nothing. A rejected `revealInExplorer` is reported rather than left unhandled.
+- **Paths in the message are escaped.** The workspace-relative path goes through `RecipeYamlScalar.escapeForNotification`, so a folder name carrying `[label](command:…)` cannot render as a link that runs a command.
+- **The Recipe Cockpit's Regenerate recipe shows no notification.** It runs `treecipe.generateTreecipe` with `{ isCompletionNotificationSuppressed: true }` (`RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS`), because it already reloads and focuses the regenerated tree. The command is callable by id, so only that exact object suppresses: a string, a truthy non-boolean, `null`, an array or a `Uri` still notifies.
+- **Not changed:** Initiate still overwrites an existing `treecipe.config.json` without asking. Run Faker by Recipe, Insert Data Set by Directory and the picklist dependency commands keep their own messages.
+- **Tests.** `DirectoryProcessor.createRecipeFilesInSubdirectory.test.ts` runs against a real temporary directory: the returned paths for both backends, every file on disk when the promise resolves, no notification of its own, and a failed write rejecting. `VSCodeWorkspaceService.createdFilesNotification.test.ts` covers each button, dismissal, an unanswered toast, a deleted target, a target outside the workspace or behind a symlink out of it, no workspace, a rejected reveal, and the escaped display path. `ExtensionCommandService.test.ts` covers both commands' notifications, cancel and failure, the suppression option and the arguments that must not suppress. `ConfigurationService.test.ts` asserts the returned path, and `RecipeCockpitService.test.ts` that Regenerate passes the option.
+
 ## [3.40.0] - A lookup to a second parent that is not an ancestor is wired in faker-js recipes and resolves at run time
 
 Closes [#189](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/189), a follow-up to [#46](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/46).

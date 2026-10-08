@@ -1,8 +1,8 @@
 import { ConfigurationService, TreecipeConfigDetail } from "../ConfigurationService/ConfigurationService";
-import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
+import { DirectoryProcessor, IGeneratedRecipeRun } from "../DirectoryProcessingService/DirectoryProcessor";
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
-import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
+import { VSCodeWorkspaceService, ICreatedFileNotificationAction } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
@@ -59,6 +59,11 @@ export const VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL = 'View Details';
 export const VIEW_GENERATION_SUMMARY_ACTION_LABEL = 'View Summary';
 export const OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL = 'Open Explorer';
 
+// THE COMPLETION NOTIFICATIONS OF Initiate Configuration File AND Generate Treecipe (#206)
+export const REVEAL_IN_EXPLORER_ACTION_LABEL = 'Reveal in Explorer';
+export const OPEN_CONFIGURATION_FILE_ACTION_LABEL = 'Open Configuration File';
+export const OPEN_RECIPE_ACTION_LABEL = 'Open Recipe';
+
 /*
     Everything the explorer webview can post back, as ONE shape with every field optional.
 
@@ -109,7 +114,10 @@ export class ExtensionCommandService {
 
         try {
 
-            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            const configurationFilePath = await ConfigurationService.createTreecipeJSONConfigurationFile();
+            if ( configurationFilePath ) {
+                this.showConfigurationCreatedNotification(configurationFilePath);
+            }
 
         } catch(error) {
 
@@ -292,7 +300,12 @@ export class ExtensionCommandService {
 
     }
 
-    async generateRecipeFromConfigurationDetail() {
+    /*
+        The Recipe Cockpit's Regenerate passes { isCompletionNotificationSuppressed: true }: it reloads
+        and focuses the tree it regenerated, so a toast pointing at the run would pull the reader
+        out of the panel. The command is callable by id, so only that exact shape suppresses.
+    */
+    async generateRecipeFromConfigurationDetail(generateTreecipeOptions?: unknown) {
 
         try {
 
@@ -332,7 +345,11 @@ export class ExtensionCommandService {
             
                 const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
 
-                await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
+                const generatedRecipeRun = await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
+
+                if ( !ExtensionCommandService.isCompletionNotificationSuppressed(generateTreecipeOptions) ) {
+                    this.showRecipeRunGeneratedNotification(generatedRecipeRun, workspaceRoot);
+                }
 
 
             } else {
@@ -348,6 +365,45 @@ export class ExtensionCommandService {
             
         }
       
+    }
+
+    static isCompletionNotificationSuppressed(generateTreecipeOptions: unknown): boolean {
+
+        return typeof generateTreecipeOptions === 'object'
+                && generateTreecipeOptions !== null
+                && (generateTreecipeOptions as { isCompletionNotificationSuppressed?: unknown }).isCompletionNotificationSuppressed === true;
+
+    }
+
+    private showConfigurationCreatedNotification(configurationFilePath: string) {
+
+        const workspaceRoot = VSCodeWorkspaceService.getWorkspaceRoot();
+        const displayPath = VSCodeWorkspaceService.toWorkspaceRelativeDisplayPath(configurationFilePath, workspaceRoot);
+
+        void VSCodeWorkspaceService.showCreatedFilesNotification(`Created "${displayPath}".`, [
+            { label: OPEN_CONFIGURATION_FILE_ACTION_LABEL, targetPath: configurationFilePath, kind: 'openInEditor' },
+            { label: REVEAL_IN_EXPLORER_ACTION_LABEL, targetPath: configurationFilePath, kind: 'revealInExplorer' }
+        ]);
+
+    }
+
+    private showRecipeRunGeneratedNotification(generatedRecipeRun: IGeneratedRecipeRun, workspaceRoot: string) {
+
+        const displayPath = VSCodeWorkspaceService.toWorkspaceRelativeDisplayPath(generatedRecipeRun.runFolderPath, workspaceRoot);
+        const recipeCount = generatedRecipeRun.recipeFilePaths.length;
+
+        const actions: ICreatedFileNotificationAction[] = [
+            { label: REVEAL_IN_EXPLORER_ACTION_LABEL, targetPath: generatedRecipeRun.runFolderPath, kind: 'revealInExplorer' }
+        ];
+        if ( recipeCount > 0 ) {
+            actions.push({ label: OPEN_RECIPE_ACTION_LABEL, targetPath: generatedRecipeRun.recipeFilePaths[0], kind: 'openInEditor' });
+        }
+
+        void VSCodeWorkspaceService.showCreatedFilesNotification(
+            `Generated ${recipeCount} relationship-tree recipe${recipeCount === 1 ? '' : 's'} in "${displayPath}".`,
+            actions
+        );
+
     }
 
     /*

@@ -115,8 +115,11 @@ describe('Shared ConfigurationService Tests', () => {
             jest.spyOn(fs, 'mkdirSync').mockReturnValue(mockTreecipeBaseDir);
             jest.spyOn(fs, 'writeFileSync').mockReturnValue();
 
-            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            const configurationFilePath = await ConfigurationService.createTreecipeJSONConfigurationFile();
         
+            // THE PATH Initiate Configuration File's NOTIFICATION OPENS AND REVEALS (#206)
+            expect(configurationFilePath).toBe(`${mockWorkspaceRoot}/${mockTreecipeBaseDir}/${mockConfigFileName}`);
+
             expect(VSCodeWorkspaceService.getWorkspaceRoot).toHaveBeenCalled();
             expect(VSCodeWorkspaceService.promptForObjectsPath).toHaveBeenCalledWith(mockWorkspaceRoot);
 
@@ -184,8 +187,9 @@ describe('Shared ConfigurationService Tests', () => {
             jest.spyOn(ConfigurationService, 'createTreecipeConfigFile');
 
         
-            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            const configurationFilePath = await ConfigurationService.createTreecipeJSONConfigurationFile();
             
+            expect(configurationFilePath).toBeUndefined();
             expect(ConfigurationService.setExtensionConfigValue).not.toHaveBeenCalled();
             expect(ConfigurationService.createTreecipeConfigFile).not.toHaveBeenCalled();
 
@@ -210,8 +214,9 @@ describe('Shared ConfigurationService Tests', () => {
             jest.spyOn(ConfigurationService, 'setExtensionConfigValue');
             jest.spyOn(ConfigurationService, 'createTreecipeConfigFile');
 
-            await ConfigurationService.createTreecipeJSONConfigurationFile();
+            const configurationFilePath = await ConfigurationService.createTreecipeJSONConfigurationFile();
             
+            expect(configurationFilePath).toBeUndefined();
             expect(ConfigurationService.setExtensionConfigValue).not.toHaveBeenCalled();
             expect(ConfigurationService.createTreecipeConfigFile).not.toHaveBeenCalled();
 
