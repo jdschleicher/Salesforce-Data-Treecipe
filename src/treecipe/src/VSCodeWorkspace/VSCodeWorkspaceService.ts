@@ -24,6 +24,14 @@ export interface IObjectsDirectoryScanRoots {
     isSeededFromSfdxProject: boolean;
 }
 
+export const ORG_CONNECTION_CHECK_PLACEHOLDER = 'Checking org connections…';
+
+// THE ORGS A PICKER OFFERS, AND WHAT TO SAY INSTEAD WHEN IT OFFERS NONE
+export interface IAuthenticatedOrgListingForPicker {
+    orgDetails: IAuthenticatedOrgDetail[];
+    emptyListMessage: string;
+}
+
 export class VSCodeWorkspaceService {
 
     static getWorkspaceRoot():string {
@@ -584,16 +592,6 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static async promptForUserInput(userPromptForInputMessage: string) {
-
-        const userResponse = await vscode.window.showInputBox({
-            placeHolder: userPromptForInputMessage
-        });
-
-        return userResponse;
-
-    }
-
     static async getFileContentByPath(filePath: string) {
 
         const fileUri = vscode.Uri.file(filePath);
@@ -838,37 +836,71 @@ export class VSCodeWorkspaceService {
     }
 
     /*
-        Returns undefined both when the user dismisses the quick pick and when no orgs are
-        authenticated. The two are distinguished before this is called -- an empty quick pick would
-        otherwise render as a list with nothing in it and no explanation of why.
+        The org quick pick for a listing that is still being worked out -- asking the Salesforce CLI
+        which orgs are connected can take a few seconds. The picker opens at once, busy and with no
+        items, so nothing can be selected until the listing answers; dismissing it in the meantime
+        ends the command. A listing with no org closes the picker and says why instead of showing
+        an empty list, which would look like a picker that failed to load.
     */
-    static async promptForAuthenticatedTargetOrg(authenticatedOrgDetails: IAuthenticatedOrgDetail[]): Promise<string | undefined> {
+    static async promptForAuthenticatedOrgDetailOnceListed(orgListing: Promise<IAuthenticatedOrgListingForPicker>,
+                                                            placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
 
-        const selectedOrgDetail = await this.promptForAuthenticatedOrgDetail(authenticatedOrgDetails, 'Select the Salesforce org to check picklist dependencies against');
+        const orgQuickPick = vscode.window.createQuickPick();
+        orgQuickPick.placeholder = ORG_CONNECTION_CHECK_PLACEHOLDER;
+        orgQuickPick.ignoreFocusOut = true;
+        orgQuickPick.busy = true;
+        orgQuickPick.enabled = false;
+        orgQuickPick.items = [];
 
-        return selectedOrgDetail?.targetOrgIdentifier;
+        let listedOrgDetails: IAuthenticatedOrgDetail[] = [];
 
-    }
+        const orgSelection = new Promise<IAuthenticatedOrgDetail | undefined>((resolveSelection) => {
 
-    // THE WHOLE DETAIL RATHER THAN ITS IDENTIFIER, FOR A CALLER THAT ALSO NEEDS THE USERNAME BEHIND AN ALIAS
-    static async promptForAuthenticatedOrgDetail(authenticatedOrgDetails: IAuthenticatedOrgDetail[],
-                                                    placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
+            orgQuickPick.onDidAccept(() => {
+                const selectedQuickPickItem = orgQuickPick.selectedItems[0];
+                resolveSelection(selectedQuickPickItem
+                    ? listedOrgDetails.find(orgDetail => orgDetail.targetOrgIdentifier === selectedQuickPickItem.detail
+                                                            && orgDetail.username === selectedQuickPickItem.description)
+                    : undefined);
+                orgQuickPick.hide();
+            });
 
-        const orgQuickPickItems = this.buildAuthenticatedOrgQuickPickItems(authenticatedOrgDetails);
+            orgQuickPick.onDidHide(() => resolveSelection(undefined));
 
-        const selectedOrgQuickPickItem = await vscode.window.showQuickPick(orgQuickPickItems, {
-            placeHolder: placeHolder,
-            ignoreFocusOut: true
         });
 
-        if ( !selectedOrgQuickPickItem ) {
-            return undefined;
-        }
+        orgQuickPick.show();
 
-        return authenticatedOrgDetails.find(authenticatedOrgDetail => (
-            authenticatedOrgDetail.targetOrgIdentifier === selectedOrgQuickPickItem.detail
-            && authenticatedOrgDetail.username === selectedOrgQuickPickItem.description
-        ));
+        try {
+
+            const listingOrDismissal = await Promise.race([
+                orgListing,
+                orgSelection.then(() => undefined)
+            ]);
+
+            if ( !listingOrDismissal ) {
+                return undefined;
+            }
+
+            if ( listingOrDismissal.orgDetails.length === 0 ) {
+                orgQuickPick.hide();
+                this.showWarningMessage(listingOrDismissal.emptyListMessage);
+                return undefined;
+            }
+
+            listedOrgDetails = listingOrDismissal.orgDetails;
+            orgQuickPick.items = this.buildAuthenticatedOrgQuickPickItems(listedOrgDetails);
+            orgQuickPick.placeholder = placeHolder;
+            orgQuickPick.busy = false;
+            orgQuickPick.enabled = true;
+
+            return await orgSelection;
+
+        } finally {
+
+            orgQuickPick.dispose();
+
+        }
 
     }
 

@@ -1,6 +1,7 @@
-import { AuthInfo, Connection, Org } from '@salesforce/core';
-import { IAuthenticatedOrgDetail, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
-import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { AuthInfo, Connection, Org, OrgAuthorization } from '@salesforce/core';
+import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
 export const NO_AUTHORIZED_ORGS_MESSAGE = 'No authorized Salesforce orgs were found. Authorize one with "sf org login web" and try again.';
 
@@ -142,11 +143,78 @@ export interface INonProductionAuthorizationFields {
     instanceUrl?: string;
 }
 
-// THE AUTHORIZED ORGS DATA-BY-ORG MAY CONNECT TO, AND HOW MANY IT LEFT OUT FOR NOT BEING KNOWN AS NON-PRODUCTION
-export interface IDataOrgListing {
+/*
+    Why the Salesforce CLI's answer leaves an authorized org out of every picker. "notConnected"
+    covers everything that is not a clear yes: an auth error code, "Unknown", a missing or mistyped
+    field, and an org the answer does not mention at all.
+*/
+export type OrgConnectionUnusableReason = 'expired' | 'deleted' | 'notConnected';
+
+export type OrgConnectionState = 'connected' | OrgConnectionUnusableReason;
+
+// WHY DATA-BY-ORG LEFT AN AUTHORIZED ORG OUT: THE CONNECTION REASONS, AND PRODUCTION
+export type HiddenOrgReason = 'production' | OrgConnectionUnusableReason;
+
+export interface IHiddenOrgReasonCounts {
+    production: number;
+    expired: number;
+    deleted: number;
+    notConnected: number;
+}
+
+export interface IHiddenAuthorizedOrg {
+    username: string;
+    label: string;
+    reason: HiddenOrgReason;
+}
+
+/*
+    What one "sf org list" answered, by username, and which authorizations existed when it was asked.
+    An authorization added since -- "sf org login web" in a terminal, or a scratch org created --
+    is one the answer cannot speak for, so it is asked again rather than reported not connected.
+*/
+export interface IConnectedOrgStatusListing {
+    connectionStatesByUsername: Map<string, OrgConnectionState>;
+    checkedAuthorizationUsernames?: Set<string>;
+}
+
+/*
+    The authorized orgs a picker offers, the ones it left out, and why. Data-by-Org also leaves out
+    every org not known to be non-production; the quick-pick commands leave out only unusable ones.
+*/
+export interface IConnectedOrgListing {
     orgDetails: IAuthenticatedOrgDetail[];
+    hiddenOrgs: IHiddenAuthorizedOrg[];
+    hiddenOrgReasonCounts: IHiddenOrgReasonCounts;
+}
+
+export interface IDataOrgListing extends IConnectedOrgListing {
     hiddenOrgCount: number;
 }
+
+// THE CLI COULD NOT SAY WHICH ORGS ARE CONNECTED, SO NO ORG IS LISTED -- NEVER AN UNCHECKED FALLBACK
+export class OrgConnectionStatusUnavailableError extends Error {
+
+    constructor(reason: string) {
+        super(`The Salesforce CLI could not report which authorized orgs are connected, so no org is listed. ${reason}`);
+        this.name = 'OrgConnectionStatusUnavailableError';
+    }
+
+}
+
+/*
+    "--verbose" for the scratch orgs' status from their Dev Hub, and never "--skip-connection-status",
+    which is the whole answer this asks for. Without "--all" the CLI already leaves out a scratch org
+    that is not Active; such an org is then simply not in the answer, and is left out here too.
+*/
+export const SALESFORCE_CLI_ORG_LIST_ARGUMENTS: readonly string[] = ['org', 'list', '--json', '--verbose'];
+
+// THE CLI PINGS EVERY AUTHORIZED ORG'S TOKEN, SO THE CHECK IS GIVEN TIME -- BUT NOT FOREVER
+export const SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS = 60000;
+
+const SALESFORCE_CLI_ORG_LIST_GROUPS = ['nonScratchOrgs', 'other', 'sandboxes', 'devHubs', 'scratchOrgs'];
+
+export const REAUTHORIZE_ORG_INSTRUCTION = 'Re-authorize one with "sf org login web" and try again.';
 
 /*
     A sandbox's instance url: "<domain>--<sandbox>.sandbox.my.salesforce.com" with enhanced domains,
@@ -445,42 +513,407 @@ export class SalesforceOrgService {
 
     }
 
-    // THE ORGS DATA-BY-ORG LISTS: ONLY THOSE KNOWN NOT TO BE PRODUCTION, WITH A COUNT OF THE REST
-    static async listDataOrgDetails(): Promise<IDataOrgListing> {
+    /*
+        The session cache of the CLI's answer, and the one check in flight. Two pickers opened during
+        a check share its process. A failure is never cached, so the next picker asks again; a
+        generation bump on clear means a check started before the clear cannot write an answer the
+        reader has asked to replace.
+    */
+    private static connectedOrgStatusCache: IConnectedOrgStatusListing | undefined;
 
-        const allAuthorizations = await AuthInfo.listAllAuthorizations();
-        const authorizations = Array.isArray(allAuthorizations) ? allAuthorizations : [];
-        const nonProductionAuthorizations = authorizations.filter(authorization => this.isKnownNonProductionAuthorization(authorization));
+    private static connectedOrgStatusRequest: Promise<IConnectedOrgStatusListing> | undefined;
 
-        return {
-            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(nonProductionAuthorizations),
-            hiddenOrgCount: authorizations.length - nonProductionAuthorizations.length
-        };
+    private static connectedOrgStatusGeneration = 0;
+
+    static clearConnectedOrgStatusCache() {
+
+        this.connectedOrgStatusCache = undefined;
+        this.connectedOrgStatusRequest = undefined;
+        this.connectedOrgStatusGeneration++;
 
     }
 
-    static async listAuthorizedOrgDetails(): Promise<IAuthenticatedOrgDetail[]> {
+    static isConnectedOrgStatusCached(): boolean {
 
-        const allAuthorizations = await AuthInfo.listAllAuthorizations();
-
-        return PicklistDependencyCheckService.buildAuthenticatedOrgDetails(allAuthorizations);
+        return this.connectedOrgStatusCache !== undefined;
 
     }
 
     /*
-        The authorized orgs the CLI knows, as a quick pick. No authorized org is SAID rather than
-        shown as an empty list, which would look like a picker that failed to load.
+        Which authorized orgs the Salesforce CLI reports as connected, asked once per session --
+        "sf org list" pings every authorized org's token, which is slow. Nothing here connects to an
+        org itself, and nothing logs out of, deletes or changes one.
+    */
+    static async listConnectedOrgAuthorizations(): Promise<IConnectedOrgStatusListing> {
+
+        if ( this.connectedOrgStatusCache ) {
+            return this.connectedOrgStatusCache;
+        }
+
+        if ( !this.connectedOrgStatusRequest ) {
+
+            const requestGeneration = this.connectedOrgStatusGeneration;
+            const isRequestCurrent = () => requestGeneration === this.connectedOrgStatusGeneration;
+
+            this.connectedOrgStatusRequest = this.runOrgListCommand().then(
+                connectedOrgStatusListing => {
+                    if ( isRequestCurrent() ) {
+                        this.connectedOrgStatusCache = connectedOrgStatusListing;
+                        this.connectedOrgStatusRequest = undefined;
+                    }
+                    return connectedOrgStatusListing;
+                },
+                (listError: unknown) => {
+                    if ( isRequestCurrent() ) {
+                        this.connectedOrgStatusRequest = undefined;
+                    }
+                    throw listError;
+                }
+            );
+
+        }
+
+        return await this.connectedOrgStatusRequest;
+
+    }
+
+    /*
+        Data-by-Org's ⟳, and an org the extension just created: ask the CLI again and replace the
+        cached answer. A check already in flight IS a fresh answer, so it is shared rather than
+        joined by a second process -- repeated clicks would otherwise each start an "sf org list"
+        that pings every authorized org, none of them killed.
+    */
+    static async refreshConnectedOrgAuthorizations(): Promise<IConnectedOrgStatusListing> {
+
+        if ( !this.connectedOrgStatusRequest ) {
+            this.clearConnectedOrgStatusCache();
+        }
+
+        return await this.listConnectedOrgAuthorizations();
+
+    }
+
+    /*
+        The cached answer, unless it cannot speak for the authorizations in hand: one added after
+        it was asked is checked rather than reported "not connected", which would leave a reader
+        who followed "re-authorize one with sf org login web" looking at the same refusal.
+    */
+    private static async listConnectedOrgStatusForAuthorizations(authorizations: OrgAuthorization[]): Promise<IConnectedOrgStatusListing> {
+
+        const connectedOrgStatusListing = await this.listConnectedOrgAuthorizations();
+        const checkedAuthorizationUsernames = connectedOrgStatusListing.checkedAuthorizationUsernames;
+
+        const hasUncheckedAuthorization = !!checkedAuthorizationUsernames && authorizations.some(authorization => (
+            typeof authorization?.username === 'string'
+            && !!authorization.username
+            && !checkedAuthorizationUsernames.has(authorization.username)
+        ));
+
+        return hasUncheckedAuthorization ? await this.refreshConnectedOrgAuthorizations() : connectedOrgStatusListing;
+
+    }
+
+    // THE AUTHORIZATIONS ARE READ BEFORE THE CLI RUNS, SO ONE ADDED DURING THE CHECK IS NEVER COUNTED AS CHECKED
+    private static async runOrgListCommand(): Promise<IConnectedOrgStatusListing> {
+
+        const checkedAuthorizationUsernames = new Set(this.readAuthorizations(await AuthInfo.listAllAuthorizations())
+            .map(authorization => authorization?.username)
+            .filter((username): username is string => typeof username === 'string' && !!username));
+
+        const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(
+            [...SALESFORCE_CLI_ORG_LIST_ARGUMENTS],
+            undefined,
+            SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS
+        );
+
+        return { ...this.parseOrgListInvocation(invocationResult), checkedAuthorizationUsernames: checkedAuthorizationUsernames };
+
+    }
+
+    private static readAuthorizations(authorizations: unknown): OrgAuthorization[] {
+
+        return Array.isArray(authorizations) ? authorizations : [];
+
+    }
+
+    /*
+        The CLI's answer, read as untrusted: a spawn failure, a timeout, a non-zero exit or output
+        that is not an org list throws, so nothing is listed and nothing is cached.
+    */
+    static parseOrgListInvocation(invocationResult: ISalesforceCliInvocationResult): IConnectedOrgStatusListing {
+
+        if ( invocationResult.spawnError ) {
+            try {
+                PicklistDependencyCheckService.parseSalesforceCliJsonOutput(invocationResult);
+            } catch (spawnFailure) {
+                throw new OrgConnectionStatusUnavailableError((spawnFailure as Error).message);
+            }
+        }
+
+        if ( invocationResult.timedOut || invocationResult.exitCode === null ) {
+            throw new OrgConnectionStatusUnavailableError(`"sf org list" did not answer within ${SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS / 1000} seconds.`);
+        }
+
+        let orgListPayload: unknown;
+
+        try {
+            orgListPayload = JSON.parse(invocationResult.stdout);
+        } catch {
+            throw new OrgConnectionStatusUnavailableError(`"sf org list" did not return usable JSON (exit code ${invocationResult.exitCode}).`);
+        }
+
+        if ( invocationResult.exitCode !== 0 ) {
+            const failureMessage = this.asString(this.asRecord(orgListPayload)?.message) || invocationResult.stderr.trim();
+            throw new OrgConnectionStatusUnavailableError(`"sf org list" failed (exit code ${invocationResult.exitCode})${failureMessage ? `: ${failureMessage}` : '.'}`);
+        }
+
+        return this.normalizeOrgListResult(this.asRecord(orgListPayload)?.result);
+
+    }
+
+    /*
+        Every org the answer names, by username. An org named more than once (the CLI repeats a
+        non-scratch org under its group) keeps the first reason it is NOT usable, so one entry that
+        says Connected can never outvote one that says otherwise.
+    */
+    static normalizeOrgListResult(orgListResult: unknown): IConnectedOrgStatusListing {
+
+        const orgListRecord = this.asRecord(orgListResult);
+
+        if ( !orgListRecord ) {
+            throw new OrgConnectionStatusUnavailableError('"sf org list" returned no org list.');
+        }
+
+        const connectionStatesByUsername = new Map<string, OrgConnectionState>();
+
+        SALESFORCE_CLI_ORG_LIST_GROUPS.forEach(orgListGroup => {
+
+            const orgListEntries = orgListRecord[orgListGroup];
+
+            if ( !Array.isArray(orgListEntries) ) {
+                return;
+            }
+
+            orgListEntries.forEach(orgListEntry => {
+
+                const orgListEntryRecord = this.asRecord(orgListEntry);
+                const username = orgListEntryRecord?.username;
+
+                if ( typeof username !== 'string' || !username ) {
+                    return;
+                }
+
+                const connectionState = this.classifyOrgListEntry(orgListEntryRecord, orgListGroup === 'scratchOrgs');
+                const knownConnectionState = connectionStatesByUsername.get(username);
+
+                if ( knownConnectionState === undefined || knownConnectionState === 'connected' ) {
+                    connectionStatesByUsername.set(username, connectionState);
+                }
+
+            });
+
+        });
+
+        return { connectionStatesByUsername: connectionStatesByUsername };
+
+    }
+
+    /*
+        Usable only on a clear yes. A non-scratch org must say connectedStatus "Connected" exactly.
+        The CLI never pings a scratch org -- it asks the Dev Hub instead -- so a scratch org must say
+        status "Active", and isExpired must not be true; were it ever to carry a connectedStatus,
+        that must be "Connected" too. Every other value, a missing one and a mistyped one included,
+        is not usable.
+    */
+    static classifyOrgListEntry(orgListEntry: Record<string, unknown>, isScratchOrg: boolean): OrgConnectionState {
+
+        const { connectedStatus, isExpired, status } = orgListEntry;
+
+        if ( ( connectedStatus !== undefined && typeof connectedStatus !== 'string' )
+                || ( isExpired !== undefined && typeof isExpired !== 'boolean' )
+                || ( status !== undefined && typeof status !== 'string' ) ) {
+            return 'notConnected';
+        }
+
+        if ( status === 'Deleted' ) {
+            return 'deleted';
+        }
+
+        if ( isExpired === true || status === 'Expired' ) {
+            return 'expired';
+        }
+
+        if ( isScratchOrg ) {
+            return status === 'Active' && ( connectedStatus === undefined || connectedStatus === 'Connected' ) ? 'connected' : 'notConnected';
+        }
+
+        return connectedStatus === 'Connected' && ( status === undefined || status === 'Active' ) ? 'connected' : 'notConnected';
+
+    }
+
+    /*
+        The CLI's answer matched against the authorization files: an org the answer does not name
+        is not listed, and neither is a username the answer names with no authorization file. An
+        unusable alias or username is dropped by buildAuthenticatedOrgDetails, as it always was.
+    */
+    static buildConnectedOrgListing(authorizations: OrgAuthorization[],
+                                    connectedOrgStatusListing: IConnectedOrgStatusListing,
+                                    isProductionExcluded: boolean): IConnectedOrgListing {
+
+        const hiddenOrgs: IHiddenAuthorizedOrg[] = [];
+        const usableAuthorizations: OrgAuthorization[] = [];
+
+        this.readAuthorizations(authorizations).forEach(authorization => {
+
+            const username = authorization?.username;
+
+            if ( typeof username !== 'string' || !username ) {
+                return;
+            }
+
+            const hiddenReason = this.findHiddenOrgReason(authorization, connectedOrgStatusListing, isProductionExcluded);
+
+            if ( hiddenReason ) {
+                hiddenOrgs.push({ username: username, label: authorization.aliases?.[0] || username, reason: hiddenReason });
+                return;
+            }
+
+            usableAuthorizations.push(authorization);
+
+        });
+
+        return {
+            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(usableAuthorizations),
+            hiddenOrgs: hiddenOrgs,
+            hiddenOrgReasonCounts: this.countHiddenOrgReasons(hiddenOrgs)
+        };
+
+    }
+
+    private static findHiddenOrgReason(authorization: OrgAuthorization,
+                                        connectedOrgStatusListing: IConnectedOrgStatusListing,
+                                        isProductionExcluded: boolean): HiddenOrgReason | undefined {
+
+        if ( isProductionExcluded && !this.isKnownNonProductionAuthorization(authorization) ) {
+            return 'production';
+        }
+
+        const connectionState = connectedOrgStatusListing.connectionStatesByUsername.get(authorization.username);
+
+        if ( connectionState === undefined ) {
+            return authorization.isExpired === true ? 'expired' : 'notConnected';
+        }
+
+        return connectionState === 'connected' ? undefined : connectionState;
+
+    }
+
+    static countHiddenOrgReasons(hiddenOrgs: IHiddenAuthorizedOrg[]): IHiddenOrgReasonCounts {
+
+        const hiddenOrgReasonCounts: IHiddenOrgReasonCounts = { production: 0, expired: 0, deleted: 0, notConnected: 0 };
+        hiddenOrgs.forEach(hiddenOrg => hiddenOrgReasonCounts[hiddenOrg.reason]++);
+
+        return hiddenOrgReasonCounts;
+
+    }
+
+    // "1 production, 1 expired, 1 not connected" -- EACH REASON THAT LEFT AN ORG OUT, IN A FIXED ORDER
+    static formatHiddenOrgReasons(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): string {
+
+        return ([
+            [hiddenOrgReasonCounts.production, 'production'],
+            [hiddenOrgReasonCounts.expired, 'expired'],
+            [hiddenOrgReasonCounts.deleted, 'deleted'],
+            [hiddenOrgReasonCounts.notConnected, 'not connected']
+        ] as [number, string][])
+            .filter(([reasonCount]) => reasonCount > 0)
+            .map(([reasonCount, reasonLabel]) => `${reasonCount} ${reasonLabel}`)
+            .join(', ');
+
+    }
+
+    static countHiddenOrgs(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): number {
+
+        return hiddenOrgReasonCounts.production + hiddenOrgReasonCounts.expired + hiddenOrgReasonCounts.deleted + hiddenOrgReasonCounts.notConnected;
+
+    }
+
+    // THE ORGS DATA-BY-ORG LISTS: ONLY THOSE KNOWN NOT TO BE PRODUCTION AND REPORTED CONNECTED, WITH WHY THE REST ARE NOT
+    static async listDataOrgDetails(): Promise<IDataOrgListing> {
+
+        const authorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        const connectedOrgStatusListing = await this.listConnectedOrgStatusForAuthorizations(authorizations);
+        const connectedOrgListing = this.buildConnectedOrgListing(authorizations, connectedOrgStatusListing, true);
+
+        return { ...connectedOrgListing, hiddenOrgCount: this.countHiddenOrgs(connectedOrgListing.hiddenOrgReasonCounts) };
+
+    }
+
+    /*
+        The quick-pick commands have no ⟳, so an answer from the cache that leaves them nothing to
+        offer is asked again once: the reader may have re-authorized an org since, which is exactly
+        what the empty-list warning tells them to do.
+    */
+    static async listAuthorizedOrgDetails(): Promise<IConnectedOrgListing> {
+
+        const authorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        const cachedOrgStatusListing = this.connectedOrgStatusCache;
+        const connectedOrgStatusListing = await this.listConnectedOrgStatusForAuthorizations(authorizations);
+        const connectedOrgListing = this.buildConnectedOrgListing(authorizations, connectedOrgStatusListing, false);
+        const wasAnsweredFromCache = cachedOrgStatusListing !== undefined && connectedOrgStatusListing === cachedOrgStatusListing;
+
+        if ( wasAnsweredFromCache && connectedOrgListing.orgDetails.length === 0 && connectedOrgListing.hiddenOrgs.length > 0 ) {
+            return this.buildConnectedOrgListing(authorizations, await this.refreshConnectedOrgAuthorizations(), false);
+        }
+
+        return connectedOrgListing;
+
+    }
+
+    /*
+        What a quick pick says when it has nothing to offer: that no org is authorized, or how many
+        were left out and why, or why the CLI could not be asked at all. It never throws -- the
+        picker shows the message instead of an empty list.
+    */
+    static async listAuthorizedOrgDetailsForPicker(): Promise<IAuthenticatedOrgListingForPicker> {
+
+        try {
+
+            const connectedOrgListing = await this.listAuthorizedOrgDetails();
+            const hiddenOrgCount = this.countHiddenOrgs(connectedOrgListing.hiddenOrgReasonCounts);
+
+            return {
+                orgDetails: connectedOrgListing.orgDetails,
+                emptyListMessage: hiddenOrgCount > 0
+                    ? `No connected Salesforce org is authorized: ${hiddenOrgCount} authorized ${hiddenOrgCount === 1 ? 'org is' : 'orgs are'} not listed (${this.formatHiddenOrgReasons(connectedOrgListing.hiddenOrgReasonCounts)}). ${REAUTHORIZE_ORG_INSTRUCTION}`
+                    : NO_AUTHORIZED_ORGS_MESSAGE
+            };
+
+        } catch (listError) {
+
+            /*
+                The reason is the CLI's own text -- its JSON message, stderr or a spawn error -- and a
+                notification renders [label](command:...) as a link that RUNS the command, so it is
+                escaped like any other text this extension does not author.
+            */
+            const failureReason = RecipeYamlScalar.escapeForNotification(listError instanceof OrgConnectionStatusUnavailableError
+                ? listError.message
+                : `The authorized Salesforce orgs could not be listed: ${(listError as Error)?.message ?? listError}`);
+
+            return { orgDetails: [], emptyListMessage: failureReason };
+
+        }
+
+    }
+
+    /*
+        The connected orgs as a quick pick, which opens busy at once and fills only when the CLI
+        has answered. Compare with an org…, Insert Data Set by Directory and Run Picklist Dependency
+        Check all come through here.
     */
     static async promptForAuthorizedOrg(placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
 
-        const authorizedOrgDetails = await this.listAuthorizedOrgDetails();
-
-        if ( authorizedOrgDetails.length === 0 ) {
-            VSCodeWorkspaceService.showWarningMessage(NO_AUTHORIZED_ORGS_MESSAGE);
-            return undefined;
-        }
-
-        return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetail(authorizedOrgDetails, placeHolder);
+        return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(this.listAuthorizedOrgDetailsForPicker(), placeHolder);
 
     }
 

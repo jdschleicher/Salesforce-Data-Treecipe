@@ -1,6 +1,6 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
-import { VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
+import { ORG_CONNECTION_CHECK_PLACEHOLDER, VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 import { SfdxProjectService } from "../../SfdxProjectService/SfdxProjectService";
 
@@ -215,35 +215,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
-    describe('promptForAuthenticatedTargetOrg', () => {
-
-        test('given a selection, returns the target org identifier carried on detail', async () => {
-
-            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue({
-                label: 'devhub',
-                description: 'jd@example.com',
-                detail: 'devhub'
-            } as never);
-
-            const selectedTargetOrg = await VSCodeWorkspaceService.promptForAuthenticatedTargetOrg([
-                { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' }
-            ] as any);
-
-            expect(selectedTargetOrg).toBe('devhub');
-
-        });
-
-        test('given the quick pick is dismissed, returns undefined', async () => {
-
-            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined as never);
-
-            const selectedTargetOrg = await VSCodeWorkspaceService.promptForAuthenticatedTargetOrg([
-                { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' }
-            ] as any);
-
-            expect(selectedTargetOrg).toBeUndefined();
-
-        });
+    describe('the org quick pick items', () => {
 
         /*
             A selection returns `detail`, so an org reaching the quick pick with an empty
@@ -267,33 +239,117 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
-    describe('promptForAuthenticatedOrgDetail', () => {
+    describe('promptForAuthenticatedOrgDetailOnceListed', () => {
 
         const orgDetails = [
             { targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' },
             { targetOrgIdentifier: 'scratch@example.com', username: 'scratch@example.com', alias: undefined }
         ];
 
-        test('given a selection, returns the whole detail, username included, and shows the caller\'s placeholder', async () => {
+        const buildFakeOrgQuickPick = () => {
 
-            const showQuickPickSpy = jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue({
-                label: 'devhub',
-                description: 'jd@example.com',
-                detail: 'devhub'
-            } as never);
+            const acceptHandlers: (() => void)[] = [];
+            const hideHandlers: (() => void)[] = [];
 
-            const selectedOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetail(orgDetails, 'Pick the org to describe in');
+            const fakeQuickPick: any = {
+                items: [] as any[],
+                selectedItems: [] as any[],
+                placeholder: '',
+                busy: false,
+                enabled: true,
+                show: jest.fn(),
+                dispose: jest.fn(),
+                hide: jest.fn(() => hideHandlers.forEach(hideHandler => hideHandler())),
+                onDidAccept: jest.fn((acceptHandler: () => void) => acceptHandlers.push(acceptHandler)),
+                onDidHide: jest.fn((hideHandler: () => void) => hideHandlers.push(hideHandler)),
+                accept: (item: any) => {
+                    fakeQuickPick.selectedItems = [item];
+                    acceptHandlers.forEach(acceptHandler => acceptHandler());
+                }
+            };
 
-            expect(selectedOrgDetail).toBe(orgDetails[0]);
-            expect(showQuickPickSpy).toHaveBeenCalledWith(expect.any(Array), { placeHolder: 'Pick the org to describe in', ignoreFocusOut: true });
+            (vscode.window.createQuickPick as jest.Mock).mockReturnValue(fakeQuickPick);
+
+            return fakeQuickPick;
+
+        };
+
+        test('opens busy with nothing to select while the orgs are being listed, then offers them under the caller\'s placeholder', async () => {
+
+            const fakeQuickPick = buildFakeOrgQuickPick();
+            let answerListing: (listing: any) => void = () => undefined;
+
+            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(new Promise(resolveListing => { answerListing = resolveListing; }), 'Pick the org');
+            await new Promise(resolveYield => setImmediate(resolveYield));
+
+            expect(fakeQuickPick.show).toHaveBeenCalled();
+            expect(fakeQuickPick.busy).toBe(true);
+            expect(fakeQuickPick.enabled).toBe(false);
+            expect(fakeQuickPick.items).toEqual([]);
+            expect(fakeQuickPick.placeholder).toBe(ORG_CONNECTION_CHECK_PLACEHOLDER);
+
+            answerListing({ orgDetails: orgDetails, emptyListMessage: '' });
+            await new Promise(resolveYield => setImmediate(resolveYield));
+
+            expect(fakeQuickPick.busy).toBe(false);
+            expect(fakeQuickPick.enabled).toBe(true);
+            expect(fakeQuickPick.placeholder).toBe('Pick the org');
+            expect(fakeQuickPick.items.map((item: any) => item.label)).toEqual(['devhub', 'scratch@example.com']);
+
+            fakeQuickPick.accept(fakeQuickPick.items[0]);
+
+            expect(await selection).toBe(orgDetails[0]);
+            expect(fakeQuickPick.dispose).toHaveBeenCalled();
 
         });
 
-        test('given the quick pick is dismissed, returns undefined', async () => {
+        test('given the picker dismissed while the orgs are being listed, returns undefined without waiting for them', async () => {
 
-            jest.spyOn(vscode.window, 'showQuickPick').mockResolvedValue(undefined as never);
+            const fakeQuickPick = buildFakeOrgQuickPick();
 
-            expect(await VSCodeWorkspaceService.promptForAuthenticatedOrgDetail(orgDetails, 'Pick')).toBeUndefined();
+            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(new Promise(() => undefined), 'Pick');
+            fakeQuickPick.hide();
+
+            expect(await selection).toBeUndefined();
+
+        });
+
+        test('given no org listed, closes the picker and says why instead of showing an empty list', async () => {
+
+            const fakeQuickPick = buildFakeOrgQuickPick();
+            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            const selection = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(Promise.resolve({ orgDetails: [], emptyListMessage: 'nothing connected' }), 'Pick');
+
+            expect(selection).toBeUndefined();
+            expect(fakeQuickPick.hide).toHaveBeenCalled();
+            expect(fakeQuickPick.items).toEqual([]);
+            expect(showWarningMessageSpy).toHaveBeenCalledWith('nothing connected');
+
+        });
+
+        test('given an accept with nothing highlighted, returns undefined', async () => {
+
+            const fakeQuickPick = buildFakeOrgQuickPick();
+
+            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(Promise.resolve({ orgDetails: orgDetails, emptyListMessage: '' }), 'Pick');
+            await new Promise(resolveYield => setImmediate(resolveYield));
+            fakeQuickPick.selectedItems = [];
+            fakeQuickPick.onDidAccept.mock.calls[0][0]();
+
+            expect(await selection).toBeUndefined();
+
+        });
+
+        test('given the picker dismissed after the orgs are offered, returns undefined', async () => {
+
+            const fakeQuickPick = buildFakeOrgQuickPick();
+
+            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(Promise.resolve({ orgDetails: orgDetails, emptyListMessage: '' }), 'Pick');
+            await new Promise(resolveYield => setImmediate(resolveYield));
+            fakeQuickPick.hide();
+
+            expect(await selection).toBeUndefined();
 
         });
 
@@ -1466,35 +1522,6 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             console.log('Expected Keys:', Object.keys(expectedSnowfakeryOnlyQuickPickItems));
 
             expect(actualQuickPickItems).toEqual(expectedSnowfakeryOnlyQuickPickItems);
-
-        });
-
-    });
-
-    describe('promptForUserInput', () => {
-
-        test('should return user input when showInputBox is called', async () => {
-
-            const expectedMockedResponse = 'test input';
-            const expectedPlaceholderArgument = 'Please enter a value:';
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(expectedMockedResponse);
-
-            const actualResponse = await VSCodeWorkspaceService.promptForUserInput(expectedPlaceholderArgument);
-
-            expect(actualResponse).toBe(expectedMockedResponse);
-            expect(vscode.window.showInputBox).toHaveBeenCalledWith({
-                placeHolder: expectedPlaceholderArgument
-            });
-
-        });
-
-        test('should return undefined if the user cancels the input', async () => {
-
-            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
-
-            const result = await VSCodeWorkspaceService.promptForUserInput('Please enter a value:');
-
-            expect(result).toBeUndefined();
 
         });
 

@@ -17,10 +17,20 @@ import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
-    RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE
+    RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
+    RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
-import { NO_AUTHORIZED_ORGS_MESSAGE, ORG_TYPE_UNKNOWN_LABEL, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import {
+    IDataOrgListing,
+    IHiddenAuthorizedOrg,
+    NO_AUTHORIZED_ORGS_MESSAGE,
+    ORG_TYPE_UNKNOWN_LABEL,
+    OrgConnectionStatusUnavailableError,
+    SalesforceOrgService
+} from '../../SalesforceOrgService/SalesforceOrgService';
+import { IAuthenticatedOrgDetail } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
@@ -30,6 +40,14 @@ const TREE_OBJECT_API_NAMES = ['Account', 'Contact', 'OtherChildObject__c', 'Lea
 
 const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
 const SECOND_ORG = { targetOrgIdentifier: 'prod@example.com', username: 'prod@example.com', alias: undefined as string | undefined };
+
+function buildDataOrgListing(orgDetails: IAuthenticatedOrgDetail[], hiddenOrgs: IHiddenAuthorizedOrg[] = []): IDataOrgListing {
+
+    const hiddenOrgReasonCounts = SalesforceOrgService.countHiddenOrgReasons(hiddenOrgs);
+
+    return { orgDetails, hiddenOrgs, hiddenOrgReasonCounts, hiddenOrgCount: SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts) };
+
+}
 
 function loadTreeRecipe(): IRecipeCockpitRecipeViewModel {
 
@@ -149,13 +167,16 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('refreshes only a selection that exists', () => {
+        it('refreshes once a model with tree objects is confirmed drawn, with or without a selection', () => {
 
             const panelState = buildRenderedPanelState();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toEqual({ kind: 'refreshDataOrgCounts' });
 
             panelState.dataOrgSelection = { orgIndex: 0, orgDetail: SANDBOX_ORG, requestSequence: 1 };
             expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toEqual({ kind: 'refreshDataOrgCounts' });
+
+            panelState.dataOrgObjectApiNames = new Set();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toBeUndefined();
 
         });
 
@@ -167,6 +188,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         let postedPanelMessages: any[];
         let workspaceStateValues: Map<string, unknown>;
         let workspaceState: { get: jest.Mock; update: jest.Mock };
+        let refreshConnectedOrgsSpy: jest.SpyInstance;
 
         const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
         const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
@@ -201,7 +223,8 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             }));
 
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
-            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, SECOND_ORG], hiddenOrgCount: 0 });
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, SECOND_ORG], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
+            refreshConnectedOrgsSpy = jest.spyOn(SalesforceOrgService, 'refreshConnectedOrgAuthorizations').mockResolvedValue({ connectionStatesByUsername: new Map() });
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -221,6 +244,8 @@ describe('RecipeCockpitService, Data-by-Org', () => {
                 selectedOrgIndex: null,
                 noOrgsMessage: '',
                 hiddenOrgCount: 0,
+                hiddenOrgNote: '',
+                forgottenOrgNotice: '',
                 renderSequence: lastRenderSequence()
             }]);
             expect(JSON.stringify(postedPanelMessages)).not.toContain('qa@example.com.qa');
@@ -241,7 +266,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         it('says there are no authorized orgs with the existing message', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgCount: 0 });
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
@@ -273,25 +298,147 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('lists only the orgs the CLI knows are not production, and says how many it left out', async () => {
+        it('lists only the orgs the CLI knows are not production and reports connected, and counts each reason it left one out', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgCount: 2 });
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([SANDBOX_ORG], [
+                { username: 'prod@example.com', label: 'prod', reason: 'production' },
+                { username: 'old@example.com', label: 'old', reason: 'expired' },
+                { username: 'gone@example.com', label: 'gone', reason: 'deleted' },
+                { username: 'uat@example.com', label: 'uat', reason: 'notConnected' },
+                { username: 'dev@example.com', label: 'dev', reason: 'notConnected' }
+            ]));
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
-            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: ['qa'], hiddenOrgCount: 2, noOrgsMessage: '' });
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({
+                orgLabels: ['qa'],
+                hiddenOrgCount: 5,
+                hiddenOrgNote: '5 authorized orgs are not listed: 1 production, 1 expired, 1 deleted, 2 not connected. Data-by-Org lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.',
+                forgottenOrgNotice: '',
+                noOrgsMessage: ''
+            });
 
         });
 
-        it('says no sandbox is authorized when every authorized org was left out', async () => {
+        it('says no sandbox is authorized when every authorized org was left out as production', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgCount: 1 });
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([], [{ username: 'prod@example.com', label: 'prod', reason: 'production' }]));
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
             expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], hiddenOrgCount: 1, noOrgsMessage: RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE });
+
+        });
+
+        it('says no connected sandbox is authorized, and how to re-authorize one, when the rest are not connected', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([], [
+                { username: 'prod@example.com', label: 'prod', reason: 'production' },
+                { username: 'old@example.com', label: 'old', reason: 'expired' }
+            ]));
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], noOrgsMessage: RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE });
+            expect(RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE).toContain('sf org login web');
+
+        });
+
+        it('lists no org when the CLI could not say which are connected, and says why', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockRejectedValue(new OrgConnectionStatusUnavailableError('The Salesforce CLI ("sf") is not installed or not on PATH.'));
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0].orgLabels).toEqual([]);
+            expect(postedNamed('dataOrgList')[0].noOrgsMessage).toBe('The Salesforce CLI could not report which authorized orgs are connected, so no org is listed. The Salesforce CLI ("sf") is not installed or not on PATH.');
+
+        });
+
+        it('forgets a remembered org that is no longer connected, and says so once', async () => {
+
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
+            workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'old@example.com');
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([SANDBOX_ORG], [{ username: 'old@example.com', label: 'old-scratch', reason: 'expired' }]));
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList').map(dataOrgList => [dataOrgList.selectedOrgIndex, dataOrgList.forgottenOrgNotice])).toEqual([
+                [null, 'The last org used, old-scratch, is no longer connected.'],
+                [null, '']
+            ]);
+            expect(workspaceStateValues.get(RECIPE_COCKPIT_DATA_ORG_STATE_KEY)).toBeUndefined();
+            expect(getConnectionSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('forgets a remembered org that is no longer authorized without a word', async () => {
+
+            workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'removed@example.com');
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ selectedOrgIndex: null, forgottenOrgNotice: '' });
+
+        });
+
+        it('allows no selection while the connection check is out, and discards its answer once a ready replaces the document', async () => {
+
+            let answerListing: (dataOrgListing: any) => void = () => undefined;
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockImplementation(() => new Promise(resolveListing => { answerListing = resolveListing; }));
+
+            await openRenderedCockpit();
+            const listing = receivedMessageHandler({ command: 'loadDataOrgs' });
+            await new Promise(resolveYield => setImmediate(resolveYield));
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, (RecipeCockpitService as any).recipeCockpitPanelState)).toBeUndefined();
+
+            await receivedMessageHandler({ command: 'ready' });
+            answerListing(buildDataOrgListing([SANDBOX_ORG, SECOND_ORG]));
+            await listing;
+
+            expect(postedNamed('dataOrgList')).toEqual([]);
+
+        });
+
+        it('discards a check\'s answer when a new model is posted while it is out', async () => {
+
+            let answerListing: (dataOrgListing: any) => void = () => undefined;
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockImplementation(() => new Promise(resolveListing => { answerListing = resolveListing; }));
+
+            await openRenderedCockpit();
+            const listing = receivedMessageHandler({ command: 'loadDataOrgs' });
+            await new Promise(resolveYield => setImmediate(resolveYield));
+
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: TREE_RUN_FOLDER_NAME });
+            answerListing(buildDataOrgListing([SANDBOX_ORG]));
+            await listing;
+
+            expect(postedNamed('dataOrgList')).toEqual([]);
+
+        });
+
+        it('⟳ asks the CLI again before re-listing the orgs, even with no org selected', async () => {
+
+            const listSpy = jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([], [{ username: 'qa@example.com.qa', label: 'qa', reason: 'notConnected' }]));
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            expect(refreshConnectedOrgsSpy).not.toHaveBeenCalled();
+
+            listSpy.mockResolvedValue(buildDataOrgListing([SANDBOX_ORG]));
+            await receivedMessageHandler({ command: 'refreshDataOrgCounts' });
+
+            expect(refreshConnectedOrgsSpy).toHaveBeenCalledTimes(1);
+            expect(refreshConnectedOrgsSpy.mock.invocationCallOrder[0]).toBeLessThan(listSpy.mock.invocationCallOrder[1]);
+            expect(postedNamed('dataOrgList').map(dataOrgList => dataOrgList.orgLabels)).toEqual([[], ['qa']]);
 
         });
 
@@ -435,7 +582,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         it('ends the selection when the org list is reloaded, and selects the same org again by username in the new list', async () => {
 
-            const listSpy = jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, SECOND_ORG], hiddenOrgCount: 0 });
+            const listSpy = jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, SECOND_ORG], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
             const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
 
             await openRenderedCockpit();
@@ -443,7 +590,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
 
             // THE CLI'S LIST CHANGED ORDER: INDEX 0 IS NOW ANOTHER ORG
-            listSpy.mockResolvedValue({ orgDetails: [SECOND_ORG, SANDBOX_ORG], hiddenOrgCount: 0 });
+            listSpy.mockResolvedValue({ orgDetails: [SECOND_ORG, SANDBOX_ORG], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
             expect(postedNamed('dataOrgList').at(-1).selectedOrgIndex).toBe(1);
@@ -698,16 +845,36 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('says how many authorized orgs it left out, and why', () => {
+        it('says how many authorized orgs it left out, and why, and that the org used last is no longer connected', () => {
 
+            const hiddenOrgNote = '3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected. Data-by-Org lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
             const { panel } = renderDataOrgPanel();
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 2, renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 3, hiddenOrgNote: hiddenOrgNote, forgottenOrgNotice: 'The last org used, <b>old</b>, is no longer connected.', renderSequence: 1 });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(false);
-            expect(viewOf(panel, 'dataOrgHiddenNote').textContent).toBe('2 authorized orgs are not listed: Data-by-Org connects only to orgs the Salesforce CLI knows as a sandbox or a scratch org, never to production.');
+            expect(viewOf(panel, 'dataOrgHiddenNote').textContent).toBe(`The last org used, <b>old</b>, is no longer connected. ${hiddenOrgNote}`);
 
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 0, renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(true);
+
+        });
+
+        it('shows "Checking org connections…" in place of the dropdown until the list arrives', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
+
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT);
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
+
+        });
+
+        it('offers ⟳ even when no org is listed, so a re-authorized org can be listed', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, renderSequence: 1 });
+
+            expect(panel.isHidden(viewOf(panel, 'dataOrgRefresh'))).toBe(false);
 
         });
 
@@ -780,7 +947,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('posts ⟳ as a payload-free refresh', () => {
+        it('posts ⟳ as a payload-free refresh, and takes the dropdown and the counts away until the orgs are listed again', () => {
 
             const { panel } = renderDataOrgPanel();
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
@@ -789,6 +956,41 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
 
             expect(postedNamed(panel, 'refreshDataOrgCounts')).toEqual([{ command: 'refreshDataOrgCounts' }]);
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT);
+            expect(textOf(panel, 'dataObjectCount')).not.toContain('1 record');
+
+        });
+
+        it('disables ⟳ while the check is out, and enables it again with the list it asked for', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
+
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            expect(viewOf(panel, 'dataOrgRefresh').disabled).toBe(true);
+
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
+            expect(viewOf(panel, 'dataOrgRefresh').disabled).toBe(false);
+
+        });
+
+        it('after a ⟳ that forgets the org, reads "—" rather than "counting…", hides Create, and draws nothing more of the old selection', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            postSelectionAndCounts(panel, 1, 5);
+
+            viewOf(panel, 'dataOrgRefresh').dispatch('click');
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, forgottenOrgNotice: 'The last org used, qa, is no longer connected.', hiddenOrgNote: '', renderSequence: 1 });
+
+            expect(textOf(panel, 'dataObjectCount')).toEqual(['—', '—', '—', '—']);
+            expect(textOf(panel, 'dataTreeCount').join(' ')).not.toContain('counting…');
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreateControls').every((controlsElement: any) => panel.isHidden(controlsElement))).toBe(true);
+
+            // AN ANSWER STILL ON ITS WAY FOR THE CLEARED SELECTION IS DROPPED
+            postSelectionAndCounts(panel, 1, 999);
+            expect(textOf(panel, 'dataObjectCount')).toEqual(['—', '—', '—', '—']);
 
         });
 

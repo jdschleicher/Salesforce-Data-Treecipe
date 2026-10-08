@@ -4,7 +4,7 @@ import { OrgAuthorization } from '@salesforce/core';
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFile, ExecFileOptionsWithStringEncoding } from 'child_process';
+import { ChildProcess, execFile, ExecFileOptionsWithStringEncoding } from 'child_process';
 
 export interface IAuthenticatedOrgDetail {
     // THE ALIAS WHEN ONE IS SET, OTHERWISE THE USERNAME -- BOTH ARE ACCEPTED BY "sf --target-org"
@@ -31,6 +31,8 @@ export interface ISalesforceCliInvocationResult {
     // NULL WHEN THE PROCESS WAS KILLED BY A SIGNAL RATHER THAN EXITING ON ITS OWN
     exitCode: number | null;
     spawnError?: NodeJS.ErrnoException;
+    // SET ONLY WHEN THE CALLER'S TIMEOUT ENDED THE RUN -- A KILLED WINDOWS PROCESS EXITS 1, NOT BY A SIGNAL
+    timedOut?: boolean;
 }
 
 /*
@@ -171,9 +173,15 @@ export class PicklistDependencyCheckService {
         installed extension, so a synchronous spawn freezes the whole window -- and these commands are
         long running by nature: an Apex test run waits on an org side queue and a deploy waits on the
         Metadata API. onCancellationRequested kills the child so a user is never stuck waiting.
+
+        The timeout is this method's own rather than execFile's, for Windows: there the CLI runs as
+        cmd.exe -> sf.cmd -> node, execFile's timeout kills only cmd.exe, and its callback waits on
+        stdio the orphaned node still holds -- so a hung CLI outlived the timeout. A timeout now kills
+        the whole tree and resolves at once as timedOut, whatever the pipes are still doing.
     */
     static runSalesforceCli(salesforceCliArguments: string[],
-                            registerCancellation?: (killChildProcess: () => void) => void): Promise<ISalesforceCliInvocationResult> {
+                            registerCancellation?: (killChildProcess: () => void) => void,
+                            timeoutMilliseconds?: number): Promise<ISalesforceCliInvocationResult> {
 
         const invocation = this.buildSalesforceCliInvocation(salesforceCliArguments);
 
@@ -185,6 +193,9 @@ export class PicklistDependencyCheckService {
         };
 
         return new Promise<ISalesforceCliInvocationResult>(resolve => {
+
+            let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+            let hasAnswered = false;
 
             const childProcess = execFile(invocation.command, invocation.args, execFileOptions, (executionError, stdout, stderr) => {
 
@@ -203,6 +214,12 @@ export class PicklistDependencyCheckService {
                 const spawnError = typeof errorCode === 'string' ? executionError as NodeJS.ErrnoException : undefined;
                 const exitCode = typeof errorCode === 'number' ? errorCode : (executionError ? null : 0);
 
+                hasAnswered = true;
+
+                if ( timeoutTimer !== undefined ) {
+                    clearTimeout(timeoutTimer);
+                }
+
                 resolve({
                     stdout: stdout ?? '',
                     stderr: stderr ?? '',
@@ -212,11 +229,34 @@ export class PicklistDependencyCheckService {
 
             });
 
+            if ( timeoutMilliseconds !== undefined && !hasAnswered ) {
+                timeoutTimer = setTimeout(() => {
+                    this.killProcessTree(childProcess);
+                    resolve({ stdout: '', stderr: '', exitCode: null, timedOut: true });
+                }, timeoutMilliseconds);
+            }
+
             if ( registerCancellation ) {
-                registerCancellation(() => childProcess.kill());
+                registerCancellation(() => this.killProcessTree(childProcess));
             }
 
         });
+
+    }
+
+    /*
+        On Windows the CLI is cmd.exe's grandchild, so killing the child alone orphans the node
+        process doing the work. taskkill /T ends the tree; its arguments are a numeric pid and
+        constants, run without a shell. Elsewhere sf is the child itself, and a plain kill reaches it.
+    */
+    static killProcessTree(childProcess: Pick<ChildProcess, 'pid' | 'kill'>) {
+
+        if ( this.isWindowsPlatform() && typeof childProcess.pid === 'number' ) {
+            execFile('taskkill', ['/pid', String(childProcess.pid), '/T', '/F'], { windowsHide: true }, () => undefined);
+            return;
+        }
+
+        childProcess.kill();
 
     }
 

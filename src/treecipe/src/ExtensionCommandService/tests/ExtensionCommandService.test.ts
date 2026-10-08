@@ -57,6 +57,56 @@ jest.mock('@salesforce/core', () => ({
 }));
 
 import { AuthInfo } from '@salesforce/core';
+import { NO_AUTHORIZED_ORGS_MESSAGE, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+
+/*
+    vscode's createQuickPick, answering on a later turn as the real one does: it accepts the item
+    labelled acceptLabel once that item is offered, and is dismissed otherwise. busyHistory records
+    every busy value assigned, so a test can see the picker opened busy and then filled.
+*/
+function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
+
+    const acceptHandlers: (() => void)[] = [];
+    const hideHandlers: (() => void)[] = [];
+    let itemsValue: any[] = [];
+
+    const fakeQuickPick: any = {
+        busyHistory: [] as boolean[],
+        selectedItems: [] as any[],
+        placeholder: '',
+        enabled: true,
+        ignoreFocusOut: false,
+        show: jest.fn(),
+        dispose: jest.fn(),
+        hide: jest.fn(() => hideHandlers.forEach(hideHandler => hideHandler())),
+        onDidAccept: jest.fn((acceptHandler: () => void) => acceptHandlers.push(acceptHandler)),
+        onDidHide: jest.fn((hideHandler: () => void) => hideHandlers.push(hideHandler))
+    };
+
+    Object.defineProperty(fakeQuickPick, 'busy', {
+        get: () => fakeQuickPick.busyHistory.at(-1),
+        set: (busyValue: boolean) => { fakeQuickPick.busyHistory.push(busyValue); }
+    });
+
+    Object.defineProperty(fakeQuickPick, 'items', {
+        get: () => itemsValue,
+        set: (offeredItems: any[]) => {
+            itemsValue = offeredItems;
+            const acceptedItem = offeredItems.find(offeredItem => offeredItem.label === fakeOptions.acceptLabel);
+            if ( acceptedItem ) {
+                setImmediate(() => {
+                    fakeQuickPick.selectedItems = [acceptedItem];
+                    acceptHandlers.forEach(acceptHandler => acceptHandler());
+                });
+            }
+        }
+    });
+
+    (vscode.window as any).createQuickPick = jest.fn().mockReturnValue(fakeQuickPick);
+
+    return fakeQuickPick;
+
+}
 
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
@@ -580,7 +630,7 @@ describe('ExtensionCommandService', () => {
                 .mockResolvedValue(RUN_AGAINST_ORG_ACTION_LABEL);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Deploy and Run');
 
-            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue('devHub');
+            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue({ targetOrgIdentifier: 'devHub', username: 'dev@example.com', alias: 'devHub' });
             jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
             jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts').mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-x');
             jest.spyOn(PicklistDependencyCheckService, 'assertDeployableClassesExist')
@@ -796,7 +846,7 @@ describe('ExtensionCommandService', () => {
             (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(RUN_AGAINST_ORG_ACTION_LABEL);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Deploy and Run');
 
-            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue('devHub');
+            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue({ targetOrgIdentifier: 'devHub', username: 'dev@example.com', alias: 'devHub' });
             jest.spyOn(VSCodeWorkspaceService, 'showPicklistDependencyCheckReport').mockImplementation(() => undefined);
             jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts').mockReturnValue('/workspace/treecipe/PicklistDependencyResults/check-devHub-x');
 
@@ -828,7 +878,7 @@ describe('ExtensionCommandService', () => {
 
             stubCollectionResult([specDetail]);
             (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(RUN_AGAINST_ORG_ACTION_LABEL);
-            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue(undefined);
+            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(undefined);
 
             const deploySpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses');
 
@@ -2206,8 +2256,8 @@ describe('ExtensionCommandService', () => {
             deployPicklistDependencyClassesSpy = jest.spyOn(PicklistDependencyCheckService, 'deployPicklistDependencyClasses')
                 .mockResolvedValue('Deployed 8 component(s) to the target org.');
 
-            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg')
-                .mockResolvedValue(authenticatedOrgDetail.targetOrgIdentifier);
+            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg')
+                .mockResolvedValue(authenticatedOrgDetail);
 
             // STUBBED BY DEFAULT SO THE SUITE NEVER WRITES TO A REAL TREECIPE DIRECTORY
             jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts')
@@ -2240,7 +2290,7 @@ describe('ExtensionCommandService', () => {
         test('given a cancelled run, writes no artifacts', async () => {
 
             const writeCheckResultArtifactsSpy = jest.spyOn(PicklistDependencyCheckService, 'writeCheckResultArtifacts');
-            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue(undefined);
+            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(undefined);
 
             await extensionCommandService.runPicklistDependencyCheck();
 
@@ -2272,19 +2322,43 @@ describe('ExtensionCommandService', () => {
 
         test('given no authenticated orgs, warns and never shows an empty quick pick', async () => {
 
+            (SalesforceOrgService.promptForAuthorizedOrg as jest.Mock).mockRestore();
+            jest.spyOn(SalesforceOrgService, 'listConnectedOrgAuthorizations').mockResolvedValue({ connectionStatesByUsername: new Map() });
             (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([]);
+            const fakeQuickPick = buildFakeOrgQuickPick();
 
             await extensionCommandService.runPicklistDependencyCheck();
 
-            expect(VSCodeWorkspaceService.promptForAuthenticatedTargetOrg).not.toHaveBeenCalled();
+            expect(fakeQuickPick.items).toEqual([]);
+            expect(fakeQuickPick.hide).toHaveBeenCalled();
             expect(runPicklistDependencyTestsSpy).not.toHaveBeenCalled();
-            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toContain('No authenticated Salesforce orgs');
+            expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(NO_AUTHORIZED_ORGS_MESSAGE);
+
+        });
+
+        test('offers only the orgs the Salesforce CLI reports connected, in a busy quick pick that fills once it answers', async () => {
+
+            (SalesforceOrgService.promptForAuthorizedOrg as jest.Mock).mockRestore();
+            jest.spyOn(SalesforceOrgService, 'listConnectedOrgAuthorizations').mockResolvedValue({
+                connectionStatesByUsername: new Map([['dev@example.com', 'connected'], ['old@example.com', 'expired']])
+            });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: 'dev@example.com', aliases: ['devHub'] },
+                { username: 'old@example.com', aliases: ['old'] }
+            ]);
+            const fakeQuickPick = buildFakeOrgQuickPick({ acceptLabel: 'devHub' });
+
+            await extensionCommandService.runPicklistDependencyCheck();
+
+            expect(fakeQuickPick.busyHistory).toEqual([true, false]);
+            expect(fakeQuickPick.items.map((item: any) => item.label)).toEqual(['devHub']);
+            expect(runPicklistDependencyTestsSpy).toHaveBeenCalledWith('devHub', expect.any(Function));
 
         });
 
         test('given a dismissed org quick pick, exits silently and runs nothing', async () => {
 
-            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedTargetOrg').mockResolvedValue(undefined);
+            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(undefined);
 
             await extensionCommandService.runPicklistDependencyCheck();
 

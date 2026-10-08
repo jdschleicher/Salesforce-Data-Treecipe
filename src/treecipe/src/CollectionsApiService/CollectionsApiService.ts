@@ -64,11 +64,16 @@ export class CollectionsApiService {
     
     }
 
-    static async getExpectedSalesforceOrgToInsertAgainst() {
+    /*
+        Picked from the orgs the Salesforce CLI reports as connected rather than typed in, so a dead
+        scratch org or a disconnected sandbox is never offered. The USERNAME is returned: an alias is
+        a local nickname that could be re-pointed between the pick and the connection.
+    */
+    static async getExpectedSalesforceOrgToInsertAgainst(): Promise<string | undefined> {
 
-        const userPromptForInputMessage = 'What Salesforce alias will the data set be inserted against? -- DO NOT USE PRODUCTION ORG';
-        const salesforceOrgToInsertAgainst = await VSCodeWorkspaceService.promptForUserInput(userPromptForInputMessage);
-        return salesforceOrgToInsertAgainst;
+        const selectedOrgDetail = await SalesforceOrgService.promptForAuthorizedOrg('Select the Salesforce org the data set will be inserted into -- DO NOT USE A PRODUCTION ORG');
+
+        return selectedOrgDetail?.username;
 
     }
 

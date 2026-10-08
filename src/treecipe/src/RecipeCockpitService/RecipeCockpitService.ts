@@ -12,7 +12,10 @@ import {
     IOrgQuerySource,
     IOrgRecordCountOutcome,
     IOrgTypeDetail,
+    IHiddenAuthorizedOrg,
+    IHiddenOrgReasonCounts,
     NO_AUTHORIZED_ORGS_MESSAGE,
+    OrgConnectionStatusUnavailableError,
     OrgRecordCountStatus,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
@@ -200,7 +203,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose and counts that org's records, but does not yet write a change back into a recipe, and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. Data-by-Org never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org, and it is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted.
+It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. Data-by-Org never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and it is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -566,8 +569,10 @@ export interface IRecipeCockpitRunFakerStateMessage {
     panel posted would be an org of its choosing; an index can only be one the host offered.
 */
 /*
-    hiddenOrgCount is how many authorized orgs were left out because the CLI does not know them to
-    be a sandbox or a scratch org -- Data-by-Org never lists, and so never connects to, production.
+    hiddenOrgCount is how many authorized orgs were left out -- because the CLI does not know them to
+    be a sandbox or a scratch org (Data-by-Org never lists, and so never connects to, production), or
+    because it does not report them connected -- and hiddenOrgNote says so, counting each reason.
+    forgottenOrgNotice names the org chosen last when it was forgotten for no longer being connected.
 */
 export interface IRecipeCockpitDataOrgListMessage {
     command: 'dataOrgList';
@@ -575,10 +580,17 @@ export interface IRecipeCockpitDataOrgListMessage {
     selectedOrgIndex: number | null;
     noOrgsMessage: string;
     hiddenOrgCount: number;
+    hiddenOrgNote: string;
+    forgottenOrgNotice: string;
     renderSequence: number;
 }
 
 export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. Data-by-Org connects only to sandboxes and scratch orgs: authorize one with "sf org login web --instance-url https://test.salesforce.com" and try again.';
+
+// WHAT DATA-BY-ORG SHOWS IN PLACE OF THE DROPDOWN WHILE THE CLI IS ASKED WHICH ORGS ARE CONNECTED
+export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = 'Checking org connections…';
+
+export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. Data-by-Org lists only orgs the Salesforce CLI reports as connected: re-authorize one with "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
 
 /*
     The org Data-by-Org is counting in. orgTypeLabel is '' while the Organization query is still
@@ -1367,8 +1379,11 @@ export class RecipeCockpitService {
 
             case 'refreshDataOrgCounts':
 
-                SalesforceOrgService.clearRecordCountCache(panelState.dataOrgSelection.orgDetail.username);
-                await this.selectDataOrg(cockpitPanel, panelState, panelState.dataOrgSelection.orgIndex);
+                if ( panelState.dataOrgSelection ) {
+                    SalesforceOrgService.clearRecordCountCache(panelState.dataOrgSelection.orgDetail.username);
+                }
+
+                await this.loadDataOrgs(cockpitPanel, panelState, true);
                 return;
 
             case 'createRecords':
@@ -1841,9 +1856,9 @@ export class RecipeCockpitService {
 
     /*
         The org a comparison describes in: the one Data-by-Org has picked in this panel, else the
-        one it remembers for this workspace (looked up in the CLI's local authorizations, which
-        contacts no org), else whichever authorized org the reader picks now. A listing that fails
-        only means the reader is asked.
+        one it remembers for this workspace (looked up in the session's cached answer to which orgs
+        the CLI reports connected, so one since disconnected is not used), else whichever connected
+        org the reader picks now. A listing that fails only means the reader is asked.
     */
     private static async resolveComparisonOrgDetail(panelState: IRecipeCockpitPanelState): Promise<IAuthenticatedOrgDetail | undefined> {
 
@@ -2028,45 +2043,72 @@ export class RecipeCockpitService {
     }
 
     /*
-        Lists the authorized orgs and, when the org chosen last is still among them, selects it --
-        which is the first time this view contacts an org: listing reads only the CLI's local
-        authorizations. An org no longer authorized is dropped without a word, as the issue asks.
+        Lists the orgs and, when the org chosen last is still among them, selects it. Listing asks
+        the Salesforce CLI which authorized orgs are connected, which pings each one's token -- once
+        per session, or per ⟳ (isRefresh), since the answer is cached in SalesforceOrgService. The
+        extension itself contacts only the org selected.
+
+        The list in hand is dropped BEFORE the check, so no org can be selected until it answers; a
+        new model, a ready or a later listing bumps dataOrgRequestSequence meanwhile, and the answer
+        is then discarded rather than drawn over whatever replaced it. A remembered org that the CLI
+        now reports expired, deleted or not connected is forgotten, and the view says so once.
     */
-    private static async loadDataOrgs(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+    private static async loadDataOrgs(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, isRefresh = false) {
 
         const listedRecipeDataMessage = panelState.recipeDataMessage;
+        panelState.dataOrgDetails = [];
+        panelState.dataOrgSelection = undefined;
+        const listingRequestSequence = ++panelState.dataOrgRequestSequence;
+
         let orgDetails: IAuthenticatedOrgDetail[] = [];
-        let hiddenOrgCount = 0;
+        let hiddenOrgs: IHiddenAuthorizedOrg[] = [];
+        let hiddenOrgNote = '';
         let noOrgsMessage = NO_AUTHORIZED_ORGS_MESSAGE;
 
         try {
+
+            if ( isRefresh ) {
+                await SalesforceOrgService.refreshConnectedOrgAuthorizations();
+            }
+
             const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
             orgDetails = dataOrgListing.orgDetails;
-            hiddenOrgCount = dataOrgListing.hiddenOrgCount;
-            noOrgsMessage = hiddenOrgCount > 0 ? RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE : NO_AUTHORIZED_ORGS_MESSAGE;
+            hiddenOrgs = dataOrgListing.hiddenOrgs;
+            hiddenOrgNote = this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts);
+            noOrgsMessage = this.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts);
+
         } catch (listError) {
-            noOrgsMessage = `The authorized Salesforce orgs could not be listed: ${listError?.message ?? listError}`;
+
+            noOrgsMessage = listError instanceof OrgConnectionStatusUnavailableError
+                ? listError.message
+                : `The authorized Salesforce orgs could not be listed: ${listError?.message ?? listError}`;
+
         }
 
-        if ( this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState || panelState.recipeDataMessage !== listedRecipeDataMessage ) {
+        if ( this.recipeCockpitPanel !== cockpitPanel
+                || this.recipeCockpitPanelState !== panelState
+                || panelState.recipeDataMessage !== listedRecipeDataMessage
+                || panelState.dataOrgRequestSequence !== listingRequestSequence ) {
             return;
         }
 
-        /*
-            A new list re-numbers the orgs, so a selection made against the old one is ended rather
-            than left pointing at whatever now sits at its index. The org chosen last is selected
-            again below, by USERNAME.
-        */
         panelState.dataOrgDetails = orgDetails;
-        panelState.dataOrgSelection = undefined;
-        panelState.dataOrgRequestSequence++;
 
         const rememberedUsername = panelState.dataOrgUsername ?? this.readRememberedDataOrgUsername();
         const selectedOrgIndex = rememberedUsername ? orgDetails.findIndex(orgDetail => orgDetail.username === rememberedUsername) : -1;
+        let forgottenOrgNotice = '';
 
         if ( rememberedUsername && selectedOrgIndex === -1 ) {
+
+            const disconnectedRememberedOrg = hiddenOrgs.find(hiddenOrg => hiddenOrg.username === rememberedUsername && hiddenOrg.reason !== 'production');
+
+            if ( disconnectedRememberedOrg ) {
+                forgottenOrgNotice = `The last org used, ${disconnectedRememberedOrg.label}, is no longer connected.`;
+            }
+
             panelState.dataOrgUsername = undefined;
             this.rememberDataOrgUsername(undefined);
+
         }
 
         this.postToPanel(cockpitPanel, {
@@ -2074,13 +2116,42 @@ export class RecipeCockpitService {
             orgLabels: orgDetails.map(orgDetail => this.buildDataOrgLabel(orgDetail)),
             selectedOrgIndex: selectedOrgIndex >= 0 ? selectedOrgIndex : null,
             noOrgsMessage: orgDetails.length === 0 ? noOrgsMessage : '',
-            hiddenOrgCount: hiddenOrgCount,
+            hiddenOrgCount: SalesforceOrgService.countHiddenOrgs(SalesforceOrgService.countHiddenOrgReasons(hiddenOrgs)),
+            hiddenOrgNote: hiddenOrgNote,
+            forgottenOrgNotice: forgottenOrgNotice,
             renderSequence: listedRecipeDataMessage.renderSequence
         });
 
         if ( selectedOrgIndex >= 0 ) {
             await this.selectDataOrg(cockpitPanel, panelState, selectedOrgIndex);
         }
+
+    }
+
+    // "3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected." AND WHY THOSE ARE NEVER LISTED
+    static buildDataOrgHiddenNote(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): string {
+
+        const hiddenOrgCount = SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts);
+
+        if ( hiddenOrgCount === 0 ) {
+            return '';
+        }
+
+        return `${hiddenOrgCount} authorized ${hiddenOrgCount === 1 ? 'org is' : 'orgs are'} not listed: ${SalesforceOrgService.formatHiddenOrgReasons(hiddenOrgReasonCounts)}. `
+                + 'Data-by-Org lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
+
+    }
+
+    // WITH NOTHING LISTED: NONE AUTHORIZED, ONLY PRODUCTION AUTHORIZED, OR NONE STILL CONNECTED
+    static buildDataOrgNoOrgsMessage(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): string {
+
+        if ( SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts) === 0 ) {
+            return NO_AUTHORIZED_ORGS_MESSAGE;
+        }
+
+        return hiddenOrgReasonCounts.expired + hiddenOrgReasonCounts.deleted + hiddenOrgReasonCounts.notConnected > 0
+            ? RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE
+            : RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE;
 
     }
 
@@ -3002,9 +3073,14 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                ⟳ asks the CLI again which orgs are connected, re-lists them and re-selects the org
+                chosen last by USERNAME, which counts it afresh. It needs no selection: with every
+                org left out, it is how a reader who just re-authorized one sees it listed.
+            */
             case 'refreshDataOrgCounts':
 
-                if ( !panelState.dataOrgSelection || panelState.dataOrgObjectApiNames.size === 0 ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 ) {
                     return undefined;
                 }
 
@@ -4435,6 +4511,7 @@ ${this.buildPaletteCustomProperties()}
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
     const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
     const CREATE_MAX_COUNT = ${RECIPE_COCKPIT_CREATE_MAX_COUNT};
+    const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
 
     // WHICH VIEW IS ON SCREEN OUTLIVES A MODEL, SO SWITCHING RUNS DOES NOT THROW THE READER BACK TO THE DEFAULT
     let viewMode = 'trees';
@@ -4462,6 +4539,8 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgRequestedSequence = null;
     // THE LATEST SELECTION THE HOST NAMED; COUNTS FOR ANY OTHER ARE A DIFFERENT ORG'S, OR AN OLDER ASK OF THIS ONE
     let dataOrgRequestSequence = null;
+    // THE LAST SELECTION CLEARED BY A RE-LISTING: NOTHING AT OR BELOW IT IS DRAWN AGAIN
+    let dataOrgClearedRequestSequence = null;
     // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgCountsByObject = Object.create(null);
     let dataObjectStates = [];
@@ -5635,9 +5714,10 @@ ${this.buildPaletteCustomProperties()}
         dataOrgTypeElement = createElement('span', 'dataOrgType hidden');
 
         dataOrgRefreshElement = createElement('button', 'dataOrgRefresh hidden', '⟳');
-        dataOrgRefreshElement.setAttribute('title', 'Count the records in this org again');
-        dataOrgRefreshElement.setAttribute('aria-label', 'Count the records in this org again');
+        dataOrgRefreshElement.setAttribute('title', 'Check the org connections again and count the records again');
+        dataOrgRefreshElement.setAttribute('aria-label', 'Check the org connections again and count the records again');
         dataOrgRefreshElement.addEventListener('click', function () {
+            showDataOrgConnectionCheck();
             vscodeApi.postMessage({ command: 'refreshDataOrgCounts' });
         });
 
@@ -5649,7 +5729,7 @@ ${this.buildPaletteCustomProperties()}
         dataOrgHiddenNoteElement = createElement('div', 'dataOrgHiddenNote muted hidden');
         dataOrgViewElement.appendChild(dataOrgHiddenNoteElement);
 
-        dataOrgStatusElement = createElement('div', 'dataOrgStatus muted', 'Loading the authorized orgs…');
+        dataOrgStatusElement = createElement('div', 'dataOrgStatus muted', DATA_ORG_CONNECTION_CHECK_TEXT);
         dataOrgViewElement.appendChild(dataOrgStatusElement);
 
         const trees = recipe.trees || [];
@@ -5943,15 +6023,15 @@ ${this.buildPaletteCustomProperties()}
         if (!dataOrgSelectElement || dataOrgList.renderSequence !== renderedSequence) { return; }
 
         dataOrgSelectElement.textContent = '';
+        clearDataOrgSelection();
+        // ⟳ IS HOW A READER WHO JUST RE-AUTHORIZED AN ORG SEES IT LISTED, SO IT STAYS EVEN WITH NOTHING LISTED
+        dataOrgRefreshElement.classList.remove('hidden');
+        dataOrgRefreshElement.disabled = false;
 
-        // PRODUCTION IS NEVER LISTED, AND THE READER IS TOLD WHY AN ORG THEY AUTHORIZED IS MISSING
-        if (dataOrgList.hiddenOrgCount > 0) {
-            dataOrgHiddenNoteElement.textContent = pluralize(dataOrgList.hiddenOrgCount, 'authorized org is', 'authorized orgs are')
-                + ' not listed: Data-by-Org connects only to orgs the Salesforce CLI knows as a sandbox or a scratch org, never to production.';
-            dataOrgHiddenNoteElement.classList.remove('hidden');
-        } else {
-            dataOrgHiddenNoteElement.classList.add('hidden');
-        }
+        // PRODUCTION AND ORGS THE CLI DOES NOT REPORT CONNECTED ARE NEVER LISTED, AND THE READER IS TOLD WHY ONE THEY AUTHORIZED IS MISSING
+        const hiddenNoteText = [dataOrgList.forgottenOrgNotice || '', dataOrgList.hiddenOrgNote || ''].filter(Boolean).join(' ');
+        dataOrgHiddenNoteElement.textContent = hiddenNoteText;
+        if (hiddenNoteText) { dataOrgHiddenNoteElement.classList.remove('hidden'); } else { dataOrgHiddenNoteElement.classList.add('hidden'); }
 
         if (dataOrgList.orgLabels.length === 0) {
             dataOrgSelectElement.classList.add('hidden');
@@ -5975,10 +6055,45 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // NO ORG IS SELECTED WHILE THE ORGS ARE BEING LISTED AGAIN, SO NOTHING FROM THE LAST ONE STAYS ON SCREEN
+    function clearDataOrgSelection() {
+
+        /*
+            With no selection, a row reads "—" rather than "counting…", and Create is hidden: a
+            re-listing that forgot the org posts no selection after it. The sequence it cleared is
+            kept, so an answer still on its way for that selection is not drawn back in.
+        */
+        if (dataOrgRequestSequence !== null) {
+            dataOrgClearedRequestSequence = Math.max(dataOrgClearedRequestSequence === null ? 0 : dataOrgClearedRequestSequence, dataOrgRequestSequence);
+        }
+        dataOrgRequestSequence = null;
+        dataOrgSelectedIndex = null;
+        dataOrgCountsByObject = Object.create(null);
+        dataOrgReadinessByObject = Object.create(null);
+        dataOrgCreateResultsByKey = Object.create(null);
+        dataOrgTypeElement.classList.add('hidden');
+        dataTreeStates.forEach(drawDataTreeCounts);
+        dataObjectStates.forEach(drawCreateControls);
+
+    }
+
+    // THE DROPDOWN IS TAKEN AWAY UNTIL THE CLI ANSWERS, SO NOTHING CAN BE SELECTED FROM A LIST BEING REPLACED
+    function showDataOrgConnectionCheck() {
+
+        dataOrgSelectElement.classList.add('hidden');
+        dataOrgHiddenNoteElement.classList.add('hidden');
+        // ONE CHECK AT A TIME: ⟳ COMES BACK WITH THE LIST IT ASKED FOR
+        dataOrgRefreshElement.disabled = true;
+        clearDataOrgSelection();
+        setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
+
+    }
+
     function renderDataOrgSelection(dataOrgSelection) {
 
         if (!dataOrgSelectElement || dataOrgSelection.renderSequence !== renderedSequence) { return; }
         if (dataOrgRequestSequence !== null && dataOrgSelection.requestSequence < dataOrgRequestSequence) { return; }
+        if (dataOrgClearedRequestSequence !== null && dataOrgSelection.requestSequence <= dataOrgClearedRequestSequence) { return; }
 
         // A NEW SELECTION, OR A REFRESH OF THIS ONE, STARTS FROM NO COUNTS
         if (dataOrgSelection.requestSequence !== dataOrgRequestSequence) {
@@ -6083,6 +6198,7 @@ ${this.buildPaletteCustomProperties()}
         dataTreeStates = [];
         dataOrgRequestedSequence = null;
         dataOrgRequestSequence = null;
+        dataOrgClearedRequestSequence = null;
         dataOrgCountsByObject = Object.create(null);
         dataObjectStates = [];
         dataOrgSelectedIndex = null;
@@ -6182,7 +6298,7 @@ ${this.buildPaletteCustomProperties()}
         const chooseOrgButtonElement = createElement('button', 'describeInChosenOrg', CHOOSE_ORG_ACTION_LABEL);
         const statusFilterElement = createElement('select', 'statusFilter hidden');
 
-        chooseOrgButtonElement.setAttribute('title', 'Choose any authorized org, production included, and compare the objects of this tree with it');
+        chooseOrgButtonElement.setAttribute('title', 'Choose any connected org, production included, and compare the objects of this tree with it');
         chooseOrgButtonElement.setAttribute('aria-label', CHOOSE_ORG_ACTION_LABEL + ' (' + treeState.tree.title + ')');
         chooseOrgButtonElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey, chooseOrg: true });

@@ -34,7 +34,7 @@ import {
     VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
 } from "../RecipeCockpitService/RecipeCockpitService";
 
-import { AuthInfo } from '@salesforce/core';
+import { SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -911,15 +911,9 @@ export class ExtensionCommandService {
 
     private async promptForPicklistDependencyTargetOrg(): Promise<string | undefined> {
 
-        const allAuthorizations = await AuthInfo.listAllAuthorizations();
-        const authenticatedOrgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails(allAuthorizations);
+        const selectedOrgDetail = await SalesforceOrgService.promptForAuthorizedOrg('Select the Salesforce org to check picklist dependencies against');
 
-        if ( authenticatedOrgDetails.length === 0 ) {
-            vscode.window.showWarningMessage('No authenticated Salesforce orgs were found. Authorize one with "sf org login web" and run the command again.');
-            return undefined;
-        }
-
-        return await VSCodeWorkspaceService.promptForAuthenticatedTargetOrg(authenticatedOrgDetails);
+        return selectedOrgDetail?.targetOrgIdentifier;
 
     }
 
