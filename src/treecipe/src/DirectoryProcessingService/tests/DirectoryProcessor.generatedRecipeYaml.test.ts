@@ -68,6 +68,8 @@ import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/Snowfa
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { RecordTypeService } from '../../RecordTypeService/RecordTypeService';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
+import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
+import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 
@@ -246,9 +248,10 @@ describe.each([
 
     /*
         Nesting moves an object's lines four spaces deeper per friends: level and fills in the lookups
-        to its ancestors -- nothing else. So every object loads with the same fields as the flat
-        recipe, apart from a lookup that was the REFERENCE ID REQUIRED TODO (null) and is now an
-        ancestor's nickname (#46). For snowfakery, which stays flat, the two are identical.
+        to its ancestors and to lower-level parents -- nothing else. So every object loads with the
+        same fields as the flat recipe, apart from a lookup that was the REFERENCE ID REQUIRED TODO
+        (null) and is now a parent's nickname (#46, #189); a TODO that names its parent still loads
+        as null. For snowfakery, which stays flat, the two are identical.
     */
     test('every object loads with the same fields as the flat recipe, apart from the lookups nesting wired', async () => {
 
@@ -327,6 +330,82 @@ describe.each([
         const unloadableRecipeFiles = childProcess.execFileSync('python3', ['-c', PYYAML_CHECK], { input: pyYamlInput, encoding: 'utf-8' });
 
         expect(unloadableRecipeFiles).toBe('');
+
+    });
+
+});
+
+/*
+    Generation, Run Faker by Recipe, the Collections API conversion and the inserts, over the mock
+    metadata: the lookups #46 left as TODOs because their parent was not an ancestor --
+    MasterDetailMadness__c's master-detail to MegaMapMadness__c and Order_Item__c's lookup to
+    Product__c -- are now wired and resolve to records of the right object (#189). Every count is
+    raised to 2, so each parent has several records to resolve to, nested or not.
+*/
+describe('a faker-js recipe from the mock metadata inserts with every wired lookup resolved (#189)', () => {
+
+    type InsertedRecord = Record<string, unknown> & { Id: string };
+
+    test('MasterDetailMadness__c and Order_Item__c resolve to records of the parent they name, spread across its records', async () => {
+
+        const objectInfoWrapper = await processMockMetadata(() => new FakerJSRecipeFakerService());
+        const recipeFile = objectInfoWrapper.RecipeFiles.find(generatedRecipeFile => generatedRecipeFile.objects.includes('MasterDetailMadness__c'));
+        expect(recipeFile.objects).toEqual(expect.arrayContaining(['MegaMapMadness__c', 'Order_Item__c', 'Order__c', 'Product__c', 'Contact']));
+
+        const recipeContent = recipeFile.content.replace(/^( *count:) 1$/gm, '$1 2');
+        jest.spyOn(fs, 'readFileSync').mockReturnValueOnce(recipeContent);
+        // THE GENERATOR WRITES Example_Everything__c's DEPENDENT PICKLIST ABOVE ITS CONTROLLING FIELD, WHICH RUN FAKER CANNOT EVALUATE -- NOT WHAT THIS TEST IS ABOUT
+        jest.spyOn(FakerJSRecipeProcessor.prototype, 'evaluateDependentPicklistFakerJSExpression').mockReturnValue(Promise.resolve('dependent'));
+        const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+        const fakerJson = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('recipe.yml');
+        const collectionsByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
+
+        const collectionsApiFileNames = CollectionsApiService.sortCollectionApiFilesByRelationshipLevel(
+            Array.from(collectionsByObject.keys()).map(objectApiName => CollectionsApiService.buildCollectionsApiFileNameBySobjectName(objectApiName)),
+            objectInfoWrapper
+        );
+
+        let referenceIdToOrgId: Record<string, string> = {};
+        const insertedRecordsByObject: Record<string, InsertedRecord[]> = {};
+        let insertedRecordCount = 0;
+
+        collectionsApiFileNames.forEach(collectionsApiFileName => {
+            const objectApiName = CollectionsApiService.getObjectNameFromCollectionsApiFilePath(collectionsApiFileName);
+            insertedRecordsByObject[objectApiName] = [];
+            const fileRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify(collectionsByObject.get(objectApiName)), referenceIdToOrgId)).records;
+            CollectionsApiService.partitionRecordsIntoInsertRounds(fileRecords).forEach(insertRound => {
+                const resolvedRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify({ records: insertRound }), referenceIdToOrgId)).records;
+                const fakeInsertResults = resolvedRecords.map(() => ({ id: `${objectApiName}#${insertedRecordCount++}`, success: true }));
+                referenceIdToOrgId = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(referenceIdToOrgId, fakeInsertResults, resolvedRecords);
+                resolvedRecords.forEach((resolvedRecord, recordIndex) => insertedRecordsByObject[objectApiName].push({ ...resolvedRecord, Id: fakeInsertResults[recordIndex].id }));
+            });
+        });
+
+        const idsOf = (objectApiName: string) => insertedRecordsByObject[objectApiName].map(insertedRecord => insertedRecord.Id);
+        const valuesOf = (objectApiName: string, fieldApiName: string) => insertedRecordsByObject[objectApiName].map(insertedRecord => insertedRecord[fieldApiName]);
+        const expectEveryValueToBeARecordOf = (objectApiName: string, fieldApiName: string, parentObjectApiName: string) => {
+            const fieldValues = valuesOf(objectApiName, fieldApiName);
+            expect(fieldValues.length).toBeGreaterThan(1);
+            fieldValues.forEach(fieldValue => expect(idsOf(parentObjectApiName)).toContain(fieldValue));
+            return fieldValues;
+        };
+
+        expectEveryValueToBeARecordOf('MasterDetailMadness__c', 'LU_Contact__c', 'Contact');
+        const masterDetailParents = expectEveryValueToBeARecordOf('MasterDetailMadness__c', 'MD_MegaMapMadness__c', 'MegaMapMadness__c');
+        expectEveryValueToBeARecordOf('Order_Item__c', 'Order__c', 'Order__c');
+        const orderItemProducts = expectEveryValueToBeARecordOf('Order_Item__c', 'Product__c', 'Product__c');
+
+        // ROUND-ROBIN: EVERY PARENT RECORD IS USED BEFORE ANY IS USED TWICE
+        expect(new Set(masterDetailParents).size).toBe(Math.min(masterDetailParents.length, idsOf('MegaMapMadness__c').length));
+        expect(new Set(orderItemProducts).size).toBe(Math.min(orderItemProducts.length, idsOf('Product__c').length));
+
+        // EVERY WIRED LOOKUP IN THE TREE WAS RESOLVED: NO INSERTED VALUE IS STILL A NICKNAME
+        const recordNicknames = new Set(JSON.parse(fakerJson).map((generatedRecord: { nickname: string }) => generatedRecord.nickname));
+        Object.values(insertedRecordsByObject).flat().forEach(insertedRecord => {
+            Object.entries(insertedRecord).forEach(([fieldApiName, fieldValue]) => {
+                expect([fieldApiName, recordNicknames.has(fieldValue)]).toEqual([fieldApiName, false]);
+            });
+        });
 
     });
 

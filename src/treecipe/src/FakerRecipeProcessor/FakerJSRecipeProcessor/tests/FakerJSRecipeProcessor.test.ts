@@ -854,6 +854,233 @@ describe('Shared FakerJSRecipeProcessor tests', () => {
 
     });
 
+    describe('a lookup to a parent that is not an ancestor resolves once the whole recipe is generated (#189)', () => {
+
+        type GeneratedRecordShape = { id: number, object: string, nickname: string, fields: Record<string, unknown> };
+
+        const generateRecords = async (recipeYaml: string): Promise<GeneratedRecordShape[]> => {
+            jest.spyOn(fs, 'readFileSync').mockReturnValueOnce(recipeYaml);
+            return JSON.parse(await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('recipe.yml'));
+        };
+        const recordsOf = (generatedRecords: GeneratedRecordShape[], objectApiName: string) => generatedRecords.filter(generatedRecord => generatedRecord.object === objectApiName);
+
+        test('a child written BEFORE its parent resolves round-robin to the parent\'s records, each renamed so the insert can tell them apart', async () => {
+
+            const generatedRecords = await generateRecords([
+                '- object: Order_Item__c',
+                '  nickname: Order_Item__c_NickName',
+                '  count: 4',
+                '  fields:',
+                '    Product__c: Product__c_NickName',
+                '- object: Product__c',
+                '  nickname: Product__c_NickName',
+                '  count: 3',
+                '  fields:',
+                '    Name: Widget'
+            ].join('\n'));
+
+            expect(recordsOf(generatedRecords, 'Product__c').map(product => product.nickname)).toEqual(['Product__c_NickName_1', 'Product__c_NickName_2', 'Product__c_NickName_3']);
+            expect(recordsOf(generatedRecords, 'Order_Item__c').map(orderItem => orderItem.fields.Product__c)).toEqual([
+                'Product__c_NickName_1', 'Product__c_NickName_2', 'Product__c_NickName_3', 'Product__c_NickName_1'
+            ]);
+            // NOTHING NAMES THE ITEMS, SO THEY KEEP THE NICKNAME THEY SHARE
+            expect(recordsOf(generatedRecords, 'Order_Item__c').map(orderItem => orderItem.nickname)).toEqual(Array(4).fill('Order_Item__c_NickName'));
+
+        });
+
+        test('a parent generated under friends: resolves to the records it generated there, whatever its count and nesting', async () => {
+
+            const generatedRecords = await generateRecords([
+                '- object: Account',
+                '  nickname: Account_NickName',
+                '  count: 2',
+                '  fields:',
+                '    Name: Acme',
+                '  friends:',
+                '    - object: MegaMapMadness__c',
+                '      nickname: MegaMapMadness__c_NickName',
+                '      count: 1',
+                '      fields:',
+                '        Account__c: Account_NickName',
+                '- object: MasterDetailMadness__c',
+                '  nickname: MasterDetailMadness__c_NickName',
+                '  count: 3',
+                '  fields:',
+                '    MD_MegaMapMadness__c: MegaMapMadness__c_NickName'
+            ].join('\n'));
+
+            expect(recordsOf(generatedRecords, 'MegaMapMadness__c').map(megaMap => [megaMap.nickname, megaMap.fields.Account__c])).toEqual([
+                ['MegaMapMadness__c_Account_NickName_1', 'Account_NickName_1'],
+                ['MegaMapMadness__c_Account_NickName_2', 'Account_NickName_2']
+            ]);
+            expect(recordsOf(generatedRecords, 'MasterDetailMadness__c').map(masterDetail => masterDetail.fields.MD_MegaMapMadness__c)).toEqual([
+                'MegaMapMadness__c_Account_NickName_1', 'MegaMapMadness__c_Account_NickName_2', 'MegaMapMadness__c_Account_NickName_1'
+            ]);
+
+        });
+
+        test('an ancestor reference keeps the record it was generated under, and only the other lookup is spread', async () => {
+
+            const generatedRecords = await generateRecords([
+                '- object: Product__c',
+                '  nickname: Product__c_NickName',
+                '  count: 2',
+                '  fields:',
+                '    Name: Widget',
+                '- object: Order__c',
+                '  nickname: Order__c_NickName',
+                '  count: 2',
+                '  fields:',
+                '    Name: Order',
+                '  friends:',
+                '    - object: Order_Item__c',
+                '      nickname: Order_Item__c_NickName',
+                '      count: 3',
+                '      fields:',
+                '        Order__c: Order__c_NickName',
+                '        Product__c: Product__c_NickName'
+            ].join('\n'));
+
+            expect(recordsOf(generatedRecords, 'Order_Item__c').map(orderItem => [orderItem.fields.Order__c, orderItem.fields.Product__c])).toEqual([
+                ['Order__c_NickName_1', 'Product__c_NickName_1'],
+                ['Order__c_NickName_1', 'Product__c_NickName_2'],
+                ['Order__c_NickName_1', 'Product__c_NickName_1'],
+                ['Order__c_NickName_2', 'Product__c_NickName_2'],
+                ['Order__c_NickName_2', 'Product__c_NickName_1'],
+                ['Order__c_NickName_2', 'Product__c_NickName_2']
+            ]);
+
+        });
+
+        test('the same recipe resolves the same way every run', async () => {
+
+            const recipeYaml = [
+                '- object: Product__c',
+                '  nickname: Product__c_NickName',
+                '  count: 3',
+                '  fields:',
+                '    Name: Widget',
+                '- object: Order_Item__c',
+                '  nickname: Order_Item__c_NickName',
+                '  count: 5',
+                '  fields:',
+                '    Product__c: Product__c_NickName'
+            ].join('\n');
+
+            expect(await generateRecords(recipeYaml)).toEqual(await generateRecords(recipeYaml));
+
+        });
+
+        test('a record is never pointed at itself, and a nickname with no other record is left as written', async () => {
+
+            const generatedRecords = await generateRecords([
+                '- object: Account',
+                '  nickname: Account_NickName',
+                '  count: 1',
+                '  fields:',
+                '    ParentId: Account_NickName',
+                '- object: Case',
+                '  nickname: Case_NickName',
+                '  count: 3',
+                '  fields:',
+                '    ParentId: Case_NickName'
+            ].join('\n'));
+
+            expect(recordsOf(generatedRecords, 'Account').map(account => [account.nickname, account.fields.ParentId])).toEqual([['Account_NickName', 'Account_NickName']]);
+            expect(recordsOf(generatedRecords, 'Case').map(caseRecord => [caseRecord.nickname, caseRecord.fields.ParentId])).toEqual([
+                ['Case_NickName_1', 'Case_NickName_2'],
+                ['Case_NickName_2', 'Case_NickName_3'],
+                ['Case_NickName_3', 'Case_NickName_1']
+            ]);
+
+        });
+
+        test('a renamed record never takes a nickname another record already holds', async () => {
+
+            const generatedRecords = await generateRecords([
+                '- object: Product__c',
+                '  nickname: Product__c_NickName_1',
+                '  count: 1',
+                '  fields:',
+                '    Name: Taken',
+                '- object: Product__c',
+                '  nickname: Product__c_NickName',
+                '  count: 2',
+                '  fields:',
+                '    Name: Widget',
+                '- object: Order_Item__c',
+                '  nickname: Order_Item__c_NickName',
+                '  count: 2',
+                '  fields:',
+                '    Product__c: Product__c_NickName'
+            ].join('\n'));
+
+            expect(recordsOf(generatedRecords, 'Product__c').map(product => product.nickname)).toEqual(['Product__c_NickName_1', 'Product__c_NickName_2', 'Product__c_NickName_3']);
+            expect(recordsOf(generatedRecords, 'Order_Item__c').map(orderItem => orderItem.fields.Product__c)).toEqual(['Product__c_NickName_2', 'Product__c_NickName_3']);
+
+        });
+
+        test('a value that names no nickname, a TODO and a record with no nickname are left alone', async () => {
+
+            const generatedRecords = await generateRecords([
+                '- object: Product__c',
+                '  count: 2',
+                '  fields:',
+                '    Name: Widget',
+                '- object: Order_Item__c',
+                '  nickname: Order_Item__c_NickName',
+                '  count: 1',
+                '  fields:',
+                '    Product__c: ### TODO -- REFERENCE ID REQUIRED -- Product__c',
+                '    Description__c: Product__c_NickName',
+                '    Quantity__c: 3'
+            ].join('\n'));
+
+            expect(recordsOf(generatedRecords, 'Order_Item__c')[0].fields).toEqual({ Product__c: null, Description__c: 'Product__c_NickName', Quantity__c: 3 });
+            expect(recordsOf(generatedRecords, 'Product__c').map(product => product.nickname)).toEqual([undefined, undefined]);
+
+        });
+
+        test('resolves 100k references to 10k parent records in linear time', () => {
+
+            const parentContexts = Array.from({ length: 10000 }, (unused, recordIndex) => ({
+                record: { id: recordIndex + 1, object: 'Product__c', nickname: `Product__c_NickName_${recordIndex + 1}`, fields: { Name: 'Widget' } },
+                yamlNickname: 'Product__c_NickName',
+                ancestorResolvedFieldNames: new Set<string>()
+            }));
+            const childContexts = Array.from({ length: 100000 }, (unused, recordIndex) => ({
+                record: { id: recordIndex + 1, object: 'Order_Item__c', nickname: 'Order_Item__c_NickName', fields: { Product__c: 'Product__c_NickName' } as Record<string, unknown> },
+                yamlNickname: 'Order_Item__c_NickName',
+                ancestorResolvedFieldNames: new Set<string>()
+            }));
+            const processedYamlWrapper: ProcessedYamlWrapper = {
+                ObjectPropertyToExistingProcessedYaml: {},
+                VariablePropertyToExistingProcessedYaml: {},
+                GeneratedRecordContexts: [...parentContexts, ...childContexts]
+            };
+
+            const startedAt = Date.now();
+            fakerJSRecipeProcessor.resolveNonAncestorNicknameReferences(processedYamlWrapper);
+
+            // THE QUADRATIC PASS THIS REPLACED TOOK ~13 s HERE
+            expect(Date.now() - startedAt).toBeLessThan(3000);
+            expect(childContexts[0].record.fields.Product__c).toBe('Product__c_NickName_1');
+            expect(childContexts[10000].record.fields.Product__c).toBe('Product__c_NickName_1');
+            expect(childContexts[99999].record.fields.Product__c).toBe('Product__c_NickName_10000');
+
+        });
+
+        test('a wrapper that generated nothing resolves nothing', () => {
+
+            const processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };
+
+            expect(() => fakerJSRecipeProcessor.resolveNonAncestorNicknameReferences(processedYamlWrapper)).not.toThrow();
+            expect(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml).toEqual({});
+
+        });
+
+    });
+
     describe('buildRecipeDataStructureSummary', () => {
 
         test('flat recipe with no friends produces correct totals', () => {
