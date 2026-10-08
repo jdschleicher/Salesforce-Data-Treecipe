@@ -705,7 +705,7 @@ export class VSCodeWorkspaceService {
 
         } catch (error) {
 
-          vscode.window.showErrorMessage(`Failed to open file: ${filePath} - ${error}`);
+          vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(`Failed to open file: ${filePath} - ${error}`));
           
         }
     }
@@ -768,7 +768,7 @@ export class VSCodeWorkspaceService {
         try {
             await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(resolvedTargetPath));
         } catch (revealError) {
-            void vscode.window.showErrorMessage(`Failed to reveal "${this.toWorkspaceRelativeDisplayPath(resolvedTargetPath, workspaceRoot)}" in the Explorer: ${revealError instanceof Error ? revealError.message : String(revealError)}`);
+            void vscode.window.showErrorMessage(`Failed to reveal "${this.toWorkspaceRelativeDisplayPath(resolvedTargetPath, workspaceRoot)}" in the Explorer: ${RecipeYamlScalar.escapeForNotification(revealError instanceof Error ? revealError.message : String(revealError))}`);
         }
 
     }

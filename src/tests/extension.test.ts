@@ -116,6 +116,23 @@ describe('activate', () => {
 
     });
 
+    // THE COCKPIT'S Regenerate SUPPRESSES GENERATION'S COMPLETION TOAST THROUGH THIS ARGUMENT (#206), SO A HANDLER THAT DROPS IT SHOWS THE TOAST AGAIN
+    it('passes its argument to Generate Treecipe, so the Recipe Cockpit can suppress the completion notification', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const generateSpy = jest.spyOn(ExtensionCommandService.prototype, 'generateRecipeFromConfigurationDetail').mockResolvedValue(undefined);
+
+        await activate(buildExtensionContext() as never);
+
+        const [, generateTreecipeHandler] = (vscode.commands.registerCommand as jest.Mock).mock.calls
+            .find(registerCall => registerCall[0] === 'treecipe.generateTreecipe');
+
+        await generateTreecipeHandler({ isCompletionNotificationSuppressed: true });
+
+        expect(generateSpy).toHaveBeenCalledWith({ isCompletionNotificationSuppressed: true });
+
+    });
+
     // THE RECIPE COCKPIT'S Insert… HANDS OVER THE DATA SET FOLDER, AND WAITS FOR THE INSERT
     it('passes a pre-selected folder to Insert Data Set by Directory and returns the insert, and passes nothing that is not a path', async () => {
 

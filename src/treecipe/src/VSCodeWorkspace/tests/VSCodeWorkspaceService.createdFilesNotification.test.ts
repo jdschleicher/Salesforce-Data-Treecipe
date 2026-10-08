@@ -114,14 +114,15 @@ describe('VSCodeWorkspaceService completion notification', () => {
 
     });
 
-    test('given a toast nobody answers, returns without waiting for it so a command can settle', () => {
+    test('given a toast nobody answers, neither opens nor reveals anything', async () => {
 
         (vscode.window.showInformationMessage as jest.Mock).mockReturnValue(new Promise(() => undefined));
 
-        const notificationResult = VSCodeWorkspaceService.showCreatedFilesNotification('Created', buildActions(configurationFilePath));
+        void VSCodeWorkspaceService.showCreatedFilesNotification('Created', buildActions(configurationFilePath));
+        await new Promise(resolve => setImmediate(resolve));
 
-        expect(notificationResult).toBeInstanceOf(Promise);
         expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+        expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
 
     });
 
@@ -179,6 +180,20 @@ describe('VSCodeWorkspaceService completion notification', () => {
         await VSCodeWorkspaceService.runCreatedFileNotificationAction({ label: 'Reveal in Explorer', targetPath: runFolderPath, kind: 'revealInExplorer' });
 
         expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('no explorer'));
+
+    });
+
+    test('given the reveal or the open fails with an error carrying link syntax, the error notification cannot render it as a command link', async () => {
+
+        (vscode.commands.executeCommand as jest.Mock).mockRejectedValueOnce(new Error('[run](command:workbench.action.terminal.new)'));
+        (vscode.workspace.openTextDocument as jest.Mock).mockRejectedValueOnce(new Error('[open](command:workbench.action.terminal.new)'));
+
+        await VSCodeWorkspaceService.runCreatedFileNotificationAction({ label: 'Reveal in Explorer', targetPath: runFolderPath, kind: 'revealInExplorer' });
+        await VSCodeWorkspaceService.runCreatedFileNotificationAction({ label: 'Open', targetPath: configurationFilePath, kind: 'openInEditor' });
+
+        const errorMessages = (vscode.window.showErrorMessage as jest.Mock).mock.calls.map(errorCall => errorCall[0]);
+        expect(errorMessages).toHaveLength(2);
+        errorMessages.forEach(errorMessage => expect(errorMessage).not.toContain('](command:'));
 
     });
 

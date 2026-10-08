@@ -515,7 +515,12 @@ export class DirectoryProcessor {
       const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
       pendingFileWrites.push(DirectoryProcessor.writeGeneratedFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, `an error occurred when attempting to create the "${objectsInfoWrapperFileName}" file.`));
 
-      await Promise.all(pendingFileWrites);
+      // SETTLED BEFORE A FAILURE IS RAISED: Promise.all REJECTS ON THE FIRST ONE WHILE THE REST ARE STILL WRITING, AND THE COCKPIT'S Regenerate RELOADS THE RUN AS SOON AS THE COMMAND SETTLES
+      const settledFileWrites = await Promise.allSettled(pendingFileWrites);
+      const failedFileWrite = settledFileWrites.find((settledFileWrite): settledFileWrite is PromiseRejectedResult => settledFileWrite.status === 'rejected');
+      if ( failedFileWrite ) {
+          throw failedFileWrite.reason;
+      }
 
       return {
           runFolderPath: timestampedRecipeGenerationFolder,
@@ -529,8 +534,9 @@ export class DirectoryProcessor {
       try {
           await fs.promises.writeFile(filePath, content);
       } catch (writeError) {
+          // A NODE fs ERROR NAMES THE ABSOLUTE PATH, AND THE WORKSPACE ROOT'S FOLDER NAME IS NOT AN API NAME -- THE MESSAGE IS SHOWN IN A NOTIFICATION
           const writeErrorDetail = writeError instanceof Error ? writeError.message : String(writeError);
-          throw new Error(`${failureMessage} ${writeErrorDetail}`);
+          throw new Error(`${failureMessage} ${DirectoryProcessor.escapeForNotification(writeErrorDetail)}`);
       }
 
   }

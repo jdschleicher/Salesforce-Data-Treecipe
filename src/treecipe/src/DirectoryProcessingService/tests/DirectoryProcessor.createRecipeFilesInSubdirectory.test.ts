@@ -130,4 +130,39 @@ describe('DirectoryProcessor.createRecipeFilesInSubdirectory', () => {
 
     });
 
+    test('given a write that fails, rejects only once every other write has finished, so nothing is still writing when the command settles', async () => {
+
+        jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
+        const realWriteFile = fs.promises.writeFile;
+        const failedFilePaths: string[] = [];
+        jest.spyOn(fs.promises, 'writeFile').mockImplementation(async (filePath, content) => {
+            if ( String(filePath).includes('soql-sosl-templates--') && failedFilePaths.length === 0 ) {
+                failedFilePaths.push(String(filePath));
+                throw new Error('ENOSPC: no space left on device');
+            }
+            await new Promise(resolve => setTimeout(resolve, 20));
+            return realWriteFile(filePath, content);
+        });
+
+        await expect(directoryProcessor.createRecipeFilesInSubdirectory(buildObjectsInfoWrapper(), workspaceRoot)).rejects.toThrow('ENOSPC');
+
+        const runFolderPath = `${workspaceRoot}/treecipe/GeneratedRecipes/recipe-fakerjs-${isoDateTimestamp}`;
+        expect(fs.existsSync(`${runFolderPath}/treecipeObjectsWrapper-${isoDateTimestamp}.json`)).toBe(true);
+        const leadTreeFolderName = RelationshipService.buildRecipeTreeFolderName(leadTreeObjects);
+        expect(fs.readdirSync(`${runFolderPath}/${leadTreeFolderName}`)).toHaveLength(3);
+
+    });
+
+    test('given a write error naming a workspace path that carries link syntax, the message cannot render as a command link', async () => {
+
+        jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue('faker-js');
+        jest.spyOn(fs.promises, 'writeFile').mockRejectedValueOnce(new Error("EACCES: permission denied, open '/ws/[Fix](command:workbench.action.terminal.new)/treecipe'"));
+
+        const rejection = await directoryProcessor.createRecipeFilesInSubdirectory(buildObjectsInfoWrapper(), workspaceRoot).catch((error: Error) => error);
+
+        expect((rejection as Error).message).toContain('EACCES: permission denied');
+        expect((rejection as Error).message).not.toContain('[Fix](command:');
+
+    });
+
 });
