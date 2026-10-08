@@ -187,14 +187,17 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 /*
     The detail the reader accepts before the flag is written.
 
-    It names the three things that decide whether enabling is a mistake for them: that the panel is
-    deliberately incomplete rather than broken, that the switch is scoped to THIS workspace and
+    It names the four things that decide whether enabling is a mistake for them: that the panel is
+    deliberately incomplete rather than broken, that it can insert records into a sandbox it is
+    pointed at (#180), that the switch is scoped to THIS workspace and
     reversible from settings, and where the open work is listed. The url is repeated in the text as
     well as offered as a button because a VS Code dialog renders its detail as plain text -- there
     is no clickable link in a modal, so the button is the link and this line is what a reader can
     copy if they would rather not hand the dialog a browser.
 */
-export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe and compares its fields with an org you choose, but does not yet write a change back into a recipe, and its layout, its messages and the shape of what it shows will change between releases.
+export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose and counts that org's records, but does not yet write a change back into a recipe, and its layout, its messages and the shape of what it shows will change between releases.
+
+It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. It is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 

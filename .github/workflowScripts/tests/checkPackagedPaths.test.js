@@ -832,23 +832,40 @@ describe('this repository', () => {
     // Asserted as the PROPERTY rather than as a checked-in list of the four current dependencies.
     // A hand-maintained snapshot here would have to be edited whenever a real runtime dependency
     // is added -- the exact maintenance burden this guard exists to avoid.
-    it('declares no runtime dependency the guard would reject', () => {
+    // The bundle is built HERE, from the current source with the packaging build's own options,
+    // into a temporary folder. Reading out/ instead failed on a fresh checkout, where nothing has
+    // bundled yet, and passed on a stale out/ that no longer matched the source it claims to check.
+    it('declares no runtime dependency the guard would reject', async () => {
 
         const workspaceDirectoryPath = path.resolve(__dirname, '..', '..', '..');
         const extensionManifest = require(path.join(workspaceDirectoryPath, 'package.json'));
+        const { ExtensionBundler } = require(path.join(workspaceDirectoryPath, 'esbuild.js'));
+        const esbuild = require('esbuild');
 
         expect(extensionManifest.devDependencies).toContainKey('ts-node');
         expect(extensionManifest.dependencies).not.toContainKey('ts-node');
 
         const declaredDependencyNames = Object.keys(extensionManifest.dependencies);
-        const packagedSourcePaths = fs.readdirSync(path.join(workspaceDirectoryPath, 'out'))
-            .filter(entry => entry.endsWith('.js'))
-            .map(entry => `out/${entry}`);
+        const bundleDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-bundle-'));
+        let requiredPackageNames;
 
-        const requiredPackageNames = PackagedContentsChecker.collectRequiredPackageNames(
-            packagedSourcePaths,
-            packagedPath => fs.readFileSync(path.join(workspaceDirectoryPath, packagedPath), 'utf8')
-        );
+        try {
+
+            await esbuild.build({
+                ...ExtensionBundler.buildOptions(true),
+                absWorkingDir: workspaceDirectoryPath,
+                outfile: path.join(bundleDirectoryPath, 'extension.js'),
+                logLevel: 'silent'
+            });
+
+            requiredPackageNames = PackagedContentsChecker.collectRequiredPackageNames(
+                ['out/extension.js'],
+                () => fs.readFileSync(path.join(bundleDirectoryPath, 'extension.js'), 'utf8')
+            );
+
+        } finally {
+            fs.rmSync(bundleDirectoryPath, { recursive: true, force: true });
+        }
 
         // out/extension.js alone reaches the whole graph, so anything it never pulls in is not a
         // runtime dependency of the entry point.

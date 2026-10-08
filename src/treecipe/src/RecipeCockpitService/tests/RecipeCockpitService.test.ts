@@ -5607,11 +5607,14 @@ describe('RecipeCockpitService', () => {
         });
 
         // A MODAL RENDERS ITS DETAIL AS PLAIN TEXT, SO THE BUTTON IS THE LINK AND THIS LINE IS WHAT A READER CAN COPY
-        it('names the url, the setting it writes and the scope it writes it at', () => {
+        it('names the url, the setting it writes, the scope it writes it at, and that it can write to a sandbox', () => {
 
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain(RECIPE_COCKPIT_ISSUES_URL);
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('salesforce-data-treecipe.recipeCockpitEnabled');
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('THIS WORKSPACE');
+            // A READER OPTING IN IS TOLD THE PANEL CAN INSERT RECORDS, AND ONLY INTO A SANDBOX
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('It CAN WRITE TO AN ORG');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('only for an org that reports itself as a sandbox');
 
         });
 
