@@ -7,7 +7,7 @@
   count: 1
   fields:
     Name: ${{ faker.company.name() }}
-    ParentId: ### TODO -- REFERENCE ID REQUIRED
+    ParentId: ### TODO -- REFERENCE ID REQUIRED -- Account
   friends:
     # Contact (Parents: Account)
     - object: Contact

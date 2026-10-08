@@ -192,7 +192,7 @@ describe('RelationshipService nests child objects under friends: for faker-js re
 
     });
 
-    test('a second parent that is not an ancestor keeps its TODO, and the child nests under the first parent by name', () => {
+    test('a second parent at a lower level that is not an ancestor is wired to its nickname, and the child nests under the first parent by name (#189)', () => {
 
         const [recipeContent] = generateRecipeContents([
             { objectApiName: 'Beta__c' },
@@ -205,8 +205,8 @@ describe('RelationshipService nests child objects under friends: for faker-js re
         expect(recipeEntries.map(recipeEntry => recipeEntry.object)).toEqual(['Alpha__c', 'Beta__c']);
         expect(recipeEntries[0].friends.map(friend => friend.object)).toEqual(['Child__c']);
         expect(recipeEntries[1].friends).toBeUndefined();
-        expect(recipeEntries[0].friends[0].fields).toEqual({ Name: '${{ faker.company.name() }}', Beta__c: null, Alpha__c: 'Alpha__c_NickName' });
-        expect(recipeContent).toContain(`        Beta__c: ${RelationshipService.referenceIdRequiredTodo}`);
+        expect(recipeEntries[0].friends[0].fields).toEqual({ Name: '${{ faker.company.name() }}', Beta__c: 'Beta__c_NickName', Alpha__c: 'Alpha__c_NickName' });
+        expect(recipeContent).not.toContain(RelationshipService.referenceIdRequiredTodo);
 
     });
 
@@ -291,7 +291,7 @@ describe('RelationshipService nests child objects under friends: for faker-js re
         const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, true);
 
         expect(recipeFile.content).toContain('    Name: x\n  friends:\n');
-        expect(recipeFile.content).toContain(`        AccountId: ${RelationshipService.referenceIdRequiredTodo}\n\n`);
+        expect(recipeFile.content).toContain(`        AccountId: ${RelationshipService.referenceIdRequiredTodo} -- Account\n\n`);
         expect(findEntry(yaml.load(recipeFile.content) as LoadedRecipeEntry[], 'Contact').fields.AccountId).toBeNull();
 
     });
@@ -346,7 +346,7 @@ describe('a self-lookup adds one nested child iteration of the same object (#188
             '  count: 1',
             '  fields:',
             '    Name: ${{ faker.company.name() }}',
-            `    ParentId: ${RelationshipService.referenceIdRequiredTodo}`,
+            `    ParentId: ${RelationshipService.referenceIdRequiredTodo} -- Account`,
             '  friends:',
             '    # Account (Child iteration of the Account above, through ParentId)',
             '    - object: Account',
@@ -579,6 +579,134 @@ describe('a generated nested recipe resolves every lookup to the records it was 
             expect(otherChild.Account__c).toBe(otherById.get(otherChild.Other__c as string).Account__c);
         });
         expect(new Set(insertedRecordsByObject['OtherChildObject__c'].map(otherChild => otherChild.Other__c)).size).toBe(4);
+
+    });
+
+});
+
+const ORDER_ITEM_WITH_SECOND_PARENT: ObjectSpecification[] = [
+    { objectApiName: 'Account' },
+    { objectApiName: 'Product__c' },
+    { objectApiName: 'Order__c', lookups: { Account__c: 'Account' } },
+    { objectApiName: 'Order_Item__c', lookups: { Order__c: 'Order__c', Product__c: 'Product__c' } }
+];
+
+describe('a lookup to a second parent that is not an ancestor (#189)', () => {
+
+    test('is wired to the parent\'s nickname when the parent has a recipe at a lower level, while the child stays nested under its closest parent', () => {
+
+        const [recipeContent] = generateRecipeContents(ORDER_ITEM_WITH_SECOND_PARENT, true);
+        const recipeEntries = yaml.load(recipeContent) as LoadedRecipeEntry[];
+
+        expect(recipeEntries.map(recipeEntry => recipeEntry.object)).toEqual(['Account', 'Product__c']);
+        expect(recipeEntries[1].friends).toBeUndefined();
+        expect(findEntry(recipeEntries, 'Order__c').friends.map(friend => friend.object)).toEqual(['Order_Item__c']);
+        expect(findEntry(recipeEntries, 'Order_Item__c').fields).toEqual({
+            Name: '${{ faker.company.name() }}',
+            Order__c: 'Order__c_NickName',
+            Product__c: 'Product__c_NickName'
+        });
+
+    });
+
+    test('a parent with no recipe keeps a TODO that names the parent', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Account' },
+            { objectApiName: 'User', hasNoRecipe: true },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account', OwnerId: 'User' } }
+        ], true);
+
+        expect(recipeContent).toContain('        AccountId: Account_NickName\n');
+        expect(recipeContent).toContain(`        OwnerId: ${RelationshipService.referenceIdRequiredTodo} -- User\n`);
+        expect(findEntry(yaml.load(recipeContent) as LoadedRecipeEntry[], 'Contact').fields.OwnerId).toBeNull();
+
+    });
+
+    test('a lookup that is part of a cycle keeps a TODO that names the parent', () => {
+
+        const [recipeContent] = generateRecipeContents([
+            { objectApiName: 'Account' },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account' } },
+            { objectApiName: 'Case__c', lookups: { Account__c: 'Account', Contact__c: 'Contact', Escalation__c: 'Escalation__c' } },
+            { objectApiName: 'Escalation__c', lookups: { Account__c: 'Account', Case__c: 'Case__c' } }
+        ], true);
+
+        const recipeEntries = yaml.load(recipeContent) as LoadedRecipeEntry[];
+
+        // Case__c AND Escalation__c LOOK EACH OTHER UP: THE ONE AT THE HIGHER LEVEL IS NESTED UNDER THE OTHER, WHOSE LOOKUP BACK STAYS A TODO
+        expect(findEntry(recipeEntries, 'Escalation__c').friends.map(friend => friend.object)).toEqual(['Case__c']);
+        expect(recipeContent).toContain(`        Case__c: ${RelationshipService.referenceIdRequiredTodo} -- Case__c\n`);
+        expect(findEntry(recipeEntries, 'Escalation__c').fields.Case__c).toBeNull();
+        expect(findEntry(recipeEntries, 'Case__c').fields).toEqual({
+            Name: '${{ faker.company.name() }}',
+            Account__c: 'Account_NickName',
+            Contact__c: 'Contact_NickName',
+            Escalation__c: 'Escalation__c_NickName'
+        });
+
+    });
+
+    test('a field that looks up more than one parent with no recipe names every one of them', () => {
+
+        const objectInfoWrapper = buildObjectInfoWrapper([
+            { objectApiName: 'Account' },
+            { objectApiName: 'User', hasNoRecipe: true },
+            { objectApiName: 'Group', hasNoRecipe: true },
+            { objectApiName: 'Contact', lookups: { AccountId: 'Account', OwnerId: 'User' } }
+        ]);
+        objectInfoWrapper.ObjectToObjectInfoMap['Contact'].RelationshipDetail.parentObjectToFieldReferences['Group'] = ['OwnerId'];
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(objectInfoWrapper, true);
+
+        expect(recipeFile.content).toContain(`        OwnerId: ${RelationshipService.referenceIdRequiredTodo} -- Group, User\n`);
+
+    });
+
+    test('snowfakery recipes are unchanged: flat, every lookup a bare TODO', () => {
+
+        const [recipeContent] = generateRecipeContents(ORDER_ITEM_WITH_SECOND_PARENT, false);
+
+        expect(recipeContent).not.toContain('friends:');
+        expect(recipeContent).toContain(`    Product__c: ${RelationshipService.referenceIdRequiredTodo}\n`);
+        expect(recipeContent).toContain(`    Order__c: ${RelationshipService.referenceIdRequiredTodo}\n`);
+        expect(recipeContent).not.toContain(`${RelationshipService.referenceIdRequiredTodo} -- `);
+
+    });
+
+    test('end to end: every Order_Item__c resolves to its own Order__c and, round-robin, to every Product__c once inserted', async () => {
+
+        const [generatedRecipeContent] = generateRecipeContents(ORDER_ITEM_WITH_SECOND_PARENT, true);
+        // TWO ACCOUNTS, ONE ORDER PER ACCOUNT, TWO ITEMS PER ORDER, THREE PRODUCTS WRITTEN AFTER THE ITEMS
+        const recipeContent = generatedRecipeContent
+            .replace(/^(- object: Account\n  nickname: Account_NickName\n  count:) 1$/m, '$1 2')
+            .replace(/^(          nickname: Order_Item__c_NickName\n          count:) 1$/m, '$1 2')
+            .replace(/^(- object: Product__c\n  nickname: Product__c_NickName\n  count:) 1$/m, '$1 3');
+
+        const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+        jest.spyOn(fs, 'readFileSync').mockReturnValueOnce(recipeContent);
+        const fakerJson = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('recipe.yml');
+        const collectionsByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
+
+        let referenceIdToOrgId: Record<string, string> = {};
+        const insertedRecordsByObject: Record<string, Record<string, unknown>[]> = {};
+        let insertedRecordCount = 0;
+
+        // RELATIONSHIP LEVEL ORDER, AS INSERT DATA SET BY DIRECTORY SENDS THE FILES
+        ['Account', 'Product__c', 'Order__c', 'Order_Item__c'].forEach(objectApiName => {
+            const resolvedRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify(collectionsByObject.get(objectApiName)), referenceIdToOrgId)).records;
+            const fakeInsertResults = resolvedRecords.map(() => ({ id: `${objectApiName}-ID${insertedRecordCount++}`, success: true }));
+            referenceIdToOrgId = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(referenceIdToOrgId, fakeInsertResults, resolvedRecords);
+            insertedRecordsByObject[objectApiName] = resolvedRecords.map((resolvedRecord, recordIndex) => ({ ...resolvedRecord, Id: fakeInsertResults[recordIndex].id }));
+        });
+
+        const orderIds = insertedRecordsByObject['Order__c'].map(order => order.Id);
+        const productIds = insertedRecordsByObject['Product__c'].map(product => product.Id);
+        const orderItems = insertedRecordsByObject['Order_Item__c'];
+
+        expect(productIds).toHaveLength(3);
+        expect(orderItems.map(orderItem => orderItem.Order__c)).toEqual([orderIds[0], orderIds[0], orderIds[1], orderIds[1]]);
+        expect(orderItems.map(orderItem => orderItem.Product__c)).toEqual([productIds[0], productIds[1], productIds[2], productIds[0]]);
 
     });
 

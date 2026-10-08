@@ -5,7 +5,7 @@ import { faker } from '@faker-js/faker';
 
 import { IFakerRecipeProcessor } from '../IFakerRecipeProcessor';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
-import { ProcessedYamlWrapper } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
+import { GeneratedRecord, GeneratedRecordContext, ProcessedYamlWrapper } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
 
 export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
@@ -41,6 +41,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
             } 
 
         };
+
+        this.resolveNonAncestorNicknameReferences(processedYamlWrapper);
     
         const parsedObjectValuesOnly = Object.values(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml).flat();
         const jsonGeneratedData = JSON.stringify(parsedObjectValuesOnly, null, 2);
@@ -58,6 +60,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         const fieldsTemplate = objectYamlEntry.fields || {};
         const friends: any[] | undefined = objectYamlEntry.friends;
         const inheritedAncestorNicknames: Map<string, string> = objectYamlEntry._ancestorNicknameToEffectiveNickname ?? new Map<string, string>();
+        const ancestorResolvedFieldNames: Set<string> = objectYamlEntry._ancestorResolvedFieldNames ?? new Set<string>();
 
         const hasActiveFriendsBlock = friends && Array.isArray(friends) && friends.length > 0;
         const requiresPerIterationNickname = hasActiveFriendsBlock && count > 1;
@@ -100,12 +103,19 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
             }
 
-            const newFieldConfigurationToObject = {
+            const newFieldConfigurationToObject: GeneratedRecord = {
                 id: parentIterationIndex,
                 object: objectType,
                 nickname: effectiveNickname,
                 fields: fieldApiNameByFakerJSEvaluations,
             };
+
+            processedYamlWrapper.GeneratedRecordContexts ??= [];
+            processedYamlWrapper.GeneratedRecordContexts.push({
+                record: newFieldConfigurationToObject,
+                yamlNickname: typeof originalYamlNickname === 'string' ? originalYamlNickname : undefined,
+                ancestorResolvedFieldNames: ancestorResolvedFieldNames
+            });
 
             if ( processedYamlWrapper.ObjectPropertyToExistingProcessedYaml[objectType] === undefined ) {
 
@@ -136,12 +146,17 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                         ancestorNicknameToEffectiveNickname
                     );
 
+                    const friendAncestorResolvedFieldNames = new Set(Object.entries(friendEntry.fields ?? {})
+                        .filter(([, fieldValue]) => typeof fieldValue === 'string' && ancestorNicknameToEffectiveNickname.has(fieldValue))
+                        .map(([fieldName]) => fieldName));
+
                     const friendEntryWithContext = {
                         ...friendEntry,
                         fields: updatedFriendFields,
                         nickname: generatedFriendNickname,
                         _originalYamlNickname: friendEntry.nickname,
                         _ancestorNicknameToEffectiveNickname: ancestorNicknameToEffectiveNickname,
+                        _ancestorResolvedFieldNames: friendAncestorResolvedFieldNames,
                     };
 
                     processedYamlWrapper = await this.processObjectDeclarationForYamlDocumentItem(
@@ -180,6 +195,103 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 : fieldValue;
         }
         return updatedFields;
+
+    }
+
+    /*
+        Run once the WHOLE recipe has been generated, so a reference resolves whichever comes first in
+        the file (#189). A field whose value is EXACTLY the YAML nickname of an entry, and which was
+        not already pointed at an ancestor, is pointed at one of the records that entry generated:
+        round-robin, in generation order, so a data set is repeatable and children spread evenly. A
+        record is never pointed at itself.
+
+        The insert resolves a nickname to the FIRST record holding it, and an entry with count > 1
+        and no friends gives every record the same nickname -- so only for an entry a reference
+        actually names, each record sharing its nickname is renamed <nickname>_<n>, and a data set
+        that names none is written exactly as before. Those records have no friends, so nothing was
+        generated under the old name.
+    */
+    resolveNonAncestorNicknameReferences(processedYamlWrapper: ProcessedYamlWrapper): void {
+
+        const generatedRecordContexts = processedYamlWrapper.GeneratedRecordContexts ?? [];
+
+        // A Map RATHER THAN AN OBJECT, BECAUSE A NICKNAME IS TEXT FROM THE RECIPE AND COULD BE "__proto__"
+        const recordContextsByYamlNickname = new Map<string, GeneratedRecordContext[]>();
+        generatedRecordContexts.forEach(recordContext => {
+            if ( recordContext.yamlNickname === undefined ) {
+                return;
+            }
+            const recordContextsOfYamlNickname = recordContextsByYamlNickname.get(recordContext.yamlNickname);
+            if ( recordContextsOfYamlNickname ) {
+                recordContextsOfYamlNickname.push(recordContext);
+            } else {
+                recordContextsByYamlNickname.set(recordContext.yamlNickname, [recordContext]);
+            }
+        });
+
+        const references: { recordContext: GeneratedRecordContext, fieldName: string, yamlNickname: string }[] = [];
+        generatedRecordContexts.forEach(recordContext => {
+            Object.entries(recordContext.record.fields ?? {}).forEach(([fieldName, fieldValue]) => {
+                if ( typeof fieldValue === 'string'
+                        && !recordContext.ancestorResolvedFieldNames.has(fieldName)
+                        && recordContextsByYamlNickname.has(fieldValue) ) {
+                    references.push({ recordContext, fieldName, yamlNickname: fieldValue });
+                }
+            });
+        });
+
+        if ( references.length === 0 ) {
+            return;
+        }
+
+        const usedNicknames = new Set(generatedRecordContexts.map(recordContext => recordContext.record.nickname));
+        new Set(references.map(reference => reference.yamlNickname)).forEach(yamlNickname => {
+            this.renameRecordsSharingANickname(recordContextsByYamlNickname.get(yamlNickname).map(recordContext => recordContext.record), usedNicknames);
+        });
+
+        const nextRecordIndexByYamlNickname = new Map<string, number>();
+        references.forEach(({ recordContext, fieldName, yamlNickname }) => {
+
+            const candidateRecords = recordContextsByYamlNickname.get(yamlNickname)
+                .map(candidateContext => candidateContext.record)
+                .filter(candidateRecord => candidateRecord !== recordContext.record);
+            if ( candidateRecords.length === 0 ) {
+                return;
+            }
+
+            const nextRecordIndex = nextRecordIndexByYamlNickname.get(yamlNickname) ?? 0;
+            recordContext.record.fields[fieldName] = candidateRecords[nextRecordIndex % candidateRecords.length].nickname;
+            nextRecordIndexByYamlNickname.set(yamlNickname, nextRecordIndex + 1);
+
+        });
+
+    }
+
+    private renameRecordsSharingANickname(records: GeneratedRecord[], usedNicknames: Set<string>): void {
+
+        const recordsByNickname = new Map<string, GeneratedRecord[]>();
+        records.forEach(record => {
+            const recordsOfNickname = recordsByNickname.get(record.nickname);
+            if ( recordsOfNickname ) {
+                recordsOfNickname.push(record);
+            } else {
+                recordsByNickname.set(record.nickname, [record]);
+            }
+        });
+
+        recordsByNickname.forEach((recordsSharingNickname, sharedNickname) => {
+            if ( recordsSharingNickname.length < 2 || typeof sharedNickname !== 'string' ) {
+                return;
+            }
+            let suffix = 1;
+            recordsSharingNickname.forEach(record => {
+                while ( usedNicknames.has(`${sharedNickname}_${suffix}`) ) {
+                    suffix++;
+                }
+                record.nickname = `${sharedNickname}_${suffix}`;
+                usedNicknames.add(record.nickname);
+            });
+        });
 
     }
 

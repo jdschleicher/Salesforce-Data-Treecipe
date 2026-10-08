@@ -970,7 +970,7 @@ describe('RecipeCockpitService', () => {
 
             expect(Array.from(objectEntries.keys())).toEqual(['Account', 'Contact']);
             expect(accountEntry.nickname).toBe('Account_NickName');
-            expect(selfLookupLines[accountEntry.fieldEntries.get('ParentId').lineNumber - 1]).toBe('    ParentId: ### TODO -- REFERENCE ID REQUIRED');
+            expect(selfLookupLines[accountEntry.fieldEntries.get('ParentId').lineNumber - 1]).toBe('    ParentId: ### TODO -- REFERENCE ID REQUIRED -- Account');
             expect(accountEntry.iterations).toHaveLength(1);
 
             const [iteration] = accountEntry.iterations;
@@ -2261,7 +2261,7 @@ describe('RecipeCockpitService', () => {
             const [accountElement] = panel.findAll(treeCard, 'treeObject');
             expandTreeObject(panel, accountElement);
             panel.findAll(treeFieldNamed(panel, accountElement, 'ParentId'), 'treeFieldSource')[0].dispatch('click');
-            expect(selfLookupLines[panel.postedHostMessages[panel.postedHostMessages.length - 1].lineNumber - 1]).toBe('    ParentId: ### TODO -- REFERENCE ID REQUIRED');
+            expect(selfLookupLines[panel.postedHostMessages[panel.postedHostMessages.length - 1].lineNumber - 1]).toBe('    ParentId: ### TODO -- REFERENCE ID REQUIRED -- Account');
 
         });
 

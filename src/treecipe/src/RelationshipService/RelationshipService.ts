@@ -430,12 +430,13 @@ export class RelationshipService {
     lookup to ANY ancestor on its chain -- the parent it sits under, the top parent above that -- is
     wired to that ancestor's nickname in place of the REFERENCE ID REQUIRED TODO, which
     FakerJSRecipeProcessor resolves to the ancestor record the child was generated under. A lookup to
-    an object that is not its ancestor (a second, unrelated parent) keeps its TODO.
+    a second parent that is not an ancestor is wired too when that parent has a recipe at a lower
+    level, and resolved round-robin to one of its records (#189); any other keeps a TODO naming it.
 
     An object with a SELF-lookup (Account.ParentId) gets one more friend, written last: a second
     iteration of itself named <Object>_child_NickName, whose every self-lookup holds the parent
-    iteration's nickname -- it is an ancestor of itself, so wireAncestorLookups wires it -- while the
-    top iteration keeps its TODO (#188). The iteration carries no friends of its own, so nothing
+    iteration's nickname -- it is an ancestor of itself, so wireLookupsToParents wires it -- while the
+    top iteration keeps its TODO, a cycle (#188). The iteration carries no friends of its own, so nothing
     recurses. undefined when nothing in the tree nests, so a tree without relationships is written
     by buildCombinedTreeRecipe exactly as before.
   */
@@ -463,7 +464,7 @@ export class RelationshipService {
       const objectRecipe = isSelfLookupIteration
         ? RelationshipService.renameRecipeNickname(recipeInfo.recipe, RelationshipService.buildSelfLookupIterationNickname(objectName))
         : recipeInfo.recipe;
-      const objectLines = this.wireAncestorLookups(objectName, objectRecipe, ancestorObjectNames, recipeInfoByObjectName, objectInfoWrapper)
+      const objectLines = this.wireLookupsToParents(objectName, objectRecipe, ancestorObjectNames, recipeInfoByObjectName, objectInfoWrapper)
         .map(recipeLine => recipeLine ? `${indentation}${recipeLine}` : recipeLine);
 
       if ( isSelfLookupIteration ) {
@@ -539,28 +540,46 @@ export class RelationshipService {
   }
 
   /*
-    The object's recipe as lines, without the blank lines around it, with each lookup to an
-    ancestor set to that ancestor's nickname. Only a line that is EXACTLY the generated TODO is
-    rewritten, so a lookup a mapping or a person already filled in is left as it is.
+    The object's recipe as lines, without the blank lines around it, with each generated lookup TODO
+    resolved by the parent it names: an ANCESTOR is wired to its nickname, which FakerJSRecipeProcessor
+    resolves to the record the child was generated under (#46); a parent in the same tree with a recipe
+    at a strictly LOWER level is wired to its nickname too, which FakerJSRecipeProcessor resolves to one
+    of that parent's records once the recipe is generated -- a lower level is inserted first (#189).
+    Any other lookup -- a cycle, or a parent with no recipe -- keeps its TODO, naming the parent. Only
+    a line that is EXACTLY the generated TODO is rewritten, so a lookup a mapping or a person already
+    filled in is left as it is.
   */
-  private wireAncestorLookups(objectName: string,
+  private wireLookupsToParents(objectName: string,
                                 objectRecipe: string,
                                 ancestorObjectNames: string[],
                                 recipeInfoByObjectName: Map<string, RecipeInfo>,
                                 objectInfoWrapper: ObjectInfoWrapper): string[] {
 
     const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences;
-    const nicknameByLookupLine = new Map<string, string>();
+    const levelOf = (lookupObjectName: string): number => objectInfoWrapper.ObjectToObjectInfoMap[lookupObjectName].RelationshipDetail.level;
+    const readNickname = (parentName: string): string | undefined =>
+      /^ {2}nickname:[ \t]*(\S+)[ \t]*$/m.exec(recipeInfoByObjectName.get(parentName).recipe)?.[1];
 
-    ancestorObjectNames.forEach(ancestorObjectName => {
+    const ancestorNicknameByLookupLine = new Map<string, string>();
+    const lowerLevelNicknameByLookupLine = new Map<string, string>();
+    const todoParentNamesByLookupLine = new Map<string, string[]>();
 
-      const ancestorNicknameMatch = /^ {2}nickname:[ \t]*(\S+)[ \t]*$/m.exec(recipeInfoByObjectName.get(ancestorObjectName).recipe);
-      if ( !ancestorNicknameMatch || !Object.prototype.hasOwnProperty.call(lookupFieldNamesByParentName, ancestorObjectName) ) {
-        return;
-      }
+    Object.keys(lookupFieldNamesByParentName).sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) )).forEach(parentName => {
 
-      lookupFieldNamesByParentName[ancestorObjectName].forEach(lookupFieldName => {
-        nicknameByLookupLine.set(`    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`, ancestorNicknameMatch[1]);
+      const isAncestor = ancestorObjectNames.includes(parentName);
+      const isLowerLevelParentWithRecipe = !isAncestor
+                                            && parentName !== objectName
+                                            && recipeInfoByObjectName.has(parentName)
+                                            && levelOf(parentName) < levelOf(objectName);
+      const parentNickname = ( isAncestor || isLowerLevelParentWithRecipe ) ? readNickname(parentName) : undefined;
+
+      lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
+        const lookupLine = `    ${lookupFieldName}: ${RelationshipService.referenceIdRequiredTodo}`;
+        if ( parentNickname !== undefined ) {
+          ( isAncestor ? ancestorNicknameByLookupLine : lowerLevelNicknameByLookupLine ).set(lookupLine, parentNickname);
+        } else {
+          todoParentNamesByLookupLine.set(lookupLine, [...(todoParentNamesByLookupLine.get(lookupLine) ?? []), parentName]);
+        }
       });
 
     });
@@ -574,10 +593,14 @@ export class RelationshipService {
     }
 
     return objectLines.map(objectLine => {
-      const ancestorNickname = nicknameByLookupLine.get(objectLine);
-      return ancestorNickname === undefined
+      const parentNickname = ancestorNicknameByLookupLine.get(objectLine) ?? lowerLevelNicknameByLookupLine.get(objectLine);
+      if ( parentNickname !== undefined ) {
+        return `${objectLine.slice(0, objectLine.indexOf(':') + 1)} ${parentNickname}`;
+      }
+      const todoParentNames = todoParentNamesByLookupLine.get(objectLine);
+      return todoParentNames === undefined
         ? objectLine
-        : `${objectLine.slice(0, objectLine.indexOf(':') + 1)} ${ancestorNickname}`;
+        : `${objectLine} -- ${todoParentNames.join(', ')}`;
     });
 
   }
