@@ -16,6 +16,9 @@ export const RECIPE_COCKPIT_CREATE_MAX_COUNT = 200;
 // RecordTypeId IS A LOOKUP TO RecordType, AND ITS VALUE IS A DEVELOPER NAME THE INSERT ALREADY SWAPS FOR AN ID
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
 
+// HOW MANY FIELD NAMES A READINESS REASON SPELLS OUT; THE VIEW MODEL CARRIES THEM ALL
+export const RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT = 10;
+
 export interface ICreateDescribeField {
     fieldApiName: string;
     fieldType: string;
@@ -52,10 +55,18 @@ export interface IRecipeCockpitRequiredLookupViewModel {
 }
 
 // disabledReason IS '' WHEN CREATE IS OFFERED, AND OTHERWISE THE ONE SENTENCE THE ROW SHOWS
+/*
+    treeKey is present on a readiness built for one tree's block, and the two field lists only when
+    that block's fields were checked against a describe (#210) -- an object-wide readiness, or one
+    refused before the check, carries neither.
+*/
 export interface IRecipeCockpitCreateReadinessViewModel {
     objectApiName: string;
+    treeKey?: string;
     disabledReason: string;
     requiredLookups: IRecipeCockpitRequiredLookupViewModel[];
+    missingFieldApiNames?: string[];
+    notCreateableFieldApiNames?: string[];
 }
 
 /*
@@ -69,6 +80,15 @@ export interface ICreateReadinessInput {
     describe?: ICreateObjectDescribe;
     describeFailureMessage?: string;
     parentRecordCountsByObject: ReadonlyMap<string, number | undefined>;
+    // THE FIELD KEYS OF THE BLOCK THE INSERT WOULD SEND; ABSENT, NO FIELD IS CHECKED
+    recipeFieldApiNames?: readonly string[];
+    // WHY THAT BLOCK COULD NOT BE READ: A REASON IN ITS OWN RIGHT, NEVER A BLOCK WITH NO FIELDS
+    recipeFieldRefusalReason?: string;
+}
+
+export interface IRecipeFieldCheck {
+    missingFieldApiNames: string[];
+    notCreateableFieldApiNames: string[];
 }
 
 export interface IRequiredLookupParentIds {
@@ -136,6 +156,20 @@ export class RecipeCockpitRecordCreation {
             return notReady(`${objectApiName} is not createable in this org.`);
         }
 
+        if ( readinessInput.recipeFieldRefusalReason ) {
+            return notReady(readinessInput.recipeFieldRefusalReason);
+        }
+
+        const fieldCheck = readinessInput.recipeFieldApiNames
+            ? this.checkRecipeFields(describe, readinessInput.recipeFieldApiNames)
+            : undefined;
+        const withFieldCheck = (readiness: IRecipeCockpitCreateReadinessViewModel): IRecipeCockpitCreateReadinessViewModel => fieldCheck ? { ...readiness, ...fieldCheck } : readiness;
+        const fieldReason = fieldCheck ? this.buildFieldCheckReason(objectApiName, fieldCheck) : '';
+
+        if ( fieldReason ) {
+            return withFieldCheck(notReady(fieldReason));
+        }
+
         const requiredLookups = this.findRequiredLookups(describe).map(requiredLookup => ({
             fieldApiName: requiredLookup.fieldApiName,
             parentObjectApiName: requiredLookup.referenceTo.join(', '),
@@ -147,19 +181,19 @@ export class RecipeCockpitRecordCreation {
         const polymorphicLookup = this.findRequiredLookups(describe).find(requiredLookup => requiredLookup.referenceTo.length !== 1);
 
         if ( polymorphicLookup ) {
-            return notReady(`${polymorphicLookup.fieldApiName} is required and can point at more than one object (${polymorphicLookup.referenceTo.join(', ') || 'none named'}), so no parent can be chosen for it.`, requiredLookups);
+            return withFieldCheck(notReady(`${polymorphicLookup.fieldApiName} is required and can point at more than one object (${polymorphicLookup.referenceTo.join(', ') || 'none named'}), so no parent can be chosen for it.`, requiredLookups));
         }
 
         const parentlessLookup = requiredLookups.find(requiredLookup => requiredLookup.parentRecordCount < 1);
 
         if ( parentlessLookup ) {
             const isCounted = readinessInput.parentRecordCountsByObject.get(parentlessLookup.parentObjectApiName) !== undefined;
-            return notReady(isCounted
+            return withFieldCheck(notReady(isCounted
                 ? `${parentlessLookup.fieldApiName} needs a ${parentlessLookup.parentObjectApiName} record, and the org has none.`
-                : `${parentlessLookup.fieldApiName} needs a ${parentlessLookup.parentObjectApiName} record, and ${parentlessLookup.parentObjectApiName} could not be counted.`, requiredLookups);
+                : `${parentlessLookup.fieldApiName} needs a ${parentlessLookup.parentObjectApiName} record, and ${parentlessLookup.parentObjectApiName} could not be counted.`, requiredLookups));
         }
 
-        return notReady('', requiredLookups);
+        return withFieldCheck(notReady('', requiredLookups));
 
     }
 
@@ -198,6 +232,61 @@ export class RecipeCockpitRecordCreation {
             return assignedRecord;
 
         });
+
+    }
+
+    /*
+        The recipe's fields the insert would fail on: one the describe does not have, and one it has
+        but will not let the user set. Names are matched case-insensitively, as Salesforce reads them
+        (assignLookupIds does the same), and reported as the recipe writes them. A lookup the describe
+        knows is never "not createable" here -- the Create replaces or removes every one of them --
+        but a lookup it does NOT know stays in the record, so it is missing like any other field.
+    */
+    static checkRecipeFields(describe: ICreateObjectDescribe, recipeFieldApiNames: readonly string[]): IRecipeFieldCheck {
+
+        // NO PROTOTYPE: A RECIPE FIELD NAMED __proto__ OR constructor MUST READ AS ABSENT, NOT INHERITED
+        const describeFieldsByLowerName: Record<string, ICreateDescribeField> = Object.create(null);
+        describe.fields.forEach(describeField => { describeFieldsByLowerName[describeField.fieldApiName.toLowerCase()] = describeField; });
+
+        const fieldCheck: IRecipeFieldCheck = { missingFieldApiNames: [], notCreateableFieldApiNames: [] };
+
+        [...new Set(recipeFieldApiNames)].forEach(recipeFieldApiName => {
+
+            const lowerName = recipeFieldApiName.toLowerCase();
+            const describeField = Object.prototype.hasOwnProperty.call(describeFieldsByLowerName, lowerName) ? describeFieldsByLowerName[lowerName] : undefined;
+
+            if ( !describeField ) {
+                fieldCheck.missingFieldApiNames.push(recipeFieldApiName);
+            } else if ( describeField.isCreateable !== true && !this.isLookupField(describeField) ) {
+                fieldCheck.notCreateableFieldApiNames.push(recipeFieldApiName);
+            }
+
+        });
+
+        return fieldCheck;
+
+    }
+
+    static buildFieldCheckReason(objectApiName: string, fieldCheck: IRecipeFieldCheck): string {
+
+        const describeCount = (fieldCount: number) => `${fieldCount} recipe ${fieldCount === 1 ? 'field' : 'fields'}`;
+        const listNames = (fieldApiNames: string[]) => {
+            const shownNames = fieldApiNames.slice(0, RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT).join(', ');
+            const hiddenCount = fieldApiNames.length - RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT;
+            return hiddenCount > 0 ? `${shownNames} and ${hiddenCount} more` : shownNames;
+        };
+
+        const sentences: string[] = [];
+
+        if ( fieldCheck.missingFieldApiNames.length > 0 ) {
+            sentences.push(`${objectApiName} is missing ${describeCount(fieldCheck.missingFieldApiNames.length)} in this org: ${listNames(fieldCheck.missingFieldApiNames)}.`);
+        }
+
+        if ( fieldCheck.notCreateableFieldApiNames.length > 0 ) {
+            sentences.push(`${objectApiName} has ${describeCount(fieldCheck.notCreateableFieldApiNames.length)} this org will not let you set: ${listNames(fieldCheck.notCreateableFieldApiNames)}.`);
+        }
+
+        return sentences.join(' ');
 
     }
 

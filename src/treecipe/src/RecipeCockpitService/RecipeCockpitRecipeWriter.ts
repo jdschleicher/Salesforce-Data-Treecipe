@@ -89,6 +89,10 @@ export type RecipeBlockExtractionResult =
     | { isExtracted: true; recipeText: string }
     | { isExtracted: false; refusal: IRecipeWriterRefusal };
 
+export type RecipeBlockFieldListResult =
+    | { isListed: true; fieldApiNames: string[] }
+    | { isListed: false; refusal: IRecipeWriterRefusal };
+
 export type RecipeWriterResult =
     | { isApplied: true; recipeText: string; edit: IRecipeWriterEdit }
     | { isApplied: false; refusal: IRecipeWriterRefusal };
@@ -713,6 +717,24 @@ export class RecipeCockpitRecipeWriter {
         return 'refusal' in countResult
             ? { isExtracted: false, refusal: countResult.refusal }
             : { isExtracted: true, recipeText: countResult.recipeText };
+
+    }
+
+    /*
+        The field keys of the block extractObjectBlock would cut, read back from the cut itself, so a
+        Create's readiness checks exactly the fields its insert would send (#210): no friend's field,
+        no commented-out field, and a block that cannot be cut is that refusal rather than a list.
+    */
+    static listCreateBlockFieldApiNames(recipeText: string, objectApiName: string, objectNickname?: string): RecipeBlockFieldListResult {
+
+        const extraction = this.extractObjectBlock(recipeText, objectApiName, 1, objectNickname);
+        if ( 'refusal' in extraction ) {
+            return { isListed: false, refusal: extraction.refusal };
+        }
+
+        const [cutObject] = this.scanRecipeObjects(this.splitRecipeLines(extraction.recipeText).lines);
+
+        return { isListed: true, fieldApiNames: cutObject.fields.map(scannedField => scannedField.fieldApiName) };
 
     }
 

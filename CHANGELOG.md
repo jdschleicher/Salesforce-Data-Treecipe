@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.43.0] - Recipe Cockpit Create names the recipe fields the org lacks before anything is sent
+
+Closes [#210](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/210), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Data-by-Org's **+ Create** already refused an object the org does not have. When the object was there but some of its recipe fields were not, Create went ahead and Salesforce rejected every record (`INVALID_FIELD`), which the reader only learned from **View errors**.
+
+- **Two new readiness reasons** in `RecipeCockpitRecordCreation.buildCreateReadiness`, after the sandbox, org-type, object and createable guards and before the required-lookup ones: a recipe field the describe does not have (`Account is missing 3 recipe fields in this org: Region__c, Tier__c, Score__c.`) and one it has but `createable` is not `true` (`… this org will not let you set: Legacy_Id__c.`). A reason spells out ten names and counts the rest (`and N more`); the readiness carries the full `missingFieldApiNames` and `notCreateableFieldApiNames`, for #211's deploy.
+- **The fields checked are the ones the insert sends.** `RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames` reads them back from the same `extractObjectBlock` cut the Create runs, so recipe-only standard mappings and `RecordTypeId` are checked, and a friend's fields and a field the cockpit commented out are not.
+- **Per tree and object, not per object.** One object can sit in several trees with different blocks, so Data-by-Org reads each tree's recipe once (`fs.promises`, workspace-contained) and posts a readiness per tree and object (`createTargets`) beside the object-wide one; a row draws its own and falls back to its object's. `computeCreateReadinessByTarget` checks them all against the describes the object guards already loaded, so a target costs no request, and a second check of the same org and object makes none.
+- **Names match case-insensitively**, as Salesforce reads them and as `assignLookupIds` already did, through a null-prototype map, so a recipe field named `__proto__` or `constructor` is reported missing rather than read as inherited. A lookup the describe knows is never "not createable" (the Create fills or removes it), but a lookup it does not know stays in every record, so it is reported missing.
+- **Fail closed.** A recipe file that cannot be read, or a block the writer refuses to cut, is that row's reason rather than an enabled Create. `performCreate` re-checks with the fields of the block it just cut, so a forged `createRecords` for an object the org cannot take reaches no modal and inserts nothing.
+- **Not changed:** the production guard and its three checks, the required-lookup rules, and both faker backends.
+- **Tests.** `RecipeCockpitRecordCreation.test.ts` (each reason, the ten-name cap, case, prototype names, ordering against the other guards, the unreadable-block reason), `RecipeCockpitRecipeWriter.test.ts` (the listed fields against every fixture's cut, friends and commented-out fields left out, refusals), `RecipeCockpitCreateInOrg.test.ts` (one object in two trees from one describe, no second request, the posted targets, a forged Create refused before the modal, an unreadable recipe, and the panel drawing a row's own reason over its object's as text).
+
 ## [3.42.0] - Initiate Configuration File and Generate Treecipe end with one notification that opens or reveals what they wrote
 
 Closes [#206](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/206).

@@ -170,6 +170,133 @@ describe('RecipeCockpitRecordCreation', () => {
 
     });
 
+    describe('buildCreateReadiness, the recipe fields the insert would send (#210)', () => {
+
+        const parentCounts = new Map<string, number | undefined>([['Account', 12], ['Master__c', 3]]);
+        const contactDescribe: ICreateObjectDescribe = {
+            ...CONTACT_DESCRIBE,
+            fields: [...CONTACT_DESCRIBE.fields, buildField('Email'), buildField('Legacy_Id__c', { isCreateable: false }), buildField('Name', { isCreateable: false })]
+        };
+        const readinessOf = (recipeFieldApiNames: readonly string[], overrides: Partial<Parameters<typeof RecipeCockpitRecordCreation.buildCreateReadiness>[0]> = {}) =>
+            RecipeCockpitRecordCreation.buildCreateReadiness({
+                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: contactDescribe, parentRecordCountsByObject: parentCounts,
+                recipeFieldApiNames: recipeFieldApiNames, ...overrides
+            });
+
+        it('offers Create when the describe has every recipe field, and records that nothing is missing', () => {
+
+            expect(readinessOf(['LastName', 'Email', 'AccountId', 'RecordTypeId'])).toEqual({
+                objectApiName: 'Contact',
+                disabledReason: '',
+                requiredLookups: [
+                    { fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 12 },
+                    { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', parentRecordCount: 3 }
+                ],
+                missingFieldApiNames: [],
+                notCreateableFieldApiNames: []
+            });
+
+        });
+
+        it('refuses a field the describe does not have, naming it and the count', () => {
+
+            const readiness = readinessOf(['LastName', 'Region__c']);
+
+            expect(readiness.disabledReason).toBe('Contact is missing 1 recipe field in this org: Region__c.');
+            expect(readiness.missingFieldApiNames).toEqual(['Region__c']);
+            expect(readiness.notCreateableFieldApiNames).toEqual([]);
+
+        });
+
+        it('reports a lookup the describe does not have as missing, since the Create leaves it in every record', () => {
+
+            expect(readinessOf(['LastName', 'Partner__c']).missingFieldApiNames).toEqual(['Partner__c']);
+
+        });
+
+        it('refuses a field the org will not let the user set, and never a lookup the describe knows, which the Create removes', () => {
+
+            const readiness = readinessOf(['LastName', 'Legacy_Id__c', 'CreatedById']);
+
+            expect(readiness.disabledReason).toBe('Contact has 1 recipe field this org will not let you set: Legacy_Id__c.');
+            expect(readiness.notCreateableFieldApiNames).toEqual(['Legacy_Id__c']);
+
+        });
+
+        it('names both kinds in one reason', () => {
+
+            expect(readinessOf(['Region__c', 'Tier__c', 'Legacy_Id__c', 'Name']).disabledReason).toBe(
+                'Contact is missing 2 recipe fields in this org: Region__c, Tier__c. Contact has 2 recipe fields this org will not let you set: Legacy_Id__c, Name.'
+            );
+
+        });
+
+        it('spells out ten names and counts the rest, while the view model carries them all', () => {
+
+            const missingFieldApiNames = Array.from({ length: 13 }, (_unused, index) => `Missing_${index + 1}__c`);
+            const readiness = readinessOf(missingFieldApiNames);
+
+            expect(readiness.disabledReason).toBe(`Contact is missing 13 recipe fields in this org: ${missingFieldApiNames.slice(0, 10).join(', ')} and 3 more.`);
+            expect(readiness.missingFieldApiNames).toEqual(missingFieldApiNames);
+
+        });
+
+        it('matches names case-insensitively, as Salesforce does, and reports them as the recipe writes them', () => {
+
+            expect(readinessOf(['lastname', 'EMAIL', 'accountid']).disabledReason).toBe('');
+            expect(readinessOf(['region__C']).missingFieldApiNames).toEqual(['region__C']);
+
+        });
+
+        it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])('reports a recipe field named %s as missing, never as inherited', fieldApiName => {
+
+            expect(readinessOf(['LastName', fieldApiName]).missingFieldApiNames).toEqual([fieldApiName]);
+
+        });
+
+        it('checks the fields before the required parents, and keeps the field lists when a parent is what refuses', () => {
+
+            const noParents = new Map<string, number | undefined>([['Account', 0], ['Master__c', 0]]);
+
+            expect(readinessOf(['Region__c'], { parentRecordCountsByObject: noParents }).disabledReason).toBe('Contact is missing 1 recipe field in this org: Region__c.');
+
+            const parentRefusal = readinessOf(['LastName'], { parentRecordCountsByObject: noParents });
+            expect(parentRefusal.disabledReason).toBe('AccountId needs a Account record, and the org has none.');
+            expect(parentRefusal.missingFieldApiNames).toEqual([]);
+
+        });
+
+        it('leaves the production, org-type, missing-object and uncreateable refusals first, with no field lists', () => {
+
+            const production = readinessOf(['Region__c'], { orgTypeDetail: { isSandbox: false, organizationType: 'Enterprise Edition' } });
+            expect(production.disabledReason).toContain('only in a sandbox');
+            expect(production.missingFieldApiNames).toBeUndefined();
+
+            expect(readinessOf(['Region__c'], { orgTypeDetail: undefined }).disabledReason).toBe('The org\'s type could not be read, so nothing is created in it.');
+            expect(readinessOf(['Region__c'], { describe: undefined, describeFailureMessage: 'NOT_FOUND' }).disabledReason).toBe('Contact is not in this org (NOT_FOUND).');
+            expect(readinessOf(['Region__c'], { describe: { ...contactDescribe, isCreateable: false } }).disabledReason).toBe('Contact is not createable in this org.');
+
+        });
+
+        it('refuses with the reason the block could not be read, after the guards that come first', () => {
+
+            expect(readinessOf(undefined as any, { recipeFieldRefusalReason: 'The recipe file is gone.' }).disabledReason).toBe('The recipe file is gone.');
+            expect(readinessOf(undefined as any, { recipeFieldRefusalReason: 'The recipe file is gone.', describe: { ...contactDescribe, isCreateable: false } }).disabledReason)
+                .toBe('Contact is not createable in this org.');
+
+        });
+
+        it('checks no field when it is handed none, as before', () => {
+
+            const readiness = readinessOf(undefined as any);
+
+            expect(readiness.disabledReason).toBe('');
+            expect(readiness).not.toHaveProperty('missingFieldApiNames');
+
+        });
+
+    });
+
     describe('assignLookupIds, tested pure', () => {
 
         const generatedRecords = [
