@@ -166,10 +166,6 @@ export class RecipeCockpitRecordCreation {
         const withFieldCheck = (readiness: IRecipeCockpitCreateReadinessViewModel): IRecipeCockpitCreateReadinessViewModel => fieldCheck ? { ...readiness, ...fieldCheck } : readiness;
         const fieldReason = fieldCheck ? this.buildFieldCheckReason(objectApiName, fieldCheck) : '';
 
-        if ( fieldReason ) {
-            return withFieldCheck(notReady(fieldReason));
-        }
-
         const requiredLookups = this.findRequiredLookups(describe).map(requiredLookup => ({
             fieldApiName: requiredLookup.fieldApiName,
             parentObjectApiName: requiredLookup.referenceTo.join(', '),
@@ -177,6 +173,10 @@ export class RecipeCockpitRecordCreation {
                 ? readinessInput.parentRecordCountsByObject.get(requiredLookup.referenceTo[0]) ?? 0
                 : 0
         }));
+
+        if ( fieldReason ) {
+            return withFieldCheck(notReady(fieldReason, requiredLookups));
+        }
 
         const polymorphicLookup = this.findRequiredLookups(describe).find(requiredLookup => requiredLookup.referenceTo.length !== 1);
 

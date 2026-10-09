@@ -1259,6 +1259,53 @@ describe('RecipeCockpitRecipeWriter', () => {
 
         });
 
+        it('lists many objects from one scan with exactly the per-object answers, refusals word for word', () => {
+
+            [...ALL_RECIPE_FIXTURES, ['self-lookup', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml']].forEach(([, fixtureFileName]) => {
+
+                const recipeText = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, fixtureFileName), 'utf-8');
+                const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines);
+                const requests = [
+                    ...scannedObjects.flatMap(scannedObject => [
+                        { objectApiName: scannedObject.objectApiName },
+                        { objectApiName: scannedObject.objectApiName, objectNickname: scannedObject.nicknames[0] }
+                    ]),
+                    { objectApiName: 'Missing__c' },
+                    { objectApiName: 'Bad\n- object: Evil' },
+                    { objectApiName: scannedObjects[0].objectApiName, objectNickname: 'No_Such_NickName' }
+                ];
+
+                expect(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, requests))
+                    .toEqual(requests.map(request => RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, request.objectApiName, request.objectNickname)));
+
+            });
+
+        });
+
+        it('answers a duplicate object and a block with no count line as the per-object cut does', () => {
+
+            const doubled = `${NESTED_ACCOUNT_RECIPE}${NESTED_ACCOUNT_RECIPE.replace(/Account_NickName/g, 'Second_NickName')}`;
+            const countless = '- object: Lead\n  fields:\n    Company: x\n';
+            const reasonsOf = (results: any[]) => results.map(result => result.refusal?.reason ?? result.fieldApiNames);
+
+            expect(reasonsOf(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(doubled, [{ objectApiName: 'Account' }, { objectApiName: 'Account', objectNickname: 'Second_NickName' }])))
+                .toEqual(['duplicate-object', ['Name', 'RecordTypeId', 'Description']]);
+            expect(reasonsOf(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(countless, [{ objectApiName: 'Lead' }]))).toEqual(['property-not-found']);
+
+        });
+
+        it('scans the recipe once for any number of listable objects', () => {
+
+            const recipeText = Array.from({ length: 40 }, (_unused, index) => `- object: Object_${index}__c\n  nickname: Object_${index}_NickName\n  count: 1\n  fields:\n    Name__c: x\n`).join('\n');
+            const scanSpy = jest.spyOn(RecipeCockpitRecipeWriter, 'scanRecipeObjects');
+
+            const results = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, Array.from({ length: 40 }, (_unused, index) => ({ objectApiName: `Object_${index}__c` })));
+
+            expect(results.every(result => result.isListed)).toBe(true);
+            expect(scanSpy).toHaveBeenCalledTimes(1);
+
+        });
+
         it('answers a block that cannot be cut with the cut\'s refusal', () => {
 
             const reasonOf = (listed: any) => listed.refusal?.reason;

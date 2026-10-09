@@ -89,6 +89,11 @@ export type RecipeBlockExtractionResult =
     | { isExtracted: true; recipeText: string }
     | { isExtracted: false; refusal: IRecipeWriterRefusal };
 
+export interface ICreateBlockFieldListRequest {
+    objectApiName: string;
+    objectNickname?: string;
+}
+
 export type RecipeBlockFieldListResult =
     | { isListed: true; fieldApiNames: string[] }
     | { isListed: false; refusal: IRecipeWriterRefusal };
@@ -735,6 +740,37 @@ export class RecipeCockpitRecipeWriter {
         const [cutObject] = this.scanRecipeObjects(this.splitRecipeLines(extraction.recipeText).lines);
 
         return { isListed: true, fieldApiNames: cutObject.fields.map(scannedField => scannedField.fieldApiName) };
+
+    }
+
+    /*
+        listCreateBlockFieldApiNames for many objects of one recipe from ONE scan: per object it costs
+        a lookup rather than a scan of the whole file, which made Data-by-Org quadratic in a tree's
+        objects (25 s at 1,000). An object the scan finds exactly once, with one "count:" line, is
+        listed from that scan -- the same fields its cut carries; anything else goes through
+        listCreateBlockFieldApiNames itself, so every refusal is word for word the per-object one.
+    */
+    static listCreateBlockFieldApiNamesForObjects(recipeText: string, requests: ICreateBlockFieldListRequest[]): RecipeBlockFieldListResult[] {
+
+        const scannedObjectsByApiName = new Map<string, IScannedObject[]>();
+        this.scanRecipeObjects(this.splitRecipeLines(recipeText).lines).forEach(scannedObject => {
+            scannedObjectsByApiName.set(scannedObject.objectApiName, [...( scannedObjectsByApiName.get(scannedObject.objectApiName) ?? [] ), scannedObject]);
+        });
+
+        return requests.map(({ objectApiName, objectNickname }) => {
+
+            const matchingObjects = ( scannedObjectsByApiName.get(objectApiName) ?? [] )
+                .filter(scannedObject => objectNickname === undefined || scannedObject.nicknames.includes(objectNickname));
+            const isListableFromScan = API_NAME_PATTERN.test(objectApiName)
+                                        && ( objectNickname === undefined || API_NAME_PATTERN.test(objectNickname) )
+                                        && matchingObjects.length === 1
+                                        && matchingObjects[0].propertyLineIndexes.count.length === 1;
+
+            return isListableFromScan
+                ? { isListed: true, fieldApiNames: matchingObjects[0].fields.map(scannedField => scannedField.fieldApiName) }
+                : this.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname);
+
+        });
 
     }
 

@@ -223,6 +223,15 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
+        it('keeps the required lookups on a row the fields refuse, so its tooltip still names them', () => {
+
+            expect(readinessOf(['Region__c']).requiredLookups).toEqual([
+                { fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 12 },
+                { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', parentRecordCount: 3 }
+            ]);
+
+        });
+
         it('names both kinds in one reason', () => {
 
             expect(readinessOf(['Region__c', 'Tier__c', 'Legacy_Id__c', 'Name']).disabledReason).toBe(

@@ -26,7 +26,7 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
-import { IScannedObject, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import { IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
 import {
     ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
@@ -2513,13 +2513,12 @@ export class RecipeCockpitService {
 
         const readinessByObjectApiName = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
         const readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
-        const describedObjectApiNames = new Set(objectApiNames);
-        const askedTargets = createTargets.filter(createTarget => describedObjectApiNames.has(createTarget.objectApiName));
+        const createTargetsByObjectApiName = new Map<string, IRecipeCockpitCreateTarget[]>();
+        createTargets.forEach(createTarget => createTargetsByObjectApiName.set(createTarget.objectApiName, [...( createTargetsByObjectApiName.get(createTarget.objectApiName) ?? [] ), createTarget]));
 
         const setReadiness = (readinessInput: ICreateReadinessInput) => {
             readinessByObjectApiName.set(readinessInput.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness(readinessInput));
-            askedTargets
-                .filter(createTarget => createTarget.objectApiName === readinessInput.objectApiName)
+            ( createTargetsByObjectApiName.get(readinessInput.objectApiName) ?? [] )
                 .forEach(createTarget => readinessByCreateKey.set(this.buildCreatableObjectKey(createTarget.treeKey, createTarget.objectApiName), {
                     ...RecipeCockpitRecordCreation.buildCreateReadiness({
                         ...readinessInput,
@@ -2571,11 +2570,19 @@ export class RecipeCockpitService {
     */
     static buildCreateTarget(treeKey: string, objectApiName: string, recipeText: string | undefined, objectNickname: string | undefined): IRecipeCockpitCreateTarget {
 
-        if ( recipeText === undefined ) {
-            return { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The recipe file for this tree could not be read, so its ${objectApiName} fields could not be checked.` };
-        }
+        return recipeText === undefined
+            ? this.buildUnreadableRecipeCreateTarget(treeKey, objectApiName)
+            : this.buildCreateTargetFromListing(treeKey, objectApiName, RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname));
 
-        const listed = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname);
+    }
+
+    private static buildUnreadableRecipeCreateTarget(treeKey: string, objectApiName: string): IRecipeCockpitCreateTarget {
+
+        return { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The recipe file for this tree could not be read, so its ${objectApiName} fields could not be checked.` };
+
+    }
+
+    private static buildCreateTargetFromListing(treeKey: string, objectApiName: string, listed: RecipeBlockFieldListResult): IRecipeCockpitCreateTarget {
 
         return 'refusal' in listed
             ? { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The ${objectApiName} block could not be cut from this tree's recipe: ${listed.refusal.message}` }
@@ -2587,36 +2594,55 @@ export class RecipeCockpitService {
     static resolveCreateObjectNickname(recipeDataMessage: IRecipeCockpitRecipeDataMessage | undefined, objectApiName: string): string | undefined {
 
         const recipeObject = recipeDataMessage?.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName);
+        return this.readCreateObjectNickname(recipeObject);
+
+    }
+
+    private static readCreateObjectNickname(recipeObject: IRecipeCockpitObjectViewModel | undefined): string | undefined {
+
         return recipeObject?.iterations?.length ? recipeObject.nickname : undefined;
 
     }
 
     /*
         Every object Create is offered for in the model on screen, as a target cut from its tree's
-        recipe. Each recipe is read once, off the event loop, and only from inside the workspace; a
-        recipe that cannot be read is every one of its objects' refusal.
+        recipe. Each recipe is read once, off the event loop, only from inside the workspace, and
+        SCANNED once for all of its objects (listCreateBlockFieldApiNamesForObjects); a recipe that
+        cannot be read is every one of its objects' refusal.
     */
     static async collectCreateTargets(panelState: IRecipeCockpitPanelState, recipeDataMessage: IRecipeCockpitRecipeDataMessage): Promise<IRecipeCockpitCreateTarget[]> {
 
-        const recipeTextByTreeKey = new Map<string, string | undefined>();
+        const recipeObjectsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
+        recipeDataMessage.recipe.objects.forEach(recipeObject => {
+            if ( !recipeObjectsByApiName.has(recipeObject.objectApiName) ) {
+                recipeObjectsByApiName.set(recipeObject.objectApiName, recipeObject);
+            }
+        });
+
         const createTargets: IRecipeCockpitCreateTarget[] = [];
 
-        const creatableObjects = recipeDataMessage.recipe.trees
-            .filter(tree => !!tree.runFakerRecipeFileName)
-            .flatMap(tree => tree.objects
+        for ( const tree of recipeDataMessage.recipe.trees.filter(candidateTree => !!candidateTree.runFakerRecipeFileName) ) {
+
+            const objectApiNames = tree.objects
                 .filter(treeObject => treeObject.iterationNickname === undefined)
-                .map(treeObject => ({ treeKey: tree.treeKey, objectApiName: treeObject.objectApiName })));
+                .map(treeObject => treeObject.objectApiName);
 
-        for ( const { treeKey, objectApiName } of creatableObjects ) {
+            const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
+            const recipeText = recipeFilePath && this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot)
+                ? await fs.promises.readFile(recipeFilePath, 'utf-8').catch((): undefined => undefined)
+                : undefined;
 
-            if ( !recipeTextByTreeKey.has(treeKey) ) {
-                const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
-                recipeTextByTreeKey.set(treeKey, recipeFilePath && this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot)
-                    ? await fs.promises.readFile(recipeFilePath, 'utf-8').catch((): undefined => undefined)
-                    : undefined);
+            if ( recipeText === undefined ) {
+                objectApiNames.forEach(objectApiName => createTargets.push(this.buildUnreadableRecipeCreateTarget(tree.treeKey, objectApiName)));
+                continue;
             }
 
-            createTargets.push(this.buildCreateTarget(treeKey, objectApiName, recipeTextByTreeKey.get(treeKey), this.resolveCreateObjectNickname(recipeDataMessage, objectApiName)));
+            const listings = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, objectApiNames.map(objectApiName => ({
+                objectApiName: objectApiName,
+                objectNickname: this.readCreateObjectNickname(recipeObjectsByApiName.get(objectApiName))
+            })));
+
+            objectApiNames.forEach((objectApiName, objectIndex) => createTargets.push(this.buildCreateTargetFromListing(tree.treeKey, objectApiName, listings[objectIndex])));
 
         }
 
