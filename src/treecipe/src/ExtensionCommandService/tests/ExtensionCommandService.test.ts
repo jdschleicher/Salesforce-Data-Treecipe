@@ -108,7 +108,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 
 }
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -130,7 +130,7 @@ import {
     ENABLE_RECIPE_COCKPIT_ACTION_LABEL,
     VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
 } from "../../RecipeCockpitService/RecipeCockpitService";
-import { DirectoryProcessor } from "../../DirectoryProcessingService/DirectoryProcessor";
+import { DirectoryProcessor, RecipeGenerationCancelledError } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { FakerJSRecipeProcessor } from "../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { SnowfakeryRecipeProcessor } from "../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor";
@@ -2247,6 +2247,177 @@ describe('ExtensionCommandService', () => {
             showCreatedFilesNotificationSpy.mockReturnValue(new Promise(() => undefined));
 
             await expect(new ExtensionCommandService().generateRecipeFromConfigurationDetail()).resolves.toBeUndefined();
+
+        });
+
+    });
+
+    /*
+        #216. The run sits behind a cancellable progress notification. The token here is one the test
+        flips, so a cancel is observed at the exact phase the command reached rather than up front.
+    */
+    describe('generateRecipeFromConfigurationDetail progress', () => {
+
+        const workspaceRoot = '/workspace';
+        const runFolderPath = `${workspaceRoot}/treecipe/GeneratedRecipes/recipe-fakerjs-2026-10-09T12-00-00`;
+
+        let cancellationToken: { isCancellationRequested: boolean, onCancellationRequested: jest.Mock };
+        let reportedMessages: string[];
+        let processAllObjectsSpy: jest.SpyInstance;
+        let createRecipeFilesSpy: jest.SpyInstance;
+        let handleCapturedErrorSpy: jest.SpyInstance;
+        let showCreatedFilesNotificationSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+
+            cancellationToken = { isCancellationRequested: false, onCancellationRequested: jest.fn() };
+            reportedMessages = [];
+            (vscode.window.withProgress as jest.Mock).mockClear();
+            (vscode.window.showInformationMessage as jest.Mock).mockClear();
+            (vscode.window.withProgress as jest.Mock).mockImplementation((_progressOptions, task) => task(
+                { report: ({ message }: { message: string }) => reportedMessages.push(message) },
+                cancellationToken
+            ));
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('./force-app/main/default/objects');
+            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
+            jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockResolvedValue(undefined);
+            processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
+            createRecipeFilesSpy = jest.spyOn(DirectoryProcessor.prototype, 'createRecipeFilesInSubdirectory')
+                .mockResolvedValue({ runFolderPath: runFolderPath, recipeFilePaths: [] });
+            handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            showCreatedFilesNotificationSpy = jest.spyOn(VSCodeWorkspaceService, 'showCreatedFilesNotification').mockResolvedValue(undefined);
+
+        });
+
+        // THE vscode FACTORY'S jest.fn IS SHARED FILE-WIDE AND restoreMocks DOES NOT RESTORE IT, SO THE NEVER-CANCELLED DEFAULT IS PUT BACK BY HAND
+        afterEach(() => {
+            (vscode.window.withProgress as jest.Mock).mockImplementation((_progressOptions, task) => task(
+                { report: jest.fn() },
+                { isCancellationRequested: false, onCancellationRequested: jest.fn() }
+            ));
+        });
+
+        test('given a run, opens ONE cancellable notification titled Generate Treecipe and reports its phases in order', async () => {
+
+            processAllObjectsSpy.mockImplementation(async (_objectsUri, generationProgress) => {
+                generationProgress.report('Scanning objects…');
+                generationProgress.report('Building relationship trees…');
+                return {} as any;
+            });
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(vscode.window.withProgress).toHaveBeenCalledTimes(1);
+            expect((vscode.window.withProgress as jest.Mock).mock.calls[0][0]).toEqual({
+                location: vscode.ProgressLocation.Notification,
+                title: GENERATE_TREECIPE_PROGRESS_TITLE,
+                cancellable: true
+            });
+            expect(reportedMessages).toEqual([
+                'Reading global value sets…',
+                'Scanning objects…',
+                'Building relationship trees…',
+                'Writing recipe files… (cannot be cancelled)'
+            ]);
+            expect(showCreatedFilesNotificationSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given the walk is handed the progress port, its cancel reads the notification\'s token', async () => {
+
+            let isCancellationRequestedDuringWalk: boolean | undefined;
+            processAllObjectsSpy.mockImplementation(async (_objectsUri, generationProgress) => {
+                cancellationToken.isCancellationRequested = true;
+                isCancellationRequestedDuringWalk = generationProgress.isCancellationRequested();
+                return {} as any;
+            });
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(isCancellationRequestedDuringWalk).toBe(true);
+
+        });
+
+        test.each([
+            ['reading the global value sets', 'globalValueSets'],
+            ['scanning the objects', 'walk'],
+            ['building the relationship trees, after the walk returned', 'afterWalk']
+        ])('given a cancel while %s, writes no run, shows the cancelled message and reports no error', async (_description, cancelPoint) => {
+
+            if ( cancelPoint === 'globalValueSets' ) {
+                jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockImplementation(async () => {
+                    cancellationToken.isCancellationRequested = true;
+                });
+            } else if ( cancelPoint === 'walk' ) {
+                processAllObjectsSpy.mockRejectedValue(new RecipeGenerationCancelledError());
+            } else {
+                processAllObjectsSpy.mockImplementation(async () => {
+                    cancellationToken.isCancellationRequested = true;
+                    return {} as any;
+                });
+            }
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            if ( cancelPoint === 'globalValueSets' ) {
+                expect(processAllObjectsSpy).not.toHaveBeenCalled();
+            }
+            expect(createRecipeFilesSpy).not.toHaveBeenCalled();
+            expect(showCreatedFilesNotificationSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+            expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(GENERATE_TREECIPE_CANCELLED_MESSAGE);
+            expect(reportedMessages).not.toContain('Writing recipe files… (cannot be cancelled)');
+
+        });
+
+        test('given a cancel once writing has started, the run is still written whole and reported', async () => {
+
+            createRecipeFilesSpy.mockImplementation(async () => {
+                cancellationToken.isCancellationRequested = true;
+                return { runFolderPath: runFolderPath, recipeFilePaths: [] };
+            });
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(showCreatedFilesNotificationSpy).toHaveBeenCalledTimes(1);
+            expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(GENERATE_TREECIPE_CANCELLED_MESSAGE);
+
+        });
+
+        test('given the Recipe Cockpit\'s suppression option and a cancel, settles quietly so the cockpit can reload', async () => {
+
+            processAllObjectsSpy.mockRejectedValue(new RecipeGenerationCancelledError());
+
+            await expect(new ExtensionCommandService().generateRecipeFromConfigurationDetail({ isCompletionNotificationSuppressed: true }))
+                .resolves.toBeUndefined();
+
+            expect(handleCapturedErrorSpy).not.toHaveBeenCalled();
+            expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(GENERATE_TREECIPE_CANCELLED_MESSAGE);
+
+        });
+
+        test('given a failure inside the notification, still reports it through ErrorHandlingService and not as a cancel', async () => {
+
+            processAllObjectsSpy.mockRejectedValue(new Error('EACCES: permission denied'));
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+            expect(handleCapturedErrorSpy.mock.calls[0][1]).toBe('generateRecipeFromConfigurationDetail');
+            expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(GENERATE_TREECIPE_CANCELLED_MESSAGE);
+
+        });
+
+        test('given no workspace, fails as before without opening a notification', async () => {
+
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(undefined);
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(vscode.window.withProgress).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
 
         });
 
