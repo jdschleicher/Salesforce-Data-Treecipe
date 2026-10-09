@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.45.0] - The Recipe Cockpit's no-run empty state offers a Generate Treecipe button
+
+Closes [#214](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/214).
+
+Opening the Recipe Cockpit before any Generate Treecipe run used to show one sentence telling the reader to run the command and open the cockpit again. There was nothing to click.
+
+- **A Generate Treecipe button** now sits under the empty state when no run exists under `treecipe/GeneratedRecipes`. It runs `treecipe.generateTreecipe` with `RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS`, so no completion toast appears, then reloads the cockpit on the newest run. That works for both faker-js (`recipe-fakerjs-*`) and snowfakery (`recipe-*`) runs. `RECIPE_COCKPIT_NO_RUN_MESSAGE` no longer says to reopen the cockpit.
+- **It shares Regenerate recipe's path.** `regenerateRecipe` became `generateTreecipeAndReload(panel, state, focusTree?)`. Regenerate passes its card as the focus and the empty state passes none. The two share one in-flight flag, so the host never runs them at once. The cockpit reloads even when generation failed or was cancelled, and the failure still reaches `ErrorHandlingService` once. A reload with still no run draws the button pressable again.
+- **The button is gated like every other panel action.** The panel posts `{ command: 'generateTreecipe' }` with no payload. `routePanelMessage` honours it only while `isGenerateTreecipeOffered` is set. That is a pending/active pair: `pendingIsGenerateTreecipeOffered` is set when a model with no run is posted, and only that model's `rendered` promotes it. It is emptied on every `ready`, on every new post and on a failure to draw. It is also refused while a generation or regeneration is in flight. The panel disables the button on the click, and only the host's reload redraws it.
+- **Not changed:** a run whose objects wrapper cannot be read, and a run with no relationship trees, keep their own empty states without the button. Generate Treecipe itself is unchanged.
+- **Tests.** `RecipeCockpitService.test.ts` covers the router (offered, before `rendered`, with a run on screen, in flight), the panel script (the button is drawn only in the no-run state, disables itself, posts once and comes back after a redraw), and the host (generate then reload on the run written, a double click, a failure that reloads and re-offers, a document reload that honours nothing until the empty state is drawn again, an empty state that failed to draw, and a model with a run posted over the empty state before and after its ack). Each of the last two fails when its reset is removed. The button joins #209's shared button rules (base, primary and disabled), so it draws like Run Faker and Create, and its pairs are already in the contrast test.
+
 ## [3.44.0] - The Recipe Cockpit's tree card header is one clickable row tile, and every cockpit button is a real, larger target
 
 Closes [#209](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/209), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
