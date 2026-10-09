@@ -130,7 +130,11 @@ export const RECIPE_COCKPIT_DIFF_STATUS_LABELS: Readonly<Record<MetadataDiffFiel
 */
 export const RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN = 20;
 
-export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Run "Generate Treecipe" first, then open the Recipe Cockpit again.';
+export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Generate Treecipe writes one from the object metadata in this workspace, and the cockpit opens it when it finishes.';
+
+// OFFERED ONLY IN THE NO-RUN EMPTY STATE: A COCKPIT WITH A RUN ON SCREEN REGENERATES FROM A CARD (#214)
+export const RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL = 'Generate Treecipe';
+export const RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL = 'Generating…';
 
 /*
     How many objects a filter opens by itself.
@@ -774,6 +778,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'selectOrg'; treeKey: string; isOrgChosenByReader: boolean }
     | { kind: 'regenerateRecipe'; treeKey: string }
+    | { kind: 'generateTreecipe' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadVersionSummaries'; treeKey: string; summarySource: IRecipeCockpitTreeSummarySource; renderSequence: number }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
@@ -834,6 +839,8 @@ export interface IRecipeCockpitPanelState {
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     isOrgDescribeInFlight: boolean;
     isRegenerateInFlight: boolean;
+    pendingIsGenerateTreecipeOffered: boolean;
+    isGenerateTreecipeOffered: boolean;
     runFakerStateMessage?: IRecipeCockpitRunFakerStateMessage;
     reportedFailureDescriptions: Set<string>;
     pendingDataOrgObjectApiNames: Set<string>;
@@ -965,6 +972,8 @@ export class RecipeCockpitService {
             treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             isOrgDescribeInFlight: false,
             isRegenerateInFlight: false,
+            pendingIsGenerateTreecipeOffered: false,
+            isGenerateTreecipeOffered: false,
             reportedFailureDescriptions: new Set(),
             pendingDataOrgObjectApiNames: new Set(),
             dataOrgObjectApiNames: new Set(),
@@ -1170,6 +1179,9 @@ export class RecipeCockpitService {
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
         panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel);
         panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+        // THE PANEL DRAWS THE BUTTON ONLY FOR A MODEL WITH NO RUN, AND ONLY ITS "rendered" SAYS THAT MODEL IS THE ONE ON SCREEN
+        panelState.pendingIsGenerateTreecipeOffered = recipeViewModel.runs.length === 0;
+        panelState.isGenerateTreecipeOffered = false;
         // THE SAME REASON AS THE DESCRIBABLE SET: AN ANSWER IS TAGGED WITH THE CURRENT renderSequence, SO THE OLD MODEL'S KEYS MUST NOT ANSWER FOR IT
         panelState.loadablePicklistKeys = new Set();
         /*
@@ -1263,6 +1275,7 @@ export class RecipeCockpitService {
                 panelState.describableObjectApiNamesByTreeKey = new Map();
                 panelState.loadablePicklistKeys = new Set();
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+                panelState.isGenerateTreecipeOffered = false;
                 // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL COUNTING IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
                 panelState.creatableObjectKeys = new Set();
@@ -1279,6 +1292,7 @@ export class RecipeCockpitService {
                 panelState.describableObjectApiNamesByTreeKey = panelState.pendingDescribableObjectApiNamesByTreeKey;
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
+                panelState.isGenerateTreecipeOffered = panelState.pendingIsGenerateTreecipeOffered;
                 panelState.dataOrgObjectApiNames = panelState.pendingDataOrgObjectApiNames;
                 panelState.creatableObjectKeys = panelState.pendingCreatableObjectKeys;
                 panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
@@ -1295,6 +1309,7 @@ export class RecipeCockpitService {
                     panelState.describableObjectApiNamesByTreeKey = new Map();
                     panelState.loadablePicklistKeys = new Set();
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+                    panelState.isGenerateTreecipeOffered = false;
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.creatableObjectKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
@@ -1342,7 +1357,12 @@ export class RecipeCockpitService {
 
             case 'regenerateRecipe':
 
-                await this.regenerateRecipe(cockpitPanel, panelState, panelAction.treeKey);
+                await this.generateTreecipeAndReload(cockpitPanel, panelState, { treeKey: panelAction.treeKey, tab: 'structure' });
+                return;
+
+            case 'generateTreecipe':
+
+                await this.generateTreecipeAndReload(cockpitPanel, panelState);
                 return;
 
             case 'postPicklistValues':
@@ -2068,8 +2088,11 @@ export class RecipeCockpitService {
         button (RECIPE_COCKPIT_REGENERATE_NOTE). The latest run is loaded afterwards whether or not
         generation wrote one: Generate Treecipe reports its own failures, and reloading an
         unchanged latest run shows the reader exactly what is on disk.
+
+        The no-run empty state's Generate Treecipe button (#214) comes through here too, with no
+        card to focus: one in-flight flag means a Regenerate and a first Generate never run at once.
     */
-    private static async regenerateRecipe(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, treeKey: string) {
+    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, focusTree?: IRecipeCockpitTreeFocus) {
 
         /*
             In flight until the RELOAD has finished, not only the command: the comparison that routes
@@ -2096,7 +2119,7 @@ export class RecipeCockpitService {
             }
 
             if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, { treeKey: treeKey, tab: 'structure' });
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, focusTree);
             }
 
         } finally {
@@ -3023,6 +3046,19 @@ export class RecipeCockpitService {
                 return { kind: 'regenerateRecipe', treeKey: treeKey };
 
             }
+
+            /*
+                No payload to check: the button is drawn only in the empty state of a model with no
+                run, so it is honoured only once THAT model's "rendered" has arrived, and never while
+                a generation started from either button is still running or reloading.
+            */
+            case 'generateTreecipe':
+
+                if ( !panelState.isGenerateTreecipeOffered || panelState.isRegenerateInFlight ) {
+                    return undefined;
+                }
+
+                return { kind: 'generateTreecipe' };
 
             /*
                 Names, not a path, and answered only for a row the CONFIRMED-drawn model marked as a
@@ -4496,7 +4532,7 @@ ${this.buildPaletteCustomProperties()}
     }
     .toolbar input::placeholder { color: var(--sdt-muted); opacity: 1; }
     .toolbar select { padding: 0.3rem; }
-    .toolbar button, .treeCompare button {
+    .toolbar button, .treeCompare button, .emptyStateActions button {
         padding: 0.3rem 0.6rem;
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
@@ -4504,7 +4540,8 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 4px;
         cursor: pointer;
     }
-    .toolbar button:disabled, .treeCompare button:disabled { opacity: 0.6; cursor: default; }
+    .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled { opacity: 0.6; cursor: default; }
+    .emptyStateActions { margin-top: 0.5rem; }
     .treeCompare { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treeCompareControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeCompare select {
@@ -4737,6 +4774,8 @@ ${this.buildPaletteCustomProperties()}
     const DIFF_PICKLIST_VALUES_SHOWN = ${RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN};
     const REGENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL)};
     const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
+    const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
+    const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
     const DESCRIBE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL)};
     const CHOOSE_ORG_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL)};
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
@@ -6462,6 +6501,10 @@ ${this.buildPaletteCustomProperties()}
 
         if (!hasObjects) {
             cockpitBodyElement.appendChild(createElement('div', 'emptyState', recipe.emptyStateMessage));
+            // ONLY WHEN THERE IS NO RUN AT ALL: A RUN THAT COULD NOT BE READ KEEPS ITS RUN SELECTOR INSTEAD
+            if (recipe.runs.length === 0) {
+                cockpitBodyElement.appendChild(buildGenerateTreecipeElement());
+            }
             return;
         }
 
@@ -6699,6 +6742,24 @@ ${this.buildPaletteCustomProperties()}
             .map(function (diffStatus) { return statusCounts[diffStatus] + ' ' + DIFF_STATUS_LABELS[diffStatus]; });
 
         return countTexts.length > 0 ? countTexts.join(' · ') : 'no changes';
+
+    }
+
+    // DISABLED UNTIL THE HOST'S RELOAD REDRAWS THE BODY, WHICH IT DOES HOWEVER GENERATION ENDED
+    function buildGenerateTreecipeElement() {
+
+        const generateElement = createElement('div', 'emptyStateActions');
+        const generateButtonElement = createElement('button', 'generateTreecipe', GENERATE_TREECIPE_ACTION_LABEL);
+
+        generateButtonElement.addEventListener('click', function () {
+            generateButtonElement.disabled = true;
+            generateButtonElement.textContent = GENERATE_TREECIPE_RUNNING_LABEL;
+            vscodeApi.postMessage({ command: 'generateTreecipe' });
+        });
+
+        generateElement.appendChild(generateButtonElement);
+
+        return generateElement;
 
     }
 
