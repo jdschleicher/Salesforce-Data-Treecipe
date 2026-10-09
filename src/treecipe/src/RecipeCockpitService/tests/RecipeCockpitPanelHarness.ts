@@ -7,6 +7,11 @@ import { RecipeCockpitService, RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT } from '..
     it does with what it receives. The fake answers classList.contains from the classes an
     element actually CARRIES -- including those set through className -- because the panel
     collapses an object body by creating it with the "hidden" class.
+
+    A dispatched event BUBBLES through every ancestor until a listener stops it, as a browser's
+    click does, because the tree card's header answers clicks on everything inside it. A DISABLED
+    element runs none of its own listeners but the event still reaches its ancestors -- the worst
+    case a browser can give, so a panel that holds up against it holds up against them all.
 */
 export function runPanelScript() {
 
@@ -29,6 +34,8 @@ export function runPanelScript() {
             attributes: {} as Record<string, string>,
             value: '',
             selected: false,
+            disabled: false,
+            parentNode: null as any,
             children: [] as any[],
             ownTextContent: '',
             get className() { return Array.from(carriedClassNames).join(' '); },
@@ -37,6 +44,8 @@ export function runPanelScript() {
             get textContent() { return this.ownTextContent; },
             set textContent(nextTextContent: string) {
                 this.ownTextContent = nextTextContent;
+                // A DETACHED ELEMENT MUST NOT BUBBLE INTO ITS FORMER ANCESTORS
+                this.children.forEach((childElement: any) => { childElement.parentNode = null; });
                 this.children.length = 0;
             },
             classList: {
@@ -45,11 +54,19 @@ export function runPanelScript() {
                 contains(className: string) { return carriedClassNames.has(className); }
             },
             setAttribute(attributeName: string, attributeValue: string) { this.attributes[attributeName] = String(attributeValue); },
-            appendChild(childElement: any) { this.children.push(childElement); return childElement; },
+            appendChild(childElement: any) { this.children.push(childElement); childElement.parentNode = this; return childElement; },
             addEventListener(eventType: string, listener: Function) {
                 (listenersByEventType[eventType] = listenersByEventType[eventType] || []).push(listener);
             },
-            dispatch(eventType: string) { (listenersByEventType[eventType] || []).forEach(listener => listener({})); }
+            listenersByEventType: listenersByEventType,
+            dispatch(eventType: string) {
+                let isPropagationStopped = false;
+                const event = { type: eventType, target: this, stopPropagation: () => { isPropagationStopped = true; } };
+                for (let currentElement: any = this; currentElement && !isPropagationStopped; currentElement = currentElement.parentNode) {
+                    if ( currentElement.disabled ) { continue; }
+                    (currentElement.listenersByEventType[eventType] || []).forEach((listener: Function) => listener(event));
+                }
+            }
         };
 
     };

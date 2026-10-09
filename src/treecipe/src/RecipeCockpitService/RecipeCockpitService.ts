@@ -63,7 +63,8 @@ export type RecipeCockpitPaletteToken =
     | 'page' | 'surface' | 'border' | 'header'
     | 'text' | 'muted' | 'accent' | 'onAccent'
     | 'rowHover' | 'chipBg' | 'chipText'
-    | 'added' | 'removed' | 'changed';
+    | 'added' | 'removed' | 'changed'
+    | 'disabledBg' | 'disabledText';
 
 /*
     The cockpit's ONE palette, and the only source of a colour in its stylesheet. The cockpit used
@@ -86,7 +87,9 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     chipText: '#3730A3',
     added: '#15803D',
     removed: '#B91C1C',
-    changed: '#B45309'
+    changed: '#B45309',
+    disabledBg: '#E5E7EB',
+    disabledText: '#4B5563'
 });
 
 export const RECIPE_COCKPIT_LOAD_PHASES = {
@@ -4676,15 +4679,6 @@ ${this.buildPaletteCustomProperties()}
     }
     .toolbar input::placeholder { color: var(--sdt-muted); opacity: 1; }
     .toolbar select { padding: 0.3rem; }
-    .toolbar button, .treeCompare button, .emptyStateActions button {
-        padding: 0.3rem 0.6rem;
-        color: var(--sdt-on-accent);
-        background-color: var(--sdt-accent);
-        border: 1px solid var(--sdt-accent);
-        border-radius: 4px;
-        cursor: pointer;
-    }
-    .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled { opacity: 0.6; cursor: default; }
     .emptyStateActions { margin-top: 0.5rem; }
     .treeCompare { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treeCompareControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
@@ -4770,29 +4764,58 @@ ${this.buildPaletteCustomProperties()}
         margin: 0.6rem 0;
         overflow: hidden;
     }
-    .treeHeader, .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-    .treeHeader { padding: 0.5rem 0.6rem; background-color: var(--sdt-header); }
-    .treeTitle { font-weight: 600; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice {
-        background: none;
-        border: none;
-        padding: 0;
+    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeHeader {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.6rem;
+        min-height: 4rem;
+        box-sizing: border-box;
+        padding: 0.8rem 1rem;
+        background-color: var(--sdt-header);
+        cursor: pointer;
+    }
+    .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
+    .treeTitle { font-weight: 600; font-size: 1.1em; }
+    .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataTreeToggle, .dataCreate, .dataCreateErrors {
+        min-height: 2.25rem;
+        min-width: 2.25rem;
+        padding: 0.4rem 0.8rem;
         font: inherit;
         color: var(--sdt-accent);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
         cursor: pointer;
-        border-radius: 4px;
     }
-    .treeScope { margin-left: auto; padding: 0 0.3rem; }
-    .treeRunFaker { padding: 0 0.3rem; }
-    .treeRunFaker:disabled { opacity: 0.6; cursor: default; }
-    .treeAddFriend { padding: 0 0.3rem; font-weight: 600; }
-    .treeAddFriendChoice { padding: 0 0.3rem; text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled { opacity: 0.6; cursor: default; }
-    .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; padding-left: 1.5rem; }
-    .treeScope.selected { outline: 1px solid var(--sdt-accent); }
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeScope:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeScopeClear:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataTreeToggle:hover:not(:disabled), .dataCreateErrors:hover:not(:disabled) {
+        border-color: var(--sdt-accent);
+    }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataTreeToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .treeScope { font-size: 1.1em; }
+    .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .dataCreate {
+        color: var(--sdt-on-accent);
+        background-color: var(--sdt-accent);
+        border-color: var(--sdt-accent);
+        font-weight: 600;
+    }
+    .treeAddFriend { font-weight: 600; }
+    .treeAddFriendChoice, .historyAction, .dataCreateErrors { text-decoration: underline; }
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .dataCreate:disabled, .dataOrgRefresh:disabled, .treeScope:disabled, .treeTab:disabled, .historyAction:disabled {
+        color: var(--sdt-disabled-text);
+        background-color: var(--sdt-disabled-bg);
+        border-color: var(--sdt-border);
+        cursor: not-allowed;
+        opacity: 1;
+    }
+    .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
+    .treeScope.selected { outline: 2px solid var(--sdt-accent); }
     .treeBody { border-top: 1px solid var(--sdt-border); }
-    .treeTabs { display: flex; gap: 0.75rem; padding: 0.3rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
-    .treeTab { color: var(--sdt-muted); padding: 0.2rem 0; border-bottom: 2px solid transparent; }
+    .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
+    .treeTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
+    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
     .treeTab.selected { color: var(--sdt-text); border-bottom-color: var(--sdt-accent); font-weight: 600; }
     .treeObjectHeader { padding: 0.35rem 0.6rem; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
@@ -4819,7 +4842,6 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeVersionBody { padding-left: 1.4rem; }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
-    .historyAction { text-decoration: underline; }
     .dataOrgControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.5rem 0; }
     .dataOrgSelect {
         padding: 0.3rem;
@@ -4834,15 +4856,6 @@ ${this.buildPaletteCustomProperties()}
         color: var(--sdt-chip-text);
         background-color: var(--sdt-chip-bg);
         border-radius: 0.6rem;
-    }
-    .dataOrgRefresh, .dataTreeToggle {
-        background: none;
-        border: none;
-        padding: 0 0.3rem;
-        font: inherit;
-        color: var(--sdt-accent);
-        cursor: pointer;
-        border-radius: 4px;
     }
     .dataOrgStatus { margin: 0.4rem 0; }
     .dataOrgStatus.failed { color: var(--sdt-removed); }
@@ -4867,24 +4880,6 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
         border-radius: 4px;
-    }
-    .dataCreate {
-        padding: 0.15rem 0.5rem;
-        color: var(--sdt-on-accent);
-        background-color: var(--sdt-accent);
-        border: 1px solid var(--sdt-accent);
-        border-radius: 4px;
-        cursor: pointer;
-    }
-    .dataCreate:disabled { opacity: 0.6; cursor: default; }
-    .dataCreateErrors {
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        color: var(--sdt-accent);
-        text-decoration: underline;
-        cursor: pointer;
     }
     .dataCreateResult.succeeded { color: var(--sdt-added); }
     .dataCreateResult.partial { color: var(--sdt-changed); }
@@ -5943,7 +5938,13 @@ ${this.buildPaletteCustomProperties()}
 
         toggleElement.setAttribute('aria-expanded', 'false');
         toggleElement.setAttribute('aria-label', 'Show or hide ' + tree.title);
-        toggleElement.addEventListener('click', function () {
+
+        /*
+            The whole header row is the toggle (#209). The ▸ button carries no listener of its own:
+            its click -- a mouse's, or Enter/Space while it has focus -- bubbles here like a click
+            anywhere else on the row, so the card cannot be toggled twice by one click.
+        */
+        treeHeaderElement.addEventListener('click', function () {
             treeState.isExpandedByReader = !treeState.isExpanded;
             setTreeExpanded(treeState, treeState.isExpandedByReader);
         });
@@ -5965,12 +5966,23 @@ ${this.buildPaletteCustomProperties()}
         treeHeaderElement.appendChild(createElement('span', 'treeCount muted',
             pluralize(objectStatesCounted.length, 'object', 'objects') + ' · ' + pluralize(treeFieldCount, 'field', 'fields')));
         treeHeaderElement.appendChild(treeState.matchElement);
-        treeHeaderElement.appendChild(scopeElement);
+
+        /*
+            The actions sit at the END of the row and never toggle it. The click is stopped on the
+            GROUP rather than on each button, because a browser may hand a click on a DISABLED
+            button -- every Run Faker while one runs -- to its ancestors without running the
+            button's own listener.
+        */
+        const actionsElement = createElement('span', 'treeHeaderActions');
+        actionsElement.addEventListener('click', function (event) { event.stopPropagation(); });
+        actionsElement.appendChild(scopeElement);
 
         if (tree.runFakerRecipeFileName) {
             treeState.runFakerElement = buildRunFakerElement(tree);
-            treeHeaderElement.appendChild(treeState.runFakerElement);
+            actionsElement.appendChild(treeState.runFakerElement);
         }
+
+        treeHeaderElement.appendChild(actionsElement);
 
         treeElement.appendChild(treeHeaderElement);
         treeElement.appendChild(treeState.bodyElement);

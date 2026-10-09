@@ -248,7 +248,8 @@ describe('RecipeCockpitService', () => {
             ...TEXT_TOKENS.flatMap(textToken => BACKGROUND_TOKENS.map(backgroundToken =>
                 [textToken, backgroundToken] as [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken])),
             ['chipText', 'chipBg'],
-            ['onAccent', 'accent']
+            ['onAccent', 'accent'],
+            ['disabledText', 'disabledBg']
         ];
 
         const MINIMUM_TEXT_CONTRAST_RATIO = 4.5;
@@ -288,7 +289,8 @@ describe('RecipeCockpitService', () => {
                 page: '#F4F6F9', surface: '#FFFFFF', border: '#DDE3EA', header: '#EEF3FB',
                 text: '#1F2937', muted: '#5B6472', accent: '#2563EB', onAccent: '#FFFFFF',
                 rowHover: '#F1F5FF', chipBg: '#EEF2FF', chipText: '#3730A3',
-                added: '#15803D', removed: '#B91C1C', changed: '#B45309'
+                added: '#15803D', removed: '#B91C1C', changed: '#B45309',
+                disabledBg: '#E5E7EB', disabledText: '#4B5563'
             });
             expect(rootBlock).toContain('--sdt-page: #F4F6F9;');
             expect(rootBlock).toContain('--sdt-on-accent: #FFFFFF;');
@@ -370,12 +372,69 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\.toolbar button, \.treeCompare button, \.emptyStateActions button \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            expect(styleSheet).toMatch(/\.treeRunFaker, \.toolbar button, \.treeCompare button, \.emptyStateActions button, \.dataCreate \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
             expect(styleSheet).toContain('.diff-new-in-org { color: var(--sdt-added); }');
             expect(styleSheet).toContain('.diff-removed-from-org { color: var(--sdt-removed); }');
             expect(styleSheet).toContain('.diff-type-changed { color: var(--sdt-changed); }');
             expect(styleSheet).toContain('.diff-picklist-changed { color: var(--sdt-changed); }');
             expect(styleSheet).toMatch(/\.sourceLink \{[^}]*color: var\(--sdt-accent\);/);
+
+        });
+
+        const COCKPIT_BUTTON_SELECTORS = [
+            '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeScope', '.treeRunFaker', '.treeScopeClear',
+            '.treeTab', '.treeVersionToggle', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
+            '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataTreeToggle', '.dataCreate', '.dataCreateErrors'
+        ];
+
+        const ruleFor = (styleSheet: string, selectorPattern: string): string =>
+            styleSheet.match(new RegExp('(^|\\n)\\s*' + selectorPattern + ' \\{[^}]*\\}'))?.[0] ?? '';
+
+        // #209: EVERY BUTTON USED TO BE A BARE LINK ONE GLYPH TALL -- ONE SHARED RULE GIVES EACH A REAL, TWICE-AS-TALL TARGET
+        it('sizes every cockpit button from one shared rule with a minimum height, padding and a visible border', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const sharedButtonRule = styleSheet.match(/\n\s*([^{}\n]*\.treeToggle[^{}\n]*) \{([^}]*)\}/);
+
+            expect(sharedButtonRule).not.toBeNull();
+            const sharedSelectors = (sharedButtonRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
+            COCKPIT_BUTTON_SELECTORS.forEach(selector => expect(sharedSelectors).toContain(selector));
+            expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('min-height: 2.25rem;');
+            expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/padding: 0\.4rem 0\.8rem;/);
+            expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('border: 1px solid var(--sdt-border);');
+            expect(styleSheet).not.toMatch(/\.treeRunFaker \{ padding: 0 /);
+
+        });
+
+        it('draws a tree header as a tall clickable row tile with its actions at the end', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const treeHeaderRule = ruleFor(styleSheet, '\\.treeHeader');
+
+            expect(treeHeaderRule).toContain('min-height: 4rem;');
+            expect(treeHeaderRule).toContain('cursor: pointer;');
+            expect(treeHeaderRule).toContain('align-items: center;');
+            expect(ruleFor(styleSheet, '\\.treeHeaderActions')).toContain('margin-left: auto;');
+
+        });
+
+        // A DISABLED BUTTON USED TO BE THE SAME BUTTON AT 60% OPACITY, WHICH READ AS NEARLY ENABLED WHILE FAKER RAN
+        it('draws every disabled cockpit button in the disabled tokens with a not-allowed cursor', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const disabledRule = styleSheet.match(/\n\s*([^{}\n]*\.treeRunFaker:disabled[^{}\n]*) \{([^}]*)\}/);
+
+            expect(disabledRule).not.toBeNull();
+            const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
+            ['.treeRunFaker:disabled', '.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
+                '.treeCompare button:disabled', '.emptyStateActions button:disabled', '.dataCreate:disabled', '.dataOrgRefresh:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('opacity: 1;');
+            expect(styleSheet).not.toMatch(/:disabled \{ opacity: 0\.6/);
+            // THE SELECTED TAB KEEPS ITS ACCENT UNDERLINE UNDER THE POINTER
+            expect(styleSheet).toContain('.treeTab:hover:not(:disabled):not(.selected) {');
 
         });
 
@@ -390,7 +449,7 @@ describe('RecipeCockpitService', () => {
 
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
-            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(26);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(27);
             expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
 
         });
@@ -4407,6 +4466,86 @@ describe('RecipeCockpitService', () => {
                     [true, RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL],
                     [true, RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]
                 ]);
+
+            });
+
+            describe('the header row tile', () => {
+
+                const headerOf = (treeCard: any) => treeCard.children[0];
+                const isOpen = (panel: any, treeCard: any) => !panel.isHidden(treeCard.children[1]);
+
+                it('opens and closes the card from a click anywhere on the row, and from its ▸ toggle', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const leadCard = treeCardFolded(panel, 'Lead-ONLY');
+                    const toggleElement = panel.findAll(leadCard, 'treeToggle')[0];
+
+                    headerOf(leadCard).dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(true);
+                    expect(toggleElement.attributes['aria-expanded']).toBe('true');
+
+                    panel.findAll(leadCard, 'treeTitle')[0].dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(false);
+
+                    panel.findAll(leadCard, 'treeFolder')[0].dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(true);
+
+                    toggleElement.dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(false);
+                    expect(toggleElement.attributes['aria-expanded']).toBe('false');
+
+                });
+
+                it('puts 🔍 and ▶ Run Faker at the END of the row, in one action group', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const headerChildren = headerOf(treeCardFolded(panel, 'Lead-ONLY')).children;
+                    const actionGroup = headerChildren[headerChildren.length - 1];
+
+                    expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
+                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeScope', 'treeRunFaker']);
+
+                });
+
+                it('scopes the search from 🔍 without opening or closing the card', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const leadCard = treeCardFolded(panel, 'Lead-ONLY');
+                    const scopeElement = panel.findAll(leadCard, 'treeScope')[0];
+
+                    scopeElement.dispatch('click');
+
+                    expect(scopeElement.attributes['aria-pressed']).toBe('true');
+                    expect(isOpen(panel, leadCard)).toBe(false);
+
+                    headerOf(leadCard).dispatch('click');
+                    scopeElement.dispatch('click');
+
+                    expect(scopeElement.attributes['aria-pressed']).toBe('false');
+                    expect(isOpen(panel, leadCard)).toBe(true);
+
+                });
+
+                it('runs Faker from ▶ Run Faker without opening or closing the card, and a DISABLED one neither toggles nor posts', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const leadCard = treeCardFolded(panel, 'Lead-ONLY');
+                    const accountCard = treeCardFolded(panel, ACCOUNT_TREE_KEY);
+                    const leadButton = panel.findAll(leadCard, 'treeRunFaker')[0];
+                    const accountButton = panel.findAll(accountCard, 'treeRunFaker')[0];
+
+                    leadButton.dispatch('click');
+
+                    expect(postedNamed(panel, 'runFaker')).toEqual([{ command: 'runFaker', treeKey: LEAD_TREE_KEY }]);
+                    expect(isOpen(panel, leadCard)).toBe(false);
+
+                    expect(accountButton.disabled).toBe(true);
+                    accountButton.dispatch('click');
+
+                    expect(postedNamed(panel, 'runFaker')).toHaveLength(1);
+                    expect(isOpen(panel, accountCard)).toBe(false);
+
+                });
 
             });
 

@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.44.0] - The Recipe Cockpit's no-run empty state offers a Generate Treecipe button
+## [3.45.0] - The Recipe Cockpit's no-run empty state offers a Generate Treecipe button
 
 Closes [#214](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/214).
 
@@ -10,7 +10,25 @@ Opening the Recipe Cockpit before any Generate Treecipe run used to show one sen
 - **It shares Regenerate recipe's path.** `regenerateRecipe` became `generateTreecipeAndReload(panel, state, focusTree?)`. Regenerate passes its card as the focus and the empty state passes none. The two share one in-flight flag, so the host never runs them at once. The cockpit reloads even when generation failed or was cancelled, and the failure still reaches `ErrorHandlingService` once. A reload with still no run draws the button pressable again.
 - **The button is gated like every other panel action.** The panel posts `{ command: 'generateTreecipe' }` with no payload. `routePanelMessage` honours it only while `isGenerateTreecipeOffered` is set. That is a pending/active pair: `pendingIsGenerateTreecipeOffered` is set when a model with no run is posted, and only that model's `rendered` promotes it. It is emptied on every `ready`, on every new post and on a failure to draw. It is also refused while a generation or regeneration is in flight. The panel disables the button on the click, and only the host's reload redraws it.
 - **Not changed:** a run whose objects wrapper cannot be read, and a run with no relationship trees, keep their own empty states without the button. Generate Treecipe itself is unchanged.
-- **Tests.** `RecipeCockpitService.test.ts` covers the router (offered, before `rendered`, with a run on screen, in flight), the panel script (the button is drawn only in the no-run state, disables itself, posts once and comes back after a redraw), and the host (generate then reload on the run written, a double click, a failure that reloads and re-offers, a document reload that honours nothing until the empty state is drawn again, an empty state that failed to draw, and a model with a run posted over the empty state before and after its ack). Each of the last two fails when its reset is removed. The button reuses the accent pair already in the contrast test.
+- **Tests.** `RecipeCockpitService.test.ts` covers the router (offered, before `rendered`, with a run on screen, in flight), the panel script (the button is drawn only in the no-run state, disables itself, posts once and comes back after a redraw), and the host (generate then reload on the run written, a double click, a failure that reloads and re-offers, a document reload that honours nothing until the empty state is drawn again, an empty state that failed to draw, and a model with a run posted over the empty state before and after its ack). Each of the last two fails when its reset is removed. The button joins #209's shared button rules (base, primary and disabled), so it draws like Run Faker and Create, and its pairs are already in the contrast test.
+
+## [3.44.0] - The Recipe Cockpit's tree card header is one clickable row tile, and every cockpit button is a real, larger target
+
+Closes [#209](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/209), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Every cockpit button was a bare link (`background: none; border: none; padding: 0`), so a tree card opened only from its one-character `▸`, and 🔍 and ▶ Run Faker were about one glyph each. A disabled button was the same button at 60% opacity, so while Faker ran the buttons still looked usable.
+
+- **The header is a row tile.** `.treeHeader` is at least `4rem` tall with a pointer cursor and an accent bar on hover. A click anywhere on it (title, folder, counts, or the `▸`) opens or closes the card. The `▸` stays a real `<button>` with its `aria-label` and `aria-expanded`, and has no listener of its own: its click, from a mouse or from Enter/Space, bubbles to the row, so one click cannot toggle the card twice.
+- **🔍 and ▶ Run Faker sit at the end of the row** in a `.treeHeaderActions` group. Clicks inside the group never toggle the card. The click is stopped on the GROUP rather than on each button, because a browser may pass a click on a DISABLED button (every Run Faker while one runs) to its ancestors without running the button's own listener.
+- **Every cockpit button shares one rule:** `min-height: 2.25rem`, `0.4rem 0.8rem` padding and a visible border, about twice the old target. It covers the tree, object, picklist and version toggles, 🔍, Run Faker, the tabs, `+` add-friend, the history actions, Search every tree, the toolbar, Compare and Regenerate, and Data-by-Org's ⟳, toggle, `+ Create` and View errors. Run Faker, the toolbar, Compare, Regenerate and Create are filled with the accent.
+- **Disabled buttons look disabled.** Two palette tokens are new: `disabledBg` `#E5E7EB` and `disabledText` `#4B5563` (6.1:1, added to the contrast test's pair list, now 27 pairs). One `:disabled` rule draws Run Faker, `+` add-friend, the toolbar, Compare, Regenerate and Create in them with `cursor: not-allowed`. Hover effects apply only to buttons that are not disabled.
+- **Not changed:** no host↔panel message, allow-list, `renderSequence` handling or Run Faker sequencing. Run Faker is still disabled across every card on the click, until the host's `runFakerState`.
+- **Tests.** `RecipeCockpitPanelHarness` now BUBBLES a dispatched event through `parentNode` until a listener stops it, and a disabled element skips its own listeners but still bubbles, which is the worst case a browser can give. New harness tests: the row, title, folder and `▸` each toggle the card. 🔍 scopes without toggling. Run Faker posts without toggling. A disabled Run Faker neither toggles nor posts. The actions are the row's last child. Stylesheet tests pin the shared button rule and the selectors it covers, the header tile, and the disabled rule. Removing the group's `stopPropagation` fails two of these tests.
+- **Fixed in review (PR #212):**
+  - The ⟳ button that refreshes Data-by-Org's org list is disabled during an org check, but the shared `:disabled` rule did not cover it, so it looked enabled. `.dataOrgRefresh:disabled` is now in the rule.
+  - Hovering the selected tab drew its accent underline grey. The tab hover rule now skips `.selected`.
+  - The header no longer sets `user-select: none`, so the tree title and folder name can be selected and copied again.
+  - Clearing a container in the panel harness now detaches its children (`parentNode = null`), so an event on a stale element no longer bubbles into its former ancestors.
 
 ## [3.43.0] - Recipe Cockpit Create names the recipe fields the org lacks before anything is sent
 
