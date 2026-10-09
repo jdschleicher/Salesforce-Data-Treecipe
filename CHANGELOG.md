@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.43.0] - Generate Treecipe reports its progress and can be cancelled
+
+Closes [#216](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/216).
+
+**Generate Treecipe** showed nothing between the moment it started and its completion notification. It read the global value sets, walked every object directory, built the relationship trees and wrote the run with no feedback, so on a large org it looked like nothing was happening, and a run started by mistake could not be stopped. It now runs behind the same kind of cancellable progress notification as **Generate Picklist Dependency Tests** (#92).
+
+- **One notification, titled `Generate Treecipe`, with Cancel.** It is a `ProgressLocation.Notification` because that is the location that can offer a cancel. It reports `Reading global value sets…`, then `Scanning objects…`, then `Scanning <Object> (N of M)` for each object, then `Building relationship trees…`, then `Writing recipe files… (cannot be cancelled)`. Object names go through `escapeForNotification`, because they are workspace text.
+- **What "N of M" counts.** M is the number of top-level directories in the configured objects path, so it is known after one listing, before the walk descends. A configured path that is itself one object directory counts as `1 of 1`, and an empty objects directory reports `0 of 0` and completes.
+- **Cancel stops the run before anything is written.** A cancel while the global value sets are read, while objects are scanned or while the trees are built throws `RecipeGenerationCancelledError` at the next check. The walk descends into no further directory, `createRecipeFilesInSubdirectory` is never called, no run folder is created and no completion notification is shown. The command then shows `Generate Treecipe was cancelled. No recipe files were written.` A cancel is not an error, so it never reaches `ErrorHandlingService`.
+- **Writing cannot be cancelled.** Once writing starts the token is not read again, so a run folder is written whole or not at all, and the notification says so.
+- **The walk sees no vscode type.** `DirectoryProcessor.processAllObjectsAndRelationships` and `processDirectory` take an optional `IRecipeGenerationProgress` (`report`, `isCancellationRequested`). It has the same shape as `IPicklistDependencyGenerationProgress` but is defined beside the walk, so `DirectoryProcessor` does not depend on the picklist service. Without one, the walk behaves exactly as before.
+- **Not changed:** recipe output for both backends, the #206 completion notification and `isCompletionNotificationSuppressed`. The Recipe Cockpit's **Regenerate recipe** shows the progress notification too, and still reloads however the command ended, cancel included.
+- **Tests.** `DirectoryProcessor.generationProgress.test.ts` runs both backends over a real temporary objects directory. It covers the reported messages in order, the same output with or without a progress port, a cancel mid-scan descending no further, a cancel during the tree build, an empty directory, and a configured path that is one object. `ExtensionCommandService.test.ts` covers the notification's options and phases, the walk reading the notification's token, a cancel at each phase (no write, the cancelled message, no error), a cancel during writing still writing the run, the cockpit's suppression option with a cancel, a failure still reaching `ErrorHandlingService`, and no notification when there is no workspace.
+
 ## [3.42.0] - Initiate Configuration File and Generate Treecipe end with one notification that opens or reveals what they wrote
 
 Closes [#206](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/206).

@@ -1,5 +1,5 @@
 import { ConfigurationService, TreecipeConfigDetail } from "../ConfigurationService/ConfigurationService";
-import { DirectoryProcessor, IGeneratedRecipeRun } from "../DirectoryProcessingService/DirectoryProcessor";
+import { DirectoryProcessor, IGeneratedRecipeRun, IRecipeGenerationProgress, RecipeGenerationCancelledError } from "../DirectoryProcessingService/DirectoryProcessor";
 import { ErrorHandlingService } from "../ErrorHandlingService/ErrorHandlingService";
 import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 import { VSCodeWorkspaceService, ICreatedFileNotificationAction } from "../VSCodeWorkspace/VSCodeWorkspaceService";
@@ -63,6 +63,8 @@ export const OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL = 'Open Explorer';
 export const REVEAL_IN_EXPLORER_ACTION_LABEL = 'Reveal in Explorer';
 export const OPEN_CONFIGURATION_FILE_ACTION_LABEL = 'Open Configuration File';
 export const OPEN_RECIPE_ACTION_LABEL = 'Open Recipe';
+export const GENERATE_TREECIPE_PROGRESS_TITLE = 'Generate Treecipe';
+export const GENERATE_TREECIPE_CANCELLED_MESSAGE = 'Generate Treecipe was cancelled. No recipe files were written.';
 
 /*
     Everything the explorer webview can post back, as ONE shape with every field optional.
@@ -338,14 +340,23 @@ export class ExtensionCommandService {
                     appeared before: the call returned at its guard without reaching the check.
                 */
                 const isMissingGlobalValueSetsDirectoryWarningShown = false;
-                await globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
-
-                const directoryProcessor = new DirectoryProcessor();
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-            
-                const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri);
 
-                const generatedRecipeRun = await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
+                const generatedRecipeRun = await this.runWithRecipeGenerationProgress(async (generationProgress) => {
+
+                    generationProgress.report('Reading global value sets…');
+                    await globalValueSetSingleton.initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
+                    DirectoryProcessor.throwIfCancellationRequested(generationProgress);
+
+                    const directoryProcessor = new DirectoryProcessor();
+                    const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri, generationProgress);
+                    DirectoryProcessor.throwIfCancellationRequested(generationProgress);
+
+                    // PAST THIS POINT THE TOKEN IS NOT READ AGAIN -- A RUN FOLDER IS WRITTEN WHOLE OR NOT AT ALL
+                    generationProgress.report('Writing recipe files… (cannot be cancelled)');
+                    return await directoryProcessor.createRecipeFilesInSubdirectory(result, workspaceRoot);
+
+                });
 
                 if ( !ExtensionCommandService.isCompletionNotificationSuppressed(generateTreecipeOptions) ) {
                     this.showRecipeRunGeneratedNotification(generatedRecipeRun, workspaceRoot);
@@ -359,6 +370,11 @@ export class ExtensionCommandService {
           
 
         } catch (error) {
+
+            if ( error instanceof RecipeGenerationCancelledError ) {
+                void vscode.window.showInformationMessage(GENERATE_TREECIPE_CANCELLED_MESSAGE);
+                return;
+            }
 
             const commandName = 'generateRecipeFromConfigurationDetail';
             ErrorHandlingService.handleCapturedError(error, commandName);
@@ -403,6 +419,32 @@ export class ExtensionCommandService {
             `Generated ${recipeCount} relationship-tree recipe${recipeCount === 1 ? '' : 's'} in "${displayPath}".`,
             actions
         );
+
+    }
+
+    /*
+        Generate Treecipe behind a cancellable progress notification (#216), for the same reason as the
+        picklist dependency generation below: Notification is the location that can offer a cancel.
+        The notification closes however the task ends, so the completion notification is shown by
+        the caller AFTER it, never beside a spinner still reading "Writing recipe files".
+    */
+    private async runWithRecipeGenerationProgress<TResult>(
+                        runGeneration: (generationProgress: IRecipeGenerationProgress) => Promise<TResult>): Promise<TResult> {
+
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: GENERATE_TREECIPE_PROGRESS_TITLE,
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            const generationProgress: IRecipeGenerationProgress = {
+                report: (message: string) => progress.report({ message }),
+                isCancellationRequested: () => cancellationToken.isCancellationRequested
+            };
+
+            return await runGeneration(generationProgress);
+
+        });
 
     }
 

@@ -23,6 +23,31 @@ export interface IGeneratedRecipeRun {
   recipeFilePaths: string[];
 }
 
+/*
+    How Generate Treecipe reports its progress, deliberately free of any vscode type -- the same
+    two-function shape as IPicklistDependencyGenerationProgress, so the walk is tested for what it
+    reports and where it stops without a withProgress double (#216).
+*/
+export interface IRecipeGenerationProgress {
+  report(message: string): void;
+  isCancellationRequested(): boolean;
+}
+
+// THE TOP-LEVEL DIRECTORIES OF THE CONFIGURED OBJECTS PATH, COUNTED ONCE SO "N OF M" HAS ITS TOTAL BEFORE THE WALK DESCENDS
+interface IRecipeGenerationScanCount {
+  scanned: number;
+  total: number;
+}
+
+export class RecipeGenerationCancelledError extends Error {
+
+  constructor() {
+    super('Generate Treecipe was cancelled.');
+    this.name = 'RecipeGenerationCancelledError';
+  }
+
+}
+
 export class DirectoryProcessor {
 
   private recipeService: RecipeService;
@@ -151,12 +176,29 @@ export class DirectoryProcessor {
 
   }
 
-  async processDirectory(directoryPathUri: vscode.Uri, objectInfoWrapper: ObjectInfoWrapper): Promise<ObjectInfoWrapper> {
+  static throwIfCancellationRequested(generationProgress?: IRecipeGenerationProgress): void {
 
+    if ( generationProgress?.isCancellationRequested() ) {
+      throw new RecipeGenerationCancelledError();
+    }
+
+  }
+
+  async processDirectory(directoryPathUri: vscode.Uri,
+                          objectInfoWrapper: ObjectInfoWrapper,
+                          generationProgress?: IRecipeGenerationProgress,
+                          scanCount?: IRecipeGenerationScanCount): Promise<ObjectInfoWrapper> {
+
+    DirectoryProcessor.throwIfCancellationRequested(generationProgress);
+
+    const isTopLevelOfScan = generationProgress !== undefined && scanCount === undefined;
     const entries = await vscode.workspace.fs.readDirectory(directoryPathUri);
     if (entries === undefined || entries.length === 0) {
       // base case for recursion -- prevents empty directories causing null reference errors
       vscode.window.showWarningMessage('No entries found in directory: ' + directoryPathUri.fsPath);
+      if ( isTopLevelOfScan ) {
+        generationProgress.report('Scanning objects (0 of 0)');
+      }
 
     } else {
 
@@ -173,6 +215,15 @@ export class DirectoryProcessor {
         ([entryName, entryType]) => entryType === vscode.FileType.Directory && entryName === 'fields'
       );
 
+      if ( isTopLevelOfScan ) {
+        // A CONFIGURED PATH THAT IS ITSELF AN OBJECT DIRECTORY IS ONE OBJECT, WHATEVER ELSE SITS BESIDE ITS fields
+        const total = containsFieldsDirectory
+                        ? 1
+                        : entries.filter(([, entryType]) => entryType === vscode.FileType.Directory).length;
+        scanCount = { scanned: 0, total: total };
+        generationProgress.report(`Scanning objects (0 of ${total})`);
+      }
+
       for (const [entryName, entryType] of entries) {
 
         const fullPath = vscode.Uri.joinPath(directoryPathUri, entryName);
@@ -182,6 +233,11 @@ export class DirectoryProcessor {
           if (containsFieldsDirectory && entryName !== 'fields') {
             continue;
           }
+
+          DirectoryProcessor.throwIfCancellationRequested(generationProgress);
+          if ( isTopLevelOfScan ) {
+            scanCount.scanned++;
+          }
   
           if (entryName === 'fields') {
   
@@ -190,6 +246,10 @@ export class DirectoryProcessor {
             if ( !objectInfoWrapper.addKeyToObjectInfoMap(objectName) ) {
               // A DIRECTORY NAME THAT IS NOT AN API NAME IS NOT AN OBJECT -- processAllObjectsAndRelationships WARNS ABOUT IT ONCE THE WALK ENDS (#164)
               continue;
+            }
+
+            if ( generationProgress ) {
+              generationProgress.report(`Scanning ${DirectoryProcessor.escapeForNotification(objectName)} (${scanCount.scanned} of ${scanCount.total})`);
             }
   
             const recordTypeApiToRecordTypeWrapperMap = await RecordTypeService.getRecordTypeToApiFieldToRecordTypeWrapper(fullPath.path);
@@ -262,7 +322,7 @@ export class DirectoryProcessor {
 
           } else {
   
-            await this.processDirectory(fullPath, objectInfoWrapper);
+            await this.processDirectory(fullPath, objectInfoWrapper, generationProgress, scanCount);
   
           }
   
@@ -397,21 +457,25 @@ export class DirectoryProcessor {
 
   }
 
-  async processAllObjectsAndRelationships(directoryPathUri: vscode.Uri): Promise<ObjectInfoWrapper> {
+  async processAllObjectsAndRelationships(directoryPathUri: vscode.Uri, generationProgress?: IRecipeGenerationProgress): Promise<ObjectInfoWrapper> {
     
     const objectInfoWrapper = new ObjectInfoWrapper(); 
-    
-    await this.processDirectory(directoryPathUri, objectInfoWrapper);
 
+    generationProgress?.report('Scanning objects…');
+    await this.processDirectory(directoryPathUri, objectInfoWrapper, generationProgress);
+
+    DirectoryProcessor.throwIfCancellationRequested(generationProgress);
     this.warnOfSkippedObjectApiNames(objectInfoWrapper);
-  
+
+    generationProgress?.report('Building relationship trees…');
     objectInfoWrapper.RelationshipTrees = this.relationshipService.buildRelationshipTrees(objectInfoWrapper);
 
     // ONLY faker-js RECIPES NEST CHILDREN UNDER friends: AND WIRE THEIR LOOKUPS (#46) -- A SNOWFAKERY RECIPE IS WRITTEN FLAT, AS BEFORE
     const recipeFiles = this.relationshipService.generateSeparateRecipeFiles(objectInfoWrapper, this.isFakerJSServiceSelected);
     
     objectInfoWrapper.RecipeFiles = recipeFiles;
-      
+
+    DirectoryProcessor.throwIfCancellationRequested(generationProgress);
     return objectInfoWrapper;
 
   }
