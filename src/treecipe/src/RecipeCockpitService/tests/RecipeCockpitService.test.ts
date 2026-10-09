@@ -27,6 +27,8 @@ import {
     RECIPE_COCKPIT_ISSUES_URL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_NO_RUN_MESSAGE,
+    RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL,
+    RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL,
     RECIPE_COCKPIT_LOAD_PHASES,
     RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET,
@@ -246,7 +248,8 @@ describe('RecipeCockpitService', () => {
             ...TEXT_TOKENS.flatMap(textToken => BACKGROUND_TOKENS.map(backgroundToken =>
                 [textToken, backgroundToken] as [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken])),
             ['chipText', 'chipBg'],
-            ['onAccent', 'accent']
+            ['onAccent', 'accent'],
+            ['disabledText', 'disabledBg']
         ];
 
         const MINIMUM_TEXT_CONTRAST_RATIO = 4.5;
@@ -286,7 +289,8 @@ describe('RecipeCockpitService', () => {
                 page: '#F4F6F9', surface: '#FFFFFF', border: '#DDE3EA', header: '#EEF3FB',
                 text: '#1F2937', muted: '#5B6472', accent: '#2563EB', onAccent: '#FFFFFF',
                 rowHover: '#F1F5FF', chipBg: '#EEF2FF', chipText: '#3730A3',
-                added: '#15803D', removed: '#B91C1C', changed: '#B45309'
+                added: '#15803D', removed: '#B91C1C', changed: '#B45309',
+                disabledBg: '#E5E7EB', disabledText: '#4B5563'
             });
             expect(rootBlock).toContain('--sdt-page: #F4F6F9;');
             expect(rootBlock).toContain('--sdt-on-accent: #FFFFFF;');
@@ -368,12 +372,69 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\.toolbar button, \.treeCompare button \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            expect(styleSheet).toMatch(/\.treeRunFaker, \.toolbar button, \.treeCompare button, \.emptyStateActions button, \.dataCreate \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
             expect(styleSheet).toContain('.diff-new-in-org { color: var(--sdt-added); }');
             expect(styleSheet).toContain('.diff-removed-from-org { color: var(--sdt-removed); }');
             expect(styleSheet).toContain('.diff-type-changed { color: var(--sdt-changed); }');
             expect(styleSheet).toContain('.diff-picklist-changed { color: var(--sdt-changed); }');
             expect(styleSheet).toMatch(/\.sourceLink \{[^}]*color: var\(--sdt-accent\);/);
+
+        });
+
+        const COCKPIT_BUTTON_SELECTORS = [
+            '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeScope', '.treeRunFaker', '.treeScopeClear',
+            '.treeTab', '.treeVersionToggle', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
+            '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataTreeToggle', '.dataCreate', '.dataCreateErrors'
+        ];
+
+        const ruleFor = (styleSheet: string, selectorPattern: string): string =>
+            styleSheet.match(new RegExp('(^|\\n)\\s*' + selectorPattern + ' \\{[^}]*\\}'))?.[0] ?? '';
+
+        // #209: EVERY BUTTON USED TO BE A BARE LINK ONE GLYPH TALL -- ONE SHARED RULE GIVES EACH A REAL, TWICE-AS-TALL TARGET
+        it('sizes every cockpit button from one shared rule with a minimum height, padding and a visible border', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const sharedButtonRule = styleSheet.match(/\n\s*([^{}\n]*\.treeToggle[^{}\n]*) \{([^}]*)\}/);
+
+            expect(sharedButtonRule).not.toBeNull();
+            const sharedSelectors = (sharedButtonRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
+            COCKPIT_BUTTON_SELECTORS.forEach(selector => expect(sharedSelectors).toContain(selector));
+            expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('min-height: 2.25rem;');
+            expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/padding: 0\.4rem 0\.8rem;/);
+            expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('border: 1px solid var(--sdt-border);');
+            expect(styleSheet).not.toMatch(/\.treeRunFaker \{ padding: 0 /);
+
+        });
+
+        it('draws a tree header as a tall clickable row tile with its actions at the end', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const treeHeaderRule = ruleFor(styleSheet, '\\.treeHeader');
+
+            expect(treeHeaderRule).toContain('min-height: 4rem;');
+            expect(treeHeaderRule).toContain('cursor: pointer;');
+            expect(treeHeaderRule).toContain('align-items: center;');
+            expect(ruleFor(styleSheet, '\\.treeHeaderActions')).toContain('margin-left: auto;');
+
+        });
+
+        // A DISABLED BUTTON USED TO BE THE SAME BUTTON AT 60% OPACITY, WHICH READ AS NEARLY ENABLED WHILE FAKER RAN
+        it('draws every disabled cockpit button in the disabled tokens with a not-allowed cursor', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const disabledRule = styleSheet.match(/\n\s*([^{}\n]*\.treeRunFaker:disabled[^{}\n]*) \{([^}]*)\}/);
+
+            expect(disabledRule).not.toBeNull();
+            const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
+            ['.treeRunFaker:disabled', '.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
+                '.treeCompare button:disabled', '.emptyStateActions button:disabled', '.dataCreate:disabled', '.dataOrgRefresh:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
+            expect((disabledRule as RegExpMatchArray)[2]).toContain('opacity: 1;');
+            expect(styleSheet).not.toMatch(/:disabled \{ opacity: 0\.6/);
+            // THE SELECTED TAB KEEPS ITS ACCENT UNDERLINE UNDER THE POINTER
+            expect(styleSheet).toContain('.treeTab:hover:not(:disabled):not(.selected) {');
 
         });
 
@@ -388,7 +449,7 @@ describe('RecipeCockpitService', () => {
 
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
-            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(26);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(27);
             expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
 
         });
@@ -1985,6 +2046,42 @@ describe('RecipeCockpitService', () => {
 
     });
 
+    describe('routePanelMessage, generateTreecipe (#214)', () => {
+
+        const buildNoRunPanelState = (): IRecipeCockpitPanelState => ({
+            ...RecipeCockpitService.buildInitialPanelState(MOCK_WORKSPACE_ROOT),
+            recipeDataMessage: { command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')), renderSequence: 3 },
+            pendingIsGenerateTreecipeOffered: true,
+            isGenerateTreecipeOffered: true
+        });
+
+        it('given the no-run empty state is on screen, generates, ignoring any payload', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreecipe', treeKey: 'Account-ONLY', filePath: '/etc/passwd' }, buildNoRunPanelState()))
+                .toEqual({ kind: 'generateTreecipe' });
+
+        });
+
+        it('given the panel has not confirmed drawing the no-run model, generates nothing', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreecipe' }, { ...buildNoRunPanelState(), isGenerateTreecipeOffered: false })).toBeUndefined();
+
+        });
+
+        it('given a run is on screen, generates nothing', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreecipe' }, RecipeCockpitService.buildInitialPanelState(MOCK_WORKSPACE_ROOT))).toBeUndefined();
+
+        });
+
+        it('given a generation or regeneration is already running, starts no second one', () => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreecipe' }, { ...buildNoRunPanelState(), isRegenerateInFlight: true })).toBeUndefined();
+
+        });
+
+    });
+
     describe('buildOrgLabel', () => {
 
         it('names the alias with the username it points at, or the username alone', () => {
@@ -2885,6 +2982,41 @@ describe('RecipeCockpitService', () => {
             expect(panel.findAll(panel.cockpitBodyElement, 'emptyState')[0].textContent).toBe(RECIPE_COCKPIT_NO_RUN_MESSAGE);
             expect(panel.findAll(panel.cockpitBodyElement, 'filterInput')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'runSelect')).toEqual([]);
+
+        });
+
+        it('given no generated run, offers Generate Treecipe, which disables itself and asks the host once', () => {
+
+            const panel = runPanelScript();
+
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
+
+            const [generateButton] = panel.findAll(panel.cockpitBodyElement, 'generateTreecipe');
+            expect(generateButton.textContent).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL);
+
+            generateButton.dispatch('click');
+
+            expect(generateButton.disabled).toBe(true);
+            expect(generateButton.textContent).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL);
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'generateTreecipe')).toEqual([{ command: 'generateTreecipe' }]);
+
+            // THE HOST'S RELOAD REDRAWS THE BODY, AND WITH STILL NO RUN THE BUTTON COMES BACK PRESSABLE
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
+
+            const [redrawnButton] = panel.findAll(panel.cockpitBodyElement, 'generateTreecipe');
+            expect(redrawnButton.disabled).toBeFalsy();
+            expect(redrawnButton.textContent).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL);
+
+        });
+
+        it('given a run, or a run that could not be read, offers no Generate Treecipe', () => {
+
+            const fixturePanel = renderFixtureRecipe();
+            expect(fixturePanel.findAll(fixturePanel.cockpitBodyElement, 'generateTreecipe')).toEqual([]);
+
+            const unreadablePanel = runPanelScript();
+            unreadablePanel.postToPanel({ command: 'recipeData', recipe: buildRecipeViewModel({ emptyStateMessage: 'could not be read' }) });
+            expect(unreadablePanel.findAll(unreadablePanel.cockpitBodyElement, 'generateTreecipe')).toEqual([]);
 
         });
 
@@ -4334,6 +4466,86 @@ describe('RecipeCockpitService', () => {
                     [true, RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL],
                     [true, RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]
                 ]);
+
+            });
+
+            describe('the header row tile', () => {
+
+                const headerOf = (treeCard: any) => treeCard.children[0];
+                const isOpen = (panel: any, treeCard: any) => !panel.isHidden(treeCard.children[1]);
+
+                it('opens and closes the card from a click anywhere on the row, and from its ▸ toggle', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const leadCard = treeCardFolded(panel, 'Lead-ONLY');
+                    const toggleElement = panel.findAll(leadCard, 'treeToggle')[0];
+
+                    headerOf(leadCard).dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(true);
+                    expect(toggleElement.attributes['aria-expanded']).toBe('true');
+
+                    panel.findAll(leadCard, 'treeTitle')[0].dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(false);
+
+                    panel.findAll(leadCard, 'treeFolder')[0].dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(true);
+
+                    toggleElement.dispatch('click');
+                    expect(isOpen(panel, leadCard)).toBe(false);
+                    expect(toggleElement.attributes['aria-expanded']).toBe('false');
+
+                });
+
+                it('puts 🔍 and ▶ Run Faker at the END of the row, in one action group', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const headerChildren = headerOf(treeCardFolded(panel, 'Lead-ONLY')).children;
+                    const actionGroup = headerChildren[headerChildren.length - 1];
+
+                    expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
+                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeScope', 'treeRunFaker']);
+
+                });
+
+                it('scopes the search from 🔍 without opening or closing the card', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const leadCard = treeCardFolded(panel, 'Lead-ONLY');
+                    const scopeElement = panel.findAll(leadCard, 'treeScope')[0];
+
+                    scopeElement.dispatch('click');
+
+                    expect(scopeElement.attributes['aria-pressed']).toBe('true');
+                    expect(isOpen(panel, leadCard)).toBe(false);
+
+                    headerOf(leadCard).dispatch('click');
+                    scopeElement.dispatch('click');
+
+                    expect(scopeElement.attributes['aria-pressed']).toBe('false');
+                    expect(isOpen(panel, leadCard)).toBe(true);
+
+                });
+
+                it('runs Faker from ▶ Run Faker without opening or closing the card, and a DISABLED one neither toggles nor posts', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const leadCard = treeCardFolded(panel, 'Lead-ONLY');
+                    const accountCard = treeCardFolded(panel, ACCOUNT_TREE_KEY);
+                    const leadButton = panel.findAll(leadCard, 'treeRunFaker')[0];
+                    const accountButton = panel.findAll(accountCard, 'treeRunFaker')[0];
+
+                    leadButton.dispatch('click');
+
+                    expect(postedNamed(panel, 'runFaker')).toEqual([{ command: 'runFaker', treeKey: LEAD_TREE_KEY }]);
+                    expect(isOpen(panel, leadCard)).toBe(false);
+
+                    expect(accountButton.disabled).toBe(true);
+                    accountButton.dispatch('click');
+
+                    expect(postedNamed(panel, 'runFaker')).toHaveLength(1);
+                    expect(isOpen(panel, accountCard)).toBe(false);
+
+                });
 
             });
 
@@ -5842,6 +6054,145 @@ describe('RecipeCockpitService', () => {
 
                 expect(executedCommandsNamed('vscode.diff')).toEqual([]);
                 expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('"recipe--Lead-ONLY-2026-09-01T00-00-00.yml" no longer exists'));
+
+            });
+
+        });
+
+        describe('Generate Treecipe from the no-run empty state (#214)', () => {
+
+            const EMPTY_WORKSPACE_ROOT = path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist');
+            const lastRecipe = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.recipe;
+
+            const openRenderedEmptyCockpit = async () => {
+                await RecipeCockpitService.openRecipeCockpitPanel(EMPTY_WORKSPACE_ROOT);
+                await receivedMessageHandler({ command: 'ready' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            };
+
+            beforeEach(() => {
+
+                (vscode.commands.executeCommand as jest.Mock).mockReset();
+                (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
+
+            });
+
+            it('runs Generate Treecipe without its toast, then loads the run it wrote', async () => {
+
+                const findGeneratedRecipeRuns = RecipeCockpitService.findGeneratedRecipeRuns.bind(RecipeCockpitService);
+                let hasGenerated = false;
+                (vscode.commands.executeCommand as jest.Mock).mockImplementation(async () => { hasGenerated = true; });
+                // THE RUN "WRITTEN" IS THE FIXTURE WORKSPACE'S, FOUND ONLY ONCE GENERATION HAS FINISHED
+                jest.spyOn(RecipeCockpitService, 'findGeneratedRecipeRuns').mockImplementation(generatedRecipesFolderPath => (
+                    hasGenerated
+                        ? findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, path.relative(EMPTY_WORKSPACE_ROOT, generatedRecipesFolderPath)))
+                        : []
+                ));
+
+                await openRenderedEmptyCockpit();
+                expect(lastRecipe().runs).toEqual([]);
+
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+                expect(vscode.commands.executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, { isCompletionNotificationSuppressed: true });
+                expect(lastRecipe().runs.length).toBeGreaterThan(0);
+                expect(lastRecipe().trees.length).toBeGreaterThan(0);
+                expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree).toBeUndefined();
+
+                // A RUN IS ON SCREEN NOW, SO THE EMPTY STATE'S BUTTON IS NO LONGER HONOURED
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+                expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+
+            });
+
+            it('given the panel has not confirmed drawing the empty state, does not generate', async () => {
+
+                await RecipeCockpitService.openRecipeCockpitPanel(EMPTY_WORKSPACE_ROOT);
+                await receivedMessageHandler({ command: 'ready' });
+
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+
+            });
+
+            it('given a second click while Generate Treecipe runs, generates once', async () => {
+
+                let finishGeneration: () => void = () => undefined;
+                (vscode.commands.executeCommand as jest.Mock).mockImplementation(() => new Promise<void>(resolvePromise => { finishGeneration = resolvePromise; }));
+                await openRenderedEmptyCockpit();
+
+                const firstClick = receivedMessageHandler({ command: 'generateTreecipe' });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+                finishGeneration();
+                await firstClick;
+
+                expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+
+            });
+
+            it('given Generate Treecipe fails or writes nothing, reloads the empty state, which offers the button again, and reports the failure once', async () => {
+
+                const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+                (vscode.commands.executeCommand as jest.Mock).mockRejectedValueOnce(new Error('no config'));
+                await openRenderedEmptyCockpit();
+                const emptyRenderSequence = lastRenderSequence();
+
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(lastRenderSequence()).toBeGreaterThan(emptyRenderSequence);
+                expect(lastRecipe().emptyStateMessage).toBe(RECIPE_COCKPIT_NO_RUN_MESSAGE);
+                expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+                expect(handleCapturedErrorSpy.mock.calls[0][0]).toEqual(new Error('no config'));
+
+                // CANCELLED OR FAILED, THE RELOADED EMPTY STATE CAN START GENERATION AGAIN ONCE IT IS DRAWN
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+                expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(2);
+
+            });
+
+            it('given the empty state failed to draw, honours nothing', async () => {
+
+                jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+                await openRenderedEmptyCockpit();
+
+                await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'boom', stack: '' });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+
+            });
+
+            // NOTHING IN FLIGHT MASKS THIS RESET: A MODEL WITH A RUN WAS POSTED, AND ITS "rendered" HAS NOT ARRIVED
+            it('given a model with a run is posted over the drawn empty state, honours nothing before or after its ack', async () => {
+
+                await openRenderedEmptyCockpit();
+
+                (RecipeCockpitService as any).renderRecipeModel(createdWebviewPanel, RecipeCockpitService.loadRecipeRunByRuns(
+                    RecipeCockpitService.findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+                    MOCK_WORKSPACE_ROOT
+                ));
+                expect(lastRecipe().runs.length).toBeGreaterThan(0);
+
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+
+            });
+
+            it('given the document reloads, honours nothing until the replayed empty state is drawn again', async () => {
+
+                await openRenderedEmptyCockpit();
+
+                await receivedMessageHandler({ command: 'ready' });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
 
             });
 

@@ -26,8 +26,9 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
-import { IScannedObject, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import { IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
 import {
+    ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
     IRequiredLookupParentIds,
     RecipeCockpitRecordCreation,
@@ -62,7 +63,8 @@ export type RecipeCockpitPaletteToken =
     | 'page' | 'surface' | 'border' | 'header'
     | 'text' | 'muted' | 'accent' | 'onAccent'
     | 'rowHover' | 'chipBg' | 'chipText'
-    | 'added' | 'removed' | 'changed';
+    | 'added' | 'removed' | 'changed'
+    | 'disabledBg' | 'disabledText';
 
 /*
     The cockpit's ONE palette, and the only source of a colour in its stylesheet. The cockpit used
@@ -85,7 +87,9 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     chipText: '#3730A3',
     added: '#15803D',
     removed: '#B91C1C',
-    changed: '#B45309'
+    changed: '#B45309',
+    disabledBg: '#E5E7EB',
+    disabledText: '#4B5563'
 });
 
 export const RECIPE_COCKPIT_LOAD_PHASES = {
@@ -130,7 +134,11 @@ export const RECIPE_COCKPIT_DIFF_STATUS_LABELS: Readonly<Record<MetadataDiffFiel
 */
 export const RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN = 20;
 
-export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Run "Generate Treecipe" first, then open the Recipe Cockpit again.';
+export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Generate Treecipe writes one from the object metadata in this workspace, and the cockpit opens it when it finishes.';
+
+// OFFERED ONLY IN THE NO-RUN EMPTY STATE: A COCKPIT WITH A RUN ON SCREEN REGENERATES FROM A CARD (#214)
+export const RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL = 'Generate Treecipe';
+export const RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL = 'Generating…';
 
 /*
     How many objects a filter opens by itself.
@@ -660,6 +668,20 @@ export interface IRecipeCockpitCreateResultViewModel {
     message: string;
 }
 
+// ONE TREE'S CREATE OF ONE OBJECT: THE FIELDS ITS CUT BLOCK WOULD SEND, OR WHY THE BLOCK COULD NOT BE READ
+export interface IRecipeCockpitCreateTarget {
+    treeKey: string;
+    objectApiName: string;
+    recipeFieldApiNames?: string[];
+    recipeFieldRefusalReason?: string;
+}
+
+export interface IRecipeCockpitCreateReadinessByTarget {
+    byObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+    // KEYED BY buildCreatableObjectKey
+    byCreateKey: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+}
+
 /*
     Whether "+ Create" is offered for each object the trees list, in the org the selection names --
     and the last Create made there. Posted once the counts are in, since a required parent's record
@@ -668,6 +690,8 @@ export interface IRecipeCockpitCreateResultViewModel {
 export interface IRecipeCockpitDataOrgReadinessMessage {
     command: 'dataOrgReadiness';
     objects: IRecipeCockpitCreateReadinessViewModel[];
+    // ONE PER TREE AND OBJECT, WITH THAT TREE'S BLOCK'S FIELDS CHECKED (#210); A ROW READS ITS OWN BEFORE ITS OBJECT'S
+    createTargets: IRecipeCockpitCreateReadinessViewModel[];
     createResults: IRecipeCockpitCreateResultViewModel[];
     requestSequence: number;
     renderSequence: number;
@@ -774,6 +798,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'selectOrg'; treeKey: string; isOrgChosenByReader: boolean }
     | { kind: 'regenerateRecipe'; treeKey: string }
+    | { kind: 'generateTreecipe' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadVersionSummaries'; treeKey: string; summarySource: IRecipeCockpitTreeSummarySource; renderSequence: number }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
@@ -834,6 +859,8 @@ export interface IRecipeCockpitPanelState {
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     isOrgDescribeInFlight: boolean;
     isRegenerateInFlight: boolean;
+    pendingIsGenerateTreecipeOffered: boolean;
+    isGenerateTreecipeOffered: boolean;
     runFakerStateMessage?: IRecipeCockpitRunFakerStateMessage;
     reportedFailureDescriptions: Set<string>;
     pendingDataOrgObjectApiNames: Set<string>;
@@ -965,6 +992,8 @@ export class RecipeCockpitService {
             treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             isOrgDescribeInFlight: false,
             isRegenerateInFlight: false,
+            pendingIsGenerateTreecipeOffered: false,
+            isGenerateTreecipeOffered: false,
             reportedFailureDescriptions: new Set(),
             pendingDataOrgObjectApiNames: new Set(),
             dataOrgObjectApiNames: new Set(),
@@ -1170,6 +1199,9 @@ export class RecipeCockpitService {
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
         panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel);
         panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+        // THE PANEL DRAWS THE BUTTON ONLY FOR A MODEL WITH NO RUN, AND ONLY ITS "rendered" SAYS THAT MODEL IS THE ONE ON SCREEN
+        panelState.pendingIsGenerateTreecipeOffered = recipeViewModel.runs.length === 0;
+        panelState.isGenerateTreecipeOffered = false;
         // THE SAME REASON AS THE DESCRIBABLE SET: AN ANSWER IS TAGGED WITH THE CURRENT renderSequence, SO THE OLD MODEL'S KEYS MUST NOT ANSWER FOR IT
         panelState.loadablePicklistKeys = new Set();
         /*
@@ -1263,6 +1295,7 @@ export class RecipeCockpitService {
                 panelState.describableObjectApiNamesByTreeKey = new Map();
                 panelState.loadablePicklistKeys = new Set();
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+                panelState.isGenerateTreecipeOffered = false;
                 // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL COUNTING IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
                 panelState.creatableObjectKeys = new Set();
@@ -1279,6 +1312,7 @@ export class RecipeCockpitService {
                 panelState.describableObjectApiNamesByTreeKey = panelState.pendingDescribableObjectApiNamesByTreeKey;
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
+                panelState.isGenerateTreecipeOffered = panelState.pendingIsGenerateTreecipeOffered;
                 panelState.dataOrgObjectApiNames = panelState.pendingDataOrgObjectApiNames;
                 panelState.creatableObjectKeys = panelState.pendingCreatableObjectKeys;
                 panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
@@ -1295,6 +1329,7 @@ export class RecipeCockpitService {
                     panelState.describableObjectApiNamesByTreeKey = new Map();
                     panelState.loadablePicklistKeys = new Set();
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+                    panelState.isGenerateTreecipeOffered = false;
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.creatableObjectKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
@@ -1342,7 +1377,12 @@ export class RecipeCockpitService {
 
             case 'regenerateRecipe':
 
-                await this.regenerateRecipe(cockpitPanel, panelState, panelAction.treeKey);
+                await this.generateTreecipeAndReload(cockpitPanel, panelState, { treeKey: panelAction.treeKey, tab: 'structure' });
+                return;
+
+            case 'generateTreecipe':
+
+                await this.generateTreecipeAndReload(cockpitPanel, panelState);
                 return;
 
             case 'postPicklistValues':
@@ -2068,8 +2108,11 @@ export class RecipeCockpitService {
         button (RECIPE_COCKPIT_REGENERATE_NOTE). The latest run is loaded afterwards whether or not
         generation wrote one: Generate Treecipe reports its own failures, and reloading an
         unchanged latest run shows the reader exactly what is on disk.
+
+        The no-run empty state's Generate Treecipe button (#214) comes through here too, with no
+        card to focus: one in-flight flag means a Regenerate and a first Generate never run at once.
     */
-    private static async regenerateRecipe(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, treeKey: string) {
+    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, focusTree?: IRecipeCockpitTreeFocus) {
 
         /*
             In flight until the RELOAD has finished, not only the command: the comparison that routes
@@ -2096,7 +2139,7 @@ export class RecipeCockpitService {
             }
 
             if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, { treeKey: treeKey, tab: 'structure' });
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, focusTree);
             }
 
         } finally {
@@ -2395,6 +2438,7 @@ export class RecipeCockpitService {
                 this.postToPanel(cockpitPanel, {
                     command: 'dataOrgReadiness',
                     objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
+                    createTargets: [],
                     createResults: [],
                     requestSequence: requestSequence,
                     renderSequence: renderSequence
@@ -2427,9 +2471,13 @@ export class RecipeCockpitService {
             that has not answered it is a sandbox.
         */
         let readinessByObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+        let readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
 
         try {
-            readinessByObjectApiName = await this.computeCreateReadiness(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail, () => !isSelectionCurrent());
+            const createTargets = await this.collectCreateTargets(panelState, selectedRecipeDataMessage);
+            const readinessByTarget = await this.computeCreateReadinessByTarget(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail, createTargets, () => !isSelectionCurrent());
+            readinessByObjectApiName = readinessByTarget.byObjectApiName;
+            readinessByCreateKey = readinessByTarget.byCreateKey;
         } catch (describeError) {
             const describeFailureMessage = String(describeError?.message ?? describeError);
             readinessByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, {
@@ -2448,6 +2496,7 @@ export class RecipeCockpitService {
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgReadiness',
             objects: objectApiNames.map(objectApiName => readinessByObjectApiName.get(objectApiName)).filter(readiness => !!readiness),
+            createTargets: [...readinessByCreateKey.values()],
             createResults: [...panelState.dataOrgCreateResults.entries()]
                 .filter(([createResultKey]) => createResultKey.startsWith(usernamePrefix))
                 .map(([, storedCreateResult]) => storedCreateResult.viewModel),
@@ -2470,13 +2519,45 @@ export class RecipeCockpitService {
                                         orgTypeDetail: IOrgTypeDetail | undefined,
                                         isCancellationRequested?: () => boolean): Promise<Map<string, IRecipeCockpitCreateReadinessViewModel>> {
 
+        return ( await this.computeCreateReadinessByTarget(orgUsername, describeSource, querySource, objectApiNames, orgTypeDetail, [], isCancellationRequested) ).byObjectApiName;
+
+    }
+
+    /*
+        The same, plus one readiness per tree and object (#210): the object's guards, then the fields
+        of the block that tree's Create would cut, checked against the describe the guards already
+        loaded -- so no target costs a request of its own. A target whose object was not asked about
+        gets no readiness.
+    */
+    static async computeCreateReadinessByTarget(orgUsername: string,
+                                                describeSource: IOrgDescribeSource,
+                                                querySource: IOrgQuerySource,
+                                                objectApiNames: string[],
+                                                orgTypeDetail: IOrgTypeDetail | undefined,
+                                                createTargets: IRecipeCockpitCreateTarget[],
+                                                isCancellationRequested?: () => boolean): Promise<IRecipeCockpitCreateReadinessByTarget> {
+
         const readinessByObjectApiName = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
+        const readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
+        const createTargetsByObjectApiName = new Map<string, IRecipeCockpitCreateTarget[]>();
+        createTargets.forEach(createTarget => createTargetsByObjectApiName.set(createTarget.objectApiName, [...( createTargetsByObjectApiName.get(createTarget.objectApiName) ?? [] ), createTarget]));
+
+        const setReadiness = (readinessInput: ICreateReadinessInput) => {
+            readinessByObjectApiName.set(readinessInput.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness(readinessInput));
+            ( createTargetsByObjectApiName.get(readinessInput.objectApiName) ?? [] )
+                .forEach(createTarget => readinessByCreateKey.set(this.buildCreatableObjectKey(createTarget.treeKey, createTarget.objectApiName), {
+                    ...RecipeCockpitRecordCreation.buildCreateReadiness({
+                        ...readinessInput,
+                        recipeFieldApiNames: createTarget.recipeFieldApiNames,
+                        recipeFieldRefusalReason: createTarget.recipeFieldRefusalReason
+                    }),
+                    treeKey: createTarget.treeKey
+                }));
+        };
 
         if ( orgTypeDetail?.isSandbox !== true ) {
-            objectApiNames.forEach(objectApiName => readinessByObjectApiName.set(objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: objectApiName, orgTypeDetail: orgTypeDetail, parentRecordCountsByObject: new Map()
-            })));
-            return readinessByObjectApiName;
+            objectApiNames.forEach(objectApiName => setReadiness({ objectApiName: objectApiName, orgTypeDetail: orgTypeDetail, parentRecordCountsByObject: new Map() }));
+            return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
         }
 
         const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => describeSource, { isCancellationRequested });
@@ -2496,15 +2577,102 @@ export class RecipeCockpitService {
             countOutcome.status === 'count' ? countOutcome.recordCount : undefined
         ]));
 
-        describeResult.outcomes.forEach(describeOutcome => readinessByObjectApiName.set(describeOutcome.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness({
+        describeResult.outcomes.forEach(describeOutcome => setReadiness({
             objectApiName: describeOutcome.objectApiName,
             orgTypeDetail: orgTypeDetail,
             describe: describeOutcome.describe,
             describeFailureMessage: describeOutcome.failureMessage,
             parentRecordCountsByObject: parentRecordCountsByObject
-        })));
+        }));
 
-        return readinessByObjectApiName;
+        return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
+
+    }
+
+    /*
+        The block a tree's Create would cut for one object, as a readiness target: its field keys, or
+        why it cannot be read. The same nickname rule and the same cut performCreate uses, so the
+        fields checked are the fields inserted.
+    */
+    static buildCreateTarget(treeKey: string, objectApiName: string, recipeText: string | undefined, objectNickname: string | undefined): IRecipeCockpitCreateTarget {
+
+        return recipeText === undefined
+            ? this.buildUnreadableRecipeCreateTarget(treeKey, objectApiName)
+            : this.buildCreateTargetFromListing(treeKey, objectApiName, RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname));
+
+    }
+
+    private static buildUnreadableRecipeCreateTarget(treeKey: string, objectApiName: string): IRecipeCockpitCreateTarget {
+
+        return { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The recipe file for this tree could not be read, so its ${objectApiName} fields could not be checked.` };
+
+    }
+
+    private static buildCreateTargetFromListing(treeKey: string, objectApiName: string, listed: RecipeBlockFieldListResult): IRecipeCockpitCreateTarget {
+
+        return 'refusal' in listed
+            ? { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The ${objectApiName} block could not be cut from this tree's recipe: ${listed.refusal.message}` }
+            : { treeKey: treeKey, objectApiName: objectApiName, recipeFieldApiNames: listed.fieldApiNames };
+
+    }
+
+    // AN OBJECT WRITTEN TWICE (A SELF-LOOKUP ITERATION) IS CUT BY THE TOP OCCURRENCE'S NICKNAME
+    static resolveCreateObjectNickname(recipeDataMessage: IRecipeCockpitRecipeDataMessage | undefined, objectApiName: string): string | undefined {
+
+        const recipeObject = recipeDataMessage?.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName);
+        return this.readCreateObjectNickname(recipeObject);
+
+    }
+
+    private static readCreateObjectNickname(recipeObject: IRecipeCockpitObjectViewModel | undefined): string | undefined {
+
+        return recipeObject?.iterations?.length ? recipeObject.nickname : undefined;
+
+    }
+
+    /*
+        Every object Create is offered for in the model on screen, as a target cut from its tree's
+        recipe. Each recipe is read once, off the event loop, only from inside the workspace, and
+        SCANNED once for all of its objects (listCreateBlockFieldApiNamesForObjects); a recipe that
+        cannot be read is every one of its objects' refusal.
+    */
+    static async collectCreateTargets(panelState: IRecipeCockpitPanelState, recipeDataMessage: IRecipeCockpitRecipeDataMessage): Promise<IRecipeCockpitCreateTarget[]> {
+
+        const recipeObjectsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
+        recipeDataMessage.recipe.objects.forEach(recipeObject => {
+            if ( !recipeObjectsByApiName.has(recipeObject.objectApiName) ) {
+                recipeObjectsByApiName.set(recipeObject.objectApiName, recipeObject);
+            }
+        });
+
+        const createTargets: IRecipeCockpitCreateTarget[] = [];
+
+        for ( const tree of recipeDataMessage.recipe.trees.filter(candidateTree => !!candidateTree.runFakerRecipeFileName) ) {
+
+            const objectApiNames = tree.objects
+                .filter(treeObject => treeObject.iterationNickname === undefined)
+                .map(treeObject => treeObject.objectApiName);
+
+            const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
+            const recipeText = recipeFilePath && this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot)
+                ? await fs.promises.readFile(recipeFilePath, 'utf-8').catch((): undefined => undefined)
+                : undefined;
+
+            if ( recipeText === undefined ) {
+                objectApiNames.forEach(objectApiName => createTargets.push(this.buildUnreadableRecipeCreateTarget(tree.treeKey, objectApiName)));
+                continue;
+            }
+
+            const listings = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, objectApiNames.map(objectApiName => ({
+                objectApiName: objectApiName,
+                objectNickname: this.readCreateObjectNickname(recipeObjectsByApiName.get(objectApiName))
+            })));
+
+            objectApiNames.forEach((objectApiName, objectIndex) => createTargets.push(this.buildCreateTargetFromListing(tree.treeKey, objectApiName, listings[objectIndex])));
+
+        }
+
+        return createTargets;
 
     }
 
@@ -2620,9 +2788,9 @@ export class RecipeCockpitService {
                 : `"${recipeFileLabel}" has a file name and folder that disagree on which faker implementation generated it, so no records were created.`);
         }
 
-        const recipeObject = panelState.recipeDataMessage.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName);
-        const objectNickname = recipeObject?.iterations?.length ? recipeObject.nickname : undefined;
-        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(fs.readFileSync(recipeFilePath, 'utf-8'), objectApiName, recordCount, objectNickname);
+        const objectNickname = this.resolveCreateObjectNickname(panelState.recipeDataMessage, objectApiName);
+        const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, objectApiName, recordCount, objectNickname);
 
         if ( 'refusal' in extraction ) {
             return refuse(`The ${objectLabel} block could not be cut from "${recipeFileLabel}", so no records were created: ${RecipeYamlScalar.escapeForNotification(extraction.refusal.message)}`);
@@ -2633,7 +2801,9 @@ export class RecipeCockpitService {
 
         // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE INSERT RELIES ON
         const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
-        const readiness = ( await this.computeCreateReadiness(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail) ).get(objectApiName);
+        // THE FIELDS OF THE BLOCK JUST CUT, SO A FORGED createRecords FOR AN OBJECT THE ORG CANNOT TAKE INSERTS NOTHING
+        const readiness = ( await this.computeCreateReadinessByTarget(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail,
+            [this.buildCreateTarget(treeKey, objectApiName, recipeText, objectNickname)]) ).byCreateKey.get(this.buildCreatableObjectKey(treeKey, objectApiName));
 
         if ( !readiness || readiness.disabledReason ) {
             return refuse(`No ${objectLabel} records were created in ${orgLabel}: ${RecipeYamlScalar.escapeForNotification(readiness?.disabledReason ?? 'it could not be checked')}`);
@@ -3023,6 +3193,19 @@ export class RecipeCockpitService {
                 return { kind: 'regenerateRecipe', treeKey: treeKey };
 
             }
+
+            /*
+                No payload to check: the button is drawn only in the empty state of a model with no
+                run, so it is honoured only once THAT model's "rendered" has arrived, and never while
+                a generation started from either button is still running or reloading.
+            */
+            case 'generateTreecipe':
+
+                if ( !panelState.isGenerateTreecipeOffered || panelState.isRegenerateInFlight ) {
+                    return undefined;
+                }
+
+                return { kind: 'generateTreecipe' };
 
             /*
                 Names, not a path, and answered only for a row the CONFIRMED-drawn model marked as a
@@ -4496,15 +4679,7 @@ ${this.buildPaletteCustomProperties()}
     }
     .toolbar input::placeholder { color: var(--sdt-muted); opacity: 1; }
     .toolbar select { padding: 0.3rem; }
-    .toolbar button, .treeCompare button {
-        padding: 0.3rem 0.6rem;
-        color: var(--sdt-on-accent);
-        background-color: var(--sdt-accent);
-        border: 1px solid var(--sdt-accent);
-        border-radius: 4px;
-        cursor: pointer;
-    }
-    .toolbar button:disabled, .treeCompare button:disabled { opacity: 0.6; cursor: default; }
+    .emptyStateActions { margin-top: 0.5rem; }
     .treeCompare { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treeCompareControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .treeCompare select {
@@ -4589,29 +4764,58 @@ ${this.buildPaletteCustomProperties()}
         margin: 0.6rem 0;
         overflow: hidden;
     }
-    .treeHeader, .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-    .treeHeader { padding: 0.5rem 0.6rem; background-color: var(--sdt-header); }
-    .treeTitle { font-weight: 600; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice {
-        background: none;
-        border: none;
-        padding: 0;
+    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeHeader {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.6rem;
+        min-height: 4rem;
+        box-sizing: border-box;
+        padding: 0.8rem 1rem;
+        background-color: var(--sdt-header);
+        cursor: pointer;
+    }
+    .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
+    .treeTitle { font-weight: 600; font-size: 1.1em; }
+    .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataTreeToggle, .dataCreate, .dataCreateErrors {
+        min-height: 2.25rem;
+        min-width: 2.25rem;
+        padding: 0.4rem 0.8rem;
         font: inherit;
         color: var(--sdt-accent);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
         cursor: pointer;
-        border-radius: 4px;
     }
-    .treeScope { margin-left: auto; padding: 0 0.3rem; }
-    .treeRunFaker { padding: 0 0.3rem; }
-    .treeRunFaker:disabled { opacity: 0.6; cursor: default; }
-    .treeAddFriend { padding: 0 0.3rem; font-weight: 600; }
-    .treeAddFriendChoice { padding: 0 0.3rem; text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled { opacity: 0.6; cursor: default; }
-    .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; padding-left: 1.5rem; }
-    .treeScope.selected { outline: 1px solid var(--sdt-accent); }
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeScope:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeScopeClear:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataTreeToggle:hover:not(:disabled), .dataCreateErrors:hover:not(:disabled) {
+        border-color: var(--sdt-accent);
+    }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataTreeToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .treeScope { font-size: 1.1em; }
+    .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .dataCreate {
+        color: var(--sdt-on-accent);
+        background-color: var(--sdt-accent);
+        border-color: var(--sdt-accent);
+        font-weight: 600;
+    }
+    .treeAddFriend { font-weight: 600; }
+    .treeAddFriendChoice, .historyAction, .dataCreateErrors { text-decoration: underline; }
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .dataCreate:disabled, .dataOrgRefresh:disabled, .treeScope:disabled, .treeTab:disabled, .historyAction:disabled {
+        color: var(--sdt-disabled-text);
+        background-color: var(--sdt-disabled-bg);
+        border-color: var(--sdt-border);
+        cursor: not-allowed;
+        opacity: 1;
+    }
+    .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
+    .treeScope.selected { outline: 2px solid var(--sdt-accent); }
     .treeBody { border-top: 1px solid var(--sdt-border); }
-    .treeTabs { display: flex; gap: 0.75rem; padding: 0.3rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
-    .treeTab { color: var(--sdt-muted); padding: 0.2rem 0; border-bottom: 2px solid transparent; }
+    .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
+    .treeTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
+    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
     .treeTab.selected { color: var(--sdt-text); border-bottom-color: var(--sdt-accent); font-weight: 600; }
     .treeObjectHeader { padding: 0.35rem 0.6rem; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
@@ -4638,7 +4842,6 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeVersionBody { padding-left: 1.4rem; }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
-    .historyAction { text-decoration: underline; }
     .dataOrgControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.5rem 0; }
     .dataOrgSelect {
         padding: 0.3rem;
@@ -4653,15 +4856,6 @@ ${this.buildPaletteCustomProperties()}
         color: var(--sdt-chip-text);
         background-color: var(--sdt-chip-bg);
         border-radius: 0.6rem;
-    }
-    .dataOrgRefresh, .dataTreeToggle {
-        background: none;
-        border: none;
-        padding: 0 0.3rem;
-        font: inherit;
-        color: var(--sdt-accent);
-        cursor: pointer;
-        border-radius: 4px;
     }
     .dataOrgStatus { margin: 0.4rem 0; }
     .dataOrgStatus.failed { color: var(--sdt-removed); }
@@ -4686,24 +4880,6 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
         border-radius: 4px;
-    }
-    .dataCreate {
-        padding: 0.15rem 0.5rem;
-        color: var(--sdt-on-accent);
-        background-color: var(--sdt-accent);
-        border: 1px solid var(--sdt-accent);
-        border-radius: 4px;
-        cursor: pointer;
-    }
-    .dataCreate:disabled { opacity: 0.6; cursor: default; }
-    .dataCreateErrors {
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        color: var(--sdt-accent);
-        text-decoration: underline;
-        cursor: pointer;
     }
     .dataCreateResult.succeeded { color: var(--sdt-added); }
     .dataCreateResult.partial { color: var(--sdt-changed); }
@@ -4737,6 +4913,8 @@ ${this.buildPaletteCustomProperties()}
     const DIFF_PICKLIST_VALUES_SHOWN = ${RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN};
     const REGENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL)};
     const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
+    const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
+    const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
     const DESCRIBE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL)};
     const CHOOSE_ORG_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL)};
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
@@ -4783,6 +4961,8 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgSelectedIndex = null;
     // KEYED BY OBJECT NAMES, AND BY TREE KEY AND OBJECT NAME -- NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgReadinessByObject = Object.create(null);
+    // A ROW'S OWN TREE'S READINESS, ITS BLOCK'S FIELDS CHECKED (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
+    let dataOrgReadinessByCreateKey = Object.create(null);
     let dataOrgCreateResultsByKey = Object.create(null);
     // THE ROW WHOSE CREATE IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE CREATE ENDED
     let createRunningKey = null;
@@ -5758,7 +5938,13 @@ ${this.buildPaletteCustomProperties()}
 
         toggleElement.setAttribute('aria-expanded', 'false');
         toggleElement.setAttribute('aria-label', 'Show or hide ' + tree.title);
-        toggleElement.addEventListener('click', function () {
+
+        /*
+            The whole header row is the toggle (#209). The ▸ button carries no listener of its own:
+            its click -- a mouse's, or Enter/Space while it has focus -- bubbles here like a click
+            anywhere else on the row, so the card cannot be toggled twice by one click.
+        */
+        treeHeaderElement.addEventListener('click', function () {
             treeState.isExpandedByReader = !treeState.isExpanded;
             setTreeExpanded(treeState, treeState.isExpandedByReader);
         });
@@ -5780,12 +5966,23 @@ ${this.buildPaletteCustomProperties()}
         treeHeaderElement.appendChild(createElement('span', 'treeCount muted',
             pluralize(objectStatesCounted.length, 'object', 'objects') + ' · ' + pluralize(treeFieldCount, 'field', 'fields')));
         treeHeaderElement.appendChild(treeState.matchElement);
-        treeHeaderElement.appendChild(scopeElement);
+
+        /*
+            The actions sit at the END of the row and never toggle it. The click is stopped on the
+            GROUP rather than on each button, because a browser may hand a click on a DISABLED
+            button -- every Run Faker while one runs -- to its ancestors without running the
+            button's own listener.
+        */
+        const actionsElement = createElement('span', 'treeHeaderActions');
+        actionsElement.addEventListener('click', function (event) { event.stopPropagation(); });
+        actionsElement.appendChild(scopeElement);
 
         if (tree.runFakerRecipeFileName) {
             treeState.runFakerElement = buildRunFakerElement(tree);
-            treeHeaderElement.appendChild(treeState.runFakerElement);
+            actionsElement.appendChild(treeState.runFakerElement);
         }
+
+        treeHeaderElement.appendChild(actionsElement);
 
         treeElement.appendChild(treeHeaderElement);
         treeElement.appendChild(treeState.bodyElement);
@@ -6238,7 +6435,9 @@ ${this.buildPaletteCustomProperties()}
 
         dataObjectState.controlsElement.classList.remove('hidden');
 
-        const readiness = Object.prototype.hasOwnProperty.call(dataOrgReadinessByObject, dataObjectState.objectApiName)
+        const readiness = Object.prototype.hasOwnProperty.call(dataOrgReadinessByCreateKey, dataObjectState.createKey)
+            ? dataOrgReadinessByCreateKey[dataObjectState.createKey]
+            : Object.prototype.hasOwnProperty.call(dataOrgReadinessByObject, dataObjectState.objectApiName)
             ? dataOrgReadinessByObject[dataObjectState.objectApiName]
             : null;
         const isThisRowRunning = createRunningKey === dataObjectState.createKey;
@@ -6291,6 +6490,7 @@ ${this.buildPaletteCustomProperties()}
         if (!dataOrgStatusElement || dataOrgReadiness.renderSequence !== renderedSequence || dataOrgReadiness.requestSequence !== dataOrgRequestSequence) { return; }
 
         dataOrgReadiness.objects.forEach(function (readiness) { dataOrgReadinessByObject[readiness.objectApiName] = readiness; });
+        (dataOrgReadiness.createTargets || []).forEach(function (readiness) { dataOrgReadinessByCreateKey[buildCreateKey(readiness.treeKey, readiness.objectApiName)] = readiness; });
         dataOrgReadiness.createResults.forEach(function (createResult) {
             dataOrgCreateResultsByKey[buildCreateKey(createResult.treeKey, createResult.objectApiName)] = createResult;
         });
@@ -6368,6 +6568,7 @@ ${this.buildPaletteCustomProperties()}
         dataOrgSelectedIndex = null;
         dataOrgCountsByObject = Object.create(null);
         dataOrgReadinessByObject = Object.create(null);
+        dataOrgReadinessByCreateKey = Object.create(null);
         dataOrgCreateResultsByKey = Object.create(null);
         dataOrgTypeElement.classList.add('hidden');
         dataTreeStates.forEach(drawDataTreeCounts);
@@ -6398,6 +6599,7 @@ ${this.buildPaletteCustomProperties()}
             dataOrgRequestSequence = dataOrgSelection.requestSequence;
             dataOrgCountsByObject = Object.create(null);
             dataOrgReadinessByObject = Object.create(null);
+            dataOrgReadinessByCreateKey = Object.create(null);
             dataOrgCreateResultsByKey = Object.create(null);
             setDataOrgStatus('Counting records in ' + dataOrgSelection.orgLabel + '…', false);
         }
@@ -6462,6 +6664,10 @@ ${this.buildPaletteCustomProperties()}
 
         if (!hasObjects) {
             cockpitBodyElement.appendChild(createElement('div', 'emptyState', recipe.emptyStateMessage));
+            // ONLY WHEN THERE IS NO RUN AT ALL: A RUN THAT COULD NOT BE READ KEEPS ITS RUN SELECTOR INSTEAD
+            if (recipe.runs.length === 0) {
+                cockpitBodyElement.appendChild(buildGenerateTreecipeElement());
+            }
             return;
         }
 
@@ -6501,6 +6707,7 @@ ${this.buildPaletteCustomProperties()}
         dataObjectStates = [];
         dataOrgSelectedIndex = null;
         dataOrgReadinessByObject = Object.create(null);
+        dataOrgReadinessByCreateKey = Object.create(null);
         dataOrgCreateResultsByKey = Object.create(null);
         pendingPicklistValueElements = Object.create(null);
         pendingDatasetCountElements = Object.create(null);
@@ -6699,6 +6906,24 @@ ${this.buildPaletteCustomProperties()}
             .map(function (diffStatus) { return statusCounts[diffStatus] + ' ' + DIFF_STATUS_LABELS[diffStatus]; });
 
         return countTexts.length > 0 ? countTexts.join(' · ') : 'no changes';
+
+    }
+
+    // DISABLED UNTIL THE HOST'S RELOAD REDRAWS THE BODY, WHICH IT DOES HOWEVER GENERATION ENDED
+    function buildGenerateTreecipeElement() {
+
+        const generateElement = createElement('div', 'emptyStateActions');
+        const generateButtonElement = createElement('button', 'generateTreecipe', GENERATE_TREECIPE_ACTION_LABEL);
+
+        generateButtonElement.addEventListener('click', function () {
+            generateButtonElement.disabled = true;
+            generateButtonElement.textContent = GENERATE_TREECIPE_RUNNING_LABEL;
+            vscodeApi.postMessage({ command: 'generateTreecipe' });
+        });
+
+        generateElement.appendChild(generateButtonElement);
+
+        return generateElement;
 
     }
 
