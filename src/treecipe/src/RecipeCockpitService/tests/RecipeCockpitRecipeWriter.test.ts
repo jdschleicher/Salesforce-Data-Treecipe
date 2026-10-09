@@ -1198,6 +1198,127 @@ describe('RecipeCockpitRecipeWriter', () => {
 
     });
 
+    describe('listCreateBlockFieldApiNames, the fields a Create would send (#210)', () => {
+
+        const NESTED_ACCOUNT_RECIPE = [
+            '- object: Account',
+            '  nickname: Account_NickName',
+            '  count: 1',
+            '  fields:',
+            '    Name: ${{ faker.company.name() }}',
+            '    RecordTypeId: Account.Business',
+            '    ### TODO -- pick one',
+            '    Description: |',
+            '      two lines',
+            '  friends:',
+            '    - object: Contact',
+            '      nickname: Contact_Account_NickName',
+            '      count: 1',
+            '      fields:',
+            '        LastName: x',
+            '        AccountId: Account_NickName',
+            ''
+        ].join('\n');
+
+        it('lists the cut block\'s own fields in order, standard mappings and RecordTypeId included, and no friend\'s', () => {
+
+            expect(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(NESTED_ACCOUNT_RECIPE, 'Account'))
+                .toEqual({ isListed: true, fieldApiNames: ['Name', 'RecordTypeId', 'Description'] });
+
+            expect(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(NESTED_ACCOUNT_RECIPE, 'Contact'))
+                .toEqual({ isListed: true, fieldApiNames: ['LastName', 'AccountId'] });
+
+        });
+
+        it('leaves out a field the cockpit commented out', () => {
+
+            const commented = RecipeCockpitRecipeWriter.commentOutField(NESTED_ACCOUNT_RECIPE, 'Account', 'RecordTypeId', 'not in org');
+            const commentedRecipeText = commented.isApplied ? commented.recipeText : '';
+
+            expect(commentedRecipeText).toContain('FIELD COMMENTED OUT');
+            expect(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(commentedRecipeText, 'Account'))
+                .toEqual({ isListed: true, fieldApiNames: ['Name', 'Description'] });
+
+        });
+
+        it('lists the same fields extractObjectBlock\'s cut carries, in every fixture', () => {
+
+            [...ALL_RECIPE_FIXTURES, ['self-lookup', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml']].forEach(([, fixtureFileName]) => {
+
+                const recipeText = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, fixtureFileName), 'utf-8');
+                const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines);
+
+                scannedObjects.forEach(scannedObject => {
+                    const isWrittenTwice = scannedObjects.filter(otherObject => otherObject.objectApiName === scannedObject.objectApiName).length > 1;
+                    const listed = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, scannedObject.objectApiName, isWrittenTwice ? scannedObject.nicknames[0] : undefined);
+
+                    expect(listed).toEqual({ isListed: true, fieldApiNames: scannedObject.fields.map(scannedField => scannedField.fieldApiName) });
+                });
+
+            });
+
+        });
+
+        it('lists many objects from one scan with exactly the per-object answers, refusals word for word', () => {
+
+            [...ALL_RECIPE_FIXTURES, ['self-lookup', 'recipe-fakerjs-selfLookup--RelationshipTree_1.yml']].forEach(([, fixtureFileName]) => {
+
+                const recipeText = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, fixtureFileName), 'utf-8');
+                const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines);
+                const requests = [
+                    ...scannedObjects.flatMap(scannedObject => [
+                        { objectApiName: scannedObject.objectApiName },
+                        { objectApiName: scannedObject.objectApiName, objectNickname: scannedObject.nicknames[0] }
+                    ]),
+                    { objectApiName: 'Missing__c' },
+                    { objectApiName: 'Bad\n- object: Evil' },
+                    { objectApiName: scannedObjects[0].objectApiName, objectNickname: 'No_Such_NickName' }
+                ];
+
+                expect(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, requests))
+                    .toEqual(requests.map(request => RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, request.objectApiName, request.objectNickname)));
+
+            });
+
+        });
+
+        it('answers a duplicate object and a block with no count line as the per-object cut does', () => {
+
+            const doubled = `${NESTED_ACCOUNT_RECIPE}${NESTED_ACCOUNT_RECIPE.replace(/Account_NickName/g, 'Second_NickName')}`;
+            const countless = '- object: Lead\n  fields:\n    Company: x\n';
+            const reasonsOf = (results: any[]) => results.map(result => result.refusal?.reason ?? result.fieldApiNames);
+
+            expect(reasonsOf(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(doubled, [{ objectApiName: 'Account' }, { objectApiName: 'Account', objectNickname: 'Second_NickName' }])))
+                .toEqual(['duplicate-object', ['Name', 'RecordTypeId', 'Description']]);
+            expect(reasonsOf(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(countless, [{ objectApiName: 'Lead' }]))).toEqual(['property-not-found']);
+
+        });
+
+        it('scans the recipe once for any number of listable objects', () => {
+
+            const recipeText = Array.from({ length: 40 }, (_unused, index) => `- object: Object_${index}__c\n  nickname: Object_${index}_NickName\n  count: 1\n  fields:\n    Name__c: x\n`).join('\n');
+            const scanSpy = jest.spyOn(RecipeCockpitRecipeWriter, 'scanRecipeObjects');
+
+            const results = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, Array.from({ length: 40 }, (_unused, index) => ({ objectApiName: `Object_${index}__c` })));
+
+            expect(results.every(result => result.isListed)).toBe(true);
+            expect(scanSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('answers a block that cannot be cut with the cut\'s refusal', () => {
+
+            const reasonOf = (listed: any) => listed.refusal?.reason;
+            const doubled = `${NESTED_ACCOUNT_RECIPE}${NESTED_ACCOUNT_RECIPE.replace('Account_NickName', 'Second_NickName')}`;
+
+            expect(reasonOf(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(NESTED_ACCOUNT_RECIPE, 'Lead'))).toBe('object-not-found');
+            expect(reasonOf(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(doubled, 'Account'))).toBe('duplicate-object');
+            expect(reasonOf(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames('- object: Lead\n  fields:\n    Company: x\n', 'Lead'))).toBe('property-not-found');
+
+        });
+
+    });
+
     describe('insertFriend, a friend added under a self-lookup iteration (#197)', () => {
 
         const FRIENDS_FIXTURE = 'recipe-fakerjs-selfLookupFriends--RelationshipTree_1.yml';
