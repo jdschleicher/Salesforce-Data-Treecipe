@@ -9,10 +9,11 @@ export class ErrorHandlingService {
     static reportIssueButton = 'Report Issue to GitHub with Stack Trace';
     static expectedMissingConfigError = 'Missing treecipe configuration setup at expected path of:';
 
-    static handleCapturedError(error:Error, executedCommand:string) {
+    static handleCapturedError(error: Error, executedCommand: string) {
         
         // A THROWN STRING, null OR undefined HAS NO MESSAGE, AND READING ONE MUST NOT THROW FROM INSIDE THE ERROR HANDLER
-        if ( typeof error?.message === 'string' && error.message.startsWith(this.expectedMissingConfigError)) {
+        const capturedMessage = (error as { message?: unknown } | null | undefined)?.message;
+        if ( typeof capturedMessage === 'string' && capturedMessage.startsWith(this.expectedMissingConfigError)) {
             this.handleMissingTreecipeConfigSetup(error, executedCommand);
         } else {
             
@@ -118,7 +119,7 @@ ${stackTrace}
 
     }
 
-    static handleMissingTreecipeConfigSetup(error, executedCommand) {
+    static handleMissingTreecipeConfigSetup(error: unknown, executedCommand: string) {
 
         const runInitiateTreecipeConfiguration = "Run Treecipe Initiation Setup";
         const missingConfigurationMessage = "Expected treecipe and config file missing";
