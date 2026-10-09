@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.46.1] - Every error notification shows workspace text as plain text
+
+Closes [#186](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/186), a follow-up to the #183 security review.
+
+VS Code renders `[label](command:…)` in a notification as a link that runs the command when clicked (#164). `ErrorHandlingService.handleGenericError` put `error.message` into `showErrorMessage` unescaped, and every `handleCapturedError` caller reaches it. An error message can quote workspace text: a `js-yaml` parse error from **Run Faker by Recipe** quotes the recipe line it failed on, which a repository author wrote. #183 fixed one message by leaving its path out. This closes the class.
+
+- **Generic errors are escaped centrally.** `handleGenericError` passes the error message through `RecipeYamlScalar.escapeForNotification` before `showErrorMessage`, so brackets, parentheses and every line break either YAML parser sees (U+0085, U+2028, U+2029 included) show as `\uXXXX` or `\n` text and no message can form a link. `executedCommand` is not escaped: it is always a command name the extension defines.
+- **Missing config too.** `handleMissingTreecipeConfigSetup` escapes the stale-setting notice. `ConfigurationService` already escaped the path inside it, and `escapeForNotification` is idempotent on its own output (a test asserts this), so the notice shows no doubled escapes.
+- **Report Issue keeps the raw text.** The `Report Issue to GitHub with Stack Trace` URL still carries the original message and stack. That text is URL-encoded into an issue body and never rendered as a notification.
+- **A non-Error throw no longer throws inside the handler.** `handleCapturedError` read `error.message.startsWith` before routing, so a thrown string, `null` or `undefined` threw from the error handler itself. It now shows `Unknown error during command: …` like any other non-Error.
+- **Not changed:** button labels, the URLs they open, and the warnings that already escape their own text.
+- **Tests.** `ErrorHandlingService.test.ts` covers an escaped command-link message, the buttons, the raw Report Issue URL for both dialogs, the README URL, each line break, an empty message, a thrown string, `undefined`, `null` and a plain object, an escaped and an already-escaped stale notice, and idempotency. `ExtensionCommandService.test.ts` drives **Run Faker by Recipe** end to end on a recipe whose YAML fails to parse on a `[x](command:git.push)` line and asserts the text that reaches `showErrorMessage`.
+
 ## [3.46.0] - Generate Treecipe reports its progress and can be cancelled
 
 Closes [#216](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/216).
