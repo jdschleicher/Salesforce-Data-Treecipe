@@ -6015,6 +6015,37 @@ describe('RecipeCockpitService', () => {
 
             });
 
+            it('given the empty state failed to draw, honours nothing', async () => {
+
+                jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+                await openRenderedEmptyCockpit();
+
+                await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'boom', stack: '' });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+
+            });
+
+            // NOTHING IN FLIGHT MASKS THIS RESET: A MODEL WITH A RUN WAS POSTED, AND ITS "rendered" HAS NOT ARRIVED
+            it('given a model with a run is posted over the drawn empty state, honours nothing before or after its ack', async () => {
+
+                await openRenderedEmptyCockpit();
+
+                (RecipeCockpitService as any).renderRecipeModel(createdWebviewPanel, RecipeCockpitService.loadRecipeRunByRuns(
+                    RecipeCockpitService.findGeneratedRecipeRuns(path.join(MOCK_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes')),
+                    MOCK_WORKSPACE_ROOT
+                ));
+                expect(lastRecipe().runs.length).toBeGreaterThan(0);
+
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                await receivedMessageHandler({ command: 'generateTreecipe' });
+
+                expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+
+            });
+
             it('given the document reloads, honours nothing until the replayed empty state is drawn again', async () => {
 
                 await openRenderedEmptyCockpit();
