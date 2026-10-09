@@ -26,8 +26,9 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
-import { IScannedObject, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import { IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
 import {
+    ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
     IRequiredLookupParentIds,
     RecipeCockpitRecordCreation,
@@ -664,6 +665,20 @@ export interface IRecipeCockpitCreateResultViewModel {
     message: string;
 }
 
+// ONE TREE'S CREATE OF ONE OBJECT: THE FIELDS ITS CUT BLOCK WOULD SEND, OR WHY THE BLOCK COULD NOT BE READ
+export interface IRecipeCockpitCreateTarget {
+    treeKey: string;
+    objectApiName: string;
+    recipeFieldApiNames?: string[];
+    recipeFieldRefusalReason?: string;
+}
+
+export interface IRecipeCockpitCreateReadinessByTarget {
+    byObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+    // KEYED BY buildCreatableObjectKey
+    byCreateKey: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+}
+
 /*
     Whether "+ Create" is offered for each object the trees list, in the org the selection names --
     and the last Create made there. Posted once the counts are in, since a required parent's record
@@ -672,6 +687,8 @@ export interface IRecipeCockpitCreateResultViewModel {
 export interface IRecipeCockpitDataOrgReadinessMessage {
     command: 'dataOrgReadiness';
     objects: IRecipeCockpitCreateReadinessViewModel[];
+    // ONE PER TREE AND OBJECT, WITH THAT TREE'S BLOCK'S FIELDS CHECKED (#210); A ROW READS ITS OWN BEFORE ITS OBJECT'S
+    createTargets: IRecipeCockpitCreateReadinessViewModel[];
     createResults: IRecipeCockpitCreateResultViewModel[];
     requestSequence: number;
     renderSequence: number;
@@ -2418,6 +2435,7 @@ export class RecipeCockpitService {
                 this.postToPanel(cockpitPanel, {
                     command: 'dataOrgReadiness',
                     objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
+                    createTargets: [],
                     createResults: [],
                     requestSequence: requestSequence,
                     renderSequence: renderSequence
@@ -2450,9 +2468,13 @@ export class RecipeCockpitService {
             that has not answered it is a sandbox.
         */
         let readinessByObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+        let readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
 
         try {
-            readinessByObjectApiName = await this.computeCreateReadiness(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail, () => !isSelectionCurrent());
+            const createTargets = await this.collectCreateTargets(panelState, selectedRecipeDataMessage);
+            const readinessByTarget = await this.computeCreateReadinessByTarget(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail, createTargets, () => !isSelectionCurrent());
+            readinessByObjectApiName = readinessByTarget.byObjectApiName;
+            readinessByCreateKey = readinessByTarget.byCreateKey;
         } catch (describeError) {
             const describeFailureMessage = String(describeError?.message ?? describeError);
             readinessByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, {
@@ -2471,6 +2493,7 @@ export class RecipeCockpitService {
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgReadiness',
             objects: objectApiNames.map(objectApiName => readinessByObjectApiName.get(objectApiName)).filter(readiness => !!readiness),
+            createTargets: [...readinessByCreateKey.values()],
             createResults: [...panelState.dataOrgCreateResults.entries()]
                 .filter(([createResultKey]) => createResultKey.startsWith(usernamePrefix))
                 .map(([, storedCreateResult]) => storedCreateResult.viewModel),
@@ -2493,13 +2516,45 @@ export class RecipeCockpitService {
                                         orgTypeDetail: IOrgTypeDetail | undefined,
                                         isCancellationRequested?: () => boolean): Promise<Map<string, IRecipeCockpitCreateReadinessViewModel>> {
 
+        return ( await this.computeCreateReadinessByTarget(orgUsername, describeSource, querySource, objectApiNames, orgTypeDetail, [], isCancellationRequested) ).byObjectApiName;
+
+    }
+
+    /*
+        The same, plus one readiness per tree and object (#210): the object's guards, then the fields
+        of the block that tree's Create would cut, checked against the describe the guards already
+        loaded -- so no target costs a request of its own. A target whose object was not asked about
+        gets no readiness.
+    */
+    static async computeCreateReadinessByTarget(orgUsername: string,
+                                                describeSource: IOrgDescribeSource,
+                                                querySource: IOrgQuerySource,
+                                                objectApiNames: string[],
+                                                orgTypeDetail: IOrgTypeDetail | undefined,
+                                                createTargets: IRecipeCockpitCreateTarget[],
+                                                isCancellationRequested?: () => boolean): Promise<IRecipeCockpitCreateReadinessByTarget> {
+
         const readinessByObjectApiName = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
+        const readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
+        const createTargetsByObjectApiName = new Map<string, IRecipeCockpitCreateTarget[]>();
+        createTargets.forEach(createTarget => createTargetsByObjectApiName.set(createTarget.objectApiName, [...( createTargetsByObjectApiName.get(createTarget.objectApiName) ?? [] ), createTarget]));
+
+        const setReadiness = (readinessInput: ICreateReadinessInput) => {
+            readinessByObjectApiName.set(readinessInput.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness(readinessInput));
+            ( createTargetsByObjectApiName.get(readinessInput.objectApiName) ?? [] )
+                .forEach(createTarget => readinessByCreateKey.set(this.buildCreatableObjectKey(createTarget.treeKey, createTarget.objectApiName), {
+                    ...RecipeCockpitRecordCreation.buildCreateReadiness({
+                        ...readinessInput,
+                        recipeFieldApiNames: createTarget.recipeFieldApiNames,
+                        recipeFieldRefusalReason: createTarget.recipeFieldRefusalReason
+                    }),
+                    treeKey: createTarget.treeKey
+                }));
+        };
 
         if ( orgTypeDetail?.isSandbox !== true ) {
-            objectApiNames.forEach(objectApiName => readinessByObjectApiName.set(objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: objectApiName, orgTypeDetail: orgTypeDetail, parentRecordCountsByObject: new Map()
-            })));
-            return readinessByObjectApiName;
+            objectApiNames.forEach(objectApiName => setReadiness({ objectApiName: objectApiName, orgTypeDetail: orgTypeDetail, parentRecordCountsByObject: new Map() }));
+            return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
         }
 
         const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => describeSource, { isCancellationRequested });
@@ -2519,15 +2574,102 @@ export class RecipeCockpitService {
             countOutcome.status === 'count' ? countOutcome.recordCount : undefined
         ]));
 
-        describeResult.outcomes.forEach(describeOutcome => readinessByObjectApiName.set(describeOutcome.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness({
+        describeResult.outcomes.forEach(describeOutcome => setReadiness({
             objectApiName: describeOutcome.objectApiName,
             orgTypeDetail: orgTypeDetail,
             describe: describeOutcome.describe,
             describeFailureMessage: describeOutcome.failureMessage,
             parentRecordCountsByObject: parentRecordCountsByObject
-        })));
+        }));
 
-        return readinessByObjectApiName;
+        return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
+
+    }
+
+    /*
+        The block a tree's Create would cut for one object, as a readiness target: its field keys, or
+        why it cannot be read. The same nickname rule and the same cut performCreate uses, so the
+        fields checked are the fields inserted.
+    */
+    static buildCreateTarget(treeKey: string, objectApiName: string, recipeText: string | undefined, objectNickname: string | undefined): IRecipeCockpitCreateTarget {
+
+        return recipeText === undefined
+            ? this.buildUnreadableRecipeCreateTarget(treeKey, objectApiName)
+            : this.buildCreateTargetFromListing(treeKey, objectApiName, RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname));
+
+    }
+
+    private static buildUnreadableRecipeCreateTarget(treeKey: string, objectApiName: string): IRecipeCockpitCreateTarget {
+
+        return { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The recipe file for this tree could not be read, so its ${objectApiName} fields could not be checked.` };
+
+    }
+
+    private static buildCreateTargetFromListing(treeKey: string, objectApiName: string, listed: RecipeBlockFieldListResult): IRecipeCockpitCreateTarget {
+
+        return 'refusal' in listed
+            ? { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The ${objectApiName} block could not be cut from this tree's recipe: ${listed.refusal.message}` }
+            : { treeKey: treeKey, objectApiName: objectApiName, recipeFieldApiNames: listed.fieldApiNames };
+
+    }
+
+    // AN OBJECT WRITTEN TWICE (A SELF-LOOKUP ITERATION) IS CUT BY THE TOP OCCURRENCE'S NICKNAME
+    static resolveCreateObjectNickname(recipeDataMessage: IRecipeCockpitRecipeDataMessage | undefined, objectApiName: string): string | undefined {
+
+        const recipeObject = recipeDataMessage?.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName);
+        return this.readCreateObjectNickname(recipeObject);
+
+    }
+
+    private static readCreateObjectNickname(recipeObject: IRecipeCockpitObjectViewModel | undefined): string | undefined {
+
+        return recipeObject?.iterations?.length ? recipeObject.nickname : undefined;
+
+    }
+
+    /*
+        Every object Create is offered for in the model on screen, as a target cut from its tree's
+        recipe. Each recipe is read once, off the event loop, only from inside the workspace, and
+        SCANNED once for all of its objects (listCreateBlockFieldApiNamesForObjects); a recipe that
+        cannot be read is every one of its objects' refusal.
+    */
+    static async collectCreateTargets(panelState: IRecipeCockpitPanelState, recipeDataMessage: IRecipeCockpitRecipeDataMessage): Promise<IRecipeCockpitCreateTarget[]> {
+
+        const recipeObjectsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
+        recipeDataMessage.recipe.objects.forEach(recipeObject => {
+            if ( !recipeObjectsByApiName.has(recipeObject.objectApiName) ) {
+                recipeObjectsByApiName.set(recipeObject.objectApiName, recipeObject);
+            }
+        });
+
+        const createTargets: IRecipeCockpitCreateTarget[] = [];
+
+        for ( const tree of recipeDataMessage.recipe.trees.filter(candidateTree => !!candidateTree.runFakerRecipeFileName) ) {
+
+            const objectApiNames = tree.objects
+                .filter(treeObject => treeObject.iterationNickname === undefined)
+                .map(treeObject => treeObject.objectApiName);
+
+            const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
+            const recipeText = recipeFilePath && this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot)
+                ? await fs.promises.readFile(recipeFilePath, 'utf-8').catch((): undefined => undefined)
+                : undefined;
+
+            if ( recipeText === undefined ) {
+                objectApiNames.forEach(objectApiName => createTargets.push(this.buildUnreadableRecipeCreateTarget(tree.treeKey, objectApiName)));
+                continue;
+            }
+
+            const listings = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, objectApiNames.map(objectApiName => ({
+                objectApiName: objectApiName,
+                objectNickname: this.readCreateObjectNickname(recipeObjectsByApiName.get(objectApiName))
+            })));
+
+            objectApiNames.forEach((objectApiName, objectIndex) => createTargets.push(this.buildCreateTargetFromListing(tree.treeKey, objectApiName, listings[objectIndex])));
+
+        }
+
+        return createTargets;
 
     }
 
@@ -2643,9 +2785,9 @@ export class RecipeCockpitService {
                 : `"${recipeFileLabel}" has a file name and folder that disagree on which faker implementation generated it, so no records were created.`);
         }
 
-        const recipeObject = panelState.recipeDataMessage.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName);
-        const objectNickname = recipeObject?.iterations?.length ? recipeObject.nickname : undefined;
-        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(fs.readFileSync(recipeFilePath, 'utf-8'), objectApiName, recordCount, objectNickname);
+        const objectNickname = this.resolveCreateObjectNickname(panelState.recipeDataMessage, objectApiName);
+        const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, objectApiName, recordCount, objectNickname);
 
         if ( 'refusal' in extraction ) {
             return refuse(`The ${objectLabel} block could not be cut from "${recipeFileLabel}", so no records were created: ${RecipeYamlScalar.escapeForNotification(extraction.refusal.message)}`);
@@ -2656,7 +2798,9 @@ export class RecipeCockpitService {
 
         // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE INSERT RELIES ON
         const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
-        const readiness = ( await this.computeCreateReadiness(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail) ).get(objectApiName);
+        // THE FIELDS OF THE BLOCK JUST CUT, SO A FORGED createRecords FOR AN OBJECT THE ORG CANNOT TAKE INSERTS NOTHING
+        const readiness = ( await this.computeCreateReadinessByTarget(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail,
+            [this.buildCreateTarget(treeKey, objectApiName, recipeText, objectNickname)]) ).byCreateKey.get(this.buildCreatableObjectKey(treeKey, objectApiName));
 
         if ( !readiness || readiness.disabledReason ) {
             return refuse(`No ${objectLabel} records were created in ${orgLabel}: ${RecipeYamlScalar.escapeForNotification(readiness?.disabledReason ?? 'it could not be checked')}`);
@@ -4822,6 +4966,8 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgSelectedIndex = null;
     // KEYED BY OBJECT NAMES, AND BY TREE KEY AND OBJECT NAME -- NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgReadinessByObject = Object.create(null);
+    // A ROW'S OWN TREE'S READINESS, ITS BLOCK'S FIELDS CHECKED (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
+    let dataOrgReadinessByCreateKey = Object.create(null);
     let dataOrgCreateResultsByKey = Object.create(null);
     // THE ROW WHOSE CREATE IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE CREATE ENDED
     let createRunningKey = null;
@@ -6277,7 +6423,9 @@ ${this.buildPaletteCustomProperties()}
 
         dataObjectState.controlsElement.classList.remove('hidden');
 
-        const readiness = Object.prototype.hasOwnProperty.call(dataOrgReadinessByObject, dataObjectState.objectApiName)
+        const readiness = Object.prototype.hasOwnProperty.call(dataOrgReadinessByCreateKey, dataObjectState.createKey)
+            ? dataOrgReadinessByCreateKey[dataObjectState.createKey]
+            : Object.prototype.hasOwnProperty.call(dataOrgReadinessByObject, dataObjectState.objectApiName)
             ? dataOrgReadinessByObject[dataObjectState.objectApiName]
             : null;
         const isThisRowRunning = createRunningKey === dataObjectState.createKey;
@@ -6330,6 +6478,7 @@ ${this.buildPaletteCustomProperties()}
         if (!dataOrgStatusElement || dataOrgReadiness.renderSequence !== renderedSequence || dataOrgReadiness.requestSequence !== dataOrgRequestSequence) { return; }
 
         dataOrgReadiness.objects.forEach(function (readiness) { dataOrgReadinessByObject[readiness.objectApiName] = readiness; });
+        (dataOrgReadiness.createTargets || []).forEach(function (readiness) { dataOrgReadinessByCreateKey[buildCreateKey(readiness.treeKey, readiness.objectApiName)] = readiness; });
         dataOrgReadiness.createResults.forEach(function (createResult) {
             dataOrgCreateResultsByKey[buildCreateKey(createResult.treeKey, createResult.objectApiName)] = createResult;
         });
@@ -6407,6 +6556,7 @@ ${this.buildPaletteCustomProperties()}
         dataOrgSelectedIndex = null;
         dataOrgCountsByObject = Object.create(null);
         dataOrgReadinessByObject = Object.create(null);
+        dataOrgReadinessByCreateKey = Object.create(null);
         dataOrgCreateResultsByKey = Object.create(null);
         dataOrgTypeElement.classList.add('hidden');
         dataTreeStates.forEach(drawDataTreeCounts);
@@ -6437,6 +6587,7 @@ ${this.buildPaletteCustomProperties()}
             dataOrgRequestSequence = dataOrgSelection.requestSequence;
             dataOrgCountsByObject = Object.create(null);
             dataOrgReadinessByObject = Object.create(null);
+            dataOrgReadinessByCreateKey = Object.create(null);
             dataOrgCreateResultsByKey = Object.create(null);
             setDataOrgStatus('Counting records in ' + dataOrgSelection.orgLabel + '…', false);
         }
@@ -6544,6 +6695,7 @@ ${this.buildPaletteCustomProperties()}
         dataObjectStates = [];
         dataOrgSelectedIndex = null;
         dataOrgReadinessByObject = Object.create(null);
+        dataOrgReadinessByCreateKey = Object.create(null);
         dataOrgCreateResultsByKey = Object.create(null);
         pendingPicklistValueElements = Object.create(null);
         pendingDatasetCountElements = Object.create(null);

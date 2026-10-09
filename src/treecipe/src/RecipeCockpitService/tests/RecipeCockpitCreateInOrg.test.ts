@@ -321,6 +321,74 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
     });
 
+    describe('computeCreateReadinessByTarget, each tree\'s block checked against one describe (#210)', () => {
+
+        const SANDBOX_TYPE = { isSandbox: true, organizationType: 'Unlimited Edition' };
+
+        it('gives the same object in two trees each its own block\'s answer, from one describe', async () => {
+
+            const connection = buildFakeConnection();
+
+            const readiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any),
+                ['Contact'], SANDBOX_TYPE, [
+                    { treeKey: 'Tree-A', objectApiName: 'Contact', recipeFieldApiNames: ['LastName', 'AccountId'] },
+                    { treeKey: 'Tree-B', objectApiName: 'Contact', recipeFieldApiNames: ['LastName', 'Region__c', 'Partner__c'] }
+                ]);
+
+            expect(readiness.byCreateKey.get(RecipeCockpitService.buildCreatableObjectKey('Tree-A', 'Contact'))).toMatchObject({
+                treeKey: 'Tree-A', disabledReason: '', missingFieldApiNames: [], notCreateableFieldApiNames: []
+            });
+            expect(readiness.byCreateKey.get(RecipeCockpitService.buildCreatableObjectKey('Tree-B', 'Contact'))).toMatchObject({
+                treeKey: 'Tree-B', disabledReason: 'Contact is missing 2 recipe fields in this org: Region__c, Partner__c.', missingFieldApiNames: ['Region__c', 'Partner__c']
+            });
+            expect(readiness.byObjectApiName.get('Contact').disabledReason).toBe('');
+            expect(connection.describe).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('asks the org nothing more on a second check of the same org and object', async () => {
+
+            const connection = buildFakeConnection();
+            const target = { treeKey: 'Tree-A', objectApiName: 'Lead', recipeFieldApiNames: ['Company', 'Rating__c'] };
+            const check = () => RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any), ['Lead'], SANDBOX_TYPE, [target]);
+
+            await check();
+            const describeCallCount = connection.describe.mock.calls.length;
+            const queryCallCount = connection.query.mock.calls.length;
+            const second = await check();
+
+            expect(second.byCreateKey.get(RecipeCockpitService.buildCreatableObjectKey('Tree-A', 'Lead')).missingFieldApiNames).toEqual(['Rating__c']);
+            expect(connection.describe).toHaveBeenCalledTimes(describeCallCount);
+            expect(connection.query).toHaveBeenCalledTimes(queryCallCount);
+
+        });
+
+        it('refuses a block that could not be read, and leaves production\'s refusal first', async () => {
+
+            const connection = buildFakeConnection();
+            const unreadable = RecipeCockpitService.buildCreateTarget('Tree-A', 'Lead', undefined, undefined);
+
+            const sandboxReadiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any), ['Lead'], SANDBOX_TYPE, [unreadable]);
+            expect(sandboxReadiness.byCreateKey.get(RecipeCockpitService.buildCreatableObjectKey('Tree-A', 'Lead')).disabledReason)
+                .toBe('The recipe file for this tree could not be read, so its Lead fields could not be checked.');
+
+            const productionReadiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any),
+                ['Lead'], { isSandbox: false, organizationType: 'Developer Edition' }, [unreadable]);
+            expect(productionReadiness.byCreateKey.get(RecipeCockpitService.buildCreatableObjectKey('Tree-A', 'Lead')).disabledReason).toContain('only in a sandbox');
+
+        });
+
+        it('cuts a target from the recipe the way Create does, and says why a block cannot be cut', () => {
+
+            expect(RecipeCockpitService.buildCreateTarget('Tree-A', 'Contact', FAKER_JS_ACCOUNT_RECIPE, undefined))
+                .toEqual({ treeKey: 'Tree-A', objectApiName: 'Contact', recipeFieldApiNames: ['LastName', 'RecordTypeId', 'AccountId', 'ReportsToId'] });
+            expect(RecipeCockpitService.buildCreateTarget('Tree-A', 'Lead', FAKER_JS_ACCOUNT_RECIPE, undefined).recipeFieldRefusalReason)
+                .toBe('The Lead block could not be cut from this tree\'s recipe: The recipe has no "- object: Lead" line.');
+
+        });
+
+    });
+
     describe('buildCreateConfirmationDetail', () => {
 
         it('names the org and its username, Sandbox, the object, the count, each required lookup with its parent count, the backend and the tree', () => {
@@ -443,6 +511,55 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
                 objectApiName: 'Contact', disabledReason: '', requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 2 }]
             });
             expect(JSON.stringify(readinessMessage)).not.toContain(SANDBOX_ORG.username);
+
+        });
+
+        it('posts each tree\'s readiness with the recipe fields its block would send, missing ones naming themselves (#210)', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+            await openSelectedCockpit(FAKER_JS_RUN);
+
+            const createTargets = postedNamed('dataOrgReadiness').at(-1).createTargets;
+            const targetNamed = (objectApiName: string) => createTargets.find((readiness: any) => readiness.treeKey === ACCOUNT_TREE_KEY && readiness.objectApiName === objectApiName);
+
+            expect(targetNamed('Account')).toMatchObject({ disabledReason: 'Account is missing 1 recipe field in this org: OwnerId.', missingFieldApiNames: ['OwnerId'] });
+            expect(targetNamed('Contact')).toMatchObject({ disabledReason: '', missingFieldApiNames: [], notCreateableFieldApiNames: [] });
+            expect(targetNamed('OtherChildObject__c').missingFieldApiNames).toEqual(['Score__c']);
+
+        });
+
+        it('refuses a forged Create of an object whose recipe fields the org lacks, before any modal, inserting nothing', async () => {
+
+            const connection = buildFakeConnection();
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+            selectedFakerService = 'faker-js';
+
+            await openSelectedCockpit(FAKER_JS_RUN);
+            await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', count: 2 });
+
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('OtherChildObject__c is missing 1 recipe field in this org: Score__c.'));
+            expect(connection.insertedBatches).toEqual([]);
+            expect(datasetFolderNames()).toEqual([]);
+
+        });
+
+        it('disables a tree\'s Create when its recipe file cannot be read, saying so', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+            await RecipeCockpitService.openRecipeCockpitPanel(temporaryWorkspaceRoot);
+            await receivedMessageHandler({ command: 'ready' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            fs.rmSync(path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', FAKER_JS_RUN, ACCOUNT_TREE_KEY), { recursive: true, force: true });
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+
+            const contactTarget = postedNamed('dataOrgReadiness').at(-1).createTargets
+                .find((readiness: any) => readiness.treeKey === ACCOUNT_TREE_KEY && readiness.objectApiName === 'Contact');
+
+            expect(contactTarget.disabledReason).toBe('The recipe file for this tree could not be read, so its Contact fields could not be checked.');
 
         });
 
@@ -916,6 +1033,29 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             partOf(panel, contactRow, 'dataCreateErrors').dispatch('click');
             expect(postedNamed(panel, 'viewCreateErrors')).toEqual([{ command: 'viewCreateErrors', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact' }]);
+
+        });
+
+        it('draws a row\'s own tree readiness over its object\'s, naming the missing fields under the row (#210)', () => {
+
+            const panel = renderSelectedPanel();
+            panel.postToPanel({
+                command: 'dataOrgReadiness',
+                objects: [{ objectApiName: 'Contact', disabledReason: '', requiredLookups: [] }, { objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }],
+                createTargets: [{
+                    objectApiName: 'Contact', treeKey: ACCOUNT_TREE_KEY, disabledReason: 'Contact is missing 1 recipe field in this org: <b>Region__c</b>.',
+                    requiredLookups: [], missingFieldApiNames: ['<b>Region__c</b>'], notCreateableFieldApiNames: []
+                }],
+                createResults: [],
+                requestSequence: 3,
+                renderSequence: 1
+            });
+
+            const contactRow = rowNamed(panel, 'Contact');
+            expect(partOf(panel, contactRow, 'dataCreate').disabled).toBe(true);
+            expect(partOf(panel, contactRow, 'dataCreateReason').textContent).toBe('Contact is missing 1 recipe field in this org: <b>Region__c</b>.');
+            expect(partOf(panel, contactRow, 'dataCreateReason').children ?? []).toEqual([]);
+            expect(partOf(panel, rowNamed(panel, 'Lead'), 'dataCreate').disabled).toBe(false);
 
         });
 

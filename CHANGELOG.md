@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.43.0] - The Recipe Cockpit's no-run empty state offers a Generate Treecipe button
+## [3.44.0] - The Recipe Cockpit's no-run empty state offers a Generate Treecipe button
 
 Closes [#214](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/214).
 
@@ -11,6 +11,24 @@ Opening the Recipe Cockpit before any Generate Treecipe run used to show one sen
 - **The button is gated like every other panel action.** The panel posts `{ command: 'generateTreecipe' }` with no payload. `routePanelMessage` honours it only while `isGenerateTreecipeOffered` is set. That is a pending/active pair: `pendingIsGenerateTreecipeOffered` is set when a model with no run is posted, and only that model's `rendered` promotes it. It is emptied on every `ready`, on every new post and on a failure to draw. It is also refused while a generation or regeneration is in flight. The panel disables the button on the click, and only the host's reload redraws it.
 - **Not changed:** a run whose objects wrapper cannot be read, and a run with no relationship trees, keep their own empty states without the button. Generate Treecipe itself is unchanged.
 - **Tests.** `RecipeCockpitService.test.ts` covers the router (offered, before `rendered`, with a run on screen, in flight), the panel script (the button is drawn only in the no-run state, disables itself, posts once and comes back after a redraw), and the host (generate then reload on the run written, a double click, a failure that reloads and re-offers, a document reload that honours nothing until the empty state is drawn again, an empty state that failed to draw, and a model with a run posted over the empty state before and after its ack). Each of the last two fails when its reset is removed. The button reuses the accent pair already in the contrast test.
+
+## [3.43.0] - Recipe Cockpit Create names the recipe fields the org lacks before anything is sent
+
+Closes [#210](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/210), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Data-by-Org's **+ Create** already refused an object the org does not have. When the object was there but some of its recipe fields were not, Create went ahead and Salesforce rejected every record (`INVALID_FIELD`), which the reader only learned from **View errors**.
+
+- **Two new readiness reasons** in `RecipeCockpitRecordCreation.buildCreateReadiness`, after the sandbox, org-type, object and createable guards and before the required-lookup ones: a recipe field the describe does not have (`Account is missing 3 recipe fields in this org: Region__c, Tier__c, Score__c.`) and one it has but `createable` is not `true` (`… this org will not let you set: Legacy_Id__c.`). A reason spells out ten names and counts the rest (`and N more`); the readiness carries the full `missingFieldApiNames` and `notCreateableFieldApiNames`, for #211's deploy.
+- **The fields checked are the ones the insert sends.** `RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames` reads them back from the same `extractObjectBlock` cut the Create runs, so recipe-only standard mappings and `RecordTypeId` are checked, and a friend's fields and a field the cockpit commented out are not.
+- **Per tree and object, not per object.** One object can sit in several trees with different blocks, so Data-by-Org reads each tree's recipe once (`fs.promises`, workspace-contained) and posts a readiness per tree and object (`createTargets`) beside the object-wide one; a row draws its own and falls back to its object's. `computeCreateReadinessByTarget` checks them all against the describes the object guards already loaded, so a target costs no request, and a second check of the same org and object makes none.
+- **Names match case-insensitively**, as Salesforce reads them and as `assignLookupIds` already did, through a null-prototype map, so a recipe field named `__proto__` or `constructor` is reported missing rather than read as inherited. A lookup the describe knows is never "not createable" (the Create fills or removes it), but a lookup it does not know stays in every record, so it is reported missing.
+- **Fail closed.** A recipe file that cannot be read, or a block the writer refuses to cut, is that row's reason rather than an enabled Create. `performCreate` re-checks with the fields of the block it just cut, so a forged `createRecords` for an object the org cannot take reaches no modal and inserts nothing.
+- **Not changed:** the production guard and its three checks, the required-lookup rules, and both faker backends.
+- **Tests.** `RecipeCockpitRecordCreation.test.ts` (each reason, the ten-name cap, case, prototype names, ordering against the other guards, the unreadable-block reason), `RecipeCockpitRecipeWriter.test.ts` (the listed fields against every fixture's cut, friends and commented-out fields left out, refusals), `RecipeCockpitCreateInOrg.test.ts` (one object in two trees from one describe, no second request, the posted targets, a forged Create refused before the modal, an unreadable recipe, and the panel drawing a row's own reason over its object's as text).
+- **Fixed in review (PR #213):**
+  - **Data-by-Org scanned a tree's whole recipe once per object.** Each target went through `extractObjectBlock` → `locateObject`, so selecting an org blocked the extension host for time quadratic in a tree's objects: measured 5.7 s at 500 objects, 25.3 s at 1,000 and 91 s at 2,000. `RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects` lists every object of a recipe from ONE scan, and falls back to the per-object cut only for an object it cannot list from the scan (missing, written twice, no single `count:` line), so every refusal is word for word the same. Measured after: 36 ms at 1,000 objects, 77 ms at 2,000, 274 ms at 11,000 (10 MB). A test holds the batch equal to the per-object answer for every fixture and refusal, and another that it scans once.
+  - The targets are grouped by object once and the recipe objects indexed by name once, where each was searched per object.
+  - A row the fields refuse keeps its required lookups, so its tooltip still names them.
 
 ## [3.42.0] - Initiate Configuration File and Generate Treecipe end with one notification that opens or reveals what they wrote
 
