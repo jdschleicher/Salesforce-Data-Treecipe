@@ -425,12 +425,14 @@ describe('RecipeCockpitService', () => {
             expect(disabledRule).not.toBeNull();
             const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
             ['.treeRunFaker:disabled', '.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
-                '.treeCompare button:disabled', '.dataCreate:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
+                '.treeCompare button:disabled', '.dataCreate:disabled', '.dataOrgRefresh:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
             expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('opacity: 1;');
             expect(styleSheet).not.toMatch(/:disabled \{ opacity: 0\.6/);
+            // THE SELECTED TAB KEEPS ITS ACCENT UNDERLINE UNDER THE POINTER
+            expect(styleSheet).toContain('.treeTab:hover:not(:disabled):not(.selected) {');
 
         });
 

@@ -44,6 +44,8 @@ export function runPanelScript() {
             get textContent() { return this.ownTextContent; },
             set textContent(nextTextContent: string) {
                 this.ownTextContent = nextTextContent;
+                // A DETACHED ELEMENT MUST NOT BUBBLE INTO ITS FORMER ANCESTORS
+                this.children.forEach((childElement: any) => { childElement.parentNode = null; });
                 this.children.length = 0;
             },
             classList: {

@@ -4594,7 +4594,6 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.8rem 1rem;
         background-color: var(--sdt-header);
         cursor: pointer;
-        user-select: none;
     }
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
@@ -4623,7 +4622,7 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeAddFriend { font-weight: 600; }
     .treeAddFriendChoice, .historyAction, .dataCreateErrors { text-decoration: underline; }
-    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .dataCreate:disabled, .treeScope:disabled, .treeTab:disabled, .historyAction:disabled {
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .dataCreate:disabled, .dataOrgRefresh:disabled, .treeScope:disabled, .treeTab:disabled, .historyAction:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -4635,7 +4634,7 @@ ${this.buildPaletteCustomProperties()}
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treeTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
-    .treeTab:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
+    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
     .treeTab.selected { color: var(--sdt-text); border-bottom-color: var(--sdt-accent); font-weight: 600; }
     .treeObjectHeader { padding: 0.35rem 0.6rem; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }

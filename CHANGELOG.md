@@ -12,6 +12,11 @@ Every cockpit button was a bare link (`background: none; border: none; padding: 
 - **Disabled buttons look disabled.** Two palette tokens are new: `disabledBg` `#E5E7EB` and `disabledText` `#4B5563` (6.1:1, added to the contrast test's pair list, now 27 pairs). One `:disabled` rule draws Run Faker, `+` add-friend, the toolbar, Compare, Regenerate and Create in them with `cursor: not-allowed`. Hover effects apply only to buttons that are not disabled.
 - **Not changed:** no host↔panel message, allow-list, `renderSequence` handling or Run Faker sequencing. Run Faker is still disabled across every card on the click, until the host's `runFakerState`.
 - **Tests.** `RecipeCockpitPanelHarness` now BUBBLES a dispatched event through `parentNode` until a listener stops it, and a disabled element skips its own listeners but still bubbles, which is the worst case a browser can give. New harness tests: the row, title, folder and `▸` each toggle the card. 🔍 scopes without toggling. Run Faker posts without toggling. A disabled Run Faker neither toggles nor posts. The actions are the row's last child. Stylesheet tests pin the shared button rule and the selectors it covers, the header tile, and the disabled rule. Removing the group's `stopPropagation` fails two of these tests.
+- **Fixed in review (PR #212):**
+  - The ⟳ button that refreshes Data-by-Org's org list is disabled during an org check, but the shared `:disabled` rule did not cover it, so it looked enabled. `.dataOrgRefresh:disabled` is now in the rule.
+  - Hovering the selected tab drew its accent underline grey. The tab hover rule now skips `.selected`.
+  - The header no longer sets `user-select: none`, so the tree title and folder name can be selected and copied again.
+  - Clearing a container in the panel harness now detaches its children (`parentNode = null`), so an event on a stale element no longer bubbles into its former ancestors.
 
 ## [3.42.0] - Initiate Configuration File and Generate Treecipe end with one notification that opens or reveals what they wrote
 
