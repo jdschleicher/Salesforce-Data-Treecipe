@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ConfigurationService, MissingTreecipeConfigurationError } from '../ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
 export class ErrorHandlingService {
 
@@ -10,7 +11,8 @@ export class ErrorHandlingService {
 
     static handleCapturedError(error:Error, executedCommand:string) {
         
-        if ( error.message.startsWith(this.expectedMissingConfigError)) {
+        // A THROWN STRING, null OR undefined HAS NO MESSAGE, AND READING ONE MUST NOT THROW FROM INSIDE THE ERROR HANDLER
+        if ( typeof error?.message === 'string' && error.message.startsWith(this.expectedMissingConfigError)) {
             this.handleMissingTreecipeConfigSetup(error, executedCommand);
         } else {
             
@@ -19,15 +21,23 @@ export class ErrorHandlingService {
         
     }
     
+    /*
+        Every handleCapturedError caller lands here, and an error message can quote workspace text --
+        a js-yaml parse error quotes the recipe line it failed on. VS Code renders "[label](command:...)"
+        in a notification as a link that RUNS the command, so the message is escaped here, once, for
+        every caller. The Report Issue url keeps the raw text: it is url-encoded into an issue body and
+        never rendered as a notification.
+    */
     static handleGenericError(error: Error, executedCommand: string) {
 
         const errorMessage = error instanceof Error ? executedCommand + ': ' + error.message : `Unknown error during command: ${ executedCommand }`;
+        const notificationErrorMessage = error instanceof Error ? executedCommand + ': ' + RecipeYamlScalar.escapeForNotification(error.message) : errorMessage;
         const stackTrace = error instanceof Error ? error.stack : 'No stack trace available';
         const goToTroubleshootingREADMESection = "Review Troubleshooting From README";
 
         vscode.window.showErrorMessage(
 
-            `Error occurred during:  ${executedCommand} *** ${errorMessage} *** Please select an option below:
+            `Error occurred during:  ${executedCommand} *** ${notificationErrorMessage} *** Please select an option below:
             `, 
             this.reportIssueButton,
             goToTroubleshootingREADMESection
@@ -112,7 +122,10 @@ ${stackTrace}
 
         const runInitiateTreecipeConfiguration = "Run Treecipe Initiation Setup";
         const missingConfigurationMessage = "Expected treecipe and config file missing";
-        const staleSettingNotice = error instanceof MissingTreecipeConfigurationError ? error.staleSettingNotice : undefined;
+        // ConfigurationService ALREADY ESCAPED THE NOTICE; escapeForNotification IS IDEMPOTENT ON ITS OWN OUTPUT, SO A SECOND PASS ONLY GUARDS A NOTICE BUILT ANOTHER WAY
+        const staleSettingNotice = error instanceof MissingTreecipeConfigurationError && error.staleSettingNotice
+            ? RecipeYamlScalar.escapeForNotification(error.staleSettingNotice)
+            : undefined;
         vscode.window.showErrorMessage(
             staleSettingNotice ? `${missingConfigurationMessage}. ${staleSettingNotice}` : missingConfigurationMessage,
             runInitiateTreecipeConfiguration,
