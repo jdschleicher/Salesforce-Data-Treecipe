@@ -1,5 +1,23 @@
 # Change Log
 
+## [3.44.0] - The Recipe Cockpit's tree card header is one clickable row tile, and every cockpit button is a real, larger target
+
+Closes [#209](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/209), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Every cockpit button was a bare link (`background: none; border: none; padding: 0`), so a tree card opened only from its one-character `▸`, and 🔍 and ▶ Run Faker were about one glyph each. A disabled button was the same button at 60% opacity, so while Faker ran the buttons still looked usable.
+
+- **The header is a row tile.** `.treeHeader` is at least `4rem` tall with a pointer cursor and an accent bar on hover. A click anywhere on it (title, folder, counts, or the `▸`) opens or closes the card. The `▸` stays a real `<button>` with its `aria-label` and `aria-expanded`, and has no listener of its own: its click, from a mouse or from Enter/Space, bubbles to the row, so one click cannot toggle the card twice.
+- **🔍 and ▶ Run Faker sit at the end of the row** in a `.treeHeaderActions` group. Clicks inside the group never toggle the card. The click is stopped on the GROUP rather than on each button, because a browser may pass a click on a DISABLED button (every Run Faker while one runs) to its ancestors without running the button's own listener.
+- **Every cockpit button shares one rule:** `min-height: 2.25rem`, `0.4rem 0.8rem` padding and a visible border, about twice the old target. It covers the tree, object, picklist and version toggles, 🔍, Run Faker, the tabs, `+` add-friend, the history actions, Search every tree, the toolbar, Compare and Regenerate, and Data-by-Org's ⟳, toggle, `+ Create` and View errors. Run Faker, the toolbar, Compare, Regenerate and Create are filled with the accent.
+- **Disabled buttons look disabled.** Two palette tokens are new: `disabledBg` `#E5E7EB` and `disabledText` `#4B5563` (6.1:1, added to the contrast test's pair list, now 27 pairs). One `:disabled` rule draws Run Faker, `+` add-friend, the toolbar, Compare, Regenerate and Create in them with `cursor: not-allowed`. Hover effects apply only to buttons that are not disabled.
+- **Not changed:** no host↔panel message, allow-list, `renderSequence` handling or Run Faker sequencing. Run Faker is still disabled across every card on the click, until the host's `runFakerState`.
+- **Tests.** `RecipeCockpitPanelHarness` now BUBBLES a dispatched event through `parentNode` until a listener stops it, and a disabled element skips its own listeners but still bubbles, which is the worst case a browser can give. New harness tests: the row, title, folder and `▸` each toggle the card. 🔍 scopes without toggling. Run Faker posts without toggling. A disabled Run Faker neither toggles nor posts. The actions are the row's last child. Stylesheet tests pin the shared button rule and the selectors it covers, the header tile, and the disabled rule. Removing the group's `stopPropagation` fails two of these tests.
+- **Fixed in review (PR #212):**
+  - The ⟳ button that refreshes Data-by-Org's org list is disabled during an org check, but the shared `:disabled` rule did not cover it, so it looked enabled. `.dataOrgRefresh:disabled` is now in the rule.
+  - Hovering the selected tab drew its accent underline grey. The tab hover rule now skips `.selected`.
+  - The header no longer sets `user-select: none`, so the tree title and folder name can be selected and copied again.
+  - Clearing a container in the panel harness now detaches its children (`parentNode = null`), so an event on a stale element no longer bubbles into its former ancestors.
+
 ## [3.43.0] - Recipe Cockpit Create names the recipe fields the org lacks before anything is sent
 
 Closes [#210](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/210), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
