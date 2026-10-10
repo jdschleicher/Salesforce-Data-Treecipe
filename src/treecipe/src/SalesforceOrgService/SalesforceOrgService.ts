@@ -848,7 +848,12 @@ export class SalesforceOrgService {
 
         const devHubAuthorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations())
             .filter(authorization => authorization?.isDevHub === true);
-        const connectedOrgListing = await this.listConnectedOrgDetailsFor(devHubAuthorizations);
+        const connectedListing = await this.listConnectedOrgDetailsFor(devHubAuthorizations);
+        // THE ARGV NAMES THE USERNAME, SO A DEV HUB WHOSE ALIAS PASSES BUT WHOSE USERNAME DOES NOT IS NEVER OFFERED
+        const connectedOrgListing = {
+            ...connectedListing,
+            orgDetails: connectedListing.orgDetails.filter(orgDetail => PicklistDependencyCheckService.isValidTargetOrgIdentifier(orgDetail.username))
+        };
 
         const defaultDevHub = this.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, environmentVariables);
         const defaultAuthorization = defaultDevHub && devHubAuthorizations.find(authorization => (

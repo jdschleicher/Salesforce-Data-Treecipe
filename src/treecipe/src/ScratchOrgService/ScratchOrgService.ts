@@ -87,8 +87,8 @@ export interface IScratchOrgSetupHooks {
 }
 
 /*
-    Creates a scratch org through the CLI's default Dev Hub and deploys the project's source to it
-    (#200). It imports no vscode itself: the cockpit owns the confirmation, the progress and the panel, and this
+    Creates a scratch org through the Dev Hub the reader picked (#243) and deploys the project's
+    source to it (#200). It imports no vscode itself: the cockpit owns the confirmation, the progress and the panel, and this
     service owns the argv, the reading of the CLI's --json answer and the result files.
 
     Every process goes through PicklistDependencyCheckService.runSalesforceCli -- execFile with an
@@ -114,12 +114,10 @@ export class ScratchOrgService {
 
     /*
         Refuses, before any process, every input the setup cannot run with: the project file, then
-        the definition file, then the Dev Hub. The definition path is fixed, and still checked to
-        resolve inside the workspace, because config/ can be a symlink out of it.
-    */
-    /*
-        The project is checked BEFORE the Dev Hub is asked for, so a project that cannot be deployed
-        refuses without a picker. No Dev Hub chosen is no plan: undefined, and nothing was started.
+        the definition file. Both are checked BEFORE the Dev Hub is asked for, so a project that
+        cannot be deployed refuses without a picker. No Dev Hub chosen is no plan: undefined, and
+        nothing was started. The definition path is fixed, and still checked to resolve inside the
+        workspace, because config/ can be a symlink out of it.
     */
     static async resolveScratchOrgPlan(workspaceRoot: string,
                                         chooseDevHub: () => Promise<IDevHubOrgDetail | undefined>,

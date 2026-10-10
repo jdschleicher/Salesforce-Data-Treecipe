@@ -1253,6 +1253,19 @@ describe('SalesforceOrgService', () => {
 
         });
 
+        it('never offers a Dev Hub whose username could not be handed to --target-dev-hub, even with a usable alias', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: "o'brien@example.com", aliases: ['quotedHub'], isDevHub: true, isExpired: false },
+                HUB
+            ]);
+            answerConnected({ "o'brien@example.com": 'Connected', 'hub@example.com': 'Connected' });
+
+            expect(( await SalesforceOrgService.listDevHubOrgDetails(workspaceRoot, homeDirectoryPath, {}) ).orgDetails.map(orgDetail => orgDetail.username))
+                .toEqual(['hub@example.com']);
+
+        });
+
         it('says "1 authorized Dev Hub is" when exactly one was left out', async () => {
 
             (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([HUB]);
