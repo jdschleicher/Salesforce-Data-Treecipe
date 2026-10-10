@@ -94,7 +94,7 @@ function buildFakeConnection() {
         query: jest.fn().mockImplementation(async (soql: string) => (
             soql.includes('FROM Organization')
                 ? { records: [{ IsSandbox: true, OrganizationType: 'Developer Edition' }] }
-                : { totalSize: 3, records: [] }
+                : Promise.reject(new Error(`Data-by-Org sent a query it should not have: ${soql}`))
         )),
         sobject: jest.fn()
     };
@@ -146,7 +146,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'createRecords', orgIndex: 0, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', count: 1 }, panelState))
                 .toMatchObject({ kind: 'postCreateState', hostMessage: { isRunning: false } });
@@ -263,7 +263,6 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             delete process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
-            SalesforceOrgService.clearRecordCountCache();
             SalesforceOrgService.clearDescribeCache();
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
             (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
@@ -409,7 +408,8 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             expect(lastList.selectedOrgIndex).toBe(newOrgIndex);
             expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgIndex: newOrgIndex, isSandbox: true });
             expect(workspaceStateUpdate).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, NEW_SCRATCH_USERNAME);
-            expect(postedNamed('dataOrgCounts').at(-1)).toMatchObject({ isComplete: true, connectionFailureMessage: '' });
+            expect(postedNamed('dataOrgSelection').at(-1).failureMessage).toBe('');
+            expect(postedNamed('dataOrgCounts')).toEqual([]);
             expect(postedNamed('dataOrgReadiness').at(-1).createTargets.find((readiness: any) => readiness.treeKey === LEAD_TREE_KEY && readiness.objectApiName === 'Lead'))
                 .toMatchObject({ disabledReason: '' });
 

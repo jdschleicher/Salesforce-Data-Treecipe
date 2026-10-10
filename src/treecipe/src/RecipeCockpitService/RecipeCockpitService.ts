@@ -10,13 +10,11 @@ import {
     IOrgDescribeRequestResult,
     IOrgDescribeSource,
     IOrgQuerySource,
-    IOrgRecordCountOutcome,
     IOrgTypeDetail,
     IHiddenAuthorizedOrg,
     IHiddenOrgReasonCounts,
     NO_AUTHORIZED_ORGS_MESSAGE,
     OrgConnectionStatusUnavailableError,
-    OrgRecordCountStatus,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
 import {
@@ -702,9 +700,11 @@ export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = 'Checking org connection
 export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. Data-by-Org lists only orgs the Salesforce CLI reports as connected: re-authorize one with "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
 
 /*
-    The org Data-by-Org is counting in. orgTypeLabel is '' while the Organization query is still
-    out; isSandbox is null until it answers, and stays null when it failed. requestSequence names
-    the selection, so an answer for an org the reader has since replaced is dropped.
+    The org Data-by-Org has selected. orgTypeLabel is '' while the Organization query is still
+    out; isSandbox is null until it answers, and stays null when it failed. failureMessage is set
+    when the org could not be connected to, or did not answer that it is a sandbox, and is then
+    the whole answer about it. requestSequence names the selection, so an answer for an org the
+    reader has since replaced is dropped.
 */
 export interface IRecipeCockpitDataOrgSelectionMessage {
     command: 'dataOrgSelection';
@@ -712,29 +712,7 @@ export interface IRecipeCockpitDataOrgSelectionMessage {
     orgLabel: string;
     orgTypeLabel: string;
     isSandbox: boolean | null;
-    requestSequence: number;
-    renderSequence: number;
-}
-
-export interface IRecipeCockpitDataOrgCountViewModel {
-    objectApiName: string;
-    status: OrgRecordCountStatus;
-    recordCount: number;
     failureMessage: string;
-}
-
-/*
-    Counts as they arrive, CUMULATIVE per selection: each message carries only the objects counted
-    since the last, and the panel merges them. A failed connection is one connectionFailureMessage
-    for the whole org, never one failure per object.
-*/
-export interface IRecipeCockpitDataOrgCountsMessage {
-    command: 'dataOrgCounts';
-    counts: IRecipeCockpitDataOrgCountViewModel[];
-    completedCount: number;
-    requestedCount: number;
-    isComplete: boolean;
-    connectionFailureMessage: string;
     requestSequence: number;
     renderSequence: number;
 }
@@ -834,7 +812,6 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRunFakerStateMessage
                                         | IRecipeCockpitDataOrgListMessage
                                         | IRecipeCockpitDataOrgSelectionMessage
-                                        | IRecipeCockpitDataOrgCountsMessage
                                         | IRecipeCockpitDataOrgReadinessMessage
                                         | IRecipeCockpitCreateStateMessage
                                         | IRecipeCockpitAddFriendStateMessage
@@ -856,9 +833,6 @@ export interface IRecipeCockpitWorkspaceState {
 }
 
 export const RECIPE_COCKPIT_DATA_ORG_STATE_KEY = 'treecipe.recipeCockpit.dataByOrgUsername';
-
-// HOW MANY COUNTS ARE POSTED TOGETHER WHILE A SELECTION IS COUNTING -- ONE POST PER OBJECT WOULD BE ONE RENDER PER OBJECT
-export const RECIPE_COCKPIT_DATA_ORG_COUNT_POST_BATCH = 10;
 
 /*
     Host-only: the org Data-by-Org has selected. orgDetail carries the USERNAME, which the panel is
@@ -921,7 +895,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postRunFakerState'; hostMessage: IRecipeCockpitRunFakerStateMessage }
     | { kind: 'loadDataOrgs' }
     | { kind: 'selectDataOrg'; orgIndex: number }
-    | { kind: 'refreshDataOrgCounts' }
+    | { kind: 'refreshDataOrgs' }
     | { kind: 'createRecords'; treeKey: string; objectApiName: string; recordCount: number; recipeFilePath: string }
     | { kind: 'postCreateState'; hostMessage: IRecipeCockpitCreateStateMessage }
     | { kind: 'viewCreateErrors'; resultsFilePath: string }
@@ -1048,7 +1022,7 @@ export class RecipeCockpitService {
     private static recipeCockpitRenderSequence = 0;
 
     /*
-        Where Data-by-Org remembers the org it last counted in, per workspace. Set by the command
+        Where Data-by-Org remembers the org it last used, per workspace. Set by the command
         that opens the panel; a cockpit opened without one simply remembers nothing.
     */
     private static recipeCockpitWorkspaceState: IRecipeCockpitWorkspaceState | undefined;
@@ -1797,8 +1771,8 @@ export class RecipeCockpitService {
         */
         panelState.describableObjectApiNamesByTreeKey = new Map();
         /*
-            The same for Data-by-Org: its counts are tagged with the model they count, so a new
-            model ends whatever selection was counting for the old one. The org list and the org
+            The same for Data-by-Org: its answers are tagged with the model they describe, so a new
+            model ends whatever selection was being checked for the old one. The org list and the org
             chosen survive it -- the panel asks again once the new model is drawn.
         */
         panelState.pendingDataOrgObjectApiNames = new Set(this.collectDataOrgObjectApiNames(recipeViewModel));
@@ -1897,7 +1871,7 @@ export class RecipeCockpitService {
                 panelState.loadablePicklistKeys = new Set();
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                 panelState.isGenerateTreecipeOffered = false;
-                // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL COUNTING IS ENDED
+                // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL BEING CHECKED IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
                 panelState.creatableObjectKeys = new Set();
                 panelState.insertableFriendTargets = new Map();
@@ -1936,7 +1910,7 @@ export class RecipeCockpitService {
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.creatableObjectKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
-                    // NOTHING IS ON SCREEN TO DRAW A COUNT IN, SO A SELECTION STILL COUNTING STOPS ASKING THE ORG
+                    // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
                     panelState.dataOrgRequestSequence++;
                 }
@@ -2061,11 +2035,7 @@ export class RecipeCockpitService {
                 await this.selectDataOrg(cockpitPanel, panelState, panelAction.orgIndex);
                 return;
 
-            case 'refreshDataOrgCounts':
-
-                if ( panelState.dataOrgSelection ) {
-                    SalesforceOrgService.clearRecordCountCache(panelState.dataOrgSelection.orgDetail.username);
-                }
+            case 'refreshDataOrgs':
 
                 await this.loadDataOrgs(cockpitPanel, panelState, true);
                 return;
@@ -2907,17 +2877,6 @@ export class RecipeCockpitService {
 
     }
 
-    static buildDataOrgCountViewModel(countOutcome: IOrgRecordCountOutcome): IRecipeCockpitDataOrgCountViewModel {
-
-        return {
-            objectApiName: countOutcome.objectApiName,
-            status: countOutcome.status,
-            recordCount: countOutcome.recordCount ?? 0,
-            failureMessage: countOutcome.failureMessage ?? ''
-        };
-
-    }
-
     private static readRememberedDataOrgUsername(): string | undefined {
 
         try {
@@ -3352,11 +3311,12 @@ export class RecipeCockpitService {
 
     /*
         Connects to the chosen org by USERNAME, asks the Organization row whether it is a sandbox,
-        then counts every object the rendered trees list, posting counts as they arrive.
+        then describes every object the rendered trees list to say whether "+ Create" is offered.
+        It counts no records (#238).
 
         Every post first checks that this selection is still the current one -- same panel, same
-        model, and no later selection or refresh -- and the count itself stops as soon as it is not,
-        so choosing another org mid-count discards this one's answers rather than drawing them over
+        model, and no later selection or refresh -- and the describes stop as soon as it is not,
+        so choosing another org mid-check discards this one's answers rather than drawing them over
         the next. Nothing here writes to an org.
     */
     private static async selectDataOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, orgIndex: number) {
@@ -3379,38 +3339,16 @@ export class RecipeCockpitService {
                                             && panelState.dataOrgRequestSequence === requestSequence
                                             && panelState.recipeDataMessage === selectedRecipeDataMessage;
 
-        const postSelection = () => isSelectionCurrent() && this.postToPanel(cockpitPanel, {
+        const postSelection = (failureMessage = '') => isSelectionCurrent() && this.postToPanel(cockpitPanel, {
             command: 'dataOrgSelection',
             orgIndex: orgIndex,
             orgLabel: orgLabel,
             orgTypeLabel: isOrgTypeAnswered ? SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail) : '',
             isSandbox: dataOrgSelection.orgTypeDetail?.isSandbox ?? null,
+            failureMessage: failureMessage,
             requestSequence: requestSequence,
             renderSequence: renderSequence
         });
-
-        let pendingCounts: IRecipeCockpitDataOrgCountViewModel[] = [];
-
-        const postCounts = (completedCount: number, isComplete: boolean, connectionFailureMessage = '') => {
-
-            if ( !isSelectionCurrent() ) {
-                return;
-            }
-
-            this.postToPanel(cockpitPanel, {
-                command: 'dataOrgCounts',
-                counts: pendingCounts,
-                completedCount: completedCount,
-                requestedCount: objectApiNames.length,
-                isComplete: isComplete,
-                connectionFailureMessage: connectionFailureMessage,
-                requestSequence: requestSequence,
-                renderSequence: renderSequence
-            });
-
-            pendingCounts = [];
-
-        };
 
         postSelection();
 
@@ -3422,8 +3360,7 @@ export class RecipeCockpitService {
             querySource = SalesforceOrgService.toQuerySource(connection);
         } catch (connectionError) {
             isOrgTypeAnswered = true;
-            postSelection();
-            postCounts(0, true, `Could not connect to ${orgLabel}: ${connectionError?.message ?? connectionError}. Re-authorize the org with "sf org login web" and try again.`);
+            postSelection(`Could not connect to ${orgLabel}: ${connectionError?.message ?? connectionError}. Re-authorize the org with "sf org login web" and try again.`);
             return;
         }
 
@@ -3433,21 +3370,20 @@ export class RecipeCockpitService {
 
         dataOrgSelection.orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
         isOrgTypeAnswered = true;
-        postSelection();
 
         /*
             Listed only because the CLI knew it as a sandbox or scratch org -- but the org's own
             answer is the one that counts. An org that answers it is not a sandbox, or cannot say,
-            is asked NOTHING more: no count, no describe, no Create.
+            is asked NOTHING more: no describe, no Create.
         */
         if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
 
-            postCounts(0, true, `${orgLabel} ${dataOrgSelection.orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)}` : 'could not say whether it is a sandbox'}, so Data-by-Org asked it nothing more. Data-by-Org counts and creates records only in a sandbox.`);
+            postSelection(`${orgLabel} ${dataOrgSelection.orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)}` : 'could not say whether it is a sandbox'}, so Data-by-Org asked it nothing more. Data-by-Org creates records only in a sandbox.`);
 
             if ( isSelectionCurrent() ) {
                 this.postToPanel(cockpitPanel, {
                     command: 'dataOrgReadiness',
-                    objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
+                    objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
                     createTargets: [],
                     createResults: [],
                     requestSequence: requestSequence,
@@ -3459,33 +3395,15 @@ export class RecipeCockpitService {
 
         }
 
-        const countResult = await SalesforceOrgService.countRecords(orgDetail.username, objectApiNames, async () => querySource, {
-            onObjectCounted: (countOutcome, completedCount) => {
-                pendingCounts.push(this.buildDataOrgCountViewModel(countOutcome));
-                if ( pendingCounts.length >= RECIPE_COCKPIT_DATA_ORG_COUNT_POST_BATCH ) {
-                    postCounts(completedCount, false);
-                }
-            },
-            isCancellationRequested: () => !isSelectionCurrent()
-        });
+        postSelection();
 
-        if ( countResult.wasCancelled ) {
-            return;
-        }
-
-        postCounts(objectApiNames.length, true);
-
-        /*
-            AFTER the counts, so the reader sees them first: whether "+ Create" is offered needs each
-            object's describe and its required parents' counts, and none of that is asked of an org
-            that has not answered it is a sandbox.
-        */
+        // WHETHER "+ Create" IS OFFERED NEEDS EACH OBJECT'S DESCRIBE, NONE OF WHICH IS ASKED OF AN ORG THAT HAS NOT ANSWERED IT IS A SANDBOX
         let readinessByObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
         let readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
 
         try {
             const createTargets = await this.collectCreateTargets(panelState, selectedRecipeDataMessage);
-            const readinessByTarget = await this.computeCreateReadinessByTarget(orgDetail.username, connection, querySource, objectApiNames, dataOrgSelection.orgTypeDetail, createTargets, () => !isSelectionCurrent());
+            const readinessByTarget = await this.computeCreateReadinessByTarget(orgDetail.username, connection, objectApiNames, dataOrgSelection.orgTypeDetail, createTargets, () => !isSelectionCurrent());
             readinessByObjectApiName = readinessByTarget.byObjectApiName;
             readinessByCreateKey = readinessByTarget.byCreateKey;
         } catch (describeError) {
@@ -3520,16 +3438,16 @@ export class RecipeCockpitService {
         "+ Create" for each object, in one org: fail-closed guards (RecipeCockpitRecordCreation) fed
         with what the org says. An org that has not answered that it is a sandbox is asked nothing
         more -- its answer is the same for every object. Otherwise each object is described (from
-        the session cache where it can be) and the parent of each required lookup is counted.
+        the session cache where it can be). No parent is counted: Create asks for parent Ids only
+        after the reader confirms.
     */
     static async computeCreateReadiness(orgUsername: string,
                                         describeSource: IOrgDescribeSource,
-                                        querySource: IOrgQuerySource,
                                         objectApiNames: string[],
                                         orgTypeDetail: IOrgTypeDetail | undefined,
                                         isCancellationRequested?: () => boolean): Promise<Map<string, IRecipeCockpitCreateReadinessViewModel>> {
 
-        return ( await this.computeCreateReadinessByTarget(orgUsername, describeSource, querySource, objectApiNames, orgTypeDetail, [], isCancellationRequested) ).byObjectApiName;
+        return ( await this.computeCreateReadinessByTarget(orgUsername, describeSource, objectApiNames, orgTypeDetail, [], isCancellationRequested) ).byObjectApiName;
 
     }
 
@@ -3541,7 +3459,6 @@ export class RecipeCockpitService {
     */
     static async computeCreateReadinessByTarget(orgUsername: string,
                                                 describeSource: IOrgDescribeSource,
-                                                querySource: IOrgQuerySource,
                                                 objectApiNames: string[],
                                                 orgTypeDetail: IOrgTypeDetail | undefined,
                                                 createTargets: IRecipeCockpitCreateTarget[],
@@ -3566,33 +3483,17 @@ export class RecipeCockpitService {
         };
 
         if ( orgTypeDetail?.isSandbox !== true ) {
-            objectApiNames.forEach(objectApiName => setReadiness({ objectApiName: objectApiName, orgTypeDetail: orgTypeDetail, parentRecordCountsByObject: new Map() }));
+            objectApiNames.forEach(objectApiName => setReadiness({ objectApiName: objectApiName, orgTypeDetail: orgTypeDetail }));
             return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
         }
 
         const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => describeSource, { isCancellationRequested });
 
-        const parentObjectApiNames = [...new Set(describeResult.outcomes
-            .filter(describeOutcome => !!describeOutcome.describe)
-            .flatMap(describeOutcome => RecipeCockpitRecordCreation.findRequiredLookups(describeOutcome.describe))
-            .filter(requiredLookup => requiredLookup.referenceTo.length === 1)
-            .map(requiredLookup => requiredLookup.referenceTo[0]))];
-
-        const parentCountResult = parentObjectApiNames.length > 0
-            ? await SalesforceOrgService.countRecords(orgUsername, parentObjectApiNames, async () => querySource, { isCancellationRequested })
-            : { outcomes: [] as IOrgRecordCountOutcome[], wasCancelled: false };
-
-        const parentRecordCountsByObject = new Map<string, number | undefined>(parentCountResult.outcomes.map(countOutcome => [
-            countOutcome.objectApiName,
-            countOutcome.status === 'count' ? countOutcome.recordCount : undefined
-        ]));
-
         describeResult.outcomes.forEach(describeOutcome => setReadiness({
             objectApiName: describeOutcome.objectApiName,
             orgTypeDetail: orgTypeDetail,
             describe: describeOutcome.describe,
-            describeFailureMessage: describeOutcome.failureMessage,
-            parentRecordCountsByObject: parentRecordCountsByObject
+            describeFailureMessage: describeOutcome.failureMessage
         }));
 
         return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
@@ -3813,7 +3714,7 @@ export class RecipeCockpitService {
         // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE INSERT RELIES ON
         const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
         // THE FIELDS OF THE BLOCK JUST CUT, SO A FORGED createRecords FOR AN OBJECT THE ORG CANNOT TAKE INSERTS NOTHING
-        const readiness = ( await this.computeCreateReadinessByTarget(orgDetail.username, connection, querySource, [objectApiName], orgTypeDetail,
+        const readiness = ( await this.computeCreateReadinessByTarget(orgDetail.username, connection, [objectApiName], orgTypeDetail,
             [this.buildCreateTarget(treeKey, objectApiName, recipeText, objectNickname)]) ).byCreateKey.get(this.buildCreatableObjectKey(treeKey, objectApiName));
 
         if ( !readiness || readiness.disabledReason ) {
@@ -3840,7 +3741,7 @@ export class RecipeCockpitService {
                                     && panelState.dataOrgSelection === dataOrgSelection;
 
         if ( !isSameSelection ) {
-            return refuse(`The org selection changed after ${orgLabel} was confirmed (another org was chosen, or the counts or the run were reloaded), so no ${objectLabel} records were created. Choose + Create again.`);
+            return refuse(`The org selection changed after ${orgLabel} was confirmed (another org was chosen, the orgs were checked again, or the run was reloaded), so no ${objectLabel} records were created. Choose + Create again.`);
         }
 
         const requiredLookupParentIds: IRequiredLookupParentIds[] = [];
@@ -3924,8 +3825,6 @@ export class RecipeCockpitService {
             resultsFilePath: insertResult.resultsFilePath
         });
 
-        SalesforceOrgService.clearRecordCountCache(orgDetail.username, objectApiName);
-
         if ( failedCount > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(`${createdCount} ${objectLabel} ${createdCount === 1 ? 'record was' : 'records were'} created in ${orgLabel} and ${failedCount} failed. Nothing was rolled back; "View errors" on the row opens the results.`);
         }
@@ -3944,7 +3843,7 @@ export class RecipeCockpitService {
                                             recipeFileLabel: string): string {
 
         const requiredLookupLines = readiness.requiredLookups.length > 0
-            ? readiness.requiredLookups.map(requiredLookup => `  ${RecipeYamlScalar.escapeForNotification(requiredLookup.fieldApiName)} → a random one of ${requiredLookup.parentRecordCount} ${RecipeYamlScalar.escapeForNotification(requiredLookup.parentObjectApiName)} ${requiredLookup.parentRecordCount === 1 ? 'record' : 'records'}`)
+            ? readiness.requiredLookups.map(requiredLookup => `  ${RecipeYamlScalar.escapeForNotification(requiredLookup.fieldApiName)} → a random existing ${RecipeYamlScalar.escapeForNotification(requiredLookup.parentObjectApiName)} record (none means nothing is created)`)
             : ['  none'];
 
         return [
@@ -4408,7 +4307,7 @@ export class RecipeCockpitService {
             /*
                 Data-by-Org reads org names from the CLI, and the panel only ever names one by its
                 INDEX into the list the host posted -- never a username or an alias. Which objects
-                are counted is read from the confirmed-drawn model, never from the message.
+                are checked is read from the confirmed-drawn model, never from the message.
             */
             case 'loadDataOrgs':
 
@@ -4438,16 +4337,16 @@ export class RecipeCockpitService {
 
             /*
                 ⟳ asks the CLI again which orgs are connected, re-lists them and re-selects the org
-                chosen last by USERNAME, which counts it afresh. It needs no selection: with every
+                chosen last by USERNAME, which checks it afresh. It needs no selection: with every
                 org left out, it is how a reader who just re-authorized one sees it listed.
             */
-            case 'refreshDataOrgCounts':
+            case 'refreshDataOrgs':
 
                 if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning ) {
                     return undefined;
                 }
 
-                return { kind: 'refreshDataOrgCounts' };
+                return { kind: 'refreshDataOrgs' };
 
             /*
                 "+ New scratch org" carries NOTHING: the Dev Hub, the definition file, what is deployed
@@ -6039,9 +5938,10 @@ ${this.buildPaletteCustomProperties()}
     // THE LAST SELECTION CLEARED BY A RE-LISTING: NOTHING AT OR BELOW IT IS DRAWN AGAIN
     let dataOrgClearedRequestSequence = null;
     // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
-    let dataOrgCountsByObject = Object.create(null);
     let dataObjectStates = [];
     let dataOrgSelectedIndex = null;
+    // SET WHEN THE SELECTION COULD NOT BE CONNECTED TO, SO NO ROW WAITS ON A READINESS THAT IS NEVER POSTED
+    let dataOrgSelectionFailureMessage = '';
     // KEYED BY OBJECT NAMES, AND BY TREE KEY AND OBJECT NAME -- NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgReadinessByObject = Object.create(null);
     // A ROW'S OWN TREE'S READINESS, ITS BLOCK'S FIELDS CHECKED (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
@@ -6258,11 +6158,11 @@ ${this.buildPaletteCustomProperties()}
         const pickerElement = createElement('span', 'dataOrgControls');
 
         dataOrgLoadElement = createElement('button', 'dataOrgLoad', 'Choose an org…');
-        dataOrgLoadElement.setAttribute('title', 'List the connected sandbox and scratch orgs to count the records of every tree in');
+        dataOrgLoadElement.setAttribute('title', 'List the connected sandbox and scratch orgs to create records in');
         dataOrgLoadElement.addEventListener('click', function () { requestDataOrgs(); });
 
         dataOrgSelectElement = createElement('select', 'dataOrgSelect hidden');
-        dataOrgSelectElement.setAttribute('aria-label', 'Salesforce org to count records in');
+        dataOrgSelectElement.setAttribute('aria-label', 'Salesforce org to create records in');
         dataOrgSelectElement.addEventListener('change', function () {
             const selectedValue = String(dataOrgSelectElement.value || '');
             if (!selectedValue) { return; }
@@ -6272,11 +6172,11 @@ ${this.buildPaletteCustomProperties()}
         dataOrgTypeElement = createElement('span', 'dataOrgType hidden');
 
         dataOrgRefreshElement = createElement('button', 'dataOrgRefresh hidden', '⟳');
-        dataOrgRefreshElement.setAttribute('title', 'Check the org connections again and count the records again');
-        dataOrgRefreshElement.setAttribute('aria-label', 'Check the org connections again and count the records again');
+        dataOrgRefreshElement.setAttribute('title', 'Check the org connections again');
+        dataOrgRefreshElement.setAttribute('aria-label', 'Check the org connections again');
         dataOrgRefreshElement.addEventListener('click', function () {
             showDataOrgConnectionCheck();
-            vscodeApi.postMessage({ command: 'refreshDataOrgCounts' });
+            vscodeApi.postMessage({ command: 'refreshDataOrgs' });
         });
 
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
@@ -7470,9 +7370,9 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        A card's Data-by-Org tab (#217): the comparison's controls, the tree's records in the
-        toolbar's org, and one row per object -- its count, + Create and, once compared, what
-        differs. Built on the tab's first open. What it draws lives in panel-wide state until then,
+        A card's Data-by-Org tab (#217): the comparison's controls, how many objects the tree has,
+        and one row per object -- + Create in the toolbar's org and, once compared, what differs.
+        No records are counted (#238). Built on the tab's first open. What it draws lives in panel-wide state until then,
         so an org picked, or a comparison answered, before the tab opens is drawn when it does.
     */
     function buildDataByOrgTab(treeState, panelElement) {
@@ -7490,7 +7390,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (treeState.dataObjectApiNames.length === 0) {
             panelElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
-            drawDataTreeCounts(treeState);
+            drawDataTreeHeader(treeState);
             return;
         }
 
@@ -7504,7 +7404,7 @@ ${this.buildPaletteCustomProperties()}
             panelElement.appendChild(dataObjectRowState.element);
         });
 
-        drawDataTreeCounts(treeState);
+        drawDataTreeHeader(treeState);
         drawDataComparison(treeState);
 
     }
@@ -7521,7 +7421,6 @@ ${this.buildPaletteCustomProperties()}
             element: objectElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'dataObjectBody hidden'),
-            countElement: createElement('span', 'dataObjectCount muted'),
             describeElement: createElement('span', 'orgDescribeStatus muted hidden'),
             diffElement: createElement('span', 'objectDiff hidden'),
             matchElement: createElement('span', 'dataObjectMatch muted hidden'),
@@ -7543,7 +7442,6 @@ ${this.buildPaletteCustomProperties()}
 
         objectHeaderElement.appendChild(toggleElement);
         objectHeaderElement.appendChild(createElement('span', 'dataObjectName', objectApiName));
-        objectHeaderElement.appendChild(dataObjectRowState.countElement);
         objectHeaderElement.appendChild(dataObjectRowState.describeElement);
         objectHeaderElement.appendChild(dataObjectRowState.diffElement);
         objectHeaderElement.appendChild(dataObjectRowState.matchElement);
@@ -7741,58 +7639,15 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function formatRecordCount(recordCount) {
-        return Number(recordCount).toLocaleString('en-US') + ' ' + (recordCount === 1 ? 'record' : 'records');
-    }
-
-    function describeDataOrgCount(countViewModel) {
-
-        if (!countViewModel) { return dataOrgRequestSequence === null ? '—' : 'counting…'; }
-        if (countViewModel.status === 'count') { return formatRecordCount(countViewModel.recordCount); }
-        if (countViewModel.status === 'notInOrg') { return 'not in org'; }
-        if (countViewModel.status === 'noAccess') { return 'no access'; }
-
-        return 'could not count';
-
-    }
-
-    // A TAB NOT YET OPENED HAS NOTHING TO DRAW: WHAT IT WILL DRAW IS IN dataOrgCountsByObject, AND ITS FIRST OPEN DRAWS IT
-    function drawDataTreeCounts(treeState) {
+    // A TAB NOT YET OPENED HAS NOTHING TO DRAW: ITS FIRST OPEN DRAWS IT
+    function drawDataTreeHeader(treeState) {
 
         const dataTab = treeState.dataTab;
 
         if (!dataTab) { return; }
 
-        let totalRecordCount = 0;
-        let pendingCount = 0;
-        let uncountedCount = 0;
-
-        const countViewModelOf = function (objectApiName) {
-            return Object.prototype.hasOwnProperty.call(dataOrgCountsByObject, objectApiName) ? dataOrgCountsByObject[objectApiName] : null;
-        };
-
-        dataTab.objectRowStates.forEach(function (dataObjectRowState) {
-            const countViewModel = countViewModelOf(dataObjectRowState.objectApiName);
-            dataObjectRowState.countElement.textContent = describeDataOrgCount(countViewModel);
-            dataObjectRowState.countElement.setAttribute('title', countViewModel && countViewModel.failureMessage ? countViewModel.failureMessage : '');
-        });
-
-        treeState.dataObjectApiNames.forEach(function (objectApiName) {
-            const countViewModel = countViewModelOf(objectApiName);
-            if (!countViewModel) { pendingCount++; return; }
-            if (countViewModel.status === 'count') { totalRecordCount += countViewModel.recordCount; } else { uncountedCount++; }
-        });
-
-        const objectCountText = pluralize(treeState.dataObjectApiNames.length, 'object', 'objects');
-
-        if (dataOrgRequestSequence === null) {
-            dataTab.countElement.textContent = objectCountText + (dataOrgSelectElement ? ' · choose an org in the toolbar to count their records' : '');
-            return;
-        }
-
-        dataTab.countElement.textContent = objectCountText + ' · '
-            + (pendingCount > 0 ? 'counting…' : formatRecordCount(totalRecordCount) + ' in the org')
-            + (uncountedCount > 0 ? ' · ' + uncountedCount + ' not counted' : '');
+        dataTab.countElement.textContent = pluralize(treeState.dataObjectApiNames.length, 'object', 'objects')
+            + (dataOrgSelectElement && dataOrgRequestSequence === null ? ' · choose an org in the toolbar to create records' : '');
 
     }
 
@@ -7886,7 +7741,8 @@ ${this.buildPaletteCustomProperties()}
             ? dataOrgReadinessByObject[dataObjectState.objectApiName]
             : null;
         const isThisRowRunning = createRunningKey === dataObjectState.createKey;
-        const disabledReason = !readiness ? 'checking whether records can be created…' : readiness.disabledReason;
+        const disabledReason = readiness ? readiness.disabledReason
+            : dataOrgSelectionFailureMessage ? 'Nothing is created in this org.' : 'checking whether records can be created…';
 
         dataObjectState.createButtonElement.disabled = createRunningKey !== null || isScratchOrgRunning || !!disabledReason;
         dataObjectState.createButtonElement.textContent = isThisRowRunning ? 'Creating…' : '+ Create';
@@ -7982,6 +7838,9 @@ ${this.buildPaletteCustomProperties()}
             dataOrgCreateResultsByKey[buildCreateKey(createResult.treeKey, createResult.objectApiName)] = createResult;
         });
 
+        // THE CHECK IS OVER; A FAILURE THE SELECTION REPORTED STAYS ON SCREEN
+        if (!dataOrgStatusElement.classList.contains('failed')) { setDataOrgStatus('', false); }
+
         dataObjectStates.forEach(drawCreateControls);
 
     }
@@ -8045,7 +7904,7 @@ ${this.buildPaletteCustomProperties()}
 
         dataOrgSelectElement.value = dataOrgList.selectedOrgIndex === null ? '' : String(dataOrgList.selectedOrgIndex);
         dataOrgSelectElement.classList.remove('hidden');
-        setDataOrgStatus(dataOrgList.selectedOrgIndex === null ? 'Choose an org to count the records of each tree in it.' : '', false);
+        setDataOrgStatus(dataOrgList.selectedOrgIndex === null ? 'Choose an org to create records in it.' : '', false);
         drawScratchOrgControls();
 
     }
@@ -8054,7 +7913,7 @@ ${this.buildPaletteCustomProperties()}
     function clearDataOrgSelection() {
 
         /*
-            With no selection, a row reads "—" rather than "counting…", and Create is hidden: a
+            With no selection, Create is hidden: a
             re-listing that forgot the org posts no selection after it. The sequence it cleared is
             kept, so an answer still on its way for that selection is not drawn back in.
         */
@@ -8063,12 +7922,12 @@ ${this.buildPaletteCustomProperties()}
         }
         dataOrgRequestSequence = null;
         dataOrgSelectedIndex = null;
-        dataOrgCountsByObject = Object.create(null);
+        dataOrgSelectionFailureMessage = '';
         dataOrgReadinessByObject = Object.create(null);
         dataOrgReadinessByCreateKey = Object.create(null);
         dataOrgCreateResultsByKey = Object.create(null);
         dataOrgTypeElement.classList.add('hidden');
-        treeStates.forEach(drawDataTreeCounts);
+        treeStates.forEach(drawDataTreeHeader);
         dataObjectStates.forEach(drawCreateControls);
 
     }
@@ -8091,14 +7950,20 @@ ${this.buildPaletteCustomProperties()}
         if (dataOrgRequestSequence !== null && dataOrgSelection.requestSequence < dataOrgRequestSequence) { return; }
         if (dataOrgClearedRequestSequence !== null && dataOrgSelection.requestSequence <= dataOrgClearedRequestSequence) { return; }
 
-        // A NEW SELECTION, OR A REFRESH OF THIS ONE, STARTS FROM NO COUNTS
+        // A NEW SELECTION, OR A REFRESH OF THIS ONE, STARTS FROM NO READINESS
         if (dataOrgSelection.requestSequence !== dataOrgRequestSequence) {
             dataOrgRequestSequence = dataOrgSelection.requestSequence;
-            dataOrgCountsByObject = Object.create(null);
             dataOrgReadinessByObject = Object.create(null);
             dataOrgReadinessByCreateKey = Object.create(null);
             dataOrgCreateResultsByKey = Object.create(null);
-            setDataOrgStatus('Counting records in ' + dataOrgSelection.orgLabel + '…', false);
+            dataOrgSelectionFailureMessage = '';
+            setDataOrgStatus('Checking ' + dataOrgSelection.orgLabel + '…', false);
+        }
+
+        // A FAILED CONNECTION, OR AN ORG THAT IS NOT A SANDBOX, IS THE WHOLE ANSWER ABOUT THIS SELECTION
+        if (dataOrgSelection.failureMessage) {
+            dataOrgSelectionFailureMessage = dataOrgSelection.failureMessage;
+            setDataOrgStatus(dataOrgSelection.failureMessage, true);
         }
 
         dataOrgSelectedIndex = dataOrgSelection.orgIndex;
@@ -8107,35 +7972,8 @@ ${this.buildPaletteCustomProperties()}
         dataOrgTypeElement.classList.remove('hidden');
         dataOrgRefreshElement.classList.remove('hidden');
 
-        treeStates.forEach(drawDataTreeCounts);
+        treeStates.forEach(drawDataTreeHeader);
         dataObjectStates.forEach(drawCreateControls);
-
-    }
-
-    function renderDataOrgCounts(dataOrgCounts) {
-
-        if (!dataOrgStatusElement || dataOrgCounts.renderSequence !== renderedSequence || dataOrgCounts.requestSequence !== dataOrgRequestSequence) { return; }
-
-        dataOrgCounts.counts.forEach(function (countViewModel) {
-            dataOrgCountsByObject[countViewModel.objectApiName] = countViewModel;
-        });
-
-        if (dataOrgCounts.connectionFailureMessage) {
-            setDataOrgStatus(dataOrgCounts.connectionFailureMessage, true);
-            // A FAILED CONNECTION COUNTED NOTHING, SO NO ROW IS LEFT SAYING "counting…"
-            dataOrgRequestSequence = dataOrgCounts.requestSequence;
-            treeStates.forEach(function (treeState) {
-                treeState.dataObjectApiNames.forEach(function (objectApiName) {
-                    if (!Object.prototype.hasOwnProperty.call(dataOrgCountsByObject, objectApiName)) {
-                        dataOrgCountsByObject[objectApiName] = { objectApiName: objectApiName, status: 'failed', recordCount: 0, failureMessage: dataOrgCounts.connectionFailureMessage };
-                    }
-                });
-            });
-        } else {
-            setDataOrgStatus(dataOrgCounts.isComplete ? '' : 'Counted ' + dataOrgCounts.completedCount + ' of ' + pluralize(dataOrgCounts.requestedCount, 'object', 'objects') + '…', false);
-        }
-
-        treeStates.forEach(drawDataTreeCounts);
 
     }
 
@@ -8516,9 +8354,9 @@ ${this.buildPaletteCustomProperties()}
         dataOrgRequestedSequence = null;
         dataOrgRequestSequence = null;
         dataOrgClearedRequestSequence = null;
-        dataOrgCountsByObject = Object.create(null);
         dataObjectStates = [];
         dataOrgSelectedIndex = null;
+        dataOrgSelectionFailureMessage = '';
         dataOrgReadinessByObject = Object.create(null);
         dataOrgReadinessByCreateKey = Object.create(null);
         dataOrgCreateResultsByKey = Object.create(null);
@@ -8899,11 +8737,6 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'dataOrgSelection') {
             renderDataOrgSelection(hostMessage);
-            return;
-        }
-
-        if (hostMessage.command === 'dataOrgCounts') {
-            renderDataOrgCounts(hostMessage);
             return;
         }
 
