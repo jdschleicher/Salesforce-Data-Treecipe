@@ -1,0 +1,9 @@
+- object: Account
+  nickname: Account_NickName
+  count: 1
+  fields:
+    Name: ${{ faker.company.name() }}
+    ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Rating
+    # ${{ faker.helpers.arrayElement([`Hot`,`Warm`]) }}
+    Rating: ${{ faker.helpers.arrayElement([`Hot`,`Warm`,`Cold`]) }}
+      Industry: ${{ faker.helpers.arrayElement([`Banking`,`Energy`]) }}

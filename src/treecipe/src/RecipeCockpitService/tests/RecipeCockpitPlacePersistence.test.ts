@@ -47,6 +47,7 @@ const buildPlace = (overrides: Partial<IRecipeCockpitPanelPlace> = {}): IRecipeC
     version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     runFolderName: FAKER_JS_RUN_FOLDER_NAME,
     isOrgPickerInUse: false,
+    isFavoritesOnly: false,
     scrollY: 120,
     trees: [{
         treeKey: ACCOUNT_TREE_KEY,
@@ -141,6 +142,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
                 runFolderName: FAKER_JS_RUN_FOLDER_NAME,
                 isOrgPickerInUse: false,
+                isFavoritesOnly: false,
                 scrollY: 0,
                 trees: [{
                     treeKey: LEAD_TREE_KEY,
@@ -167,7 +169,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 trees: [{ ...buildPlace().trees[0], picklistValues: ['Hot'], orgLabel: 'devhub' }]
             });
 
-            expect(Object.keys(normalizedPlace!).sort()).toEqual(['isOrgPickerInUse', 'runFolderName', 'scrollY', 'trees', 'version']);
+            expect(Object.keys(normalizedPlace!).sort()).toEqual(['isFavoritesOnly', 'isOrgPickerInUse', 'runFolderName', 'scrollY', 'trees', 'version']);
             expect(JSON.stringify(normalizedPlace)).not.toMatch(/jd@example\.com|recipe\.yml|devhub|Hot/);
 
         });

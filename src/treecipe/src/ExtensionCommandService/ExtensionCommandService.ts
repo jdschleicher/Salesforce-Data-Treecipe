@@ -41,6 +41,10 @@ import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import path = require("path");
 
+export const RECORD_TYPE_OPTIONS_TODO_MARKER = '### TODO: -- RecordType Options --';
+const RECIPE_EXPRESSION_OPENING = '${{';
+export const MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES = 20;
+
 // SHARED WITH THE TESTS SO THE BUTTON LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RUN_AGAINST_ORG_ACTION_LABEL = 'Deploy and Run Against Org';
 
@@ -171,7 +175,16 @@ export class ExtensionCommandService {
             }
 
             const recipeYamlContent = fs.readFileSync(recipeFullFileNamePath, 'utf8');
-            const parsedRecipeYaml = yaml.load(recipeYamlContent) as any[];
+            let parsedRecipeYaml: any[];
+            try {
+                parsedRecipeYaml = yaml.load(recipeYamlContent) as any[];
+            } catch (recipeLoadError) {
+                if ( !(recipeLoadError instanceof yaml.YAMLException) ) {
+                    throw recipeLoadError;
+                }
+                await ExtensionCommandService.showRecipeLoadFailure(recipeFullFileNamePath, recipeYamlContent, recipeLoadError);
+                return;
+            }
             const dataStructureSummary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedRecipeYaml);
 
             const confirmed = await vscode.window.showInformationMessage(
@@ -256,6 +269,111 @@ export class ExtensionCommandService {
             ErrorHandlingService.handleCapturedError(error, commandName);
 
         }
+
+    }
+
+    /*
+        A recipe that is not YAML is the reader's to fix by hand, so it is opened at the line to fix
+        rather than reported as an extension failure. Nothing is written to the file.
+    */
+    static async showRecipeLoadFailure(recipeFilePath: string, recipeYamlContent: string, recipeLoadError: yaml.YAMLException) {
+
+        const recipeLines = ExtensionCommandService.splitRecipeLines(recipeYamlContent);
+        const bareRecordTypeVariantLineNumbers = ExtensionCommandService.findBareRecordTypeVariantLineNumbersInLines(recipeLines);
+
+        // js-yaml APPENDS A LINE BREAK TO A FILE THAT HAS NONE, SO AN ERROR AT ITS END CAN NAME THE LINE AFTER THE LAST
+        const markedLineIndex = recipeLoadError.mark?.line ?? 0;
+        const isMarkPastLastLine = markedLineIndex > recipeLines.length - 1;
+        const failingLineIndex = isMarkPastLastLine ? recipeLines.length - 1 : markedLineIndex;
+        const failingColumnIndex = isMarkPastLastLine
+            ? recipeLines[failingLineIndex].length
+            : Math.min(recipeLoadError.mark?.column ?? 0, recipeLines[failingLineIndex].length);
+        const failingLineNumber = failingLineIndex + 1;
+        const failingColumnNumber = failingColumnIndex + 1;
+
+        if ( bareRecordTypeVariantLineNumbers.length > 0 ) {
+            const firstBareLineIndex = bareRecordTypeVariantLineNumbers[0] - 1;
+            const firstBareLine = recipeLines[firstBareLineIndex];
+            await VSCodeWorkspaceService.openFileInEditorAtSelection(
+                recipeFilePath,
+                firstBareLineIndex,
+                firstBareLine.length - firstBareLine.trimStart().length,
+                firstBareLine.length
+            );
+        } else {
+            await VSCodeWorkspaceService.openFileInEditorAtSelection(recipeFilePath, failingLineIndex, failingColumnIndex, failingColumnIndex);
+        }
+
+        VSCodeWorkspaceService.showWarningMessage(ExtensionCommandService.buildRecipeLoadFailureWarning(
+            path.basename(recipeFilePath),
+            failingLineNumber,
+            failingColumnNumber,
+            recipeLoadError.reason ?? recipeLoadError.message,
+            bareRecordTypeVariantLineNumbers
+        ));
+
+    }
+
+    static buildRecipeLoadFailureWarning(recipeFileName: string,
+                                            failingLineNumber: number,
+                                            failingColumnNumber: number,
+                                            parserReason: string,
+                                            bareRecordTypeVariantLineNumbers: number[]): string {
+
+        let warning = `Run Faker could not load ${RecipeYamlScalar.escapeForNotification(recipeFileName)}: `
+            + `line ${failingLineNumber}, column ${failingColumnNumber}: ${RecipeYamlScalar.escapeForNotification(parserReason)}.`;
+
+        if ( bareRecordTypeVariantLineNumbers.length === 0 ) {
+            return `${warning} The recipe is open at that line. Fix it and run again.`;
+        }
+
+        const listedLineNumbers = bareRecordTypeVariantLineNumbers.slice(0, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES);
+        const unlistedLineCount = bareRecordTypeVariantLineNumbers.length - listedLineNumbers.length;
+        const lineLabel = bareRecordTypeVariantLineNumbers.length === 1 ? 'Line' : 'Lines';
+        warning += ` This recipe was generated before v3.29.1: ${lineLabel} ${listedLineNumbers.join(', ')}`
+            + `${unlistedLineCount > 0 ? ` and ${unlistedLineCount} more` : ''}`
+            + ` ${bareRecordTypeVariantLineNumbers.length === 1 ? 'is a record type picklist variant' : 'are record type picklist variants'}`
+            + ` left uncommented under a "${RECORD_TYPE_OPTIONS_TODO_MARKER}" comment.`
+            + ` Put "# " in front of each, or regenerate the recipe with Generate Treecipe, then run again.`;
+
+        return warning;
+
+    }
+
+    /*
+        Before v3.29.1 (#153) each record type's picklist and multi-select picklist variant was a
+        bare expression on the line under its TODO, which neither YAML parser accepts. The current
+        pipeline writes "# " in front of it, and the other lines it puts under such a TODO are
+        comments or "- " choice items, so only a line that opens an expression is flagged.
+        One based line numbers.
+    */
+    static findBareRecordTypeVariantLineNumbers(recipeYamlContent: string): number[] {
+
+        return ExtensionCommandService.findBareRecordTypeVariantLineNumbersInLines(ExtensionCommandService.splitRecipeLines(recipeYamlContent));
+
+    }
+
+    // THE LINE BREAKS js-yaml COUNTS, SO A LINE NUMBER HERE IS THE ONE ITS mark NAMES
+    static splitRecipeLines(recipeYamlContent: string): string[] {
+
+        return recipeYamlContent.split(/\r\n|\r|\n/);
+
+    }
+
+    static findBareRecordTypeVariantLineNumbersInLines(recipeLines: string[]): number[] {
+
+        const bareLineNumbers: number[] = [];
+
+        recipeLines.forEach((recipeLine, lineIndex) => {
+            if ( lineIndex === 0 || !recipeLines[lineIndex - 1].trimStart().startsWith(RECORD_TYPE_OPTIONS_TODO_MARKER) ) {
+                return;
+            }
+            if ( recipeLine.trimStart().startsWith(RECIPE_EXPRESSION_OPENING) ) {
+                bareLineNumbers.push(lineIndex + 1);
+            }
+        });
+
+        return bareLineNumbers;
 
     }
 
