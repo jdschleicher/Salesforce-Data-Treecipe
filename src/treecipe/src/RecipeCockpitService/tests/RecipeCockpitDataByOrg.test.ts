@@ -776,7 +776,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         });
     });
 
-    describe('the panel script, Data-by-Org view', () => {
+    describe('the panel script, Data-by-Org tabs and the toolbar org picker (#217)', () => {
 
         const renderDataOrgPanel = () => {
             const panel = runPanelScript();
@@ -786,8 +786,11 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         };
 
         const viewOf = (panel: any, className: string) => panel.findAll(panel.cockpitBodyElement, className)[0];
-        const openDataOrgView = (panel: any) => panel.findAll(panel.cockpitBodyElement, 'viewButton')
-            .find((element: any) => element.textContent === 'Data-by-Org').dispatch('click');
+        // EVERY CARD OPENED, ON ITS DATA-BY-ORG TAB
+        const openDataOrgView = (panel: any) => {
+            panel.expandAllTrees();
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
+        };
         const textOf = (panel: any, className: string) => panel.findAll(panel.cockpitBodyElement, className).map((element: any) => element.textContent);
         const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
 
@@ -800,31 +803,89 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             });
         };
 
-        it('joins the view switch beside Recipe Trees, and asks for the orgs once, when it is first shown', () => {
+        it('puts one org picker in the toolbar and no view switch, and asks for no orgs when the panel opens', () => {
 
             const { panel } = renderDataOrgPanel();
+            const toolbarElement = panel.cockpitBodyElement.children[0];
 
-            expect(textOf(panel, 'viewButton')).toEqual(['Recipe Trees', 'Data-by-Org']);
-            expect(panel.isHidden(viewOf(panel, 'dataOrgView'))).toBe(true);
+            expect(panel.findAll(panel.cockpitBodyElement, 'viewButton')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgView')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataTreeCard')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgControls')).toHaveLength(1);
+            expect(panel.findAll(toolbarElement, 'dataOrgLoad').map((element: any) => element.textContent)).toEqual(['Choose an org…']);
+            expect(panel.findAll(toolbarElement, 'dataOrgSelect')).toHaveLength(1);
+            expect(panel.findAll(toolbarElement, 'dataOrgRefresh')).toHaveLength(1);
+            expect(panel.isHidden(viewOf(panel, 'dataOrgStatus'))).toBe(true);
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
-
-            openDataOrgView(panel);
-            openDataOrgView(panel);
-
-            expect(panel.isHidden(viewOf(panel, 'dataOrgView'))).toBe(false);
-            expect(panel.isHidden(viewOf(panel, 'treesView'))).toBe(true);
-            expect(panel.isHidden(viewOf(panel, 'filterInput'))).toBe(true);
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
 
         });
 
-        it('lists every tree in Recipe Trees order, and its objects in insert order', () => {
+        it('asks for the orgs once, the first time any card\'s Data-by-Org tab opens', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.expandAllTrees();
+            const [firstCard, secondCard] = panel.treeCards();
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
+
+            panel.openTab(firstCard, 'Data-by-Org');
+            panel.openTab(firstCard, 'Structure');
+            panel.openTab(firstCard, 'Data-by-Org');
+            panel.openTab(secondCard, 'Data-by-Org');
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
+            expect(panel.isHidden(viewOf(panel, 'dataOrgLoad'))).toBe(true);
+
+        });
+
+        it('asks for the orgs once, the first time the picker is used, before any tab opens', () => {
 
             const { panel } = renderDataOrgPanel();
 
-            expect(textOf(panel, 'dataTreeTitle')).toEqual(['Relationship Tree 1', 'Relationship Tree 2']);
+            viewOf(panel, 'dataOrgLoad').dispatch('click');
+            viewOf(panel, 'dataOrgLoad').dispatch('click');
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataObject')).toEqual([]);
+
+        });
+
+        it('builds a card\'s Data-by-Org rows the first time its tab opens, its objects in insert order', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.expandAllTrees();
+            const [firstCard, secondCard] = panel.treeCards();
+
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataObject')).toEqual([]);
+
+            panel.openTab(firstCard, 'Data-by-Org');
+
+            expect(panel.findAll(firstCard, 'dataObjectName').map((element: any) => element.textContent)).toEqual(TREE_OBJECT_API_NAMES.slice(0, 3));
+            expect(panel.findAll(secondCard, 'dataObject')).toEqual([]);
+
+            panel.openTab(secondCard, 'Data-by-Org');
+
             expect(textOf(panel, 'dataObjectName')).toEqual(TREE_OBJECT_API_NAMES);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects', '1 object']);
+            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · choose an org in the toolbar to count their records', '1 object · choose an org in the toolbar to count their records']);
+
+        });
+
+        it('recounts every card\'s tab from one selection, including a tab opened only after the counts arrived', () => {
+
+            const { panel } = renderDataOrgPanel();
+            panel.expandAllTrees();
+            const [firstCard, secondCard] = panel.treeCards();
+            panel.openTab(firstCard, 'Data-by-Org');
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            postSelectionAndCounts(panel, 1, 7);
+
+            expect(panel.findAll(firstCard, 'dataObjectCount').map((element: any) => element.textContent)).toEqual(['7 records', '7 records', '7 records']);
+
+            panel.openTab(secondCard, 'Data-by-Org');
+
+            expect(panel.findAll(secondCard, 'dataObjectCount').map((element: any) => element.textContent)).toEqual(['7 records']);
+            expect(panel.findAll(secondCard, 'dataTreeCount')[0].textContent).toBe('1 object · 7 records in the org');
+            expect(postedNamed(panel, 'selectDataOrg')).toEqual([]);
 
         });
 
@@ -891,6 +952,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('draws the org type, each object\'s count and each tree\'s total', () => {
 
             const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndCounts(panel, 1, 1500);
 
@@ -903,6 +965,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('says which objects could not be counted, and why on hover', () => {
 
             const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence: 1, renderSequence: 1 });
             panel.postToPanel({
@@ -924,6 +987,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('drops counts for an older selection or an older model', () => {
 
             const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndCounts(panel, 2, 5);
 
@@ -937,6 +1001,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('marks every object not counted when the connection failed, and says so once', () => {
 
             const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null, requestSequence: 1, renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgCounts', counts: [], completedCount: 0, requestedCount: 4, isComplete: true, connectionFailureMessage: 'Could not connect to qa: expired.', requestSequence: 1, renderSequence: 1 });
@@ -950,6 +1015,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('posts ⟳ as a payload-free refresh, and takes the dropdown and the counts away until the orgs are listed again', () => {
 
             const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndCounts(panel, 1, 1);
 
@@ -978,6 +1044,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('after a ⟳ that forgets the org, reads "—" rather than "counting…", hides Create, and draws nothing more of the old selection', () => {
 
             const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndCounts(panel, 1, 5);
 
@@ -994,14 +1061,17 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('asks again for the next model drawn while Data-by-Org is on screen', () => {
+        it('asks again for the next model drawn once the picker has been used, and never before', () => {
 
             const { panel, recipe } = renderDataOrgPanel();
-            openDataOrgView(panel);
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
 
-            expect(panel.isHidden(viewOf(panel, 'dataOrgView'))).toBe(false);
+            viewOf(panel, 'dataOrgLoad').dispatch('click');
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 3 });
+
             expect(postedNamed(panel, 'loadDataOrgs')).toHaveLength(2);
+            expect(panel.isHidden(viewOf(panel, 'dataOrgLoad'))).toBe(true);
             // AFTER THE NEW MODEL'S ACK, SO THE HOST HAS ALREADY MADE ITS OBJECTS COUNTABLE
             const postedCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
             expect(postedCommands.lastIndexOf('loadDataOrgs')).toBeGreaterThan(postedCommands.lastIndexOf('rendered'));
