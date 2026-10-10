@@ -2245,13 +2245,14 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('starts every search box empty when the next model is drawn', () => {
+        // A MODEL OF THE SAME RUN KEEPS THE READER'S PLACE (#225); ANOTHER RUN STARTS FRESH
+        it('starts every search box empty when the next model drawn is another run', () => {
 
             const { panel, recipe } = renderTreeRecipe();
             panel.expandAllTrees();
             panel.typeIntoFilter('rating');
 
-            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+            panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: 'recipe-2001-01-01T00-00-00' }, renderSequence: 2 });
             panel.expandAllTrees();
 
             expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput').map((inputElement: any) => inputElement.value)).toEqual(['', '']);
@@ -2479,8 +2480,8 @@ describe('RecipeCockpitService', () => {
             expect(textOf(panel, ratingRow, 'picklistLoading')).toEqual(['Loading values…']);
             expect(textOf(panel, panel.cockpitBodyElement, 'picklistValue')).toEqual([]);
 
-            // A NEWER MODEL DROPS THE OLD ROW'S REQUEST, SO ITS LATE ANSWER DRAWS NOTHING EITHER
-            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+            // A NEWER MODEL OF ANOTHER RUN DROPS THE OLD ROW'S REQUEST, SO ITS LATE ANSWER DRAWS NOTHING EITHER
+            panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: 'recipe-2001-01-01T00-00-00' }, renderSequence: 2 });
             answerLastPicklistRequest(panel, loadedRecipe, 2);
             expect(textOf(panel, panel.cockpitBodyElement, 'picklistValue')).toEqual([]);
 
@@ -5614,11 +5615,15 @@ describe('RecipeCockpitService', () => {
                     expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
                     expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree)
                         .toEqual({ treeKey: 'Account-thru-Contact', tab: 'structure' });
+                    // THE REGENERATED RUN IS A NEW FOLDER, SO THE READER'S PLACE IS CARRIED ACROSS TO IT RATHER THAN MATCHED BY NAME (#225)
+                    expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').carryPlaceAcrossRuns).toBe(true);
 
                     // THE COMPARISON WAS OF THE PREVIOUS RUN, SO IT IS NOT REPLAYED OVER THE REGENERATED ONE
                     postedPanelMessages.length = 0;
                     await receivedMessageHandler({ command: 'ready' });
                     expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
+                    // A REPLAY IS A NEW DOCUMENT WITH ITS OWN SAVED PLACE; THE MARKER RODE ON THE POSTED COPY ONLY
+                    expect(postedPanelMessages[0].carryPlaceAcrossRuns).toBeUndefined();
 
                 });
 
@@ -5911,6 +5916,8 @@ describe('RecipeCockpitService', () => {
                 const reloadedLeadTree = reloadedRecipeData.recipe.trees.find((tree: any) => tree.treeKey === LEAD_TREE_KEY);
 
                 expect(reloadedRecipeData.focusTree).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+                // THE SAME RUN, SO THE PANEL MATCHES THE PLACE BY RUN NAME; ONLY Regenerate CARRIES IT ACROSS RUNS
+                expect(reloadedRecipeData.carryPlaceAcrossRuns).toBeUndefined();
                 expect(reloadedRecipeData.recipe.selectedRunFolderName).toBe(HISTORY_CURRENT_RUN);
                 expect(reloadedLeadTree.history.datasets.map((dataset: any) => dataset.datasetFolderName)).not.toContain(RECORDED_DATASET);
 

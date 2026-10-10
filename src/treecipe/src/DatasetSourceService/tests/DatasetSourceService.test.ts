@@ -45,10 +45,15 @@ describe('DatasetSourceService', () => {
         test.each([
             ['recipe-fakerjs-2026-09-01T08-00-00', true],
             ['Account-thru-Contact', true],
+            ['a..b', true],
+            ['my..recipe.yml', true],
+            ['..hidden', true],
+            ['team..v2', true],
             ['', false],
+            ['.', false],
             ['..', false],
             ['../../etc', false],
-            ['a..b', false],
+            ['a../b', false],
             ['run/tree', false],
             ['run\\tree', false]
         ])('given "%s", answers %s', (candidateName, expectedAnswer) => {
@@ -97,6 +102,30 @@ describe('DatasetSourceService', () => {
 
         });
 
+        test('given a recipe with ".." inside its file and tree folder names, records those names', () => {
+
+            const recipeFilePath = path.join(mockGeneratedRecipesPath, fakerJsRunFolderName, 'team..v2', 'my..recipe.yml');
+
+            expect(DatasetSourceService.resolveRecipeSourceNames(mockGeneratedRecipesPath, recipeFilePath)).toEqual({
+                recipeRunFolderName: fakerJsRunFolderName,
+                recipeTreeFolderName: 'team..v2',
+                recipeFileName: 'my..recipe.yml'
+            });
+
+        });
+
+        test('given a recipe named with ".." directly under GeneratedRecipes, records null for the run and the tree', () => {
+
+            const recipeFilePath = path.join(mockGeneratedRecipesPath, 'my..recipe.yml');
+
+            expect(DatasetSourceService.resolveRecipeSourceNames(mockGeneratedRecipesPath, recipeFilePath)).toEqual({
+                recipeRunFolderName: null,
+                recipeTreeFolderName: null,
+                recipeFileName: 'my..recipe.yml'
+            });
+
+        });
+
         test('given a recipe outside GeneratedRecipes, throws rather than recording a path', () => {
 
             const recipeFilePath = path.join(mockWorkspacePath, 'elsewhere', 'recipe.yml');
@@ -109,7 +138,7 @@ describe('DatasetSourceService', () => {
         test('given a name shaped like a command link on a refused path, the error names no part of the path', () => {
 
             const commandLinkFileName = '[Fix recipe](command:workbench.action.terminal.sendSequence?%7B%22text%22%3A%22x%22%7D).yml';
-            const recipeFilePath = path.join(mockGeneratedRecipesPath, 'recipe-x', 'a..b', commandLinkFileName);
+            const recipeFilePath = path.join(mockWorkspacePath, 'elsewhere', 'a..b', commandLinkFileName);
 
             let thrownMessage = '';
             try {
@@ -121,6 +150,7 @@ describe('DatasetSourceService', () => {
             expect(thrownMessage).toContain('is not inside the GeneratedRecipes folder');
             expect(thrownMessage).not.toContain('command:');
             expect(thrownMessage).not.toContain('a..b');
+            expect(thrownMessage).not.toContain('elsewhere');
 
         });
 
@@ -259,7 +289,7 @@ describe('DatasetSourceService', () => {
 
             expect(DatasetSourceService.findKnownRecipeRuns(mockGeneratedRecipesPath)).toEqual([
                 { runFolderName: snowfakeryRunFolderName, treeFolderNames: ['Case-ONLY'] },
-                { runFolderName: fakerJsRunFolderName, treeFolderNames: ['Account-thru-Contact'] }
+                { runFolderName: fakerJsRunFolderName, treeFolderNames: ['Account-thru-Contact', 'team..v2'] }
             ]);
 
         });
@@ -326,6 +356,51 @@ describe('DatasetSourceService', () => {
 
             expect(readResult.status).toBe('unknown');
             expect(readResult.recipeRunFolderName).toBeNull();
+
+        });
+
+        test('given a recorded run that is exactly "..", is unknown', () => {
+
+            const readResult = readFixture('dataset-fakerjs-2026-09-12T00-00-00');
+
+            expect(readResult.status).toBe('unknown');
+            expect(readResult.recipeRunFolderName).toBeNull();
+
+        });
+
+        test('given a recorded tree and file whose names contain "..", is linked to the tree folder on disk', () => {
+
+            expect(readFixture('dataset-fakerjs-2026-09-11T00-00-00')).toMatchObject({
+                status: 'linked',
+                basis: 'recorded',
+                recipeRunFolderName: fakerJsRunFolderName,
+                recipeTreeFolderName: 'team..v2',
+                datasetSource: { recipeFileName: 'my..recipe.yml' }
+            });
+
+        });
+
+        test('given a recorded run named "a..b", is linked only when a run folder with that name is known', () => {
+
+            const datasetFolderPath = path.join(mockFakeDataSetsPath, 'dataset-fakerjs-2026-09-06T00-00-00');
+            const datasetSource = DatasetSourceService.readDatasetSource(datasetFolderPath, []).datasetSource as IDatasetSource;
+            const temporaryDatasetPath = fs.mkdtempSync(path.join(os.tmpdir(), 'dataset-dotted-run-'));
+
+            try {
+
+                fs.mkdirSync(path.join(temporaryDatasetPath, 'BaseArtifactFiles'));
+                DatasetSourceService.writeDatasetSourceFile(path.join(temporaryDatasetPath, 'BaseArtifactFiles'), { ...datasetSource, recipeRunFolderName: 'a..b' });
+
+                expect(DatasetSourceService.readDatasetSource(temporaryDatasetPath, []).status).toBe('unknown');
+                expect(DatasetSourceService.readDatasetSource(temporaryDatasetPath, [{ runFolderName: 'a..b', treeFolderNames: [] }])).toMatchObject({
+                    status: 'linked',
+                    recipeRunFolderName: 'a..b',
+                    recipeTreeFolderName: null
+                });
+
+            } finally {
+                fs.rmSync(temporaryDatasetPath, { recursive: true, force: true });
+            }
 
         });
 
@@ -560,9 +635,30 @@ describe('DatasetSourceService', () => {
 
             });
 
-            test('given a copied tree name that is not a plain folder name, carries no hint', () => {
+            test('given copies naming a tree whose folder name contains "..", is linked to that tree', () => {
 
-                writeBaseArtifact('originalRecipe-recipe--a..b-2026-09-04T11-22-07.yml');
+                writeBaseArtifact('originalRecipe-recipe--team..v2-2026-09-04T11-22-07.yml');
+                writeBaseArtifact('originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-04T11-22-07.json');
+
+                expect(DatasetSourceService.readDatasetSource(temporaryDatasetPath, [
+                    { runFolderName: snowfakeryRunFolderName, treeFolderNames: ['Case-ONLY', 'team..v2'] }
+                ])).toMatchObject({
+                    status: 'linked',
+                    basis: 'inferred',
+                    recipeRunFolderName: snowfakeryRunFolderName,
+                    recipeTreeFolderName: 'team..v2'
+                });
+
+                expect(DatasetSourceService.readDatasetSource(temporaryDatasetPath, knownRecipeRuns)).toMatchObject({
+                    status: 'unknown',
+                    treeFolderNameHint: 'team..v2'
+                });
+
+            });
+
+            test('given a copied tree name that is exactly "..", carries no hint', () => {
+
+                writeBaseArtifact('originalRecipe-recipe--..-2026-09-04T11-22-07.yml');
                 writeBaseArtifact('originalTreecipeWrapper-treecipeObjectsWrapper-2026-09-04T11-22-07.json');
 
                 const readResult = DatasetSourceService.readDatasetSource(temporaryDatasetPath, []);
@@ -692,7 +788,9 @@ describe('DatasetSourceService', () => {
                 ['dataset-fakerjs-2026-09-06T00-00-00', 'linked'],
                 ['dataset-fakerjs-2026-09-07T00-00-00', 'unknown'],
                 ['dataset-fakerjs-2026-09-08T00-00-00', 'unreadable'],
-                ['dataset-fakerjs-2026-09-09T00-00-00', 'unknown']
+                ['dataset-fakerjs-2026-09-09T00-00-00', 'unknown'],
+                ['dataset-fakerjs-2026-09-11T00-00-00', 'linked'],
+                ['dataset-fakerjs-2026-09-12T00-00-00', 'unknown']
             ]);
             expect(datasetListings.find(datasetListing => datasetListing.datasetFolderName.endsWith('-2'))?.folderNameDetail.collisionSuffix).toBe(2);
 
