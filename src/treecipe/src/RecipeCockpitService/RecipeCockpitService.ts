@@ -5771,6 +5771,7 @@ ${this.buildPaletteCustomProperties()}
         border-color: var(--sdt-accent);
     }
     .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .treeToggle, .treeObjectToggle { padding: 0 0.4rem; font-size: 3.3em; line-height: 1; }
     .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .dataCreate {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
@@ -5794,7 +5795,7 @@ ${this.buildPaletteCustomProperties()}
     .treeTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
     .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
     .treeTab.selected { color: var(--sdt-text); border-bottom-color: var(--sdt-accent); font-weight: 600; }
-    .treeObjectHeader { padding: 0.35rem 0.6rem; }
+    .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
     .treeObjectBody { padding-bottom: 0.25rem; }

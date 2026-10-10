@@ -421,6 +421,23 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // #244: AT 1.1em THE ▸/▾ WAS TOO SMALL TO TELL AT A GLANCE WHETHER A CARD OR OBJECT WAS OPEN
+        it('draws the tree card and Structure object triangles at 3.3em, centred in their rows, and no other toggle', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const triangleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
+            const otherToggleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.treeVersionToggle, \\.dataObjectToggle, \\.dataOrgRefresh');
+
+            expect(triangleRule).toContain('font-size: 3.3em;');
+            expect(triangleRule).toContain('line-height: 1;');
+            expect(otherToggleRule).toContain('font-size: 1.1em;');
+            expect(styleSheet.indexOf(triangleRule)).toBeGreaterThan(styleSheet.indexOf(otherToggleRule));
+            expect(styleSheet.match(/font-size: 3\.3em;/g)).toHaveLength(1);
+            expect(ruleFor(styleSheet, '\\.treeObjectHeader')).toContain('align-items: center;');
+            expect(ruleFor(styleSheet, '\\.treeHeader')).toContain('align-items: center;');
+
+        });
+
         // A DISABLED BUTTON USED TO BE THE SAME BUTTON AT 60% OPACITY, WHICH READ AS NEARLY ENABLED WHILE FAKER RAN
         it('draws every disabled cockpit button in the disabled tokens with a not-allowed cursor', () => {
 
