@@ -106,12 +106,17 @@ export interface IDatasetListing {
 
 export class DatasetSourceService {
 
+    /*
+        A name with no separator can only act as a path when it IS "." or "..", so only those
+        segments are refused: "my..recipe.yml" or "team..v2" is a name a hand-placed recipe can have.
+    */
     static isSafeFolderOrFileName(candidateName: string): boolean {
 
         return candidateName.length > 0
+                && candidateName !== '.'
+                && candidateName !== '..'
                 && !candidateName.includes('/')
-                && !candidateName.includes('\\')
-                && !candidateName.includes('..');
+                && !candidateName.includes('\\');
 
     }
 
@@ -119,9 +124,9 @@ export class DatasetSourceService {
         Where a recipe sits under GeneratedRecipes, as names. Generate Treecipe writes
         <run>/<tree>/<file>; a recipe placed directly under GeneratedRecipes belongs to no run.
         Throws rather than recording a name that is not one, because the file is read back as names
-        and a separator or ".." in one would make it a path. The message names NO part of the path:
-        it reaches a VS Code notification unescaped, which renders "[label](command:...)" in a file
-        name as a link that runs the command.
+        and a separator in one, or a name that is "." or "..", would make it a path. The message
+        names NO part of the path: it reaches a VS Code notification, which renders
+        "[label](command:...)" in a file name as a link that runs the command.
     */
     static resolveRecipeSourceNames(generatedRecipesFolderPath: string, recipeFilePath: string): IRecipeSourceNames {
 
@@ -134,7 +139,7 @@ export class DatasetSourceService {
 
         const recordedNames = [recipeFileName, recipeRunFolderName, recipeTreeFolderName].filter(recordedName => recordedName !== null);
         if ( path.isAbsolute(relativeRecipePath) || !recordedNames.every(recordedName => this.isSafeFolderOrFileName(recordedName)) ) {
-            throw new Error('The selected recipe is not inside the GeneratedRecipes folder, or a folder or file name on its path contains "..", so its data set source cannot be recorded.');
+            throw new Error('The selected recipe is not inside the GeneratedRecipes folder, or a folder or file name on its path is not a plain name, so its data set source cannot be recorded.');
         }
 
         return { recipeRunFolderName, recipeTreeFolderName, recipeFileName };

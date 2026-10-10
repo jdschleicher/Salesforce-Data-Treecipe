@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.49.1] - A recipe whose name merely contains ".." runs again under Run Faker
+
+Closes [#185](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/185), a follow-up to [#176](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/176) / [#183](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/183), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Since 3.30.0, `DatasetSourceService.isSafeFolderOrFileName` refused any name that *contained* `..`, so **Run Faker by Recipe** failed for hand-placed recipes that ran before, such as `GeneratedRecipes/my..recipe.yml` or a recipe under a `team..v2/` folder. A name with no separator can only act as a path when it is exactly `..` or `.`.
+
+- **Exact segments only.** `isSafeFolderOrFileName` now refuses an empty name, a name that is exactly `.` or `..`, and any name with `/` or `\`. `a..b`, `my..recipe.yml` and `..hidden` are accepted.
+- **Write side.** Run Faker on `GeneratedRecipes/my..recipe.yml` generates data and records `recipeFileName: "my..recipe.yml"` with a `null` run and tree. A tree folder named `team..v2` is recorded as the tree, and the reader links it.
+- **Read side.** A recorded `"../../etc"` is still `unknown` (it has a separator), and so is a recorded `".."`. A recorded `"a..b"` is `linked` only when a run folder with that name is known. Legacy inference applies the same rule to the tree name it reads from the recipe copy.
+- **Outside the folder.** A recipe outside `GeneratedRecipes/` still fails before any data is generated: its path relative to the folder starts with a `..` segment. The error still names no part of the path (#183); its wording now says "is not a plain name" instead of "contains \"..\"".
+- **The Recipe Cockpit's saved place** reads its run name through the same rule, so a place naming a run with `..` inside its name is read, and the run is still looked up among the runs on disk.
+- **Not changed:** what Run Faker accepts outside `GeneratedRecipes/`, and recorded names are still never joined into paths.
+- **Tests.** The `isSafeFolderOrFileName` table covers the accepted and refused names. The `DatasetSourceService` fixture gains a `team..v2` tree folder holding `my..recipe.yml`, a data set recording it (`linked`) and a data set recording a `".."` run (`unknown`). New cases cover a recorded `"a..b"` run with and without a matching run, legacy inference of a `team..v2` tree, and a copied tree name of exactly `..`. The command-link refusal test now refuses by a path outside the folder instead of an `a..b` folder. `ExtensionCommandService.test.ts` runs `my..recipe.yml` and a `team..v2` tree through both backends, and asserts the outside-the-folder error names none of `elsewhere`, `team..v2`, `my..recipe.yml` or the workspace root.
+
 ## [3.49.0] - The Recipe Cockpit brings the reader back to their place after a close or a window reload
 
 Closes [#230](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/230), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
