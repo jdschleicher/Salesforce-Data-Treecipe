@@ -4665,7 +4665,7 @@ describe('RecipeCockpitService', () => {
                     const actionGroup = headerChildren[headerChildren.length - 1];
 
                     expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
-                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeRunFaker']);
+                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeFavorite', 'treeRename', 'treeRunFaker']);
                     expect(panel.findAll(panel.cockpitBodyElement, 'treeScope')).toEqual([]);
 
                 });
