@@ -46,12 +46,11 @@ export interface IRequiredLookup {
 
 /*
     One required lookup as the panel and the modal show it. A polymorphic one names every object it
-    can point at in parentObjectApiName, and has no count: no single parent can be chosen for it.
+    can point at in parentObjectApiName: no single parent can be chosen for it.
 */
 export interface IRecipeCockpitRequiredLookupViewModel {
     fieldApiName: string;
     parentObjectApiName: string;
-    parentRecordCount: number;
 }
 
 // disabledReason IS '' WHEN CREATE IS OFFERED, AND OTHERWISE THE ONE SENTENCE THE ROW SHOWS
@@ -71,15 +70,15 @@ export interface IRecipeCockpitCreateReadinessViewModel {
 
 /*
     describe is absent when the object could not be described -- the org does not have it, or the
-    describe failed -- and describeFailureMessage then says why. A parent count that is undefined
-    was not counted, which is read as none.
+    describe failed -- and describeFailureMessage then says why. Whether a required parent has any
+    record is not asked here: the Create queries the parent Ids after the reader confirms, and
+    refuses before anything is written when there are none.
 */
 export interface ICreateReadinessInput {
     objectApiName: string;
     orgTypeDetail: ICreateOrgTypeDetail | undefined;
     describe?: ICreateObjectDescribe;
     describeFailureMessage?: string;
-    parentRecordCountsByObject: ReadonlyMap<string, number | undefined>;
     // THE FIELD KEYS OF THE BLOCK THE INSERT WOULD SEND; ABSENT, NO FIELD IS CHECKED
     recipeFieldApiNames?: readonly string[];
     // WHY THAT BLOCK COULD NOT BE READ: A REASON IN ITS OWN RIGHT, NEVER A BLOCK WITH NO FIELDS
@@ -168,10 +167,7 @@ export class RecipeCockpitRecordCreation {
 
         const requiredLookups = this.findRequiredLookups(describe).map(requiredLookup => ({
             fieldApiName: requiredLookup.fieldApiName,
-            parentObjectApiName: requiredLookup.referenceTo.join(', '),
-            parentRecordCount: requiredLookup.referenceTo.length === 1
-                ? readinessInput.parentRecordCountsByObject.get(requiredLookup.referenceTo[0]) ?? 0
-                : 0
+            parentObjectApiName: requiredLookup.referenceTo.join(', ')
         }));
 
         if ( fieldReason ) {
@@ -182,15 +178,6 @@ export class RecipeCockpitRecordCreation {
 
         if ( polymorphicLookup ) {
             return withFieldCheck(notReady(`${polymorphicLookup.fieldApiName} is required and can point at more than one object (${polymorphicLookup.referenceTo.join(', ') || 'none named'}), so no parent can be chosen for it.`, requiredLookups));
-        }
-
-        const parentlessLookup = requiredLookups.find(requiredLookup => requiredLookup.parentRecordCount < 1);
-
-        if ( parentlessLookup ) {
-            const isCounted = readinessInput.parentRecordCountsByObject.get(parentlessLookup.parentObjectApiName) !== undefined;
-            return withFieldCheck(notReady(isCounted
-                ? `${parentlessLookup.fieldApiName} needs a ${parentlessLookup.parentObjectApiName} record, and the org has none.`
-                : `${parentlessLookup.fieldApiName} needs a ${parentlessLookup.parentObjectApiName} record, and ${parentlessLookup.parentObjectApiName} could not be counted.`, requiredLookups));
         }
 
         return withFieldCheck(notReady('', requiredLookups));

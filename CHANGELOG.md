@@ -1,10 +1,8 @@
 # Change Log
 
-## [3.53.0] - The Recipe Cockpit asks which Dev Hub a new scratch org comes from, and draws its tree triangles larger
+## [3.54.0] - The Recipe Cockpit asks which Dev Hub a new scratch org comes from
 
-Closes [#243](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/243) and [#244](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/244).
-
-### "+ New scratch org" asks for the Dev Hub every time (#243)
+Closes [#243](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/243).
 
 **+ New scratch org** used the Salesforce CLI's default Dev Hub (`target-dev-hub`) without asking. The only place it said which Dev Hub that was, was one line of the confirmation, so a reader could spend a Dev Hub's daily and active scratch org limits without knowing whose they were.
 
@@ -21,13 +19,29 @@ Closes [#243](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/24
   - `VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed` is now generic over the org detail it returns, and a listing may name a `defaultUsername` to label.
 - **Unchanged.** The panel's `createScratchOrg` message still carries nothing, the picker is the host's, and the cockpit still never deletes an org. The tooltip, the preview warning and the README now say you pick the Dev Hub.
 
-### Larger tree triangles (#244)
+## [3.53.1] - Recipe Cockpit: bigger expand/collapse triangles on the relationship tree
 
-- The ▸/▾ on a tree card's header (`.treeToggle`) and on each object in the Structure tab (`.treeObjectToggle`) are drawn at `3.3em`, three times the `1.1em` they shared with the other toggles. Their line height and padding were tightened so a card header stays on one line, with the title, ☆, ✎ and ▶ Run Faker vertically centred. The Structure object row is centred too.
-- The picklist, Previous Versions and Data-by-Org row triangles, and ⟳, keep `1.1em`.
-- A test reads the panel's stylesheet and pins both sizes.
-- Clicking a card header still toggles it (#209), and colours still come only from `RECIPE_COCKPIT_PALETTE`.
+Closes [#244](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/244).
 
+At `1.1em` the ▸/▾ on the relationship tree was too small to tell at a glance whether a card or object was open.
+
+- **The tree card header triangle (`.treeToggle`) and each Structure object's triangle (`.treeObjectToggle`) are drawn at `3.3em`**, about three times their old size. They have their own rule after the shared toggle rule, with less vertical padding so the larger glyph doesn't make the row taller than it needs to be.
+- **A Structure object's header row centres its items** (`align-items: center`) instead of aligning them on the baseline, so the object name sits beside the larger triangle rather than at its foot. The card header was already centred, so the title, ☆, ✎ and ▶ Run Faker stay on one centred line.
+- **Not changed:** the ▸/▾ characters, the click behaviour (the card header is still the toggle and the triangle still has no listener of its own, #209), the colours, which still come only from `RECIPE_COCKPIT_PALETTE`, and the picklist, Previous Versions and Data-by-Org triangles and ⟳, which stay at `1.1em`.
+- **Tests.** `RecipeCockpitService.test.ts` asserts the `3.3em` rule for the two triangles, that it comes after the shared `1.1em` toggle rule (so the cascade picks it), that no other rule uses `3.3em`, and that both header rows centre their items.
+## [3.53.0] - Recipe Cockpit Data-by-Org no longer counts records
+
+Closes [#238](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/238), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Data-by-Org ran `SELECT COUNT() FROM <Object>` across the whole org for every object in every tree. Those numbers did not describe a tree's data: a Contact count included every Contact in the org, not only the ones under that tree's Accounts. A tree-scoped view of org data will be designed separately, so the org-wide counts are removed rather than refined.
+
+- **No record count is drawn or queried.** Rows no longer show a count, `not in org`, `no access` or `counting…`, and a card's Data-by-Org header shows only its object count (`3 objects`, or `3 objects · choose an org in the toolbar to create records` before an org is picked). The `Counted N of M objects…` progress is gone. The status line reads `Checking <org>…` until the org's Create readiness arrives.
+- **Picking an org asks only what Create needs:** the Organization row (is it a sandbox?) and, for a sandbox, each object's describe. A connection failure, or an org that answers it is not a sandbox, now travels on `dataOrgSelection` as `failureMessage`. It stays on screen, and every row's Create reason says nothing is created in that org, instead of waiting on a readiness that never comes.
+- **Create no longer counts parents.** Readiness no longer refuses an object whose required parent has 0 records, or could not be counted, and the modal names each required lookup's parent without a number. The check that matters still happens: after you confirm, Create queries the parent Ids, and if a required parent has none it stops before any folder or file is written or any insert is sent, and names the parent to fill first. Every other readiness reason is unchanged: org type, sandbox, describe, createable, polymorphic required lookup, and missing or uncreateable recipe fields. So is the production guard at all three points.
+- **⟳ now posts `refreshDataOrgs`** (was `refreshDataOrgCounts`). It still asks the CLI again which orgs are connected and re-selects the remembered org.
+- **Removed:** `SalesforceOrgService.countRecords`, `readTotalSize`, `classifyCountFailure`, the record-count session cache and its clear helpers, the `IOrgRecordCount*` / `OrgRecordCountStatus` types, the `dataOrgCounts` host message, `RECIPE_COCKPIT_DATA_ORG_COUNT_POST_BATCH`, `buildDataOrgCountViewModel`, and `parentRecordCount` / `parentRecordCountsByObject` on Create readiness.
+- **Not changed:** the record counts in Previous Versions and Previous Fake Sets (read from local data set files) and `datasetSource.json`'s `recordCountsByObject`. The saved panel place has no count in it, so a place saved before this version still restores.
+- **Tests.** `RecipeCockpitDataByOrg.test.ts` asserts that selecting, re-selecting and refreshing send only the Organization query and never `COUNT()`, that no `dataOrgCounts` message is posted, that a failure on the selection stays on screen and disables every row's Create, and that no row or header draws a record count. `RecipeCockpitCreateInOrg.test.ts` asserts that no `COUNT()` is sent from select to insert, and that a required parent with no records stops the Create after the confirm, writing nothing. `RecipeCockpitRecordCreation.test.ts` drops the parent-count reasons. `SalesforceOrgService.test.ts` drops the `countRecords` suite. `RecipeCockpitScratchOrg.test.ts` (3.52.0, #200) now asserts that a newly created scratch org is selected and checked for Create with no `COUNT()` and no `dataOrgCounts`.
 ## [3.52.0] - The Recipe Cockpit creates a scratch org, deploys the project's source to it, and selects it in Data-by-Org
 
 Closes [#200](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/200), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

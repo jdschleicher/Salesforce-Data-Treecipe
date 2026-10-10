@@ -182,27 +182,6 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('draws the tree card and Structure object triangles three times the size of the other toggles (#244)', () => {
-
-            const stylesheet = RecipeCockpitService.buildWebviewShellHtml('testNonce').match(/<style nonce="testNonce">([\s\S]*?)<\/style>/)?.[1] ?? '';
-            const fontSizesBySelector = new Map<string, string[]>();
-            for ( const ruleMatch of stylesheet.matchAll(/([^{}]+)\{([^{}]*)\}/g) ) {
-                const fontSize = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(ruleMatch[2])?.[1].trim();
-                ruleMatch[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',').map(selector => selector.trim()).forEach(selector => {
-                    if ( fontSize ) {
-                        fontSizesBySelector.set(selector, [...( fontSizesBySelector.get(selector) ?? [] ), fontSize]);
-                    }
-                });
-            }
-
-            expect(fontSizesBySelector.get('.treeToggle')).toEqual(['3.3em']);
-            expect(fontSizesBySelector.get('.treeObjectToggle')).toEqual(['3.3em']);
-            ['.picklistToggle', '.treeVersionToggle', '.dataObjectToggle', '.dataOrgRefresh'].forEach(selector => {
-                expect(fontSizesBySelector.get(selector)).toEqual(['1.1em']);
-            });
-
-        });
-
         // AN UN-NONCED INLINE BLOCK IS SILENTLY DEAD UNDER THE CSP, SO EVERY ONE IS COUNTED RATHER THAN SPOT CHECKED
         it('emits no inline style or script block without a nonce', () => {
 
@@ -439,6 +418,23 @@ describe('RecipeCockpitService', () => {
             expect(treeHeaderRule).toContain('cursor: pointer;');
             expect(treeHeaderRule).toContain('align-items: center;');
             expect(ruleFor(styleSheet, '\\.treeHeaderActions')).toContain('margin-left: auto;');
+
+        });
+
+        // #244: AT 1.1em THE ▸/▾ WAS TOO SMALL TO TELL AT A GLANCE WHETHER A CARD OR OBJECT WAS OPEN
+        it('draws the tree card and Structure object triangles at 3.3em, centred in their rows, and no other toggle', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            const triangleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
+            const otherToggleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.treeVersionToggle, \\.dataObjectToggle, \\.dataOrgRefresh');
+
+            expect(triangleRule).toContain('font-size: 3.3em;');
+            expect(triangleRule).toContain('line-height: 1;');
+            expect(otherToggleRule).toContain('font-size: 1.1em;');
+            expect(styleSheet.indexOf(triangleRule)).toBeGreaterThan(styleSheet.indexOf(otherToggleRule));
+            expect(styleSheet.match(/font-size: 3\.3em;/g)).toHaveLength(1);
+            expect(ruleFor(styleSheet, '\\.treeObjectHeader')).toContain('align-items: center;');
+            expect(ruleFor(styleSheet, '\\.treeHeader')).toContain('align-items: center;');
 
         });
 

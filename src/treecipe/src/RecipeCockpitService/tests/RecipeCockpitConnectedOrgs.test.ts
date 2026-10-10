@@ -167,7 +167,7 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
             return { kill: jest.fn() };
         });
 
-        await receivedMessageHandler({ command: 'refreshDataOrgCounts' });
+        await receivedMessageHandler({ command: 'refreshDataOrgs' });
         await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
 
         expect(execFile).toHaveBeenCalledTimes(2);
