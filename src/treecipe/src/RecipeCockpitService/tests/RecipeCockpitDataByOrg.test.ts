@@ -56,8 +56,8 @@ function loadTreeRecipe(): IRecipeCockpitRecipeViewModel {
 
 }
 
-// A CONNECTION STAND-IN: COUNT() BY OBJECT FROM A TABLE, AND THE ORGANIZATION ROW (OR A THROW) FOR THE TYPE QUERY
-function buildFakeConnection(recordCountsByObject: Record<string, number>, organizationRow: unknown = { IsSandbox: true, OrganizationType: 'Unlimited Edition' }) {
+// A CONNECTION STAND-IN: THE ORGANIZATION ROW (OR A THROW) FOR THE TYPE QUERY, AND A FAILURE FOR ANY OTHER QUERY
+function buildFakeConnection(organizationRow: unknown = { IsSandbox: true, OrganizationType: 'Unlimited Edition' }) {
 
     const sentQueries: string[] = [];
 
@@ -71,21 +71,13 @@ function buildFakeConnection(recordCountsByObject: Record<string, number>, organ
                 }
                 return { totalSize: 1, records: [organizationRow] };
             }
-            const objectApiName = soql.replace('SELECT COUNT() FROM ', '');
-            if ( !Object.prototype.hasOwnProperty.call(recordCountsByObject, objectApiName) ) {
-                throw Object.assign(new Error(`sObject type '${objectApiName}' is not supported.`), { errorCode: 'INVALID_TYPE' });
-            }
-            return { totalSize: recordCountsByObject[objectApiName], records: [] };
+            throw new Error(`Data-by-Org sent a query it should not have: ${soql}`);
         })
     };
 
 }
 
 describe('RecipeCockpitService, Data-by-Org', () => {
-
-    beforeEach(() => {
-        SalesforceOrgService.clearRecordCountCache();
-    });
 
     describe('collectDataOrgObjectApiNames', () => {
 
@@ -158,7 +150,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('refuses a selection before the model it counts is confirmed drawn', () => {
+        it('refuses a selection before the model it checks is confirmed drawn', () => {
 
             const panelState = buildRenderedPanelState();
             panelState.dataOrgObjectApiNames = new Set();
@@ -170,13 +162,13 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('refreshes once a model with tree objects is confirmed drawn, with or without a selection', () => {
 
             const panelState = buildRenderedPanelState();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toEqual({ kind: 'refreshDataOrgCounts' });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toEqual({ kind: 'refreshDataOrgs' });
 
             panelState.dataOrgSelection = { orgIndex: 0, orgDetail: SANDBOX_ORG, requestSequence: 1 };
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toEqual({ kind: 'refreshDataOrgCounts' });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toEqual({ kind: 'refreshDataOrgs' });
 
             panelState.dataOrgObjectApiNames = new Set();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toBeUndefined();
 
         });
 
@@ -192,7 +184,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
         const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
-        const countedObjects = () => postedNamed('dataOrgCounts').flatMap(countsMessage => countsMessage.counts.map((count: any) => count.objectApiName));
+        const checkedObjects = () => postedNamed('dataOrgReadiness').flatMap(readinessMessage => readinessMessage.objects.map((readiness: any) => readiness.objectApiName));
 
         const openRenderedCockpit = async () => {
             await RecipeCockpitService.openRecipeCockpitPanel(TREE_WORKSPACE_ROOT, workspaceState);
@@ -275,9 +267,9 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('connects by username, labels a sandbox, counts every tree object and remembers the org for the workspace', async () => {
+        it('connects by username, labels a sandbox, checks every tree object for Create, counts nothing, and remembers the org for the workspace', async () => {
 
-            const fakeConnection = buildFakeConnection({ Account: 1200, Contact: 3, OtherChildObject__c: 0, Lead: 7 });
+            const fakeConnection = buildFakeConnection();
             const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(fakeConnection as any);
 
             await openRenderedCockpit();
@@ -285,15 +277,10 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
 
             expect(getConnectionSpy).toHaveBeenCalledWith('qa@example.com.qa');
-            expect(fakeConnection.sentQueries[0]).toBe('SELECT IsSandbox, OrganizationType FROM Organization');
-            expect(postedNamed('dataOrgSelection').map(selection => [selection.orgTypeLabel, selection.isSandbox])).toEqual([['', null], ['Sandbox', true]]);
-            expect(postedNamed('dataOrgCounts').at(-1)).toMatchObject({ isComplete: true, connectionFailureMessage: '', requestedCount: 4, completedCount: 4 });
-            expect(postedNamed('dataOrgCounts').flatMap(countsMessage => countsMessage.counts)).toIncludeSameMembers([
-                { objectApiName: 'Account', status: 'count', recordCount: 1200, failureMessage: '' },
-                { objectApiName: 'Contact', status: 'count', recordCount: 3, failureMessage: '' },
-                { objectApiName: 'OtherChildObject__c', status: 'count', recordCount: 0, failureMessage: '' },
-                { objectApiName: 'Lead', status: 'count', recordCount: 7, failureMessage: '' }
-            ]);
+            expect(fakeConnection.sentQueries).toEqual(['SELECT IsSandbox, OrganizationType FROM Organization']);
+            expect(postedNamed('dataOrgSelection').map(selection => [selection.orgTypeLabel, selection.isSandbox, selection.failureMessage])).toEqual([['', null, ''], ['Sandbox', true, '']]);
+            expect(postedNamed('dataOrgCounts')).toEqual([]);
+            expect(checkedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
             expect(workspaceStateValues.get(RECIPE_COCKPIT_DATA_ORG_STATE_KEY)).toBe('qa@example.com.qa');
 
         });
@@ -434,7 +421,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             expect(refreshConnectedOrgsSpy).not.toHaveBeenCalled();
 
             listSpy.mockResolvedValue(buildDataOrgListing([SANDBOX_ORG]));
-            await receivedMessageHandler({ command: 'refreshDataOrgCounts' });
+            await receivedMessageHandler({ command: 'refreshDataOrgs' });
 
             expect(refreshConnectedOrgsSpy).toHaveBeenCalledTimes(1);
             expect(refreshConnectedOrgsSpy.mock.invocationCallOrder[0]).toBeLessThan(listSpy.mock.invocationCallOrder[1]);
@@ -445,9 +432,9 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it.each([
             ['answers that it is production, Developer Edition included', { IsSandbox: false, OrganizationType: 'Developer Edition' }, 'Production · Developer Edition', false, 'answered that it is Production · Developer Edition'],
             ['cannot say what it is', new Error('INSUFFICIENT_ACCESS'), ORG_TYPE_UNKNOWN_LABEL, null, 'could not say whether it is a sandbox']
-        ])('asks an org that %s nothing more: no count, no describe, and Create refused', async (_description, organizationRow, expectedTypeLabel, expectedIsSandbox, expectedReason) => {
+        ])('asks an org that %s nothing more: no describe, and Create refused', async (_description, organizationRow, expectedTypeLabel, expectedIsSandbox, expectedReason) => {
 
-            const fakeConnection = buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }, organizationRow);
+            const fakeConnection = buildFakeConnection(organizationRow);
             const describeSpy = jest.spyOn(SalesforceOrgService, 'describeObjects');
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(fakeConnection as any);
 
@@ -458,11 +445,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgTypeLabel: expectedTypeLabel, isSandbox: expectedIsSandbox });
             expect(fakeConnection.sentQueries).toEqual(['SELECT IsSandbox, OrganizationType FROM Organization']);
             expect(describeSpy).not.toHaveBeenCalled();
-            expect(postedNamed('dataOrgCounts')).toEqual([expect.objectContaining({
-                counts: [],
-                isComplete: true,
-                connectionFailureMessage: expect.stringContaining(`qa ${expectedReason}, so Data-by-Org asked it nothing more.`)
-            })]);
+            expect(postedNamed('dataOrgSelection').at(-1).failureMessage).toContain(`qa ${expectedReason}, so Data-by-Org asked it nothing more.`);
             expect(postedNamed('dataOrgReadiness').at(-1).objects.every((readiness: any) => readiness.disabledReason !== '')).toBe(true);
 
         });
@@ -475,31 +458,15 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             await receivedMessageHandler({ command: 'loadDataOrgs' });
             await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
 
-            expect(postedNamed('dataOrgCounts')).toEqual([expect.objectContaining({
-                counts: [],
-                isComplete: true,
-                connectionFailureMessage: expect.stringContaining('Could not connect to qa: expired access/refresh token')
-            })]);
-
-        });
-
-        it('reports an object the org does not have as notInOrg', async () => {
-
-            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, Lead: 1 }) as any);
-
-            await openRenderedCockpit();
-            await receivedMessageHandler({ command: 'loadDataOrgs' });
-            await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
-
-            expect(postedNamed('dataOrgCounts').flatMap(countsMessage => countsMessage.counts).find((count: any) => count.objectApiName === 'OtherChildObject__c'))
-                .toMatchObject({ status: 'notInOrg' });
+            expect(postedNamed('dataOrgSelection').at(-1).failureMessage).toContain('Could not connect to qa: expired access/refresh token');
+            expect(postedNamed('dataOrgReadiness')).toEqual([]);
 
         });
 
         it('preselects the remembered org on reopen, contacting it only once Data-by-Org asks', async () => {
 
             workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'prod@example.com');
-            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
             await openRenderedCockpit();
             expect(getConnectionSpy).not.toHaveBeenCalled();
@@ -508,14 +475,14 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             expect(postedNamed('dataOrgList')[0].selectedOrgIndex).toBe(1);
             expect(getConnectionSpy).toHaveBeenCalledWith('prod@example.com');
-            expect(countedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
+            expect(checkedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
 
         });
 
-        it('still counts when remembering the org fails, and leaves no rejection unhandled', async () => {
+        it('still checks the org when remembering it fails, and leaves no rejection unhandled', async () => {
 
             workspaceState.update.mockRejectedValue(new Error('workspace state is read-only'));
-            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
@@ -523,7 +490,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             await new Promise(resolveYield => setImmediate(resolveYield));
 
             expect(workspaceState.update).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
-            expect(countedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
+            expect(checkedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
 
         });
 
@@ -543,19 +510,17 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('discards the first org\'s answers when another org is chosen mid-count', async () => {
+        it('discards the first org\'s answers when another org is chosen mid-check', async () => {
 
             let releaseFirstOrg: () => void;
             const firstOrgGate = new Promise<void>(resolveGate => { releaseFirstOrg = resolveGate; });
-            const firstConnection = buildFakeConnection({ Account: 111, Contact: 111, OtherChildObject__c: 111, Lead: 111 });
+            const firstConnection = buildFakeConnection();
             const firstQuery = firstConnection.query.getMockImplementation();
             firstConnection.query.mockImplementation(async (soql: string) => {
-                if ( soql.startsWith('SELECT COUNT()') ) {
-                    await firstOrgGate;
-                }
+                await firstOrgGate;
                 return firstQuery(soql);
             });
-            const secondConnection = buildFakeConnection({ Account: 2, Contact: 2, OtherChildObject__c: 2, Lead: 2 }, { IsSandbox: false, OrganizationType: 'Enterprise Edition' });
+            const secondConnection = buildFakeConnection({ IsSandbox: false, OrganizationType: 'Enterprise Edition' });
 
             jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async (orgUsername: string) => (
                 orgUsername === SANDBOX_ORG.username ? firstConnection : secondConnection
@@ -571,19 +536,16 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             await firstSelection;
 
             const secondRequestSequence = postedNamed('dataOrgSelection').at(-1).requestSequence;
-            const postedCounts = postedNamed('dataOrgCounts').flatMap(countsMessage => countsMessage.counts);
 
-            expect(postedCounts.every((count: any) => count.recordCount === 2)).toBe(true);
-            expect(postedNamed('dataOrgCounts').every(countsMessage => countsMessage.requestSequence === secondRequestSequence)).toBe(true);
-            // THE FIRST ORG'S COUNT LOOP STOPPED, SO NO MORE THAN ITS IN-FLIGHT QUERIES WERE EVER SENT
-            expect(firstConnection.sentQueries.filter(soql => soql.startsWith('SELECT COUNT()')).length).toBeLessThanOrEqual(TREE_OBJECT_API_NAMES.length);
+            expect(postedNamed('dataOrgSelection').filter(selection => selection.orgTypeLabel === 'Sandbox')).toEqual([]);
+            expect(postedNamed('dataOrgReadiness').every(readinessMessage => readinessMessage.requestSequence === secondRequestSequence)).toBe(true);
 
         });
 
         it('ends the selection when the org list is reloaded, and selects the same org again by username in the new list', async () => {
 
             const listSpy = jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, SECOND_ORG], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
-            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
@@ -597,16 +559,16 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgIndex: 1, orgLabel: 'qa' });
 
             getConnectionSpy.mockClear();
-            await receivedMessageHandler({ command: 'refreshDataOrgCounts' });
+            await receivedMessageHandler({ command: 'refreshDataOrgs' });
 
             expect(getConnectionSpy).toHaveBeenCalledWith(SANDBOX_ORG.username);
             expect(getConnectionSpy).not.toHaveBeenCalledWith(SECOND_ORG.username);
 
         });
 
-        it('ends a selection still counting when the panel fails to draw', async () => {
+        it('ends a selection still being checked when the panel fails to draw', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
             await openRenderedCockpit();
@@ -616,33 +578,31 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             await receivedMessageHandler({ command: 'renderFailed', phase: 'render', message: 'boom' });
             await selection;
 
-            expect(postedNamed('dataOrgCounts')).toEqual([]);
-            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, (RecipeCockpitService as any).recipeCockpitPanelState)).toBeUndefined();
+            expect(postedNamed('dataOrgReadiness')).toEqual([]);
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, (RecipeCockpitService as any).recipeCockpitPanelState)).toBeUndefined();
 
         });
 
-        it('⟳ clears the selected org\'s cached counts and counts again', async () => {
+        it('never sends a COUNT() query, whether an org is selected, selected again or refreshed with ⟳', async () => {
 
-            const fakeConnection = buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 });
+            const fakeConnection = buildFakeConnection();
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(fakeConnection as any);
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
             await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
             await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+            await receivedMessageHandler({ command: 'refreshDataOrgs' });
 
-            const countQueries = () => fakeConnection.sentQueries.filter(soql => soql.startsWith('SELECT COUNT()'));
-            expect(countQueries()).toHaveLength(4);
-
-            await receivedMessageHandler({ command: 'refreshDataOrgCounts' });
-
-            expect(countQueries()).toHaveLength(8);
+            expect(fakeConnection.sentQueries).toHaveLength(3);
+            expect(fakeConnection.sentQueries.filter(soql => /COUNT\(/i.test(soql))).toEqual([]);
+            expect(postedPanelMessages.map(hostMessage => hostMessage.command)).not.toContain('dataOrgCounts');
 
         });
 
-        it('ends a selection still counting when a new model is posted, so its answers are not drawn over the new one', async () => {
+        it('ends a selection still being checked when a new model is posted, so its answers are not drawn over the new one', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
@@ -652,8 +612,8 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             await selection;
 
             const latestRenderSequence = lastRenderSequence();
-            expect(postedNamed('dataOrgCounts').filter(countsMessage => countsMessage.renderSequence === latestRenderSequence)).toEqual([]);
-            // THE NEW MODEL'S OBJECTS ARE NOT COUNTABLE UNTIL IT IS CONFIRMED DRAWN
+            expect(postedNamed('dataOrgReadiness').filter(readinessMessage => readinessMessage.renderSequence === latestRenderSequence)).toEqual([]);
+            // THE NEW MODEL'S OBJECTS ARE NOT CHECKABLE UNTIL IT IS CONFIRMED DRAWN
             expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, (RecipeCockpitService as any).recipeCockpitPanelState)).toBeUndefined();
 
         });
@@ -689,7 +649,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             it('uses the org picked in Data-by-Org, describes only that card\'s objects, and tags the answer with the card', async () => {
 
-                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ Account: 1, Contact: 1, OtherChildObject__c: 1, Lead: 1 }) as any);
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
                 jest.spyOn(RecipeCockpitService, 'computeCreateReadinessByTarget').mockResolvedValue({ byObjectApiName: new Map(), byCreateKey: new Map() });
 
                 await openRenderedCockpit();
@@ -794,14 +754,15 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         const textOf = (panel: any, className: string) => panel.findAll(panel.cockpitBodyElement, className).map((element: any) => element.textContent);
         const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
 
-        const postSelectionAndCounts = (panel: any, requestSequence: number, recordCount: number, renderSequence = 1) => {
-            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence, renderSequence });
+        const postSelectionAndReadiness = (panel: any, requestSequence: number, disabledReason = '', renderSequence = 1) => {
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence, renderSequence });
             panel.postToPanel({
-                command: 'dataOrgCounts',
-                counts: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, status: 'count', recordCount, failureMessage: '' })),
-                completedCount: 4, requestedCount: 4, isComplete: true, connectionFailureMessage: '', requestSequence, renderSequence
+                command: 'dataOrgReadiness',
+                objects: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, disabledReason, requiredLookups: [] })),
+                createTargets: [], createResults: [], requestSequence, renderSequence
             });
         };
+        const createReasonsOf = (panel: any) => textOf(panel, 'dataCreateReason');
 
         it('puts one org picker in the toolbar and no view switch, and asks for no orgs when the panel opens', () => {
 
@@ -866,25 +827,27 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             panel.openTab(secondCard, 'Data-by-Org');
 
             expect(textOf(panel, 'dataObjectName')).toEqual(TREE_OBJECT_API_NAMES);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · choose an org in the toolbar to count their records', '1 object · choose an org in the toolbar to count their records']);
+            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · choose an org in the toolbar to create records', '1 object · choose an org in the toolbar to create records']);
 
         });
 
-        it('recounts every card\'s tab from one selection, including a tab opened only after the counts arrived', () => {
+        it('draws one selection into every card\'s tab, including a tab opened only after it arrived, with no record count anywhere', () => {
 
             const { panel } = renderDataOrgPanel();
             panel.expandAllTrees();
             const [firstCard, secondCard] = panel.treeCards();
             panel.openTab(firstCard, 'Data-by-Org');
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
-            postSelectionAndCounts(panel, 1, 7);
+            postSelectionAndReadiness(panel, 1, 'first reason');
 
-            expect(panel.findAll(firstCard, 'dataObjectCount').map((element: any) => element.textContent)).toEqual(['7 records', '7 records', '7 records']);
+            expect(panel.findAll(firstCard, 'dataCreateReason').map((element: any) => element.textContent)).toEqual(['first reason', 'first reason', 'first reason']);
 
             panel.openTab(secondCard, 'Data-by-Org');
 
-            expect(panel.findAll(secondCard, 'dataObjectCount').map((element: any) => element.textContent)).toEqual(['7 records']);
-            expect(panel.findAll(secondCard, 'dataTreeCount')[0].textContent).toBe('1 object · 7 records in the org');
+            expect(panel.findAll(secondCard, 'dataCreateReason').map((element: any) => element.textContent)).toEqual(['first reason']);
+            expect(panel.findAll(secondCard, 'dataTreeCount')[0].textContent).toBe('1 object');
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataObjectCount')).toEqual([]);
+            expect(textOf(panel, 'dataTreeCount').join(' ')).not.toMatch(/record/);
             expect(postedNamed(panel, 'selectDataOrg')).toEqual([]);
 
         });
@@ -949,82 +912,82 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('draws the org type, each object\'s count and each tree\'s total', () => {
+        it('draws the org type and says it is checking the org until its readiness arrives', () => {
 
             const { panel } = renderDataOrgPanel();
             openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
-            postSelectionAndCounts(panel, 1, 1500);
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 1, renderSequence: 1 });
 
             expect(viewOf(panel, 'dataOrgType').textContent).toBe('Sandbox');
-            expect(textOf(panel, 'dataObjectCount')).toEqual(['1,500 records', '1,500 records', '1,500 records', '1,500 records']);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · 4,500 records in the org', '1 object · 1,500 records in the org']);
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Checking qa…');
+            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'checking whether records can be created…'));
+
+            postSelectionAndReadiness(panel, 1);
+
+            expect(panel.isHidden(viewOf(panel, 'dataOrgStatus'))).toBe(true);
+            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects', '1 object']);
 
         });
 
-        it('says which objects could not be counted, and why on hover', () => {
-
-            const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
-            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence: 1, renderSequence: 1 });
-            panel.postToPanel({
-                command: 'dataOrgCounts',
-                counts: [
-                    { objectApiName: 'Account', status: 'count', recordCount: 1, failureMessage: '' },
-                    { objectApiName: 'Contact', status: 'notInOrg', recordCount: 0, failureMessage: 'INVALID_TYPE' },
-                    { objectApiName: 'OtherChildObject__c', status: 'noAccess', recordCount: 0, failureMessage: 'INSUFFICIENT_ACCESS' }
-                ],
-                completedCount: 3, requestedCount: 4, isComplete: false, connectionFailureMessage: '', requestSequence: 1, renderSequence: 1
-            });
-
-            expect(textOf(panel, 'dataObjectCount')).toEqual(['1 record', 'not in org', 'no access', 'counting…']);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · 1 record in the org · 2 not counted', '1 object · counting…']);
-            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Counted 3 of 4 objects…');
-
-        });
-
-        it('drops counts for an older selection or an older model', () => {
+        it('drops an answer for an older selection or an older model', () => {
 
             const { panel } = renderDataOrgPanel();
             openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
-            postSelectionAndCounts(panel, 2, 5);
+            postSelectionAndReadiness(panel, 2, 'current');
 
-            postSelectionAndCounts(panel, 1, 999);
-            postSelectionAndCounts(panel, 3, 777, 0);
+            postSelectionAndReadiness(panel, 1, 'older selection');
+            postSelectionAndReadiness(panel, 3, 'older model', 0);
 
-            expect(textOf(panel, 'dataObjectCount')).toEqual(['5 records', '5 records', '5 records', '5 records']);
+            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'current'));
 
         });
 
-        it('marks every object not counted when the connection failed, and says so once', () => {
+        it('says once that the connection failed, and leaves no row waiting on a check that will not come', () => {
 
             const { panel } = renderDataOrgPanel();
             openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
-            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null, requestSequence: 1, renderSequence: 1 });
-            panel.postToPanel({ command: 'dataOrgCounts', counts: [], completedCount: 0, requestedCount: 4, isComplete: true, connectionFailureMessage: 'Could not connect to qa: expired.', requestSequence: 1, renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null, failureMessage: 'Could not connect to qa: expired.', requestSequence: 1, renderSequence: 1 });
 
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Could not connect to qa: expired.');
             expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(true);
-            expect(textOf(panel, 'dataObjectCount')).toEqual(['could not count', 'could not count', 'could not count', 'could not count']);
+            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'Nothing is created in this org.'));
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreate').every((buttonElement: any) => buttonElement.disabled)).toBe(true);
 
         });
 
-        it('posts ⟳ as a payload-free refresh, and takes the dropdown and the counts away until the orgs are listed again', () => {
+        it('keeps a not-a-sandbox answer on screen when the refused readiness arrives after it', () => {
 
             const { panel } = renderDataOrgPanel();
             openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
-            postSelectionAndCounts(panel, 1, 1);
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Production', isSandbox: false, failureMessage: 'qa answered that it is Production.', requestSequence: 1, renderSequence: 1 });
+            panel.postToPanel({
+                command: 'dataOrgReadiness',
+                objects: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, disabledReason: 'Create runs only in a sandbox.', requiredLookups: [] })),
+                createTargets: [], createResults: [], requestSequence: 1, renderSequence: 1
+            });
+
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('qa answered that it is Production.');
+            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'Create runs only in a sandbox.'));
+
+        });
+
+        it('posts ⟳ as a payload-free refresh, and takes the dropdown and the selection away until the orgs are listed again', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            postSelectionAndReadiness(panel, 1);
 
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
 
-            expect(postedNamed(panel, 'refreshDataOrgCounts')).toEqual([{ command: 'refreshDataOrgCounts' }]);
+            expect(postedNamed(panel, 'refreshDataOrgs')).toEqual([{ command: 'refreshDataOrgs' }]);
             expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT);
-            expect(textOf(panel, 'dataObjectCount')).not.toContain('1 record');
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreateControls').every((controlsElement: any) => panel.isHidden(controlsElement))).toBe(true);
 
         });
 
@@ -1041,23 +1004,23 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('after a ⟳ that forgets the org, reads "—" rather than "counting…", hides Create, and draws nothing more of the old selection', () => {
+        it('after a ⟳ that forgets the org, hides Create, asks for an org again, and draws nothing more of the old selection', () => {
 
             const { panel } = renderDataOrgPanel();
             openDataOrgView(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
-            postSelectionAndCounts(panel, 1, 5);
+            postSelectionAndReadiness(panel, 1);
 
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, forgottenOrgNotice: 'The last org used, qa, is no longer connected.', hiddenOrgNote: '', renderSequence: 1 });
 
-            expect(textOf(panel, 'dataObjectCount')).toEqual(['—', '—', '—', '—']);
-            expect(textOf(panel, 'dataTreeCount').join(' ')).not.toContain('counting…');
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreateControls').every((controlsElement: any) => panel.isHidden(controlsElement))).toBe(true);
+            const createHidden = () => panel.findAll(panel.cockpitBodyElement, 'dataCreateControls').every((controlsElement: any) => panel.isHidden(controlsElement));
+            expect(createHidden()).toBe(true);
+            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · choose an org in the toolbar to create records', '1 object · choose an org in the toolbar to create records']);
 
             // AN ANSWER STILL ON ITS WAY FOR THE CLEARED SELECTION IS DROPPED
-            postSelectionAndCounts(panel, 1, 999);
-            expect(textOf(panel, 'dataObjectCount')).toEqual(['—', '—', '—', '—']);
+            postSelectionAndReadiness(panel, 1);
+            expect(createHidden()).toBe(true);
 
         });
 
@@ -1072,7 +1035,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             expect(postedNamed(panel, 'loadDataOrgs')).toHaveLength(2);
             expect(panel.isHidden(viewOf(panel, 'dataOrgLoad'))).toBe(true);
-            // AFTER THE NEW MODEL'S ACK, SO THE HOST HAS ALREADY MADE ITS OBJECTS COUNTABLE
+            // AFTER THE NEW MODEL'S ACK, SO THE HOST HAS ALREADY MADE ITS OBJECTS CHECKABLE
             const postedCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
             expect(postedCommands.lastIndexOf('loadDataOrgs')).toBeGreaterThan(postedCommands.lastIndexOf('rendered'));
 

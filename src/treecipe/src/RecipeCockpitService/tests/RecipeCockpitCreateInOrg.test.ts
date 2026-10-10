@@ -113,7 +113,7 @@ const RAW_DESCRIBES: Record<string, unknown> = {
     }
 };
 
-function buildFakeConnection(options: { isSandbox?: boolean; accountCount?: number; rejectedRecordIndexes?: number[] } = {}) {
+function buildFakeConnection(options: { isSandbox?: boolean; rejectedRecordIndexes?: number[] } = {}) {
 
     const sentQueries: string[] = [];
     const insertedBatches: Array<{ objectApiName: string; records: any[]; insertOptions: unknown }> = [];
@@ -132,12 +132,6 @@ function buildFakeConnection(options: { isSandbox?: boolean; accountCount?: numb
             sentQueries.push(soql);
             if ( soql.includes('FROM Organization') ) {
                 return { records: [{ IsSandbox: options.isSandbox ?? true, OrganizationType: options.isSandbox === false ? 'Developer Edition' : 'Unlimited Edition' }] };
-            }
-            if ( soql.startsWith('SELECT COUNT() FROM Account') ) {
-                return { totalSize: options.accountCount ?? PARENT_ACCOUNT_IDS.length };
-            }
-            if ( soql.startsWith('SELECT COUNT()') ) {
-                return { totalSize: 4 };
             }
             if ( soql === 'SELECT Id FROM Account LIMIT 2000' ) {
                 return { records: PARENT_ACCOUNT_IDS.map(accountId => ({ Id: accountId })) };
@@ -165,7 +159,6 @@ function buildFakeConnection(options: { isSandbox?: boolean; accountCount?: numb
 describe('RecipeCockpitService, Create in org (#180)', () => {
 
     beforeEach(() => {
-        SalesforceOrgService.clearRecordCountCache();
         SalesforceOrgService.clearDescribeCache();
     });
 
@@ -289,7 +282,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             const connection = buildFakeConnection({ isSandbox: false });
 
-            const readiness = await RecipeCockpitService.computeCreateReadiness(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any),
+            const readiness = await RecipeCockpitService.computeCreateReadiness(SANDBOX_ORG.username, connection,
                 ['Account', 'Contact'], { isSandbox: false, organizationType: 'Developer Edition' }, () => false);
 
             expect(connection.describe).not.toHaveBeenCalled();
@@ -301,21 +294,21 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
         });
 
-        it('describes each object in a sandbox, counts each required parent, and offers what passes every guard', async () => {
+        it('describes each object in a sandbox and offers what passes every guard, without asking whether a required parent has records', async () => {
 
-            const connection = buildFakeConnection({ accountCount: 0 });
+            const connection = buildFakeConnection();
 
-            const readiness = await RecipeCockpitService.computeCreateReadiness(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any),
+            const readiness = await RecipeCockpitService.computeCreateReadiness(SANDBOX_ORG.username, connection,
                 ['Account', 'Contact', 'Ghost__c'], { isSandbox: true, organizationType: 'Unlimited Edition' }, () => false);
 
             expect(readiness.get('Account')).toEqual({ objectApiName: 'Account', disabledReason: '', requiredLookups: [] });
             expect(readiness.get('Contact')).toEqual({
                 objectApiName: 'Contact',
-                disabledReason: 'AccountId needs a Account record, and the org has none.',
-                requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 0 }]
+                disabledReason: '',
+                requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]
             });
             expect(readiness.get('Ghost__c').disabledReason).toContain('Ghost__c is not in this org');
-            expect(connection.sentQueries).toContain('SELECT COUNT() FROM Account');
+            expect(connection.sentQueries).toEqual([]);
 
         });
 
@@ -329,7 +322,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             const connection = buildFakeConnection();
 
-            const readiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any),
+            const readiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection,
                 ['Contact'], SANDBOX_TYPE, [
                     { treeKey: 'Tree-A', objectApiName: 'Contact', recipeFieldApiNames: ['LastName', 'AccountId'] },
                     { treeKey: 'Tree-B', objectApiName: 'Contact', recipeFieldApiNames: ['LastName', 'Region__c', 'Partner__c'] }
@@ -350,7 +343,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             const connection = buildFakeConnection();
             const target = { treeKey: 'Tree-A', objectApiName: 'Lead', recipeFieldApiNames: ['Company', 'Rating__c'] };
-            const check = () => RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any), ['Lead'], SANDBOX_TYPE, [target]);
+            const check = () => RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, ['Lead'], SANDBOX_TYPE, [target]);
 
             await check();
             const describeCallCount = connection.describe.mock.calls.length;
@@ -368,11 +361,11 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             const connection = buildFakeConnection();
             const unreadable = RecipeCockpitService.buildCreateTarget('Tree-A', 'Lead', undefined, undefined);
 
-            const sandboxReadiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any), ['Lead'], SANDBOX_TYPE, [unreadable]);
+            const sandboxReadiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, ['Lead'], SANDBOX_TYPE, [unreadable]);
             expect(sandboxReadiness.byCreateKey.get(RecipeCockpitService.buildCreatableObjectKey('Tree-A', 'Lead')).disabledReason)
                 .toBe('The recipe file for this tree could not be read, so its Lead fields could not be checked.');
 
-            const productionReadiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection, SalesforceOrgService.toQuerySource(connection as any),
+            const productionReadiness = await RecipeCockpitService.computeCreateReadinessByTarget(SANDBOX_ORG.username, connection,
                 ['Lead'], { isSandbox: false, organizationType: 'Developer Edition' }, [unreadable]);
             expect(productionReadiness.byCreateKey.get(RecipeCockpitService.buildCreatableObjectKey('Tree-A', 'Lead')).disabledReason).toContain('only in a sandbox');
 
@@ -391,11 +384,11 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
     describe('buildCreateConfirmationDetail', () => {
 
-        it('names the org and its username, Sandbox, the object, the count, each required lookup with its parent count, the backend and the tree', () => {
+        it('names the org and its username, Sandbox, the object, the count, each required lookup with its parent, the backend and the tree', () => {
 
             const detail = RecipeCockpitService.buildCreateConfirmationDetail(
                 'qa (qa@example.com.qa)', { isSandbox: true, organizationType: 'Unlimited Edition' }, 'Contact', 25,
-                { objectApiName: 'Contact', disabledReason: '', requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 1200 }] },
+                { objectApiName: 'Contact', disabledReason: '', requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] },
                 'snowfakery', ACCOUNT_TREE_KEY, 'recipe--Account.yml'
             );
 
@@ -405,7 +398,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
                 'Object: Contact',
                 'Records: 25',
                 'Required lookups:',
-                '  AccountId → a random one of 1200 Account records',
+                '  AccountId → a random existing Account record (none means nothing is created)',
                 'Every other lookup is left blank.',
                 'Backend: snowfakery',
                 `Recipe tree: ${ACCOUNT_TREE_KEY} (recipe--Account.yml)`,
@@ -497,18 +490,19 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             fs.rmSync(temporaryWorkspaceRoot, { recursive: true, force: true });
         });
 
-        it('offers Create for each object once the counts are in, with each required parent and its count', async () => {
+        it('offers Create for each object once the org is checked, with each required parent, and counts nothing', async () => {
 
-            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+            const connection = buildFakeConnection();
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
 
             await openSelectedCockpit(FAKER_JS_RUN);
 
             const readinessMessage = postedNamed('dataOrgReadiness').at(-1);
-            const countsIndex = postedPanelMessages.lastIndexOf(postedNamed('dataOrgCounts').at(-1));
 
-            expect(postedPanelMessages.indexOf(readinessMessage)).toBeGreaterThan(countsIndex);
+            expect(postedNamed('dataOrgCounts')).toEqual([]);
+            expect(connection.sentQueries).toEqual(['SELECT IsSandbox, OrganizationType FROM Organization']);
             expect(readinessMessage.objects.find((readiness: any) => readiness.objectApiName === 'Contact')).toEqual({
-                objectApiName: 'Contact', disabledReason: '', requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 2 }]
+                objectApiName: 'Contact', disabledReason: '', requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]
             });
             expect(JSON.stringify(readinessMessage)).not.toContain(SANDBOX_ORG.username);
 
@@ -580,7 +574,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             expect(modalMessage).toBe('Create 3 Contact records in qa (qa@example.com.qa)?');
             expect(modalOptions.modal).toBe(true);
             expect(modalOptions.detail).toContain('Type: Sandbox');
-            expect(modalOptions.detail).toContain('AccountId → a random one of 2 Account records');
+            expect(modalOptions.detail).toContain('AccountId → a random existing Account record');
             expect(modalOptions.detail).toContain(`Backend: ${fakerService}`);
             expect(modalAction).toBe(RECIPE_COCKPIT_CREATE_CONFIRM_LABEL);
 
@@ -641,14 +635,12 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
         });
 
-        it('shows the result on the row after the reload, and re-counts the object', async () => {
+        it('shows the result on the row after the reload, and sends no COUNT() query from select to insert', async () => {
 
             const connection = buildFakeConnection({ rejectedRecordIndexes: [1] });
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
 
             await openSelectedCockpit(SNOWFAKERY_RUN);
-            const contactCountQueries = () => connection.sentQueries.filter(soql => soql === 'SELECT COUNT() FROM Contact').length;
-            const countsBefore = contactCountQueries();
 
             await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
 
@@ -661,7 +653,8 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             expect(readinessMessage.createResults).toEqual([{
                 treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', createdCount: 2, failedCount: 1, message: 'ENTITY_IS_DELETED: entity is deleted'
             }]);
-            expect(contactCountQueries()).toBe(countsBefore + 1);
+            expect(connection.sentQueries).toContain('SELECT Id FROM Account LIMIT 2000');
+            expect(connection.sentQueries.filter(soql => /COUNT\(/i.test(soql))).toEqual([]);
             expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('2 Contact records were created in qa (qa@example.com.qa) and 1 failed. Nothing was rolled back'));
 
             const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
@@ -683,7 +676,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
 
             const queriesAfterModal = connection.sentQueries.slice(queriesBeforeCreate);
-            expect(queriesAfterModal.every(soql => soql.includes('FROM Organization') || soql.startsWith('SELECT COUNT()'))).toBe(true);
+            expect(queriesAfterModal.every(soql => soql.includes('FROM Organization'))).toBe(true);
             expect(queriesAfterModal).not.toContain('SELECT Id FROM Account LIMIT 2000');
             expect(connection.insertedBatches).toEqual([]);
             expect(datasetFolderNames()).toEqual([]);
@@ -707,7 +700,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
 
-            expect(showWarningMessageSpy).toHaveBeenCalledWith('The org selection changed after qa (qa@example.com.qa) was confirmed (another org was chosen, or the counts or the run were reloaded), so no Contact records were created. Choose + Create again.');
+            expect(showWarningMessageSpy).toHaveBeenCalledWith('The org selection changed after qa (qa@example.com.qa) was confirmed (another org was chosen, the orgs were checked again, or the run was reloaded), so no Contact records were created. Choose + Create again.');
             expect(connection.insertedBatches).toEqual([]);
             expect(datasetFolderNames()).toEqual([]);
 
@@ -743,7 +736,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
         });
 
-        it('reports a parent deleted between counting and inserting as per-record failures, and rolls nothing back', async () => {
+        it('reports a parent deleted between choosing its Id and inserting as per-record failures, and rolls nothing back', async () => {
 
             const connection = buildFakeConnection({ rejectedRecordIndexes: [0, 1, 2] });
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
@@ -793,11 +786,11 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
         });
 
-        it('refuses when the parent Id query returns no records after the confirm, writing nothing', async () => {
+        it('refuses when a required parent has no records, after the confirm and before writing anything (#238)', async () => {
 
             const connection = buildFakeConnection();
-            const countingQuery = connection.query.getMockImplementation();
-            connection.query.mockImplementation(async (soql: string) => soql === 'SELECT Id FROM Account LIMIT 2000' ? { records: [] } : countingQuery(soql));
+            const fakeQuery = connection.query.getMockImplementation();
+            connection.query.mockImplementation(async (soql: string) => soql === 'SELECT Id FROM Account LIMIT 2000' ? { records: [] } : fakeQuery(soql));
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
 
             await openSelectedCockpit(SNOWFAKERY_RUN);
@@ -959,7 +952,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             command: 'dataOrgReadiness',
             objects: [
                 { objectApiName: 'Account', disabledReason: '', requiredLookups: [] },
-                { objectApiName: 'Contact', disabledReason: contactReason, requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 2 }] },
+                { objectApiName: 'Contact', disabledReason: contactReason, requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] },
                 { objectApiName: 'OtherChildObject__c', disabledReason: 'OtherChildObject__c is not createable in this org.', requiredLookups: [] },
                 { objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }
             ],

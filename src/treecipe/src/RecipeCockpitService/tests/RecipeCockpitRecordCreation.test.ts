@@ -84,18 +84,17 @@ describe('RecipeCockpitRecordCreation', () => {
 
     describe('buildCreateReadiness, the production and fail-closed guards', () => {
 
-        const parentCounts = new Map<string, number | undefined>([['Account', 12], ['Master__c', 3]]);
 
-        it('offers Create in a sandbox for a createable object whose required parents have records', () => {
+        it('offers Create in a sandbox for a createable object, without asking whether its required parents have records', () => {
 
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: CONTACT_DESCRIBE, parentRecordCountsByObject: parentCounts
+                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: CONTACT_DESCRIBE
             })).toEqual({
                 objectApiName: 'Contact',
                 disabledReason: '',
                 requiredLookups: [
-                    { fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 12 },
-                    { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', parentRecordCount: 3 }
+                    { fieldApiName: 'AccountId', parentObjectApiName: 'Account' },
+                    { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c' }
                 ]
             });
 
@@ -107,7 +106,7 @@ describe('RecipeCockpitRecordCreation', () => {
         ])('refuses %s, whatever else is true', (_description, orgTypeDetail, expectedText) => {
 
             const readiness = RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: orgTypeDetail, describe: CONTACT_DESCRIBE, parentRecordCountsByObject: parentCounts
+                objectApiName: 'Contact', orgTypeDetail: orgTypeDetail, describe: CONTACT_DESCRIBE
             });
 
             expect(readiness.disabledReason).toContain('only in a sandbox');
@@ -118,7 +117,7 @@ describe('RecipeCockpitRecordCreation', () => {
         it('fails closed when the Organization query failed', () => {
 
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: undefined, describe: CONTACT_DESCRIBE, parentRecordCountsByObject: parentCounts
+                objectApiName: 'Contact', orgTypeDetail: undefined, describe: CONTACT_DESCRIBE
             }).disabledReason).toBe('The org\'s type could not be read, so nothing is created in it.');
 
         });
@@ -126,7 +125,7 @@ describe('RecipeCockpitRecordCreation', () => {
         it('fails closed on a sandbox flag that is not the boolean true', () => {
 
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: { isSandbox: 'true' as any, organizationType: '' }, describe: CONTACT_DESCRIBE, parentRecordCountsByObject: parentCounts
+                objectApiName: 'Contact', orgTypeDetail: { isSandbox: 'true' as any, organizationType: '' }, describe: CONTACT_DESCRIBE
             }).disabledReason).not.toBe('');
 
         });
@@ -134,11 +133,11 @@ describe('RecipeCockpitRecordCreation', () => {
         it('refuses an object the org does not have, and one it does not let the user create', () => {
 
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Ghost__c', orgTypeDetail: SANDBOX, describeFailureMessage: 'NOT_FOUND', parentRecordCountsByObject: parentCounts
+                objectApiName: 'Ghost__c', orgTypeDetail: SANDBOX, describeFailureMessage: 'NOT_FOUND'
             }).disabledReason).toBe('Ghost__c is not in this org (NOT_FOUND).');
 
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: { ...CONTACT_DESCRIBE, isCreateable: false }, parentRecordCountsByObject: parentCounts
+                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: { ...CONTACT_DESCRIBE, isCreateable: false }
             }).disabledReason).toBe('Contact is not createable in this org.');
 
         });
@@ -146,7 +145,7 @@ describe('RecipeCockpitRecordCreation', () => {
         it('refuses a required lookup that is polymorphic', () => {
 
             const readiness = RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Task', orgTypeDetail: SANDBOX, parentRecordCountsByObject: parentCounts,
+                objectApiName: 'Task', orgTypeDetail: SANDBOX,
                 describe: { objectApiName: 'Task', isCreateable: true, fields: [lookup('WhatId', ['Account', 'Opportunity'], { isNillable: false })] }
             });
 
@@ -154,17 +153,14 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
-        it('refuses when a required parent has 0 records, or could not be counted', () => {
+        it('takes no parent counts and names none, because the Create asks for parent Ids only after the reader confirms', () => {
 
-            expect(RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: CONTACT_DESCRIBE,
-                parentRecordCountsByObject: new Map([['Account', 0], ['Master__c', 3]])
-            }).disabledReason).toBe('AccountId needs a Account record, and the org has none.');
+            const readiness = RecipeCockpitRecordCreation.buildCreateReadiness({
+                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: CONTACT_DESCRIBE
+            });
 
-            expect(RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: CONTACT_DESCRIBE,
-                parentRecordCountsByObject: new Map([['Account', 2]])
-            }).disabledReason).toBe('Master__c needs a Master__c record, and Master__c could not be counted.');
+            expect(readiness.disabledReason).toBe('');
+            readiness.requiredLookups.forEach(requiredLookup => expect(Object.keys(requiredLookup).sort()).toEqual(['fieldApiName', 'parentObjectApiName']));
 
         });
 
@@ -172,14 +168,13 @@ describe('RecipeCockpitRecordCreation', () => {
 
     describe('buildCreateReadiness, the recipe fields the insert would send (#210)', () => {
 
-        const parentCounts = new Map<string, number | undefined>([['Account', 12], ['Master__c', 3]]);
         const contactDescribe: ICreateObjectDescribe = {
             ...CONTACT_DESCRIBE,
             fields: [...CONTACT_DESCRIBE.fields, buildField('Email'), buildField('Legacy_Id__c', { isCreateable: false }), buildField('Name', { isCreateable: false })]
         };
         const readinessOf = (recipeFieldApiNames: readonly string[], overrides: Partial<Parameters<typeof RecipeCockpitRecordCreation.buildCreateReadiness>[0]> = {}) =>
             RecipeCockpitRecordCreation.buildCreateReadiness({
-                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: contactDescribe, parentRecordCountsByObject: parentCounts,
+                objectApiName: 'Contact', orgTypeDetail: SANDBOX, describe: contactDescribe,
                 recipeFieldApiNames: recipeFieldApiNames, ...overrides
             });
 
@@ -189,8 +184,8 @@ describe('RecipeCockpitRecordCreation', () => {
                 objectApiName: 'Contact',
                 disabledReason: '',
                 requiredLookups: [
-                    { fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 12 },
-                    { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', parentRecordCount: 3 }
+                    { fieldApiName: 'AccountId', parentObjectApiName: 'Account' },
+                    { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c' }
                 ],
                 missingFieldApiNames: [],
                 notCreateableFieldApiNames: []
@@ -226,8 +221,8 @@ describe('RecipeCockpitRecordCreation', () => {
         it('keeps the required lookups on a row the fields refuse, so its tooltip still names them', () => {
 
             expect(readinessOf(['Region__c']).requiredLookups).toEqual([
-                { fieldApiName: 'AccountId', parentObjectApiName: 'Account', parentRecordCount: 12 },
-                { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', parentRecordCount: 3 }
+                { fieldApiName: 'AccountId', parentObjectApiName: 'Account' },
+                { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c' }
             ]);
 
         });
@@ -263,15 +258,12 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
-        it('checks the fields before the required parents, and keeps the field lists when a parent is what refuses', () => {
+        it('checks the fields before a polymorphic required lookup', () => {
 
-            const noParents = new Map<string, number | undefined>([['Account', 0], ['Master__c', 0]]);
-
-            expect(readinessOf(['Region__c'], { parentRecordCountsByObject: noParents }).disabledReason).toBe('Contact is missing 1 recipe field in this org: Region__c.');
-
-            const parentRefusal = readinessOf(['LastName'], { parentRecordCountsByObject: noParents });
-            expect(parentRefusal.disabledReason).toBe('AccountId needs a Account record, and the org has none.');
-            expect(parentRefusal.missingFieldApiNames).toEqual([]);
+            expect(RecipeCockpitRecordCreation.buildCreateReadiness({
+                objectApiName: 'Task', orgTypeDetail: SANDBOX, recipeFieldApiNames: ['Region__c'],
+                describe: { objectApiName: 'Task', isCreateable: true, fields: [lookup('WhatId', ['Account', 'Opportunity'], { isNillable: false })] }
+            }).disabledReason).toBe('Task is missing 1 recipe field in this org: Region__c.');
 
         });
 
