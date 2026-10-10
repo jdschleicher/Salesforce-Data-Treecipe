@@ -958,6 +958,20 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
+        it('drops a failed selection\'s message and Create reason when a new selection starts', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openDataOrgView(panel);
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'uat'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null, failureMessage: 'Could not connect to qa: expired.', requestSequence: 1, renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 1, orgLabel: 'uat', orgTypeLabel: '', isSandbox: null, failureMessage: '', requestSequence: 2, renderSequence: 1 });
+
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Checking uat…');
+            expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(false);
+            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'checking whether records can be created…'));
+
+        });
+
         it('keeps a not-a-sandbox answer on screen when the refused readiness arrives after it', () => {
 
             const { panel } = renderDataOrgPanel();

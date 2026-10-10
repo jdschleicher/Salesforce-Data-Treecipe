@@ -1834,7 +1834,7 @@ export class RecipeCockpitService {
                 panelState.loadablePicklistKeys = new Set();
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                 panelState.isGenerateTreecipeOffered = false;
-                // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL COUNTING IS ENDED
+                // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL BEING CHECKED IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
                 panelState.creatableObjectKeys = new Set();
                 panelState.insertableFriendTargets = new Map();
@@ -1873,7 +1873,7 @@ export class RecipeCockpitService {
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.creatableObjectKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
-                    // NOTHING IS ON SCREEN TO DRAW A COUNT IN, SO A SELECTION STILL COUNTING STOPS ASKING THE ORG
+                    // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
                     panelState.dataOrgRequestSequence++;
                 }
@@ -3958,7 +3958,7 @@ export class RecipeCockpitService {
             /*
                 Data-by-Org reads org names from the CLI, and the panel only ever names one by its
                 INDEX into the list the host posted -- never a username or an alias. Which objects
-                are counted is read from the confirmed-drawn model, never from the message.
+                are checked is read from the confirmed-drawn model, never from the message.
             */
             case 'loadDataOrgs':
 
