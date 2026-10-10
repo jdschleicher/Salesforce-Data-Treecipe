@@ -218,12 +218,20 @@ export const LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE = 'SFDX_DEFAULTDEVHUBUSE
 
 export const LEGACY_TARGET_DEV_HUB_CONFIG_KEY = 'defaultdevhubusername';
 
-export const NO_DEFAULT_DEV_HUB_MESSAGE = 'No default Dev Hub is set for the Salesforce CLI, so no scratch org was created. Set one with "sf config set target-dev-hub=<alias>" (add --global to use it in every project) and try again.';
+export const DEV_HUB_REAUTHORIZE_INSTRUCTION = 'Authorize one with "sf org login web --set-default-dev-hub" and try again.';
 
-// THE DEFAULT DEV HUB AS THE CLI WOULD RESOLVE IT, AND THE AUTHORIZATION IT NAMES
-export interface IDefaultDevHubDetail extends IAuthenticatedOrgDetail {
-    // WHERE THE SETTING WAS READ: THE ENVIRONMENT, THE PROJECT'S .sf/config.json, OR THE GLOBAL ONE
-    configSource: 'environment' | 'project' | 'global';
+export const NO_AUTHORIZED_DEV_HUB_MESSAGE = `No Dev Hub is authorized, so no scratch org was created. ${DEV_HUB_REAUTHORIZE_INSTRUCTION}`;
+
+export type DevHubConfigSource = 'environment' | 'project' | 'global';
+
+// A DEV HUB THE READER CAN PICK. configSource IS PRESENT ONLY ON THE ONE THE CLI HAS SET AS ITS DEFAULT
+export interface IDevHubOrgDetail extends IAuthenticatedOrgDetail {
+    // WHERE THE DEFAULT WAS READ: THE ENVIRONMENT, THE PROJECT'S .sf/config.json, OR THE GLOBAL ONE
+    configSource?: DevHubConfigSource;
+}
+
+export interface IDevHubListingForPicker extends IAuthenticatedOrgListingForPicker<IDevHubOrgDetail> {
+    defaultUsername?: string;
 }
 
 export class SalesforceOrgService {
@@ -691,7 +699,12 @@ export class SalesforceOrgService {
     */
     static async listAuthorizedOrgDetails(): Promise<IConnectedOrgListing> {
 
-        const authorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        return await this.listConnectedOrgDetailsFor(this.readAuthorizations(await AuthInfo.listAllAuthorizations()));
+
+    }
+
+    private static async listConnectedOrgDetailsFor(authorizations: OrgAuthorization[]): Promise<IConnectedOrgListing> {
+
         const cachedOrgStatusListing = this.connectedOrgStatusCache;
         const connectedOrgStatusListing = await this.listConnectedOrgStatusForAuthorizations(authorizations);
         const connectedOrgListing = this.buildConnectedOrgListing(authorizations, connectedOrgStatusListing, false);
@@ -726,18 +739,22 @@ export class SalesforceOrgService {
 
         } catch (listError) {
 
-            /*
-                The reason is the CLI's own text -- its JSON message, stderr or a spawn error -- and a
-                notification renders [label](command:...) as a link that RUNS the command, so it is
-                escaped like any other text this extension does not author.
-            */
-            const failureReason = RecipeYamlScalar.escapeForNotification(listError instanceof OrgConnectionStatusUnavailableError
-                ? listError.message
-                : `The authorized Salesforce orgs could not be listed: ${(listError as Error)?.message ?? listError}`);
-
-            return { orgDetails: [], emptyListMessage: failureReason };
+            return { orgDetails: [], emptyListMessage: this.describeOrgListingFailure(listError) };
 
         }
+
+    }
+
+    /*
+        The reason is the CLI's own text -- its JSON message, stderr or a spawn error -- and a
+        notification renders [label](command:...) as a link that RUNS the command, so it is escaped
+        like any other text this extension does not author.
+    */
+    private static describeOrgListingFailure(listError: unknown): string {
+
+        return RecipeYamlScalar.escapeForNotification(listError instanceof OrgConnectionStatusUnavailableError
+            ? listError.message
+            : `The authorized Salesforce orgs could not be listed: ${(listError as Error)?.message ?? listError}`);
 
     }
 
@@ -761,7 +778,7 @@ export class SalesforceOrgService {
     */
     static readDefaultDevHubIdentifier(workspaceRoot: string,
                                         homeDirectoryPath: string = os.homedir(),
-                                        environmentVariables: NodeJS.ProcessEnv = process.env): { identifier: string; configSource: IDefaultDevHubDetail['configSource'] } | undefined {
+                                        environmentVariables: NodeJS.ProcessEnv = process.env): { identifier: string; configSource: DevHubConfigSource } | undefined {
 
         for ( const environmentVariableName of [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE] ) {
 
@@ -775,7 +792,7 @@ export class SalesforceOrgService {
 
         }
 
-        const configCandidates: Array<{ configFilePath: string; configKey: string; configSource: IDefaultDevHubDetail['configSource'] }> = [
+        const configCandidates: Array<{ configFilePath: string; configKey: string; configSource: DevHubConfigSource }> = [
             { configFilePath: path.join(workspaceRoot, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
             { configFilePath: path.join(workspaceRoot, '.sfdx', 'sfdx-config.json'), configKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
             { configFilePath: path.join(homeDirectoryPath, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'global' },
@@ -820,37 +837,69 @@ export class SalesforceOrgService {
     }
 
     /*
-        The default Dev Hub and the authorization it names, by alias or username, read from the
-        authorization files rather than by asking the CLI. Throws a message the reader can act on
-        when none is set or the one set is not authorized here.
+        Every Dev Hub the reader can create a scratch org through: authorizations whose isDevHub is
+        exactly true, of those only the ones the CLI reports connected (#243). The CLI's default is
+        listed first and carries where it was set, but it is never chosen for the reader -- even a
+        lone Dev Hub is picked, so the reader always knows whose scratch org limits a run spends.
     */
-    static async resolveDefaultDevHub(workspaceRoot: string,
+    static async listDevHubOrgDetails(workspaceRoot: string,
                                         homeDirectoryPath?: string,
-                                        environmentVariables?: NodeJS.ProcessEnv): Promise<IDefaultDevHubDetail> {
+                                        environmentVariables?: NodeJS.ProcessEnv): Promise<IConnectedOrgListing & { orgDetails: IDevHubOrgDetail[]; defaultUsername?: string }> {
+
+        const devHubAuthorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations())
+            .filter(authorization => authorization?.isDevHub === true);
+        const connectedListing = await this.listConnectedOrgDetailsFor(devHubAuthorizations);
+        // THE ARGV NAMES THE USERNAME, SO A DEV HUB WHOSE ALIAS PASSES BUT WHOSE USERNAME DOES NOT IS NEVER OFFERED
+        const connectedOrgListing = {
+            ...connectedListing,
+            orgDetails: connectedListing.orgDetails.filter(orgDetail => PicklistDependencyCheckService.isValidTargetOrgIdentifier(orgDetail.username))
+        };
 
         const defaultDevHub = this.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, environmentVariables);
-
-        if ( !defaultDevHub ) {
-            throw new Error(NO_DEFAULT_DEV_HUB_MESSAGE);
-        }
-
-        const devHubAuthorization = this.readAuthorizations(await AuthInfo.listAllAuthorizations()).find(authorization => (
+        const defaultAuthorization = defaultDevHub && devHubAuthorizations.find(authorization => (
             authorization?.username === defaultDevHub.identifier
             || ( Array.isArray(authorization?.aliases) && authorization.aliases.includes(defaultDevHub.identifier) )
         ));
+        const defaultOrgDetail = defaultAuthorization
+            ? connectedOrgListing.orgDetails.find(orgDetail => orgDetail.username === defaultAuthorization.username)
+            : undefined;
 
-        if ( !devHubAuthorization || typeof devHubAuthorization.username !== 'string' || !devHubAuthorization.username ) {
-            throw new Error(`The default Dev Hub "${defaultDevHub.identifier}" is not an authorized org here, so no scratch org was created. Authorize it with "sf org login web --set-default-dev-hub", or set another with "sf config set target-dev-hub=<alias>", and try again.`);
+        if ( !defaultDevHub || !defaultOrgDetail ) {
+            return connectedOrgListing;
         }
 
-        const alias = Array.isArray(devHubAuthorization.aliases) && typeof devHubAuthorization.aliases[0] === 'string' ? devHubAuthorization.aliases[0] : undefined;
-
         return {
-            targetOrgIdentifier: defaultDevHub.identifier,
-            username: devHubAuthorization.username,
-            alias: alias,
-            configSource: defaultDevHub.configSource
+            ...connectedOrgListing,
+            orgDetails: [
+                { ...defaultOrgDetail, configSource: defaultDevHub.configSource },
+                ...connectedOrgListing.orgDetails.filter(orgDetail => orgDetail !== defaultOrgDetail)
+            ],
+            defaultUsername: defaultOrgDetail.username
         };
+
+    }
+
+    // NEVER THROWS: WITH NOTHING TO OFFER, THE PICKER SHOWS WHY INSTEAD OF AN EMPTY LIST
+    static async listDevHubOrgDetailsForPicker(workspaceRoot: string): Promise<IDevHubListingForPicker> {
+
+        try {
+
+            const devHubListing = await this.listDevHubOrgDetails(workspaceRoot);
+            const hiddenOrgCount = this.countHiddenOrgs(devHubListing.hiddenOrgReasonCounts);
+
+            return {
+                orgDetails: devHubListing.orgDetails,
+                defaultUsername: devHubListing.defaultUsername,
+                emptyListMessage: hiddenOrgCount > 0
+                    ? `No connected Dev Hub is authorized, so no scratch org was created: ${hiddenOrgCount} authorized ${hiddenOrgCount === 1 ? 'Dev Hub is' : 'Dev Hubs are'} not listed (${this.formatHiddenOrgReasons(devHubListing.hiddenOrgReasonCounts)}). ${DEV_HUB_REAUTHORIZE_INSTRUCTION}`
+                    : NO_AUTHORIZED_DEV_HUB_MESSAGE
+            };
+
+        } catch (listError) {
+
+            return { orgDetails: [], emptyListMessage: this.describeOrgListingFailure(listError) };
+
+        }
 
     }
 
