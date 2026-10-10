@@ -2,6 +2,7 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
+import { ExtensionCommandService, RECORD_TYPE_OPTIONS_TODO_MARKER } from '../../ExtensionCommandService/ExtensionCommandService';
 
 /*
     Runs Generate Treecipe's real pipeline -- DirectoryProcessor over the mock metadata, then
@@ -312,6 +313,16 @@ describe.each([
 
         const fixturePath = path.join(__dirname, '..', '..', 'RecipeCockpitService', 'tests', 'mocks', 'recipeWriter', fixtureFileName);
         expect(recipeFiles[0].content).toBe(fs.readFileSync(fixturePath, 'utf-8'));
+
+    });
+
+    // #232: RUN FAKER FLAGS A BARE LINE UNDER A RECORD TYPE TODO AS A PRE-3.29.1 RECIPE, SO NOTHING GENERATED NOW MAY CARRY ONE
+    test('no recipe file it writes has a bare record-type variant line Run Faker would flag', () => {
+
+        expect(recipeFiles.some(recipeFile => recipeFile.content.includes(RECORD_TYPE_OPTIONS_TODO_MARKER))).toBe(true);
+        recipeFiles.forEach(recipeFile => {
+            expect(ExtensionCommandService.findBareRecordTypeVariantLineNumbers(recipeFile.content)).toEqual([]);
+        });
 
     });
 

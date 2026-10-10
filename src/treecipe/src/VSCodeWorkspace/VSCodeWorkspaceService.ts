@@ -710,6 +710,33 @@ export class VSCodeWorkspaceService {
         }
     }
 
+    /*
+        Opens a file with one line's columns selected and the line centered, for a reader sent
+        to fix that line by hand. An equal start and end column places the cursor there.
+    */
+    static async openFileInEditorAtSelection(filePath: string,
+                                                zeroBasedLineNumber: number,
+                                                zeroBasedStartColumn: number,
+                                                zeroBasedEndColumn: number) {
+
+        try {
+
+          const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+          const textEditor = await vscode.window.showTextDocument(document);
+
+          const anchorPosition = new vscode.Position(zeroBasedLineNumber, zeroBasedStartColumn);
+          const activePosition = new vscode.Position(zeroBasedLineNumber, zeroBasedEndColumn);
+          textEditor.selection = new vscode.Selection(anchorPosition, activePosition);
+          textEditor.revealRange(new vscode.Range(anchorPosition, activePosition), vscode.TextEditorRevealType.InCenter);
+
+        } catch (error) {
+
+          vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(`Failed to open file: ${filePath} - ${error}`));
+
+        }
+
+    }
+
     static async copyTextToClipboard(textToCopy: string) {
 
         await vscode.env.clipboard.writeText(textToCopy);

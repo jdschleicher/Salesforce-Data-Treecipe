@@ -109,7 +109,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 
 }
 
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { RecipeYamlScalar } from "../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
@@ -1918,7 +1918,7 @@ describe('ExtensionCommandService', () => {
         });
 
         // #186: A js-yaml PARSE ERROR QUOTES THE RECIPE LINE IT FAILED ON, AND THAT LINE IS THE REPOSITORY AUTHOR'S
-        test('given a recipe whose YAML fails to parse on a command-link line, shows the error with no link', async () => {
+        test('given a recipe whose YAML fails to parse on a command-link line, warns with no link and no error template', async () => {
 
             const [fakerJsCase] = backendCases;
             arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
@@ -1927,25 +1927,218 @@ describe('ExtensionCommandService', () => {
                 `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact/${fakerJsCase.recipeFileName}`,
                 `- object: Account\n  nickname: Account_1\n${commandLinkPayload}\n`
             );
-            (ErrorHandlingService.handleCapturedError as jest.Mock).mockRestore();
-            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError');
+            jest.spyOn(VSCodeWorkspaceService, 'openFileInEditorAtSelection').mockResolvedValue(undefined);
+            const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
             const showErrorMessageSpy = jest.spyOn(vscode.window, 'showErrorMessage').mockResolvedValue(undefined);
 
             await extensionCommandService.runFakerGenerationByRecipeFile(hostileRecipeFilePath);
 
-            // THE PAYLOAD REACHES THE HANDLER AS A WHOLE LINK, SO THE ASSERTIONS BELOW ARE ABOUT THE ESCAPE AND NOT ABOUT js-yaml TRUNCATING IT
-            const [[capturedError]] = handleCapturedErrorSpy.mock.calls;
-            expect(capturedError.name).toBe('YAMLException');
-            expect(capturedError.message).toContain(commandLinkPayload);
-
-            expect(showErrorMessageSpy).toHaveBeenCalledTimes(1);
-            const [shownText, ...shownButtons] = showErrorMessageSpy.mock.calls[0] as unknown as string[];
-            expect(shownText).toContain('runFakerGenerationByRecipeFile: end of the stream or a document separator is expected');
-            expect(shownText).toContain(RecipeYamlScalar.escapeForNotification(commandLinkPayload));
+            expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+            expect(showErrorMessageSpy).not.toHaveBeenCalled();
+            expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
+            const [shownText] = showWarningMessageSpy.mock.calls[0];
+            expect(shownText).toContain('end of the stream or a document separator is expected');
             expect(shownText).not.toContain('](command:');
             expect(shownText).not.toMatch(/[[\]()]/);
-            expect(shownButtons).toEqual([ErrorHandlingService.reportIssueButton, 'Review Troubleshooting From README']);
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
+
+        });
+
+        /*
+            #232: a recipe that is not YAML is opened at the line to fix, with a warning naming the
+            file, the line and the parser's reason. A recipe from before v3.29.1 (#153) has its
+            record-type picklist variants as bare expressions under their TODO, and the warning
+            says so and lists them.
+        */
+        describe('given a recipe that is not YAML (#232)', () => {
+
+            const mocksFolderPath = path.join(__dirname, 'mocks');
+            const recipeWriterMocksFolderPath = path.join(__dirname, '..', '..', 'RecipeCockpitService', 'tests', 'mocks', 'recipeWriter');
+
+            const preV3291Cases = [
+                { ...backendCases[0], fixtureFileName: 'preV3291-recipe-fakerjs--RelationshipTree_1.yml', bareLineNumbers: [250, 252, 261, 263] },
+                { ...backendCases[1], fixtureFileName: 'preV3291-recipe-snowfakery--RelationshipTree_1.yml', bareLineNumbers: [237, 239, 245, 247] }
+            ];
+
+            let openFileInEditorAtSelectionSpy: jest.SpyInstance;
+            let showWarningMessageSpy: jest.SpyInstance;
+
+            const arrangeRecipeContent = (backendCase: typeof backendCases[number], recipeContent: string) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
+                return writeWorkspaceFile(
+                    `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact/${backendCase.recipeFileName}`,
+                    recipeContent
+                );
+
+            };
+
+            const expectNothingGenerated = (backendCase: typeof backendCases[number]) => {
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                expect(backendCase.processorPrototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
+                expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+                expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
+
+            };
+
+            beforeEach(() => {
+                jest.spyOn(ConfigurationService, 'getGeneratedRecipesFolderPath').mockReturnValue('treecipe/GeneratedRecipes');
+                openFileInEditorAtSelectionSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditorAtSelection').mockResolvedValue(undefined);
+                showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+                // A jest.fn FROM THE vscode MOCK FACTORY, WHICH KEEPS EVERY EARLIER TEST'S CALLS
+                (vscode.window.showInformationMessage as jest.Mock).mockClear();
+            });
+
+            describe.each([
+                ['from the picker', false],
+                ['from the Recipe Cockpit\'s recipe file path', true]
+            ])('run %s', (_, isRunByRecipeFilePath) => {
+
+                test.each(preV3291Cases)('given a $fakerService recipe from before v3.29.1, selects the first bare variant and lists every one', async (preV3291Case) => {
+
+                    const fixtureContent = fs.readFileSync(path.join(mocksFolderPath, preV3291Case.fixtureFileName), 'utf8');
+                    const recipeFilePath = arrangeRecipeContent(preV3291Case, fixtureContent);
+
+                    await extensionCommandService.runFakerGenerationByRecipeFile(isRunByRecipeFilePath ? recipeFilePath : undefined);
+
+                    expectNothingGenerated(preV3291Case);
+                    expect(fs.readFileSync(recipeFilePath, 'utf8')).toBe(fixtureContent);
+
+                    const firstBareLine = fixtureContent.split('\n')[preV3291Case.bareLineNumbers[0] - 1];
+                    expect(firstBareLine.trimStart().startsWith('${{')).toBeTrue();
+                    expect(openFileInEditorAtSelectionSpy).toHaveBeenCalledWith(
+                        path.resolve(recipeFilePath),
+                        preV3291Case.bareLineNumbers[0] - 1,
+                        20,
+                        firstBareLine.length
+                    );
+
+                    expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
+                    const [shownText] = showWarningMessageSpy.mock.calls[0];
+                    expect(shownText).toContain(preV3291Case.recipeFileName);
+                    expect(shownText).toContain(`line ${preV3291Case.bareLineNumbers[0]}, column 21: bad indentation of a mapping entry`);
+                    expect(shownText).toContain('generated before v3.29.1');
+                    expect(shownText).toContain(`Lines ${preV3291Case.bareLineNumbers.join(', ')} are record type picklist variants`);
+                    expect(shownText).toContain('Put "# " in front of each, or regenerate');
+
+                });
+
+                test('given a recipe with an unrelated YAML error, puts the cursor on the failing line and column', async () => {
+
+                    const [fakerJsCase] = backendCases;
+                    const fixtureContent = fs.readFileSync(path.join(mocksFolderPath, 'unrelatedYamlError-recipe-fakerjs--RelationshipTree_1.yml'), 'utf8');
+                    const recipeFilePath = arrangeRecipeContent(fakerJsCase, fixtureContent);
+
+                    await extensionCommandService.runFakerGenerationByRecipeFile(isRunByRecipeFilePath ? recipeFilePath : undefined);
+
+                    expectNothingGenerated(fakerJsCase);
+                    expect(fs.readFileSync(recipeFilePath, 'utf8')).toBe(fixtureContent);
+                    expect(openFileInEditorAtSelectionSpy).toHaveBeenCalledWith(path.resolve(recipeFilePath), 8, 14, 14);
+
+                    const [shownText] = showWarningMessageSpy.mock.calls[0];
+                    expect(shownText).toBe(
+                        `Run Faker could not load ${fakerJsCase.recipeFileName}: line 9, column 15: bad indentation of a mapping entry.`
+                        + ' The recipe is open at that line. Fix it and run again.'
+                    );
+
+                });
+
+            });
+
+            test('given a recipe path that cannot be read, reports it through the error template as before', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                const unreadableRecipePath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', fakerJsCase.runFolderName, 'Account-thru-Contact');
+                jest.spyOn(VSCodeWorkspaceService, 'promptForDirectoryToGenerateQuickItemsForFileSelection')
+                    .mockResolvedValue({ label: fakerJsCase.recipeFileName, detail: unreadableRecipePath });
+
+                await extensionCommandService.runFakerGenerationByRecipeFile();
+
+                expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.objectContaining({ code: 'EISDIR' }), 'runFakerGenerationByRecipeFile');
+                expect(openFileInEditorAtSelectionSpy).not.toHaveBeenCalled();
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+            });
+
+            test.each(preV3291Cases)('the $fakerService fixture differs from the current generated recipe only in the bare variant lines', (preV3291Case) => {
+
+                const currentRecipeFileName = preV3291Case.fakerService === 'faker-js'
+                    ? 'recipe-fakerjs--RelationshipTree_1.yml'
+                    : 'recipe-snowfakery--RelationshipTree_1.yml';
+                const currentLines = fs.readFileSync(path.join(recipeWriterMocksFolderPath, currentRecipeFileName), 'utf8').split('\n');
+                const fixtureLines = fs.readFileSync(path.join(mocksFolderPath, preV3291Case.fixtureFileName), 'utf8').split('\n');
+
+                expect(fixtureLines.length).toBe(currentLines.length);
+                const differingLineNumbers = fixtureLines
+                    .map((fixtureLine, lineIndex) => fixtureLine === currentLines[lineIndex] ? 0 : lineIndex + 1)
+                    .filter(lineNumber => lineNumber > 0);
+                expect(differingLineNumbers).toEqual(preV3291Case.bareLineNumbers);
+                differingLineNumbers.forEach(lineNumber => {
+                    expect(currentLines[lineNumber - 1]).toBe(fixtureLines[lineNumber - 1].replace('${{', '# ${{'));
+                });
+
+                expect(ExtensionCommandService.findBareRecordTypeVariantLineNumbers(fixtureLines.join('\n'))).toEqual(preV3291Case.bareLineNumbers);
+                expect(ExtensionCommandService.findBareRecordTypeVariantLineNumbers(currentLines.join('\n'))).toEqual([]);
+
+            });
+
+        });
+
+        describe('findBareRecordTypeVariantLineNumbers', () => {
+
+            test('flags only an expression line directly under a RecordType Options TODO, across line endings', () => {
+
+                const recipeContent = [
+                    '    Picklist__c: ${{ a }}',
+                    `                    ${RECORD_TYPE_OPTIONS_TODO_MARKER} One -- Below is the faker recipe`,
+                    '                    ${{ b }}',
+                    `                    ${RECORD_TYPE_OPTIONS_TODO_MARKER} Two -- Below is the faker recipe`,
+                    '                    # ${{ c }}',
+                    `                    ${RECORD_TYPE_OPTIONS_TODO_MARKER} Two -- SELECT THIS SECTION OF OPTIONS`,
+                    '                    - mulch',
+                    `                    ${RECORD_TYPE_OPTIONS_TODO_MARKER} Two -- "x" is not an available value`,
+                    '    Next__c: ${{ d }}',
+                    '                    ${{ e }}',
+                    `                    ${RECORD_TYPE_OPTIONS_TODO_MARKER} Three`,
+                    '${{ f }}'
+                ].join('\r\n');
+
+                expect(ExtensionCommandService.findBareRecordTypeVariantLineNumbers(recipeContent)).toEqual([3, 12]);
+
+            });
+
+        });
+
+        describe('buildRecipeLoadFailureWarning', () => {
+
+            test('escapes the file name and the reason so neither can form a command link', () => {
+
+                const shownText = ExtensionCommandService.buildRecipeLoadFailureWarning('[x](command:git.push).yml', 2, 1, 'unknown tag !<[y](command:z)>', []);
+
+                expect(shownText).not.toMatch(/[[\]()]/);
+                expect(shownText).toContain(RecipeYamlScalar.escapeForNotification('[x](command:git.push).yml'));
+
+            });
+
+            test('names a single bare line in the singular', () => {
+
+                expect(ExtensionCommandService.buildRecipeLoadFailureWarning('r.yml', 4, 21, 'bad indentation', [4]))
+                    .toContain('Line 4 is a record type picklist variant left uncommented');
+
+            });
+
+            test(`lists at most ${MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES} line numbers and counts the rest`, () => {
+
+                const bareLineNumbers = Array.from({ length: MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES + 3 }, (_, index) => (index + 1) * 2);
+
+                const shownText = ExtensionCommandService.buildRecipeLoadFailureWarning('r.yml', 2, 21, 'bad indentation', bareLineNumbers);
+
+                expect(shownText).toContain(`${bareLineNumbers.slice(0, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES).join(', ')} and 3 more are`);
+                expect(shownText).not.toContain(`, ${bareLineNumbers[MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES]}`);
+
+            });
 
         });
 

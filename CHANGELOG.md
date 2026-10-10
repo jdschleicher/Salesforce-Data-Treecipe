@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.49.1] - Run Faker opens a recipe that will not load at the line to fix
+
+Closes [#232](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/232).
+
+A recipe that was not valid YAML made **Run Faker by Recipe** (and the Recipe Cockpit's ▶ Run Faker) fail inside `yaml.load` and show the GitHub-issue error template with a stack trace, leaving the reader to find the file and count to the line. The usual cause is a recipe generated before v3.29.1 (#153), whose record-type picklist and multi-select picklist variants are bare `${{ … }}` lines under their `### TODO: -- RecordType Options --` comment.
+
+- **The recipe opens at the failing line.** When `yaml.load` throws a `YAMLException`, `runFakerGenerationByRecipeFile` opens the recipe with the cursor on the line and column from the exception's `mark`, centered (`VSCodeWorkspaceService.openFileInEditorAtSelection`), and returns without the error template.
+- **A warning names the file, the line, the column and the parser's reason.** The file name and the reason go through `RecipeYamlScalar.escapeForNotification`.
+- **A recipe from before v3.29.1 is named as one.** `ExtensionCommandService.findBareRecordTypeVariantLineNumbers` flags each line that opens an expression (`${{`) directly under a `### TODO: -- RecordType Options --` line. The warning says the recipe was generated before v3.29.1, lists those line numbers (the first 20, then how many more), and says to put `# ` in front of each or regenerate. The editor selects the first one. The current pipeline only puts comments and `- ` choice items under such a TODO, and `DirectoryProcessor.generatedRecipeYaml.test.ts` asserts that no file it generates, in either backend, has a flagged line.
+- **Nothing is written to the recipe.** No data set folder is created either.
+- **Both entry points, both backends.** The `yaml.load` runs before either backend, from the palette and from the cockpit. The command returns normally, so the cockpit still reloads focused on Previous Fake Sets with its Run Faker buttons enabled again.
+- **Not changed:** any other error (an unreadable file, a missing objects wrapper, a backend failure) is reported through `ErrorHandlingService` exactly as before.
+- **Tests.** `ExtensionCommandService/tests/mocks/` holds a pre-3.29.1 recipe per backend (the Recipe Cockpit's current writer fixture with its variants uncommented, which a test pins line for line) and a recipe with an unrelated indentation error. `ExtensionCommandService.test.ts` runs each from the picker and from a recipe file path, and covers the selection, the warning text, the file left unchanged, an unreadable path still reaching the error template, the escaping, and the singular and capped line lists. The #186 command-link test now asserts the warning instead of the error template. `VSCodeWorkspaceService.test.ts` covers `openFileInEditorAtSelection`.
+
 ## [3.49.0] - The Recipe Cockpit brings the reader back to their place after a close or a window reload
 
 Closes [#230](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/230), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
