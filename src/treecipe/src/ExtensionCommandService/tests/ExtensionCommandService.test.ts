@@ -2062,6 +2062,37 @@ describe('ExtensionCommandService', () => {
 
             });
 
+            test('given an error at the end of a file with no final line break, names its last line and puts the cursor at its end', async () => {
+
+                const [fakerJsCase] = backendCases;
+                const recipeFilePath = arrangeRecipeContent(fakerJsCase, '- object: Account\n  fields: [1, 2');
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath);
+
+                expectNothingGenerated(fakerJsCase);
+                expect(openFileInEditorAtSelectionSpy).toHaveBeenCalledWith(path.resolve(recipeFilePath), 1, 15, 15);
+                const [shownText] = showWarningMessageSpy.mock.calls[0];
+                expect(shownText).toContain('line 2, column 16:');
+
+            });
+
+            test('given yaml.load throws something other than a YAMLException, reports it through the error template as before', async () => {
+
+                const [fakerJsCase] = backendCases;
+                const recipeFilePath = arrangeRecipeContent(fakerJsCase, '- object: Account\n');
+                const loadFailure = new RangeError('Maximum call stack size exceeded');
+                // THE MODULE OBJECT ITSELF: AN import * NAMESPACE IS A COPY OF GETTERS, SO A SPY ON ONE WOULD NOT REACH THE SERVICE'S
+                const jsYamlModule: { load: (content: string) => unknown } = jest.requireActual('js-yaml');
+                jest.spyOn(jsYamlModule, 'load').mockImplementation(() => { throw loadFailure; });
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath);
+
+                expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(loadFailure, 'runFakerGenerationByRecipeFile');
+                expect(openFileInEditorAtSelectionSpy).not.toHaveBeenCalled();
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+            });
+
             test.each(preV3291Cases)('the $fakerService fixture differs from the current generated recipe only in the bare variant lines', (preV3291Case) => {
 
                 const currentRecipeFileName = preV3291Case.fakerService === 'faker-js'

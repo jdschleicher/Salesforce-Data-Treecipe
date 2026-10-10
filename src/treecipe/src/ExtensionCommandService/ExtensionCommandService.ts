@@ -278,10 +278,18 @@ export class ExtensionCommandService {
     */
     static async showRecipeLoadFailure(recipeFilePath: string, recipeYamlContent: string, recipeLoadError: yaml.YAMLException) {
 
-        const recipeLines = recipeYamlContent.split(/\r\n|\r|\n/);
-        const bareRecordTypeVariantLineNumbers = ExtensionCommandService.findBareRecordTypeVariantLineNumbers(recipeYamlContent);
-        const failingLineNumber = ( recipeLoadError.mark?.line ?? 0 ) + 1;
-        const failingColumnNumber = ( recipeLoadError.mark?.column ?? 0 ) + 1;
+        const recipeLines = ExtensionCommandService.splitRecipeLines(recipeYamlContent);
+        const bareRecordTypeVariantLineNumbers = ExtensionCommandService.findBareRecordTypeVariantLineNumbersInLines(recipeLines);
+
+        // js-yaml APPENDS A LINE BREAK TO A FILE THAT HAS NONE, SO AN ERROR AT ITS END CAN NAME THE LINE AFTER THE LAST
+        const markedLineIndex = recipeLoadError.mark?.line ?? 0;
+        const isMarkPastLastLine = markedLineIndex > recipeLines.length - 1;
+        const failingLineIndex = isMarkPastLastLine ? recipeLines.length - 1 : markedLineIndex;
+        const failingColumnIndex = isMarkPastLastLine
+            ? recipeLines[failingLineIndex].length
+            : Math.min(recipeLoadError.mark?.column ?? 0, recipeLines[failingLineIndex].length);
+        const failingLineNumber = failingLineIndex + 1;
+        const failingColumnNumber = failingColumnIndex + 1;
 
         if ( bareRecordTypeVariantLineNumbers.length > 0 ) {
             const firstBareLineIndex = bareRecordTypeVariantLineNumbers[0] - 1;
@@ -293,8 +301,6 @@ export class ExtensionCommandService {
                 firstBareLine.length
             );
         } else {
-            const failingLineIndex = Math.min(failingLineNumber - 1, recipeLines.length - 1);
-            const failingColumnIndex = Math.min(failingColumnNumber - 1, recipeLines[failingLineIndex].length);
             await VSCodeWorkspaceService.openFileInEditorAtSelection(recipeFilePath, failingLineIndex, failingColumnIndex, failingColumnIndex);
         }
 
@@ -343,7 +349,19 @@ export class ExtensionCommandService {
     */
     static findBareRecordTypeVariantLineNumbers(recipeYamlContent: string): number[] {
 
-        const recipeLines = recipeYamlContent.split(/\r\n|\r|\n/);
+        return ExtensionCommandService.findBareRecordTypeVariantLineNumbersInLines(ExtensionCommandService.splitRecipeLines(recipeYamlContent));
+
+    }
+
+    // THE LINE BREAKS js-yaml COUNTS, SO A LINE NUMBER HERE IS THE ONE ITS mark NAMES
+    static splitRecipeLines(recipeYamlContent: string): string[] {
+
+        return recipeYamlContent.split(/\r\n|\r|\n/);
+
+    }
+
+    static findBareRecordTypeVariantLineNumbersInLines(recipeLines: string[]): number[] {
+
         const bareLineNumbers: number[] = [];
 
         recipeLines.forEach((recipeLine, lineIndex) => {
