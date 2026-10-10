@@ -238,6 +238,11 @@ export const TARGET_DEV_HUB_CONFIG_KEY = 'target-dev-hub';
 
 export const TARGET_DEV_HUB_ENVIRONMENT_VARIABLE = 'SF_TARGET_DEV_HUB';
 
+// THE sfdx-ERA NAMES THE CLI STILL HONOURS, EACH READ AFTER ITS sf COUNTERPART
+export const LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE = 'SFDX_DEFAULTDEVHUBUSERNAME';
+
+export const LEGACY_TARGET_DEV_HUB_CONFIG_KEY = 'defaultdevhubusername';
+
 export const NO_DEFAULT_DEV_HUB_MESSAGE = 'No default Dev Hub is set for the Salesforce CLI, so no scratch org was created. Set one with "sf config set target-dev-hub=<alias>" (add --global to use it in every project) and try again.';
 
 // THE DEFAULT DEV HUB AS THE CLI WOULD RESOLVE IT, AND THE AUTHORIZATION IT NAMES
@@ -936,8 +941,8 @@ export class SalesforceOrgService {
 
     /*
         The Dev Hub "sf org create scratch" would use with no --target-dev-hub, read IN PROCESS from
-        what the CLI reads -- its environment variable, then the project's .sf/config.json, then the
-        global one -- so the confirmation can name it before any process is started (#200). Both
+        what the CLI reads -- its environment variable, then the project's config, then the global
+        one, each sf name before its legacy sfdx one -- so the confirmation can name it before any process is started (#200). Both
         files and the variable are untrusted text: only a usable alias or username is answered, and
         one that is not is the same as none, since the CLI could not be handed it either.
     */
@@ -945,22 +950,28 @@ export class SalesforceOrgService {
                                         homeDirectoryPath: string = os.homedir(),
                                         environmentVariables: NodeJS.ProcessEnv = process.env): { identifier: string; configSource: IDefaultDevHubDetail['configSource'] } | undefined {
 
-        const environmentValue = environmentVariables[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
+        for ( const environmentVariableName of [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE] ) {
 
-        if ( typeof environmentValue === 'string' && environmentValue.trim() !== '' ) {
-            return PicklistDependencyCheckService.isValidTargetOrgIdentifier(environmentValue.trim())
-                ? { identifier: environmentValue.trim(), configSource: 'environment' }
-                : undefined;
+            const environmentValue = environmentVariables[environmentVariableName];
+
+            if ( typeof environmentValue === 'string' && environmentValue.trim() !== '' ) {
+                return PicklistDependencyCheckService.isValidTargetOrgIdentifier(environmentValue.trim())
+                    ? { identifier: environmentValue.trim(), configSource: 'environment' }
+                    : undefined;
+            }
+
         }
 
-        const configCandidates: Array<{ configFilePath: string; configSource: IDefaultDevHubDetail['configSource'] }> = [
-            { configFilePath: path.join(workspaceRoot, '.sf', 'config.json'), configSource: 'project' },
-            { configFilePath: path.join(homeDirectoryPath, '.sf', 'config.json'), configSource: 'global' }
+        const configCandidates: Array<{ configFilePath: string; configKey: string; configSource: IDefaultDevHubDetail['configSource'] }> = [
+            { configFilePath: path.join(workspaceRoot, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
+            { configFilePath: path.join(workspaceRoot, '.sfdx', 'sfdx-config.json'), configKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
+            { configFilePath: path.join(homeDirectoryPath, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'global' },
+            { configFilePath: path.join(homeDirectoryPath, '.sfdx', 'sfdx-config.json'), configKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY, configSource: 'global' }
         ];
 
         for ( const configCandidate of configCandidates ) {
 
-            const configuredValue = this.readConfigFileValue(configCandidate.configFilePath, TARGET_DEV_HUB_CONFIG_KEY);
+            const configuredValue = this.readConfigFileValue(configCandidate.configFilePath, configCandidate.configKey);
 
             if ( configuredValue === undefined ) {
                 continue;

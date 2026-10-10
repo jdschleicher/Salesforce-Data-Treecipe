@@ -147,6 +147,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgCounts' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'createRecords', orgIndex: 0, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', count: 1 }, panelState))
                 .toMatchObject({ kind: 'postCreateState', hostMessage: { isRunning: false } });
 
@@ -209,6 +210,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
         let temporaryRoot: string;
         let workspaceRoot: string;
         let savedDevHubEnvironmentValue: string | undefined;
+        let savedPathVariable: string | undefined;
         let receivedMessageHandler: (panelMessage: any) => Promise<void>;
         let postedPanelMessages: any[];
         let cliCalls: string[][];
@@ -253,6 +255,10 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             fs.writeFileSync(path.join(workspaceRoot, '.sf', 'config.json'), JSON.stringify({ 'target-dev-hub': 'devhub' }));
             fs.mkdirSync(path.join(temporaryRoot, 'home'));
             jest.spyOn(os, 'homedir').mockReturnValue(path.join(temporaryRoot, 'home'));
+            fs.mkdirSync(path.join(temporaryRoot, 'installed', 'bin'), { recursive: true });
+            ['sf', 'sf.cmd'].forEach(executableName => fs.writeFileSync(path.join(temporaryRoot, 'installed', 'bin', executableName), ''));
+            savedPathVariable = process.env.PATH;
+            process.env.PATH = path.join(temporaryRoot, 'installed', 'bin');
             savedDevHubEnvironmentValue = process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
             delete process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
 
@@ -260,6 +266,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             SalesforceOrgService.clearRecordCountCache();
             SalesforceOrgService.clearDescribeCache();
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];
@@ -333,6 +340,8 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
         afterEach(() => {
 
+            process.env.PATH = savedPathVariable;
+
             if ( savedDevHubEnvironmentValue === undefined ) {
                 delete process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
             } else {
@@ -353,7 +362,10 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             const [modalMessage, modalOptions, modalAction] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
             expect(modalMessage).toBe('Create a scratch org through the Dev Hub devhub (hub@example.com) and deploy this project\'s source to it?');
             expect(modalOptions.modal).toBe(true);
-            expect(modalOptions.detail).toContain('Dev Hub: devhub (hub@example.com)');
+            expect(modalOptions.detail).toContain('Dev Hub: devhub (hub@example.com) — set by this project\'s .sf or .sfdx config');
+            expect(modalOptions.detail).toContain('  Edition: Developer');
+            expect(modalOptions.detail).toContain('This deploys metadata authored in this repository, and the definition file decides who administers the new org.');
+            expect(modalOptions.detail).not.toContain('replacements');
             expect(modalOptions.detail).toContain(`Definition file: ${path.join('config', 'project-scratch-def.json')}`);
             expect(modalOptions.detail).toContain('Package directories to deploy: force-app, unpackaged');
             expect(modalOptions.detail).toMatch(/Alias: treecipe-\d{8}-\d{6}/);
@@ -382,7 +394,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             expect(alias).toMatch(/^treecipe-\d{8}-\d{6}$/);
             expect(createArguments).toEqual([
                 'org', 'create', 'scratch',
-                '--definition-file', path.join(path.resolve(workspaceRoot), 'config', 'project-scratch-def.json'),
+                '--definition-file', path.join('config', 'project-scratch-def.json'),
                 '--alias', alias,
                 '--duration-days', '7',
                 '--target-dev-hub', 'devhub',
@@ -562,6 +574,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             expect(cliCallKinds()).toEqual(['org create', 'project deploy', 'org list']);
             expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
             expect(lastScratchOrgState().statusText).toContain('was stopped partway, so some components may be missing');
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.at(-1)[0]).toContain('stopped partway');
 
         });
 
@@ -579,6 +592,102 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             expect((execFile as unknown as jest.Mock).mock.results[0].value.kill).toHaveBeenCalled();
             expect(cliCallKinds()).toEqual(['org create']);
             expect(lastScratchOrgState().statusText).toContain('A scratch org may still have been created: check with "sf org list".');
+
+        });
+
+        it('tells a panel closed and reopened mid-run where the run is, and its router refuses what the run holds', async () => {
+
+            cliHandlers.create = () => 'hold';
+            await openRenderedCockpit();
+            const firstRun = receivedMessageHandler({ command: 'createScratchOrg' });
+            await flushAsyncWork();
+            await flushAsyncWork();
+
+            // CLOSED: onDidDispose RESETS THE PANEL STATE, AND THE NEXT OPEN BUILDS A NEW PANEL
+            const disposeHandler = (vscode.window.createWebviewPanel as jest.Mock).mock.results.at(-1).value.onDidDispose.mock.calls[0][0];
+            disposeHandler();
+            postedPanelMessages.length = 0;
+            await openRenderedCockpit();
+
+            expect((RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgStateMessage).toMatchObject({ isRunning: true, statusText: 'Creating scratch org…' });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, (RecipeCockpitService as any).recipeCockpitPanelState)).toBeUndefined();
+
+            await receivedMessageHandler({ command: 'ready' });
+            expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'scratchOrgState').at(-1)).toMatchObject({ isRunning: true });
+
+            isNewOrgAuthorized = true;
+            heldCliCallbacks.forEach(releaseCliCallback => releaseCliCallback());
+            await firstRun;
+
+            // THE RUN'S CLOSING STATE REACHES THE PANEL OPEN NOW, NOT THE ONE IT STARTED IN
+            expect(lastScratchOrgState()).toMatchObject({ isRunning: false });
+            expect((RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgStateMessage).toMatchObject({ isRunning: false });
+
+        });
+
+        it('answers a panel that missed the run with the run\'s state rather than leaving its button disabled', async () => {
+
+            cliHandlers.create = () => 'hold';
+            await openRenderedCockpit();
+            const firstRun = receivedMessageHandler({ command: 'createScratchOrg' });
+            await flushAsyncWork();
+            await flushAsyncWork();
+            (RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgStateMessage = undefined;
+            postedPanelMessages.length = 0;
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(postedPanelMessages).toEqual([expect.objectContaining({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…' })]);
+
+            heldCliCallbacks.forEach(releaseCliCallback => releaseCliCallback());
+            await firstRun;
+
+        });
+
+        it('notes replacements and the definition\'s admin in the modal, each on a line of its own', async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+            fs.writeFileSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'), JSON.stringify({ edition: 'Developer', adminEmail: 'author@example.com\nDev Hub: fake' }));
+            const sfdxProject = readJson(path.join(workspaceRoot, 'sfdx-project.json'));
+            fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), JSON.stringify({ ...sfdxProject, replacements: [{ filename: 'a', stringToReplace: 'b', replaceWithFile: '/etc/hosts' }] }));
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const modalDetail: string = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail;
+            expect(modalDetail).toContain('  Admin email: author@example.com Dev Hub: fake');
+            expect(modalDetail.split('\n').filter(detailLine => detailLine.startsWith('Dev Hub:'))).toHaveLength(1);
+            expect(modalDetail).toContain('sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.');
+
+        });
+
+        it('says a cancel between the create and the deploy deployed nothing', async () => {
+
+            cliHandlers.create = () => {
+                cancellationToken.isCancellationRequested = true;
+                return { stdout: SCRATCH_CREATE_SUCCESS };
+            };
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(cliCallKinds()).toEqual(['org create', 'org list']);
+            expect(lastScratchOrgState().statusText).toContain('before anything was deployed to it');
+            expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
+
+        });
+
+        it('warns, rather than reporting a failure, when the deploy\'s answer was too large to read', async () => {
+
+            cliHandlers.deploy = () => ({ stdout: '', error: Object.assign(new Error('stdout maxBuffer length exceeded'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }) });
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('its answer was too large to read, so whether it succeeded is unknown'));
+            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: false });
+            expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
 
         });
 
@@ -638,6 +747,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
             postedPanelMessages = [];
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
+            (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
             (execFile as unknown as jest.Mock).mockReset();
@@ -673,7 +783,9 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             packageDirectoryPaths: ['force-app'],
             devHub: { targetOrgIdentifier: 'hub@example.com', username: 'hub@example.com', configSource: 'global' as const },
             alias: 'treecipe-20261010-000000',
-            durationDays: 7
+            durationDays: 7,
+            definitionSummary: {},
+            hasFileOrEnvironmentReplacements: false
         };
 
         it('answers a click before the model was drawn with a state that runs nothing, through the executor', async () => {
@@ -866,6 +978,26 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             expect(panel.isHidden(viewOutputElement)).toBe(false);
             viewOutputElement.dispatch('click');
             expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'viewScratchOrgOutput' });
+
+        });
+
+        it('holds the button while a Create runs, and posts no org listing while a run is in flight', () => {
+
+            const panel = renderPanel();
+            panel.postToPanel({ command: 'rendered' });
+            panel.postToPanel({ command: 'createState', isRunning: true, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' });
+
+            expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
+
+            panel.postToPanel({ command: 'createState', isRunning: false, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' });
+            expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(false);
+
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
+            firstOf(panel, 'dataOrgLoad').dispatch('click');
+            panel.expandAllTrees();
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
+
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadDataOrgs')).toHaveLength(0);
 
         });
 

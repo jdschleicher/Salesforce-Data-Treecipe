@@ -234,9 +234,33 @@ export class SfdxProjectService {
                 throw new Error(`The package directory "${declaredPath}" in "${sfdxProjectFilePath}" resolves to "${resolvedPackageDirectoryPath}", which is outside the workspace. Use a package directory inside the project and try again.`);
             }
 
+            if ( !this.isExistingDirectory(resolvedPackageDirectoryPath) ) {
+                throw new Error(`The package directory "${declaredPath}" in "${sfdxProjectFilePath}" does not exist. Create it or remove it from packageDirectories, and try again.`);
+            }
+
             return declaredPath;
 
         });
+
+    }
+
+    /*
+        Whether a deploy of this project would copy a local FILE or an ENVIRONMENT VARIABLE into the
+        metadata it sends (sfdx-project.json "replacements" with replaceWithFile or replaceWithEnv).
+        Tolerant: an unreadable file answers false, since the strict read has already refused it.
+    */
+    static hasFileOrEnvironmentReplacements(workspaceRoot: string): boolean {
+
+        try {
+            const replacements: unknown = this.readSfdxProjectJson(this.getSfdxProjectFilePath(workspaceRoot))?.replacements;
+            return Array.isArray(replacements) && replacements.some(replacement => (
+                replacement !== null
+                && typeof replacement === 'object'
+                && ( 'replaceWithFile' in replacement || 'replaceWithEnv' in replacement )
+            ));
+        } catch {
+            return false;
+        }
 
     }
 

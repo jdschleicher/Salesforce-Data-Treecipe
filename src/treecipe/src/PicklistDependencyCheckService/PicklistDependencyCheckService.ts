@@ -33,7 +33,21 @@ export interface ISalesforceCliInvocationResult {
     spawnError?: NodeJS.ErrnoException;
     // SET ONLY WHEN THE CALLER'S TIMEOUT ENDED THE RUN -- A KILLED WINDOWS PROCESS EXITS 1, NOT BY A SIGNAL
     timedOut?: boolean;
+    // SET WHEN stdout OUTGREW maxBuffer: THE CLI RAN, AND WAS KILLED BEFORE ITS ANSWER COULD BE READ -- NOT A SPAWN FAILURE
+    isOutputTooLarge?: boolean;
 }
+
+/*
+    A command run FROM the project, such as a deploy with no --source-dir, which reads
+    sfdx-project.json from its working directory. See runSalesforceCli for why that changes how
+    the CLI is found.
+*/
+export interface ISalesforceCliProjectOptions {
+    workingDirectoryPath: string;
+    maxBufferBytes?: number;
+}
+
+export const SALESFORCE_CLI_DEFAULT_MAX_BUFFER_BYTES = 1024 * 1024 * 8;
 
 /*
     The shape the CLI returns for "sf apex run test --json". Only the fields this service reads are
@@ -180,22 +194,53 @@ export class PicklistDependencyCheckService {
         the whole tree and resolves at once as timedOut, whatever the pipes are still doing.
     */
     /*
-        workingDirectoryPath is for a command that reads sfdx-project.json, such as a deploy with no
-        --source-dir: the extension host's own working directory is not the workspace.
+        projectOptions runs the CLI with the WORKSPACE as its working directory, which is what a
+        command reading sfdx-project.json needs -- and a working directory a cloned repository
+        controls. On Windows cmd.exe looks for "sf.cmd" in the current directory BEFORE PATH, and an
+        npm shim then looks there for "node", so a repository could commit either and have it run as
+        the user. In that mode the CLI is therefore run by the ABSOLUTE path of the first "sf" found
+        on PATH, never from a relative PATH entry or one inside the working directory, and cmd.exe is
+        told not to search the current directory at all (NoDefaultCurrentDirectoryInExePath). A CLI
+        that cannot be found that way answers as ENOENT, exactly as an uninstalled one does.
     */
     static runSalesforceCli(salesforceCliArguments: string[],
                             registerCancellation?: (killChildProcess: () => void) => void,
                             timeoutMilliseconds?: number,
-                            workingDirectoryPath?: string): Promise<ISalesforceCliInvocationResult> {
+                            projectOptions?: ISalesforceCliProjectOptions): Promise<ISalesforceCliInvocationResult> {
 
-        const invocation = this.buildSalesforceCliInvocation(salesforceCliArguments);
+        let invocation = this.buildSalesforceCliInvocation(salesforceCliArguments);
+        let projectExecFileOptions: Partial<ExecFileOptionsWithStringEncoding> = {};
+
+        if ( projectOptions ) {
+
+            const salesforceCliExecutablePath = this.findSalesforceCliOnPath(process.env.PATH ?? process.env.Path ?? '', projectOptions.workingDirectoryPath);
+
+            if ( !salesforceCliExecutablePath ) {
+                return Promise.resolve({
+                    stdout: '',
+                    stderr: '',
+                    exitCode: null,
+                    spawnError: Object.assign(new Error(`spawn ${this.getSalesforceCliExecutable()} ENOENT`), { code: 'ENOENT' })
+                });
+            }
+
+            invocation = {
+                ...invocation,
+                command: this.isWindowsPlatform() ? this.quoteWindowsArgument(salesforceCliExecutablePath) : salesforceCliExecutablePath
+            };
+            projectExecFileOptions = {
+                cwd: projectOptions.workingDirectoryPath,
+                ...( this.isWindowsPlatform() ? { env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } } : {} )
+            };
+
+        }
 
         const execFileOptions: ExecFileOptionsWithStringEncoding = {
             encoding: 'utf8',
-            maxBuffer: 1024 * 1024 * 8,
+            maxBuffer: projectOptions?.maxBufferBytes ?? SALESFORCE_CLI_DEFAULT_MAX_BUFFER_BYTES,
             shell: invocation.useShell,
             windowsHide: true,
-            ...( workingDirectoryPath !== undefined ? { cwd: workingDirectoryPath } : {} )
+            ...projectExecFileOptions
         };
 
         return new Promise<ISalesforceCliInvocationResult>(resolve => {
@@ -216,6 +261,18 @@ export class PicklistDependencyCheckService {
                     callback can fire before the const above is assigned.
                 */
                 const errorCode = (executionError as NodeJS.ErrnoException)?.code;
+
+                // A STRING CODE TOO, BUT THE CLI DID RUN: execFile KILLED IT FOR WRITING MORE THAN maxBuffer
+                if ( errorCode === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ) {
+                    hasAnswered = true;
+                    if ( timeoutTimer !== undefined ) {
+                        clearTimeout(timeoutTimer);
+                    }
+                    // ON WINDOWS execFile'S OWN KILL ENDS ONLY cmd.exe
+                    this.killProcessTree(childProcess);
+                    resolve({ stdout: '', stderr: stderr ?? '', exitCode: null, isOutputTooLarge: true });
+                    return;
+                }
 
                 const spawnError = typeof errorCode === 'string' ? executionError as NodeJS.ErrnoException : undefined;
                 const exitCode = typeof errorCode === 'number' ? errorCode : (executionError ? null : 0);
@@ -247,6 +304,52 @@ export class PicklistDependencyCheckService {
             }
 
         });
+
+    }
+
+    /*
+        The first "sf" on PATH (sf.cmd or sf.exe on Windows) as an absolute path. Relative entries,
+        empty ones and any inside the working directory are skipped: each of those resolves against
+        a directory the repository controls.
+    */
+    static findSalesforceCliOnPath(pathVariable: string, workingDirectoryPath: string): string | undefined {
+
+        const executableNames = this.isWindowsPlatform() ? ['sf.cmd', 'sf.exe'] : ['sf'];
+        const pathDelimiter = this.isWindowsPlatform() ? ';' : ':';
+        const resolvedWorkingDirectoryPath = path.resolve(workingDirectoryPath);
+
+        for ( const pathEntry of pathVariable.split(pathDelimiter) ) {
+
+            const trimmedPathEntry = pathEntry.trim().replace(/^"(.*)"$/, '$1');
+
+            if ( !trimmedPathEntry || !path.isAbsolute(trimmedPathEntry) ) {
+                continue;
+            }
+
+            const resolvedPathEntry = path.resolve(trimmedPathEntry);
+            const relativeToWorkingDirectory = path.relative(resolvedWorkingDirectoryPath, resolvedPathEntry);
+
+            if ( relativeToWorkingDirectory === '' || ( !relativeToWorkingDirectory.startsWith('..') && !path.isAbsolute(relativeToWorkingDirectory) ) ) {
+                continue;
+            }
+
+            for ( const executableName of executableNames ) {
+
+                const candidatePath = path.join(resolvedPathEntry, executableName);
+
+                try {
+                    if ( fs.statSync(candidatePath).isFile() ) {
+                        return candidatePath;
+                    }
+                } catch {
+                    // NOT HERE -- THE NEXT PATH ENTRY
+                }
+
+            }
+
+        }
+
+        return undefined;
 
     }
 

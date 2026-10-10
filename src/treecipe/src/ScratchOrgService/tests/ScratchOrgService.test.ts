@@ -22,6 +22,8 @@ import {
     IScratchOrgPlan,
     ORG_OPERATIONS_FOLDER_NAME,
     SCRATCH_ORG_DURATION_DAYS,
+    ORG_OPERATION_REDACTED_VALUE,
+    SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES,
     ScratchOrgService,
     ScratchOrgSetupPhase
 } from '../ScratchOrgService';
@@ -48,6 +50,8 @@ describe('ScratchOrgService (#200)', () => {
     let workspaceRoot: string;
     let homeDirectoryPath: string;
     let savedDevHubEnvironmentValue: string | undefined;
+    let savedPathVariable: string | undefined;
+    let installedSalesforceCliPath: string;
 
     beforeEach(() => {
 
@@ -58,6 +62,15 @@ describe('ScratchOrgService (#200)', () => {
         fs.mkdirSync(path.join(workspaceRoot, '.sf'), { recursive: true });
         fs.writeFileSync(path.join(workspaceRoot, '.sf', 'config.json'), JSON.stringify({ 'target-dev-hub': 'devhub' }));
         fs.mkdirSync(homeDirectoryPath, { recursive: true });
+
+        // THE CLI IS RUN BY THE ABSOLUTE PATH OF THE FIRST sf ON PATH OUTSIDE THE WORKSPACE
+        const installedBinPath = path.join(temporaryRoot, 'installed', 'bin');
+        fs.mkdirSync(installedBinPath, { recursive: true });
+        fs.writeFileSync(path.join(installedBinPath, 'sf'), '');
+        fs.writeFileSync(path.join(installedBinPath, 'sf.cmd'), '');
+        installedSalesforceCliPath = path.join(installedBinPath, process.platform === 'win32' ? 'sf.cmd' : 'sf');
+        savedPathVariable = process.env.PATH;
+        process.env.PATH = installedBinPath;
 
         // THE MACHINE RUNNING THE SUITE MAY HAVE A DEV HUB OF ITS OWN SET -- NEITHER THE VARIABLE NOR ~/.sf IS READ HERE
         savedDevHubEnvironmentValue = process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
@@ -70,6 +83,8 @@ describe('ScratchOrgService (#200)', () => {
     });
 
     afterEach(() => {
+
+        process.env.PATH = savedPathVariable;
 
         if ( savedDevHubEnvironmentValue === undefined ) {
             delete process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
@@ -106,6 +121,8 @@ describe('ScratchOrgService (#200)', () => {
             expect(scratchOrgPlan.devHub).toEqual({ targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' });
             expect(scratchOrgPlan.alias).toBe('treecipe-20261010-142233');
             expect(scratchOrgPlan.durationDays).toBe(7);
+            expect(scratchOrgPlan.definitionSummary).toEqual({ edition: 'Developer', adminEmail: undefined, username: undefined });
+            expect(scratchOrgPlan.hasFileOrEnvironmentReplacements).toBe(false);
             expect(execFile).not.toHaveBeenCalled();
 
         });
@@ -169,14 +186,16 @@ describe('ScratchOrgService (#200)', () => {
             packageDirectoryPaths: ['force-app'],
             devHub: { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' },
             alias: 'treecipe-20261010-142233',
-            durationDays: SCRATCH_ORG_DURATION_DAYS
+            durationDays: SCRATCH_ORG_DURATION_DAYS,
+            definitionSummary: {},
+            hasFileOrEnvironmentReplacements: false
         };
 
-        it('creates with the definition file, the generated alias, 7 days and the default Dev Hub', () => {
+        it('creates with the definition file relative to the workspace, the generated alias, 7 days and the default Dev Hub', () => {
 
             expect(ScratchOrgService.buildScratchOrgCreateArguments(PLAN)).toEqual([
                 'org', 'create', 'scratch',
-                '--definition-file', '/workspace/config/project-scratch-def.json',
+                '--definition-file', 'config/project-scratch-def.json',
                 '--alias', 'treecipe-20261010-142233',
                 '--duration-days', '7',
                 '--target-dev-hub', 'devhub',
@@ -380,27 +399,6 @@ describe('ScratchOrgService (#200)', () => {
 
         });
 
-        it('runs no deploy when the cancel lands between the create and the deploy', async () => {
-
-            let isCancelled = false;
-            (execFile as unknown as jest.Mock).mockImplementation((_command: string, _argumentList: string[], _options: unknown, callback: Function) => {
-                setImmediate(() => callback(null, SCRATCH_CREATE_SUCCESS, ''));
-                return { kill: jest.fn() };
-            });
-
-            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
-            const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, {
-                onPhase: jest.fn(),
-                registerCancellation: jest.fn(),
-                // THE CHECK AFTER THE PROCESS SAYS NO, THE ONE BEFORE THE DEPLOY SAYS YES
-                isCancellationRequested: () => { const wasCancelled = isCancelled; isCancelled = true; return wasCancelled; }
-            });
-
-            expect(outcome).toEqual({ kind: 'deployCancelled', username: NEW_SCRATCH_USERNAME });
-            expect(execFile).toHaveBeenCalledTimes(1);
-
-        });
-
     });
 
     describe('buildOrgOperationResultFilePath', () => {
@@ -483,7 +481,7 @@ describe('ScratchOrgService (#200)', () => {
             expect(reportedPhases).toEqual(['creating', 'deploying']);
             expect(cliCalls.map(cliCall => cliCall.argumentList.slice(0, 3))).toEqual([['org', 'create', 'scratch'], ['project', 'deploy', 'start']]);
             cliCalls.forEach(cliCall => {
-                expect(cliCall.command).toBe(process.platform === 'win32' ? 'sf.cmd' : 'sf');
+                expect(cliCall.command).toBe(process.platform === 'win32' ? `"${installedSalesforceCliPath}"` : installedSalesforceCliPath);
                 expect(cliCall.options).toMatchObject({ shell: process.platform === 'win32', cwd: path.resolve(workspaceRoot) });
             });
             expect(cliCalls[1].argumentList).not.toContain('--ignore-errors');
@@ -492,6 +490,13 @@ describe('ScratchOrgService (#200)', () => {
             expect(outcome).toEqual({ kind: 'deployed', username: NEW_SCRATCH_USERNAME, deployedComponentCount: 3, outputFilePath: path.join(operationsFolderPath, '20261010-142233-scratch-deploy.json') });
             expect(fs.readdirSync(operationsFolderPath).sort()).toEqual(['20261010-142233-scratch-create.json', '20261010-142233-scratch-deploy.json']);
             expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath, '20261010-142233-scratch-deploy.json'), 'utf-8'))).toEqual(JSON.parse(DEPLOY_SUCCESS));
+
+            // THE CREATE'S authFields CARRY THE NEW ORG'S ACCESS TOKEN, AND THE FOLDER SITS IN A WORKSPACE THAT IS USUALLY COMMITTED
+            const savedCreate = fs.readFileSync(path.join(operationsFolderPath, '20261010-142233-scratch-create.json'), 'utf-8');
+            expect(savedCreate).not.toContain('accessToken');
+            expect(savedCreate).not.toContain('00D000000000077!REDACTED');
+            expect(JSON.parse(savedCreate).result.username).toBe(NEW_SCRATCH_USERNAME);
+            expect(fs.readFileSync(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, '.gitignore'), 'utf-8')).toBe('*\n');
 
         });
 
@@ -549,7 +554,7 @@ describe('ScratchOrgService (#200)', () => {
             const { outcome } = await runSetup({ requestedAtPhase: 'deploying' });
 
             expect(killedProcessCount).toBe(1);
-            expect(outcome).toEqual({ kind: 'deployCancelled', username: NEW_SCRATCH_USERNAME });
+            expect(outcome).toEqual({ kind: 'deployCancelled', username: NEW_SCRATCH_USERNAME, isDeployStarted: true });
 
         });
 
@@ -561,6 +566,112 @@ describe('ScratchOrgService (#200)', () => {
 
             expect(outcome.kind).toBe('createFailed');
             expect(cliCalls).toHaveLength(1);
+
+        });
+
+    });
+
+    describe('hardening (#240 review)', () => {
+
+        it('keeps the org when a cancel lands just as the create succeeds', async () => {
+
+            let isCancelled = false;
+            (execFile as unknown as jest.Mock).mockImplementation((_command: string, _argumentList: string[], _options: unknown, callback: Function) => {
+                isCancelled = true;
+                setImmediate(() => callback(null, SCRATCH_CREATE_SUCCESS, ''));
+                return { kill: jest.fn() };
+            });
+
+            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
+            const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => isCancelled, now: () => PLAN_DATE });
+
+            expect(outcome).toEqual({ kind: 'deployCancelled', username: NEW_SCRATCH_USERNAME, isDeployStarted: false });
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME, '20261010-142233-scratch-create.json'))).toBe(true);
+
+        });
+
+        it('reports a deploy whose answer outgrew the buffer as unconfirmed, not failed, and gives the deploy a larger buffer', async () => {
+
+            const bufferSizes: number[] = [];
+            (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], options: { maxBuffer: number }, callback: Function) => {
+                bufferSizes.push(options.maxBuffer);
+                setImmediate(() => argumentList[0] === 'org'
+                    ? callback(null, SCRATCH_CREATE_SUCCESS, '')
+                    : callback(Object.assign(new Error('stdout maxBuffer length exceeded'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }), '', ''));
+                return { pid: 9, kill: jest.fn() };
+            });
+
+            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
+            const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => false, now: () => PLAN_DATE });
+
+            expect(outcome).toEqual({ kind: 'deployUnconfirmed', username: NEW_SCRATCH_USERNAME });
+            expect(bufferSizes).toEqual([1024 * 1024 * 8, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES]);
+
+        });
+
+        it('says a create whose answer outgrew the buffer may still have made an org', () => {
+
+            expect(ScratchOrgService.parseScratchOrgCreateOutput({ stdout: '', stderr: '', exitCode: null, isOutputTooLarge: true }))
+                .toEqual({ isCreated: false, failureMessage: expect.stringContaining('check with "sf org list"') });
+
+        });
+
+        it('redacts every credential-shaped key, wherever it is nested, and token-shaped text in output that is not JSON', () => {
+
+            expect(ScratchOrgService.redactSecrets({
+                status: 0,
+                result: { username: 'u@example.com', authFields: { accessToken: 'x' }, nested: [{ refreshToken: 'r', clientSecret: 's', password: 'p', privateKey: 'k', sfdxAuthUrl: 'force://a', keep: 'yes' }] }
+            })).toEqual({
+                status: 0,
+                result: { username: 'u@example.com', authFields: ORG_OPERATION_REDACTED_VALUE, nested: [{ refreshToken: ORG_OPERATION_REDACTED_VALUE, clientSecret: ORG_OPERATION_REDACTED_VALUE, password: ORG_OPERATION_REDACTED_VALUE, privateKey: ORG_OPERATION_REDACTED_VALUE, sfdxAuthUrl: ORG_OPERATION_REDACTED_VALUE, keep: 'yes' }] }
+            });
+            expect(ScratchOrgService.redactSecretText('token 00D000000000077!AQ.abc_def- and force://PlatformCLI::x@y end'))
+                .toBe(`token ${ORG_OPERATION_REDACTED_VALUE} and ${ORG_OPERATION_REDACTED_VALUE} end`);
+
+        });
+
+        it('never overwrites a result file or a .gitignore already there, nor follows a link planted at the name', () => {
+
+            const operationsPath = path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME);
+            fs.mkdirSync(path.join(operationsPath, 'treecipe-x'), { recursive: true });
+            fs.writeFileSync(path.join(operationsPath, '.gitignore'), 'mine\n');
+            const outsideFilePath = path.join(temporaryRoot, 'outside.json');
+            fs.writeFileSync(outsideFilePath, 'untouched');
+            fs.symlinkSync(outsideFilePath, path.join(operationsPath, 'treecipe-x', '20261010-142233-scratch-create.json'));
+
+            expect(ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'treecipe-x', 'scratch-create', invocation('{}'), PLAN_DATE)).toBeUndefined();
+            expect(fs.readFileSync(outsideFilePath, 'utf-8')).toBe('untouched');
+            expect(fs.readFileSync(path.join(operationsPath, '.gitignore'), 'utf-8')).toBe('mine\n');
+
+        });
+
+        it('reads the definition\'s edition, admin email and username, and only strings', () => {
+
+            fs.writeFileSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'), JSON.stringify({ edition: 'Enterprise', adminEmail: 'author@example.com', username: 7 }));
+
+            expect(ScratchOrgService.readDefinitionSummary(path.join(workspaceRoot, 'config', 'project-scratch-def.json')))
+                .toEqual({ edition: 'Enterprise', adminEmail: 'author@example.com', username: undefined });
+            expect(ScratchOrgService.readDefinitionSummary(path.join(workspaceRoot, 'missing.json'))).toEqual({});
+
+            fs.writeFileSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'), '[]');
+            expect(ScratchOrgService.readDefinitionSummary(path.join(workspaceRoot, 'config', 'project-scratch-def.json'))).toEqual({});
+
+        });
+
+        it('refuses a package directory that does not exist before any org is made', async () => {
+
+            fs.rmSync(path.join(workspaceRoot, 'unpackaged'), { recursive: true });
+
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE)).rejects.toThrow('The package directory "unpackaged"');
+
+        });
+
+        it('notes replacements that copy local files or environment variables into the deploy', async () => {
+
+            const sfdxProjectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
+            fs.writeFileSync(sfdxProjectFilePath, JSON.stringify({ ...JSON.parse(fs.readFileSync(sfdxProjectFilePath, 'utf-8')), replacements: [{ filename: 'x', stringToReplace: 'y', replaceWithEnv: 'HOME' }] }));
+
+            expect(( await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE) ).hasFileOrEnvironmentReplacements).toBe(true);
 
         });
 

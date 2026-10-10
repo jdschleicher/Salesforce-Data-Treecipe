@@ -317,37 +317,115 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
     });
 
-    describe('runSalesforceCli working directory', () => {
+    describe('runSalesforceCli from the project (#200)', () => {
 
-        const captureExecFileOptions = () => {
-            const capturedOptions: Record<string, unknown>[] = [];
+        const os = jest.requireActual('os');
+        const path = jest.requireActual('path');
+
+        let temporaryRoot: string;
+        let workspacePath: string;
+        let installedBinPath: string;
+        let savedPathVariable: string | undefined;
+
+        const captureExecFile = (callbackError: unknown = null) => {
+            const capturedCalls: Array<{ command: string; options: Record<string, any> }> = [];
+            const killMock = jest.fn();
             jest.spyOn(childProcess, 'execFile').mockImplementation(((
-                _command: string, _args: string[], options: Record<string, unknown>, callback: (...callbackArguments: unknown[]) => void
+                command: string, _args: string[], options: Record<string, any>, callback: (...callbackArguments: unknown[]) => void
             ) => {
-                capturedOptions.push(options);
-                callback(null, '{}', '');
-                return { pid: 1, kill: jest.fn() } as any;
+                capturedCalls.push({ command, options });
+                if ( command !== 'taskkill' ) {
+                    setImmediate(() => callback(callbackError, '{"status":0}', ''));
+                }
+                return { pid: 77, kill: killMock } as any;
             }) as any);
-            return capturedOptions;
+            return { capturedCalls, killMock };
         };
 
-        it('runs in the directory it is handed, for a command that reads sfdx-project.json', async () => {
+        beforeEach(() => {
+            temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-sf-path-'));
+            workspacePath = path.join(temporaryRoot, 'workspace');
+            installedBinPath = path.join(temporaryRoot, 'installed', 'bin');
+            fs.mkdirSync(path.join(workspacePath, 'bin'), { recursive: true });
+            fs.mkdirSync(installedBinPath, { recursive: true });
+            ['sf', 'sf.cmd'].forEach(executableName => {
+                fs.writeFileSync(path.join(installedBinPath, executableName), '');
+                // WHAT A CLONED REPOSITORY COULD COMMIT
+                fs.writeFileSync(path.join(workspacePath, executableName), '');
+                fs.writeFileSync(path.join(workspacePath, 'bin', executableName), '');
+            });
+            savedPathVariable = process.env.PATH;
+        });
 
-            const capturedOptions = captureExecFileOptions();
+        afterEach(() => {
+            process.env.PATH = savedPathVariable;
+            fs.rmSync(temporaryRoot, { recursive: true, force: true });
+        });
 
-            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, '/workspace/project');
+        it('runs in the workspace, by the absolute path of the installed sf, never one in the workspace or on a relative PATH entry', async () => {
 
-            expect(capturedOptions[0].cwd).toBe('/workspace/project');
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            process.env.PATH = ['', '.', 'bin', path.join(workspacePath, 'bin'), workspacePath, installedBinPath].join(':');
+            const { capturedCalls } = captureExecFile();
+
+            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, { workingDirectoryPath: workspacePath });
+
+            expect(capturedCalls[0].command).toBe(path.join(installedBinPath, 'sf'));
+            expect(capturedCalls[0].options).toMatchObject({ cwd: workspacePath, shell: false, maxBuffer: 1024 * 1024 * 8 });
+            expect(capturedCalls[0].options).not.toHaveProperty('env');
 
         });
 
-        it('sets no working directory when none is handed in, as before', async () => {
+        it('on Windows quotes the absolute sf.cmd and tells cmd.exe not to search the current directory', async () => {
 
-            const capturedOptions = captureExecFileOptions();
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            process.env.PATH = [workspacePath, installedBinPath].join(';');
+            const { capturedCalls } = captureExecFile();
+
+            await PicklistDependencyCheckService.runSalesforceCli(['org', 'create', 'scratch', '--json'], undefined, undefined, { workingDirectoryPath: workspacePath, maxBufferBytes: 1234 });
+
+            expect(capturedCalls[0].command).toBe(`"${path.join(installedBinPath, 'sf.cmd')}"`);
+            expect(capturedCalls[0].options).toMatchObject({ cwd: workspacePath, shell: true, maxBuffer: 1234 });
+            expect(capturedCalls[0].options.env.NoDefaultCurrentDirectoryInExePath).toBe('1');
+
+        });
+
+        it('answers as an uninstalled CLI, starting nothing, when the only sf on PATH is the workspace\'s', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            process.env.PATH = [workspacePath, path.join(workspacePath, 'bin')].join(':');
+            const { capturedCalls } = captureExecFile();
+
+            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['org', 'list'], undefined, undefined, { workingDirectoryPath: workspacePath });
+
+            expect(capturedCalls).toHaveLength(0);
+            expect(invocationResult.spawnError?.code).toBe('ENOENT');
+
+        });
+
+        it('reports output past maxBuffer as too large rather than as a CLI that never started, and ends the process tree', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            process.env.PATH = installedBinPath;
+            const { capturedCalls } = captureExecFile(Object.assign(new Error('stdout maxBuffer length exceeded'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }));
+
+            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: workspacePath });
+
+            expect(invocationResult).toEqual({ stdout: '', stderr: '', exitCode: null, isOutputTooLarge: true });
+            expect(capturedCalls.map(capturedCall => capturedCall.command)).toContain('taskkill');
+
+        });
+
+        it('changes nothing for a caller with no project options', async () => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
+            const { capturedCalls } = captureExecFile();
 
             await PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json']);
 
-            expect(capturedOptions[0]).not.toHaveProperty('cwd');
+            expect(capturedCalls[0].command).toBe('sf');
+            expect(capturedCalls[0].options).not.toHaveProperty('cwd');
+            expect(capturedCalls[0].options).not.toHaveProperty('env');
 
         });
 

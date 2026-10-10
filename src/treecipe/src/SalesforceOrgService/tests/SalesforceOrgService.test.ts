@@ -1245,6 +1245,36 @@ describe('SalesforceOrgService', () => {
 
         });
 
+        it('reads the legacy sfdx names after their sf counterparts, at each level', () => {
+
+            const writeLegacyConfig = (rootPath: string, configContent: string) => {
+                fs.mkdirSync(path.join(rootPath, '.sfdx'), { recursive: true });
+                fs.writeFileSync(path.join(rootPath, '.sfdx', 'sfdx-config.json'), configContent);
+            };
+
+            writeLegacyConfig(workspaceRoot, JSON.stringify({ defaultdevhubusername: 'legacyProjectHub' }));
+            writeConfig(homeDirectoryPath, JSON.stringify({ 'target-dev-hub': 'globalHub' }));
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, { SFDX_DEFAULTDEVHUBUSERNAME: 'legacyEnvHub' }))
+                .toEqual({ identifier: 'legacyEnvHub', configSource: 'environment' });
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, { [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE]: 'envHub', SFDX_DEFAULTDEVHUBUSERNAME: 'legacyEnvHub' }))
+                .toEqual({ identifier: 'envHub', configSource: 'environment' });
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'legacyProjectHub', configSource: 'project' });
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'projectHub' }));
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'projectHub', configSource: 'project' });
+
+            fs.rmSync(path.join(workspaceRoot, '.sf'), { recursive: true });
+            fs.rmSync(path.join(workspaceRoot, '.sfdx'), { recursive: true });
+            fs.rmSync(path.join(homeDirectoryPath, '.sf'), { recursive: true });
+            writeLegacyConfig(homeDirectoryPath, JSON.stringify({ defaultdevhubusername: 'legacyGlobalHub' }));
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'legacyGlobalHub', configSource: 'global' });
+
+        });
+
         it('resolves the alias to its authorization', async () => {
 
             writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'devhub' }));

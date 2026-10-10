@@ -1336,6 +1336,8 @@ export class RecipeCockpitService {
         this.recipeCockpitPanel = cockpitPanel;
         this.recipeCockpitPanelState = this.buildInitialPanelState(workspaceRoot);
 
+        this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
+
         if ( previousPanelState ) {
             // WHAT A "View errors" LINK OPENS, AND THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
             this.recipeCockpitPanelState.dataOrgCreateResults = previousPanelState.dataOrgCreateResults;
@@ -2735,26 +2737,35 @@ export class RecipeCockpitService {
         predates the org -- so it is selected by username from a fresh answer, or reported not
         listed yet with nothing selected in its place.
 
-        One run per window: the flag is static because a reopen replaces the panel state the run
-        started with, and the router's refusal reads the state. The closing state is posted last,
-        because the panel disabled the button, every "+ Create" and the dropdown on the click.
+        One run per WINDOW, and its state is the window's too: a panel closed and reopened mid-run
+        gets a fresh panel state, and without the static copy its router would let a second run, a
+        Create or an org selection through while the first is still going. Every state the run
+        posts goes to whichever panel the window has NOW. The closing state is posted last, because
+        the panel disabled the button, every "+ Create" and the dropdown on the click.
     */
     private static isScratchOrgSetupInFlight = false;
 
+    private static scratchOrgRunStateMessage: IRecipeCockpitScratchOrgStateMessage | undefined;
+
     private static async createScratchOrgFromPanel(cockpitPanel: vscode.WebviewPanel) {
 
+        // A PANEL THAT DID NOT KNOW A RUN WAS GOING HAS ALREADY DISABLED ITS BUTTON, SO IT IS TOLD WHERE THE RUN IS
         if ( this.isScratchOrgSetupInFlight ) {
+            if ( this.scratchOrgRunStateMessage ) {
+                this.recipeCockpitPanelState.scratchOrgStateMessage = this.scratchOrgRunStateMessage;
+                this.postToPanel(cockpitPanel, this.scratchOrgRunStateMessage);
+            }
             return;
         }
 
         this.isScratchOrgSetupInFlight = true;
         let closingState: { statusText: string; isFailure: boolean; outputFilePath?: string } = { statusText: '', isFailure: false };
 
-        this.setScratchOrgState(cockpitPanel, { command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false });
+        this.setScratchOrgState({ command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false });
 
         try {
 
-            closingState = await this.performScratchOrgSetup(cockpitPanel, this.recipeCockpitPanelState.workspaceRoot);
+            closingState = await this.performScratchOrgSetup(this.recipeCockpitPanelState.workspaceRoot);
 
         } catch (setupError) {
 
@@ -2764,12 +2775,9 @@ export class RecipeCockpitService {
         } finally {
 
             this.isScratchOrgSetupInFlight = false;
+            this.recipeCockpitPanelState.scratchOrgOutputFilePath = closingState.outputFilePath;
 
-            if ( this.recipeCockpitPanel === cockpitPanel ) {
-                this.recipeCockpitPanelState.scratchOrgOutputFilePath = closingState.outputFilePath;
-            }
-
-            this.setScratchOrgState(cockpitPanel, {
+            this.setScratchOrgState({
                 command: 'scratchOrgState',
                 isRunning: false,
                 statusText: closingState.statusText,
@@ -2781,19 +2789,28 @@ export class RecipeCockpitService {
 
     }
 
-    // STORED ON WHICHEVER STATE THE PANEL HAS NOW -- A REOPEN MID-RUN REPLACES IT -- AND POSTED ONLY TO THE PANEL THE RUN STARTED IN
-    private static setScratchOrgState(cockpitPanel: vscode.WebviewPanel, scratchOrgStateMessage: IRecipeCockpitScratchOrgStateMessage) {
+    // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
+    private static setScratchOrgState(scratchOrgStateMessage: IRecipeCockpitScratchOrgStateMessage) {
 
-        if ( this.recipeCockpitPanel !== cockpitPanel ) {
-            return;
-        }
-
+        this.scratchOrgRunStateMessage = scratchOrgStateMessage.isRunning ? scratchOrgStateMessage : undefined;
         this.recipeCockpitPanelState.scratchOrgStateMessage = scratchOrgStateMessage;
-        this.postToPanel(cockpitPanel, scratchOrgStateMessage);
+
+        if ( this.recipeCockpitPanel ) {
+            this.postToPanel(this.recipeCockpitPanel, scratchOrgStateMessage);
+        }
 
     }
 
-    private static async performScratchOrgSetup(cockpitPanel: vscode.WebviewPanel, workspaceRoot: string): Promise<{ statusText: string; isFailure: boolean; outputFilePath?: string }> {
+    // A PANEL STATE BUILT WHILE A RUN IS GOING STARTS FROM THE RUN'S STATE, SO ITS ROUTER REFUSES WHAT THE RUN HOLDS
+    private static adoptScratchOrgRunState(panelState: IRecipeCockpitPanelState) {
+
+        if ( this.isScratchOrgSetupInFlight && this.scratchOrgRunStateMessage ) {
+            panelState.scratchOrgStateMessage = this.scratchOrgRunStateMessage;
+        }
+
+    }
+
+    private static async performScratchOrgSetup(workspaceRoot: string): Promise<{ statusText: string; isFailure: boolean; outputFilePath?: string }> {
 
         let scratchOrgPlan: IScratchOrgPlan;
 
@@ -2805,7 +2822,7 @@ export class RecipeCockpitService {
             return { statusText: refusalMessage, isFailure: true };
         }
 
-        const devHubLabel = this.buildDevHubLabel(scratchOrgPlan);
+        const devHubLabel = this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan));
 
         const confirmation = await vscode.window.showWarningMessage(
             `Create a scratch org through the Dev Hub ${devHubLabel} and deploy this project's source to it?`,
@@ -2817,7 +2834,7 @@ export class RecipeCockpitService {
             return { statusText: '', isFailure: false };
         }
 
-        const reportPhase = (phaseText: string) => this.setScratchOrgState(cockpitPanel, { command: 'scratchOrgState', isRunning: true, statusText: phaseText, isFailure: false, hasOutput: false });
+        const reportPhase = (phaseText: string) => this.setScratchOrgState({ command: 'scratchOrgState', isRunning: true, statusText: phaseText, isFailure: false, hasOutput: false });
 
         const setupOutcome: ScratchOrgSetupOutcome = await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -2854,12 +2871,12 @@ export class RecipeCockpitService {
 
         if ( setupOutcome.kind === 'createCancelled' ) {
             const cancelledText = `Cancelled while the scratch org ${alias} was being created. A scratch org may still have been created: check with "sf org list".`;
-            VSCodeWorkspaceService.showInformationMessage(cancelledText);
+            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
             return { statusText: cancelledText, isFailure: true };
         }
 
         reportPhase(RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT.listing);
-        const isListed = await this.listAndSelectNewScratchOrg(cockpitPanel, setupOutcome.username);
+        const isListed = await this.listAndSelectNewScratchOrg(setupOutcome.username);
         const orgText = `${alias} (${setupOutcome.username})`;
         const selectionText = isListed
             ? 'It is selected in Data-by-Org.'
@@ -2877,16 +2894,25 @@ export class RecipeCockpitService {
             };
         }
 
+        if ( setupOutcome.kind === 'deployUnconfirmed' ) {
+            const unconfirmedText = `The deploy to ${alias} ran, but its answer was too large to read, so whether it succeeded is unknown. Check it with "sf project deploy report --target-org ${alias}". The scratch org ${orgText} is kept.`;
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(unconfirmedText));
+            return { statusText: `${unconfirmedText} ${selectionText}`, isFailure: true };
+        }
+
         if ( setupOutcome.kind === 'deployCancelled' ) {
-            const cancelledText = `The deploy to ${alias} was stopped partway, so some components may be missing. The scratch org ${orgText} is kept.`;
-            VSCodeWorkspaceService.showInformationMessage(cancelledText);
+            const cancelledText = setupOutcome.isDeployStarted
+                ? `The deploy to ${alias} was stopped partway, so some components may be missing. The scratch org ${orgText} is kept.`
+                : `Cancelled after the scratch org ${orgText} was created, before anything was deployed to it: it has none of the project's metadata. It is kept.`;
+            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
             return { statusText: `${cancelledText} ${selectionText}`, isFailure: true };
         }
 
-        VSCodeWorkspaceService.showInformationMessage(`Scratch org ${orgText} is ready: ${setupOutcome.deployedComponentCount} ${setupOutcome.deployedComponentCount === 1 ? 'component' : 'components'} deployed.`);
+        const deployedText = `Scratch org ${orgText} is ready: ${setupOutcome.deployedComponentCount} ${setupOutcome.deployedComponentCount === 1 ? 'component' : 'components'} deployed.`;
+        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(deployedText));
 
         return {
-            statusText: `Scratch org ${orgText} is ready: ${setupOutcome.deployedComponentCount} ${setupOutcome.deployedComponentCount === 1 ? 'component' : 'components'} deployed. ${selectionText}`,
+            statusText: `${deployedText} ${selectionText}`,
             isFailure: !isListed,
             outputFilePath: setupOutcome.outputFilePath
         };
@@ -2902,15 +2928,46 @@ export class RecipeCockpitService {
 
     }
 
+    // A MODAL DETAIL IS PLAIN TEXT, BUT A VALUE CARRYING A LINE BREAK -- OF EITHER PARSER'S KIND -- COULD STILL ADD A LINE THAT LOOKS LIKE OURS
+    static toSingleLine(text: string): string {
+
+        return String(text ?? '').replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
+
+    }
+
+    /*
+        Names what was resolved AND what the repository's own files decide, since the reader is
+        confirming both: where the Dev Hub setting came from (a cloned project's .sf/config.json can
+        choose among the reader's Dev Hubs), what the definition sets for the admin, whether the
+        deploy copies local files or environment variables in, and that the metadata deployed is
+        the repository's.
+    */
     static buildScratchOrgConfirmationDetail(scratchOrgPlan: IScratchOrgPlan): string {
 
+        const devHubSourceText: Record<IScratchOrgPlan['devHub']['configSource'], string> = {
+            environment: 'set by an environment variable',
+            project: 'set by this project\'s .sf or .sfdx config',
+            global: 'your global Salesforce CLI setting'
+        };
+        const definitionSummary = scratchOrgPlan.definitionSummary;
+        const definitionLines = [
+            definitionSummary.edition ? `  Edition: ${definitionSummary.edition}` : '',
+            definitionSummary.adminEmail ? `  Admin email: ${definitionSummary.adminEmail}` : '',
+            definitionSummary.username ? `  Username: ${definitionSummary.username}` : ''
+        ].filter(Boolean).map(definitionLine => this.toSingleLine(definitionLine));
+
         return [
-            `Dev Hub: ${this.buildDevHubLabel(scratchOrgPlan)}`,
+            `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))} — ${devHubSourceText[scratchOrgPlan.devHub.configSource]}`,
             `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
-            `Package directories to deploy: ${scratchOrgPlan.packageDirectoryPaths.join(', ')}`,
+            ...definitionLines,
+            `Package directories to deploy: ${scratchOrgPlan.packageDirectoryPaths.map(packageDirectoryPath => this.toSingleLine(packageDirectoryPath)).join(', ')}`,
             `Alias: ${scratchOrgPlan.alias}`,
             `Duration: ${scratchOrgPlan.durationDays} days`,
             '',
+            'This deploys metadata authored in this repository, and the definition file decides who administers the new org.',
+            ...( scratchOrgPlan.hasFileOrEnvironmentReplacements
+                ? ['sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.']
+                : [] ),
             'The deploy is all or nothing: if any component fails, none is deployed. The scratch org is kept whatever happens, and nothing here deletes an org.'
         ].join('\n');
 
@@ -2943,16 +3000,17 @@ export class RecipeCockpitService {
 
     /*
         Remembered by USERNAME first, so the listing selects it, and kept even when it is not listed
-        yet -- the next ⟳ selects it then. A panel with no drawn picker only remembers it.
+        yet -- the next ⟳ selects it then. A window with no drawn picker only remembers it.
     */
-    private static async listAndSelectNewScratchOrg(cockpitPanel: vscode.WebviewPanel, orgUsername: string): Promise<boolean> {
+    private static async listAndSelectNewScratchOrg(orgUsername: string): Promise<boolean> {
 
         SalesforceOrgService.clearConnectedOrgStatusCache();
         this.rememberDataOrgUsername(orgUsername);
 
+        const cockpitPanel = this.recipeCockpitPanel;
         const panelState = this.recipeCockpitPanelState;
 
-        if ( this.recipeCockpitPanel === cockpitPanel && panelState.recipeDataMessage ) {
+        if ( cockpitPanel && panelState.recipeDataMessage ) {
             panelState.dataOrgUsername = orgUsername;
             await this.loadDataOrgs(cockpitPanel, panelState, false, true);
             return panelState.dataOrgDetails.some(orgDetail => orgDetail.username === orgUsername);
@@ -4055,7 +4113,8 @@ export class RecipeCockpitService {
             */
             case 'loadDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 ) {
+                // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -5830,7 +5889,7 @@ ${this.buildPaletteCustomProperties()}
         dataOrgNewScratchElement = createElement('button', 'dataOrgNewScratch', '+ New scratch org');
         dataOrgNewScratchElement.setAttribute('title', 'Create a scratch org through the default Dev Hub of the Salesforce CLI, deploy the source of this project to it and select it');
         dataOrgNewScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || renderedSequence === null) { return; }
+            if (isScratchOrgRunning || createRunningKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
             isScratchOrgRunning = true;
             drawScratchOrgControls();
@@ -7402,7 +7461,8 @@ ${this.buildPaletteCustomProperties()}
 
         if (!dataOrgNewScratchElement) { return; }
 
-        dataOrgNewScratchElement.disabled = isScratchOrgRunning;
+        // A CREATE IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
+        dataOrgNewScratchElement.disabled = isScratchOrgRunning || createRunningKey !== null;
         dataOrgNewScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
         dataOrgSelectElement.disabled = isScratchOrgRunning;
         dataOrgLoadElement.disabled = isScratchOrgRunning;
@@ -7437,6 +7497,7 @@ ${this.buildPaletteCustomProperties()}
 
         createRunningKey = runningKey;
         dataObjectStates.forEach(drawCreateControls);
+        drawScratchOrgControls();
 
     }
 
@@ -7465,7 +7526,8 @@ ${this.buildPaletteCustomProperties()}
     // THE FIRST USE OF THE PICKER, OR THE FIRST OPEN OF ANY CARD'S DATA-BY-ORG TAB -- NEVER THE PANEL'S OWN OPEN
     function requestDataOrgs() {
 
-        if (!dataOrgSelectElement || renderedSequence === null || dataOrgRequestedSequence === renderedSequence) { return; }
+        // A SCRATCH ORG RUN ENDS BY LISTING THE ORGS ITSELF
+        if (!dataOrgSelectElement || renderedSequence === null || dataOrgRequestedSequence === renderedSequence || isScratchOrgRunning) { return; }
 
         isDataOrgPickerInUse = true;
         savePanelPlace();
