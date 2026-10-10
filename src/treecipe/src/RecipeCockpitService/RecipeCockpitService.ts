@@ -166,6 +166,17 @@ export const RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET = 2000;
 export const RECIPE_COCKPIT_PANEL_PLACE_VERSION = 1;
 export const RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY = 200;
 
+/*
+    The same place, kept in workspaceState as well (#230) so it outlives the panel: a close or a
+    window reload throws the webview's own state away. Written as it changes, at most once per
+    RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY, because a reload or a crash may never run onDidDispose.
+*/
+export const RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY = 'treecipe.recipeCockpit.panelPlace';
+export const RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY = 500;
+// WHAT A PLACE READ BACK FROM workspaceState MAY HOLD -- AN ENTRY PAST EITHER BOUND IS DROPPED, NEVER CUT TO FIT
+export const RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES = 10000;
+export const RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH = 1000;
+
 // THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
 export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
 
@@ -459,6 +470,7 @@ export interface IRecipeCockpitPanelMessage {
     friendObjectApiName?: unknown;
     message?: unknown;
     stack?: unknown;
+    place?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -482,6 +494,33 @@ export interface IRecipeCockpitRecipeDataMessage {
     recipe: IRecipeCockpitRecipeViewModel;
     renderSequence: number;
     focusTree?: IRecipeCockpitTreeFocus;
+    // A PLACE KEPT IN workspaceState (#230), FOR A DOCUMENT WHOSE OWN getState HAS NONE: A PANEL OPENED AFTER A CLOSE OR A WINDOW RELOAD
+    restorePlace?: IRecipeCockpitPanelPlace;
+}
+
+/*
+    The reader's place as the panel saves it (#222) and as workspaceState keeps it (#230): names,
+    each tab's search as typed, whether the toolbar's org picker was in use and a scroll offset.
+    No path, picklist value, org label or username -- normalizePanelPlace keeps nothing else.
+*/
+export interface IRecipeCockpitPanelTreePlace {
+    treeKey: string;
+    isExpanded: boolean;
+    selectedTab: RecipeCockpitTreeTab;
+    searchQueries: Partial<Record<RecipeCockpitTreeTab, string>>;
+    statusFilter: string;
+    expandedObjectKeys: string[];
+    openPicklistKeys: string[];
+    expandedDataObjectApiNames: string[];
+    expandedVersionRunFolderNames: string[];
+}
+
+export interface IRecipeCockpitPanelPlace {
+    version: number;
+    runFolderName: string;
+    isOrgPickerInUse: boolean;
+    scrollY: number;
+    trees: IRecipeCockpitPanelTreePlace[];
 }
 
 export interface IRecipeCockpitTreeFocus {
@@ -822,7 +861,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postCreateState'; hostMessage: IRecipeCockpitCreateStateMessage }
     | { kind: 'viewCreateErrors'; resultsFilePath: string }
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
-    | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage };
+    | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage }
+    | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace };
 
 // WHAT A REOPEN OF THE PANEL CARRIES INTO ITS RELOAD (#222): THE MODEL ON SCREEN, AND THE COMPARISONS DRAWN OVER IT
 export interface IRecipeCockpitCarriedPanelState {
@@ -892,6 +932,8 @@ export interface IRecipeCockpitPanelState {
     pendingInsertableFriendTargets: Map<string, string>;
     insertableFriendTargets: Map<string, string>;
     addFriendStateMessage?: IRecipeCockpitAddFriendStateMessage;
+    // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
+    restorePlace?: IRecipeCockpitPanelPlace;
 }
 
 /*
@@ -937,6 +979,175 @@ export class RecipeCockpitService {
         that opens the panel; a cockpit opened without one simply remembers nothing.
     */
     private static recipeCockpitWorkspaceState: IRecipeCockpitWorkspaceState | undefined;
+
+    /*
+        The reader's place waiting to be written to workspaceState, and the timer that writes it.
+        One write per RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY however often the panel saves: the
+        first save starts the timer, later ones only replace what it will write.
+    */
+    private static pendingPersistedPanelPlace: IRecipeCockpitPanelPlace | undefined;
+    private static panelPlacePersistTimer: ReturnType<typeof setTimeout> | undefined;
+
+    /*
+        A place read back from workspaceState, or posted by the panel, checked field by field: both
+        are text this extension does not control. A place in another shape, or naming no usable run,
+        is no place at all; inside one, an entry of the wrong type or past a bound is dropped on its
+        own. The run is a folder NAME the caller looks up among the runs on disk, never a path.
+    */
+    static normalizePanelPlace(candidatePlace: unknown): IRecipeCockpitPanelPlace | undefined {
+
+        if ( !this.isPlainRecord(candidatePlace) || candidatePlace.version !== RECIPE_COCKPIT_PANEL_PLACE_VERSION ) {
+            return undefined;
+        }
+
+        const { runFolderName } = candidatePlace;
+
+        if ( !this.isBoundedText(runFolderName) || runFolderName === '' || !DatasetSourceService.isSafeFolderOrFileName(runFolderName) ) {
+            return undefined;
+        }
+
+        const scrollY = candidatePlace.scrollY;
+        const candidateTrees = Array.isArray(candidatePlace.trees) ? candidatePlace.trees.slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES) : [];
+        const statusFilterOptions = ['all', ...METADATA_DIFF_FIELD_STATUSES.filter(diffStatus => diffStatus !== 'unchanged')];
+
+        const trees = candidateTrees.flatMap((candidateTree: unknown): IRecipeCockpitPanelTreePlace[] => {
+
+            if ( !this.isPlainRecord(candidateTree) || !this.isBoundedText(candidateTree.treeKey) || candidateTree.treeKey === '' ) {
+                return [];
+            }
+
+            const candidateQueries = this.isPlainRecord(candidateTree.searchQueries) ? candidateTree.searchQueries : {};
+            const searchQueries: Partial<Record<RecipeCockpitTreeTab, string>> = {};
+
+            RECIPE_COCKPIT_TREE_TABS.forEach(tabName => {
+                const candidateQuery = Object.prototype.hasOwnProperty.call(candidateQueries, tabName) ? candidateQueries[tabName] : undefined;
+                searchQueries[tabName] = this.isBoundedText(candidateQuery) ? candidateQuery : '';
+            });
+
+            const selectedTab = RECIPE_COCKPIT_TREE_TABS.find(tabName => tabName === candidateTree.selectedTab) ?? 'structure';
+            const statusFilter = statusFilterOptions.find(statusOption => statusOption === candidateTree.statusFilter) ?? 'all';
+
+            return [{
+                treeKey: candidateTree.treeKey,
+                isExpanded: candidateTree.isExpanded === true,
+                selectedTab: selectedTab,
+                searchQueries: searchQueries,
+                statusFilter: statusFilter,
+                expandedObjectKeys: this.normalizePlaceNames(candidateTree.expandedObjectKeys),
+                openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
+                expandedDataObjectApiNames: this.normalizePlaceNames(candidateTree.expandedDataObjectApiNames),
+                expandedVersionRunFolderNames: this.normalizePlaceNames(candidateTree.expandedVersionRunFolderNames)
+            }];
+
+        });
+
+        return {
+            version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+            runFolderName: runFolderName,
+            isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
+            scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
+            trees: trees
+        };
+
+    }
+
+    private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {
+
+        return typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate);
+
+    }
+
+    private static isBoundedText(candidate: unknown): candidate is string {
+
+        return typeof candidate === 'string' && candidate.length <= RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH;
+
+    }
+
+    private static normalizePlaceNames(candidateNames: unknown): string[] {
+
+        if ( !Array.isArray(candidateNames) ) {
+            return [];
+        }
+
+        return candidateNames
+            .slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES)
+            .filter((candidateName: unknown): candidateName is string => this.isBoundedText(candidateName) && candidateName !== '');
+
+    }
+
+    // WHAT workspaceState KEPT, OR NOTHING -- A PLACE THAT CANNOT BE USED IS DROPPED SO IT IS NOT READ AGAIN ON EVERY OPEN
+    static readPersistedPanelPlace(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitPanelPlace | undefined {
+
+        if ( !workspaceState ) {
+            return undefined;
+        }
+
+        let storedPlace: unknown;
+
+        try {
+            storedPlace = workspaceState.get<unknown>(RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY);
+        } catch {
+            return undefined;
+        }
+
+        if ( storedPlace === undefined ) {
+            return undefined;
+        }
+
+        const persistedPlace = this.normalizePanelPlace(storedPlace);
+
+        if ( !persistedPlace ) {
+            this.forgetPersistedPanelPlace(workspaceState);
+        }
+
+        return persistedPlace;
+
+    }
+
+    private static forgetPersistedPanelPlace(workspaceState: IRecipeCockpitWorkspaceState | undefined) {
+
+        this.writePersistedPanelPlace(workspaceState, undefined);
+
+    }
+
+    private static writePersistedPanelPlace(workspaceState: IRecipeCockpitWorkspaceState | undefined, panelPlace: IRecipeCockpitPanelPlace | undefined) {
+
+        // A PLACE THAT COULD NOT BE KEPT COSTS THE READER A RE-OPEN, NEVER THE COMMAND
+        try {
+            Promise.resolve(workspaceState?.update(RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY, panelPlace)).catch(() => undefined);
+        } catch {
+            return;
+        }
+
+    }
+
+    static schedulePanelPlacePersist(panelPlace: IRecipeCockpitPanelPlace) {
+
+        this.pendingPersistedPanelPlace = panelPlace;
+
+        if ( this.panelPlacePersistTimer !== undefined ) {
+            return;
+        }
+
+        this.panelPlacePersistTimer = setTimeout(() => this.flushPanelPlacePersist(), RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY);
+
+    }
+
+    static flushPanelPlacePersist() {
+
+        if ( this.panelPlacePersistTimer !== undefined ) {
+            clearTimeout(this.panelPlacePersistTimer);
+            this.panelPlacePersistTimer = undefined;
+        }
+
+        const panelPlace = this.pendingPersistedPanelPlace;
+        this.pendingPersistedPanelPlace = undefined;
+
+        if ( panelPlace ) {
+            this.writePersistedPanelPlace(this.recipeCockpitWorkspaceState, panelPlace);
+        }
+
+    }
 
     static buildEmptyTreeHistoryAllowLists(): IRecipeCockpitTreeHistoryAllowLists {
 
@@ -1035,6 +1246,8 @@ export class RecipeCockpitService {
     static async openRecipeCockpitPanel(workspaceRoot: string, workspaceState?: IRecipeCockpitWorkspaceState): Promise<vscode.WebviewPanel> {
 
         const existingCockpitPanel = this.recipeCockpitPanel;
+        // A PLACE STILL WAITING TO BE WRITTEN BELONGS TO THE WORKSPACE STATE IT WAS SAVED UNDER
+        this.flushPanelPlacePersist();
         this.recipeCockpitWorkspaceState = workspaceState;
 
         /*
@@ -1045,7 +1258,16 @@ export class RecipeCockpitService {
         const previousPanelState = existingCockpitPanel && this.recipeCockpitPanelState.workspaceRoot === workspaceRoot
             ? this.recipeCockpitPanelState
             : undefined;
-        const carriedRunFolderName = previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName || undefined;
+        /*
+            A panel with nothing to carry -- the first open after a close or a window reload (#230)
+            -- starts from the place workspaceState kept, if any: its run is looked up among the
+            runs on disk like any other requested run, and the place itself is handed to the panel
+            with the model only if that run is the one loaded.
+        */
+        const persistedPanelPlace = previousPanelState ? undefined : this.readPersistedPanelPlace(workspaceState);
+        const carriedRunFolderName = previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName
+            || persistedPanelPlace?.runFolderName
+            || undefined;
         // THE OLD MODEL IS HELD THROUGH THE RELOAD ONLY WHEN A COMPARISON NEEDS IT TO BE CHECKED AGAINST -- AT SCALE IT IS TENS OF MB
         const carriedPanelState = previousPanelState?.recipeDataMessage && previousPanelState.orgDescribeMessagesByTreeKey.size > 0
             ? {
@@ -1083,6 +1305,8 @@ export class RecipeCockpitService {
         if ( !existingCockpitPanel ) {
 
             cockpitPanel.onDidDispose(() => {
+                // THE LAST PLACE SAVED IS WRITTEN NOW RATHER THAN DROPPED WITH THE TIMER -- THE NEXT OPEN READS IT
+                this.flushPanelPlacePersist();
                 this.recipeCockpitMessageSubscription?.dispose();
                 this.recipeCockpitMessageSubscription = undefined;
                 this.recipeCockpitPanel = undefined;
@@ -1104,7 +1328,8 @@ export class RecipeCockpitService {
             workspaceRoot,
             carriedRunFolderName,
             undefined,
-            carriedPanelState
+            carriedPanelState,
+            persistedPanelPlace
         );
 
         return cockpitPanel;
@@ -1121,7 +1346,8 @@ export class RecipeCockpitService {
                                                 workspaceRoot: string,
                                                 requestedRunFolderName?: string,
                                                 focusTree?: IRecipeCockpitTreeFocus,
-                                                carriedPanelState?: IRecipeCockpitCarriedPanelState): Promise<void> {
+                                                carriedPanelState?: IRecipeCockpitCarriedPanelState,
+                                                persistedPanelPlace?: IRecipeCockpitPanelPlace): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
 
@@ -1152,7 +1378,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState, persistedPanelPlace);
 
         } catch (loadError) {
 
@@ -1263,7 +1489,8 @@ export class RecipeCockpitService {
     private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel,
                                         loadedRecipe: IRecipeCockpitLoadedRecipe,
                                         focusTree?: IRecipeCockpitTreeFocus,
-                                        carriedPanelState?: IRecipeCockpitCarriedPanelState) {
+                                        carriedPanelState?: IRecipeCockpitCarriedPanelState,
+                                        persistedPanelPlace?: IRecipeCockpitPanelPlace) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
@@ -1275,6 +1502,16 @@ export class RecipeCockpitService {
         const isFocusOnScreen = !!focusTree && recipeViewModel.trees.some(tree => tree.treeKey === focusTree.treeKey);
 
         panelState.recipeDataMessage = recipeDataMessage;
+        /*
+            A saved place whose run is gone is dropped (#230): the newest run was loaded in its
+            place, and a place is only ever about the run it names.
+        */
+        panelState.restorePlace = persistedPanelPlace && persistedPanelPlace.runFolderName === recipeViewModel.selectedRunFolderName
+            ? persistedPanelPlace
+            : undefined;
+        if ( persistedPanelPlace && !panelState.restorePlace ) {
+            this.forgetPersistedPanelPlace(this.recipeCockpitWorkspaceState);
+        }
         panelState.recipePicklistValuesByObjectApiName = loadedRecipe.recipePicklistValuesByObjectApiName;
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
@@ -1321,7 +1558,21 @@ export class RecipeCockpitService {
             The focus rides on the POSTED copy only. The stored message is what every reveal replays,
             and a focus replayed on each one would re-open a card the reader has since closed.
         */
-        this.postToPanel(cockpitPanel, isFocusOnScreen ? { ...recipeDataMessage, focusTree: focusTree } : recipeDataMessage);
+        this.postToPanel(cockpitPanel, {
+            ...this.withRestorePlace(recipeDataMessage, panelState),
+            ...( isFocusOnScreen ? { focusTree: focusTree } : {} )
+        });
+
+    }
+
+    /*
+        The place rides on a POSTED copy, like a focus, and on every replay until the model's
+        "rendered": a fresh panel usually says "ready" after its model was stored, so the replay is
+        the post that carries it. The panel prefers its own getState, which is newer whenever it has one.
+    */
+    private static withRestorePlace(recipeDataMessage: IRecipeCockpitRecipeDataMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitRecipeDataMessage {
+
+        return panelState.restorePlace ? { ...recipeDataMessage, restorePlace: panelState.restorePlace } : recipeDataMessage;
 
     }
 
@@ -1398,6 +1649,8 @@ export class RecipeCockpitService {
 
             case 'activateActions':
 
+                // DRAWN: THE PANEL'S OWN getState HOLDS THE PLACE FROM HERE ON
+                panelState.restorePlace = undefined;
                 panelState.openableSourceKeys = panelState.pendingOpenableSourceKeys;
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
                 panelState.describableObjectApiNamesByTreeKey = panelState.pendingDescribableObjectApiNamesByTreeKey;
@@ -1586,6 +1839,11 @@ export class RecipeCockpitService {
             case 'postAddFriendState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'persistPlace':
+
+                this.schedulePanelPlacePersist(panelAction.place);
                 return;
 
         }
@@ -3195,6 +3453,25 @@ export class RecipeCockpitService {
             case 'ready':
                 return { kind: 'replay', hostMessages: this.buildReplayMessages(panelState) };
 
+            /*
+                The panel's place, kept in workspaceState too (#230). Only for the model the panel
+                confirmed drawing, and only naming that model's run: a place is the reader's, and
+                the reader cannot have one in a run that is not on screen.
+            */
+            case 'savePlace': {
+
+                const savedPlace = this.normalizePanelPlace(panelMessage.place);
+                const drawnRunFolderName = panelState.recipeDataMessage?.recipe.selectedRunFolderName;
+
+                if ( !savedPlace || !drawnRunFolderName || savedPlace.runFolderName !== drawnRunFolderName
+                        || !panelState.selectableRunFolderNames.has(drawnRunFolderName) ) {
+                    return undefined;
+                }
+
+                return { kind: 'persistPlace', place: savedPlace };
+
+            }
+
             case 'rendered':
 
                 // AN ACKNOWLEDGEMENT CANNOT PRECEDE A MODEL, AND ONLY ACTIVATES THE ONE IT WAS DRAWN FROM
@@ -3632,7 +3909,7 @@ export class RecipeCockpitService {
         const replayMessages: RecipeCockpitHostMessage[] = [];
 
         if ( panelState.recipeDataMessage ) {
-            replayMessages.push(panelState.recipeDataMessage);
+            replayMessages.push(this.withRestorePlace(panelState.recipeDataMessage, panelState));
         }
 
         if ( panelState.recipeDataMessage ) {
@@ -6924,7 +7201,7 @@ ${this.buildPaletteCustomProperties()}
 
             const savedState = typeof vscodeApi.getState === 'function' ? vscodeApi.getState() : null;
 
-            if (!savedState || typeof savedState !== 'object' || savedState.version !== PANEL_PLACE_VERSION || typeof savedState.runFolderName !== 'string') {
+            if (!isReadablePlace(savedState)) {
                 return null;
             }
 
@@ -7013,25 +7290,41 @@ ${this.buildPaletteCustomProperties()}
         // NOTHING IS SAVED UNTIL THE SAVED PLACE IS SPENT, NOR FOR A PANEL WITH NO MODEL DRAWN
         if (!isPlaceRestoreSettled || isRestoringPlace || renderedSequence === null || typeof vscodeApi.setState !== 'function') { return; }
 
+        let panelPlace = null;
+
         try {
-            vscodeApi.setState({
+            panelPlace = {
                 version: PANEL_PLACE_VERSION,
                 runFolderName: renderedRunFolderName,
                 isOrgPickerInUse: isDataOrgPickerInUse,
                 scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
                 trees: treeStates.map(buildTreePlace).filter(Boolean)
-            });
+            };
+            vscodeApi.setState(panelPlace);
         } catch (setStateError) {
             // A PLACE THAT COULD NOT BE KEPT COSTS THE READER A RE-OPEN, NEVER THE PANEL
         }
 
+        // THE HOST KEEPS IT IN workspaceState TOO, SO IT OUTLIVES A CLOSE OR A WINDOW RELOAD (#230); IT THROTTLES THE WRITES
+        if (panelPlace) { vscodeApi.postMessage({ command: 'savePlace', place: panelPlace }); }
+
     }
 
-    function takeRestorablePlace(recipe) {
+    function isReadablePlace(candidatePlace) {
+
+        return !!candidatePlace && typeof candidatePlace === 'object' && candidatePlace.version === PANEL_PLACE_VERSION && typeof candidatePlace.runFolderName === 'string';
+
+    }
+
+    /*
+        The document's own getState first: it is newer whenever it has one. A document with none
+        -- a panel opened after a close or a window reload -- takes the place the host kept (#230).
+    */
+    function takeRestorablePlace(recipe, hostPlace) {
 
         if (isPlaceRestoreSettled) { return null; }
 
-        const savedPlace = restorablePlace;
+        const savedPlace = restorablePlace || (isReadablePlace(hostPlace) ? hostPlace : null);
         restorablePlace = null;
         isPlaceRestoreSettled = true;
 
@@ -7283,10 +7576,10 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function renderPanelGuarded(recipe, renderSequence, focusTree) {
+    function renderPanelGuarded(recipe, renderSequence, focusTree, hostPlace) {
 
         // SPENT ON THIS DOCUMENT'S FIRST MODEL WHETHER OR NOT IT APPLIES; A LATER MODEL KEEPS WHAT IS IN MEMORY, AS IT ALWAYS DID
-        const savedPlace = takeRestorablePlace(recipe);
+        const savedPlace = takeRestorablePlace(recipe, hostPlace);
 
         try {
 
@@ -7574,7 +7867,7 @@ ${this.buildPaletteCustomProperties()}
         if (hostMessage.command === 'recipeData') {
 
             // THE STATUS LINE IS LEFT ALONE WHEN THE RENDER FAILED -- CLEARING IT WOULD READ AS FINISHED
-            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence, hostMessage.focusTree)) {
+            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence, hostMessage.focusTree, hostMessage.restorePlace)) {
                 setLoadStatus('', false);
             }
 

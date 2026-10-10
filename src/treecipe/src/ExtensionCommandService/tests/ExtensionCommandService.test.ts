@@ -4185,6 +4185,30 @@ describe('ExtensionCommandService', () => {
         });
 
         /*
+            A place kept in workspaceState (#230) is read by the panel the command opens, so a
+            workspace that has not opted in, or a window with no folder, never reads it: the
+            restored panel goes through the same gate as a new one.
+        */
+        it.each([
+            ['the workspace has not opted in', false, '/workspace'],
+            ['no workspace folder is open', true, undefined]
+        ])('given a saved place and %s, reads no place and opens nothing', async (_caseName, isEnabled, workspaceRoot) => {
+
+            enableRecipeCockpitFlag(isEnabled as boolean);
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot as string | undefined);
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel');
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+            const workspaceState = { get: jest.fn().mockReturnValue({ version: 1, runFolderName: 'recipe-2026-09-20T10-00-00', trees: [] }), update: jest.fn() };
+
+            await extensionCommandService.openRecipeCockpit(workspaceState);
+
+            expect(openRecipeCockpitPanelSpy).not.toHaveBeenCalled();
+            expect(workspaceState.get).not.toHaveBeenCalled();
+            expect(workspaceState.update).not.toHaveBeenCalled();
+
+        });
+
+        /*
             The defect this whole issue is about, one level up: a write that did not land used to
             be indistinguishable from one that did, so the reader opted in and was asked again next
             time with nothing said about why.

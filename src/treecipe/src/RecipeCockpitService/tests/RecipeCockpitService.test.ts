@@ -2432,7 +2432,8 @@ describe('RecipeCockpitService', () => {
 
             panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
 
-            expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' });
+            // THE PLACE IS SAVED AFTER THE CLICK TOO, SO THE REQUEST IS THE LAST MESSAGE THAT IS NOT A savePlace
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command !== 'savePlace').pop()).toEqual({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' });
             expect(textOf(panel, ratingRow, 'picklistLoading')).toEqual(['Loading values…']);
 
             answerLastPicklistRequest(panel, loadedRecipe);
