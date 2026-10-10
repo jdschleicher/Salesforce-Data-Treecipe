@@ -351,4 +351,84 @@ describe('SfdxProjectService', () => {
 
     });
 
+    describe('resolveDeployablePackageDirectoryPaths', () => {
+
+        test('answers every packageDirectories path as the file declares it, in file order', () => {
+
+            mockSfdxProjectJson(JSON.stringify({ packageDirectories: [{ path: 'force-app', default: true }, { path: 'unpackaged' }] }));
+            mockEveryPathIsAnExistingDirectory();
+
+            expect(SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toEqual(['force-app', 'unpackaged']);
+
+        });
+
+        test('refuses a package directory that does not exist, since the deploy would fail only after an org was made', () => {
+
+            mockSfdxProjectJson(JSON.stringify({ packageDirectories: [{ path: 'force-app' }] }));
+            jest.spyOn(SfdxProjectService, 'isExistingDirectory').mockReturnValue(false);
+
+            expect(() => SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toThrow('The package directory "force-app" in');
+
+        });
+
+        test('refuses a missing sfdx-project.json', () => {
+
+            jest.spyOn(SfdxProjectService, 'isExistingFile').mockReturnValue(false);
+
+            expect(() => SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toThrow('No "sfdx-project.json" found at');
+
+        });
+
+        test('refuses an unparseable sfdx-project.json with the parser\'s message', () => {
+
+            mockSfdxProjectJson('{ "packageDirectories": [');
+
+            expect(() => SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toThrow('Could not parse');
+
+        });
+
+        test.each([
+            ['no packageDirectories', '{}', 'No "packageDirectories" entries found'],
+            ['an empty packageDirectories', '{ "packageDirectories": [] }', 'No "packageDirectories" entries found'],
+            ['an entry with no path', '{ "packageDirectories": [{ "path": "force-app" }, { "default": true }] }', 'has no "path" value'],
+            ['an absolute path', '{ "packageDirectories": [{ "path": "/etc" }] }', 'is an absolute path'],
+            ['a path out of the workspace', '{ "packageDirectories": [{ "path": "../elsewhere" }] }', 'which is outside the workspace']
+        ])('refuses %s', (_label, sfdxProjectJsonContent, expectedMessage) => {
+
+            mockSfdxProjectJson(sfdxProjectJsonContent);
+            mockEveryPathIsAnExistingDirectory();
+
+            expect(() => SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toThrow(expectedMessage);
+
+        });
+
+    });
+
+    describe('hasFileOrEnvironmentReplacements', () => {
+
+        test.each([
+            ['a file replacement', '{ "replacements": [{ "filename": "a", "replaceWithFile": "b" }] }', true],
+            ['an environment replacement', '{ "replacements": [{ "glob": "**", "replaceWithEnv": "HOME" }] }', true],
+            ['only string replacements', '{ "replacements": [{ "filename": "a", "stringToReplace": "x" }] }', false],
+            ['no replacements', '{ "packageDirectories": [] }', false],
+            ['a replacements value that is not a list', '{ "replacements": { "replaceWithFile": "b" } }', false],
+            ['null entries', '{ "replacements": [null, 7] }', false]
+        ])('answers for %s', (_label, sfdxProjectJsonContent, expectedAnswer) => {
+
+            mockSfdxProjectJson(sfdxProjectJsonContent);
+
+            expect(SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)).toBe(expectedAnswer);
+
+        });
+
+        test('answers false for a project file it cannot read', () => {
+
+            mockSfdxProjectJson('{');
+
+            expect(SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)).toBe(false);
+
+        });
+
+    });
+
 });

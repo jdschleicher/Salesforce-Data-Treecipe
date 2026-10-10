@@ -2,6 +2,7 @@ import * as matchers from 'jest-extended';
 expect.extend(matchers);
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 jest.mock('vscode', () => ({
@@ -29,7 +30,9 @@ import {
     ORG_TYPE_UNKNOWN_LABEL,
     IOrgQuerySource,
     OrgConnectionStatusUnavailableError,
-    SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS
+    SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS,
+    NO_DEFAULT_DEV_HUB_MESSAGE,
+    TARGET_DEV_HUB_ENVIRONMENT_VARIABLE
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
@@ -980,6 +983,188 @@ describe('SalesforceOrgService', () => {
         it('formats each reason that left an org out, in a fixed order, leaving out the reasons with none', () => {
 
             expect(SalesforceOrgService.formatHiddenOrgReasons({ production: 1, expired: 1, deleted: 0, notConnected: 1 })).toBe('1 production, 1 expired, 1 not connected');
+
+        });
+
+    });
+
+    describe('the default Dev Hub (#200)', () => {
+
+        let temporaryRoot: string;
+        let workspaceRoot: string;
+        let homeDirectoryPath: string;
+
+        const writeConfig = (rootPath: string, configContent: string) => {
+            fs.mkdirSync(path.join(rootPath, '.sf'), { recursive: true });
+            fs.writeFileSync(path.join(rootPath, '.sf', 'config.json'), configContent);
+        };
+
+        beforeEach(() => {
+            temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-dev-hub-'));
+            workspaceRoot = path.join(temporaryRoot, 'workspace');
+            homeDirectoryPath = path.join(temporaryRoot, 'home');
+            fs.mkdirSync(workspaceRoot);
+            fs.mkdirSync(homeDirectoryPath);
+            (execFile as unknown as jest.Mock).mockReset();
+        });
+
+        afterEach(() => {
+            fs.rmSync(temporaryRoot, { recursive: true, force: true });
+        });
+
+        it('reads the environment first, then the project config, then the global config, as the CLI does', () => {
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'projectHub' }));
+            writeConfig(homeDirectoryPath, JSON.stringify({ 'target-dev-hub': 'globalHub' }));
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, { [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE]: 'envHub' }))
+                .toEqual({ identifier: 'envHub', configSource: 'environment' });
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'projectHub', configSource: 'project' });
+
+            fs.rmSync(path.join(workspaceRoot, '.sf'), { recursive: true });
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'globalHub', configSource: 'global' });
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it.each([
+            ['no config at all', undefined],
+            ['a config that is not JSON', '{ "target-dev-hub": '],
+            ['a config with no target-dev-hub', '{ "target-org": "qa" }'],
+            ['a non-string target-dev-hub', '{ "target-dev-hub": 7 }']
+        ])('answers nothing for %s', (_label, configContent) => {
+
+            if ( configContent !== undefined ) {
+                writeConfig(workspaceRoot, configContent);
+            }
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {})).toBeUndefined();
+
+        });
+
+        it('answers nothing for a configured value that would read as a flag, rather than falling through to the global one', () => {
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': '--json' }));
+            writeConfig(homeDirectoryPath, JSON.stringify({ 'target-dev-hub': 'globalHub' }));
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {})).toBeUndefined();
+
+        });
+
+        it('answers nothing for an environment value that would read as a flag', () => {
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'projectHub' }));
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, { [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE]: '-x' })).toBeUndefined();
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, { [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE]: '  ' }))
+                .toEqual({ identifier: 'projectHub', configSource: 'project' });
+
+        });
+
+        it('reads no setting from a config path that is a directory, or a config that is a JSON array', () => {
+
+            fs.mkdirSync(path.join(workspaceRoot, '.sf', 'config.json'), { recursive: true });
+            writeConfig(homeDirectoryPath, JSON.stringify(['target-dev-hub']));
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {})).toBeUndefined();
+
+        });
+
+        it('defaults to the real home directory and environment when none is handed in', () => {
+
+            jest.spyOn(os, 'homedir').mockReturnValue(homeDirectoryPath);
+            writeConfig(homeDirectoryPath, JSON.stringify({ 'target-dev-hub': 'globalHub' }));
+            const savedEnvironmentValue = process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
+            delete process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE];
+
+            try {
+                expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot)).toEqual({ identifier: 'globalHub', configSource: 'global' });
+            } finally {
+                if ( savedEnvironmentValue !== undefined ) {
+                    process.env[TARGET_DEV_HUB_ENVIRONMENT_VARIABLE] = savedEnvironmentValue;
+                }
+            }
+
+        });
+
+        it('refuses an authorization with no username, and skips one with no aliases', async () => {
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'devhub' }));
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([{ username: 'qa@example.com.qa' }, { aliases: ['devhub'] }]);
+
+            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {})).rejects.toThrow('is not an authorized org here');
+
+        });
+
+        it('reads the legacy sfdx names after their sf counterparts, at each level', () => {
+
+            const writeLegacyConfig = (rootPath: string, configContent: string) => {
+                fs.mkdirSync(path.join(rootPath, '.sfdx'), { recursive: true });
+                fs.writeFileSync(path.join(rootPath, '.sfdx', 'sfdx-config.json'), configContent);
+            };
+
+            writeLegacyConfig(workspaceRoot, JSON.stringify({ defaultdevhubusername: 'legacyProjectHub' }));
+            writeConfig(homeDirectoryPath, JSON.stringify({ 'target-dev-hub': 'globalHub' }));
+
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, { SFDX_DEFAULTDEVHUBUSERNAME: 'legacyEnvHub' }))
+                .toEqual({ identifier: 'legacyEnvHub', configSource: 'environment' });
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, { [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE]: 'envHub', SFDX_DEFAULTDEVHUBUSERNAME: 'legacyEnvHub' }))
+                .toEqual({ identifier: 'envHub', configSource: 'environment' });
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'legacyProjectHub', configSource: 'project' });
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'projectHub' }));
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'projectHub', configSource: 'project' });
+
+            fs.rmSync(path.join(workspaceRoot, '.sf'), { recursive: true });
+            fs.rmSync(path.join(workspaceRoot, '.sfdx'), { recursive: true });
+            fs.rmSync(path.join(homeDirectoryPath, '.sf'), { recursive: true });
+            writeLegacyConfig(homeDirectoryPath, JSON.stringify({ defaultdevhubusername: 'legacyGlobalHub' }));
+            expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
+                .toEqual({ identifier: 'legacyGlobalHub', configSource: 'global' });
+
+        });
+
+        it('resolves the alias to its authorization', async () => {
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'devhub' }));
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: 'qa@example.com.qa', aliases: ['qa'] },
+                { username: 'hub@example.com', aliases: ['devhub'] }
+            ]);
+
+            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {}))
+                .resolves.toEqual({ targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' });
+
+        });
+
+        it('resolves a username to its authorization', async () => {
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'hub@example.com' }));
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([{ username: 'hub@example.com', aliases: [] }]);
+
+            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {}))
+                .resolves.toEqual({ targetOrgIdentifier: 'hub@example.com', username: 'hub@example.com', alias: undefined, configSource: 'project' });
+
+        });
+
+        it('refuses with no default Dev Hub, naming "sf config set target-dev-hub"', async () => {
+
+            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {})).rejects.toThrow(NO_DEFAULT_DEV_HUB_MESSAGE);
+            expect(NO_DEFAULT_DEV_HUB_MESSAGE).toContain('sf config set target-dev-hub');
+
+        });
+
+        it('refuses a default Dev Hub that is not authorized here', async () => {
+
+            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'goneHub' }));
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([{ username: 'qa@example.com.qa', aliases: ['qa'] }]);
+
+            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {})).rejects.toThrow('The default Dev Hub "goneHub" is not an authorized org here');
 
         });
 

@@ -1,0 +1,11 @@
+{
+  "status": 0,
+  "result": {
+    "username": "test-newscratch@example.com",
+    "orgId": "00D000000000077AAA",
+    "scratchOrgInfo": { "Status": "Active", "SignupUsername": "test-newscratch@example.com" },
+    "authFields": { "instanceUrl": "https://ability-new-7.scratch.my.salesforce.com", "accessToken": "00D000000000077!REDACTED" },
+    "warnings": []
+  },
+  "warnings": []
+}

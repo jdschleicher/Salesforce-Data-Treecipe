@@ -192,6 +192,78 @@ export class SfdxProjectService {
 
     }
 
+    /*
+        The STRICT read, for a command that deploys every package directory (#200): each case
+        resolvePackageDirectoryPaths degrades to an empty list is a refusal here, worded like
+        PicklistDependencyTestService.resolveDefaultPackageDirectoryPath's, because deploying a
+        project the CLI cannot resolve would fail only after an org had been created for it.
+        Answers the paths as sfdx-project.json declares them, which is what the confirmation names.
+    */
+    static resolveDeployablePackageDirectoryPaths(workspaceRoot: string): string[] {
+
+        const sfdxProjectFilePath = this.getSfdxProjectFilePath(workspaceRoot);
+
+        if ( !this.isExistingFile(sfdxProjectFilePath) ) {
+            throw new Error(`No "sfdx-project.json" found at "${sfdxProjectFilePath}". A scratch org is set up from a Salesforce DX project -- open a DX project, or add an "sfdx-project.json" with a packageDirectories entry, and try again.`);
+        }
+
+        const sfdxProjectJson = this.readSfdxProjectJson(sfdxProjectFilePath);
+        const packageDirectories: unknown = sfdxProjectJson?.packageDirectories;
+
+        if ( !Array.isArray(packageDirectories) || packageDirectories.length === 0 ) {
+            throw new Error(`No "packageDirectories" entries found in "${sfdxProjectFilePath}". Add a package directory and try again.`);
+        }
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+
+        return ( packageDirectories as ISfdxPackageDirectory[] ).map(packageDirectory => {
+
+            const declaredPath = packageDirectory?.path;
+
+            if ( typeof declaredPath !== 'string' || declaredPath.trim() === '' ) {
+                throw new Error(`A packageDirectories entry in "${sfdxProjectFilePath}" has no "path" value. Add a "path" to every packageDirectories entry and try again.`);
+            }
+
+            if ( path.isAbsolute(declaredPath) ) {
+                throw new Error(`The package directory "${declaredPath}" in "${sfdxProjectFilePath}" is an absolute path. Use a path relative to the project root and try again.`);
+            }
+
+            const resolvedPackageDirectoryPath = path.resolve(resolvedWorkspaceRoot, declaredPath);
+
+            if ( !this.isPathContainedInWorkspace(resolvedPackageDirectoryPath, resolvedWorkspaceRoot) ) {
+                throw new Error(`The package directory "${declaredPath}" in "${sfdxProjectFilePath}" resolves to "${resolvedPackageDirectoryPath}", which is outside the workspace. Use a package directory inside the project and try again.`);
+            }
+
+            if ( !this.isExistingDirectory(resolvedPackageDirectoryPath) ) {
+                throw new Error(`The package directory "${declaredPath}" in "${sfdxProjectFilePath}" does not exist. Create it or remove it from packageDirectories, and try again.`);
+            }
+
+            return declaredPath;
+
+        });
+
+    }
+
+    /*
+        Whether a deploy of this project would copy a local FILE or an ENVIRONMENT VARIABLE into the
+        metadata it sends (sfdx-project.json "replacements" with replaceWithFile or replaceWithEnv).
+        Tolerant: an unreadable file answers false, since the strict read has already refused it.
+    */
+    static hasFileOrEnvironmentReplacements(workspaceRoot: string): boolean {
+
+        try {
+            const replacements: unknown = this.readSfdxProjectJson(this.getSfdxProjectFilePath(workspaceRoot))?.replacements;
+            return Array.isArray(replacements) && replacements.some(replacement => (
+                replacement !== null
+                && typeof replacement === 'object'
+                && ( 'replaceWithFile' in replacement || 'replaceWithEnv' in replacement )
+            ));
+        } catch {
+            return false;
+        }
+
+    }
+
     static isExistingFile(filePath: string): boolean {
 
         try {

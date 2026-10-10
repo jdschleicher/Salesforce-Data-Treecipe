@@ -3,6 +3,10 @@ import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDepend
 import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
 export const NO_AUTHORIZED_ORGS_MESSAGE = 'No authorized Salesforce orgs were found. Authorize one with "sf org login web" and try again.';
 
 export const ORG_DESCRIBE_CANCELLED_MESSAGE = 'cancelled before it was described';
@@ -203,6 +207,24 @@ export const ORG_PARENT_RECORD_ID_LIMIT = 2000;
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 export const ORG_ORGANIZATION_QUERY = 'SELECT IsSandbox, OrganizationType FROM Organization';
+
+// THE CLI CONFIG KEY, ITS ENVIRONMENT VARIABLE, AND WHAT A READER WITH NONE SET IS TOLD TO RUN
+export const TARGET_DEV_HUB_CONFIG_KEY = 'target-dev-hub';
+
+export const TARGET_DEV_HUB_ENVIRONMENT_VARIABLE = 'SF_TARGET_DEV_HUB';
+
+// THE sfdx-ERA NAMES THE CLI STILL HONOURS, EACH READ AFTER ITS sf COUNTERPART
+export const LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE = 'SFDX_DEFAULTDEVHUBUSERNAME';
+
+export const LEGACY_TARGET_DEV_HUB_CONFIG_KEY = 'defaultdevhubusername';
+
+export const NO_DEFAULT_DEV_HUB_MESSAGE = 'No default Dev Hub is set for the Salesforce CLI, so no scratch org was created. Set one with "sf config set target-dev-hub=<alias>" (add --global to use it in every project) and try again.';
+
+// THE DEFAULT DEV HUB AS THE CLI WOULD RESOLVE IT, AND THE AUTHORIZATION IT NAMES
+export interface IDefaultDevHubDetail extends IAuthenticatedOrgDetail {
+    // WHERE THE SETTING WAS READ: THE ENVIRONMENT, THE PROJECT'S .sf/config.json, OR THE GLOBAL ONE
+    configSource: 'environment' | 'project' | 'global';
+}
 
 export class SalesforceOrgService {
 
@@ -727,6 +749,108 @@ export class SalesforceOrgService {
     static async promptForAuthorizedOrg(placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
 
         return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(this.listAuthorizedOrgDetailsForPicker(), placeHolder);
+
+    }
+
+    /*
+        The Dev Hub "sf org create scratch" would use with no --target-dev-hub, read IN PROCESS from
+        what the CLI reads -- its environment variable, then the project's config, then the global
+        one, each sf name before its legacy sfdx one -- so the confirmation can name it before any process is started (#200). Both
+        files and the variable are untrusted text: only a usable alias or username is answered, and
+        one that is not is the same as none, since the CLI could not be handed it either.
+    */
+    static readDefaultDevHubIdentifier(workspaceRoot: string,
+                                        homeDirectoryPath: string = os.homedir(),
+                                        environmentVariables: NodeJS.ProcessEnv = process.env): { identifier: string; configSource: IDefaultDevHubDetail['configSource'] } | undefined {
+
+        for ( const environmentVariableName of [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE] ) {
+
+            const environmentValue = environmentVariables[environmentVariableName];
+
+            if ( typeof environmentValue === 'string' && environmentValue.trim() !== '' ) {
+                return PicklistDependencyCheckService.isValidTargetOrgIdentifier(environmentValue.trim())
+                    ? { identifier: environmentValue.trim(), configSource: 'environment' }
+                    : undefined;
+            }
+
+        }
+
+        const configCandidates: Array<{ configFilePath: string; configKey: string; configSource: IDefaultDevHubDetail['configSource'] }> = [
+            { configFilePath: path.join(workspaceRoot, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
+            { configFilePath: path.join(workspaceRoot, '.sfdx', 'sfdx-config.json'), configKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
+            { configFilePath: path.join(homeDirectoryPath, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'global' },
+            { configFilePath: path.join(homeDirectoryPath, '.sfdx', 'sfdx-config.json'), configKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY, configSource: 'global' }
+        ];
+
+        for ( const configCandidate of configCandidates ) {
+
+            const configuredValue = this.readConfigFileValue(configCandidate.configFilePath, configCandidate.configKey);
+
+            if ( configuredValue === undefined ) {
+                continue;
+            }
+
+            return PicklistDependencyCheckService.isValidTargetOrgIdentifier(configuredValue)
+                ? { identifier: configuredValue, configSource: configCandidate.configSource }
+                : undefined;
+
+        }
+
+        return undefined;
+
+    }
+
+    // A FILE THAT IS MISSING, NOT A FILE, NOT JSON OR WITHOUT A STRING AT THE KEY HOLDS NO SETTING
+    private static readConfigFileValue(configFilePath: string, configKey: string): string | undefined {
+
+        try {
+
+            if ( !fs.statSync(configFilePath).isFile() ) {
+                return undefined;
+            }
+
+            const configuredValue = this.asRecord(JSON.parse(fs.readFileSync(configFilePath, 'utf-8')))?.[configKey];
+
+            return typeof configuredValue === 'string' && configuredValue.trim() !== '' ? configuredValue.trim() : undefined;
+
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    /*
+        The default Dev Hub and the authorization it names, by alias or username, read from the
+        authorization files rather than by asking the CLI. Throws a message the reader can act on
+        when none is set or the one set is not authorized here.
+    */
+    static async resolveDefaultDevHub(workspaceRoot: string,
+                                        homeDirectoryPath?: string,
+                                        environmentVariables?: NodeJS.ProcessEnv): Promise<IDefaultDevHubDetail> {
+
+        const defaultDevHub = this.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, environmentVariables);
+
+        if ( !defaultDevHub ) {
+            throw new Error(NO_DEFAULT_DEV_HUB_MESSAGE);
+        }
+
+        const devHubAuthorization = this.readAuthorizations(await AuthInfo.listAllAuthorizations()).find(authorization => (
+            authorization?.username === defaultDevHub.identifier
+            || ( Array.isArray(authorization?.aliases) && authorization.aliases.includes(defaultDevHub.identifier) )
+        ));
+
+        if ( !devHubAuthorization || typeof devHubAuthorization.username !== 'string' || !devHubAuthorization.username ) {
+            throw new Error(`The default Dev Hub "${defaultDevHub.identifier}" is not an authorized org here, so no scratch org was created. Authorize it with "sf org login web --set-default-dev-hub", or set another with "sf config set target-dev-hub=<alias>", and try again.`);
+        }
+
+        const alias = Array.isArray(devHubAuthorization.aliases) && typeof devHubAuthorization.aliases[0] === 'string' ? devHubAuthorization.aliases[0] : undefined;
+
+        return {
+            targetOrgIdentifier: defaultDevHub.identifier,
+            username: devHubAuthorization.username,
+            alias: alias,
+            configSource: defaultDevHub.configSource
+        };
 
     }
 
