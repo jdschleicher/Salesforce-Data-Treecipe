@@ -116,6 +116,46 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
     });
 
+    describe('openFileInEditorAtSelection', () => {
+
+        let revealedTextEditor: { selection: unknown; revealRange: jest.Mock };
+
+        beforeEach(() => {
+
+            revealedTextEditor = { selection: undefined, revealRange: jest.fn() };
+
+            (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue({});
+            (vscode.window.showTextDocument as jest.Mock).mockResolvedValue(revealedTextEditor);
+
+        });
+
+        test('given a line and columns, selects them and reveals the line in the center', async () => {
+
+            await VSCodeWorkspaceService.openFileInEditorAtSelection('/workspace/recipe.yml', 328, 20, 61);
+
+            expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith({ fsPath: '/workspace/recipe.yml' });
+            expect(revealedTextEditor.selection).toEqual({ anchor: { line: 328, character: 20 }, active: { line: 328, character: 61 } });
+            expect(revealedTextEditor.revealRange).toHaveBeenCalledWith(
+                { start: { line: 328, character: 20 }, end: { line: 328, character: 61 } },
+                vscode.TextEditorRevealType.InCenter
+            );
+
+        });
+
+        test('given the file cannot be opened, shows the failure with the path escaped', async () => {
+
+            (vscode.workspace.openTextDocument as jest.Mock).mockRejectedValue(new Error('gone'));
+
+            await VSCodeWorkspaceService.openFileInEditorAtSelection('/workspace/[x](command:git.push).yml', 0, 0, 0);
+
+            const [shownText] = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0];
+            expect(shownText).toContain('gone');
+            expect(shownText).not.toMatch(/[[\]()]/);
+
+        });
+
+    });
+
     describe('copyTextToClipboard', () => {
 
         test('given a combination reference, writes exactly that text to the clipboard', async () => {

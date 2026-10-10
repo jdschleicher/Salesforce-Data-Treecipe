@@ -184,6 +184,20 @@ export const RECIPE_COCKPIT_TREE_TITLE_PREFIX = 'Relationship Tree';
 
 export const RECIPE_COCKPIT_UNGROUPED_TREE_TITLE = 'Not in a relationship tree';
 
+/*
+    A tree card's own name and favorite (#235), kept in workspaceState by the tree's FOLDER NAME --
+    the one identity a tree keeps across runs, and the one a regeneration of the same objects writes
+    again -- so neither renumbers when another tree is added, and both survive a reload.
+*/
+export const RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY = 'treecipe.recipeCockpit.treePreferences';
+export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
+export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
+export const RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL = '✎';
+export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
+export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
+export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
+export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
+
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
 
 // A TREE CARD'S ▶ Run Faker HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND BACKEND CHECK
@@ -383,6 +397,22 @@ export interface IRecipeCockpitTreeViewModel {
     fieldCount: number;
     history?: IRecipeCockpitTreeHistoryViewModel;
     runFakerRecipeFileName?: string;
+    // THE READER'S OWN NAME AND FAVORITE (#235), SET ONLY WHEN THEY HAVE ONE; title STAYS THE DEFAULT THE NAME REPLACES
+    customName?: string;
+    isFavorite?: boolean;
+}
+
+// WHAT workspaceState HOLDS FOR THE CARDS, BY TREE FOLDER NAME; BOTH KEYED BY NAMES FROM DISK, SO NEITHER IS A PLAIN {}
+export interface IRecipeCockpitTreePreferences {
+    customNamesByFolderName: Map<string, string>;
+    favoriteFolderNames: Set<string>;
+}
+
+// A CARD'S NAME OR FAVORITE CHANGED: EVERY CARD OF THAT FOLDER, REDRAWN IN PLACE RATHER THAN BY A RELOAD
+export interface IRecipeCockpitTreePreferencesMessage {
+    command: 'treePreferences';
+    renderSequence: number;
+    trees: Array<{ treeKey: string; customName?: string; isFavorite: boolean }>;
 }
 
 export interface IRecipeCockpitRecipeViewModel {
@@ -521,6 +551,8 @@ export interface IRecipeCockpitPanelPlace {
     version: number;
     runFolderName: string;
     isOrgPickerInUse: boolean;
+    // A PLACE SAVED BEFORE #235 HAS NONE, AND READS AS THE FILTER OFF -- WHICH IS WHAT IT WAS
+    isFavoritesOnly: boolean;
     scrollY: number;
     trees: IRecipeCockpitPanelTreePlace[];
 }
@@ -757,7 +789,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitDataOrgSelectionMessage
                                         | IRecipeCockpitDataOrgReadinessMessage
                                         | IRecipeCockpitCreateStateMessage
-                                        | IRecipeCockpitAddFriendStateMessage;
+                                        | IRecipeCockpitAddFriendStateMessage
+                                        | IRecipeCockpitTreePreferencesMessage;
 
 export const RECIPE_COCKPIT_CREATE_CONFIRM_LABEL = 'Create';
 
@@ -809,6 +842,8 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     insertableDatasetFolderNames: Set<string>;
     countableDatasetFolderNames: Set<string>;
     runnableTreeKeys: Set<string>;
+    // THE CARDS ✎ AND ☆ ARE DRAWN ON: EVERY CARD WITH A FOLDER, WHICH LEAVES OUT ONLY THE UNGROUPED ONE
+    nameableTreeKeys: Set<string>;
 }
 
 /*
@@ -840,6 +875,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'viewCreateErrors'; resultsFilePath: string }
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage }
+    | { kind: 'renameTree'; folderName: string }
+    | { kind: 'toggleFavoriteTree'; folderName: string }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace };
 
 // WHAT A REOPEN OF THE PANEL CARRIES INTO ITS RELOAD (#222): THE MODEL ON SCREEN, AND THE COMPARISONS DRAWN OVER IT
@@ -1023,6 +1060,7 @@ export class RecipeCockpitService {
             version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
             runFolderName: runFolderName,
             isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
+            isFavoritesOnly: candidatePlace.isFavoritesOnly === true,
             scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
             trees: trees
         };
@@ -1130,6 +1168,172 @@ export class RecipeCockpitService {
 
     }
 
+    static buildEmptyTreePreferences(): IRecipeCockpitTreePreferences {
+
+        return { customNamesByFolderName: new Map(), favoriteFolderNames: new Set() };
+
+    }
+
+    /*
+        The cards' names and favorites as workspaceState kept them, each entry checked on its own:
+        the store is the reader's, but a name is drawn in the panel and compared with every other,
+        so one that could not have been saved through the input box is dropped rather than drawn.
+    */
+    static readTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreePreferences {
+
+        const treePreferences = this.buildEmptyTreePreferences();
+        let storedPreferences: unknown;
+
+        try {
+            storedPreferences = workspaceState?.get<unknown>(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY);
+        } catch {
+            return treePreferences;
+        }
+
+        if ( !this.isPlainRecord(storedPreferences) || storedPreferences.version !== RECIPE_COCKPIT_TREE_PREFERENCES_VERSION ) {
+            return treePreferences;
+        }
+
+        const storedCustomNames = this.isPlainRecord(storedPreferences.customNames) ? storedPreferences.customNames : {};
+
+        Object.keys(storedCustomNames).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
+            const customName = storedCustomNames[folderName];
+            if ( this.isBoundedText(folderName) && folderName !== '' && typeof customName === 'string'
+                    && customName !== '' && customName === customName.trim() && this.describeTreeNameProblem(customName) === undefined ) {
+                treePreferences.customNamesByFolderName.set(folderName, customName);
+            }
+        });
+
+        this.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => treePreferences.favoriteFolderNames.add(folderName));
+
+        return treePreferences;
+
+    }
+
+    // A FAILED WRITE IS SAID ONCE, AND THE CARDS ARE LEFT AS THEY WERE: A NAME THE NEXT OPEN WOULD NOT SHOW IS NOT ONE TO DRAW NOW
+    static async writeTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined, treePreferences: IRecipeCockpitTreePreferences): Promise<boolean> {
+
+        if ( !workspaceState ) {
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep tree names and favorites in. Open a folder and re-open the cockpit.');
+            return false;
+        }
+
+        // fromEntries DEFINES EACH KEY, SO A FOLDER NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
+        const customNames: Record<string, string> = Object.fromEntries(treePreferences.customNamesByFolderName);
+
+        try {
+            await workspaceState.update(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, {
+                version: RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
+                customNames: customNames,
+                favoriteFolderNames: [...treePreferences.favoriteFolderNames]
+            });
+            return true;
+        } catch (writeError) {
+            VSCodeWorkspaceService.showWarningMessage(`The tree name or favorite could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
+            return false;
+        }
+
+    }
+
+    // WHY A NAME CANNOT BE ANY CARD'S, WHOEVER ELSE HAS IT -- ONE LINE OF TEXT, WITHIN THE LENGTH THE HEADER IS DRAWN FOR
+    private static describeTreeNameProblem(trimmedName: string): string | undefined {
+
+        if ( /[\p{Cc}\u2028\u2029]/u.test(trimmedName) ) {
+            return 'A tree name must be one line, with no control characters.';
+        }
+
+        if ( trimmedName.length > RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH ) {
+            return `A tree name can be at most ${RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH} characters.`;
+        }
+
+        return undefined;
+
+    }
+
+    /*
+        What the input box says is wrong with a name, or undefined when it can be saved. An empty
+        name is valid: it clears the card's own name. A name is unique against every OTHER folder's
+        name in the workspace and every other card's title on screen, compared trimmed and without
+        case, because two cards a reader cannot tell apart are what a name exists to prevent.
+    */
+    static validateTreeName(candidateName: string,
+                                folderName: string,
+                                treePreferences: IRecipeCockpitTreePreferences,
+                                trees: IRecipeCockpitTreeViewModel[]): string | undefined {
+
+        const trimmedName = candidateName.trim();
+
+        if ( trimmedName === '' ) {
+            return undefined;
+        }
+
+        const namingProblem = this.describeTreeNameProblem(trimmedName);
+
+        if ( namingProblem ) {
+            return namingProblem;
+        }
+
+        const comparableName = trimmedName.toLowerCase();
+        const otherNames: string[] = [];
+
+        treePreferences.customNamesByFolderName.forEach((customName, namedFolderName) => {
+            if ( namedFolderName !== folderName ) { otherNames.push(customName); }
+        });
+
+        trees
+            .filter(tree => tree.folderName !== folderName)
+            .forEach(tree => otherNames.push(tree.title, tree.customName ?? ''));
+
+        return otherNames.some(otherName => otherName.trim().toLowerCase() === comparableName)
+            ? 'Another tree already has that name.'
+            : undefined;
+
+    }
+
+    // THE NAMES AND FAVORITES ONTO THE CARDS, IN PLACE: EVERY CARD OF A FOLDER, AND NEVER THE UNGROUPED ONE, WHICH HAS NO FOLDER
+    static applyTreePreferences(trees: IRecipeCockpitTreeViewModel[], treePreferences: IRecipeCockpitTreePreferences): IRecipeCockpitTreeViewModel[] {
+
+        trees.forEach(tree => {
+
+            delete tree.customName;
+            delete tree.isFavorite;
+
+            if ( tree.folderName === '' ) {
+                return;
+            }
+
+            const customName = treePreferences.customNamesByFolderName.get(tree.folderName);
+
+            if ( customName !== undefined ) {
+                tree.customName = customName;
+            }
+
+            if ( treePreferences.favoriteFolderNames.has(tree.folderName) ) {
+                tree.isFavorite = true;
+            }
+
+        });
+
+        return trees;
+
+    }
+
+    static buildTreePreferencesMessage(trees: IRecipeCockpitTreeViewModel[], folderName: string, renderSequence: number): IRecipeCockpitTreePreferencesMessage {
+
+        return {
+            command: 'treePreferences',
+            renderSequence: renderSequence,
+            trees: trees
+                .filter(tree => tree.folderName === folderName)
+                .map(tree => ({
+                    treeKey: tree.treeKey,
+                    ...( tree.customName !== undefined ? { customName: tree.customName } : {} ),
+                    isFavorite: tree.isFavorite === true
+                }))
+        };
+
+    }
+
     static buildEmptyTreeHistoryAllowLists(): IRecipeCockpitTreeHistoryAllowLists {
 
         return {
@@ -1138,7 +1342,8 @@ export class RecipeCockpitService {
             openableDatasetFolderNames: new Set(),
             insertableDatasetFolderNames: new Set(),
             countableDatasetFolderNames: new Set(),
-            runnableTreeKeys: new Set()
+            runnableTreeKeys: new Set(),
+            nameableTreeKeys: new Set()
         };
 
     }
@@ -1152,6 +1357,10 @@ export class RecipeCockpitService {
 
             if ( tree.runFakerRecipeFileName ) {
                 treeHistoryAllowLists.runnableTreeKeys.add(tree.treeKey);
+            }
+
+            if ( tree.folderName !== '' ) {
+                treeHistoryAllowLists.nameableTreeKeys.add(tree.treeKey);
             }
 
             if ( !tree.history ) {
@@ -1478,6 +1687,7 @@ export class RecipeCockpitService {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
+        this.applyTreePreferences(recipeViewModel.trees, this.readTreePreferences(this.recipeCockpitWorkspaceState));
         const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             command: 'recipeData',
             recipe: recipeViewModel,
@@ -1828,7 +2038,96 @@ export class RecipeCockpitService {
                 this.schedulePanelPlacePersist(panelAction.place);
                 return;
 
+            case 'renameTree':
+
+                await this.renameTree(cockpitPanel, panelState, panelAction.folderName);
+                return;
+
+            case 'toggleFavoriteTree': {
+
+                const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
+
+                if ( treePreferences.favoriteFolderNames.has(panelAction.folderName) ) {
+                    treePreferences.favoriteFolderNames.delete(panelAction.folderName);
+                } else {
+                    treePreferences.favoriteFolderNames.add(panelAction.folderName);
+                }
+
+                await this.saveAndPostTreePreferences(cockpitPanel, panelState, panelAction.folderName, treePreferences);
+                return;
+
+            }
+
         }
+
+    }
+
+    /*
+        The name is asked for HOST-side, so the panel never posts text to be stored, and checked
+        twice: by the box as it is typed, and again on the preferences as they are when it closes,
+        because another window of the same workspace can have named a tree while it was open.
+    */
+    private static async renameTree(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
+
+        const shownTrees = panelState.recipeDataMessage?.recipe.trees ?? [];
+        const shownTree = shownTrees.find(tree => tree.folderName === folderName);
+        const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
+        // THE INPUT BOX DRAWS [label](command:...) IN ITS PROMPT AS A LINK THAT RUNS THE COMMAND, AND THE FOLDER NAME COMES FROM DISK
+        const folderLabel = RecipeYamlScalar.escapeForNotification(folderName);
+        const defaultTitleLabel = RecipeYamlScalar.escapeForNotification(shownTree?.title ?? folderName);
+
+        const enteredName = await vscode.window.showInputBox({
+            title: 'Rename relationship tree',
+            prompt: `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to "${defaultTitleLabel}".`,
+            placeHolder: shownTree?.title ?? '',
+            value: treePreferences.customNamesByFolderName.get(folderName) ?? '',
+            validateInput: candidateName => this.validateTreeName(candidateName, folderName, treePreferences, shownTrees)
+        });
+
+        if ( enteredName === undefined || this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState ) {
+            return;
+        }
+
+        const latestTreePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
+        const namingProblem = this.validateTreeName(enteredName, folderName, latestTreePreferences, panelState.recipeDataMessage?.recipe.trees ?? []);
+
+        if ( namingProblem ) {
+            VSCodeWorkspaceService.showWarningMessage(`The tree was not renamed. ${namingProblem}`);
+            return;
+        }
+
+        const trimmedName = enteredName.trim();
+
+        if ( trimmedName === '' ) {
+            latestTreePreferences.customNamesByFolderName.delete(folderName);
+        } else {
+            latestTreePreferences.customNamesByFolderName.set(folderName, trimmedName);
+        }
+
+        await this.saveAndPostTreePreferences(cockpitPanel, panelState, folderName, latestTreePreferences);
+
+    }
+
+    /*
+        Written, then put on the stored model -- which every reveal replays -- and posted for the
+        cards of that folder only. The update carries the model's renderSequence: a panel that has
+        since drawn another model drops it, and that model was built from what was just written.
+    */
+    private static async saveAndPostTreePreferences(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        folderName: string,
+                                                        treePreferences: IRecipeCockpitTreePreferences) {
+
+        const isWritten = await this.writeTreePreferences(this.recipeCockpitWorkspaceState, treePreferences);
+
+        if ( !isWritten || this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState || !panelState.recipeDataMessage ) {
+            return;
+        }
+
+        const recipeDataMessage = panelState.recipeDataMessage;
+        this.applyTreePreferences(recipeDataMessage.recipe.trees, treePreferences);
+
+        this.postToPanel(cockpitPanel, this.buildTreePreferencesMessage(recipeDataMessage.recipe.trees, folderName, recipeDataMessage.renderSequence));
 
     }
 
@@ -3781,6 +4080,26 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                ✎ and ☆ post the card's KEY, matched against the cards the confirmed-drawn model
+                drew them on. The name itself is never posted: the host asks for it in its own
+                input box, so no text from the panel is ever stored.
+            */
+            case 'renameTree':
+            case 'toggleFavoriteTree': {
+
+                const { treeKey } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !panelState.recipeDataMessage || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                const folderName = panelState.recipeDataMessage.recipe.trees.find(tree => tree.treeKey === treeKey)?.folderName;
+
+                return folderName ? { kind: panelMessage.command, folderName: folderName } : undefined;
+
+            }
+
             case 'viewCreateErrors': {
 
                 const { treeKey, objectApiName } = panelMessage;
@@ -5050,7 +5369,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .dataCreate, .dataCreateErrors {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .dataCreate, .dataCreateErrors {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -5061,7 +5380,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .dataCreateErrors:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .dataCreateErrors:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
@@ -5072,6 +5391,8 @@ ${this.buildPaletteCustomProperties()}
         font-weight: 600;
     }
     .treeAddFriend { font-weight: 600; }
+    .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction, .dataCreateErrors { text-decoration: underline; }
     .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .dataCreate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled {
         color: var(--sdt-disabled-text);
@@ -5188,6 +5509,11 @@ ${this.buildPaletteCustomProperties()}
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
     const PANEL_PLACE_TABS = ['structure', 'dataByOrg', 'versions', 'datasets'];
+    const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
+    const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
+    const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
+    const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
+    const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
 
     let treeStates = [];
     let treesViewElement = null;
@@ -5237,6 +5563,11 @@ ${this.buildPaletteCustomProperties()}
     // EACH TAB A RESTORE SELECTS WOULD SAVE A HALF-RESTORED PLACE, WALKING EVERY CARD; THE RENDER SAVES ONCE AFTER IT
     let isRestoringPlace = false;
     let scrollSaveTimer = null;
+    // WHETHER ONLY FAVORITE CARDS ARE SHOWN (#235); IT OUTLIVES A MODEL, SO A RELOAD AFTER RUN FAKER KEEPS THE READER'S VIEW
+    let isFavoritesOnly = false;
+    let favoritesToggleElement = null;
+    let favoritesCountElement = null;
+    let noFavoritesElement = null;
 
     /*
         Every node the panel draws is made here and filled through textContent, so nothing from the
@@ -5352,8 +5683,71 @@ ${this.buildPaletteCustomProperties()}
 
         cockpitBodyElement.appendChild(toolbarElement);
 
+        if (hasObjects && (recipe.trees || []).some(function (tree) { return !!tree.folderName; })) {
+            renderFavoritesToggle(toolbarElement);
+        }
+
         if (hasObjects && (recipe.trees || []).length > 0) {
             renderDataOrgPicker(toolbarElement);
+        }
+
+    }
+
+    // A PANEL-ONLY FILTER (#235): IT HIDES CARDS, ASKS THE HOST NOTHING, AND IS KEPT WITH THE READER'S PLACE
+    function renderFavoritesToggle(toolbarElement) {
+
+        const favoritesElement = createElement('span', 'favoritesControls');
+
+        favoritesToggleElement = createElement('button', 'favoritesToggle');
+        favoritesToggleElement.setAttribute('title', 'Show only the trees marked as favorites');
+        favoritesToggleElement.addEventListener('click', function () {
+            isFavoritesOnly = !isFavoritesOnly;
+            applyFavoritesFilter();
+            savePanelPlace();
+        });
+
+        favoritesCountElement = createElement('span', 'favoritesCount muted hidden');
+
+        favoritesElement.appendChild(favoritesToggleElement);
+        favoritesElement.appendChild(favoritesCountElement);
+        toolbarElement.appendChild(favoritesElement);
+
+    }
+
+    function displayTitleOf(tree) {
+        return tree.customName || tree.title;
+    }
+
+    // ONLY WHILE ITS TOGGLE IS DRAWN: A MODEL WITH NO CARD TO MARK WOULD OTHERWISE HIDE EVERY CARD WITH NO WAY TO TURN IT OFF
+    function isHiddenByFavorites(treeState) {
+        return isFavoritesOnly && favoritesToggleElement !== null && treeState.tree.isFavorite !== true;
+    }
+
+    function applyFavoritesFilter() {
+
+        let shownCount = 0;
+
+        treeStates.forEach(function (treeState) {
+            if (isHiddenByFavorites(treeState)) {
+                treeState.element.classList.add('hidden');
+            } else {
+                treeState.element.classList.remove('hidden');
+                shownCount++;
+            }
+        });
+
+        if (favoritesToggleElement) {
+            favoritesToggleElement.textContent = (isFavoritesOnly ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL) + ' ' + FAVORITES_ONLY_LABEL;
+            favoritesToggleElement.setAttribute('aria-pressed', isFavoritesOnly ? 'true' : 'false');
+        }
+
+        if (favoritesCountElement) {
+            favoritesCountElement.textContent = shownCount + ' of ' + pluralize(treeStates.length, 'tree', 'trees');
+            if (isFavoritesOnly) { favoritesCountElement.classList.remove('hidden'); } else { favoritesCountElement.classList.add('hidden'); }
+        }
+
+        if (noFavoritesElement) {
+            if (isFavoritesOnly && favoritesToggleElement !== null && shownCount === 0) { noFavoritesElement.classList.remove('hidden'); } else { noFavoritesElement.classList.add('hidden'); }
         }
 
     }
@@ -5439,7 +5833,7 @@ ${this.buildPaletteCustomProperties()}
 
         inputElement.setAttribute('type', 'search');
         inputElement.setAttribute('placeholder', placeholderText);
-        inputElement.setAttribute('aria-label', placeholderText + ' (' + treeState.tree.title + ')');
+        inputElement.setAttribute('aria-label', placeholderText + ' (' + displayTitleOf(treeState.tree) + ')');
         inputElement.value = treeState.searchTexts[tabName];
         inputElement.addEventListener('input', function () {
             treeState.searchTexts[tabName] = String(inputElement.value || '');
@@ -6155,6 +6549,12 @@ ${this.buildPaletteCustomProperties()}
 
         if (!treeState) { return; }
 
+        // WHAT THE READER JUST ACTED ON IS SHOWN, EVEN WHEN IT IS NOT A FAVORITE
+        if (isHiddenByFavorites(treeState)) {
+            isFavoritesOnly = false;
+            applyFavoritesFilter();
+        }
+
         treeState.isExpandedByReader = true;
         setTreeExpanded(treeState, true);
         selectTreeTab(treeState, focusTree.tab);
@@ -6281,7 +6681,7 @@ ${this.buildPaletteCustomProperties()}
         const treeFieldCount = objectStatesCounted.reduce(function (fieldCount, treeObjectState) { return fieldCount + treeObjectState.fieldStates.length; }, 0);
 
         toggleElement.setAttribute('aria-expanded', 'false');
-        toggleElement.setAttribute('aria-label', 'Show or hide ' + tree.title);
+        toggleElement.setAttribute('aria-label', 'Show or hide ' + displayTitleOf(tree));
 
         /*
             The whole header row is the toggle (#209). The ▸ button carries no listener of its own:
@@ -6295,7 +6695,8 @@ ${this.buildPaletteCustomProperties()}
         });
 
         treeHeaderElement.appendChild(toggleElement);
-        treeHeaderElement.appendChild(createElement('span', 'treeTitle', tree.title));
+        treeState.titleElement = createElement('span', 'treeTitle', displayTitleOf(tree));
+        treeHeaderElement.appendChild(treeState.titleElement);
 
         if (tree.folderName) {
             treeHeaderElement.appendChild(createElement('span', 'treeFolder muted', tree.folderName));
@@ -6313,6 +6714,25 @@ ${this.buildPaletteCustomProperties()}
         const actionsElement = createElement('span', 'treeHeaderActions');
         actionsElement.addEventListener('click', function (event) { event.stopPropagation(); });
 
+        // ONLY A CARD WITH A FOLDER: THE NAME AND THE FAVORITE ARE KEPT BY FOLDER, AND THE UNGROUPED CARD HAS NONE
+        if (tree.folderName) {
+
+            treeState.favoriteElement = createElement('button', 'treeFavorite');
+            treeState.favoriteElement.addEventListener('click', function () {
+                vscodeApi.postMessage({ command: 'toggleFavoriteTree', treeKey: tree.treeKey });
+            });
+            actionsElement.appendChild(treeState.favoriteElement);
+
+            treeState.renameElement = createElement('button', 'treeRename', RENAME_TREE_ACTION_LABEL);
+            treeState.renameElement.addEventListener('click', function () {
+                vscodeApi.postMessage({ command: 'renameTree', treeKey: tree.treeKey });
+            });
+            actionsElement.appendChild(treeState.renameElement);
+
+            drawTreeName(treeState);
+
+        }
+
         if (tree.runFakerRecipeFileName) {
             treeState.runFakerElement = buildRunFakerElement(tree);
             actionsElement.appendChild(treeState.runFakerElement);
@@ -6328,6 +6748,53 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // THE HEADER'S NAME AND STAR, DRAWN AT FIRST AND AGAIN WHEN THE HOST SAYS EITHER CHANGED
+    function drawTreeName(treeState) {
+
+        const tree = treeState.tree;
+        const displayTitle = displayTitleOf(tree);
+
+        treeState.titleElement.textContent = displayTitle;
+        treeState.toggleElement.setAttribute('aria-label', 'Show or hide ' + displayTitle);
+
+        if (treeState.favoriteElement) {
+            treeState.favoriteElement.textContent = tree.isFavorite ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL;
+            treeState.favoriteElement.setAttribute('aria-pressed', tree.isFavorite ? 'true' : 'false');
+            treeState.favoriteElement.setAttribute('aria-label', (tree.isFavorite ? 'Remove ' + displayTitle + ' from favorites' : 'Mark ' + displayTitle + ' as a favorite'));
+            treeState.favoriteElement.setAttribute('title', tree.isFavorite ? 'Remove from favorites' : 'Mark as a favorite');
+        }
+
+        if (treeState.renameElement) {
+            treeState.renameElement.setAttribute('aria-label', 'Rename ' + displayTitle);
+            treeState.renameElement.setAttribute('title', 'Rename this tree');
+        }
+
+        if (treeState.runFakerElement) {
+            treeState.runFakerElement.setAttribute('aria-label', 'Run Faker on ' + displayTitle + ' (' + tree.runFakerRecipeFileName + ')');
+        }
+
+    }
+
+    // ONLY FOR THE MODEL ON SCREEN: A NEWER ONE WAS BUILT FROM THE PREFERENCES THIS UPDATE REPORTS
+    function renderTreePreferences(treePreferencesMessage) {
+
+        if (renderedSequence === null || treePreferencesMessage.renderSequence !== renderedSequence || !Array.isArray(treePreferencesMessage.trees)) { return; }
+
+        treePreferencesMessage.trees.forEach(function (treePreference) {
+
+            const treeState = findTreeState(treePreference.treeKey);
+            if (!treeState) { return; }
+
+            treeState.tree.customName = typeof treePreference.customName === 'string' ? treePreference.customName : undefined;
+            treeState.tree.isFavorite = treePreference.isFavorite === true;
+            drawTreeName(treeState);
+
+        });
+
+        applyFavoritesFilter();
+
+    }
+
     /*
         Posts the tree's KEY; the host looks its recipe file up. Every Run Faker button is disabled
         on the click, before the host answers, so a second click cannot start a second run -- the
@@ -6338,7 +6805,7 @@ ${this.buildPaletteCustomProperties()}
         const runFakerElement = createElement('button', 'treeRunFaker', RUN_FAKER_ACTION_LABEL);
 
         runFakerElement.setAttribute('title', 'Run Faker by Recipe on ' + tree.runFakerRecipeFileName);
-        runFakerElement.setAttribute('aria-label', 'Run Faker on ' + tree.title + ' (' + tree.runFakerRecipeFileName + ')');
+        runFakerElement.setAttribute('aria-label', 'Run Faker on ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ')');
         runFakerElement.addEventListener('click', function () {
             if (runFakerRunningTreeKey !== null) { return; }
             setRunFakerRunning(tree.treeKey);
@@ -6382,6 +6849,10 @@ ${this.buildPaletteCustomProperties()}
         }
 
         trees.forEach(function (tree) { renderTree(tree, objectsByApiName); });
+
+        noFavoritesElement = createElement('div', 'emptyState hidden', NO_FAVORITES_MESSAGE);
+        treesViewElement.appendChild(noFavoritesElement);
+        applyFavoritesFilter();
 
     }
 
@@ -7167,6 +7638,7 @@ ${this.buildPaletteCustomProperties()}
             version: PANEL_PLACE_VERSION,
             runFolderName: renderedRunFolderName,
             isOrgPickerInUse: isDataOrgPickerInUse,
+            isFavoritesOnly: isFavoritesOnly,
             scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
             trees: treeStates.map(buildTreePlace).filter(Boolean)
         };
@@ -7223,6 +7695,7 @@ ${this.buildPaletteCustomProperties()}
     function applyPlaceBeforeRender(savedPlace) {
 
         if (savedPlace && savedPlace.isOrgPickerInUse === true) { isDataOrgPickerInUse = true; }
+        if (savedPlace) { isFavoritesOnly = savedPlace.isFavoritesOnly === true; }
 
     }
 
@@ -7426,6 +7899,9 @@ ${this.buildPaletteCustomProperties()}
         fieldSearchTexts = new Map();
         addFriendButtonElements = [];
         runSelectElement = null;
+        favoritesToggleElement = null;
+        favoritesCountElement = null;
+        noFavoritesElement = null;
         renderedSequence = null;
 
     }
@@ -7526,20 +8002,20 @@ ${this.buildPaletteCustomProperties()}
         const statusFilterElement = createElement('select', 'statusFilter hidden');
 
         chooseOrgButtonElement.setAttribute('title', 'Choose any connected org, production included, and compare the objects of this tree with it');
-        chooseOrgButtonElement.setAttribute('aria-label', CHOOSE_ORG_ACTION_LABEL + ' (' + treeState.tree.title + ')');
+        chooseOrgButtonElement.setAttribute('aria-label', CHOOSE_ORG_ACTION_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
         chooseOrgButtonElement.addEventListener('click', function () {
             dropPendingComparisonPlace(treeState);
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey, chooseOrg: true });
         });
 
         describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in the toolbar (or one you choose), and list each field that differs');
-        describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + treeState.tree.title + ')');
+        describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
         describeButtonElement.addEventListener('click', function () {
             dropPendingComparisonPlace(treeState);
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey });
         });
 
-        statusFilterElement.setAttribute('aria-label', 'Show the fields of ' + treeState.tree.title + ' that differ from the org, by how they differ');
+        statusFilterElement.setAttribute('aria-label', 'Show the fields of ' + displayTitleOf(treeState.tree) + ' that differ from the org, by how they differ');
 
         // ONLY A FIELD THAT DIFFERS IS DRAWN, SO "UNCHANGED" WOULD FILTER TO NOTHING
         [['all', 'Every difference']].concat(DIFF_STATUSES.filter(function (diffStatus) { return diffStatus !== 'unchanged'; }).map(function (diffStatus) {
@@ -7809,6 +8285,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'addFriendState') {
             setAddFriendRunning(!!hostMessage.isRunning);
+            return;
+        }
+
+        if (hostMessage.command === 'treePreferences') {
+            renderTreePreferences(hostMessage);
             return;
         }
 
